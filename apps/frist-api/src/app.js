@@ -17,24 +17,39 @@ const emptyDashboard = {
     userInitials: 'FA',
     plan: '未登录',
     renewalDate: '-',
-    balance: '¥0.00',
-    todayCost: '¥0.00',
-    monthCost: '¥0.00',
-    quotaLeft: '¥0.00',
-    packageQuota: '¥0.00',
-    boosterQuota: '¥0.00',
-    usageTotal: '¥0.00',
+    balance: '$0.00',
+    todayCost: '$0.00',
+    monthCost: '$0.00',
+    quotaLeft: '$0.00',
+    packageQuota: '$0.00',
+    boosterQuota: '$0.00',
+    usageTotal: '$0.00',
     todayCalls: '0 次',
+    todayTokens: '0',
+    totalTokens: '0',
+    averageLatency: '-',
+    successRate: '0%',
     email: '',
     isAdmin: false,
   },
   apiKeys: [],
   channelChecks: [],
   helpLinks: [],
-  importTargets: ['Claude', 'Codex', 'OpenCode', 'OpenClaw', 'Hermes'],
+  importTargets: ['Claude', 'Codex', 'Gemini', 'OpenCode', 'OpenClaw', 'Hermes', 'Harmes'],
   modelUsage: [],
   modelCatalog: [],
+  usageRecords: [],
+  recentLogs: [],
   rechargeOptions: [],
+  balanceAlert: {
+    enabled: true,
+    threshold: '$5.00',
+    thresholdUsd: 5,
+    thresholdCny: 36,
+    thresholdCents: 3600,
+    email: '',
+    lastAlertAt: '',
+  },
 };
 
 const dashboardData = structuredClone(emptyDashboard);
@@ -43,6 +58,17 @@ let businessState = createBusinessStateFromDashboard(dashboardData, { now: new D
 const serverClient = createFristApiBrowserClient({
   baseUrl: window.FRIST_API_SERVER_BASE_URL || window.location.origin,
 });
+
+const catalogTemplate = [
+  { model: 'gpt-5.5', family: 'OpenAI', tagline: '推理和代码主力', context: '1M 上下文', price: '按后台价格', available: false },
+  { model: 'gpt-5.4', family: 'OpenAI', tagline: '日常问答和代码补全', context: '1M 上下文', price: '按后台价格', available: false },
+  { model: 'gpt-5.4-mini', family: 'OpenAI', tagline: '轻量代码和快速问答', context: '长上下文', price: '按后台价格', available: false },
+  { model: 'gpt-image-2', family: 'OpenAI', tagline: '图片生成', context: '按图计费', price: '按张结算', available: false },
+  { model: 'gpt-5.3-codex', family: 'OpenAI', tagline: 'Codex 专用代码模型', context: '长上下文', price: '按后台价格', available: false },
+  { model: 'claude-opus-4-6-thinking-c', family: 'Claude', tagline: '复杂开发和长链路推理', context: '1M 上下文', price: '按后台价格', available: false },
+  { model: 'gemini-2.5-flash', family: 'Gemini', tagline: '多模态和轻量任务', context: '长上下文', price: '按后台价格', available: false },
+  { model: 'deepseek-v4-flash', family: 'DeepSeek', tagline: 'Codex 桌面版官方兼容网关', context: 'OpenAI v1 兼容', price: '按官方 API 结算', available: false },
+];
 
 const viewMeta = {
   dashboard: {
@@ -75,6 +101,31 @@ const viewMeta = {
     title: '数据看板',
     desc: '看模型消耗和可用性。',
   },
+  records: {
+    kicker: 'Records',
+    title: '使用记录',
+    desc: '按 Key、模型和端点追踪。',
+  },
+  subscription: {
+    kicker: 'Plan',
+    title: '我的订阅',
+    desc: '为时限套餐预留。',
+  },
+  redeem: {
+    kicker: 'Code',
+    title: '兑换码',
+    desc: '兑换卡密和备用代收。',
+  },
+  invite: {
+    kicker: 'Referral',
+    title: '邀请返利',
+    desc: '客户增长入口。',
+  },
+  profile: {
+    kicker: 'Profile',
+    title: '个人资料',
+    desc: '账户和偏好。',
+  },
   models: {
     kicker: 'Market',
     title: '模型广场',
@@ -89,6 +140,7 @@ const viewMeta = {
 
 const state = {
   view: 'dashboard',
+  dashboardLoading: true,
   target: 'Codex',
   authMode: 'login',
   keyEnabled: true,
@@ -99,6 +151,10 @@ const state = {
   selectedRechargeCny: 5.88,
   selectedRechargePlanId: '',
   selectedRechargePlan: 'day',
+  apiSearch: '',
+  modelSearch: '',
+  playgroundModelSearch: '',
+  playgroundFamily: 'All',
   serverAvailable: false,
   hasServerSession: false,
   importRequestId: 0,
@@ -112,7 +168,7 @@ const state = {
     {
       id: 'msg-welcome',
       role: 'assistant',
-      content: '选择模型后可以直接测试。图片模型会生成图片，其它模型会返回文字。',
+      content: '先从左侧选择模型，再直接测试文字、代码或图片能力。',
     },
   ],
   generatedImage: null,
@@ -124,17 +180,23 @@ const state = {
 };
 
 function render() {
+  renderLoadingState();
   renderAccountSummary();
   renderAuthPanel();
   renderDashboard();
   renderUsage();
   renderChannelHealth();
+  renderTrendChart();
+  renderRecentLogs();
+  renderUsageRecords();
+  renderProfile();
   renderPlayground();
   renderAnalytics();
   renderModelCatalog();
   renderApiKeys();
   renderModelGroupPicker();
   renderRechargeOptions();
+  renderBalanceAlert();
   renderImportTargets();
   renderImportFamilyPicker();
   renderImportLink();
@@ -145,6 +207,8 @@ function render() {
 }
 
 async function loadDashboardData() {
+  state.dashboardLoading = true;
+  renderLoadingState();
   let nextData = normalizeFristDashboard(emptyServerPayload(), emptyDashboard);
   try {
     const serverDashboard = await serverClient.loadDashboard();
@@ -154,9 +218,10 @@ async function loadDashboardData() {
   } catch (error) {
     state.serverAvailable = false;
     state.hasServerSession = false;
-    setActionMessage(error.message || '服务暂时不可用，请先启动后端');
+    setActionMessage(userFacingLoadError(error), 'error');
   }
 
+  state.dashboardLoading = false;
   for (const [key, value] of Object.entries(nextData)) {
     dashboardData[key] = value;
   }
@@ -174,7 +239,10 @@ function emptyServerPayload() {
     channelChecks: [],
     modelUsage: [],
     modelCatalog: [],
+    usageRecords: [],
+    recentLogs: [],
     rechargeOptions: [],
+    balanceAlert: {},
   };
 }
 
@@ -190,6 +258,12 @@ function renderAccountSummary() {
   setText('[data-package-status]', `${accountSummary.plan} · ${accountSummary.renewalDate} 续费`);
   setText('[data-today-calls]', accountSummary.todayCalls);
   setText('[data-usage-total]', accountSummary.usageTotal);
+  setText('[data-today-tokens]', accountSummary.todayTokens || '0');
+  setText('[data-total-tokens]', accountSummary.totalTokens || '0');
+  setText('[data-average-latency]', accountSummary.averageLatency || '-');
+  setText('[data-success-rate]', accountSummary.successRate || '0%');
+  setText('[data-profile-email]', accountSummary.email || '未登录');
+  setText('[data-profile-plan]', accountSummary.plan || '未登录');
 }
 
 function renderAuthPanel() {
@@ -206,7 +280,7 @@ function renderAuthPanel() {
   }
   const captchaRow = document.querySelector('[data-captcha-row]');
   if (captchaRow) {
-    captchaRow.hidden = !state.captcha.question;
+    captchaRow.hidden = state.authMode !== 'register' || !state.captcha.question;
   }
   const showAccountTools = state.authMode === 'login' && state.hasServerSession;
   const ownerClaimRow = document.querySelector('[data-owner-claim-row]');
@@ -241,7 +315,7 @@ function renderDashboard() {
   const healthyCount = channelChecks.filter((item) => item.ok && !item.maintenance).length;
   const total = channelChecks.length;
   setText('[data-channel-ratio]', `${healthyCount}/${total}`);
-  setText('[data-api-summary]', state.keyEnabled ? `${enabledKeyCount()} 个 Key 已开启` : 'Key 已关闭');
+  setText('[data-api-summary]', `${enabledKeyCount()} / ${dashboardData.apiKeys.length}`);
 }
 
 function renderUsage() {
@@ -255,8 +329,8 @@ function renderUsage() {
             <strong>${item.model}</strong>
             ${options.compact ? '' : `<span>${item.calls} · ${item.tokens}</span>`}
           </div>
-          <div class="usage-track" aria-label="${item.model} 消耗占比 ${item.percent}%">
-            <i style="width: ${item.percent}%"></i>
+          <div class="usage-track" aria-label="${escapeHtml(item.model)} 消耗占比 ${safePercent(item.percent)}%">
+            <i style="width: ${safePercent(item.percent)}%"></i>
           </div>
           <b>${item.amount}</b>
         </article>
@@ -264,7 +338,111 @@ function renderUsage() {
     )
     .join('');
 
-  if (compact) compact.innerHTML = renderRows(modelUsage.slice(0, 2), { compact: true });
+  if (compact) {
+    compact.innerHTML = state.dashboardLoading
+      ? renderSkeletonRows(2, '模型消耗加载中')
+      : renderRows(modelUsage.slice(0, 2), { compact: true }) || renderEmptyState('暂无模型消耗', '创建 Key 并发起请求后展示占比。');
+  }
+}
+
+function renderTrendChart() {
+  const chart = document.querySelector('[data-token-trend]');
+  if (!chart) return;
+  const rows = tokenTrendRows();
+  const max = Math.max(1, ...rows.map((item) => item.tokens));
+  const hasTokens = rows.some((item) => item.tokens > 0);
+  chart.classList.toggle('is-empty', !hasTokens && !state.dashboardLoading);
+  chart.innerHTML = rows
+    .map(
+      (item) => `
+        <span class="trend-bar" role="img" aria-label="${escapeHtml(item.label)} ${item.tokens} Token" style="--height:${Math.max(8, Math.round((item.tokens / max) * 100))}%">
+          <i></i>
+          <b>${escapeHtml(item.label)}</b>
+        </span>
+      `,
+    )
+    .join('');
+}
+
+function tokenTrendRows() {
+  const source = dashboardData.usageRecords || [];
+  const labels = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (6 - index));
+    return date.toISOString().slice(0, 10);
+  });
+  const totals = new Map(labels.map((label) => [label, 0]));
+  for (const record of source) {
+    const day = String(record.at || '').slice(0, 10);
+    if (totals.has(day)) {
+      totals.set(day, totals.get(day) + tokenNumber(record.tokens));
+    }
+  }
+  return labels.map((label) => ({
+    label: label.slice(5),
+    tokens: totals.get(label) || 0,
+  }));
+}
+
+function tokenNumber(value) {
+  const text = String(value || '0').trim().toUpperCase();
+  const number = Number(text.replace(/[^\d.]/g, ''));
+  if (!Number.isFinite(number)) return 0;
+  if (text.endsWith('M')) return number * 1_000_000;
+  if (text.endsWith('K')) return number * 1_000;
+  return number;
+}
+
+function renderRecentLogs() {
+  const container = document.querySelector('[data-recent-logs]');
+  if (!container) return;
+  const rows = dashboardData.recentLogs || [];
+  container.innerHTML = rows.length
+    ? rows
+        .map(
+          (item) => `
+            <article class="log-row">
+              <span>${escapeHtml(formatCheckedAt(item.at))}</span>
+              <strong>${escapeHtml(item.detail)}</strong>
+              <small>${escapeHtml(item.type)}</small>
+            </article>
+          `,
+        )
+        .join('')
+    : renderEmptyState('暂无使用日志', '发起请求后会在这里显示最近路由、计费和错误。');
+}
+
+function renderUsageRecords() {
+  const container = document.querySelector('[data-usage-records]');
+  const empty = document.querySelector('[data-usage-records-empty]');
+  if (!container) return;
+  const rows = dashboardData.usageRecords || [];
+  if (empty) {
+    empty.hidden = rows.length > 0;
+    empty.innerHTML = rows.length ? '' : renderEmptyState('暂无使用记录', '发起请求后会展示 Key、模型、端点、计费模式和 Token。');
+  }
+  container.innerHTML = rows.length
+    ? rows
+        .map(
+          (item) => `
+            <tr>
+              <td>${escapeHtml(item.apiKey)}</td>
+              <td>${escapeHtml(item.model)}</td>
+              <td>${escapeHtml(item.inferenceEffort)}</td>
+              <td>${escapeHtml(item.endpoint)}</td>
+              <td>${escapeHtml(item.type)}</td>
+              <td>${escapeHtml(item.billingMode)}</td>
+              <td>${escapeHtml(item.tokens)}</td>
+            </tr>
+          `,
+        )
+        .join('')
+    : '<tr class="table-empty"><td colspan="7">暂无使用记录</td></tr>';
+}
+
+function renderProfile() {
+  setText('[data-profile-key-count]', `${dashboardData.apiKeys.length} 个`);
+  setText('[data-profile-balance]', dashboardData.accountSummary.quotaLeft || '$0.00');
 }
 
 function renderChannelHealth() {
@@ -273,7 +451,11 @@ function renderChannelHealth() {
   const providerItems = providerSummaries(channelChecks);
   const compactItems = providerItems.map(renderProviderSummary).join('');
 
-  if (compact) compact.innerHTML = compactItems;
+  if (compact) {
+    compact.innerHTML = state.dashboardLoading
+      ? renderSkeletonRows(2, '渠道连通性加载中')
+      : compactItems || renderEmptyState('暂无渠道检测', '刷新连通后展示 OpenAI、Claude 等可用线路。');
+  }
 }
 
 function renderProviderSummary(item) {
@@ -339,6 +521,7 @@ function formatCheckedAt(value) {
 function renderPlayground() {
   normalizePlaygroundMessages();
   const select = document.querySelector('[data-playground-model]');
+  const rows = filteredPlaygroundModels();
   const models = availableModels();
   if (!models.includes(state.playgroundModel)) {
     state.playgroundModel = models[0] || 'gpt-5.5';
@@ -350,6 +533,16 @@ function renderPlayground() {
       .join('');
     select.value = state.playgroundModel;
   }
+
+  const search = document.querySelector('[data-playground-model-search]');
+  if (search && document.activeElement !== search) {
+    search.value = state.playgroundModelSearch;
+  }
+
+  renderPlaygroundFamilyFilter();
+  renderPlaygroundModelGrid(rows);
+  renderSelectedPlaygroundModel();
+  renderPlaygroundDiagnostics();
 
   const log = document.querySelector('[data-playground-log]');
   if (log) {
@@ -405,10 +598,86 @@ function renderPlayground() {
   }
 }
 
+function renderPlaygroundFamilyFilter() {
+  for (const button of document.querySelectorAll('[data-playground-family]')) {
+    const active = button.dataset.playgroundFamily === state.playgroundFamily;
+    button.classList.toggle('is-active', active);
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+  }
+}
+
+function renderPlaygroundModelGrid(rows) {
+  const container = document.querySelector('[data-playground-model-grid]');
+  setText('[data-playground-model-count]', `${rows.length} 个模型`);
+  if (!container) return;
+
+  container.innerHTML = rows
+    .map((item) => {
+      const active = item.model === state.playgroundModel;
+      const summary = modelHealthSummaryFor(item.model);
+      return `
+        <button
+          class="playground-model-row ${active ? 'is-active' : ''} ${item.available ? 'is-available' : 'is-unavailable'}"
+          data-playground-model-card="${escapeHtml(item.model)}"
+          type="button"
+          role="listitem"
+          aria-pressed="${active ? 'true' : 'false'}"
+        >
+          <span class="health-dot health-dot--${summary.status}" aria-hidden="true"></span>
+          <span class="playground-model-row__main">
+            <strong>${escapeHtml(item.model)}</strong>
+            <small>${escapeHtml(item.family)} · ${escapeHtml(item.endpointType)}</small>
+          </span>
+          <span class="playground-model-row__meta">${escapeHtml(item.price)}</span>
+        </button>
+      `;
+    })
+    .join('') || renderEmptyState('没有匹配的模型', '换一个关键词或切到全部分组。');
+}
+
+function renderSelectedPlaygroundModel() {
+  const container = document.querySelector('[data-playground-selected-model]');
+  if (!container) return;
+
+  const selected = modelCatalogRows().find((item) => item.model === state.playgroundModel) || fallbackModelRow(state.playgroundModel);
+  const summary = modelHealthSummaryFor(selected.model);
+  const endpoint = endpointForModel(selected);
+  const isImage = isImageModel(selected.model);
+  container.innerHTML = `
+    <div class="selected-model-panel__main">
+      <span class="provider-badge">${escapeHtml(selected.family)}</span>
+      <h3>${escapeHtml(selected.model)}</h3>
+      <p>${escapeHtml(selected.tagline || (isImage ? '图片生成模型' : '文本和代码模型'))}</p>
+    </div>
+    <div class="selected-model-panel__facts">
+      <span><b>${escapeHtml(summary.label)}</b><small>状态</small></span>
+      <span><b>${escapeHtml(selected.price || '按后台价格')}</b><small>计费</small></span>
+      <span><b>${escapeHtml(selected.context || '按模型能力')}</b><small>上下文</small></span>
+      <code>${escapeHtml(endpoint)}</code>
+    </div>
+  `;
+}
+
+function renderPlaygroundDiagnostics() {
+  const container = document.querySelector('[data-playground-diagnostics]');
+  if (!container) return;
+  const selected = modelCatalogRows().find((item) => item.model === state.playgroundModel) || fallbackModelRow(state.playgroundModel);
+  const summary = modelHealthSummaryFor(selected.model);
+  const key = activeApiKey();
+  const rows = [
+    ['Key', key ? `${key.name} · ${key.enabled ? '已开启' : '已禁用'}` : '未创建'],
+    ['端点', endpointForModel(selected)],
+    ['类型', isImageModel(selected.model) ? '图片生成' : 'Chat Completions'],
+    ['连通', `${summary.label} · ${summary.latencyText}`],
+  ];
+  container.innerHTML = rows
+    .map(([label, value]) => `<article><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></article>`)
+    .join('');
+}
+
 function renderAnalytics() {
   const usageRows = dashboardData.modelUsage || [];
-  const donut = document.querySelector('[data-usage-donut]');
-  if (donut) {
+  for (const donut of document.querySelectorAll('[data-usage-donut]')) {
     donut.style.background = usageDonutGradient(usageRows);
   }
 
@@ -424,7 +693,7 @@ function renderAnalytics() {
           </article>
         `,
       )
-      .join('');
+      .join('') || renderEmptyState('暂无消耗分布', '有请求后会按模型展示美元消耗。');
   }
 
   const health = document.querySelector('[data-service-health]');
@@ -433,28 +702,40 @@ function renderAnalytics() {
       .map((item) => {
         const summary = summarizeModelHealth(item);
         return `
-          <article class="service-card">
-            <span class="health-dot health-dot--${summary.status}" aria-hidden="true"></span>
-            <strong>${escapeHtml(item.provider || summary.model)}</strong>
+          <article class="service-card service-card--${escapeHtml(summary.status)}">
+            <div class="service-card__top">
+              <span class="health-dot health-dot--${summary.status}" aria-hidden="true"></span>
+              <strong>${escapeHtml(item.provider || summary.model)}</strong>
+              <small>${escapeHtml(item.availability || (item.ok ? '99.9%' : '0%'))}</small>
+            </div>
             <b>${escapeHtml(summary.model)}</b>
-            <small>${escapeHtml(summary.label)} · ${escapeHtml(summary.latencyText)}</small>
+            <code>${escapeHtml(item.endpoint || '/v1')}</code>
+            <div class="availability-strip">
+              ${(item.history || []).slice(-12).map((status) => `<i class="${status === 'ok' ? 'is-ok' : 'is-down'}"></i>`).join('')}
+            </div>
+            <small>${escapeHtml(summary.label)} · ${escapeHtml(summary.latencyText)} · ${escapeHtml(formatCheckedAt(item.checkedAt))}</small>
           </article>
         `;
       })
-      .join('');
+      .join('') || renderEmptyState('暂无服务可用性', '登录或刷新连通后展示最近 12 次检测图。');
   }
 }
 
 function renderModelCatalog() {
-  const catalog = modelCatalogRows();
+  const catalog = filteredModelCatalogRows();
   setText('[data-model-count]', `${catalog.filter((item) => item.available).length} 个可用`);
   const container = document.querySelector('[data-model-catalog]');
   if (!container) return;
 
+  const search = document.querySelector('[data-model-catalog-search]');
+  if (search && document.activeElement !== search) {
+    search.value = state.modelSearch;
+  }
+
   container.innerHTML = catalog
     .map(
       (item) => `
-        <article class="model-card ${item.available ? 'is-available' : ''}">
+        <article class="model-card ${item.available ? 'is-available' : ''}" data-model-card="${escapeHtml(item.model)}">
           <div>
             <span class="provider-badge">${escapeHtml(item.family)}</span>
             <strong>${escapeHtml(item.model)}</strong>
@@ -463,11 +744,16 @@ function renderModelCatalog() {
           <div class="model-meta">
             <span>${escapeHtml(item.context)}</span>
             <span>${escapeHtml(item.price)}</span>
+            <span>${escapeHtml(endpointForModel(item))}</span>
+          </div>
+          <div class="model-card-actions">
+            <button class="text-action" data-select-playground-model="${escapeHtml(item.model)}" type="button">测试</button>
+            <button class="icon-action" data-copy-text="${escapeHtml(item.model)}" type="button" aria-label="复制模型名">⧉</button>
           </div>
         </article>
       `,
     )
-    .join('');
+    .join('') || renderEmptyState('没有匹配的模型', '清空搜索后查看全部模型。');
 }
 
 function renderSetupGuides() {
@@ -515,7 +801,8 @@ function renderGuideTargets() {
 function availableModels() {
   const liveModels = (dashboardData.channelChecks || []).map((item) => item.model).filter(Boolean);
   const catalogModels = (dashboardData.modelCatalog || []).map((item) => item.model).filter(Boolean);
-  const unique = [...new Set([...liveModels, ...catalogModels])];
+  const templateModels = catalogTemplate.map((item) => item.model);
+  const unique = [...new Set([...liveModels, ...catalogModels, ...templateModels])];
   return sortModelsByStrength(unique.length ? unique : ['gpt-5.5']);
 }
 
@@ -524,13 +811,46 @@ function availableModelsForGroup(group) {
   return models.length ? models : [defaultModelForGroup(group)];
 }
 
+function filteredPlaygroundModels() {
+  const query = state.playgroundModelSearch.toLowerCase();
+  const rows = modelCatalogRows()
+    .filter((item) => state.playgroundFamily === 'All' || modelMatchesUiGroup(item.model, state.playgroundFamily))
+    .filter((item) => modelRowMatchesQuery(item, query));
+  return rows;
+}
+
+function filteredModelCatalogRows() {
+  const query = state.modelSearch.toLowerCase();
+  return modelCatalogRows().filter((item) => modelRowMatchesQuery(item, query));
+}
+
+function modelRowMatchesQuery(item, query) {
+  if (!query) return true;
+  const endpoint = endpointForModel(item);
+  return [
+    item.model,
+    item.family,
+    item.tagline,
+    item.context,
+    item.price,
+    item.endpointType,
+    endpoint,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+    .includes(query);
+}
+
 function modelMatchesUiGroup(model, group) {
   const normalized = String(group || 'All').toLowerCase();
   const value = String(model || '').toLowerCase();
   if (normalized === 'all') return true;
   if (normalized === 'openai') return /gpt|dall|image/.test(value);
   if (normalized === 'claude') return /claude|anthropic/.test(value);
-  if (normalized === 'other') return !/gpt|dall|image|claude|anthropic/.test(value);
+  if (normalized === 'gemini') return /gemini/.test(value);
+  if (normalized === 'deepseek') return /deepseek/.test(value);
+  if (normalized === 'other') return !/gpt|dall|image|claude|anthropic|gemini|deepseek/.test(value);
   return true;
 }
 
@@ -548,6 +868,10 @@ function sortModelsByStrength(models) {
     'gpt-image-1.5',
     'gpt-image-1',
     'gpt-5.3-codex',
+    'deepseek-v4-flash',
+    'deepseek-v4-pro',
+    'deepseek-reasoner',
+    'deepseek-chat',
     'claude-opus-4-6-thinking-c',
     'claude-opus-4-6-c',
     'claude-sonnet-4-5-c',
@@ -568,6 +892,8 @@ function modelCatalogRows() {
   const catalog = (dashboardData.modelCatalog || []).map((item) => ({
     ...item,
     model: normalizeOfficialModelName(item.model),
+    family: item.family || inferUiFamily(item.model),
+    endpointType: item.endpointType || endpointTypeForModel(item.model),
     available: statusByModel.has(normalizeOfficialModelName(item.model)) ? Boolean(statusByModel.get(normalizeOfficialModelName(item.model)).ok) : Boolean(item.available),
   }));
   const catalogModels = new Set(catalog.map((item) => item.model));
@@ -575,13 +901,78 @@ function modelCatalogRows() {
     .filter((item) => item.model && !catalogModels.has(item.model))
     .map((item) => ({
       model: item.model,
-      family: item.provider || 'Other',
+      family: item.provider || inferUiFamily(item.model),
       tagline: '当前可用',
       context: '按模型能力',
       price: '按后台价格',
+      endpointType: endpointTypeForModel(item.model),
       available: Boolean(item.ok),
     }));
-  return [...catalog, ...liveAdditions];
+  const rowsByModel = new Map();
+  for (const item of catalogTemplate) {
+    rowsByModel.set(item.model, {
+      ...item,
+      model: normalizeOfficialModelName(item.model),
+      endpointType: endpointTypeForModel(item.model),
+    });
+  }
+  for (const item of [...catalog, ...liveAdditions]) {
+    rowsByModel.set(item.model, item);
+  }
+  return sortModelRows([...rowsByModel.values()]);
+}
+
+function sortModelRows(rows) {
+  const sortedModels = sortModelsByStrength(rows.map((item) => item.model));
+  const rank = new Map(sortedModels.map((model, index) => [model, index]));
+  return [...rows].sort((left, right) => {
+    const availableDelta = Number(right.available) - Number(left.available);
+    if (availableDelta !== 0) return availableDelta;
+    const rankDelta = (rank.get(left.model) ?? 9999) - (rank.get(right.model) ?? 9999);
+    if (rankDelta !== 0) return rankDelta;
+    return `${left.family}:${left.model}`.localeCompare(`${right.family}:${right.model}`);
+  });
+}
+
+function fallbackModelRow(model) {
+  return {
+    model: normalizeOfficialModelName(model),
+    family: inferUiFamily(model),
+    tagline: isImageModel(model) ? '图片生成模型' : '文本和代码模型',
+    context: '按模型能力',
+    price: '按后台价格',
+    endpointType: endpointTypeForModel(model),
+    available: false,
+  };
+}
+
+function endpointTypeForModel(model) {
+  return isImageModel(model) ? 'Images' : 'Chat';
+}
+
+function endpointForModel(item) {
+  return isImageModel(item?.model) ? '/v1/images/generations' : '/v1/chat/completions';
+}
+
+function inferUiFamily(model) {
+  const value = String(model || '').toLowerCase();
+  if (/gpt|dall|image/.test(value)) return 'OpenAI';
+  if (/claude|anthropic/.test(value)) return 'Claude';
+  if (/gemini/.test(value)) return 'Gemini';
+  if (/deepseek/.test(value)) return 'DeepSeek';
+  return 'Other';
+}
+
+function modelHealthSummaryFor(model) {
+  const status = (dashboardData.channelChecks || []).find((item) => normalizeOfficialModelName(item.model) === normalizeOfficialModelName(model));
+  if (!status) {
+    return {
+      status: 'idle',
+      label: '未检测',
+      latencyText: '-',
+    };
+  }
+  return summarizeModelHealth(status);
 }
 
 function usageDonutGradient(rows) {
@@ -596,12 +987,18 @@ function usageDonutGradient(rows) {
     })
     .filter((segment) => !segment.endsWith(' 0%'));
   return segments.length
-    ? `conic-gradient(${segments.join(', ')}, rgba(18,30,25,0.08) ${Math.min(cursor, 100)}% 100%)`
-    : 'conic-gradient(rgba(18,30,25,0.08) 0 100%)';
+    ? `conic-gradient(${segments.join(', ')}, rgba(245,240,232,0.08) ${Math.min(cursor, 100)}% 100%)`
+    : 'conic-gradient(rgba(245,240,232,0.08) 0 100%)';
 }
 
 function chartColor(index) {
-  return ['#07875f', '#175edb', '#c6262e', '#ba6f0c', '#6f54d9'][index % 5];
+  return ['#e7c59a', '#00ac5c', '#f3f3f3', '#949494', '#333333'][index % 5];
+}
+
+function safePercent(value) {
+  const number = Number(value || 0);
+  if (!Number.isFinite(number)) return 0;
+  return Math.max(0, Math.min(100, Math.round(number)));
 }
 
 function renderApiKeys() {
@@ -609,6 +1006,15 @@ function renderApiKeys() {
   const summary = document.querySelector('[data-key-summary]');
   const list = document.querySelector('[data-api-keys]');
   const activeCount = enabledKeyCount();
+  const searchInput = document.querySelector('[data-api-search]');
+  if (searchInput && document.activeElement !== searchInput) {
+    searchInput.value = state.apiSearch;
+  }
+  if (!list) return;
+  const filteredKeys = apiKeys.filter((key) => {
+    const haystack = `${key.name || ''} ${key.preview || ''} ${key.secret || ''}`.toLowerCase();
+    return !state.apiSearch || haystack.includes(state.apiSearch.toLowerCase());
+  });
 
   if (summary) {
     summary.innerHTML = `
@@ -619,38 +1025,84 @@ function renderApiKeys() {
   `;
   }
 
-  list.innerHTML = apiKeys
+  list.innerHTML = filteredKeys
     .map(
       (key) => `
         <article class="key-row">
           <div class="key-name-field">
             <input
               type="text"
-              data-key-name="${key.id}"
+              data-key-name="${escapeHtml(key.id)}"
               value="${escapeHtml(key.name)}"
               aria-label="API Key 名称"
             />
-            <span>${key.preview}</span>
+            <span>${escapeHtml(key.preview)}</span>
           </div>
+          <code class="key-endpoint">${escapeHtml(state.baseUrl)}</code>
           <span class="key-state ${key.enabled ? 'is-on' : ''}" data-key-status>
             ${key.enabled ? '已开启' : '已关闭'}
           </span>
           <div class="key-stats">
-            <span>${key.cost}</span>
-            <small>${key.tokens}</small>
+            <span>${escapeHtml(key.cost)}</span>
+            <small>${escapeHtml(key.tokens)}</small>
           </div>
           <div class="key-actions">
-            <button class="ghost-action" data-copy-key-id="${key.id}" type="button">复制</button>
-            <button class="secondary-action" data-rename-key="${key.id}" type="button">改名</button>
-            <button class="danger-action" data-delete-key="${key.id}" type="button">删除</button>
-            <button class="secondary-action" data-toggle-key="${key.id}" type="button">${key.enabled ? '关闭' : '开启'}</button>
+            <button class="icon-button" data-copy-key-id="${escapeHtml(key.id)}" type="button" aria-label="复制 API Key" title="复制">⧉</button>
+            <button class="icon-button" data-toggle-key="${escapeHtml(key.id)}" type="button" aria-label="${key.enabled ? '禁用 API Key' : '启用 API Key'}" title="${key.enabled ? '禁用' : '启用'}">${key.enabled ? '⏸' : '▶'}</button>
+            <button class="icon-button" data-rename-key="${escapeHtml(key.id)}" type="button" aria-label="编辑 API Key 名称" title="编辑">✎</button>
+            <button class="icon-button icon-button--danger" data-delete-key="${escapeHtml(key.id)}" type="button" aria-label="删除 API Key" title="删除">⌫</button>
           </div>
         </article>
       `,
     )
-    .join('');
+    .join('') || renderEmptyState(
+      state.apiSearch ? '没有匹配的 API Key' : '暂无 API Key',
+      state.apiSearch ? '换一个名称或 key 片段再试。' : '创建 Key 后会显示端点、状态和操作按钮。',
+    );
 
   bindCopyButtons(list);
+}
+
+function renderLoadingState() {
+  document.body.classList.toggle('is-loading-dashboard', state.dashboardLoading);
+  document.body.dataset.serverState = state.serverAvailable ? 'connected' : state.dashboardLoading ? 'loading' : 'offline';
+  const main = document.querySelector('#main-content');
+  if (main) {
+    main.setAttribute('aria-busy', String(state.dashboardLoading));
+  }
+  const board = document.querySelector('[data-console-board]');
+  if (board) {
+    board.setAttribute('aria-busy', String(state.dashboardLoading));
+  }
+  const recovery = document.querySelector('[data-server-recovery]');
+  if (recovery) {
+    recovery.hidden = state.dashboardLoading || state.serverAvailable;
+  }
+}
+
+function renderSkeletonRows(count, label) {
+  return Array.from({ length: count }, (_, index) => `
+    <article class="skeleton-row" role="status" aria-label="${escapeHtml(label)} ${index + 1}">
+      <span></span><b></b><i></i>
+    </article>
+  `).join('');
+}
+
+function renderEmptyState(title, detail = '') {
+  return `
+    <article class="empty-row empty-row--stack" role="status">
+      <strong>${escapeHtml(title)}</strong>
+      ${detail ? `<span>${escapeHtml(detail)}</span>` : ''}
+    </article>
+  `;
+}
+
+function userFacingLoadError(error) {
+  const message = String(error?.message || '');
+  if (/unexpected token|not valid json|json|failed to fetch|404|network/i.test(message)) {
+    return '后端暂不可用，当前显示空数据。启动 Frist-API 服务后刷新。';
+  }
+  return message || '服务暂时不可用，请先启动后端';
 }
 
 function renderModelGroupPicker() {
@@ -662,6 +1114,7 @@ function renderModelGroupPicker() {
 function renderRechargeOptions() {
   const { rechargeOptions } = dashboardData;
   const container = document.querySelector('[data-recharge-options]');
+  if (!container) return;
   if (!state.selectedRechargePlanId && rechargeOptions[0]) {
     state.selectedRechargePlanId = rechargeOptions[0].id || '';
     state.selectedRechargeCny = Number(rechargeOptions[0].priceCny || String(rechargeOptions[0].cny).replace(/[^\d.]/g, ''));
@@ -673,13 +1126,39 @@ function renderRechargeOptions() {
         <button class="amount-button ${option.id === state.selectedRechargePlanId || option.active ? 'is-active' : ''}" data-recharge-plan-id="${escapeHtml(option.id || '')}" data-recharge-plan="${option.plan || 'balance'}" data-recharge-option="${Number(
           option.priceCny || String(option.cny).replace(/[^\d.]/g, ''),
         )}" type="button">
-          <em>${option.label || '余额'}</em>
-          <strong>${option.cny}</strong>
+          <em>${escapeHtml(option.label || '余额')}</em>
+          <strong>${escapeHtml(option.cny)}</strong>
           ${option.quotaUsd ? `<span>${escapeHtml(option.quota || `$${option.quotaUsd}`)} 额度</span>` : ''}
         </button>
       `,
     )
     .join('');
+}
+
+function renderBalanceAlert() {
+  const alert = dashboardData.balanceAlert || {};
+  const enabledInput = document.querySelector('[data-balance-alert-enabled]');
+  const thresholdInput = document.querySelector('[data-balance-alert-threshold]');
+  const emailInput = document.querySelector('[data-balance-alert-email]');
+  const status = document.querySelector('[data-balance-alert-status]');
+  const last = document.querySelector('[data-balance-alert-last]');
+
+  if (enabledInput && document.activeElement !== enabledInput) {
+    enabledInput.checked = alert.enabled !== false;
+  }
+  if (thresholdInput && document.activeElement !== thresholdInput) {
+    thresholdInput.value = Number(alert.thresholdUsd || 5).toFixed(2);
+  }
+  if (emailInput && document.activeElement !== emailInput) {
+    emailInput.value = alert.email || dashboardData.accountSummary.email || '';
+  }
+  if (status) {
+    status.textContent = alert.enabled === false ? '已关闭' : `低于 ${alert.threshold || '$5.00'} 发送`;
+    status.classList.toggle('is-off', alert.enabled === false);
+  }
+  if (last) {
+    last.textContent = alert.lastAlertAt ? `上次通知 ${formatCheckedAt(alert.lastAlertAt)}` : '暂未触发';
+  }
 }
 
 function renderImportTargets() {
@@ -688,8 +1167,8 @@ function renderImportTargets() {
   container.innerHTML = importTargets
     .map(
       (target) => `
-        <button class="target-button ${state.target === target ? 'is-active' : ''}" data-target="${target}" type="button">
-          ${target}
+        <button class="target-button ${state.target === target ? 'is-active' : ''}" data-target="${escapeHtml(target)}" type="button">
+          ${escapeHtml(target)}
         </button>
       `,
     )
@@ -757,11 +1236,11 @@ function renderCrossImportGuide() {
 
   if (isClaudeTarget && isOpenAiFamily) {
     title.textContent = 'ChatGPT 模型导入 Claude Code';
-    copy.textContent = '选择 Claude + ChatGPT / OpenAI 后，Frist-API 会用 Anthropic Messages 入口接住 Claude Code，再把请求路由到可用的 ChatGPT 模型。';
+    copy.textContent = '选 Claude + ChatGPT，按红色重点填 Base URL、bearer 和默认模型。';
     guide.innerHTML = [
-      '<li data-claude-guide-step>打开 CC Switch 的 Claude 配置页。</li>',
-      '<li data-claude-guide-step>开启开发者模式，允许第三方 API。</li>',
-      '<li data-claude-guide-step>点击一键导入，确认 Frist-API 供应商和模型。</li>',
+      '<li data-claude-guide-step><strong>Developer</strong> 进入第三方推理配置。</li>',
+      '<li data-claude-guide-step><strong class="danger-text">Base URL 不带 /v1</strong>，认证方式选 bearer。</li>',
+      '<li data-claude-guide-step>导入后新会话选择 Frist-API Gateway。</li>',
     ].join('');
     setActiveWalkthrough('openai-to-claude');
     return;
@@ -769,35 +1248,38 @@ function renderCrossImportGuide() {
 
   if (state.target === 'Codex' && state.modelGroup === 'Claude') {
     title.textContent = 'Claude 模型导入 Codex';
-    copy.textContent = '选择 Codex + Claude 后，Frist-API 会先尝试 Responses，必要时自动降级为 Chat Completions，把 Claude 模型继续喂给 Codex，并写入推荐 MCP 开发工具。';
+    copy.textContent = '选 Codex + Claude，一键写入 Responses、/v1 地址、默认模型和 MCP。';
     guide.innerHTML = [
-      '<li data-claude-guide-step>在 CC Switch 里切到 Codex 配置页。</li>',
-      '<li data-claude-guide-step>确认模型家族是 Claude，并保持 Frist-API 供应商。</li>',
-      '<li data-claude-guide-step>点击一键导入，检查默认模型是否是 Claude 模型。</li>',
-      '<li data-claude-guide-step>config.toml 会默认带上 Playwright、Superpowers 和 open-computer-use MCP。</li>',
+      '<li data-claude-guide-step>目标客户端选 <strong>Codex</strong>。</li>',
+      '<li data-claude-guide-step><strong class="danger-text">API 请求地址必须带 /v1</strong>。</li>',
+      '<li data-claude-guide-step>重启 Codex 后测试同一上下文。</li>',
     ].join('');
     setActiveWalkthrough('claude-to-codex');
     return;
   }
 
   if (state.target === 'Codex') {
-    title.textContent = 'Codex 最强开发配置';
-    copy.textContent = 'Codex 导入默认启用 Responses、1M 上下文、xhigh 推理、工具搜索、Playwright、Superpowers 和 open-computer-use MCP。';
+    title.textContent = state.modelGroup === 'DeepSeek' ? 'Codex DeepSeek 官方网关' : 'Codex 最强开发配置';
+    copy.textContent = state.modelGroup === 'DeepSeek'
+      ? '写入 DeepSeek 官方 OpenAI 兼容入口，供 Codex 桌面版直接测试。'
+      : '默认启用 Responses、xhigh 推理和常用开发 MCP。';
     guide.innerHTML = [
-      '<li data-claude-guide-step>在 CC Switch 里切到 Codex 配置页。</li>',
-      '<li data-claude-guide-step>点击一键导入，写入 Frist-API 供应商、最强默认模型和 MCP 配置。</li>',
-      '<li data-claude-guide-step>首次使用 Computer Use 时，按 Codex 提示完成系统权限授权。</li>',
+      '<li data-claude-guide-step>目标客户端选 <strong>Codex</strong>。</li>',
+      state.modelGroup === 'DeepSeek'
+        ? '<li data-claude-guide-step>模型家族选 <strong>DeepSeek</strong>，默认模型 deepseek-v4-flash。</li>'
+        : '<li data-claude-guide-step>确认 auth.json 和 config.toml 已写入。</li>',
+      '<li data-claude-guide-step>Computer Use 首次调用按系统提示授权。</li>',
     ].join('');
     setActiveWalkthrough('claude-to-codex');
     return;
   }
 
   title.textContent = '一键导入';
-  copy.textContent = '按目标客户端选择导入链接，Frist-API 会自动带上你可用的模型和配置。';
+  copy.textContent = '选目标客户端后直接导入，模型清单会随当前库存更新。';
   guide.innerHTML = [
-    '<li data-claude-guide-step>选择目标客户端。</li>',
-    '<li data-claude-guide-step>确认模型分组。</li>',
-    '<li data-claude-guide-step>点击一键导入。</li>',
+    '<li data-claude-guide-step>确认至少有一个开启的 API Key。</li>',
+    '<li data-claude-guide-step>选择目标客户端和模型家族。</li>',
+    '<li data-claude-guide-step>导入后检查默认模型和模型列表。</li>',
   ].join('');
   setActiveWalkthrough('');
 }
@@ -807,11 +1289,13 @@ function syncWalkthroughFields() {
   const claudeBase = codexBase.replace(/\/v1\/?$/i, '');
   const openAiModel = availableModelsForGroup('OpenAI')[0] || 'gpt-5.5';
   const claudeModel = availableModelsForGroup('Claude')[0] || 'claude-opus-4-6-thinking-c';
+  const deepseekModel = availableModelsForGroup('DeepSeek')[0] || 'deepseek-v4-flash';
   const keyLabel = enabledKeyCount() ? 'fk-live-你的用户Key' : '先在 API 页面创建 fk-live 用户 Key';
   setText('[data-flow-codex-base]', codexBase);
   setText('[data-flow-claude-base]', claudeBase);
   setText('[data-flow-openai-model]', openAiModel);
   setText('[data-flow-claude-model]', claudeModel);
+  setText('[data-flow-deepseek-model]', deepseekModel);
   setText('[data-flow-user-key]', keyLabel);
 }
 
@@ -926,6 +1410,13 @@ function bindStaticActions() {
     const authMode = event.target.closest('[data-auth-mode]');
     if (authMode) {
       state.authMode = authMode.dataset.authMode || 'login';
+      if (state.authMode === 'register') {
+        prepareCaptchaChallenge();
+      } else {
+        state.captcha = { id: '', question: '' };
+        const answerInput = document.querySelector('[data-captcha-answer]');
+        if (answerInput) answerInput.value = '';
+      }
       renderAuthPanel();
       return;
     }
@@ -1001,6 +1492,54 @@ function bindStaticActions() {
     const clearPlayground = event.target.closest('[data-clear-playground]');
     if (clearPlayground) {
       clearPlaygroundMessages();
+      return;
+    }
+
+    const playgroundFamily = event.target.closest('[data-playground-family]');
+    if (playgroundFamily) {
+      state.playgroundFamily = playgroundFamily.dataset.playgroundFamily || 'All';
+      const nextModel = filteredPlaygroundModels()[0]?.model;
+      if (nextModel) {
+        state.playgroundModel = nextModel;
+        state.model = nextModel;
+      }
+      renderPlayground();
+      return;
+    }
+
+    const playgroundModelCard = event.target.closest('[data-playground-model-card]');
+    if (playgroundModelCard) {
+      state.playgroundModel = playgroundModelCard.dataset.playgroundModelCard || state.playgroundModel;
+      state.model = state.playgroundModel;
+      renderPlayground();
+      renderImportLink();
+      renderClientConfig();
+      return;
+    }
+
+    const selectPlaygroundModel = event.target.closest('[data-select-playground-model]');
+    if (selectPlaygroundModel) {
+      state.playgroundModel = selectPlaygroundModel.dataset.selectPlaygroundModel || state.playgroundModel;
+      state.model = state.playgroundModel;
+      setActiveView('playground');
+      renderPlayground();
+      return;
+    }
+
+    const useModelInPlayground = event.target.closest('[data-use-model-in-playground]');
+    if (useModelInPlayground) {
+      setActiveView('playground');
+      renderPlayground();
+      return;
+    }
+
+    const suggestion = event.target.closest('[data-playground-suggestion]');
+    if (suggestion) {
+      const promptInput = document.querySelector('[data-playground-prompt]');
+      if (promptInput) {
+        promptInput.value = suggestion.dataset.playgroundSuggestion || '';
+        promptInput.focus();
+      }
       return;
     }
 
@@ -1083,7 +1622,19 @@ function bindStaticActions() {
       return;
     }
 
-    const redeem = event.target.closest('[data-redeem-code]');
+    const alertSave = event.target.closest('[data-balance-alert-save]');
+    if (alertSave) {
+      handleBalanceAlertSave(alertSave);
+      return;
+    }
+
+    const alertTest = event.target.closest('[data-balance-alert-test]');
+    if (alertTest) {
+      handleBalanceAlertTest(alertTest);
+      return;
+    }
+
+    const redeem = event.target.closest('[data-redeem-code], [data-billing-redeem-code]');
     if (redeem) {
       handleRedeemCode(redeem);
       return;
@@ -1092,6 +1643,12 @@ function bindStaticActions() {
     const refresh = event.target.closest('[data-refresh-health]');
     if (refresh) {
       handleRefreshHealth(event);
+      return;
+    }
+
+    const retryDashboard = event.target.closest('[data-retry-dashboard]');
+    if (retryDashboard) {
+      handleRetryDashboard(retryDashboard);
       return;
     }
 
@@ -1134,12 +1691,26 @@ function bindStaticActions() {
     const copyWinCommand = event.target.closest('[data-copy-win-command]');
     if (copyWinCommand) {
       copyText(document.querySelector('[data-win-command]').textContent, copyWinCommand);
+      return;
+    }
+
+    const copyFlowCodexToml = event.target.closest('[data-copy-flow-codex-toml]');
+    if (copyFlowCodexToml) {
+      const manualToml = document.querySelector('[data-config-toml]')?.textContent || '';
+      const flowToml = document.querySelector('[data-flow-codex-toml]')?.innerText.replace(/^7\s*/, '') || '';
+      copyText(manualToml || flowToml, copyFlowCodexToml);
     }
   });
 
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
       toggleAuthPanel(false);
+      return;
+    }
+    const promptInput = event.target.closest?.('[data-playground-prompt]');
+    if (promptInput && event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+      event.preventDefault();
+      handlePlaygroundSend();
     }
   });
 
@@ -1147,6 +1718,27 @@ function bindStaticActions() {
     const playgroundModel = event.target.closest('[data-playground-model]');
     if (playgroundModel) {
       state.playgroundModel = playgroundModel.value || state.playgroundModel;
+      state.model = state.playgroundModel;
+      renderPlayground();
+    }
+  });
+
+  document.addEventListener('input', (event) => {
+    const apiSearch = event.target.closest('[data-api-search]');
+    if (apiSearch) {
+      state.apiSearch = apiSearch.value.trim();
+      renderApiKeys();
+    }
+
+    const modelSearch = event.target.closest('[data-model-catalog-search]');
+    if (modelSearch) {
+      state.modelSearch = modelSearch.value.trim();
+      renderModelCatalog();
+    }
+
+    const playgroundSearch = event.target.closest('[data-playground-model-search]');
+    if (playgroundSearch) {
+      state.playgroundModelSearch = playgroundSearch.value.trim();
       renderPlayground();
     }
   });
@@ -1164,7 +1756,9 @@ function toggleAuthPanel(force) {
   panel.hidden = !shouldOpen;
   button.setAttribute('aria-expanded', String(shouldOpen));
   if (shouldOpen) {
-    prepareCaptchaChallenge();
+    if (state.authMode === 'register') {
+      prepareCaptchaChallenge();
+    }
     window.setTimeout(() => {
       panel.querySelector('[data-register-email]')?.focus();
     }, 0);
@@ -1188,9 +1782,13 @@ async function prepareCaptchaChallenge(options = {}) {
   return state.captcha;
 }
 
-async function buildAuthPayload({ email, password }) {
-  await prepareCaptchaChallenge();
+async function buildAuthPayload({ email, password, requireCaptcha = false }) {
   const payload = { email, password };
+  if (!requireCaptcha) {
+    return payload;
+  }
+
+  await prepareCaptchaChallenge();
   if (!state.captcha.id) {
     return payload;
   }
@@ -1210,7 +1808,7 @@ async function buildAuthPayload({ email, password }) {
 }
 
 async function refreshCaptchaAfterAuthError(error) {
-  if (!/验证码|验证|captcha|challenge/i.test(error.message || '')) {
+  if (state.authMode !== 'register' || !/验证码|验证|captcha|challenge/i.test(error.message || '')) {
     return false;
   }
   const answerInput = document.querySelector('[data-captcha-answer]');
@@ -1248,7 +1846,13 @@ function setActiveView(view) {
   }
 
   for (const item of document.querySelectorAll('[data-route]')) {
-    item.classList.toggle('is-active', item.dataset.route === view);
+    const active = item.dataset.route === view;
+    item.classList.toggle('is-active', active);
+    if (active && item.closest('.workspace-nav')) {
+      item.setAttribute('aria-current', 'page');
+    } else {
+      item.removeAttribute('aria-current');
+    }
   }
 }
 
@@ -1279,7 +1883,7 @@ function resetPlaygroundMessages() {
     {
       id: 'msg-welcome',
       role: 'assistant',
-      content: '选择模型后可以直接测试。图片模型会生成图片，其它模型会返回文字。',
+      content: '先从左侧选择模型，再直接测试文字、代码或图片能力。',
     },
   ];
 }
@@ -1488,7 +2092,9 @@ function defaultModelForGroup(group) {
   const models = availableModels().filter((model) => modelMatchesUiGroup(model, group));
   if (models.length > 0) return sortModelsByStrength(models)[0];
   if (normalized === 'claude') return 'claude-opus-4-6-thinking-c';
-  if (normalized === 'other') return 'gemini-2.5-flash';
+  if (normalized === 'gemini') return 'gemini-2.5-flash';
+  if (normalized === 'deepseek') return 'deepseek-v4-flash';
+  if (normalized === 'other') return 'deepseek-v4-flash';
   return 'gpt-5.5';
 }
 
@@ -1523,7 +2129,7 @@ async function handleRegisterAccount(register) {
   setScopedFeedback('[data-auth-feedback]', '正在提交注册信息...', 'info');
   setButtonBusy(register, true, '注册中');
   try {
-    const payload = await buildAuthPayload({ email, password });
+    const payload = await buildAuthPayload({ email, password, requireCaptcha: true });
     await serverClient.register(payload);
     state.serverAvailable = true;
     state.hasServerSession = true;
@@ -1653,6 +2259,61 @@ async function handleRecharge(button) {
   }
 }
 
+async function handleBalanceAlertSave(button) {
+  if (!state.hasServerSession) {
+    setActiveView('billing');
+    setScopedFeedback('[data-balance-alert-feedback]', '请先登录，再保存余额预警。', 'error');
+    return;
+  }
+
+  const payload = readBalanceAlertForm();
+  setScopedFeedback('[data-balance-alert-feedback]', '正在保存余额预警...', 'info');
+  setButtonBusy(button, true, '保存中');
+  try {
+    await serverClient.saveBalanceAlert(payload);
+    await reloadServerDashboard('余额预警已保存');
+    setScopedFeedback('[data-balance-alert-feedback]', '余额预警已保存。', 'success');
+  } catch (serverError) {
+    setActionMessage(serverError.message, 'error');
+    setScopedFeedback('[data-balance-alert-feedback]', serverError.message, 'error');
+  } finally {
+    setButtonBusy(button, false);
+  }
+}
+
+async function handleBalanceAlertTest(button) {
+  if (!state.hasServerSession) {
+    setActiveView('billing');
+    setScopedFeedback('[data-balance-alert-feedback]', '请先登录，再发送测试邮件。', 'error');
+    return;
+  }
+
+  const payload = readBalanceAlertForm();
+  setScopedFeedback('[data-balance-alert-feedback]', '正在发送测试邮件...', 'info');
+  setButtonBusy(button, true, '发送中');
+  try {
+    await serverClient.sendBalanceAlertTest(payload);
+    await reloadServerDashboard('测试邮件已发送');
+    setScopedFeedback('[data-balance-alert-feedback]', '测试邮件已发送，请检查收件箱。', 'success');
+  } catch (serverError) {
+    setActionMessage(serverError.message, 'error');
+    setScopedFeedback('[data-balance-alert-feedback]', serverError.message, 'error');
+  } finally {
+    setButtonBusy(button, false);
+  }
+}
+
+function readBalanceAlertForm() {
+  const enabled = document.querySelector('[data-balance-alert-enabled]')?.checked !== false;
+  const thresholdUsd = Number(document.querySelector('[data-balance-alert-threshold]')?.value || 0);
+  const email = document.querySelector('[data-balance-alert-email]')?.value.trim() || dashboardData.accountSummary.email;
+  return {
+    enabled,
+    thresholdUsd: Number.isFinite(thresholdUsd) ? thresholdUsd : 0,
+    email,
+  };
+}
+
 function rechargeLabel(plan) {
   if (plan === 'day') return '日卡';
   if (plan === 'month') return '月卡';
@@ -1660,7 +2321,9 @@ function rechargeLabel(plan) {
 }
 
 async function handleRedeemCode(button) {
-  const input = document.querySelector('[data-exchange-code]');
+  const scope = button.closest('.view-panel') || document;
+  const input = scope.querySelector('[data-exchange-code], [data-billing-exchange-code]');
+  if (!input) return;
   setButtonBusy(button, true, '兑换中');
   try {
     await serverClient.redeem({ code: input.value || '' });
@@ -1681,6 +2344,17 @@ async function handleRefreshHealth(event) {
     setActionMessage('连通性已刷新', 'success');
   } catch (error) {
     setActionMessage(error.message || '刷新失败', 'error');
+  }
+}
+
+async function handleRetryDashboard(button) {
+  setButtonBusy(button, true, '连接中');
+  setActionMessage('正在重新连接...', 'info');
+  try {
+    await loadDashboardData();
+    setActionMessage(state.serverAvailable ? '后端已连接' : '后端仍不可用', state.serverAvailable ? 'success' : 'error');
+  } finally {
+    setButtonBusy(button, false);
   }
 }
 
@@ -1823,5 +2497,6 @@ bindStaticActions();
 render();
 startCarouselTimer();
 loadDashboardData().catch(() => {
+  state.dashboardLoading = false;
   render();
 });

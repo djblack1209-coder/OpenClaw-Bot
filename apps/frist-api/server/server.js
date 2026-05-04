@@ -1,9 +1,13 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, pbkdf2Sync, randomBytes, timingSafeEqual } from 'node:crypto';
+import { lookup as lookupDns } from 'node:dns/promises';
 import { createServer } from 'node:http';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { connect as connectNet, isIP } from 'node:net';
 import { dirname, extname, join, normalize, relative, resolve } from 'node:path';
+import { connect as connectTls } from 'node:tls';
 import { fileURLToPath } from 'node:url';
 
+import { createNewApiBridge } from './newApiBridge.js';
 import {
   buildCcSwitchImportUrl,
   inferProviderGroup,
@@ -21,158 +25,37 @@ import {
 const DEFAULT_MODEL = 'claude-opus-4-6-thinking-c';
 const DEFAULT_PUBLIC_MODEL = 'gpt-5.5';
 const DEFAULT_USD_TO_CNY = 7.2;
-const DEFAULT_PROBE_MODELS = [
-  'claude-opus-4-6-thinking-c',
-  'claude-opus-4-6-c',
-  'claude-sonnet-4-5-c',
-  'gpt-5.5',
-  'gpt-5.4',
-  'gpt-5.4-mini',
-  'gpt-image-2',
-  'gpt-5.3-codex',
-  'gemini-2.5-flash',
-];
+const DISPLAY_USD_TO_CNY = DEFAULT_USD_TO_CNY;
+const DEFAULT_PROBE_MODELS = Object.freeze([
+  'claude-opus-4-6-thinking-c', 'claude-opus-4-6-c', 'claude-sonnet-4-5-c',
+  'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-image-2', 'gpt-5.3-codex', 'gemini-2.5-flash',
+  'deepseek-v4-flash', 'deepseek-v4-pro',
+]);
 const DEFAULT_QUOTA_COST = 10;
 const PRIMARY_SOURCE_TYPE = 'authorized';
 const BACKUP_SOURCE_TYPES = new Set(['cpa_json_backup', 'chong_backup', 'manual_backup']);
 const DEFAULT_RECHARGE_PLANS = Object.freeze([
-  Object.freeze({
-    id: 'codex-30-day',
-    label: 'Codex API 30刀额度/日卡',
-    quotaUsd: 30,
-    priceCny: 5.88,
-    durationDays: 1,
-    plan: 'day',
-  }),
-  Object.freeze({
-    id: 'codex-30-unlimited',
-    label: 'Codex API 30刀额度/不限时',
-    quotaUsd: 30,
-    priceCny: 8.88,
-    durationDays: 0,
-    plan: 'balance',
-  }),
-  Object.freeze({
-    id: 'codex-100-unlimited',
-    label: 'Codex API 100刀额度/不限时',
-    quotaUsd: 100,
-    priceCny: 28.88,
-    durationDays: 0,
-    plan: 'balance',
-  }),
-  Object.freeze({
-    id: 'codex-500-unlimited',
-    label: 'Codex API 500刀额度/不限时',
-    quotaUsd: 500,
-    priceCny: 68.88,
-    durationDays: 0,
-    plan: 'balance',
-  }),
-  Object.freeze({
-    id: 'codex-1000-unlimited',
-    label: 'Codex API 1000刀额度/不限时',
-    quotaUsd: 1000,
-    priceCny: 118.88,
-    durationDays: 0,
-    plan: 'balance',
-  }),
+  Object.freeze({ id: 'codex-30-day', label: 'Codex API 30刀额度/日卡', quotaUsd: 30, priceCny: 5.88, durationDays: 1, plan: 'day' }),
+  Object.freeze({ id: 'codex-30-unlimited', label: 'Codex API 30刀额度/不限时', quotaUsd: 30, priceCny: 8.88, durationDays: 0, plan: 'balance' }),
+  Object.freeze({ id: 'codex-100-unlimited', label: 'Codex API 100刀额度/不限时', quotaUsd: 100, priceCny: 28.88, durationDays: 0, plan: 'balance' }),
+  Object.freeze({ id: 'codex-500-unlimited', label: 'Codex API 500刀额度/不限时', quotaUsd: 500, priceCny: 68.88, durationDays: 0, plan: 'balance' }),
+  Object.freeze({ id: 'codex-1000-unlimited', label: 'Codex API 1000刀额度/不限时', quotaUsd: 1000, priceCny: 118.88, durationDays: 0, plan: 'balance' }),
 ]);
 const DEFAULT_MODEL_PRICES = Object.freeze([
-  Object.freeze({
-    model: 'gpt-5.5',
-    currency: 'CNY',
-    inputCostCnyPerMillion: 8,
-    outputCostCnyPerMillion: 48,
-    inputSaleCnyPerMillion: 8,
-    outputSaleCnyPerMillion: 48,
-    source: 'official',
-  }),
-  Object.freeze({
-    model: 'gpt-5.5-c',
-    currency: 'CNY',
-    inputCostCnyPerMillion: 8,
-    outputCostCnyPerMillion: 48,
-    inputSaleCnyPerMillion: 8,
-    outputSaleCnyPerMillion: 48,
-    source: 'official',
-  }),
-  Object.freeze({
-    model: 'claude-opus-4-6-thinking-c',
-    currency: 'CNY',
-    inputCostCnyPerMillion: 108,
-    outputCostCnyPerMillion: 540,
-    inputSaleCnyPerMillion: 108,
-    outputSaleCnyPerMillion: 540,
-    source: 'official',
-  }),
-  Object.freeze({
-    model: 'claude-opus-4-6-c',
-    currency: 'CNY',
-    inputCostCnyPerMillion: 108,
-    outputCostCnyPerMillion: 540,
-    inputSaleCnyPerMillion: 108,
-    outputSaleCnyPerMillion: 540,
-    source: 'official',
-  }),
-  Object.freeze({
-    model: 'claude-sonnet-4-5-c',
-    currency: 'CNY',
-    inputCostCnyPerMillion: 21.6,
-    outputCostCnyPerMillion: 108,
-    inputSaleCnyPerMillion: 21.6,
-    outputSaleCnyPerMillion: 108,
-    source: 'official',
-  }),
+  Object.freeze({ model: 'gpt-5.5', currency: 'CNY', inputCostCnyPerMillion: 8, outputCostCnyPerMillion: 48, inputSaleCnyPerMillion: 8, outputSaleCnyPerMillion: 48, source: 'official' }),
+  Object.freeze({ model: 'gpt-5.5-c', currency: 'CNY', inputCostCnyPerMillion: 8, outputCostCnyPerMillion: 48, inputSaleCnyPerMillion: 8, outputSaleCnyPerMillion: 48, source: 'official' }),
+  Object.freeze({ model: 'claude-opus-4-6-thinking-c', currency: 'CNY', inputCostCnyPerMillion: 108, outputCostCnyPerMillion: 540, inputSaleCnyPerMillion: 108, outputSaleCnyPerMillion: 540, source: 'official' }),
+  Object.freeze({ model: 'claude-opus-4-6-c', currency: 'CNY', inputCostCnyPerMillion: 108, outputCostCnyPerMillion: 540, inputSaleCnyPerMillion: 108, outputSaleCnyPerMillion: 540, source: 'official' }),
+  Object.freeze({ model: 'claude-sonnet-4-5-c', currency: 'CNY', inputCostCnyPerMillion: 21.6, outputCostCnyPerMillion: 108, inputSaleCnyPerMillion: 21.6, outputSaleCnyPerMillion: 108, source: 'official' }),
 ]);
 const DEFAULT_MODEL_CATALOG = [
-  {
-    model: 'gpt-5.5',
-    family: 'OpenAI',
-    tagline: '推理和代码主力',
-    context: '1M 上下文',
-    price: '官方同档 · 折扣结算',
-    available: true,
-  },
-  {
-    model: 'gpt-5.4',
-    family: 'OpenAI',
-    tagline: '日常问答和代码补全',
-    context: '1M 上下文',
-    price: '官方同档 · 折扣结算',
-    available: true,
-  },
-  {
-    model: 'gpt-5.4-mini',
-    family: 'OpenAI',
-    tagline: '轻量代码和快速问答',
-    context: '长上下文',
-    price: '官方同档 · 折扣结算',
-    available: true,
-  },
-  {
-    model: 'gpt-image-2',
-    family: 'OpenAI',
-    tagline: '图片生成',
-    context: '按图计费',
-    price: '按张结算',
-    available: true,
-  },
-  {
-    model: 'gpt-5.3-codex',
-    family: 'OpenAI',
-    tagline: 'Codex 专用代码模型',
-    context: '长上下文',
-    price: '官方同档 · 折扣结算',
-    available: true,
-  },
-  {
-    model: DEFAULT_MODEL,
-    family: 'Claude',
-    tagline: '复杂开发和长链路推理',
-    context: '1M 上下文',
-    price: '官方同档 · 折扣结算',
-    available: true,
-  },
+  { model: 'gpt-5.5', family: 'OpenAI', tagline: '推理和代码主力', context: '1M 上下文', price: '官方同档 · 折扣结算', available: true },
+  { model: 'gpt-5.4', family: 'OpenAI', tagline: '日常问答和代码补全', context: '1M 上下文', price: '官方同档 · 折扣结算', available: true },
+  { model: 'gpt-5.4-mini', family: 'OpenAI', tagline: '轻量代码和快速问答', context: '长上下文', price: '官方同档 · 折扣结算', available: true },
+  { model: 'gpt-image-2', family: 'OpenAI', tagline: '图片生成', context: '按图计费', price: '按张结算', available: true },
+  { model: 'gpt-5.3-codex', family: 'OpenAI', tagline: 'Codex 专用代码模型', context: '长上下文', price: '官方同档 · 折扣结算', available: true },
+  { model: 'deepseek-v4-flash', family: 'DeepSeek', tagline: 'Codex 桌面版官方兼容网关', context: 'OpenAI v1 兼容', price: '按官方 API 结算', available: true },
+  { model: DEFAULT_MODEL, family: 'Claude', tagline: '复杂开发和长链路推理', context: '1M 上下文', price: '官方同档 · 折扣结算', available: true },
 ];
 const SESSION_COOKIE = 'frist_session';
 const DAY_CARD_CODES = new Map([
@@ -180,26 +63,19 @@ const DAY_CARD_CODES = new Map([
   ['FRIST-MONTH-001', { plan: '月卡 Pro', days: 30, packageCents: 8000 }],
   ['FRIST-BOOST-100', { plan: null, days: 0, boosterCents: 10000 }],
 ]);
-
 const CONTENT_TYPES = new Map([
-  ['.css', 'text/css; charset=utf-8'],
-  ['.html', 'text/html; charset=utf-8'],
-  ['.js', 'text/javascript; charset=utf-8'],
-  ['.json', 'application/json; charset=utf-8'],
+  ['.css', 'text/css; charset=utf-8'], ['.html', 'text/html; charset=utf-8'],
+  ['.js', 'text/javascript; charset=utf-8'], ['.json', 'application/json; charset=utf-8'],
   ['.svg', 'image/svg+xml; charset=utf-8'],
 ]);
 const ROOT_GATEWAY_PATHS = new Set([
-  '/chat/completions',
-  '/openai/chat/completions',
-  '/responses',
-  '/openai/responses',
-  '/images/generations',
-  '/openai/images/generations',
-  '/messages',
+  '/chat/completions', '/openai/chat/completions', '/responses', '/openai/responses',
+  '/images/generations', '/openai/images/generations', '/messages',
 ]);
 
 export function createFristApiServer(options = {}) {
   const serverOptions = normalizeServerOptions(options);
+  const newApiBridge = createNewApiBridge(serverOptions);
   const store = createRuntimeStore(serverOptions.dataFile);
   const securityState = createSecurityState();
 
@@ -212,7 +88,7 @@ export function createFristApiServer(options = {}) {
 
       const url = new URL(request.url || '/', requestOrigin(request));
       if (url.pathname.startsWith('/api/frist/')) {
-        await handleCustomerApi({ request, response, url, store, serverOptions, securityState });
+        await handleCustomerApi({ request, response, url, store, serverOptions, securityState, newApiBridge });
         return;
       }
       if (url.pathname.startsWith('/api/admin/')) {
@@ -220,7 +96,7 @@ export function createFristApiServer(options = {}) {
         return;
       }
       if (url.pathname.startsWith('/v1/') || ROOT_GATEWAY_PATHS.has(url.pathname)) {
-        await handleGatewayApi({ request, response, url, store, serverOptions });
+        await handleGatewayApi({ request, response, url, store, serverOptions, newApiBridge });
         return;
       }
 
@@ -236,8 +112,9 @@ export function createFristApiServer(options = {}) {
   return server;
 }
 
-async function handleCustomerApi({ request, response, url, store, serverOptions, securityState }) {
+async function handleCustomerApi({ request, response, url, store, serverOptions, securityState, newApiBridge }) {
   if (request.method === 'GET' && url.pathname === '/api/frist/challenge') {
+    assertAuthRateLimit(securityState, request, serverOptions);
     writeJson(response, 200, createCaptchaChallenge(securityState, serverOptions));
     return;
   }
@@ -248,7 +125,7 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
     requireCaptchaIfEnabled(securityState, body, serverOptions);
     const result = await store.mutate((data) => registerCustomer(data, body, serverOptions));
     writeJson(response, 200, result.body, {
-      'set-cookie': `${SESSION_COOKIE}=${result.sessionToken}; Path=/; HttpOnly; SameSite=Lax`,
+      'set-cookie': sessionCookie(result.sessionToken, request, serverOptions),
     });
     return;
   }
@@ -256,10 +133,9 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
   if (request.method === 'POST' && url.pathname === '/api/frist/login') {
     const body = await readJsonBody(request);
     assertAuthRateLimit(securityState, request, serverOptions);
-    requireCaptchaIfEnabled(securityState, body, serverOptions);
     const result = await store.mutate((data) => loginCustomer(data, body, serverOptions));
     writeJson(response, 200, result.body, {
-      'set-cookie': `${SESSION_COOKIE}=${result.sessionToken}; Path=/; HttpOnly; SameSite=Lax`,
+      'set-cookie': sessionCookie(result.sessionToken, request, serverOptions),
     });
     return;
   }
@@ -278,6 +154,20 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
     return;
   }
 
+  if (request.method === 'PUT' && url.pathname === '/api/frist/balance-alert') {
+    const body = await readJsonBody(request);
+    const result = await store.mutate((data) => updateCustomerBalanceAlert(data, request, body));
+    writeJson(response, 200, result);
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/frist/balance-alert/test') {
+    const body = await readJsonBody(request);
+    const result = await store.mutate((data) => sendCustomerBalanceAlertTest(data, request, body, serverOptions));
+    writeJson(response, 200, result);
+    return;
+  }
+
   if (request.method === 'POST' && url.pathname === '/api/frist/recharge') {
     const body = await readJsonBody(request);
     const result = await store.mutate((data) => rechargeCustomer(data, request, body, serverOptions));
@@ -287,6 +177,14 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
 
   if (request.method === 'POST' && url.pathname === '/api/frist/redeem') {
     const body = await readJsonBody(request);
+    if (newApiBridge) {
+      const data = await store.load();
+      const { user } = requireSession(data, request);
+      const result = await newApiBridge.redeemCode(body);
+      result.user = sanitizeUser(user);
+      writeJson(response, 200, result);
+      return;
+    }
     const result = await store.mutate((data) => redeemCustomerCode(data, request, body, serverOptions));
     writeJson(response, 200, result);
     return;
@@ -294,6 +192,15 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
 
   if (request.method === 'POST' && url.pathname === '/api/frist/token') {
     const body = await readJsonBody(request);
+    if (newApiBridge) {
+      const data = await store.load();
+      const { user } = requireSession(data, request);
+      if (serverOptions.requireEmailVerification && !user.emailVerified) {
+        throw publicError(403, '请先完成邮箱验证');
+      }
+      writeJson(response, 200, await newApiBridge.createToken(body));
+      return;
+    }
     const result = await store.mutate((data) => createCustomerToken(data, request, body, serverOptions));
     writeJson(response, 200, result);
     return;
@@ -302,12 +209,24 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
   const tokenMatch = url.pathname.match(/^\/api\/frist\/token\/([^/]+)$/);
   if (request.method === 'PATCH' && tokenMatch) {
     const body = await readJsonBody(request);
+    if (newApiBridge) {
+      const data = await store.load();
+      requireSession(data, request);
+      writeJson(response, 200, await newApiBridge.updateToken(tokenMatch[1], body));
+      return;
+    }
     const result = await store.mutate((data) => updateCustomerToken(data, request, tokenMatch[1], body));
     writeJson(response, 200, result);
     return;
   }
 
   if (request.method === 'DELETE' && tokenMatch) {
+    if (newApiBridge) {
+      const data = await store.load();
+      requireSession(data, request);
+      writeJson(response, 200, await newApiBridge.deleteToken(tokenMatch[1]));
+      return;
+    }
     const result = await store.mutate((data) => deleteCustomerToken(data, request, tokenMatch[1]));
     writeJson(response, 200, result);
     return;
@@ -315,6 +234,29 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
 
   if (request.method === 'GET' && url.pathname === '/api/frist/import-url') {
     const data = await store.load();
+    if (newApiBridge) {
+      const { user } = requireSession(data, request);
+      const result = await newApiBridge.buildImportUrl(url, ({ target, apiKey, modelGroup, availableModels, defaultModel }) => {
+        const baseUrl = serverOptions.publicGatewayBaseUrl || `${requestOrigin(request)}/v1`;
+        const requestedModel = url.searchParams.get('model') || '';
+        return {
+          url: buildCcSwitchImportUrl({
+            target,
+            apiKey,
+            baseUrl,
+            model: requestedModel || defaultModel,
+            defaultModel,
+            availableModels,
+            modelGroup,
+            planExpiresAt: user.planExpiresAt,
+          }),
+          defaultModel,
+          availableModels,
+        };
+      });
+      writeJson(response, 200, result);
+      return;
+    }
     const result = buildCustomerImportUrl(data, request, url, serverOptions);
     writeJson(response, 200, result);
     return;
@@ -323,6 +265,10 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
   if (request.method === 'GET' && url.pathname === '/api/frist/dashboard') {
     const data = await store.load();
     const { user } = findSession(data, request);
+    if (user && newApiBridge) {
+      writeJson(response, 200, await newApiBridge.buildDashboard(data, user, serverOptions));
+      return;
+    }
     writeJson(response, 200, user ? buildDashboard(data, user, serverOptions) : buildGuestDashboard(data));
     return;
   }
@@ -408,7 +354,33 @@ async function handleAdminApi({ request, response, url, store, serverOptions }) 
   writeJson(response, 404, { error: '接口不存在' });
 }
 
-async function handleGatewayApi({ request, response, url, store, serverOptions }) {
+async function handleGatewayApi({ request, response, url, store, serverOptions, newApiBridge }) {
+  if (newApiBridge && serverOptions.newApiGatewayEnabled && request.method === 'POST') {
+    if (![
+      '/v1/chat/completions',
+      '/v1/openai/chat/completions',
+      '/chat/completions',
+      '/openai/chat/completions',
+      '/v1/responses',
+      '/v1/openai/responses',
+      '/responses',
+      '/openai/responses',
+      '/v1/images/generations',
+      '/v1/openai/images/generations',
+      '/images/generations',
+      '/openai/images/generations',
+      '/v1/messages',
+      '/messages',
+    ].includes(url.pathname)) {
+      writeJson(response, 404, { error: '接口不存在' });
+      return;
+    }
+    const bodyText = await readRequestText(request);
+    if (await newApiBridge.proxyGateway({ request, response, url, bodyText })) {
+      return;
+    }
+  }
+
   if (request.method === 'GET' && url.pathname === '/v1/models') {
     const data = await store.load();
     const result = buildGatewayModels(data, request);
@@ -527,6 +499,7 @@ function registerCustomer(data, body, serverOptions) {
     balanceCents: 0,
     packageQuotaCents: 0,
     boosterQuotaCents: 0,
+    balanceAlert: defaultBalanceAlert(email),
     createdAt: now,
     updatedAt: now,
   };
@@ -550,11 +523,15 @@ function loginCustomer(data, body, serverOptions) {
   const email = String(body.email || '').trim().toLowerCase();
   const password = String(body.password || '');
   const user = data.users.find((item) => item.email === email);
-  if (!user || user.passwordHash !== hashPassword(password, serverOptions.sessionSecret)) {
+  if (!user || !verifyPassword(password, user.passwordHash, serverOptions.sessionSecret)) {
     throw publicError(401, '邮箱或密码不正确');
   }
 
   const now = new Date().toISOString();
+  if (!isModernPasswordHash(user.passwordHash)) {
+    user.passwordHash = hashPassword(password, serverOptions.sessionSecret);
+    data.events.push({ type: 'password_hash_upgraded', userId: user.id, at: now });
+  }
   const sessionToken = createId('sess');
   data.sessions[sessionToken] = user.id;
   user.updatedAt = now;
@@ -572,7 +549,7 @@ function changeCustomerPassword(data, request, body, serverOptions) {
   const { user } = requireSession(data, request);
   const oldPassword = String(body.oldPassword || '');
   const newPassword = String(body.newPassword || '');
-  if (user.passwordHash !== hashPassword(oldPassword, serverOptions.sessionSecret)) {
+  if (!verifyPassword(oldPassword, user.passwordHash, serverOptions.sessionSecret)) {
     throw publicError(401, '旧密码不正确');
   }
   if (newPassword.length < 6) {
@@ -599,6 +576,80 @@ function verifyCustomer(data, request, body) {
   user.updatedAt = new Date().toISOString();
   data.events.push({ type: 'email_verified', userId: user.id, at: user.updatedAt });
   return { user: sanitizeUser(user) };
+}
+
+function updateCustomerBalanceAlert(data, request, body) {
+  const { user } = requireSession(data, request);
+  const thresholdCents = normalizeAlertThresholdCents(body);
+  const email = normalizeAlertEmail(body.email || user.balanceAlert?.email || user.email);
+  const enabled = Object.prototype.hasOwnProperty.call(body, 'enabled') ? Boolean(body.enabled) : true;
+  if (!Number.isFinite(thresholdCents) || thresholdCents <= 0 || thresholdCents > 1_000_000_00) {
+    throw publicError(400, '余额预警阈值必须在 $0.01 ~ $1,000,000.00 之间');
+  }
+  if (!email) {
+    throw publicError(400, '预警邮箱格式不正确');
+  }
+
+  const now = new Date().toISOString();
+  user.balanceAlert = {
+    enabled,
+    thresholdCents,
+    email,
+    lastAlertAt: '',
+    lastAlertBalanceCents: 0,
+    lastTriggeredThresholdCents: 0,
+    updatedAt: now,
+  };
+  user.updatedAt = now;
+  data.events.push({
+    type: 'balance_alert_updated',
+    userId: user.id,
+    thresholdCents,
+    enabled,
+    alertEmail: maskEmail(email),
+    at: now,
+  });
+  return { balanceAlert: sanitizeBalanceAlert(user.balanceAlert, user.email) };
+}
+
+async function sendCustomerBalanceAlertTest(data, request, body, serverOptions) {
+  const { user } = requireSession(data, request);
+  const current = normalizeBalanceAlertRecord(user.balanceAlert, user.email);
+  const email = normalizeAlertEmail(body.email || current.email || user.email);
+  const thresholdCents = normalizeAlertThresholdCents(body, current.thresholdCents);
+  if (!email) {
+    throw publicError(400, '预警邮箱格式不正确');
+  }
+  if (!Number.isFinite(thresholdCents) || thresholdCents <= 0 || thresholdCents > 1_000_000_00) {
+    throw publicError(400, '余额预警阈值必须在 $0.01 ~ $1,000,000.00 之间');
+  }
+  const sender = serverOptions.balanceAlertEmailSender;
+  if (typeof sender !== 'function') {
+    throw publicError(503, 'SMTP 邮件服务未配置');
+  }
+
+  const now = new Date().toISOString();
+  const message = buildBalanceAlertEmail({
+    user,
+    to: email,
+    thresholdCents,
+    balanceCents: availableQuotaCents(user),
+    previousBalanceCents: availableQuotaCents(user),
+    model: String(body.model || '测试邮件'),
+    quotaCost: 0,
+    publicGatewayBaseUrl: serverOptions.publicGatewayBaseUrl,
+    at: now,
+    isTest: true,
+  });
+  await sender(message);
+  data.events.push({
+    type: 'balance_alert_test_sent',
+    userId: user.id,
+    alertEmail: maskEmail(email),
+    thresholdCents,
+    at: now,
+  });
+  return { ok: true, balanceAlert: sanitizeBalanceAlert({ ...current, email, thresholdCents }, user.email) };
 }
 
 function claimAdminIdentity(data, request, body, serverOptions) {
@@ -957,11 +1008,14 @@ function buildDashboard(data, user, serverOptions) {
     authenticated: true,
     account: accountFromUser(data, user),
     user: sanitizeUser(user),
+    balanceAlert: sanitizeBalanceAlert(user.balanceAlert, user.email),
     apiKeys,
     modelUsage: buildModelUsage(data, user),
     channelChecks: buildChannelChecks(data),
     modelCatalog: buildModelCatalog(data),
     rechargeOptions: buildRechargeOptions(data),
+    usageRecords: buildUsageRecords(data, user),
+    recentLogs: buildRecentLogs(data, user),
   };
 }
 
@@ -971,13 +1025,13 @@ function buildGuestDashboard(data) {
     account: {
       plan: '未登录',
       renewalDate: '-',
-      balance: '¥0.00',
-      todayCost: '¥0.00',
-      monthCost: '¥0.00',
-      packageQuota: '¥0.00',
-      boosterQuota: '¥0.00',
-      quotaLeft: '¥0.00',
-      usageTotal: '¥0.00',
+      balance: '$0.00',
+      todayCost: '$0.00',
+      monthCost: '$0.00',
+      packageQuota: '$0.00',
+      boosterQuota: '$0.00',
+      quotaLeft: '$0.00',
+      usageTotal: '$0.00',
       todayCalls: '0 次',
     },
     user: {
@@ -988,11 +1042,14 @@ function buildGuestDashboard(data) {
       renewalDate: '-',
       userInitials: 'FA',
     },
+    balanceAlert: sanitizeBalanceAlert(defaultBalanceAlert(''), ''),
     apiKeys: [],
     modelUsage: [],
     channelChecks: buildChannelChecks(data),
     modelCatalog: buildModelCatalog(data),
     rechargeOptions: buildRechargeOptions(data),
+    usageRecords: [],
+    recentLogs: [],
   };
 }
 
@@ -1726,12 +1783,16 @@ async function routeChatCompletion(data, request, body, serverOptions, options =
 
     if (upstream.status >= 200 && upstream.status < 300) {
       const quotaCost = resolveQuotaCostCents(data, model, routedBody, upstream, serverOptions);
+      const usage = parseUpstreamUsage(upstream.bodyText);
+      const beforeUserQuota = availableQuotaCents(user);
       credential.quotaRemaining = Math.max(0, Number(credential.quotaRemaining || 0) - quotaCost);
       credential.status = credential.quotaRemaining > 0 ? 'healthy' : 'exhausted';
       credential.enabled = credential.quotaRemaining > 0;
       credential.updatedAt = new Date().toISOString();
       deductUserQuota(user, quotaCost);
       userKey.costCents += quotaCost;
+      userKey.totalTokens = Number(userKey.totalTokens || 0) + Number(usage.totalTokens || 0);
+      userKey.tokens = compactTokenText(userKey.totalTokens);
       userKey.lastUsed = credential.updatedAt.slice(11, 16);
       userKey.updatedAt = credential.updatedAt;
       data.events.push({
@@ -1742,6 +1803,16 @@ async function routeChatCompletion(data, request, body, serverOptions, options =
         model,
         pool: credential.pool,
         quotaCost,
+        endpoint: credential.baseUrl,
+        apiKeyPreview: userKey.preview || maskKey(userKey.secret),
+        inferenceEffort: String(routedBody.reasoning_effort || routedBody.reasoning?.effort || routedBody.thinking?.budget_tokens || '默认'),
+        requestType: options.requestType || (isImageGenerationModel(model) ? '图片' : '文本'),
+        billingMode: credential.pool === 'day' || credential.pool === 'hour' || credential.pool === 'month' ? '套餐' : '余额',
+        promptTokens: usage.promptTokens,
+        completionTokens: usage.completionTokens,
+        totalTokens: usage.totalTokens,
+        latencyMs: Number(upstream.latencyMs || credential.latencyMs || 0),
+        status: 'success',
         at: credential.updatedAt,
       });
       rememberRouteAffinity(data, sessionKey, {
@@ -1753,6 +1824,12 @@ async function routeChatCompletion(data, request, body, serverOptions, options =
         updatedAt: credential.updatedAt,
       });
       await maybeNotifyLowInventory(data, credential, serverOptions);
+      await maybeNotifyCustomerLowBalance(data, user, serverOptions, {
+        beforeUserQuota,
+        afterUserQuota: availableQuotaCents(user),
+        quotaCost,
+        model,
+      });
       return upstream;
     }
 
@@ -2227,6 +2304,603 @@ async function maybeNotifyLowInventory(data, credential, serverOptions) {
   }
 }
 
+async function maybeNotifyCustomerLowBalance(data, user, serverOptions, context = {}) {
+  const alert = normalizeBalanceAlertRecord(user.balanceAlert, user.email);
+  user.balanceAlert = alert;
+  if (!alert.enabled || alert.thresholdCents <= 0 || !alert.email) {
+    return;
+  }
+  const balanceCents = Number(context.afterUserQuota ?? availableQuotaCents(user));
+  if (balanceCents > alert.thresholdCents) {
+    alert.lastTriggeredThresholdCents = 0;
+    return;
+  }
+
+  const beforeBalanceCents = Number(context.beforeUserQuota ?? balanceCents);
+  const crossedThreshold = beforeBalanceCents > alert.thresholdCents && balanceCents <= alert.thresholdCents;
+  const thresholdChanged = Number(alert.lastTriggeredThresholdCents || 0) !== alert.thresholdCents;
+  if (!crossedThreshold && !thresholdChanged) {
+    return;
+  }
+
+  const sender = serverOptions.balanceAlertEmailSender;
+  if (typeof sender !== 'function') {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const message = buildBalanceAlertEmail({
+    user,
+    to: alert.email,
+    thresholdCents: alert.thresholdCents,
+    balanceCents,
+    previousBalanceCents: beforeBalanceCents,
+    model: context.model,
+    quotaCost: context.quotaCost,
+    publicGatewayBaseUrl: serverOptions.publicGatewayBaseUrl,
+    at: now,
+  });
+
+  try {
+    await sender(message);
+    alert.lastAlertAt = now;
+    alert.lastAlertBalanceCents = balanceCents;
+    alert.lastTriggeredThresholdCents = alert.thresholdCents;
+    data.events.push({
+      type: 'balance_alert_sent',
+      userId: user.id,
+      thresholdCents: alert.thresholdCents,
+      balanceCents,
+      alertEmail: maskEmail(alert.email),
+      model: context.model || '',
+      at: now,
+    });
+  } catch {
+    data.events.push({
+      type: 'balance_alert_failed',
+      userId: user.id,
+      thresholdCents: alert.thresholdCents,
+      balanceCents,
+      alertEmail: maskEmail(alert.email),
+      at: now,
+    });
+  }
+}
+
+function buildBalanceAlertEmail({
+  user,
+  to,
+  thresholdCents,
+  balanceCents,
+  previousBalanceCents,
+  model,
+  quotaCost,
+  publicGatewayBaseUrl,
+  at,
+  isTest = false,
+}) {
+  const subject = isTest
+    ? 'Frist-API 余额预警测试'
+    : `Frist-API 余额预警：当前 ${formatUsdFromCnyCents(balanceCents)}`;
+  const accountEmail = user.email || 'Frist-API 用户';
+  const dashboardUrl = publicGatewayBaseUrl
+    ? String(publicGatewayBaseUrl).replace(/\/v1\/?$/i, '').replace(/\/+$/, '')
+    : '';
+  const modelText = model ? String(model) : 'API 调用';
+  const currentBalanceText = formatUsdFromCnyCents(balanceCents);
+  const thresholdText = formatUsdFromCnyCents(thresholdCents);
+  const previousBalanceText = formatUsdFromCnyCents(previousBalanceCents);
+  const quotaCostText = formatUsdFromCnyCents(quotaCost);
+  const alertTimeText = formatEmailTime(at);
+  const preheader = `${accountEmail} 当前余额 ${currentBalanceText}，已低于 ${thresholdText} 安全线。`;
+  const html = `<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="supported-color-schemes" content="light dark" />
+    <title>${escapeHtml(subject)}</title>
+    <style>
+      @media (prefers-color-scheme: dark) {
+        .email-bg { background: #111827 !important; }
+        .email-card { background: #172033 !important; border-color: #374151 !important; }
+        .email-text { color: #f8fafc !important; }
+        .email-muted { color: #cbd5e1 !important; }
+        .email-panel { background: #111827 !important; border-color: #334155 !important; }
+        .email-row { border-color: #334155 !important; }
+        .email-soft { background: #1f2937 !important; color: #f8fafc !important; border-color: #475569 !important; }
+      }
+      @media screen and (max-width: 600px) {
+        .email-shell { padding: 18px 10px !important; }
+        .email-card { border-radius: 14px !important; }
+        .email-pad { padding-left: 18px !important; padding-right: 18px !important; }
+        .metric-cell { display: block !important; width: auto !important; }
+        .metric-gap { display: block !important; width: auto !important; height: 10px !important; }
+      }
+    </style>
+  </head>
+  <body class="email-bg" style="margin:0;background:#eef2f5;color:#111827;font-family:Arial,'PingFang SC','Microsoft YaHei',sans-serif;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${escapeHtml(preheader)}</div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" class="email-bg email-shell" style="background:#eef2f5;padding:30px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" class="email-card" style="max-width:680px;background:#ffffff;border:1px solid #d7dee8;border-radius:18px;overflow:hidden;box-shadow:0 18px 45px rgba(15,23,42,.12);">
+            <tr>
+              <td style="padding:0;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#0f172a;">
+                  <tr>
+                    <td class="email-pad" style="padding:22px 28px;">
+                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                        <tr>
+                          <td valign="middle">
+                            <div style="font-size:12px;line-height:1.2;letter-spacing:1.6px;text-transform:uppercase;color:#93c5fd;font-weight:800;">Frist-API Balance Guard</div>
+                            <div style="margin-top:8px;color:#ffffff;font-size:25px;font-weight:800;line-height:1.22;">余额进入预警区间</div>
+                          </td>
+                          <td align="right" valign="middle">
+                            <span style="display:inline-block;background:#fee2e2;color:#991b1b;border-radius:999px;padding:7px 11px;font-size:12px;font-weight:800;white-space:nowrap;">${isTest ? '测试预览' : '低余额预警'}</span>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td class="email-pad email-text" style="padding:28px 28px 10px;color:#111827;">
+                <div style="font-size:13px;color:#64748b;font-weight:700;">账户</div>
+                <div class="email-text" style="margin-top:6px;font-size:18px;font-weight:800;color:#111827;line-height:1.35;">${escapeHtml(accountEmail)}</div>
+              </td>
+            </tr>
+            <tr>
+              <td class="email-pad" style="padding:8px 28px 20px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                  <tr>
+                    <td class="metric-cell" width="50%" valign="top" style="width:50%;padding:18px;background:#ef4444;color:#ffffff;border:1px solid #dc2626;border-radius:16px;">
+                      <div style="font-size:12px;line-height:1.2;opacity:.9;font-weight:800;">当前余额</div>
+                      <div style="margin-top:10px;font-size:38px;font-weight:900;line-height:1;">${currentBalanceText}</div>
+                      <div style="margin-top:10px;font-size:13px;line-height:1.45;color:#fee2e2;">低于安全线，需要关注</div>
+                    </td>
+                    <td class="metric-gap" width="12" style="width:12px;font-size:0;line-height:0;">&nbsp;</td>
+                    <td class="metric-cell email-soft" width="50%" valign="top" style="width:50%;padding:18px;background:#f8fafc;color:#0f172a;border:1px solid #dbe3ed;border-radius:16px;">
+                      <div style="font-size:12px;line-height:1.2;color:#64748b;font-weight:800;">预警阈值</div>
+                      <div class="email-text" style="margin-top:10px;font-size:34px;font-weight:900;line-height:1;color:#0f172a;">${thresholdText}</div>
+                      <div class="email-muted" style="margin-top:10px;font-size:13px;line-height:1.45;color:#64748b;">你设置的余额安全线</div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td class="email-pad" style="padding:0 28px 22px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" class="email-panel" style="background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;">
+                  <tr>
+                    <td colspan="2" class="email-row" style="padding:15px 16px;border-bottom:1px solid #e2e8f0;">
+                      <div style="font-size:12px;line-height:1.2;color:#64748b;font-weight:800;">事件摘要</div>
+                      <div class="email-text" style="margin-top:6px;font-size:16px;line-height:1.45;color:#111827;font-weight:800;">一次 API 消耗让余额跌破预警阈值</div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="email-row email-muted" style="padding:13px 16px;border-bottom:1px solid #e2e8f0;color:#64748b;">触发模型</td>
+                    <td align="right" class="email-row email-text" style="padding:13px 16px;border-bottom:1px solid #e2e8f0;color:#111827;font-weight:800;">${escapeHtml(modelText)}</td>
+                  </tr>
+                  <tr>
+                    <td class="email-row email-muted" style="padding:13px 16px;border-bottom:1px solid #e2e8f0;color:#64748b;">上次余额</td>
+                    <td align="right" class="email-row email-text" style="padding:13px 16px;border-bottom:1px solid #e2e8f0;color:#111827;font-weight:800;">${previousBalanceText}</td>
+                  </tr>
+                  <tr>
+                    <td class="email-row email-muted" style="padding:13px 16px;border-bottom:1px solid #e2e8f0;color:#64748b;">本次扣费</td>
+                    <td align="right" class="email-row email-text" style="padding:13px 16px;border-bottom:1px solid #e2e8f0;color:#111827;font-weight:800;">${quotaCostText}</td>
+                  </tr>
+                  <tr>
+                    <td class="email-muted" style="padding:13px 16px;color:#64748b;">触发时间</td>
+                    <td align="right" class="email-text" style="padding:13px 16px;color:#111827;font-weight:800;">${escapeHtml(alertTimeText)}</td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td class="email-pad" style="padding:0 28px 30px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" class="email-soft" style="background:#f8fafc;border:1px solid #dbe3ed;border-radius:14px;">
+                  <tr>
+                    <td style="padding:16px 18px;">
+                      <p class="email-text" style="margin:0;color:#1f2937;font-size:15px;line-height:1.7;">相当于油表已经进入红线区。为了避免 Codex、Claude Code 或 OpenCode 调用中断，建议尽快充值，或者把预警阈值调到更符合你使用节奏的位置。</p>
+                    </td>
+                  </tr>
+                </table>
+                ${
+                  dashboardUrl
+                    ? `<table role="presentation" cellspacing="0" cellpadding="0" style="margin-top:18px;">
+                        <tr>
+                          <td bgcolor="#111827" style="border-radius:999px;">
+                            <a href="${escapeAttribute(dashboardUrl)}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;border-radius:999px;padding:13px 20px;font-size:14px;font-weight:900;">打开 Frist-API</a>
+                          </td>
+                          <td class="email-muted" style="padding-left:14px;color:#64748b;font-size:13px;line-height:1.45;">查看余额、充值或调整预警设置</td>
+                        </tr>
+                      </table>`
+                    : ''
+                }
+              </td>
+            </tr>
+          </table>
+          <div style="max-width:680px;margin-top:18px;color:#64748b;font-size:12px;line-height:1.65;text-align:left;">这是一封 Frist-API 余额预警通知。你可以在仪表盘关闭提醒、调整阈值或更换通知邮箱。</div>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+  const text = [
+    subject,
+    '',
+    `账户: ${accountEmail}`,
+    `当前余额: ${currentBalanceText}`,
+    `预警阈值: ${thresholdText}`,
+    `触发模型: ${modelText}`,
+    `上次余额: ${previousBalanceText}`,
+    `本次扣费: ${quotaCostText}`,
+    `触发时间: ${alertTimeText}`,
+    dashboardUrl ? `打开 Frist-API: ${dashboardUrl}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return { to, subject, html, text };
+}
+
+function defaultBalanceAlert(email = '') {
+  const normalizedEmail = normalizeAlertEmail(email);
+  return {
+    enabled: true,
+    thresholdCents: Math.round(5 * DISPLAY_USD_TO_CNY * 100),
+    email: normalizedEmail,
+    lastAlertAt: '',
+    lastAlertBalanceCents: 0,
+    lastTriggeredThresholdCents: 0,
+    updatedAt: '',
+  };
+}
+
+function normalizeBalanceAlertRecord(record, fallbackEmail = '') {
+  const current = record && typeof record === 'object' ? record : {};
+  const fallback = defaultBalanceAlert(fallbackEmail);
+  const thresholdCents = normalizeAlertThresholdCents(current, fallback.thresholdCents);
+  return {
+    enabled: Object.prototype.hasOwnProperty.call(current, 'enabled') ? Boolean(current.enabled) : fallback.enabled,
+    thresholdCents:
+      Number.isFinite(thresholdCents) && thresholdCents > 0 && thresholdCents <= 1_000_000_00
+        ? thresholdCents
+        : fallback.thresholdCents,
+    email: normalizeAlertEmail(current.email) || fallback.email,
+    lastAlertAt: String(current.lastAlertAt || ''),
+    lastAlertBalanceCents: Math.max(0, normalizeMoneyCents(current.lastAlertBalanceCents || 0)),
+    lastTriggeredThresholdCents: Math.max(0, normalizeMoneyCents(current.lastTriggeredThresholdCents || 0)),
+    updatedAt: String(current.updatedAt || ''),
+  };
+}
+
+function sanitizeBalanceAlert(record, fallbackEmail = '') {
+  const alert = normalizeBalanceAlertRecord(record, fallbackEmail);
+  return {
+    enabled: alert.enabled,
+    threshold: formatUsdFromCnyCents(alert.thresholdCents),
+    thresholdCents: alert.thresholdCents,
+    thresholdCny: Number((alert.thresholdCents / 100).toFixed(2)),
+    thresholdUsd: Number((alert.thresholdCents / 100 / DISPLAY_USD_TO_CNY).toFixed(2)),
+    email: alert.email,
+    lastAlertAt: alert.lastAlertAt,
+  };
+}
+
+function normalizeAlertThresholdCents(record = {}, fallbackCents = Number.NaN) {
+  if (record.thresholdCents !== undefined) return normalizeMoneyCents(record.thresholdCents);
+  if (record.thresholdUsd !== undefined) {
+    return normalizeMoneyCents(Number(record.thresholdUsd || 0) * DISPLAY_USD_TO_CNY * 100);
+  }
+  if (record.thresholdCny !== undefined) return normalizeMoneyCents(Number(record.thresholdCny || 0) * 100);
+  if (record.threshold !== undefined) {
+    const text = String(record.threshold || '').trim();
+    if (/^\$/.test(text)) return normalizeMoneyCents(Number(text.replace(/[^\d.-]/g, '')) * DISPLAY_USD_TO_CNY * 100);
+    return normalizeMoneyCents(Number(text.replace(/[^\d.-]/g, '')) * DISPLAY_USD_TO_CNY * 100);
+  }
+  return normalizeMoneyCents(fallbackCents);
+}
+
+function normalizeMoneyCents(value) {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return Number.NaN;
+    const numeric = Number(trimmed.replace(/[^\d.-]/g, ''));
+    return Number.isFinite(numeric) ? Math.round(numeric) : Number.NaN;
+  }
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.round(numeric) : Number.NaN;
+}
+
+function normalizeAlertEmail(value) {
+  const email = String(value || '').trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return '';
+  }
+  return email.slice(0, 254);
+}
+
+function maskEmail(email) {
+  const [name, domain] = String(email || '').split('@');
+  if (!name || !domain) return '';
+  const head = name.slice(0, Math.min(2, name.length));
+  return `${head}${name.length > 2 ? '***' : '*'}@${domain}`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function escapeAttribute(value) {
+  return escapeHtml(value).replace(/`/g, '&#96;');
+}
+
+function formatEmailTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value || '-');
+  }
+  return new Intl.DateTimeFormat('zh-CN', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'Asia/Shanghai',
+  }).format(date);
+}
+
+function createBalanceAlertEmailSender(options = {}) {
+  const host = String(options.host ?? process.env.FRIST_API_SMTP_HOST ?? '').trim();
+  const user = String(options.user ?? process.env.FRIST_API_SMTP_USER ?? '').trim();
+  const password = String(options.password ?? process.env.FRIST_API_SMTP_PASSWORD ?? '');
+  const from = String(options.from ?? process.env.FRIST_API_SMTP_FROM ?? user).trim();
+  if (!host || !user || !password || !from) {
+    return null;
+  }
+
+  const port = Number(options.port ?? process.env.FRIST_API_SMTP_PORT ?? 465);
+  const secure =
+    typeof options.secure === 'boolean'
+      ? options.secure
+      : String(process.env.FRIST_API_SMTP_SECURE ?? '1') !== '0';
+  const fromName = String(
+    options.fromName ?? process.env.FRIST_API_BALANCE_ALERT_FROM_NAME ?? 'Frist-API Billing',
+  ).trim();
+  const family = normalizeSmtpAddressFamily(options.family ?? process.env.FRIST_API_SMTP_FAMILY ?? 'auto');
+
+  return async (message) =>
+    sendSmtpMail({
+      host,
+      port,
+      secure,
+      family,
+      user,
+      password,
+      from,
+      fromName,
+      to: message.to,
+      subject: message.subject,
+      text: message.text,
+      html: message.html,
+    });
+}
+
+async function sendSmtpMail(options) {
+  const socket = await openSmtpSocket(options);
+  const reader = createSmtpReader(socket);
+  const writer = (line) => socket.write(`${line}\r\n`);
+  try {
+    await readSmtpReply(reader, [220]);
+    writer(`EHLO ${smtpDomain(options.from)}`);
+    await readSmtpReply(reader, [250]);
+    writer('AUTH PLAIN ' + Buffer.from(`\u0000${options.user}\u0000${options.password}`).toString('base64'));
+    await readSmtpReply(reader, [235]);
+    writer(`MAIL FROM:<${options.from}>`);
+    await readSmtpReply(reader, [250]);
+    writer(`RCPT TO:<${options.to}>`);
+    await readSmtpReply(reader, [250, 251]);
+    writer('DATA');
+    await readSmtpReply(reader, [354]);
+    socket.write(`${buildMimeMessage(options)}\r\n.\r\n`);
+    await readSmtpReply(reader, [250]);
+    writer('QUIT');
+    await readSmtpReply(reader, [221]);
+  } finally {
+    socket.end();
+  }
+}
+
+async function openSmtpSocket(options) {
+  const targets = await resolveSmtpSocketTargets(options);
+  const errors = [];
+  for (const target of targets) {
+    try {
+      return await connectSmtpSocketTarget(options, target);
+    } catch (error) {
+      errors.push(`${target.host}: ${error.message}`);
+    }
+  }
+  throw new Error(`SMTP 连接失败: ${errors.join('; ')}`);
+}
+
+export async function resolveSmtpSocketTargets(options) {
+  const family = normalizeSmtpAddressFamily(options.family ?? 'auto');
+  const port = Number(options.port || 465);
+  const ipFamily = isIP(options.host);
+  if (ipFamily) {
+    return [{ host: options.host, port, servername: options.host, family: ipFamily }];
+  }
+
+  const addresses = Array.isArray(options.addresses)
+    ? options.addresses
+    : await lookupDns(options.host, { all: true, verbatim: true });
+  const normalized = addresses
+    .map((address) => ({
+      host: address.address,
+      port,
+      servername: options.host,
+      family: Number(address.family),
+    }))
+    .filter((address) => address.host && (family === 'auto' || String(address.family) === family));
+  if (!normalized.length) {
+    return [{ host: options.host, port, servername: options.host, family: 0 }];
+  }
+  return normalized;
+}
+
+function connectSmtpSocketTarget(options, target) {
+  const socketOptions = {
+    host: target.host,
+    port: target.port,
+    family: target.family || undefined,
+    servername: target.servername,
+  };
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      callback(value);
+    };
+    const socket = options.secure
+      ? connectTls(socketOptions, () => finish(resolve, socket))
+      : connectNet(socketOptions, () => finish(resolve, socket));
+    socket.setTimeout(Number(options.timeoutMs || 8_000));
+    socket.once('error', (error) => finish(reject, error));
+    socket.once('timeout', () => {
+      socket.destroy();
+      finish(reject, new Error('SMTP 连接超时'));
+    });
+  });
+}
+
+function normalizeSmtpAddressFamily(value) {
+  const family = String(value || 'auto').trim().toLowerCase();
+  if (family === '4' || family === 'ipv4') return '4';
+  if (family === '6' || family === 'ipv6') return '6';
+  return 'auto';
+}
+
+function createSmtpReader(socket) {
+  const state = {
+    buffer: '',
+    waiters: [],
+  };
+  socket.setEncoding('utf8');
+  socket.on('data', (chunk) => {
+    state.buffer += chunk;
+    flushSmtpWaiters(state);
+  });
+  socket.on('error', (error) => {
+    const waiters = state.waiters.splice(0);
+    for (const waiter of waiters) waiter.reject(error);
+  });
+  return state;
+}
+
+function flushSmtpWaiters(state) {
+  while (state.waiters.length > 0) {
+    const reply = takeCompleteSmtpReply(state);
+    if (!reply) return;
+    const waiter = state.waiters.shift();
+    waiter.resolve(reply);
+  }
+}
+
+function takeCompleteSmtpReply(state) {
+  const lines = state.buffer.split(/\r?\n/);
+  if (!state.buffer.match(/\r?\n$/)) {
+    lines.pop();
+  }
+  let consumed = 0;
+  for (const line of lines) {
+    if (!line) {
+      consumed += 1;
+      continue;
+    }
+    consumed += 1;
+    if (/^\d{3}\s/.test(line)) {
+      const replyLines = lines.slice(0, consumed);
+      state.buffer = lines.slice(consumed).join('\n');
+      return replyLines.join('\n');
+    }
+  }
+  return null;
+}
+
+function readSmtpReply(reader, expectedCodes) {
+  return new Promise((resolve, reject) => {
+    const complete = takeCompleteSmtpReply(reader);
+    const handleReply = (reply) => {
+      const code = Number(reply.slice(0, 3));
+      if (!expectedCodes.includes(code)) {
+        reject(new Error(`SMTP 返回异常: ${reply}`));
+        return;
+      }
+      resolve(reply);
+    };
+    if (complete) {
+      handleReply(complete);
+      return;
+    }
+    reader.waiters.push({
+      resolve: handleReply,
+      reject,
+    });
+  });
+}
+
+function buildMimeMessage({ from, fromName, to, subject, text, html }) {
+  const boundary = `frist-api-${randomBytes(12).toString('hex')}`;
+  return [
+    `From: ${encodeMimeHeader(fromName)} <${from}>`,
+    `To: <${to}>`,
+    `Subject: ${encodeMimeHeader(subject)}`,
+    'MIME-Version: 1.0',
+    `Date: ${new Date().toUTCString()}`,
+    `Message-ID: <${randomBytes(12).toString('hex')}@${smtpDomain(from)}>`,
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/plain; charset=UTF-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    wrapBase64(text || ''),
+    `--${boundary}`,
+    'Content-Type: text/html; charset=UTF-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    wrapBase64(html || ''),
+    `--${boundary}--`,
+  ].join('\r\n');
+}
+
+function encodeMimeHeader(value) {
+  const text = String(value || '');
+  if (/^[\x20-\x7E]*$/.test(text)) {
+    return text;
+  }
+  return `=?UTF-8?B?${Buffer.from(text, 'utf8').toString('base64')}?=`;
+}
+
+function wrapBase64(value) {
+  return Buffer.from(String(value || ''), 'utf8')
+    .toString('base64')
+    .replace(/.{1,76}/g, '$&\r\n')
+    .trim();
+}
+
+function smtpDomain(email) {
+  return String(email || '').split('@')[1] || 'frist-api.local';
+}
+
 function buildGatewayAffinityKey(request, body, userKey, model) {
   const explicitSessionId = [
     headerValue(request, 'x-frist-session-id'),
@@ -2285,17 +2959,17 @@ function createCaptchaChallenge(securityState, serverOptions) {
     };
   }
   cleanupCaptchas(securityState);
-  const left = 10 + randomBytes(1)[0] % 40;
-  const right = 1 + randomBytes(1)[0] % 30;
+  const challenge = buildRegistrationCaptcha();
   const id = createId('cap');
   securityState.captchas.set(id, {
-    answer: String(left + right),
+    answer: challenge.answer,
+    attemptsLeft: Number(serverOptions.captchaMaxAttempts || 3),
     expiresAt: Date.now() + Number(serverOptions.captchaTtlMs || 600_000),
   });
   return {
     required: true,
     id,
-    question: `${left} + ${right} = ?`,
+    question: challenge.question,
   };
 }
 
@@ -2310,10 +2984,17 @@ function requireCaptchaIfEnabled(securityState, body, serverOptions) {
   if (!challenge || challenge.expiresAt < Date.now()) {
     throw publicError(400, '验证码已过期，请刷新后重试');
   }
-  securityState.captchas.delete(id);
-  if (answer !== challenge.answer) {
+  const normalizedAnswer = normalizeCaptchaAnswer(answer);
+  const expected = normalizeCaptchaAnswer(challenge.answer);
+  if (normalizedAnswer !== expected) {
+    challenge.attemptsLeft = Math.max(0, Number(challenge.attemptsLeft || 1) - 1);
+    if (challenge.attemptsLeft <= 0) {
+      securityState.captchas.delete(id);
+      throw publicError(400, '验证码不正确，请刷新后重试');
+    }
     throw publicError(400, '验证码不正确');
   }
+  securityState.captchas.delete(id);
 }
 
 function cleanupCaptchas(securityState) {
@@ -2323,6 +3004,68 @@ function cleanupCaptchas(securityState) {
       securityState.captchas.delete(id);
     }
   }
+}
+
+function buildRegistrationCaptcha() {
+  const type = randomInt(4);
+  if (type === 0) {
+    const left = 18 + randomInt(73);
+    const right = 11 + randomInt(58);
+    const subtract = 3 + randomInt(17);
+    return {
+      question: `${left} + ${right} - ${subtract} = ?`,
+      answer: String(left + right - subtract),
+    };
+  }
+  if (type === 1) {
+    const code = randomCaptchaCode(5);
+    const firstIndex = randomInt(code.length);
+    let secondIndex = randomInt(code.length);
+    while (secondIndex === firstIndex) {
+      secondIndex = randomInt(code.length);
+    }
+    const indexes = [firstIndex, secondIndex].sort((a, b) => a - b);
+    return {
+      question: `验证码 ${code}，输入第 ${indexes[0] + 1} 和第 ${indexes[1] + 1} 位字符`,
+      answer: `${code[indexes[0]]}${code[indexes[1]]}`,
+    };
+  }
+  if (type === 2) {
+    const code = randomCaptchaCode(4);
+    return {
+      question: `把 ${code} 倒序输入`,
+      answer: code.split('').reverse().join(''),
+    };
+  }
+  const code = randomCaptchaCode(6);
+  const digits = code.replace(/\D/g, '');
+  if (digits.length >= 2) {
+    return {
+      question: `验证码 ${code}，只输入其中的数字`,
+      answer: digits,
+    };
+  }
+  return {
+    question: `验证码 ${code}，输入最后 3 位`,
+    answer: code.slice(-3),
+  };
+}
+
+function normalizeCaptchaAnswer(value) {
+  return String(value || '').trim().replace(/\s+/g, '').toUpperCase();
+}
+
+function randomCaptchaCode(length) {
+  const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let index = 0; index < length; index += 1) {
+    code += alphabet[randomInt(alphabet.length)];
+  }
+  return code;
+}
+
+function randomInt(max) {
+  return randomBytes(1)[0] % Math.max(1, Number(max) || 1);
 }
 
 function assertAuthRateLimit(securityState, request, serverOptions) {
@@ -2431,7 +3174,7 @@ function createRuntimeStore(dataFile) {
 function normalizeRuntimeData(data) {
   const pricing = normalizePricingConfig(data.pricing || {});
   return {
-    users: Array.isArray(data.users) ? data.users : [],
+    users: Array.isArray(data.users) ? data.users.map(normalizeUserRecord) : [],
     sessions: data.sessions && typeof data.sessions === 'object' ? data.sessions : {},
     userKeys: Array.isArray(data.userKeys) ? data.userKeys : [],
     credentials: Array.isArray(data.credentials) ? data.credentials.map(normalizeCredentialRecord) : [],
@@ -2444,6 +3187,14 @@ function normalizeRuntimeData(data) {
     lowInventoryAlerts: data.lowInventoryAlerts && typeof data.lowInventoryAlerts === 'object' ? data.lowInventoryAlerts : {},
     usedAdminClaimCodeHashes: Array.isArray(data.usedAdminClaimCodeHashes) ? data.usedAdminClaimCodeHashes : [],
     events: Array.isArray(data.events) ? data.events : [],
+  };
+}
+
+function normalizeUserRecord(user) {
+  const email = normalizeAlertEmail(user?.email || '');
+  return {
+    ...user,
+    balanceAlert: normalizeBalanceAlertRecord(user?.balanceAlert, email),
   };
 }
 
@@ -2576,6 +3327,7 @@ function normalizeServerOptions(options) {
       options.authRateLimitWindowMs ?? process.env.FRIST_API_AUTH_RATE_LIMIT_WINDOW_MS ?? 60_000,
     ),
     captchaTtlMs: Number(options.captchaTtlMs ?? process.env.FRIST_API_CAPTCHA_TTL_MS ?? 600_000),
+    captchaMaxAttempts: Number(options.captchaMaxAttempts ?? process.env.FRIST_API_CAPTCHA_MAX_ATTEMPTS ?? 3),
     keepAliveTimeoutMs:
       options.keepAliveTimeoutMs === undefined && process.env.FRIST_API_KEEP_ALIVE_TIMEOUT_MS === undefined
         ? Number.NaN
@@ -2588,6 +3340,23 @@ function normalizeServerOptions(options) {
     requireCaptcha,
     sessionSecret: options.sessionSecret || process.env.FRIST_API_SESSION_SECRET || 'frist-api-dev-session-secret',
     allowDemoRecharge,
+    newApiEnabled:
+      typeof options.newApiEnabled === 'boolean'
+        ? options.newApiEnabled
+        : process.env.FRIST_API_NEWAPI_ENABLED === '1',
+    newApiBaseUrl: options.newApiBaseUrl || process.env.FRIST_API_NEWAPI_BASE_URL || '',
+    newApiAccessToken: options.newApiAccessToken || process.env.FRIST_API_NEWAPI_ACCESS_TOKEN || '',
+    newApiUserId: options.newApiUserId || process.env.FRIST_API_NEWAPI_USER_ID || '',
+    newApiDefaultGroup: options.newApiDefaultGroup || process.env.FRIST_API_NEWAPI_DEFAULT_GROUP || 'default',
+    newApiDefaultTokenQuota: Number(
+      options.newApiDefaultTokenQuota ?? process.env.FRIST_API_NEWAPI_DEFAULT_TOKEN_QUOTA ?? 0,
+    ),
+    newApiGatewayBaseUrl:
+      options.newApiGatewayBaseUrl || process.env.FRIST_API_NEWAPI_GATEWAY_BASE_URL || '',
+    newApiGatewayEnabled:
+      typeof options.newApiGatewayEnabled === 'boolean'
+        ? options.newApiGatewayEnabled
+        : process.env.FRIST_API_NEWAPI_GATEWAY_ENABLED === '1',
     allowInsecurePublicHttp:
       typeof options.allowInsecurePublicHttp === 'boolean'
         ? options.allowInsecurePublicHttp
@@ -2604,6 +3373,19 @@ function normalizeServerOptions(options) {
       typeof options.notifyLowInventory === 'function'
         ? options.notifyLowInventory
         : createLowInventoryWebhookNotifier(options.fetchImpl || globalThis.fetch),
+    balanceAlertEmailSender:
+      typeof options.balanceAlertEmailSender === 'function'
+        ? options.balanceAlertEmailSender
+        : createBalanceAlertEmailSender({
+            host: options.smtpHost,
+            port: options.smtpPort,
+            secure: options.smtpSecure,
+            user: options.smtpUser,
+            password: options.smtpPassword,
+            from: options.smtpFrom,
+            fromName: options.balanceAlertFromName,
+            family: options.smtpFamily,
+          }),
   };
   validatePublicModeOptions(normalized);
   return normalized;
@@ -2958,11 +3740,44 @@ function adminGateCookie(serverOptions) {
     return {};
   }
   return {
-    'set-cookie': `frist_admin_gate=${hashId(serverOptions.adminPageCode)}; Path=/; HttpOnly; SameSite=Lax`,
+    'set-cookie': [
+      `frist_admin_gate=${hashId(serverOptions.adminPageCode)}`,
+      'Path=/',
+      'HttpOnly',
+      'SameSite=Lax',
+      serverOptions.publicMode && isPublicHttpsGateway(serverOptions.publicGatewayBaseUrl) ? 'Secure' : '',
+    ].filter(Boolean).join('; '),
   };
 }
 
+function sessionCookie(sessionToken, request, serverOptions) {
+  return [
+    `${SESSION_COOKIE}=${sessionToken}`,
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Lax',
+    shouldUseSecureCookie(request, serverOptions) ? 'Secure' : '',
+  ].filter(Boolean).join('; ');
+}
+
+function shouldUseSecureCookie(request, serverOptions) {
+  const forwardedProto = String(request.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
+  return forwardedProto === 'https' || isPublicHttpsGateway(serverOptions.publicGatewayBaseUrl);
+}
+
 async function readJsonBody(request) {
+  const bodyText = await readRequestText(request);
+  if (!bodyText) {
+    return {};
+  }
+  try {
+    return JSON.parse(bodyText);
+  } catch {
+    throw publicError(400, 'JSON 格式不正确');
+  }
+}
+
+async function readRequestText(request) {
   const chunks = [];
   let size = 0;
   for await (const chunk of request) {
@@ -2973,13 +3788,9 @@ async function readJsonBody(request) {
     chunks.push(chunk);
   }
   if (chunks.length === 0) {
-    return {};
+    return '';
   }
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
-  } catch {
-    throw publicError(400, 'JSON 格式不正确');
-  }
+  return Buffer.concat(chunks).toString('utf8');
 }
 
 function writeJson(response, status, payload, headers = {}) {
@@ -3088,17 +3899,33 @@ function accountFromUser(data, user) {
   const monthEvents = routedEvents.filter((item) => String(item.at || '').startsWith(month));
   const todayCost = todayEvents.reduce((sum, item) => sum + Number(item.quotaCost || 0), 0);
   const monthCost = monthEvents.reduce((sum, item) => sum + Number(item.quotaCost || 0), 0);
+  const todayTokens = todayEvents.reduce((sum, item) => sum + Number(item.totalTokens || 0), 0);
+  const totalTokens = routedEvents.reduce((sum, item) => sum + Number(item.totalTokens || 0), 0);
+  const responseEvents = routedEvents.filter((item) => Number(item.latencyMs || 0) > 0);
+  const averageLatency = responseEvents.length
+    ? Math.round(responseEvents.reduce((sum, item) => sum + Number(item.latencyMs || 0), 0) / responseEvents.length)
+    : 0;
+  const successRate = routedEvents.length
+    ? `${Math.round((routedEvents.filter((item) => item.status !== 'failed').length / routedEvents.length) * 1000) / 10}%`
+    : '0%';
   return {
     plan: user.plan,
     renewalDate: user.renewalDate,
-    balance: formatCny(user.balanceCents),
-    packageQuota: formatCny(user.packageQuotaCents),
-    boosterQuota: formatCny(user.boosterQuotaCents),
-    quotaLeft: formatCny(user.balanceCents),
-    todayCost: formatCny(todayCost),
-    monthCost: formatCny(monthCost),
-    usageTotal: formatCny(monthCost),
+    balance: formatUsdFromCnyCents(user.balanceCents),
+    balanceCny: formatCny(user.balanceCents),
+    packageQuota: formatUsdFromCnyCents(user.packageQuotaCents),
+    packageQuotaCny: formatCny(user.packageQuotaCents),
+    boosterQuota: formatUsdFromCnyCents(user.boosterQuotaCents),
+    boosterQuotaCny: formatCny(user.boosterQuotaCents),
+    quotaLeft: formatUsdFromCnyCents(user.balanceCents),
+    todayCost: formatUsdFromCnyCents(todayCost),
+    monthCost: formatUsdFromCnyCents(monthCost),
+    usageTotal: formatUsdFromCnyCents(monthCost),
     todayCalls: `${todayEvents.length} 次`,
+    todayTokens: compactTokenText(todayTokens),
+    totalTokens: compactTokenText(totalTokens),
+    averageLatency: averageLatency ? `${averageLatency}ms` : '-',
+    successRate,
   };
 }
 
@@ -3207,6 +4034,10 @@ function sortModelsByStrength(models = []) {
     'gpt-image-1.5',
     'gpt-image-1',
     'gpt-5.3-codex',
+    'deepseek-v4-flash',
+    'deepseek-v4-pro',
+    'deepseek-chat',
+    'deepseek-reasoner',
     'claude-opus-4-6-thinking-c',
     'claude-opus-4-6-c',
     'claude-sonnet-4-5-c',
@@ -3328,13 +4159,61 @@ function buildModelUsage(data, user) {
   const events = data.events.filter((item) => item.type === 'gateway_routed' && item.userId === user.id);
   const totals = new Map();
   for (const event of events) {
-    totals.set(event.model, (totals.get(event.model) || 0) + Number(event.quotaCost || 0));
+    const current = totals.get(event.model) || { cost: 0, calls: 0, tokens: 0 };
+    current.cost += Number(event.quotaCost || 0);
+    current.calls += 1;
+    current.tokens += Number(event.totalTokens || 0);
+    totals.set(event.model, current);
   }
-  return [...totals.entries()].map(([model, cost]) => ({
+  const totalCost = [...totals.values()].reduce((sum, item) => sum + item.cost, 0) || 1;
+  return [...totals.entries()].map(([model, usage]) => ({
     model,
-    amount: formatCny(cost),
-    calls: `${events.filter((event) => event.model === model).length} 次`,
+    amount: formatUsdFromCnyCents(usage.cost),
+    amountCny: formatCny(usage.cost),
+    calls: `${usage.calls} 次`,
+    tokens: compactTokenText(usage.tokens),
+    percent: Math.max(4, Math.round((usage.cost / totalCost) * 100)),
   }));
+}
+
+function buildUsageRecords(data, user) {
+  const keyById = new Map(
+    data.userKeys
+      .filter((key) => key.userId === user.id)
+      .map((key) => [key.id, key]),
+  );
+  return data.events
+    .filter((event) => event.type === 'gateway_routed' && event.userId === user.id)
+    .slice(-80)
+    .reverse()
+    .map((event) => {
+      const key = keyById.get(event.keyId);
+      return {
+        id: `${event.at || ''}-${event.keyId || ''}-${event.model || ''}`,
+        apiKey: event.apiKeyPreview || key?.preview || 'fk-live-******',
+        model: normalizeOfficialModelName(event.model || 'unknown'),
+        inferenceEffort: event.inferenceEffort || '默认',
+        endpoint: event.endpoint || '-',
+        type: event.requestType || '文本',
+        billingMode: event.billingMode || '余额',
+        tokens: compactTokenText(event.totalTokens || 0),
+        amount: formatUsdFromCnyCents(event.quotaCost || 0),
+        status: event.status || 'success',
+        at: event.at || '',
+      };
+    });
+}
+
+function buildRecentLogs(data, user) {
+  return data.events
+    .filter((event) => !event.userId || event.userId === user.id)
+    .slice(-10)
+    .reverse()
+    .map((event) => ({
+      type: event.type || 'event',
+      at: event.at || '',
+      detail: adminEventDetail(event),
+    }));
 }
 
 function buildChannelChecks(data) {
@@ -3351,6 +4230,8 @@ function buildChannelChecks(data) {
         latencyMs: 0,
         checkedAt: '',
         status: credential.status,
+        endpoint: credential.baseUrl || '',
+        history: [],
       };
       const isHealthy = credential.enabled && credential.status === 'healthy' && isCredentialRouteApproved(credential);
       current.total += 1;
@@ -3363,6 +4244,8 @@ function buildChannelChecks(data) {
         current.status = credential.status || current.status || 'failed';
       }
       current.checkedAt = [current.checkedAt, credential.updatedAt].filter(Boolean).sort().at(-1) || '';
+      current.endpoint = current.endpoint || credential.baseUrl || '';
+      current.history.push(isHealthy ? 'ok' : 'down');
       grouped.set(key, current);
     }
   }
@@ -3373,10 +4256,13 @@ function buildChannelChecks(data) {
       model: normalizeOfficialModelName(item.model),
       provider: item.provider,
       channel: `${item.provider} 可用线路 ${item.healthy}/${item.total}`,
+      endpoint: item.endpoint || '/v1',
       ok: item.healthy > 0,
       status: item.healthy > 0 ? 'healthy' : item.status,
       latencyMs: item.healthy > 0 ? item.latencyMs : 0,
       checkedAt: item.checkedAt,
+      availability: item.total ? `${Math.round((item.healthy / item.total) * 1000) / 10}%` : '0%',
+      history: item.history.slice(-12),
     }));
 }
 
@@ -3420,6 +4306,7 @@ function buildModelCatalog(data) {
 function providerFromModel(model = '') {
   const value = String(model || '').toLowerCase();
   if (value.includes('gpt') || value.includes('openai')) return 'OpenAI';
+  if (value.includes('deepseek')) return 'DeepSeek';
   if (value.includes('gemini')) return 'Gemini';
   return 'Claude';
 }
@@ -3444,7 +4331,7 @@ function priceLabel(price) {
   if (input <= 0 && output <= 0) {
     return '按后台价格';
   }
-  return `¥${input}/¥${output} 每 1M`;
+  return `${formatUsdPriceFromCny(input)}/${formatUsdPriceFromCny(output)} 每 1M`;
 }
 
 function buildInventorySummary(data) {
@@ -3535,7 +4422,8 @@ function sanitizeUserKey(key, options = {}) {
     ...(options.revealSecret ? { secret: key.secret } : {}),
     enabled: Boolean(key.enabled),
     modelGroup: key.modelGroup || 'All',
-    cost: formatCny(key.costCents),
+    cost: formatUsdFromCnyCents(key.costCents),
+    costCny: formatCny(key.costCents),
     tokens: key.tokens || '0.00M',
     lastUsed: key.lastUsed || '-',
     expiresAt: key.expiresAt || '-',
@@ -3576,7 +4464,8 @@ function sanitizePaymentOrder(order) {
     email: order.email || '',
     amount: formatCny(order.amountCents),
     amountCents: Number(order.amountCents || 0),
-    credit: formatCny(order.creditCents),
+    credit: formatUsdFromCnyCents(order.creditCents),
+    creditCny: formatCny(order.creditCents),
     creditCents: Number(order.creditCents || order.amountCents || 0),
     quotaUsd: Number(order.quotaUsd || 0),
     planId: order.planId || '',
@@ -3642,7 +4531,7 @@ function adminEventDetail(event) {
     return `上游 Key 已切出: ${event.reason || '连通性异常'}`;
   }
   if (event.type === 'gateway_routed') {
-    return `${event.model || 'unknown'} 已路由，计费 ${formatCny(event.quotaCost)}`;
+    return `${event.model || 'unknown'} 已路由，计费 ${formatUsdFromCnyCents(event.quotaCost)}`;
   }
   if (event.type === 'registered') return '新用户注册';
   if (event.type === 'logged_in') return '用户登录';
@@ -3658,7 +4547,38 @@ function createId(prefix) {
 }
 
 function hashPassword(password, salt) {
+  const iterations = 210_000;
+  const passwordSalt = randomBytes(16).toString('base64url');
+  const digest = pbkdf2Sync(String(password), `${salt}:${passwordSalt}`, iterations, 32, 'sha256').toString('base64url');
+  return `pbkdf2-sha256$${iterations}$${passwordSalt}$${digest}`;
+}
+
+function verifyPassword(password, storedHash, salt) {
+  const stored = String(storedHash || '');
+  if (stored.startsWith('pbkdf2-sha256$')) {
+    const [, iterationsText, passwordSalt, expectedDigest] = stored.split('$');
+    const iterations = Number(iterationsText);
+    if (!Number.isSafeInteger(iterations) || iterations < 100_000 || !passwordSalt || !expectedDigest) {
+      return false;
+    }
+    const actualDigest = pbkdf2Sync(String(password), `${salt}:${passwordSalt}`, iterations, 32, 'sha256').toString('base64url');
+    return safeEqual(actualDigest, expectedDigest);
+  }
+  return safeEqual(legacyHashPassword(password, salt), stored);
+}
+
+function isModernPasswordHash(storedHash) {
+  return String(storedHash || '').startsWith('pbkdf2-sha256$');
+}
+
+function legacyHashPassword(password, salt) {
   return createHash('sha256').update(`${salt}:${password}`).digest('hex');
+}
+
+function safeEqual(left, right) {
+  const leftBuffer = Buffer.from(String(left || ''));
+  const rightBuffer = Buffer.from(String(right || ''));
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
 function hashId(value) {
@@ -3707,6 +4627,24 @@ function formatDate(date) {
 
 function formatCny(cents) {
   return `¥${(Number(cents || 0) / 100).toFixed(2)}`;
+}
+
+function formatUsdFromCnyCents(cents, rate = DISPLAY_USD_TO_CNY) {
+  const safeRate = Number(rate || DISPLAY_USD_TO_CNY) || DISPLAY_USD_TO_CNY;
+  return `$${(Number(cents || 0) / 100 / safeRate).toFixed(2)}`;
+}
+
+function formatUsdPriceFromCny(value, rate = DISPLAY_USD_TO_CNY) {
+  const safeRate = Number(rate || DISPLAY_USD_TO_CNY) || DISPLAY_USD_TO_CNY;
+  return `$${(Number(value || 0) / safeRate).toFixed(3)}`;
+}
+
+function compactTokenText(tokens) {
+  const value = Number(tokens || 0);
+  if (!Number.isFinite(value) || value <= 0) return '0';
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+  return String(Math.round(value));
 }
 
 function round2(value) {

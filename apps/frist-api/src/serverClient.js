@@ -54,6 +54,8 @@ export function createFristApiBrowserClient(options = {}) {
     verify: (body) => request('/api/frist/verify', { method: 'POST', body }),
     recharge: (body) => request('/api/frist/recharge', { method: 'POST', body }),
     redeem: (body) => request('/api/frist/redeem', { method: 'POST', body }),
+    saveBalanceAlert: (body) => request('/api/frist/balance-alert', { method: 'PUT', body }),
+    sendBalanceAlertTest: (body) => request('/api/frist/balance-alert/test', { method: 'POST', body }),
     createKey: (body) => request('/api/frist/token', { method: 'POST', body }),
     setKeyEnabled: (id, body) => request(`/api/frist/token/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
     renameKey: (id, body) => request(`/api/frist/token/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
@@ -77,6 +79,7 @@ export function normalizeFristDashboard(payload, fallback = createEmptyDashboard
   const modelUsage = Array.isArray(payload.modelUsage) ? payload.modelUsage : [];
   const modelCatalog = Array.isArray(payload.modelCatalog) ? payload.modelCatalog : [];
   const rechargeOptions = Array.isArray(payload.rechargeOptions) ? payload.rechargeOptions : [];
+  const balanceAlert = normalizeBalanceAlert(payload.balanceAlert, fallback.balanceAlert);
   const accountFallback = authenticated ? fallback.accountSummary : guestAccountFallback(fallback.accountSummary);
 
   return {
@@ -94,6 +97,10 @@ export function normalizeFristDashboard(payload, fallback = createEmptyDashboard
       boosterQuota: account.boosterQuota || accountFallback.boosterQuota,
       usageTotal: account.usageTotal || account.monthCost || accountFallback.usageTotal,
       todayCalls: account.todayCalls || accountFallback.todayCalls,
+      todayTokens: account.todayTokens || accountFallback.todayTokens || '0',
+      totalTokens: account.totalTokens || accountFallback.totalTokens || '0',
+      averageLatency: account.averageLatency || accountFallback.averageLatency || '-',
+      successRate: account.successRate || accountFallback.successRate || '0%',
       email: user.email || accountFallback.email || '',
       isAdmin: Boolean(user.isAdmin || accountFallback.isAdmin),
     },
@@ -103,7 +110,7 @@ export function normalizeFristDashboard(payload, fallback = createEmptyDashboard
       secret: key.secret,
       preview: key.preview,
       enabled: Boolean(key.enabled),
-      cost: key.cost || '¥0.00',
+      cost: key.cost || '$0.00',
       tokens: key.tokens || '0.00M',
       lastUsed: key.lastUsed || '-',
       expiresAt: key.expiresAt || '-',
@@ -113,6 +120,9 @@ export function normalizeFristDashboard(payload, fallback = createEmptyDashboard
     channelChecks: normalizeChannelChecks(channelChecks, fallback.channelChecks || []),
     modelCatalog: normalizeModelCatalog(modelCatalog, fallback.modelCatalog || []),
     rechargeOptions: normalizeRechargeOptions(rechargeOptions, fallback.rechargeOptions || []),
+    usageRecords: normalizeUsageRecords(payload.usageRecords || fallback.usageRecords || []),
+    recentLogs: normalizeRecentLogs(payload.recentLogs || fallback.recentLogs || []),
+    balanceAlert,
   };
 }
 
@@ -122,14 +132,18 @@ function createEmptyDashboard() {
       userInitials: 'FA',
       plan: '未登录',
       renewalDate: '-',
-      balance: '¥0.00',
-      todayCost: '¥0.00',
-      monthCost: '¥0.00',
-      quotaLeft: '¥0.00',
-      packageQuota: '¥0.00',
-      boosterQuota: '¥0.00',
-      usageTotal: '¥0.00',
+      balance: '$0.00',
+      todayCost: '$0.00',
+      monthCost: '$0.00',
+      quotaLeft: '$0.00',
+      packageQuota: '$0.00',
+      boosterQuota: '$0.00',
+      usageTotal: '$0.00',
       todayCalls: '0 次',
+      todayTokens: '0',
+      totalTokens: '0',
+      averageLatency: '-',
+      successRate: '0%',
       email: '',
       isAdmin: false,
     },
@@ -139,7 +153,18 @@ function createEmptyDashboard() {
     importTargets: ['Claude', 'Codex', 'OpenCode', 'OpenClaw', 'Hermes'],
     modelUsage: [],
     modelCatalog: [],
+    usageRecords: [],
+    recentLogs: [],
     rechargeOptions: [],
+    balanceAlert: {
+      enabled: true,
+      threshold: '$5.00',
+      thresholdUsd: 5,
+      thresholdCny: 36,
+      thresholdCents: 3600,
+      email: '',
+      lastAlertAt: '',
+    },
   };
 }
 
@@ -149,14 +174,18 @@ function guestAccountFallback(fallback = {}) {
     userInitials: 'FA',
     plan: '未登录',
     renewalDate: '-',
-    balance: '¥0.00',
-    todayCost: '¥0.00',
-    monthCost: '¥0.00',
-    quotaLeft: '¥0.00',
-    packageQuota: '¥0.00',
-    boosterQuota: '¥0.00',
-    usageTotal: '¥0.00',
+    balance: '$0.00',
+    todayCost: '$0.00',
+    monthCost: '$0.00',
+    quotaLeft: '$0.00',
+    packageQuota: '$0.00',
+    boosterQuota: '$0.00',
+    usageTotal: '$0.00',
     todayCalls: '0 次',
+    todayTokens: '0',
+    totalTokens: '0',
+    averageLatency: '-',
+    successRate: '0%',
   };
 }
 
@@ -166,7 +195,7 @@ function normalizeModelUsage(rows) {
     const amount = moneyToNumber(row.amount);
     return {
       model: row.model,
-      amount: row.amount || '¥0.00',
+      amount: row.amount || '$0.00',
       calls: row.calls || '1 次',
       tokens: row.tokens || '0.00M',
       percent: Math.max(4, Math.round((amount / total) * 100)),
@@ -177,7 +206,7 @@ function normalizeModelUsage(rows) {
 function zeroModelUsage(rows) {
   return (rows || []).map((row) => ({
     ...row,
-    amount: '¥0.00',
+    amount: '$0.00',
     calls: '0 次',
     tokens: '0.00M',
     percent: 0,
@@ -200,11 +229,40 @@ function normalizeChannelChecks(rows, fallbackRows = []) {
       pingMs: Number(row.pingMs || fallback.pingMs || 0),
       checkedAt: row.checkedAt || new Date().toISOString(),
       officialStatus: ok ? '正常' : '不可用',
-      availability: ok ? '99.9%' : '0%',
+      availability: row.availability || (ok ? '99.9%' : '0%'),
       successLabel: ok ? '最近可用' : '等待补充',
-      history: ok ? ['ok', 'ok', 'ok', 'ok', 'ok', 'ok'] : ['down', 'down', 'down', 'down'],
+      history: Array.isArray(row.history) && row.history.length
+        ? row.history
+        : ok
+          ? ['ok', 'ok', 'ok', 'ok', 'ok', 'ok']
+          : ['down', 'down', 'down', 'down'],
     };
   });
+}
+
+function normalizeUsageRecords(rows) {
+  return (Array.isArray(rows) ? rows : []).map((row, index) => ({
+    id: row.id || `usage-${index + 1}`,
+    apiKey: row.apiKey || row.key || 'fk-live-******',
+    model: row.model || 'unknown',
+    inferenceEffort: row.inferenceEffort || row.reasoningEffort || '默认',
+    endpoint: row.endpoint || '-',
+    type: row.type || '文本',
+    billingMode: row.billingMode || '余额',
+    tokens: row.tokens || '0',
+    amount: row.amount || '$0.00',
+    status: row.status || 'success',
+    at: row.at || '',
+  }));
+}
+
+function normalizeRecentLogs(rows) {
+  return (Array.isArray(rows) ? rows : []).map((row, index) => ({
+    id: row.id || `log-${index + 1}`,
+    type: row.type || 'event',
+    detail: row.detail || '系统事件',
+    at: row.at || '',
+  }));
 }
 
 function normalizeModelCatalog(rows, fallbackRows = []) {
@@ -234,6 +292,22 @@ function normalizeRechargeOptions(rows, fallbackRows = []) {
     plan: row.plan || (Number(row.durationDays || 0) === 1 ? 'day' : 'balance'),
     active: row.active === true || index === 0,
   }));
+}
+
+function normalizeBalanceAlert(row = {}, fallback = {}) {
+  const thresholdUsd = Number(row.thresholdUsd ?? fallback.thresholdUsd ?? 5);
+  const thresholdCny = Number(row.thresholdCny ?? fallback.thresholdCny ?? thresholdUsd * 7.2);
+  const thresholdCents = Number(row.thresholdCents ?? fallback.thresholdCents ?? Math.round(thresholdCny * 100));
+  const normalizedThreshold = Number.isFinite(thresholdCents) && thresholdCents > 0 ? thresholdCents : 3600;
+  return {
+    enabled: row.enabled !== undefined ? Boolean(row.enabled) : fallback.enabled !== false,
+    threshold: row.threshold || fallback.threshold || `$${(normalizedThreshold / 100 / 7.2).toFixed(2)}`,
+    thresholdCny: Number((normalizedThreshold / 100).toFixed(2)),
+    thresholdUsd: Number((normalizedThreshold / 100 / 7.2).toFixed(2)),
+    thresholdCents: normalizedThreshold,
+    email: row.email || fallback.email || '',
+    lastAlertAt: row.lastAlertAt || fallback.lastAlertAt || '',
+  };
 }
 
 function moneyToNumber(value) {

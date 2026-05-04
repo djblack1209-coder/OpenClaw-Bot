@@ -94,8 +94,8 @@
 
 **阶段概要：**
 
-1. **需求理解** — 读 `docs/001-project-map.md` + `docs/060-health.md` → 复述需求 → 拆解用户故事
-2. **技术侦察** — 读注册表 → 读源码 → 搜索开源方案 → 评估方案 → **触发 DOCS-FIRST 则先拉文档**（见 `docs/040-docs-first-protocol.md`）
+1. **需求理解** — 读 `docs/001-project-map.md` + `docs/009-health.md` → 复述需求 → 拆解用户故事
+2. **技术侦察** — 读注册表 → 读源码 → 搜索开源方案 → 评估方案 → **触发 DOCS-FIRST 则先拉文档**（见 `docs/008-sop.md` 一、官方文档优先协议）
 3. **计划制定** — TodoWrite 列步骤 → 标注验证标准
 4. **执行开发** — 逐步实现 → 每步过质量门 → 定期汇报
 5. **质量保证** — 全量测试 → UI 截图验证 → 无回归
@@ -156,7 +156,7 @@ cd packages/clawbot && pytest tests/ -x --tb=short
 - 用"相当于……"类比解释改动
 - 模糊需求 → 直接按最可能理解开始做
 - 进度汇报："一共 N 步，做到第 X 步"
-- 错误翻译参考表 → `docs/041-error-translation-ref.md`
+- 错误翻译参考表 → `docs/008-sop.md` 二、错误翻译参考
 
 ### 交付汇报模板
 ```
@@ -177,9 +177,13 @@ OpenClaw Bot/
 │   ├── 001-project-map.md       ← 项目全景 (必读)
 │   ├── 002-changelog.md         ← 变更日志
 │   ├── 003-docs-index.md        ← 文档总索引
-│   ├── 030-033-*.md             ← 模块/命令/依赖/API 注册表
-│   ├── 040-043-*.md             ← 开发规范
-│   └── 060-health.md            ← 系统健康 + Bug + 技术债
+│   ├── 004-architecture.md      ← 系统架构 + Bot Agent 指令
+│   ├── 005-quickstart.md        ← 启动/部署/灾备/密钥轮换/API注册
+│   ├── 006-registries.md        ← 模块/命令/依赖/API 注册表总集
+│   ├── 007-operations.md        ← 运维操作手册
+│   ├── 008-sop.md               ← 开发规范
+│   ├── 009-health.md            ← 系统健康 + Bug + 技术债
+│   └── 010-feature-specs.md     ← 功能规格总集
 ├── packages/clawbot/            ← Python 后端 (236 .py 文件)
 │   ├── multi_main.py            ← 入口
 │   └── src/                     ← 源码
@@ -194,14 +198,15 @@ OpenClaw Bot/
 
 | 变更类型 | 必须更新 |
 |----------|---------|
-| 新增/删除 Python 模块 | `docs/033-module-registry.md` |
-| 新增/修改命令或按钮 | `docs/031-command-registry.md` |
-| 新增 pip 依赖 | `docs/032-dependency-map.md` |
-| 新增/修改 API Key/LLM | `docs/030-api-pool-registry.md` |
-| 发现 Bug / 技术债 | `docs/060-health.md` |
-| 修复 Bug | `docs/060-health.md` + `docs/002-changelog.md` |
+| 新增/删除 Python 模块 | `docs/006-registries.md`（四、模块索引）|
+| 新增/修改命令或按钮 | `docs/006-registries.md`（二、命令注册表）|
+| 新增 pip 依赖 | `docs/006-registries.md`（三、依赖清单）|
+| 新增/修改 API Key/LLM | `docs/006-registries.md`（一、API 池注册表）|
+| 发现 Bug / 技术债 | `docs/009-health.md` |
+| 修复 Bug | `docs/009-health.md` + `docs/002-changelog.md` |
 | 架构级改动 | `docs/001-project-map.md` |
 | **任何代码变更** | `docs/002-changelog.md` |
+| 新增/移动/删除文档 | `docs/003-docs-index.md` |
 
 ---
 
@@ -229,25 +234,51 @@ OpenClaw Bot/
 
 ## 9. 文档归属 + 命名规范
 
-| 文档类型 | 放在 | 命名 |
-|----------|------|------|
-| 核心入口 | `docs/` 根目录 | `001-009-kebab-case.md` |
-| 架构/商业/审计 | `docs/` 根目录 | `010-019-kebab-case.md` |
-| 操作指南 | `docs/` 根目录 | `020-029-kebab-case.md` |
-| 注册表 | `docs/` 根目录 | `030-039-kebab-case.md` |
-| SOP | `docs/` 根目录 | `040-049-kebab-case.md` |
-| 功能规格 | `docs/` 根目录 | `050-059-yyyy-mm-dd-topic.md` |
-| 状态文档 | `docs/` 根目录 | `060-069-kebab-case.md` |
-| 报告/归档 | `docs/` 根目录 | `080-099-kebab-case-yyyy-mm-dd.md` |
+### 硬性规则（所有 AI 必须遵守）
 
-**禁止**: 中文文件名、空格、主项目文档子目录、在 `docs/` 以外建普通说明文档。`AGENTS.md`、Bot 人设、Skill 文件、第三方包文档属于运行资产，不按主项目文档迁移。
+> **规则 1: 文档唯一存放位置** — `docs/` 根目录是项目文档的 **唯一合法存放位置**。任何 `.md` / `.txt` 项目文档都不允许创建在 `docs/` 以外的任何位置（包括 `apps/`、`packages/` 内的子 docs 目录）。
+
+> **规则 2: 严禁子目录** — `docs/` 内 **禁止创建任何子目录**。所有文档必须扁平化放在 `docs/` 根目录下。不存在"按模块分子文件夹"的例外。
+
+> **规则 3: 统一编号命名** — `docs/` 内的每一个文件都必须使用 `编号-英文名.md` 格式。编号不足 3 位时前面补 0。禁止中文文件名、空格、无编号文件名。
+
+> **规则 4: 编号分配表** — 下表定义了编号范围和对应的文档类型。新增文档必须按类型选择对应编号段，查询 `docs/003-docs-index.md` 找到第一个可用编号。
+
+| 文档类型 | 编号段 | 文件名格式 | 示例 |
+|----------|--------|-----------|------|
+| 核心入口 | 001-009 | `00X-kebab-case.md` | `001-project-map.md` |
+| 架构/设计 | 010-019 | `0XX-kebab-case.md` | `010-omega-v2-architecture.md` |
+| 操作指南 | 020-029 | `0XX-kebab-case.md` | `020-quickstart.md` |
+| 注册表 | 030-039 | `0XX-kebab-case.md` | `030-api-pool-registry.md` |
+| 开发规范/SOP | 040-049 | `0XX-kebab-case.md` | `040-docs-first-protocol.md` |
+| 功能规格 | 050-059 | `0XX-kebab-case.md` | `050-telegram-forum-topic-cutover.md` |
+| 状态文档 | 060-069 | `0XX-kebab-case.md` | `060-health.md` |
+| 报告/归档 | 080-099 | `0XX-kebab-case.md` | `080-some-report.md` |
+
+### 排除范围（不受以上规则约束）
+
+以下文件属于 **运行资产** 或 **第三方包文档**，不归入 `docs/` 治理：
+- `AGENTS.md`、`README.md`（项目根入口文件）
+- `apps/openclaw/` 下的 Bot 人设/Skill 文件（`SOUL.md`、`USER.md`、`SKILL.md` 等）
+- `packages/*` 里的上游包文档（`openclaw-npm/docs/`、`awesome-*` 等）
+- 虚拟环境和 `node_modules` 内的文档
+- `.learnings/` 目录（废弃，自学习经验请直接写入 `docs/009-health.md`）
+
+### 新增文档流程
+
+1. 确认文档类型 → 查表确定编号段
+2. 查 `docs/003-docs-index.md` 确认编号未被占用
+3. 创建文件，文件名格式: `docs/XXX-english-name.md`
+4. **立即更新** `docs/003-docs-index.md` 注册新文档
 
 ---
 
 ## 10. 禁止事项
 
 - **NEVER** 在 `docs/` 以外创建 `.md` 文档
-- **NEVER** 修改 `apps/openclaw/` 下的文件路径
+- **NEVER** 在 `docs/` 内创建子目录
+- **NEVER** 在 `docs/` 内使用非编号文件名（禁止中文、空格、无编号）
+- **NEVER** 修改 `apps/openclaw/` 下的 Bot 人设/Skill 运行资产路径
 - **NEVER** 提交 `.env` 等密钥文件
 - **NEVER** 声称完成但未更新 CHANGELOG
 - **NEVER** 发现 Bug 不登记 HEALTH.md
@@ -259,20 +290,20 @@ OpenClaw Bot/
 | 我要... | 去看... |
 |---------|---------|
 | 理解项目 | `docs/001-project-map.md` |
-| 已知问题 | `docs/060-health.md` |
+| 已知问题 | `docs/009-health.md` |
 | 变更历史 | `docs/002-changelog.md` |
 | 文档索引 | `docs/003-docs-index.md` |
-| 模块/命令/依赖 | `docs/030-api-pool-registry.md`、`docs/031-command-registry.md`、`docs/032-dependency-map.md`、`docs/033-module-registry.md` |
-| 文档拉取规范 | `docs/040-docs-first-protocol.md` |
-| 错误翻译参考 | `docs/041-error-translation-ref.md` |
-| 上次交接 | `docs/061-handoff.md` |
+| 模块/命令/依赖 | `docs/006-registries.md` |
+| 文档拉取规范 | `docs/008-sop.md` |
+| 错误翻译参考 | `docs/008-sop.md` |
+| 上次交接 | `docs/012-handoff.md` |
 | 运行测试 | `cd packages/clawbot && pytest` |
 
 ---
 
 ## 12. 官方文档优先协议 (简要版)
 
-> 完整版: `docs/040-docs-first-protocol.md`
+> 完整版: `docs/008-sop.md` 一、官方文档优先协议
 
 **核心规则**: 涉及以下技术栈的代码修改，**必须先拉文档再写代码**：
 LiteLLM / PTB / FastAPI / Tauri v2 / CrewAI / browser-use / crawl4ai / Redis / mem0 / httpx / APScheduler / 任何新库
@@ -303,7 +334,7 @@ cd packages/clawbot && pytest tests/ --tb=no -q 2>&1 | tail -5
 ## 14. 会话交接协议
 
 ### 对话结束时（有未完成工作）
-写入 `docs/061-handoff.md`，格式：
+写入 `docs/012-handoff.md`，格式：
 ```markdown
 ## [YYYY-MM-DD HH:MM] 会话交接摘要
 ### 本次完成了什么
@@ -314,7 +345,7 @@ cd packages/clawbot && pytest tests/ --tb=no -q 2>&1 | tail -5
 只保留最近 5 条。
 
 ### 新对话开始时（用户说"继续"）
-读 `docs/061-handoff.md` → 读 `docs/060-health.md` → 读 `docs/002-changelog.md` 最近 3 条 → 汇报 → 恢复上下文 → 拍新基线
+读 `docs/012-handoff.md` → 读 `docs/009-health.md` → 读 `docs/002-changelog.md` 最近 3 条 → 汇报 → 恢复上下文 → 拍新基线
 
 ---
 
@@ -334,7 +365,7 @@ cd packages/clawbot && pytest tests/ --tb=no -q 2>&1 | tail -5
 
 ## 16. 健康汇报
 
-用户问"系统怎么样"时，从 `docs/060-health.md` 读取数据，用大白话汇报：
+用户问"系统怎么样"时，从 `docs/009-health.md` 读取数据，用大白话汇报：
 - 整体状态 (✅/🟡/🟠/🔴)
 - 正常功能 / 小问题 / 需关注 / 严重问题
 - 最近改动和建议下一步

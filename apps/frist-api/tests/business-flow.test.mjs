@@ -23,13 +23,13 @@ const dashboardSeed = {
   accountSummary: {
     userInitials: 'DJ',
     plan: '月卡 Pro',
-    balance: '¥81.58',
-    todayCost: '¥18.42',
-    monthCost: '¥428.90',
-    quotaLeft: '¥81.58',
-    packageQuota: '¥64.00',
-    boosterQuota: '¥17.58',
-    usageTotal: '¥428.90',
+    balance: '$11.33',
+    todayCost: '$2.56',
+    monthCost: '$59.57',
+    quotaLeft: '$11.33',
+    packageQuota: '$8.89',
+    boosterQuota: '$2.44',
+    usageTotal: '$59.57',
     todayCalls: '186 次',
     renewalDate: '2026-05-28',
   },
@@ -39,7 +39,7 @@ const dashboardSeed = {
       name: '主力 Key',
       preview: 'fk-live-••••••9x2a',
       enabled: true,
-      cost: '¥428.90',
+      cost: '$59.57',
       tokens: '25.58M',
       lastUsed: '20:16',
       expiresAt: '-',
@@ -78,8 +78,8 @@ const dashboardSeed = {
     },
   ],
   modelUsage: [
-    { model: 'Claude', family: 'Anthropic', percent: 42, amount: '¥179.22', calls: '326 次', tokens: '9.83M' },
-    { model: 'OpenAI', family: 'OpenAI', percent: 31, amount: '¥132.96', calls: '284 次', tokens: '8.12M' },
+    { model: 'Claude', family: 'Anthropic', percent: 42, amount: '$24.89', calls: '326 次', tokens: '9.83M' },
+    { model: 'OpenAI', family: 'OpenAI', percent: 31, amount: '$18.47', calls: '284 次', tokens: '8.12M' },
   ],
   rechargeOptions: [
     { label: 'Codex API 30刀额度/日卡', caption: '1 天', plan: 'day', cny: '¥5.88', active: true },
@@ -110,7 +110,7 @@ describe('Frist-API customer business chain', () => {
     assert.equal(created.key.secret, 'fk-live-user-1-key-1');
     assert.equal(state.apiKeys[0].enabled, true);
     assert.equal(state.apiKeys[0].modelGroup, 'Claude');
-    assert.equal(deriveDashboardData(state, dashboardSeed).accountSummary.balance, '¥89.58');
+    assert.equal(deriveDashboardData(state, dashboardSeed).accountSummary.balance, '$2.68');
 
     state = setCustomerKeyEnabled(state, { id: 'key-1', enabled: false });
     assert.throws(() => buildBusinessImportUrl(state, { target: 'Claude', baseUrl: 'https://api.frist.example.com/v1' }), /没有可用的 API Key/);
@@ -365,6 +365,8 @@ describe('Frist-API page business wiring', () => {
       'data-pay-submit',
       'data-redeem-code',
       'data-refresh-health',
+      'data-server-recovery',
+      'data-retry-dashboard',
       'data-action-message',
       'data-auth-feedback',
       'data-key-feedback',
@@ -389,11 +391,12 @@ describe('Frist-API page business wiring', () => {
     assert.equal(page.includes('authSubmit'), true, '账户弹窗渲染时应该按当前模式隐藏无关提交动作');
     assert.equal(page.includes('aria-selected'), true, '账户模式切换应该同步辅助技术选中状态');
     assert.equal(page.includes('.auth-panel__actions [hidden]'), true, '账户弹窗按钮隐藏态不能被通用按钮样式覆盖');
-    assert.equal(page.includes('/api/frist/challenge'), true, '公开注册登录应该接入轻量挑战，避免机器人批量撞库');
+    assert.equal(page.includes('/api/frist/challenge'), true, '公开注册应该接入安全挑战，避免机器人批量撞库');
     assert.equal(page.includes('/api/frist/admin/claim'), true, '管理员身份码应该从用户账号侧一次性激活');
     assert.equal(page.includes('challenge.required !== false'), true, '前端只应在服务端要求时强制填写安全验证');
-    assert.equal(page.includes('captchaId'), true, '注册登录请求应该带服务端挑战 ID');
-    assert.equal(page.includes('captchaAnswer'), true, '注册登录请求应该带用户填写的挑战答案');
+    assert.equal(page.includes('requireCaptcha: true'), true, '登录不应再强制验证码，注册才需要服务端挑战');
+    assert.equal(page.includes('captchaId'), true, '注册请求应该带服务端挑战 ID');
+    assert.equal(page.includes('captchaAnswer'), true, '注册请求应该带用户填写的挑战答案');
     assert.equal(page.includes('data-admin-token'), false, '用户端不能暴露管理 API 令牌输入框');
   });
 
@@ -410,8 +413,10 @@ describe('Frist-API page business wiring', () => {
       'setButtonBusy(createKey',
       'setButtonBusy(login',
       'handleRefreshHealth(event)',
+      'handleRetryDashboard',
       'event?.preventDefault()',
       "setActionMessage('连通性刷新中",
+      "setActionMessage('正在重新连接",
       "setActionMessage('连通性已刷新",
     ]) {
       assert.equal(appScript.includes(required), true, `${required} 应该让关键动作有明确反馈`);
@@ -426,6 +431,7 @@ describe('Frist-API page business wiring', () => {
       '.field-feedback--success',
       '.provider-models',
       '.provider-meta',
+      '.server-recovery',
     ]) {
       assert.equal(styles.includes(required), true, `${required} 应该支撑明显反馈和升级后的连通性展示`);
     }
@@ -453,10 +459,14 @@ describe('Frist-API page business wiring', () => {
       'data-opencode-provider-json',
       'data-copy-opencode-config',
       'Codex',
+      'Gemini',
       'OpenCode',
       'OpenCode 完整配置',
       'OpenClaw',
       'Hermes',
+      'Harmes',
+      'data-import-family-option="DeepSeek"',
+      'data-import-family-option="Gemini"',
     ]) {
       assert.equal(switchPanel.includes(required), true, `${required} 应该出现在导入页面`);
     }
@@ -483,6 +493,43 @@ describe('Frist-API page business wiring', () => {
     );
   });
 
+  it('wires the expanded customer shell pages, API search, endpoint display and usage records', () => {
+    const userHtml = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+    const appScript = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    const combined = `${userHtml}\n${appScript}\n${styles}`;
+
+    for (const view of ['records', 'subscription', 'redeem', 'invite', 'profile']) {
+      assert.equal(userHtml.includes(`data-view="${view}"`), true, `${view} 页面应该存在`);
+      assert.equal(userHtml.includes(`data-route="${view}"`), true, `${view} 应该能从工作台进入`);
+    }
+
+    for (const required of [
+      'data-api-search',
+      '搜索名称或 key',
+      'key-endpoint',
+      'icon-button',
+      'data-token-trend',
+      'data-recent-logs',
+      'data-usage-records',
+      'data-usage-records-empty',
+      'API 密钥',
+      '推理强度',
+      '计费模式',
+      'renderTrendChart',
+      'renderRecentLogs',
+      'renderUsageRecords',
+      'usageRecords',
+      'recentLogs',
+      'manual-collection-panel',
+      'profile-surface',
+      'subscription-surface',
+      'records-table',
+    ]) {
+      assert.equal(combined.includes(required), true, `${required} 应该接入新版用户壳`);
+    }
+  });
+
   it('guides customers through cross-family CC Switch imports and Claude developer mode', () => {
     const userHtml = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
     const appScript = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
@@ -496,12 +543,15 @@ describe('Frist-API page business wiring', () => {
       'data-import-family-option="OpenAI"',
       'data-import-family-option="Claude"',
       'data-import-primary-row',
+      'danger-text',
       'data-cross-import-title',
       'data-cross-import-copy',
       'data-claude-developer-guide',
       'data-claude-guide-step',
       'data-walkthrough="openai-to-claude"',
       'data-walkthrough="claude-to-codex"',
+      'data-copy-flow-codex-toml',
+      'data-flow-codex-toml',
       'Configure Third-Party Inference...',
       'Gateway base URL',
       'Gateway API key',
@@ -527,21 +577,21 @@ describe('Frist-API page business wiring', () => {
       'state.modelGroup = family.dataset.importFamilyOption',
       'cross-import-guide',
       'Codex 最强开发配置',
-      'Playwright',
-      'Superpowers',
-      'open-computer-use MCP',
-      '系统权限授权',
+      '@playwright/mcp@latest',
+      'superpowers-mcp@latest',
+      'open-computer-use@latest',
+      'data-copy-flow-codex-toml',
       'syncWalkthroughFields',
       'setActiveWalkthrough',
       'data-flow-claude-base',
       'data-flow-codex-base',
     ]) {
-      assert.equal(`${appScript}\n${styles}`.includes(required), true, `${required} 应该接入导入页状态和样式`);
+      assert.equal(`${switchPanel}\n${appScript}\n${styles}`.includes(required), true, `${required} 应该接入导入页状态和样式`);
     }
   });
 
   it('documents the payment last-mile work that still needs the operator', () => {
-    const runbook = readFileSync(new URL('../../../docs/024-frist-api-operator-runbook.md', import.meta.url), 'utf8');
+    const runbook = readFileSync(new URL('../../../docs/007-operations.md', import.meta.url), 'utf8');
 
     for (const required of [
       '支付宝当面付',
@@ -570,12 +620,23 @@ describe('Frist-API page business wiring', () => {
 
     for (const required of [
       'data-playground-model',
+      'data-playground-model-search',
+      'data-playground-model-grid',
+      'data-playground-family-filter',
+      'data-playground-selected-model',
+      'data-playground-diagnostics',
+      'data-playground-suggestion',
       'data-playground-send',
       'data-playground-test',
       'data-playground-status',
       'data-image-output',
       'data-delete-message',
       'data-clear-playground',
+      'filteredPlaygroundModels',
+      'renderSelectedPlaygroundModel',
+      'renderPlaygroundDiagnostics',
+      'data-model-catalog-search',
+      'data-select-playground-model',
       'buildImageRequestBody',
       "quality: 'low'",
       "output_format: 'png'",
@@ -586,6 +647,9 @@ describe('Frist-API page business wiring', () => {
       'data-win-command',
       'data-copy-mac-command',
       'data-copy-win-command',
+      "event.key === 'Enter'",
+      '!event.shiftKey',
+      'handlePlaygroundSend()',
       'renderPlayground',
       'renderAnalytics',
       'renderModelCatalog',
@@ -610,12 +674,38 @@ describe('Frist-API page business wiring', () => {
     }
   });
 
+  it('wires customer balance alert controls through the billing page and browser client', () => {
+    const userHtml = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+    const appScript = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
+    const serverClient = readFileSync(new URL('../src/serverClient.js', import.meta.url), 'utf8');
+    const combined = `${userHtml}\n${appScript}\n${serverClient}`;
+
+    for (const required of [
+      'data-balance-alert-card',
+      'data-balance-alert-enabled',
+      'data-balance-alert-threshold',
+      'data-balance-alert-email',
+      'data-balance-alert-save',
+      'data-balance-alert-test',
+      'data-balance-alert-feedback',
+      'renderBalanceAlert',
+      'handleBalanceAlertSave',
+      'handleBalanceAlertTest',
+      'saveBalanceAlert',
+      'sendBalanceAlertTest',
+      '/api/frist/balance-alert',
+      '/api/frist/balance-alert/test',
+    ]) {
+      assert.equal(combined.includes(required), true, `${required} 应该接入用户余额预警设置`);
+    }
+  });
+
   it('renders every API Key status from its own enabled flag instead of a global switch', () => {
     assert.match(page, /class="key-state \$\{key\.enabled \? 'is-on' : ''\}"/);
     assert.match(page, /\$\{key\.enabled \? '已开启' : '已关闭'\}/);
-    assert.match(page, /data-key-name="\$\{key\.id\}"/);
-    assert.match(page, /data-rename-key="\$\{key\.id\}"/);
-    assert.match(page, /data-delete-key="\$\{key\.id\}"/);
+    assert.match(page, /data-key-name="\$\{escapeHtml\(key\.id\)\}"/);
+    assert.match(page, /data-rename-key="\$\{escapeHtml\(key\.id\)\}"/);
+    assert.match(page, /data-delete-key="\$\{escapeHtml\(key\.id\)\}"/);
     assert.match(page, /renameKey\(/);
     assert.match(page, /deleteKey\(/);
   });
@@ -626,7 +716,7 @@ describe('Frist-API page business wiring', () => {
       userHtml.match(/<section class="view-panel" data-view="docs"[\s\S]*?<section class="view-panel" data-view="api"/)?.[0] ||
       '';
 
-    for (const required of ['Codex', 'Claude', 'OpenCode', 'OpenClaw', 'Hermes', 'Harmes']) {
+    for (const required of ['Codex', 'Claude', 'Gemini', 'OpenCode', 'OpenClaw', 'Hermes', 'Harmes']) {
       assert.equal(docsPanel.includes(required), true, `${required} 应该出现在使用教程里`);
     }
   });
@@ -667,6 +757,30 @@ describe('Frist-API page business wiring', () => {
     ]) {
       assert.equal(adminPage.includes(required), true, `${required} 应该只存在于管理端`);
       assert.equal(page.includes(required), false, `${required} 不应该出现在用户端`);
+    }
+  });
+
+  it('escapes dynamic admin and customer HTML fields before writing innerHTML', () => {
+    const adminScript = readFileSync(new URL('../src/admin.js', import.meta.url), 'utf8');
+    const appScript = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
+
+    for (const required of [
+      'escapeHtml(item.providerGroup)',
+      'escapeHtml(item.wasteText',
+      'escapeHtml(event.detail)',
+      'escapeHtml(event.at',
+    ]) {
+      assert.equal(adminScript.includes(required), true, `${required} 应该保护管理端动态 HTML`);
+    }
+
+    for (const required of [
+      'safePercent(item.percent)',
+      'escapeHtml(key.id)',
+      'escapeHtml(key.preview)',
+      'escapeHtml(option.label',
+      'escapeHtml(target)',
+    ]) {
+      assert.equal(appScript.includes(required), true, `${required} 应该保护用户端动态 HTML`);
     }
   });
 });

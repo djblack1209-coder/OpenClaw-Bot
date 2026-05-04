@@ -205,10 +205,10 @@ function renderInventorySummary(items) {
     .map(
       (item) => `
         <article class="inventory-summary-row">
-          <strong>${item.providerGroup} · ${item.pool}</strong>
-          <span>${item.healthyCount}/${item.totalCount}</span>
-          <b>${item.quotaRemaining}/${item.quotaTotal}</b>
-          <small>${item.wasteText || '浪费 ¥0.00'}</small>
+          <strong>${escapeHtml(item.providerGroup)} · ${escapeHtml(item.pool)}</strong>
+          <span>${escapeHtml(item.healthyCount)}/${escapeHtml(item.totalCount)}</span>
+          <b>${escapeHtml(item.quotaRemaining)}/${escapeHtml(item.quotaTotal)}</b>
+          <small>${escapeHtml(item.wasteText || '浪费 ¥0.00')}</small>
         </article>
       `,
     )
@@ -228,9 +228,9 @@ function renderAudit(events) {
     .map(
       (event) => `
         <article class="audit-row">
-          <strong>${event.type}</strong>
-          <span>${event.detail}</span>
-          <small>${event.at || '-'}</small>
+          <strong>${escapeHtml(event.type)}</strong>
+          <span>${escapeHtml(event.detail)}</span>
+          <small>${escapeHtml(event.at || '-')}</small>
         </article>
       `,
     )

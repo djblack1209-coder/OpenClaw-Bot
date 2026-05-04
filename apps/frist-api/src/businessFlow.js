@@ -16,6 +16,7 @@ const DAY_CARD_CODES = new Map([
 ]);
 
 const DEFAULT_PUBLIC_MODEL = 'gpt-5.5';
+const DISPLAY_USD_TO_CNY = 7.2;
 const PRIMARY_SOURCE_TYPE = 'authorized';
 const BACKUP_SOURCE_TYPES = new Set(['cpa_json_backup', 'chong_backup', 'manual_backup']);
 
@@ -237,13 +238,13 @@ export function deriveDashboardData(state, fallback) {
     accountSummary: {
       userInitials: state.customer.userInitials,
       plan: state.customer.plan,
-      balance: formatCny(state.customer.balanceCents),
-      todayCost: formatCny(state.counters.todayCostCents),
-      monthCost: formatCny(state.counters.monthCostCents),
-      quotaLeft: formatCny(state.customer.balanceCents),
-      packageQuota: formatCny(state.customer.packageQuotaCents),
-      boosterQuota: formatCny(state.customer.boosterQuotaCents),
-      usageTotal: formatCny(state.counters.monthCostCents),
+      balance: formatUsdFromCnyCents(state.customer.balanceCents),
+      todayCost: formatUsdFromCnyCents(state.counters.todayCostCents),
+      monthCost: formatUsdFromCnyCents(state.counters.monthCostCents),
+      quotaLeft: formatUsdFromCnyCents(state.customer.balanceCents),
+      packageQuota: formatUsdFromCnyCents(state.customer.packageQuotaCents),
+      boosterQuota: formatUsdFromCnyCents(state.customer.boosterQuotaCents),
+      usageTotal: formatUsdFromCnyCents(state.counters.monthCostCents),
       todayCalls: `${state.counters.todayCalls} 次`,
       renewalDate: state.customer.renewalDate,
     },
@@ -253,7 +254,7 @@ export function deriveDashboardData(state, fallback) {
       secret: key.secret,
       preview: key.preview,
       enabled: key.enabled,
-      cost: formatCny(key.costCents),
+      cost: formatUsdFromCnyCents(key.costCents),
       tokens: key.tokens,
       lastUsed: key.lastUsed,
       expiresAt: key.expiresAt,
@@ -530,6 +531,10 @@ function integerFromText(value) {
 
 function formatCny(cents) {
   return `¥${(Number(cents || 0) / 100).toFixed(2)}`;
+}
+
+function formatUsdFromCnyCents(cents) {
+  return `$${(Number(cents || 0) / 100 / DISPLAY_USD_TO_CNY).toFixed(2)}`;
 }
 
 function maskKey(value) {

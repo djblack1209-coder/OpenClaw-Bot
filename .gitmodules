@@ -1,0 +1,3 @@
+[submodule "packages/new-api-upstream"]
+	path = packages/new-api-upstream
+	url = https://github.com/QuantumNous/new-api.git

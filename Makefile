@@ -16,7 +16,7 @@ PYTHON ?= $(shell \
 FRONTEND := apps/openclaw-manager-src
 FRIST_API := apps/frist-api
 
-.PHONY: test lint format typecheck docker clean help ci-local syntax-check frist-api-test frist-api-dev frist-api-static frist-api-up frist-api-down
+.PHONY: test lint format typecheck docker clean help ci-local syntax-check frist-api-test frist-api-dev frist-api-static frist-api-up frist-api-down new-api-check new-api-sync
 
 ## ─── 帮助 ───
 help: ## 显示所有可用命令
@@ -54,6 +54,12 @@ frist-api-up: ## Docker 启动 Frist-API 网站 + New-API 核心原型
 
 frist-api-down: ## Docker 停止 Frist-API 原型
 	docker compose -f docker-compose.frist-api.yml down
+
+new-api-check: ## 检查 New-API 上游源码和镜像是否同步到最新版
+	scripts/sync_new_api_upstream.sh check
+
+new-api-sync: ## 同步 New-API submodule 指针和 docker-compose 镜像 tag 到最新版
+	scripts/sync_new_api_upstream.sh update
 
 ## ─── 格式化 ───
 format: ## Ruff 自动格式化

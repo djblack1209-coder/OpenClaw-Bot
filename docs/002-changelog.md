@@ -5,6 +5,310 @@
 
 ## 最近更新（2026-05）
 
+## [2026-05-04] Frist-API 仓库清理与离线恢复体验
+> 领域: `frontend` | `docs`
+> 影响模块: `Frist-API`, `docs`
+> 关联问题: HI-862
+
+### 变更内容
+- 补齐后端不可用时的用户恢复路径：工作台显示“后端暂不可用”恢复条，说明当前为空数据模式，并提供一键重新连接按钮。
+- 重新连接按钮复用现有 Dashboard 加载链路，成功后自动隐藏恢复条，失败时保留明确错误提示。
+- 同步 Frist-API Web 操作注册表、快速启动文档和 HEALTH，并修正系统健康摘要接口的新版文档路径，避免文档和接口仍指向已删除的旧编号文件。
+
+### 文件变更
+- `apps/frist-api/index.html` — 增加后端恢复提示和重新连接入口
+- `apps/frist-api/src/app.js` — 增加离线恢复条渲染和重试逻辑
+- `apps/frist-api/src/styles.css` — 增加恢复提示的桌面/移动样式
+- `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/business-flow.test.mjs` — 增加离线恢复体验回归钩子
+- `packages/clawbot/src/api/routers/system.py` — 健康摘要读取新版 `docs/009-health.md`
+- `docs/005-quickstart.md` / `docs/006-registries.md` / `docs/009-health.md` — 同步操作入口、文档路径和健康状态
+
+## [2026-05-04] Frist-API DeepSeek 官方模型对齐
+> 领域: `frontend` | `backend` | `ai-pool` | `docs`
+> 影响模块: `Frist-API`, `CC Switch`, `Codex`, `DeepSeek`, `docs`
+> 关联问题: HI-858, HI-861
+
+### 变更内容
+- 用 DeepSeek 官方 live 文档重新核对 Codex DeepSeek 导入逻辑：官方 OpenAI 兼容入口继续可使用 `https://api.deepseek.com/v1`，但默认模型已不应继续锁定旧 `deepseek-chat`。
+- 将 DeepSeek 新导入默认模型改为 `deepseek-v4-flash`，并把 `deepseek-v4-pro` 加入 DeepSeek 模型清单；`deepseek-chat` / `deepseek-reasoner` 继续保留为旧配置兼容，避免已有导入立刻失效。
+- 同步 Workbench 模型目录、CC Switch 指引、New-API 桥接默认模型和服务端默认目录，避免前端、后端、桥接层显示不同模型。
+- 已部署到腾讯云 `/opt/frist-api`，远端应用备份为 `backups/frist-api-app-20260504-104527-before-deepseek-v4.tgz`；公网首页 200，游客看板 200，模型目录包含 `deepseek-v4-flash`，未授权 `/v1/models` 仍为 401，容器为 healthy。
+- 验证结果: `node --check src/core.js src/app.js src/admin.js server/server.js server/shared.js server/newApiBridge.js` 通过；聚焦 `node --test tests/core.test.mjs tests/server.test.mjs` 为 90/90 通过；Frist-API `npm test` 为 118/118 通过；`make new-api-check` 确认 New-API 仍同步到 GitHub latest `v1.0.0-rc.2`。
+
+### 文件变更
+- `apps/frist-api/src/core.js` — DeepSeek 默认模型和强度排序改为 v4 优先，保留旧模型兼容
+- `apps/frist-api/src/app.js` / `apps/frist-api/index.html` — 同步前端模型目录和 Codex DeepSeek 指引
+- `apps/frist-api/server/server.js` / `apps/frist-api/server/shared.js` / `apps/frist-api/server/newApiBridge.js` — 同步服务端目录、探测候选和 New-API 桥接默认模型
+- `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/server.test.mjs` — 覆盖新默认模型和旧模型兼容
+- `docs/009-health.md` / `docs/007-operations.md` — 同步审计结论和仍需真实 DeepSeek Key 实测的闭环项
+
+## [2026-05-04] Frist-API 用户体验与安全审计修复
+> 领域: `backend` | `frontend` | `docs`
+> 影响模块: `Frist-API`, `Auth`, `Workbench UI`, `docs`
+> 关联问题: HI-850, HI-851, HI-852, HI-860
+
+### 变更内容
+- 明确本轮审计范围为 `apps/frist-api` 模块、New-API 同步桥接、部署配置和用户实际路径；不将其描述为 OpenEverything 全仓所有模块审计。
+- 将 Frist-API 新注册和改密密码从 SHA-256 迁移为 Node 内置 PBKDF2-SHA256 慢哈希；历史 SHA-256 用户登录成功后自动升级哈希，不新增依赖、不要求一次性数据库迁移。
+- HTTPS 公网网关或反向代理 HTTPS 请求下，注册和登录 Session Cookie 自动增加 `Secure`，继续保留 `HttpOnly` 和 `SameSite=Lax`。
+- 删除未使用的旧 SHA-256 密码哈希导出，减少后续维护时误用旧逻辑的风险。
+- 补齐用户端和管理端动态 `innerHTML` 字段转义，覆盖管理端库存摘要/审计日志、用户端 API Key 属性、充值套餐、导入目标、进度条百分比等位置。
+- 使用 GitHub live API 和 `make new-api-check` 确认 New-API 当前 latest release、本地 submodule 和 Compose 镜像均为 `v1.0.0-rc.2`。
+- 验证结果: Frist-API `npm test` 116/116 通过；聚焦回归 `node --test tests/business-flow.test.mjs tests/server.test.mjs` 79/79 通过；语法检查和 `git diff --check` 通过；公网游客看板返回 11 个模型目录、9 个渠道检查并包含 DeepSeek。
+
+### 文件变更
+- `apps/frist-api/server/server.js` — 增加 PBKDF2 密码哈希、旧哈希登录迁移和 HTTPS `Secure` Cookie
+- `apps/frist-api/server/shared.js` — 移除未使用的旧 SHA-256 密码哈希导出
+- `apps/frist-api/src/app.js` — 补齐动态 HTML 转义和百分比钳制
+- `apps/frist-api/src/admin.js` — 补齐管理端库存摘要与审计日志转义
+- `apps/frist-api/tests/business-flow.test.mjs` / `apps/frist-api/tests/server.test.mjs` — 增加密码哈希迁移、Cookie Secure 和 HTML 转义回归
+- `docs/009-health.md` — 同步已修复问题和仍需闭环的架构缺口
+
+## [2026-05-04] Frist-API 模型测试台按 New-API 控制台逻辑重构
+> 领域: `frontend` | `docs`
+> 影响模块: `Frist-API`, `Playground`, `Model Catalog`, `docs`
+> 关联问题: HI-858
+
+### 变更内容
+- 参考 New-API 的 Playground、模型目录和使用记录页面组织方式，把 Frist-API 广场从单一下拉聊天框改为“模型浏览器 + 当前模型详情 + 连通诊断 + 测试台”。
+- 模型选择恢复搜索、分组筛选、可用状态、供应商、端点类型和计费信息展示，避免用户误以为只剩少量模型。
+- 模型广场增加搜索框和一键跳转测试台，模型卡片可直接选择测试或复制模型名。
+- 保留 Refero 深色工作台视觉和 Frist-API 的 CC Switch / Codex / DeepSeek 特色，不改网关计费、路由和 New-API 桥接业务逻辑。
+- 已部署到腾讯云 `/opt/frist-api`，远端应用备份为 `backups/frist-api-app-20260504-090503.tgz`；公网模型测试台返回 12 行模型入口，游客看板返回 11 个模型目录和 9 个服务检查，未授权 `/v1/models` 仍为 401。
+- 验证结果: `node --check apps/frist-api/src/app.js apps/frist-api/src/admin.js apps/frist-api/server/server.js` 通过；Frist-API `npm test` 114/114 通过；`git diff --check` 通过；Playwright 桌面/390px 移动端截图无横向溢出。
+
+### 文件变更
+- `apps/frist-api/index.html` — 重构广场布局，新增模型浏览器、诊断区、快捷提示和模型目录搜索
+- `apps/frist-api/src/app.js` — 增加模型筛选、选择、状态摘要和测试台诊断渲染
+- `apps/frist-api/src/styles.css` — 增加测试台、模型行、当前模型面板和响应式样式
+- `apps/frist-api/tests/business-flow.test.mjs` / `apps/frist-api/tests/core.test.mjs` — 覆盖 New-API 风格模型选择和测试台 UI 钩子
+
+## [2026-05-04] Frist-API Refero 风格控制台 UI 改造
+> 领域: `frontend` | `docs`
+> 影响模块: `Frist-API`, `Workbench UI`, `docs`
+> 关联问题: HI-858
+
+### 变更内容
+- 借鉴 Refero Hyperstudio 风格，把 Frist-API 用户端和管理端统一为深色控制台视觉：黑色画布、琥珀重点、绿色可用状态、8px 圆角和更克制的层级阴影。
+- 保留现有前端路由和业务逻辑，仅通过 `data-design-system="refero-hyperstudio"`、CSS token 和可复用组件类调整整体 UI 壳。
+- 首页模型消耗、渠道连通、最近日志、模型目录、使用记录和 API Key 列表增加生产可用空态；数据加载阶段增加骨架行和 `aria-busy`。
+- 使用记录页额外增加表格外独立空态，避免小屏首次访问时只看到横向滚动表格里的截断提示。
+- 静态预览或后端返回非 JSON 时，不再把 `Unexpected token` 这类技术错误直接暴露给用户，统一提示后端暂不可用并保留空数据壳。
+- 工作台导航增加 `aria-current="page"`，Token 趋势条增加 `role="img"` 与描述标签，继续保留跳转主内容和可见焦点态。
+- 验证结果: `node --check apps/frist-api/src/app.js` 通过；Frist-API `npm test` 114/114 通过。
+
+### 文件变更
+- `apps/frist-api/index.html` / `apps/frist-api/admin.html` — 接入 Refero 风格设计系统标记、缓存版本和初始加载语义
+- `apps/frist-api/src/styles.css` — 新增深色控制台设计 token、按钮/卡片/表格/图表/空态/骨架屏可复用样式
+- `apps/frist-api/src/app.js` — 增加加载态、空态、当前页无障碍状态和图表可访问标签
+- `apps/frist-api/tests/core.test.mjs` — 增加 Refero 风格、加载态和可访问性回归钩子
+- `docs/006-registries.md` / `docs/009-health.md` — 同步 Frist-API UI 状态和入口说明
+
+## [2026-05-03] Frist-API 登录验证码与 CC Switch 体验修正
+> 领域: `frontend` | `backend` | `docs`
+> 影响模块: `Frist-API`, `CC Switch`, `Playground`, `docs`
+> 关联问题: HI-855, HI-858
+
+### 变更内容
+- 登录接口移除验证码校验，保留 IP 频率限制；注册继续要求验证码挑战。
+- 注册验证码从简单加法改为多题型挑战，支持字符位置、倒序、数字抽取和混合算式，并限制单个挑战错误次数。
+- 账户弹窗只在注册模式显示验证码，切回登录会清空验证码状态。
+- 工作台左侧导航移除数字编号，只保留清晰页面名称。
+- 广场输入框支持 Enter 直接发送，Shift+Enter 保留换行。
+- CC Switch 页面压缩冗余文字，突出 Claude 不带 `/v1`、Codex 必须带 `/v1` 等关键点，并把流程图里的 Codex 终端配置改为可复制。
+- 腾讯云 `/opt/frist-api` 已部署本轮改动，远端代码备份为 `backups/frist-api-app-20260504-073450.tgz`，运行数据备份为 `backups/runtime-20260504-073450.json`；目标测试账号总可用额度已校准为 `$1000.00`。
+- 验证结果: 本地 Frist-API `npm test` 114/114 通过；语法检查和 `git diff --check` 通过；Playwright 桌面/移动检查登录验证码、注册挑战、CC Switch 页面和移动端横向溢出通过；远端本机/公网首页 200，验证码接口正常，未授权 `/v1/models` 401，容器 `healthy`。
+
+### 文件变更
+- `apps/frist-api/server/server.js` — 调整登录/注册验证码策略并增强验证码挑战
+- `apps/frist-api/index.html` — 移除侧栏编号，重构 CC Switch 教程重点和可复制终端块
+- `apps/frist-api/src/app.js` — 登录免验证码、注册专用验证码、广场 Enter 发送和流程图复制交互
+- `apps/frist-api/src/styles.css` — 优化 CC Switch 布局密度、重点标红和导航样式
+- `apps/frist-api/tests/*.mjs` — 覆盖注册验证码、登录免验证码、侧栏编号移除、广场 Enter 发送和 CC Switch 可复制终端
+- `docker-compose.frist-api.yml` / `apps/frist-api/deploy/production.env.example` — 登记验证码错误次数配置
+- `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步入口、生产配置和健康状态
+
+## [2026-05-03] Frist-API 接入 New-API 业务桥接与定时同步
+> 领域: `backend` | `infra` | `docs`
+> 影响模块: `Frist-API`, `New-API`, `CC Switch`, `Docker Compose`, `GitHub Actions`, `docs`
+> 关联问题: HI-859
+
+### 变更内容
+- 新增 GitHub Actions 定时同步任务，每天检查 `QuantumNous/new-api` 最新非草稿 release；若 submodule 或 compose 镜像落后，自动执行 `make new-api-sync` 并创建同步 PR。
+- 新增 Frist-API 服务端 New-API 桥接层，启用后由 New-API 承接用户看板、API Key 创建/禁用/删除、兑换码、使用日志、订阅/充值/邀请读取和可选 `/v1` 网关代理。
+- 保留 Frist-API 自研账号壳、Workbench UI、CC Switch/Codex/OpenCode/OpenClaw/Hermes 导入、DeepSeek 官方 API 配置、余额预警、补号助手和本地 JSON 兜底；New-API 未启用或不可用时仍走原逻辑。
+- Docker Compose 和生产环境模板新增 `FRIST_API_NEWAPI_*` 配置，真实 token、用户 ID 和服务器密钥只允许放服务器环境变量，不写入仓库。
+- Codex + DeepSeek 闭环继续保持官方 OpenAI 兼容端点 `https://api.deepseek.com/v1`，测试覆盖 CC Switch 导入配置、`auth.json`、`config.toml` 和 `/v1/responses` 网关代理。
+- 验证结果: Frist-API `npm test` 113/113 通过；聚焦 New-API/Codex 回归 5/5 通过；`make new-api-check` 确认当前仍为最新 `v1.0.0-rc.2`；`docker compose -f docker-compose.newapi.yml config` 通过。
+
+### 文件变更
+- `.github/workflows/new-api-sync.yml` — 新增 New-API 定时同步 PR 自动化
+- `apps/frist-api/server/newApiBridge.js` — 新增 New-API 业务桥接层
+- `apps/frist-api/server/server.js` — 接入桥接层，保留本地业务逻辑兜底
+- `apps/frist-api/tests/server.test.mjs` — 覆盖 New-API dashboard/token/import/gateway 闭环
+- `docker-compose.frist-api.yml` — 透传 `FRIST_API_NEWAPI_*` 环境变量
+- `apps/frist-api/deploy/production.env.example` — 登记 New-API 生产配置模板
+- `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步注册表、运维 SOP 和系统状态
+
+## [2026-05-03] New-API 最新版升级与 Git 同步机制
+> 领域: `backend` | `infra` | `docs`
+> 影响模块: `New-API`, `Frist-API`, `ClawBot API`, `Docker Compose`, `docs`
+> 关联问题: HI-859
+
+### 变更内容
+- 将 `QuantumNous/new-api` 作为 Git submodule 引入 `packages/new-api-upstream`，当前固定到最新 release `v1.0.0-rc.2`。
+- `docker-compose.newapi.yml` 从 `calciumion/new-api:v0.12.6` 升级到 `calciumion/new-api:v1.0.0-rc.2`，源码指针和镜像版本保持一致。
+- 新增 `scripts/sync_new_api_upstream.sh`，支持 `check` 和 `update`；`check` 会检查 GitHub 最新非草稿 release、submodule 指针和 compose 镜像 tag，发现落后时返回非 0，便于接入 CI/定时巡检。
+- 新增 `make new-api-check` / `make new-api-sync` 统一入口，避免手工改镜像版本或直接复制上游代码。
+- 扩展 ClawBot `newapi.py` 代理端点，新增 API Key 搜索/创建/编辑/禁用、使用日志、Token 趋势、订阅、兑换码、价格、充值配置和邀请返利接口代理；业务逻辑仍由 New-API 上游服务执行。
+- New-API v1 后台接口需要 `New-Api-User` 头，代理层新增 `NEWAPI_ADMIN_USER_ID` 环境变量并同步测试，避免只配 access token 后认证失败。
+- 研究结论: Frist-API 业务替换应采用“Frist-API 保留品牌壳 + New-API 内网服务承接账号/Key/渠道/计费/日志/订阅/兑换/支付”的代理与数据迁移方案，不再从旧本地 New-API 代码直接迁移。
+
+### 文件变更
+- `.gitmodules` / `packages/new-api-upstream` — 新增 New-API 上游 submodule，固定到 `v1.0.0-rc.2`
+- `docker-compose.newapi.yml` — 升级 New-API 镜像并登记同步入口
+- `scripts/sync_new_api_upstream.sh` — 新增上游版本检查和同步脚本
+- `Makefile` — 增加 `new-api-check` / `new-api-sync`
+- `packages/clawbot/src/api/routers/newapi.py` — 扩展 New-API 业务代理端点并补 `New-Api-User` 头
+- `packages/clawbot/tests/test_newapi_router.py` — 覆盖新增代理路径和认证头
+- `packages/clawbot/config/.env.example` — 登记 `NEWAPI_ADMIN_USER_ID`
+- `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步注册表、升级 SOP 和当前状态
+
+## [2026-05-03] Frist-API Workbench 腾讯云部署与 New-API 上游检查
+> 领域: `frontend` | `infra` | `docs`
+> 影响模块: `Frist-API`, `Docker Compose`, `New-API`, `docs`
+> 关联问题: HI-858, HI-859
+
+### 变更内容
+- 已将 Frist-API Workbench UI 外壳、使用记录、美元展示、扩展 CC Switch 导入和 Codex DeepSeek 配置同步部署到腾讯云 `/opt/frist-api`。
+- 部署前已备份远端应用代码，运行数据、远端 `.env` 和真实密钥未同步、未覆盖。
+- `docker-compose.frist-api.yml` 补齐余额预警 SMTP 环境变量透传，避免生产容器读取不到服务器环境配置。
+- 远端 `frist-api-server` 已重新创建并恢复 `healthy` 状态，公网首页、游客看板、验证码、隐藏管理页和未授权模型接口冒烟通过。
+- 按用户要求暂停从旧本地 New-API 逻辑迁移，改为先检查 GitHub 上游；当前最新 New-API 为 `v1.0.0-rc.2`，本地 `docker-compose.newapi.yml` 仍固定在旧版 `calciumion/new-api:v0.12.6`，后续应先做数据备份和升级演练。
+
+### 文件变更
+- `docker-compose.frist-api.yml` — 透传 `FRIST_API_SMTP_*` 和 `FRIST_API_BALANCE_ALERT_FROM_NAME`
+- `docs/002-changelog.md` — 记录部署、验证和 New-API 上游检查结果
+- `docs/009-health.md` — 同步 Frist-API 服务器部署和 New-API 版本状态
+
+## [2026-05-03] Frist-API Workbench UI 外壳与美元计价
+> 领域: `frontend` | `backend` | `ai-pool` | `docs`
+> 影响模块: `Frist-API`, `CC Switch`, `New-API Adapter`, `docs`
+> 关联问题: HI-858, HI-859
+
+### 变更内容
+- 用户端改成工作台式控制台外壳，保留顶部唯一 Frist-API Logo，移除侧栏重复品牌块。
+- 仪表盘补齐今日请求、今日消费、今日 Token、累计 Token、累计消费、平均响应、性能指标和模型连通指标卡。
+- 首页新增模型消耗圆形占比、Token 使用趋势、最近使用日志和服务可用性区块。
+- API 管理新增“搜索名称或 key”、API 端点展示，以及禁用、编辑、删除、复制等图标化操作。
+- 新增使用记录、我的订阅、兑换码、邀请返利和个人资料页面；使用记录展示 API 密钥、模型、推理强度、端点、类型、计费模式和 TOKEN。
+- CC Switch 导入范围扩展并校验 Claude、Codex、Gemini、OpenCode、OpenClaw、Hermes、Harmes；Codex + DeepSeek 输出官方 OpenAI 兼容端点 `https://api.deepseek.com/v1`，真实 DeepSeek Key 未写入仓库。
+- 用户侧余额、消费、模型价格、New-API 归一化数据和余额预警展示统一改为美元；充值仍按人民币生成美元额度。
+- 已接入 New-API dashboard/token/usage/channel 的用户侧适配与脱敏归一化；完整 New-API 业务逻辑替换仍登记为架构迁移待办。
+- 验证结果: Frist-API 语法检查通过；聚焦回归 3/3 通过；全量 `npm test` 112/112 通过；Playwright 已补桌面和移动截图。
+
+### 文件变更
+- `apps/frist-api/index.html` — 重做用户工作台外壳、新增页面和仪表盘区块
+- `apps/frist-api/src/app.js` — 接入新路由、指标渲染、API 搜索、使用记录、CC Switch DeepSeek 流程
+- `apps/frist-api/src/styles.css` — 新增工作台、指标卡、图表、记录表和新增页面响应式样式
+- `apps/frist-api/src/core.js` — 扩展 CC Switch 客户端、DeepSeek 官方端点和导入配置
+- `apps/frist-api/src/serverClient.js` — 归一化仪表盘、记录、日志和美元展示数据
+- `apps/frist-api/src/businessFlow.js` — 同步业务流中的美元额度和导入状态
+- `apps/frist-api/src/newApiClient.js` — 将 New-API 用户、Token、Usage、Channel 数据归一化到用户端美元展示
+- `apps/frist-api/server/server.js` / `apps/frist-api/server/shared.js` — 输出新仪表盘字段、使用记录、最近日志和 DeepSeek 模型目录
+- `apps/frist-api/tests/*.test.mjs` — 覆盖新外壳、API 搜索、使用记录、美元计价、CC Switch 导入和 DeepSeek Key 不落库
+- `docs/006-registries.md` — 登记新增 Frist-API Web 操作入口
+- `docs/009-health.md` — 登记 UI 壳完成与 New-API 完整替换剩余架构迁移
+- `docs/002-changelog.md` — 记录本次变更
+
+## [2026-05-03] Frist-API 端到端全量审计
+> 领域: `backend` | `frontend` | `docs`
+> 影响模块: `Frist-API`
+> 关联问题: HI-850 ~ HI-857, TD-009 ~ TD-012
+
+### 变更内容
+- 对 apps/frist-api 模块执行全量端到端审计：源码审查、测试验证、安全扫描、UX 断点分析
+- 测试结果：108/108 全量通过，0 失败
+- 发现并登记 8 个新问题（3 安全 + 2 UX + 3 架构）和 4 个技术债
+- 安全发现：runtime.json 明文存 Key、SHA-256 密码哈希过弱、Session Cookie 缺 Secure 标记、算术验证码可绕过
+- UX 断点：无忘记密码流程、服务不可用时静默降级无重试
+- 架构关注：单文件 4432 行、内存态状态无法水平扩展、data store 写入失败静默吞掉
+
+### 文件变更
+- `docs/009-health.md` — 新增 HI-850~857 和 TD-009~012
+> 领域: `backend` | `frontend` | `docs`
+> 影响模块: `Frist-API`, `Billing`, `SMTP`, `docs`
+> 关联问题: HI-848
+
+### 变更内容
+- 用户账单页新增余额预警卡片，可自定义启用状态、人民币阈值和通知邮箱，并可手动发送测试邮件。
+- 网关扣费后检测余额是否从阈值上方跌到阈值以下，只发送一次品牌化低余额邮件，避免重复刷屏。
+- 后端新增 SMTP 发送器和 HTML/Text 双格式邮件模板，支持 Gmail/企业邮箱应用专用密码通过服务器环境变量配置。
+- 腾讯云实测发现 Gmail IPv6 SMTP 可用、IPv4 465 超时；已补 Node SMTP DNS 地址轮询和 `FRIST_API_SMTP_FAMILY`，避免默认地址选择卡死自动邮件。
+- 余额预警邮件模板升级为现代事务邮件样式：首屏突出当前余额/预警阈值，补齐事件摘要、CTA、暗黑模式和移动端可读性。
+- 运维与注册表同步登记余额预警按钮、接口和 SMTP 环境变量；真实邮箱密码不落盘。
+- 验证结果: Frist-API 本地回归测试当前 108/108 通过；本机到 Gmail SMTP 的 TLS/SMTP greeting 阶段不稳定，腾讯云服务器已通过 Gmail 587 STARTTLS 发出新版模板测试邮件，IPv4 465 超时仍保留为已知网络限制。
+
+### 文件变更
+- `apps/frist-api/server/server.js` — 新增余额预警 API、扣费触发逻辑、SMTP 发送器和邮件模板
+- `apps/frist-api/index.html` — 在账单页新增余额预警设置卡片
+- `apps/frist-api/src/app.js` — 接入余额预警保存、测试邮件和页面渲染
+- `apps/frist-api/src/serverClient.js` — 增加余额预警接口客户端和 Dashboard 归一化
+- `apps/frist-api/src/styles.css` — 增加余额预警卡片和移动端样式
+- `apps/frist-api/tests/server.test.mjs` — 覆盖配置保存、跨阈值发信和重复通知抑制
+- `apps/frist-api/tests/business-flow.test.mjs` — 覆盖账单页预警控件接线
+- `apps/frist-api/deploy/production.env.example` — 增加 SMTP 环境变量示例
+- `docs/006-registries.md` — 登记余额预警 Web 操作入口和 SMTP 环境变量
+- `docs/007-operations.md` — 补充余额预警邮件配置和测试流程
+- `docs/009-health.md` — 登记 HI-848/HI-849 并调整剩余 SMTP 技术债
+- `docs/002-changelog.md` — 记录本次变更
+
+## [2026-05-03] 文档压缩：43合12，核心10个
+> 领域: `docs`
+> 影响模块: `docs`, `AGENTS.md`
+> 关联问题: HI-847
+
+### 变更内容
+- 文档合并: 43 个编号文件按类型合并为 12 个（001-010 核心 + 011-012 附录）。
+  - `004-architecture.md` ← 010 + 011（OMEGA v2 + Bot Agent 指令）
+  - `005-quickstart.md` ← 020 + 021 + 022 + 023 + 027 + 028
+  - `006-registries.md` ← 030 + 031 + 032 + 033（API池+命令+依赖+模块）
+  - `007-operations.md` ← 024 + 025 + 026 + 029
+  - `008-sop.md` ← 040 + 041（文档优先协议+错误翻译）
+  - `009-health.md` ← 060 + 063 + 064（健康+经验库+需求跟踪）
+  - `010-feature-specs.md` ← 050-059 + 062 + 065（16个功能规格合并）
+  - `011-kiro-gateway.md` ← 034-039（6个Kiro Gateway文档合并）
+  - `012-handoff.md` ← 061（重编号）
+- AGENTS.md 全文更新引用路径：060→009, 061→012, 030-033→006, 040-041→008, 063→009
+
+### 文件变更
+- `docs/004-010.md` — 新建 7 个合并文档
+- `docs/011-kira-gateway.md` — 新建 1 个附录
+- `docs/012-handoff.md` — 重编号
+- `docs/` — 删除 39 个被合并的原文件
+- `AGENTS.md` — 更新所有文档路径引用
+
+## [2026-05-03] 文档治理：全项目归集 + 编号统一 + 冗余清理
+> 领域: `docs`
+> 影响模块: `docs`, `AGENTS.md`, `apps/openclaw/.learnings`, `apps/openclaw/usecases`, `packages/clawbot/docs`
+> 关联问题: HI-846
+
+### 变更内容
+- 归集散落文档: 将 `apps/openclaw/.learnings/`、`apps/openclaw/usecases/`、`packages/clawbot/docs/` 共 27 个文档移入 `docs/` 根目录，统一编号命名
+- 删除冗余: 移除 `packages/clawbot/docs/archive/`（3 个旧部署包说明）、`product-copy.txt`（闲鱼营销文案）、`final-checklist.txt`（含过期密钥的旧清单）、`architecture-ru.md`（冗余俄文翻译）、`packages/clawbot/docs/readme.md`（已过时子目录索引）
+- 强化规则: 在 `AGENTS.md` 中新增「硬性规则」：docs/ 内禁止子目录、禁止非编号文件名、`docs/` 为文档唯一合法存放位置、排除范围清单、新增文档四步流程
+- 编号扩展: docs/ 从 19 个扩展到 43 个，新增 011/026/028/029/034-039/050-059/062-065
+- 索引同步: `docs/003-docs-index.md` 全面重写，标注编号空缺供后续使用
+
+### 文件变更
+- `docs/` — 新增 24 个编号文档，从散落位置移入
+- `AGENTS.md` — §9 重写为硬性规则 + §10 新增子目录/命名禁令 + §6 新增文档变更触发索引
+- `docs/003-docs-index.md` — 全文重写，增补编号空缺表
+- `docs/060-health.md` — 更新文档治理状态
+- `apps/openclaw/.learnings/` — 清空（内容已迁移到 docs/063-064）
+- `apps/openclaw/usecases/` — 清空（内容已迁移到 docs/050-059/062/065）
+- `packages/clawbot/docs/` — 清空（仅保留空目录）
+
 ## [2026-05-03] Frist-API 新余额站公网真测与图片广场优化
 > 领域: `frontend` | `ai-pool` | `deploy` | `docs`
 > 影响模块: `Frist-API`, `Playground`, `Gateway`, `docs`

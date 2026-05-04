@@ -20,6 +20,16 @@ const CLIENT_PROFILES = new Map([
     },
   ],
   [
+    'gemini',
+    {
+      slug: 'gemini',
+      clientName: 'Gemini',
+      providerName: 'Frist-API',
+      remark: 'Gemini OpenAI 兼容入口',
+      wireApi: 'responses',
+    },
+  ],
+  [
     'opencode',
     {
       slug: 'opencode',
@@ -52,14 +62,19 @@ const CLIENT_PROFILES = new Map([
   [
     'harmes',
     {
-      slug: 'hermes',
-      clientName: 'Hermes',
+      slug: 'harmes',
+      clientName: 'Harmes',
       providerName: 'Frist-API',
-      remark: 'Hermes 兼容代理入口',
+      remark: 'Harmes 兼容代理入口',
       wireApi: 'responses',
     },
   ],
 ]);
+
+const MODEL_GROUP_FALLBACKS = Object.freeze({
+  DeepSeek: 'deepseek-v4-flash',
+  Gemini: 'gemini-2.5-flash',
+});
 
 const HEALTH_LABELS = {
   healthy: '正常',
@@ -96,6 +111,10 @@ const MODEL_STRENGTH_ORDER = [
   'gpt-image-1.5',
   'gpt-image-1',
   'gpt-5.3-codex',
+  'deepseek-v4-flash',
+  'deepseek-v4-pro',
+  'deepseek-chat',
+  'deepseek-reasoner',
   'claude-opus-4-6-thinking-c',
   'claude-opus-4-6-c',
   'claude-sonnet-4-5-c',
@@ -151,10 +170,10 @@ export function buildCcSwitchImportUrl({
   sdkOptions,
 }) {
   const profile = clientProfile(target);
-  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  const normalizedBaseUrl = gatewayBaseUrlForModelGroup(baseUrl, modelGroup);
   const clientBaseUrl = clientBaseUrlForProfile(profile, normalizedBaseUrl);
-  const modelList = normalizeAvailableModels(availableModels, { model, defaultModel });
-  const safeModel = chooseDefaultModel({ model, defaultModel, availableModels: modelList });
+  const modelList = normalizeAvailableModels(availableModels, { model, defaultModel, modelGroup });
+  const safeModel = chooseDefaultModel({ model, defaultModel, availableModels: modelList, modelGroup });
   const safeKey = String(apiKey || '').trim();
   const officialUrl = brandOfficialUrl(clientBaseUrl);
   const remark = buildImportRemark({ profile, modelGroup, planExpiresAt });
@@ -175,6 +194,7 @@ export function buildCcSwitchImportUrl({
     baseUrl: normalizedBaseUrl,
     model: safeModel,
     availableModels: modelList,
+    modelGroup,
     providerName: profile.providerName,
     contextWindow,
     compressionThreshold,
@@ -275,10 +295,10 @@ export function buildClientConfig({
   sdkOptions,
 }) {
   const profile = clientProfile(target);
-  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  const normalizedBaseUrl = gatewayBaseUrlForModelGroup(baseUrl, modelGroup);
   const clientBaseUrl = clientBaseUrlForProfile(profile, normalizedBaseUrl);
-  const modelList = normalizeAvailableModels(availableModels, { model, defaultModel });
-  const safeModel = chooseDefaultModel({ model, defaultModel, availableModels: modelList });
+  const modelList = normalizeAvailableModels(availableModels, { model, defaultModel, modelGroup });
+  const safeModel = chooseDefaultModel({ model, defaultModel, availableModels: modelList, modelGroup });
   const safeKey = String(apiKey || '').trim();
   if (!safeKey) {
     throw new Error('API Key 不能为空');
@@ -299,6 +319,7 @@ export function buildClientConfig({
     baseUrl: normalizedBaseUrl,
     model: safeModel,
     availableModels: modelList,
+    modelGroup,
     providerName: profile.providerName,
     contextWindow,
     compressionThreshold,
@@ -450,8 +471,8 @@ function buildCcSwitchProviderConfig({
   interfaceFormat,
   mcpServers,
 }) {
-  const selectedModel = defaultModel || model;
-  const exportModels = normalizeAvailableModels(availableModels, { model, defaultModel: selectedModel });
+  const exportModels = normalizeAvailableModels(availableModels, { model, defaultModel, modelGroup });
+  const selectedModel = chooseDefaultModel({ model, defaultModel, availableModels: exportModels, modelGroup });
   if (profile.slug === 'opencode') {
     return buildOpenCodeProviderEntry({
       apiKey,
@@ -490,6 +511,9 @@ function buildCcSwitchProviderConfig({
       OPENCLAW_MODEL: selectedModel,
     },
     hermes: {
+      HERMES_MODEL: selectedModel,
+    },
+    harmes: {
       HERMES_MODEL: selectedModel,
     },
   };
@@ -593,6 +617,7 @@ function buildResponsesConfigToml({
   model,
   defaultModel,
   availableModels = [],
+  modelGroup,
   providerName = 'Frist-API',
   contextWindow = 1_000_000,
   compressionThreshold = 900_000,
@@ -600,8 +625,8 @@ function buildResponsesConfigToml({
   mcpServers,
 }) {
   const timeout = Number(sdkOptions.timeout || 600);
-  const modelList = normalizeAvailableModels(availableModels, { model, defaultModel });
-  const safeDefaultModel = chooseDefaultModel({ model, defaultModel, availableModels: modelList });
+  const modelList = normalizeAvailableModels(availableModels, { model, defaultModel, modelGroup });
+  const safeDefaultModel = chooseDefaultModel({ model, defaultModel, availableModels: modelList, modelGroup });
   return [
     'model_provider = "custom"',
     `model = "${tomlString(safeDefaultModel)}"`,
@@ -761,6 +786,8 @@ export function chooseNextCredential(credentials, criteria = {}) {
 export function inferProviderGroup(value) {
   const text = String(value || '').toLowerCase();
   if (/claude|anthropic/.test(text)) return 'Claude';
+  if (/gemini/.test(text)) return 'Gemini';
+  if (/deepseek/.test(text)) return 'DeepSeek';
   if (/openai|codex|gpt-|gpt_|gpt\d|chatgpt|responses|dall|image/.test(text)) return 'OpenAI';
   return 'Other';
 }
@@ -769,6 +796,8 @@ export function normalizeModelGroup(value) {
   const text = String(value || '').trim().toLowerCase();
   if (text === 'claude') return 'Claude';
   if (text === 'openai') return 'OpenAI';
+  if (text === 'gemini') return 'Gemini';
+  if (text === 'deepseek') return 'DeepSeek';
   if (text === 'other') return 'Other';
   return 'All';
 }
@@ -999,20 +1028,21 @@ function buildImportRemark({ profile, modelGroup, planExpiresAt }) {
 
 function normalizeAvailableModels(availableModels = [], options = {}) {
   const providedModels = Array.isArray(availableModels) ? availableModels : [];
+  const fallbackModel = MODEL_GROUP_FALLBACKS[normalizeModelGroup(options.modelGroup)] || DEFAULT_PUBLIC_MODEL;
   const models = [
     ...providedModels,
     options.defaultModel,
     options.model,
-    ...(providedModels.length === 0 && !options.defaultModel && !options.model ? [DEFAULT_PUBLIC_MODEL] : []),
+    ...(providedModels.length === 0 && !options.defaultModel && !options.model ? [fallbackModel] : []),
   ]
     .map(normalizeOfficialModelName)
     .filter(Boolean);
   return sortModelsByStrength([...new Set(models)]);
 }
 
-function chooseDefaultModel({ model, defaultModel, availableModels = [] }) {
-  const models = normalizeAvailableModels(availableModels, { model, defaultModel });
-  return models[0] || DEFAULT_PUBLIC_MODEL;
+function chooseDefaultModel({ model, defaultModel, availableModels = [], modelGroup }) {
+  const models = normalizeAvailableModels(availableModels, { model, defaultModel, modelGroup });
+  return models[0] || MODEL_GROUP_FALLBACKS[normalizeModelGroup(modelGroup)] || DEFAULT_PUBLIC_MODEL;
 }
 
 function sortModelsByStrength(models = []) {
@@ -1080,11 +1110,19 @@ function round2(value) {
 }
 
 function clientProfile(target) {
-  const profile = CLIENT_PROFILES.get(String(target || '').toLowerCase());
+  const normalizedTarget = String(target || '').toLowerCase();
+  const profile = CLIENT_PROFILES.get(normalizedTarget);
   if (!profile) {
     throw new Error(`不支持的导入目标: ${target}`);
   }
-  return profile;
+  return { ...profile };
+}
+
+function gatewayBaseUrlForModelGroup(baseUrl, modelGroup) {
+  if (normalizeModelGroup(modelGroup) !== 'DeepSeek') {
+    return normalizeBaseUrl(baseUrl);
+  }
+  return 'https://api.deepseek.com/v1';
 }
 
 function clientConfigPaths(slug) {
@@ -1113,6 +1151,14 @@ function clientConfigPaths(slug) {
       windowsJsonFile: 'frist-api.json',
       windowsConfigFile: 'frist-api.toml',
     },
+    gemini: {
+      macosDir: '~/.gemini',
+      jsonPath: '~/.gemini/frist-api.json',
+      configPath: '~/.gemini/frist-api.toml',
+      windowsDir: '.gemini',
+      windowsJsonFile: 'frist-api.json',
+      windowsConfigFile: 'frist-api.toml',
+    },
     openclaw: {
       macosDir: '~/.openclaw',
       jsonPath: '~/.openclaw/frist-api.json',
@@ -1126,6 +1172,14 @@ function clientConfigPaths(slug) {
       jsonPath: '~/.hermes/frist-api.json',
       configPath: '~/.hermes/frist-api.toml',
       windowsDir: '.hermes',
+      windowsJsonFile: 'frist-api.json',
+      windowsConfigFile: 'frist-api.toml',
+    },
+    harmes: {
+      macosDir: '~/.harmes',
+      jsonPath: '~/.harmes/frist-api.json',
+      configPath: '~/.harmes/frist-api.toml',
+      windowsDir: '.harmes',
       windowsJsonFile: 'frist-api.json',
       windowsConfigFile: 'frist-api.toml',
     },

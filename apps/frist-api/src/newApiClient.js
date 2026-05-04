@@ -1,6 +1,7 @@
 import { normalizeBaseUrl } from './core.js';
 
 const DEFAULT_QUOTA_PER_CNY = 100;
+const DEFAULT_USD_TO_CNY = 7.2;
 const DEFAULT_HISTORY_SIZE = 12;
 const USER_ENDPOINTS = {
   status: '/api/status',
@@ -235,11 +236,15 @@ function quotaUnit(options) {
 }
 
 function formatMoney(quota, quotaPerCny) {
-  return `¥${formatQuota(quota, quotaPerCny)}`;
+  return `$${formatUsdQuota(quota, quotaPerCny)}`;
 }
 
 function formatQuota(quota, quotaPerCny) {
   return (numberFromAny(quota) / quotaPerCny).toFixed(2);
+}
+
+function formatUsdQuota(quota, quotaPerCny) {
+  return (numberFromAny(quota) / quotaPerCny / DEFAULT_USD_TO_CNY).toFixed(2);
 }
 
 function formatTokenCount(tokens) {
