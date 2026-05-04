@@ -44,7 +44,7 @@ describe('Frist-API core flows', () => {
   });
 
   it('builds a CC Switch import URL for every supported client target', () => {
-    const targets = ['Claude', 'Codex', 'OpenCode', 'OpenClaw', 'Hermes'];
+    const targets = ['Claude', 'Codex', 'Gemini', 'OpenCode', 'OpenClaw', 'Hermes', 'Harmes'];
 
     const urls = targets.map((target) =>
       buildCcSwitchImportUrl({
@@ -88,9 +88,11 @@ describe('Frist-API core flows', () => {
 
     assert.equal(new URL(urls[0]).searchParams.get('app'), 'claude');
     assert.equal(new URL(urls[1]).searchParams.get('app'), 'codex');
-    assert.equal(new URL(urls[2]).searchParams.get('app'), 'opencode');
-    assert.equal(new URL(urls[3]).searchParams.get('app'), 'openclaw');
-    assert.equal(new URL(urls[4]).searchParams.get('app'), 'hermes');
+    assert.equal(new URL(urls[2]).searchParams.get('app'), 'gemini');
+    assert.equal(new URL(urls[3]).searchParams.get('app'), 'opencode');
+    assert.equal(new URL(urls[4]).searchParams.get('app'), 'openclaw');
+    assert.equal(new URL(urls[5]).searchParams.get('app'), 'hermes');
+    assert.equal(new URL(urls[6]).searchParams.get('app'), 'harmes');
   });
 
   it('builds copy-ready client config for Codex and OpenCode response-format clients', () => {
@@ -228,6 +230,70 @@ describe('Frist-API core flows', () => {
     assert.equal(importUrl.searchParams.get('routeClaudeModels'), 'true');
     assert.equal(providerConfig.codex.defaultModel, 'claude-opus-4-6-c');
     assert.deepEqual(providerConfig.codex.availableModels, ['claude-opus-4-6-c', 'claude-sonnet-4-5-c']);
+  });
+
+  it('builds Codex DeepSeek official API compatible gateway config without committing the real key', () => {
+    const config = buildClientConfig({
+      target: 'Codex',
+      apiKey: 'sk-redacted-deepseek-user-local',
+      baseUrl: 'https://api.frist.example.com/v1',
+      model: 'deepseek-v4-flash',
+      availableModels: ['deepseek-chat', 'deepseek-reasoner', 'deepseek-v4-flash', 'deepseek-v4-pro'],
+      modelGroup: 'DeepSeek',
+    });
+    const importUrl = new URL(config.ccSwitchUrl);
+    const providerConfig = JSON.parse(Buffer.from(importUrl.searchParams.get('config'), 'base64').toString('utf8'));
+    const combined = `${config.authJson}\n${config.configToml}\n${config.ccSwitchUrl}`;
+
+    assert.equal(config.targetSlug, 'codex');
+    assert.equal(config.apiRequestUrl, 'https://api.deepseek.com/v1');
+    assert.equal(config.modelName, 'deepseek-v4-flash');
+    assert.deepEqual(config.availableModels, ['deepseek-v4-flash', 'deepseek-v4-pro', 'deepseek-chat', 'deepseek-reasoner']);
+    assert.match(config.configToml, /base_url = "https:\/\/api\.deepseek\.com\/v1"/);
+    assert.equal(JSON.parse(config.authJson).OPENAI_API_KEY, 'sk-redacted-deepseek-user-local');
+    assert.equal(importUrl.searchParams.get('endpoint'), 'https://api.deepseek.com/v1');
+    assert.equal(importUrl.searchParams.get('modelGroup'), 'DeepSeek');
+    assert.equal(providerConfig.provider.endpoint, 'https://api.deepseek.com/v1');
+    assert.equal(providerConfig.env.OPENAI_BASE_URL, 'https://api.deepseek.com/v1');
+    assert.equal(combined.includes('sk-redacted-deepseek-user-local'), true);
+  });
+
+  it('keeps DeepSeek legacy model names compatible while defaulting new imports to the official v4 family', () => {
+    const config = buildClientConfig({
+      target: 'Codex',
+      apiKey: 'sk-redacted-deepseek-user-local',
+      baseUrl: 'https://api.frist.example.com/v1',
+      model: 'deepseek-chat',
+      availableModels: ['deepseek-chat', 'deepseek-reasoner'],
+      modelGroup: 'DeepSeek',
+    });
+
+    assert.equal(config.apiRequestUrl, 'https://api.deepseek.com/v1');
+    assert.equal(config.modelName, 'deepseek-chat');
+    assert.deepEqual(config.availableModels, ['deepseek-chat', 'deepseek-reasoner']);
+  });
+
+  it('preserves Gemini, Hermes and Harmes as distinct CC Switch import targets', () => {
+    for (const [target, expectedSlug] of [
+      ['Gemini', 'gemini'],
+      ['Hermes', 'hermes'],
+      ['Harmes', 'harmes'],
+    ]) {
+      const config = buildClientConfig({
+        target,
+        apiKey: `fk_${expectedSlug}_preview`,
+        baseUrl: 'https://api.frist.example.com/v1',
+        model: expectedSlug === 'gemini' ? 'gemini-2.5-flash' : 'gpt-5.5',
+        modelGroup: expectedSlug === 'gemini' ? 'Gemini' : 'OpenAI',
+      });
+      const importUrl = new URL(config.ccSwitchUrl);
+      const providerConfig = JSON.parse(Buffer.from(importUrl.searchParams.get('config'), 'base64').toString('utf8'));
+
+      assert.equal(config.targetSlug, expectedSlug);
+      assert.equal(importUrl.searchParams.get('app'), expectedSlug);
+      assert.equal(providerConfig.provider.app, expectedSlug);
+      assert.match(config.configToml, /wire_api = "responses"/);
+    }
   });
 
   it('exports every available model and keeps the strongest model as the default for Codex and OpenCode', () => {
@@ -554,7 +620,6 @@ describe('Frist-API user dashboard boundaries', () => {
       'API 与用量',
       '模型与渠道',
       '充值与订购',
-      '支持',
       '客户工作台',
       '先看能不能用',
       '三步开始使用',
@@ -607,10 +672,12 @@ describe('Frist-API user dashboard boundaries', () => {
     }
 
     const focusMetricCount = (userHtml.match(/class="focus-metric/g) || []).length;
-    assert.ok(focusMetricCount <= 4, '用户首屏最多固定展示 4 个核心指标');
+    const headerBrandCount = (userHtml.match(/<strong>Frist-API<\/strong>/g) || []).length;
+    assert.ok(focusMetricCount >= 6, '用户首屏应该补足请求、消费、Token 和性能指标');
     assert.equal((userHtml.match(/data-hero-primary-import/g) || []).length, 1, '首屏只保留一个主行动入口');
+    assert.equal(headerBrandCount, 1, '顶部品牌 Logo 应该是全站唯一可见品牌块，侧栏不再重复');
     assert.equal(userHtml.includes('Commercial API Gateway'), true, '首屏需要保留商业化品牌信号');
-    assert.equal(userHtml.includes('Workbench'), true, '首屏需要变成操作工作台而不是营销大横幅');
+    assert.equal(userHtml.includes('Commercial API Gateway'), true, '首屏需要变成操作工作台而不是营销大横幅');
     assert.equal(userHtml.includes('月卡 Pro'), false, '公开页面初始 HTML 不应该闪现演示套餐');
     assert.equal(userHtml.includes('¥428.90'), false, '公开页面初始 HTML 不应该闪现演示消耗金额');
     assert.equal(userHtml.includes('>DJ<'), false, '公开页面初始 HTML 不应该闪现演示用户缩写');
@@ -643,6 +710,8 @@ describe('Frist-API user dashboard boundaries', () => {
     for (const required of ['仪表盘', 'API Key', '充值', 'CC Switch', '广场']) {
       assert.equal(actionDock.includes(required), true, `${required} 应该保留为工作台直接入口`);
     }
+    assert.equal(actionDock.includes('>01<'), false, '侧栏导航不应该再显示数字编号');
+    assert.equal(actionDock.includes('>13<'), false, '侧栏导航不应该再显示数字编号');
 
     assert.match(actionDock, /class="is-priority-path"[\s\S]*?CC Switch/, '导入入口应该成为工作台里的主路径');
 
@@ -657,7 +726,8 @@ describe('Frist-API user dashboard boundaries', () => {
     assert.equal(readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8').includes('position: sticky'), false);
   });
 
-  it('ships the visual hooks for light glass depth and reduced-motion friendly animation', () => {
+  it('ships the visual hooks for the Refero-style console skin, loading states and reduced-motion friendly animation', () => {
+    const userHtml = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
     const scriptsAndStyles = [
       readFileSync(new URL('../src/app.js', import.meta.url), 'utf8'),
       readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8'),
@@ -671,12 +741,33 @@ describe('Frist-API user dashboard boundaries', () => {
       'workspace-layout',
       'workspace-rail',
       'console-metrics',
+      'data-design-system="refero-hyperstudio"',
+      'renderLoadingState',
+      'renderSkeletonRows',
+      'renderEmptyState',
+      'userFacingLoadError',
+      '后端暂不可用，当前显示空数据',
+      'data-server-recovery',
+      'data-retry-dashboard',
+      'handleRetryDashboard',
+      'aria-current',
+      'skeleton-row',
+      'empty-row--stack',
+      'table-empty',
+      'model-picker-panel',
+      'playground-model-row',
+      'selected-model-panel',
+      'playground-diagnostics',
+      'Refero Hyperstudio skin',
+      '#e7c59a',
+      '#050505',
       'panelReveal',
       '@media (prefers-reduced-motion: reduce)',
     ]) {
-      assert.equal(scriptsAndStyles.includes(required), true, `${required} 应该支撑用户端动效和轮播`);
+      assert.equal(`${userHtml}\n${scriptsAndStyles}`.includes(required), true, `${required} 应该支撑用户端深色控制台、状态和动效`);
     }
 
     assert.equal(scriptsAndStyles.includes('transition: all'), false, '用户端动画不能使用 transition: all');
+    assert.equal(userHtml.includes('aria-busy="true"'), true, '主内容初始加载阶段应该向辅助技术声明 busy');
   });
 });

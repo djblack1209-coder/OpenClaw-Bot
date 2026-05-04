@@ -681,7 +681,7 @@ def git_log():
 def health_summary():
     """解析 HEALTH.md 统计活跃问题数量和已解决数量"""
     try:
-        health_path = os.path.join(_PROJECT_ROOT, "docs", "060-health.md")
+        health_path = os.path.join(_PROJECT_ROOT, "docs", "009-health.md")
         if not os.path.exists(health_path):
             return {
                 "active_critical": 0,

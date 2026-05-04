@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Frist-API</title>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-    <link rel="stylesheet" href="./src/styles.css?v=20260503-inroi-console" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260504-refero-shell" />
   </head>
-  <body>
+  <body data-design-system="refero-hyperstudio">
     <a class="skip-link" href="#main-content">跳到主要内容</a>
 
     <div class="app-shell">
@@ -20,11 +20,11 @@
         </a>
 
         <div class="topbar-actions">
-          <span class="action-message" data-action-message aria-live="polite">就绪</span>
+          <span class="action-message" data-action-message aria-live="polite">正在连接</span>
           <div class="auth-shell">
             <button class="account-chip" data-auth-toggle type="button" aria-expanded="false">
               <span data-plan>未登录</span>
-              <strong data-balance>¥0.00</strong>
+              <strong data-balance>$0.00</strong>
               <b data-user-initials>FA</b>
             </button>
             <section class="auth-panel" data-auth-panel hidden aria-label="账户">
@@ -51,7 +51,7 @@
                 </div>
                 <div class="auth-panel__row captcha-row" data-captcha-row hidden>
                   <span data-captcha-question>安全验证</span>
-                  <input type="text" inputmode="numeric" data-captcha-answer placeholder="答案" aria-label="安全验证答案" />
+                  <input type="text" autocomplete="off" data-captcha-answer placeholder="答案" aria-label="安全验证答案" />
                 </div>
                 <div class="auth-panel__row owner-row" data-owner-claim-row hidden>
                   <input type="password" data-owner-claim-code placeholder="身份码" aria-label="一次性身份码" />
@@ -70,49 +70,49 @@
         </div>
       </header>
 
-      <main class="main" id="main-content">
+      <main class="main" id="main-content" aria-busy="true">
 
         <section class="view-panel" data-view="dashboard">
           <div class="workspace-layout" data-workspace-layout>
             <aside class="workspace-rail" data-workspace-rail aria-label="工作台导航">
-              <div class="rail-head">
-                <span class="rail-mark">F</span>
-                <div>
-                  <strong>Frist-API</strong>
-                  <span>Workbench</span>
-                </div>
-              </div>
               <nav class="action-dock workspace-nav" data-action-dock aria-label="快捷操作">
                 <a href="#dashboard" data-route="dashboard">
-                  <span>01</span>
                   <strong>仪表盘</strong>
                 </a>
                 <a class="is-priority-path" href="#switch" data-route="switch">
-                  <span>02</span>
                   <strong>CC Switch</strong>
                 </a>
                 <a href="#api" data-route="api">
-                  <span>03</span>
                   <strong>API Key</strong>
                 </a>
                 <a href="#playground" data-route="playground">
-                  <span>04</span>
                   <strong>广场</strong>
                 </a>
                 <a href="#analytics" data-route="analytics">
-                  <span>05</span>
                   <strong>数据</strong>
                 </a>
+                <a href="#records" data-route="records">
+                  <strong>记录</strong>
+                </a>
                 <a href="#models" data-route="models">
-                  <span>06</span>
                   <strong>模型</strong>
                 </a>
                 <a href="#billing" data-route="billing">
-                  <span>07</span>
                   <strong>充值</strong>
                 </a>
+                <a href="#subscription" data-route="subscription">
+                  <strong>订阅</strong>
+                </a>
+                <a href="#redeem" data-route="redeem">
+                  <strong>兑换</strong>
+                </a>
+                <a href="#invite" data-route="invite">
+                  <strong>邀请</strong>
+                </a>
+                <a href="#profile" data-route="profile">
+                  <strong>资料</strong>
+                </a>
                 <a href="#docs" data-route="docs">
-                  <span>08</span>
                   <strong>教程</strong>
                 </a>
               </nav>
@@ -134,22 +134,59 @@
                   <button class="secondary-action" data-refresh-health type="button">刷新连通</button>
                 </div>
               </div>
+              <section class="server-recovery" data-server-recovery hidden role="status" aria-live="polite">
+                <div>
+                  <strong>后端暂不可用</strong>
+                  <span>当前是空数据模式，恢复服务后点这里重新连接。</span>
+                </div>
+                <button class="secondary-action" data-retry-dashboard type="button">重新连接</button>
+              </section>
 
               <section class="focus-stack console-metrics" data-focus-metrics aria-label="核心状态">
                 <article class="focus-metric is-balance">
                   <span>可用余额</span>
-                  <strong data-quota-left>¥0.00</strong>
-                  <small data-quota-breakdown>套餐 ¥0.00 · 加油包 ¥0.00</small>
+                  <strong data-quota-left>$0.00</strong>
+                  <small data-quota-breakdown>套餐 $0.00 · 加油包 $0.00</small>
                 </article>
                 <article class="focus-metric">
                   <span>API Key</span>
-                  <strong data-api-summary>0 个 Key 已开启</strong>
+                  <strong data-api-summary>0 / 0</strong>
                   <small>fk-live-* 用户网关</small>
                 </article>
                 <article class="focus-metric">
-                  <span>累计消耗</span>
-                  <strong data-usage-total>¥0.00</strong>
-                  <small data-today-cost>¥0.00</small>
+                  <span>今日请求</span>
+                  <strong data-today-calls>0 次</strong>
+                  <small>实时请求量</small>
+                </article>
+                <article class="focus-metric">
+                  <span>今日消费</span>
+                  <strong data-today-cost>$0.00</strong>
+                  <small>美元展示</small>
+                </article>
+                <article class="focus-metric">
+                  <span>今日 Token</span>
+                  <strong data-today-tokens>0</strong>
+                  <small>今日用量</small>
+                </article>
+                <article class="focus-metric">
+                  <span>累计 Token</span>
+                  <strong data-total-tokens>0</strong>
+                  <small>全量用量</small>
+                </article>
+                <article class="focus-metric">
+                  <span>累计消费</span>
+                  <strong data-usage-total>$0.00</strong>
+                  <small>本月美元消耗</small>
+                </article>
+                <article class="focus-metric">
+                  <span>平均响应</span>
+                  <strong data-average-latency>-</strong>
+                  <small>接口耗时</small>
+                </article>
+                <article class="focus-metric">
+                  <span>性能指标</span>
+                  <strong data-success-rate>0%</strong>
+                  <small>成功率</small>
                 </article>
                 <article class="focus-metric">
                   <span>模型连通</span>
@@ -163,7 +200,17 @@
                   <div class="section-head">
                     <h2>模型消耗</h2>
                   </div>
-                  <div class="usage-list is-compact" data-usage-compact></div>
+                  <div class="usage-split">
+                    <div class="mini-donut" data-usage-donut aria-label="模型消耗占比"></div>
+                    <div class="usage-list is-compact" data-usage-compact></div>
+                  </div>
+                </section>
+
+                <section class="glass-panel trend-focus" aria-label="Token 使用趋势">
+                  <div class="section-head">
+                    <h2>Token 趋势</h2>
+                  </div>
+                  <div class="token-trend" data-token-trend></div>
                 </section>
 
                 <section class="glass-panel provider-summary" data-provider-summary aria-label="连通性">
@@ -172,6 +219,14 @@
                     <button class="text-action" data-refresh-health type="button">刷新</button>
                   </div>
                   <div class="provider-list" data-channel-compact></div>
+                </section>
+
+                <section class="glass-panel recent-log-panel" aria-label="最近使用日志">
+                  <div class="section-head">
+                    <h2>最近日志</h2>
+                    <a class="text-action" href="#records" data-route="records">查看全部</a>
+                  </div>
+                  <div class="recent-logs" data-recent-logs></div>
                 </section>
               </div>
             </section>
@@ -182,21 +237,49 @@
           <button class="back-home" data-back-home data-route="dashboard" type="button">返回首页</button>
           <section class="plain-section playground-surface">
             <div class="section-head">
-              <h2>广场</h2>
+              <h2>模型测试台</h2>
               <div class="section-actions">
                 <span class="playground-status playground-status--idle" data-playground-status>等待实测</span>
                 <button class="text-action" data-playground-test type="button">实测连通</button>
                 <button class="text-action" data-clear-playground type="button">清空</button>
-                <select data-playground-model aria-label="选择模型"></select>
               </div>
             </div>
-            <div class="playground-stage">
-              <div class="conversation-window" data-playground-log aria-live="polite"></div>
-              <div class="image-output" data-image-output hidden></div>
-            </div>
-            <div class="composer">
-              <textarea data-playground-prompt rows="3" placeholder="输入一句话，直接测试当前模型。" aria-label="测试提示词"></textarea>
-              <button class="primary-action" data-playground-send type="button">发送</button>
+            <div class="playground-layout">
+              <aside class="model-picker-panel" aria-label="模型选择">
+                <div class="model-browser-toolbar">
+                  <label class="sr-only" for="playground-model-search">搜索模型</label>
+                  <input id="playground-model-search" data-playground-model-search type="search" placeholder="搜索模型、供应商或端点" autocomplete="off" />
+                  <select data-playground-model aria-label="选择模型"></select>
+                </div>
+                <div class="model-filter-tabs" data-playground-family-filter aria-label="模型分组">
+                  <button class="is-active" data-playground-family="All" type="button">全部</button>
+                  <button data-playground-family="OpenAI" type="button">OpenAI</button>
+                  <button data-playground-family="Claude" type="button">Claude</button>
+                  <button data-playground-family="DeepSeek" type="button">DeepSeek</button>
+                  <button data-playground-family="Gemini" type="button">Gemini</button>
+                  <button data-playground-family="Other" type="button">其它</button>
+                </div>
+                <div class="model-browser-count" data-playground-model-count>0 个模型</div>
+                <div class="playground-model-list" data-playground-model-grid role="list"></div>
+              </aside>
+              <div class="playground-console">
+                <article class="selected-model-panel" data-playground-selected-model aria-live="polite"></article>
+                <div class="playground-diagnostics" data-playground-diagnostics></div>
+                <div class="playground-stage">
+                  <div class="conversation-window" data-playground-log aria-live="polite"></div>
+                  <div class="image-output" data-image-output hidden></div>
+                </div>
+                <div class="prompt-suggestions" data-playground-suggestions aria-label="快捷测试提示">
+                  <button data-playground-suggestion="只回复 OK，用于测试连通。" type="button">连通</button>
+                  <button data-playground-suggestion="用三句话总结 Frist-API 的 API 网关用途。" type="button">摘要</button>
+                  <button data-playground-suggestion="给出一个 JavaScript fetch 调用 /v1/chat/completions 的最小示例。" type="button">代码</button>
+                  <button data-playground-suggestion="生成一张黑色工作台风格的 API 网关概念图。" type="button">生图</button>
+                </div>
+                <div class="composer">
+                  <textarea data-playground-prompt rows="3" placeholder="输入测试内容，Enter 发送，Shift + Enter 换行。" aria-label="测试提示词"></textarea>
+                  <button class="primary-action" data-playground-send type="button">发送</button>
+                </div>
+              </div>
             </div>
           </section>
         </section>
@@ -211,11 +294,38 @@
             <div class="analytics-grid">
               <article class="donut-panel">
                 <div class="usage-donut" data-usage-donut aria-label="模型消耗分布"></div>
-                <strong data-usage-total>¥0.00</strong>
+                <strong data-usage-total>$0.00</strong>
               </article>
               <div class="usage-list" data-analytics-usage></div>
             </div>
             <div class="service-grid" data-service-health aria-label="服务可用性"></div>
+          </section>
+        </section>
+
+        <section class="view-panel" data-view="records" hidden>
+          <button class="back-home" data-back-home data-route="dashboard" type="button">返回首页</button>
+          <section class="plain-section records-surface">
+            <div class="section-head">
+              <h2>使用记录</h2>
+              <span class="status-pill status-pill--healthy">用户侧审计</span>
+            </div>
+            <div class="records-table-wrap">
+              <table class="records-table">
+                <thead>
+                  <tr>
+                    <th>API 密钥</th>
+                    <th>模型</th>
+                    <th>推理强度</th>
+                    <th>端点</th>
+                    <th>类型</th>
+                    <th>计费模式</th>
+                    <th>TOKEN</th>
+                  </tr>
+                </thead>
+                <tbody data-usage-records></tbody>
+              </table>
+            </div>
+            <div class="records-empty" data-usage-records-empty hidden></div>
           </section>
         </section>
 
@@ -225,6 +335,11 @@
             <div class="section-head">
               <h2>模型广场</h2>
               <span class="status-pill status-pill--healthy" data-model-count>0 个可用</span>
+            </div>
+            <div class="model-market-toolbar">
+              <label class="sr-only" for="model-catalog-search">搜索模型目录</label>
+              <input id="model-catalog-search" data-model-catalog-search type="search" placeholder="搜索模型、供应商、端点" autocomplete="off" />
+              <button class="text-action" data-use-model-in-playground type="button">去测试台</button>
             </div>
             <div class="model-catalog" data-model-catalog></div>
           </section>
@@ -240,6 +355,7 @@
             <div class="target-list guide-targets" data-guide-targets aria-label="教程客户端">
               <button class="target-button is-active" data-guide-target="Codex" type="button">Codex</button>
               <button class="target-button" data-guide-target="Claude" type="button">Claude</button>
+              <button class="target-button" data-guide-target="Gemini" type="button">Gemini</button>
               <button class="target-button" data-guide-target="OpenCode" type="button">OpenCode</button>
               <button class="target-button" data-guide-target="OpenClaw" type="button">OpenClaw</button>
               <button class="target-button" data-guide-target="Hermes" type="button">Hermes</button>
@@ -291,13 +407,21 @@
               <button class="primary-action" data-create-key type="button">创建 Key</button>
             </div>
             <p class="field-feedback" data-key-feedback aria-live="polite"></p>
-            <div class="segmented-control" data-model-group aria-label="模型分组">
-              <button class="is-active" data-model-group-option="OpenAI" type="button">OpenAI</button>
-              <button data-model-group-option="Claude" type="button">Claude</button>
-              <button data-model-group-option="Other" type="button">Other</button>
+            <div class="api-tools">
+              <label class="search-field">
+                <span>搜索名称或 key</span>
+                <input data-api-search type="search" placeholder="搜索名称或 key" aria-label="搜索 API Key 名称或 key" />
+              </label>
+              <div class="segmented-control" data-model-group aria-label="模型分组">
+                <button class="is-active" data-model-group-option="OpenAI" type="button">OpenAI</button>
+                <button data-model-group-option="Claude" type="button">Claude</button>
+                <button data-model-group-option="DeepSeek" type="button">DeepSeek</button>
+                <button data-model-group-option="Gemini" type="button">Gemini</button>
+                <button data-model-group-option="Other" type="button">Other</button>
+              </div>
             </div>
             <div class="endpoint-note">
-              <span>请求地址</span>
+              <span>API 端点</span>
               <b data-base-url>https://api.frist.example.com/v1</b>
             </div>
             <div class="api-list" data-api-keys></div>
@@ -312,15 +436,141 @@
             </div>
             <div class="amount-grid" data-recharge-options></div>
             <button class="primary-action is-wide" data-pay-submit type="button">提交</button>
+            <article class="config-card balance-alert-card" data-balance-alert-card>
+              <div class="section-head">
+                <div>
+                  <span class="eyebrow">Alert</span>
+                  <h2>余额预警</h2>
+                </div>
+                <span class="status-pill status-pill--healthy" data-balance-alert-status>低于 $5.00 发送</span>
+              </div>
+              <div class="balance-alert-grid">
+                <label class="toggle-row balance-alert-toggle">
+                  <span>启用余额预警</span>
+                  <input data-balance-alert-enabled type="checkbox" checked />
+                  <span class="switch-rail" aria-hidden="true"></span>
+                </label>
+                <label class="field-row">
+                  <span>预警阈值</span>
+                  <input data-balance-alert-threshold type="number" min="0.01" step="0.01" value="5.00" aria-label="预警阈值" />
+                </label>
+                <label class="field-row">
+                  <span>通知邮箱</span>
+                  <input data-balance-alert-email type="email" placeholder="billing@example.com" aria-label="通知邮箱" />
+                </label>
+              </div>
+              <div class="balance-alert-actions">
+                <button class="secondary-action" data-balance-alert-test type="button">发送测试邮件</button>
+                <button class="primary-action" data-balance-alert-save type="button">保存预警</button>
+              </div>
+              <p class="field-feedback" data-balance-alert-feedback aria-live="polite"></p>
+              <p class="balance-alert-note" data-balance-alert-last>暂未触发</p>
+            </article>
           </section>
 
           <details class="plain-section soft-details">
             <summary>兑换码</summary>
             <div class="exchange-row">
+              <input type="text" data-billing-exchange-code placeholder="FRIST-DAY-001" aria-label="兑换码" />
+              <button class="secondary-action" data-billing-redeem-code type="button">兑换</button>
+            </div>
+          </details>
+        </section>
+
+        <section class="view-panel" data-view="subscription" hidden>
+          <button class="back-home" data-back-home data-route="dashboard" type="button">返回首页</button>
+          <section class="plain-section subscription-surface">
+            <div class="section-head">
+              <h2>我的订阅</h2>
+              <span class="status-pill" data-profile-plan>未登录</span>
+            </div>
+            <div class="subscription-grid">
+              <article class="subscription-card">
+                <span>当前套餐</span>
+                <strong data-profile-plan>未登录</strong>
+                <small data-package-status>未登录 · - 续费</small>
+              </article>
+              <article class="subscription-card">
+                <span>可用额度</span>
+                <strong data-profile-balance>$0.00</strong>
+                <small>未来时限套餐会在这里展示周期、到期和自动续费状态。</small>
+              </article>
+            </div>
+          </section>
+        </section>
+
+        <section class="view-panel" data-view="redeem" hidden>
+          <button class="back-home" data-back-home data-route="dashboard" type="button">返回首页</button>
+          <section class="plain-section redeem-surface">
+            <div class="section-head">
+              <h2>兑换码</h2>
+              <span class="status-pill status-pill--healthy">备用入账</span>
+            </div>
+            <div class="exchange-row">
               <input type="text" data-exchange-code placeholder="FRIST-DAY-001" aria-label="兑换码" />
               <button class="secondary-action" data-redeem-code type="button">兑换</button>
             </div>
-          </details>
+            <div class="manual-collection-panel">
+              <article>
+                <strong>人民币充值美元额度</strong>
+                <span>微信/支付宝接口不可用时，页面先创建待确认订单，运营端人工确认后入账美元额度。</span>
+              </article>
+              <article>
+                <strong>代收付预留</strong>
+                <span>保留 USDT、人工转账、企业付款等备用收款位，后续接入真实回调。</span>
+              </article>
+            </div>
+          </section>
+        </section>
+
+        <section class="view-panel" data-view="invite" hidden>
+          <button class="back-home" data-back-home data-route="dashboard" type="button">返回首页</button>
+          <section class="plain-section invite-surface">
+            <div class="section-head">
+              <h2>邀请返利</h2>
+              <span class="status-pill">增长预留</span>
+            </div>
+            <div class="invite-grid">
+              <article>
+                <span>邀请链接</span>
+                <strong>登录后生成</strong>
+                <small>未来按首充、续费或月消费返利。</small>
+              </article>
+              <article>
+                <span>待结算返利</span>
+                <strong>$0.00</strong>
+                <small>支持人工审核后发放余额。</small>
+              </article>
+            </div>
+          </section>
+        </section>
+
+        <section class="view-panel" data-view="profile" hidden>
+          <button class="back-home" data-back-home data-route="dashboard" type="button">返回首页</button>
+          <section class="plain-section profile-surface">
+            <div class="section-head">
+              <h2>个人资料</h2>
+              <button class="secondary-action" data-auth-toggle type="button">账户设置</button>
+            </div>
+            <div class="profile-grid">
+              <article>
+                <span>邮箱</span>
+                <strong data-profile-email>未登录</strong>
+              </article>
+              <article>
+                <span>套餐</span>
+                <strong data-profile-plan>未登录</strong>
+              </article>
+              <article>
+                <span>API Key</span>
+                <strong data-profile-key-count>0 个</strong>
+              </article>
+              <article>
+                <span>余额</span>
+                <strong data-profile-balance>$0.00</strong>
+              </article>
+            </div>
+          </section>
         </section>
 
         <section class="view-panel" data-view="switch" hidden>
@@ -333,20 +583,24 @@
             <div class="target-list" data-import-targets aria-label="导入位置">
               <button class="target-button is-active" data-target="Claude" type="button">Claude</button>
               <button class="target-button" data-target="Codex" type="button">Codex</button>
+              <button class="target-button" data-target="Gemini" type="button">Gemini</button>
               <button class="target-button" data-target="OpenCode" type="button">OpenCode</button>
               <button class="target-button" data-target="OpenClaw" type="button">OpenClaw</button>
               <button class="target-button" data-target="Hermes" type="button">Hermes</button>
+              <button class="target-button" data-target="Harmes" type="button">Harmes</button>
             </div>
             <div class="import-family" data-import-family aria-label="模型家族">
               <button class="is-active" data-import-family-option="OpenAI" type="button">ChatGPT / OpenAI</button>
               <button data-import-family-option="Claude" type="button">Claude</button>
+              <button data-import-family-option="DeepSeek" type="button">DeepSeek</button>
+              <button data-import-family-option="Gemini" type="button">Gemini</button>
               <button data-import-family-option="Other" type="button">Other</button>
             </div>
             <section class="cross-import-guide" aria-label="跨模型导入">
               <div>
                 <span class="eyebrow">一键导入</span>
                 <h2 data-cross-import-title>ChatGPT 模型导入 Claude Code</h2>
-                <p data-cross-import-copy>选择 Claude + ChatGPT / OpenAI 后，Frist-API 会用 Anthropic Messages 入口接住 Claude Code，再把请求路由到可用的 ChatGPT 模型。</p>
+                <p data-cross-import-copy>选目标、选模型家族、导入。遇到弹窗直接允许打开 CC Switch。</p>
               </div>
               <ol data-claude-developer-guide>
                 <li data-claude-guide-step>打开 CC Switch 的 Claude 配置页。</li>
@@ -390,7 +644,7 @@
                 <div class="walkthrough-head">
                   <span class="walkthrough-kicker">流程图 1</span>
                   <h3>ChatGPT / OpenAI 模型导入 Claude Code</h3>
-                  <p>照着 Claude 真实菜单填写。Claude 侧不要填 <code>/v1</code>，认证方式选 <code>bearer</code>，模型列表第一项就是默认模型。</p>
+                  <p><strong class="danger-text">重点：</strong>Claude 侧 Base URL <strong>不要带 <code>/v1</code></strong>，认证方式选 <strong>bearer</strong>。</p>
                 </div>
                 <div class="walkthrough-diagram walkthrough-diagram--claude" aria-label="Claude 第三方推理配置流程图">
                   <div class="diagram-window diagram-window--menu">
@@ -450,22 +704,19 @@
                     </div>
                   </div>
                 </div>
-                <ol class="walkthrough-steps">
-                  <li>打开 Claude Desktop / Claude Code 桌面应用，点窗口左上角三横线菜单。</li>
-                  <li>在展开的菜单里进入 <code>Developer</code>，点击 <code>Configure Third-Party Inference...</code>。</li>
-                  <li>左侧停在 <code>Connection</code>，连接类型选 <code>Gateway / Anthropic-compatible</code>。</li>
-                  <li><code>Gateway base URL</code> 填 Frist-API Claude 地址: <code data-flow-claude-base>https://api.frist.example.com</code>，末尾不要带斜杠，也不要带 <code>/v1</code>。</li>
-                  <li><code>Gateway API key</code> 填你在本站 API 页面创建的用户 Key，形如 <code>fk-live-...</code>。</li>
-                  <li><code>Gateway auth scheme</code> 下拉选择 <code>bearer</code>；<code>Model list</code> 添加 OpenAI 模型，默认第一项用 <code data-flow-openai-model>gpt-5.5</code>。</li>
-                  <li>打开 <code>Skip login-mode chooser</code>，保存后回到 Claude，新会话选择这个 Gateway 供应商测试。</li>
-                </ol>
+                <div class="walkthrough-steps">
+                  <article><b>1. 打开设置</b><span>菜单进入 <strong>Developer</strong> → <strong>Configure Third-Party Inference...</strong></span></article>
+                  <article><b>2. 填连接</b><span><strong class="danger-text">Base URL 不带 /v1</strong>，API Key 用本站 <code>fk-live-...</code>。</span></article>
+                  <article><b>3. 选模型</b><span>Auth scheme 选 <strong>bearer</strong>，Model list 第一项填 <code data-flow-openai-model>gpt-5.5</code>。</span></article>
+                  <article><b>4. 保存测试</b><span>打开 <strong>Skip login-mode chooser</strong>，新会话选择 Frist-API Gateway。</span></article>
+                </div>
               </article>
 
               <article class="walkthrough" data-walkthrough="claude-to-codex">
                 <div class="walkthrough-head">
                   <span class="walkthrough-kicker">流程图 2</span>
                   <h3>Claude 模型导入 Codex</h3>
-                  <p>Codex 侧走 OpenAI Responses 兼容入口。CC Switch 一键写入 Key、<code>/v1</code> 请求地址、Claude 默认模型和推荐 MCP。</p>
+                  <p><strong class="danger-text">重点：</strong>Codex 走 <strong>Responses</strong>，Base URL 必须带 <strong><code>/v1</code></strong>。</p>
                 </div>
                 <div class="walkthrough-diagram walkthrough-diagram--codex" aria-label="Codex 导入 Claude 模型流程图">
                   <div class="diagram-window diagram-window--frist">
@@ -494,11 +745,20 @@
                         <span><i>5</i>模型名称</span>
                         <code data-flow-claude-model>claude-opus-4-6-thinking-c</code>
                       </label>
+                      <label class="diagram-field">
+                        <span>DeepSeek 模型</span>
+                        <code data-flow-deepseek-model>deepseek-v4-flash</code>
+                      </label>
                       <label class="diagram-field is-marked">
                         <span><i>6</i>auth.json</span>
                         <code>{ "OPENAI_API_KEY": "fk-live-..." }</code>
                       </label>
-                      <pre class="mini-toml is-marked"><span>7</span>model_provider = "custom"
+                      <div class="copyable-terminal is-marked">
+                        <div class="terminal-head">
+                          <span>config.toml</span>
+                          <button class="text-action" data-copy-flow-codex-toml type="button">复制</button>
+                        </div>
+                        <pre class="mini-toml" data-flow-codex-toml><span>7</span>model_provider = "custom"
 model = "<b data-flow-claude-model>claude-opus-4-6-thinking-c</b>"
 model_reasoning_effort = "xhigh"
 
@@ -507,19 +767,26 @@ wire_api = "responses"
 base_url = "<b data-flow-codex-base>https://api.frist.example.com/v1</b>"
 
 [mcp_servers.playwright]
-command = "npx"</pre>
+command = "npx"
+args = ["-y", "@playwright/mcp@latest"]
+
+[mcp_servers.superpowers]
+command = "npx"
+args = ["-y", "superpowers-mcp@latest"]
+
+[mcp_servers.open_computer_use]
+command = "npx"
+args = ["-y", "-p", "open-computer-use@latest", "open-codex-computer-use-mcp"]</pre>
+                      </div>
                     </div>
                   </div>
                 </div>
-                <ol class="walkthrough-steps">
-                  <li>在本站打开 <code>CC Switch</code> 页面，目标客户端点 <code>Codex</code>，模型家族点 <code>Claude</code>。</li>
-                  <li>点击 <code>一键导入</code>；如果浏览器询问是否打开 CC Switch，选择允许。</li>
-                  <li>在 CC Switch 的 Codex 页面确认 <code>API 请求地址</code> 是 <code data-flow-codex-base>https://api.frist.example.com/v1</code>。</li>
-                  <li><code>auth.json</code> 里只需要 <code>OPENAI_API_KEY</code>，值填本站用户 Key；不要填上游供应商 Key。</li>
-                  <li><code>config.toml</code> 里确认 <code>wire_api = "responses"</code>，<code>model</code> 是 Claude 模型: <code data-flow-claude-model>claude-opus-4-6-thinking-c</code>。</li>
-                  <li>确认 <code>mcp_servers</code> 已包含 Playwright、Superpowers、open_computer_use。首次调用电脑操作时按系统弹窗授权。</li>
-                  <li>写入通用配置后重启 Codex；同一会话先让模型记住一句话，再切换模型追问这句话，检查上下文是否自然衔接。</li>
-                </ol>
+                <div class="walkthrough-steps">
+                  <article><b>1. 选择组合</b><span>目标客户端选 <strong>Codex</strong>，模型家族选 <strong>Claude</strong>。</span></article>
+                  <article><b>2. 一键导入</b><span>浏览器询问是否打开 CC Switch 时，选择 <strong>允许</strong>。</span></article>
+                  <article><b>3. 核对字段</b><span><strong class="danger-text">API 请求地址必须带 /v1</strong>，Key 只填本站用户 Key。</span></article>
+                  <article><b>4. 重启验证</b><span>重启 Codex 后做一次上下文切换测试，确认模型能连续回答。</span></article>
+                </div>
               </article>
             </section>
             <details class="config-details">
@@ -546,6 +813,6 @@ command = "npx"</pre>
       </main>
     </div>
 
-    <script type="module" src="./src/app.js?v=20260503-inroi-console"></script>
+    <script type="module" src="./src/app.js?v=20260504-refero-shell"></script>
   </body>
 </html>

@@ -1,12 +1,44 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
-import { createFristApiServer } from '../server/server.js';
+import { createFristApiServer, resolveSmtpSocketTargets } from '../server/server.js';
 
 describe('Frist-API public server chain', () => {
+  it('resolves SMTP targets in DNS order so IPv6 can bypass blocked IPv4 exits', async () => {
+    const targets = await resolveSmtpSocketTargets({
+      host: 'smtp.example.com',
+      port: 465,
+      family: 'auto',
+      addresses: [
+        { address: '2001:db8::465', family: 6 },
+        { address: '203.0.113.46', family: 4 },
+      ],
+    });
+
+    assert.deepEqual(
+      targets.map((target) => ({ host: target.host, family: target.family, servername: target.servername })),
+      [
+        { host: '2001:db8::465', family: 6, servername: 'smtp.example.com' },
+        { host: '203.0.113.46', family: 4, servername: 'smtp.example.com' },
+      ],
+    );
+
+    const ipv6Only = await resolveSmtpSocketTargets({
+      host: 'smtp.example.com',
+      port: 465,
+      family: '6',
+      addresses: [
+        { address: '2001:db8::465', family: 6 },
+        { address: '203.0.113.46', family: 4 },
+      ],
+    });
+    assert.deepEqual(ipv6Only.map((target) => target.family), [6]);
+  });
+
   it('serves the customer website from the same lightweight server', async () => {
     const fixture = await createServerFixture();
 
@@ -27,8 +59,8 @@ describe('Frist-API public server chain', () => {
       assert.equal(dashboard.status, 200);
       assert.equal(dashboard.json.authenticated, false);
       assert.deepEqual(dashboard.json.apiKeys, []);
-      assert.equal(dashboard.json.account.monthCost, '¥0.00');
-      assert.equal(dashboard.json.account.usageTotal, '¥0.00');
+      assert.equal(dashboard.json.account.monthCost, '$0.00');
+      assert.equal(dashboard.json.account.usageTotal, '$0.00');
       assert.deepEqual(dashboard.json.modelUsage, []);
       assert.deepEqual(
         dashboard.json.rechargeOptions.map((item) => ({
@@ -109,7 +141,7 @@ describe('Frist-API public server chain', () => {
       const dashboard = await fixture.request('/api/frist/dashboard');
       assert.equal(dashboard.json.rechargeOptions[0].priceCny, 6.66);
       assert.equal(dashboard.json.rechargeOptions[0].cny, '¥6.66');
-      assert.equal(dashboard.json.modelCatalog.find((item) => item.model === 'gpt-5.5').price, '¥9/¥49 每 1M');
+      assert.equal(dashboard.json.modelCatalog.find((item) => item.model === 'gpt-5.5').price, '$1.250/$6.806 每 1M');
     } finally {
       await fixture.close();
     }
@@ -141,7 +173,7 @@ describe('Frist-API public server chain', () => {
         body: { amountCny: 8, method: 'manual_demo' },
       });
       assert.equal(recharged.status, 200);
-      assert.equal(recharged.json.account.balance, '¥8.00');
+      assert.equal(recharged.json.account.balance, '$1.11');
 
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -250,10 +282,10 @@ describe('Frist-API public server chain', () => {
       });
       assert.equal(pending.status, 202);
       assert.equal(pending.json.paymentOrder.status, 'pending_manual_payment');
-      assert.equal(pending.json.account.balance, '¥0.00');
+      assert.equal(pending.json.account.balance, '$0.00');
 
       const dashboard = await fixture.request('/api/frist/dashboard', { cookie });
-      assert.equal(dashboard.json.account.balance, '¥0.00');
+      assert.equal(dashboard.json.account.balance, '$0.00');
     } finally {
       await fixture.close();
     }
@@ -276,10 +308,10 @@ describe('Frist-API public server chain', () => {
         body: { email: 'manual-credit@example.com', amountCny: 8, method: 'manual_confirmed' },
       });
       assert.equal(credited.status, 200);
-      assert.equal(credited.json.account.balance, '¥8.00');
+      assert.equal(credited.json.account.balance, '$1.11');
 
       const dashboard = await fixture.request('/api/frist/dashboard', { cookie });
-      assert.equal(dashboard.json.account.boosterQuota, '¥8.00');
+      assert.equal(dashboard.json.account.boosterQuota, '$1.11');
     } finally {
       await fixture.close();
     }
@@ -326,7 +358,7 @@ describe('Frist-API public server chain', () => {
       });
       assert.equal(credited.status, 200);
       assert.equal(credited.json.account.plan, '日卡');
-      assert.equal(credited.json.account.packageQuota, '¥8.00');
+      assert.equal(credited.json.account.packageQuota, '$1.11');
 
       const gateway = await fixture.request('/v1/chat/completions', {
         method: 'POST',
@@ -371,6 +403,70 @@ describe('Frist-API public server chain', () => {
         cookie: loggedIn.cookie,
       });
       assert.equal(dashboard.json.authenticated, true);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('stores new passwords with a slow hash and upgrades legacy hashes on login', async () => {
+    const fixture = await createServerFixture({
+      requireEmailVerification: false,
+      sessionSecret: 'session-secret-with-enough-randomness-2026',
+    });
+
+    try {
+      const registered = await fixture.request('/api/frist/register', {
+        method: 'POST',
+        body: { email: 'hash-upgrade@example.com', password: 'TestPass123!' },
+      });
+      assert.equal(registered.status, 200);
+
+      let data = await fixture.readData();
+      const user = data.users.find((item) => item.email === 'hash-upgrade@example.com');
+      assert.match(user.passwordHash, /^pbkdf2-sha256\$210000\$/);
+      assert.equal(user.passwordHash.includes('TestPass123!'), false);
+
+      user.passwordHash = legacyPasswordHash('LegacyPass123!', 'session-secret-with-enough-randomness-2026');
+      await fixture.writeData(data);
+
+      const loggedIn = await fixture.request('/api/frist/login', {
+        method: 'POST',
+        body: { email: 'hash-upgrade@example.com', password: 'LegacyPass123!' },
+      });
+      assert.equal(loggedIn.status, 200);
+
+      data = await fixture.readData();
+      const upgraded = data.users.find((item) => item.email === 'hash-upgrade@example.com');
+      assert.match(upgraded.passwordHash, /^pbkdf2-sha256\$210000\$/);
+      assert.equal(upgraded.passwordHash.includes('LegacyPass123!'), false);
+      assert.equal(data.events.some((event) => event.type === 'password_hash_upgraded'), true);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('adds Secure to session cookies when the public gateway is HTTPS', async () => {
+    const fixture = await createServerFixture({
+      requireEmailVerification: false,
+      publicGatewayBaseUrl: 'https://gateway.frist-api.example/v1',
+    });
+
+    try {
+      const registered = await fixture.request('/api/frist/register', {
+        method: 'POST',
+        body: { email: 'secure-cookie@example.com', password: 'TestPass123!' },
+      });
+      assert.equal(registered.status, 200);
+      assert.match(registered.setCookie, /HttpOnly/);
+      assert.match(registered.setCookie, /SameSite=Lax/);
+      assert.match(registered.setCookie, /Secure/);
+
+      const loggedIn = await fixture.request('/api/frist/login', {
+        method: 'POST',
+        body: { email: 'secure-cookie@example.com', password: 'TestPass123!' },
+      });
+      assert.equal(loggedIn.status, 200);
+      assert.match(loggedIn.setCookie, /Secure/);
     } finally {
       await fixture.close();
     }
@@ -527,10 +623,10 @@ describe('Frist-API public server chain', () => {
       assert.equal(first.status, 200);
 
       const afterFirst = await fixture.request('/api/frist/dashboard', { cookie });
-      assert.equal(afterFirst.json.account.packageQuota, '¥3.00');
-      assert.equal(afterFirst.json.account.boosterQuota, '¥1.00');
-      assert.equal(afterFirst.json.account.quotaLeft, '¥4.00');
-      assert.equal(afterFirst.json.account.todayCost, '¥5.00');
+      assert.equal(afterFirst.json.account.packageQuota, '$0.42');
+      assert.equal(afterFirst.json.account.boosterQuota, '$0.14');
+      assert.equal(afterFirst.json.account.quotaLeft, '$0.56');
+      assert.equal(afterFirst.json.account.todayCost, '$0.69');
       assert.equal(afterFirst.json.account.todayCalls, '1 次');
 
       const blocked = await fixture.request('/v1/chat/completions', {
@@ -541,6 +637,110 @@ describe('Frist-API public server chain', () => {
       assert.equal(blocked.status, 402);
       assert.match(blocked.text, /余额不足/);
       assert.equal(upstreamCalls.length, 1);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('lets customers configure a custom balance alert email from the dashboard API', async () => {
+    const fixture = await createServerFixture({ requireEmailVerification: false });
+
+    try {
+      const registered = await fixture.request('/api/frist/register', {
+        method: 'POST',
+        body: { email: 'balance-alert@example.com', password: 'TestPass123!' },
+      });
+
+      const saved = await fixture.request('/api/frist/balance-alert', {
+        method: 'PUT',
+        cookie: registered.cookie,
+        body: {
+          enabled: true,
+          thresholdUsd: 5.5,
+          email: 'ops-billing@example.com',
+        },
+      });
+      assert.equal(saved.status, 200);
+      assert.equal(saved.json.balanceAlert.enabled, true);
+      assert.equal(saved.json.balanceAlert.thresholdUsd, 5.5);
+      assert.equal(saved.json.balanceAlert.email, 'ops-billing@example.com');
+
+      const dashboard = await fixture.request('/api/frist/dashboard', { cookie: registered.cookie });
+      assert.equal(dashboard.json.balanceAlert.enabled, true);
+      assert.equal(dashboard.json.balanceAlert.thresholdUsd, 5.5);
+      assert.equal(dashboard.json.balanceAlert.threshold, '$5.50');
+      assert.equal(dashboard.json.balanceAlert.email, 'ops-billing@example.com');
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('sends one branded email when customer balance crosses the custom alert threshold', async () => {
+    const sentEmails = [];
+    const fixture = await createServerFixture({
+      quotaCost: 300,
+      balanceAlertEmailSender: (message) => sentEmails.push(message),
+      publicGatewayBaseUrl: 'https://gateway.frist-api.dev/v1',
+      fetchImpl: async () =>
+        jsonResponse(200, {
+          id: 'chatcmpl-balance-alert',
+          model: 'gpt-5.5',
+          choices: [{ message: { role: 'assistant', content: 'ok' } }],
+        }),
+    });
+
+    try {
+      const cookie = await fixture.createVerifiedCustomer('threshold-crossing@example.com');
+      await fixture.request('/api/frist/redeem', {
+        method: 'POST',
+        cookie,
+        body: { code: 'FRIST-DAY-001' },
+      });
+      await fixture.request('/api/frist/balance-alert', {
+        method: 'PUT',
+        cookie,
+        body: { enabled: true, thresholdUsd: 5.5, email: 'billing-watch@example.com' },
+      });
+      const token = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie,
+        body: { name: '余额预警 Key', modelGroup: 'OpenAI' },
+      });
+      await fixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'https://supplier.example.com/openai',
+          pool: 'day',
+          models: ['gpt-5.5'],
+          keys: [{ value: 'sk-balance-alert', quotaRemaining: 900, latencyMs: 80 }],
+        },
+      });
+
+      const first = await fixture.request('/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token.json.key.secret}` },
+        body: { model: 'gpt-5.5', messages: [{ role: 'user', content: 'first billable call' }] },
+      });
+      assert.equal(first.status, 200);
+      assert.equal(sentEmails.length, 1);
+      assert.equal(sentEmails[0].to, 'billing-watch@example.com');
+      assert.match(sentEmails[0].subject, /余额预警/);
+      assert.match(sentEmails[0].html, /Frist-API Balance Guard/);
+      assert.match(sentEmails[0].html, /当前余额/);
+      assert.match(sentEmails[0].html, /预警阈值/);
+      assert.match(sentEmails[0].html, /打开 Frist-API/);
+      assert.match(sentEmails[0].html, /\$5\.50/);
+      assert.match(sentEmails[0].text, /threshold-crossing@example\.com/);
+      assert.match(sentEmails[0].text, /预警阈值: \$5\.50/);
+
+      const second = await fixture.request('/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token.json.key.secret}` },
+        body: { model: 'gpt-5.5', messages: [{ role: 'user', content: 'second billable call' }] },
+      });
+      assert.equal(second.status, 200);
+      assert.equal(sentEmails.length, 1);
     } finally {
       await fixture.close();
     }
@@ -1165,7 +1365,7 @@ describe('Frist-API public server chain', () => {
       const image = dashboard.json.modelCatalog.find((item) => item.model === 'gpt-image-2');
       assert.equal(gpt.family, 'OpenAI');
       assert.equal(gpt.available, true);
-      assert.equal(gpt.price, '¥8/¥48 每 1M');
+      assert.equal(gpt.price, '$1.111/$6.667 每 1M');
       assert.equal(image.tagline, '图片生成');
       assert.equal(JSON.stringify(dashboard.json.modelCatalog).includes('sk-catalog-secret'), false);
       assert.equal(JSON.stringify(dashboard.json.modelCatalog).includes('supplier.example.com'), false);
@@ -1408,7 +1608,9 @@ describe('Frist-API public server chain', () => {
       const challenge = await fixture.request('/api/frist/challenge');
       assert.equal(challenge.status, 200);
       assert.match(challenge.json.id, /^cap-/);
-      assert.match(challenge.json.question, /\d+\s*\+\s*\d+/);
+      assert.equal(typeof challenge.json.question, 'string');
+      assert.ok(challenge.json.question.length > 8);
+      assert.equal(solveRegistrationChallenge(challenge.json.question).length > 0, true);
 
       const registered = await fixture.request('/api/frist/register', {
         method: 'POST',
@@ -1416,10 +1618,42 @@ describe('Frist-API public server chain', () => {
           email: 'captcha@example.com',
           password: 'TestPass123!',
           captchaId: challenge.json.id,
-          captchaAnswer: solveMathChallenge(challenge.json.question),
+          captchaAnswer: solveRegistrationChallenge(challenge.json.question),
         },
       });
       assert.equal(registered.status, 200);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('lets returning customers log in without captcha while keeping registration protected', async () => {
+    const fixture = await createServerFixture({ requireCaptcha: true, requireEmailVerification: false });
+
+    try {
+      const challenge = await fixture.request('/api/frist/challenge');
+      const registered = await fixture.request('/api/frist/register', {
+        method: 'POST',
+        body: {
+          email: 'login-without-captcha@example.com',
+          password: 'TestPass123!',
+          captchaId: challenge.json.id,
+          captchaAnswer: solveRegistrationChallenge(challenge.json.question),
+        },
+      });
+      assert.equal(registered.status, 200);
+
+      const loggedIn = await fixture.request('/api/frist/login', {
+        method: 'POST',
+        body: {
+          email: 'login-without-captcha@example.com',
+          password: 'TestPass123!',
+          captchaId: 'wrong-challenge',
+          captchaAnswer: 'wrong-answer',
+        },
+      });
+      assert.equal(loggedIn.status, 200);
+      assert.equal(loggedIn.json.user.email, 'login-without-captcha@example.com');
     } finally {
       await fixture.close();
     }
@@ -1521,7 +1755,7 @@ describe('Frist-API public server chain', () => {
 
       const dashboard = await fixture.request('/api/frist/dashboard', { cookie });
       assert.equal(dashboard.json.account.plan, '默认套餐');
-      assert.equal(dashboard.json.account.packageQuota, '¥0.00');
+      assert.equal(dashboard.json.account.packageQuota, '$0.00');
     } finally {
       await fixture.close();
     }
@@ -2532,13 +2766,268 @@ describe('Frist-API public server chain', () => {
       assert.equal(response.status, 200);
 
       const dashboard = await fixture.request('/api/frist/dashboard', { cookie });
-      assert.equal(dashboard.json.account.packageQuota, '¥0.00');
-      assert.equal(dashboard.json.account.todayCost, '¥75.60');
+      assert.equal(dashboard.json.account.packageQuota, '$0.00');
+      assert.equal(dashboard.json.account.todayCost, '$10.50');
 
       const inventory = await fixture.request('/api/admin/replenishments', {
         headers: { 'x-admin-token': 'admin-test-token' },
       });
       assert.equal(inventory.json.credentials[0].quotaRemaining, 0);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('returns customer usage records, recent logs and performance counters for the workbench shell', async () => {
+    const fixture = await createServerFixture({
+      quotaCost: 125,
+      fetchImpl: async () =>
+        jsonResponse(200, {
+          id: 'chatcmpl-records',
+          model: 'gpt-5.5',
+          usage: {
+            prompt_tokens: 1200,
+            completion_tokens: 345,
+            total_tokens: 1545,
+          },
+          choices: [{ message: { role: 'assistant', content: 'records ok' } }],
+        }),
+    });
+
+    try {
+      const cookie = await fixture.createVerifiedCustomer('records@example.com');
+      await fixture.request('/api/frist/redeem', {
+        method: 'POST',
+        cookie,
+        body: { code: 'FRIST-DAY-001' },
+      });
+      const token = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie,
+        body: { name: '记录 Key', modelGroup: 'OpenAI' },
+      });
+      await fixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'https://supplier.example.com/v1',
+          pool: 'day',
+          models: ['gpt-5.5'],
+          keys: [{ value: 'sk-records', quotaRemaining: 900, latencyMs: 80 }],
+        },
+      });
+
+      const response = await fixture.request('/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token.json.key.secret}` },
+        body: {
+          model: 'gpt-5.5',
+          reasoning_effort: 'high',
+          messages: [{ role: 'user', content: 'records' }],
+        },
+      });
+      assert.equal(response.status, 200);
+
+      const dashboard = await fixture.request('/api/frist/dashboard', { cookie });
+      assert.equal(dashboard.json.account.todayCalls, '1 次');
+      assert.equal(dashboard.json.account.todayTokens, '1.5K');
+      assert.equal(dashboard.json.account.totalTokens, '1.5K');
+      assert.match(dashboard.json.account.averageLatency, /^\d+ms$/);
+      assert.equal(dashboard.json.account.successRate, '100%');
+      assert.equal(dashboard.json.usageRecords.length, 1);
+      assert.equal(dashboard.json.usageRecords[0].apiKey, token.json.key.preview);
+      assert.equal(dashboard.json.usageRecords[0].model, 'gpt-5.5');
+      assert.equal(dashboard.json.usageRecords[0].inferenceEffort, 'high');
+      assert.equal(dashboard.json.usageRecords[0].endpoint, 'https://supplier.example.com/v1');
+      assert.equal(dashboard.json.usageRecords[0].type, '文本');
+      assert.equal(dashboard.json.usageRecords[0].billingMode, '套餐');
+      assert.equal(dashboard.json.usageRecords[0].tokens, '1.5K');
+      assert.match(dashboard.json.usageRecords[0].amount, /^\$\d+\.\d{2}$/);
+      assert.ok(dashboard.json.recentLogs.some((item) => item.type === 'gateway_routed'));
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('uses New-API business endpoints for dashboard, token management, import and gateway when enabled', async () => {
+    const newApiCalls = [];
+    const fixture = await createServerFixture({
+      requireEmailVerification: false,
+      newApiEnabled: true,
+      newApiBaseUrl: 'https://new-api.internal',
+      newApiAccessToken: 'newapi-access-token',
+      newApiUserId: '42',
+      newApiGatewayEnabled: true,
+      newApiGatewayBaseUrl: 'https://new-api.internal/v1',
+      fetchImpl: async (url, init = {}) => {
+        newApiCalls.push({ url: String(url), init });
+        const requestUrl = new URL(String(url));
+        const path = requestUrl.pathname;
+        if (String(url).startsWith('https://new-api.internal/api/')) {
+          assert.equal(init.headers.Authorization, 'Bearer newapi-access-token');
+          assert.equal(init.headers['New-Api-User'], '42');
+        }
+        if (path === '/api/user/self') {
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              email: 'newapi@example.com',
+              username: 'newapi-user',
+              group: 'pro',
+              quota: 7200,
+              used_quota: 14400,
+              request_count: 8,
+            },
+          });
+        }
+        if (path === '/api/token/' && init.method === 'POST') {
+          const body = JSON.parse(init.body);
+          assert.equal(body.name, 'Codex NewAPI Key');
+          assert.equal(body.model_limits_enabled, true);
+          assert.equal(body.model_limits, 'deepseek-*');
+          return jsonResponse(200, { success: true, message: '' });
+        }
+        if (path === '/api/token/' && (!init.method || init.method === 'GET')) {
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              items: [
+                {
+                  id: 9,
+                  name: 'Codex NewAPI Key',
+                  key: 'sk-newapi-full-secret',
+                  status: 1,
+                  used_quota: 100,
+                  remain_quota: 7100,
+                  model_limits_enabled: true,
+                  model_limits: 'deepseek-v4-flash,deepseek-v4-pro,deepseek-chat,deepseek-reasoner',
+                  accessed_time: 1770000000,
+                  expired_time: -1,
+                },
+              ],
+            },
+          });
+        }
+        if (path === '/api/token/search') {
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              items: [
+                {
+                  id: 9,
+                  name: 'Codex NewAPI Key',
+                  key: 'sk-newapi-full-secret',
+                  status: 1,
+                  remain_quota: 7100,
+                  model_limits: 'deepseek-v4-flash,deepseek-v4-pro,deepseek-chat,deepseek-reasoner',
+                },
+              ],
+            },
+          });
+        }
+        if (path === '/api/token/9/key') {
+          return jsonResponse(200, { success: true, data: { key: 'sk-newapi-full-secret' } });
+        }
+        if (path === '/api/token/9' && (!init.method || init.method === 'GET')) {
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              id: 9,
+              name: 'Codex NewAPI Key',
+              status: 1,
+              remain_quota: 7100,
+              model_limits_enabled: true,
+              model_limits: 'deepseek-v4-flash,deepseek-v4-pro,deepseek-chat,deepseek-reasoner',
+              expired_time: -1,
+            },
+          });
+        }
+        if (path === '/api/token/' && init.method === 'PUT') {
+          const body = JSON.parse(init.body);
+          assert.equal(body.id, 9);
+          assert.equal(body.status, 2);
+          return jsonResponse(200, { success: true, data: { ...body, key: 'sk-newapi-full-secret' } });
+        }
+        if (path === '/api/log/self') {
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              items: [
+                {
+                  id: 88,
+                  model_name: 'deepseek-v4-flash',
+                  quota: 360,
+                  prompt_tokens: 1000,
+                  completion_tokens: 400,
+                  created_at: 1770000000,
+                  endpoint: '/v1/responses',
+                },
+              ],
+            },
+          });
+        }
+        if (path === '/api/log/self/stat' || path === '/api/data/self') {
+          return jsonResponse(200, { success: true, data: {} });
+        }
+        if (path === '/api/subscription/self' || path === '/api/user/topup/info' || path === '/api/user/aff') {
+          return jsonResponse(200, { success: true, data: {} });
+        }
+        if (path === '/v1/responses') {
+          const body = JSON.parse(init.body);
+          assert.equal(body.model, 'deepseek-v4-flash');
+          assert.equal(init.headers.authorization, 'Bearer sk-newapi-full-secret');
+          return jsonResponse(200, { id: 'resp-newapi', output_text: 'ok' });
+        }
+        return jsonResponse(404, { success: false, message: `unexpected ${path}` });
+      },
+    });
+
+    try {
+      const registered = await fixture.request('/api/frist/register', {
+        method: 'POST',
+        body: { email: 'newapi@example.com', password: 'TestPass123!' },
+      });
+      const created = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie: registered.cookie,
+        body: { name: 'Codex NewAPI Key', modelGroup: 'DeepSeek' },
+      });
+      assert.equal(created.status, 200);
+      assert.equal(created.json.key.secret, 'sk-newapi-full-secret');
+      assert.equal(created.json.key.modelGroup, 'DeepSeek');
+
+      const dashboard = await fixture.request('/api/frist/dashboard', { cookie: registered.cookie });
+      assert.equal(dashboard.status, 200);
+      assert.equal(dashboard.json.account.balance, '$10.00');
+      assert.equal(dashboard.json.account.monthCost, '$20.00');
+      assert.equal(dashboard.json.apiKeys[0].preview, 'sk-new••••••cret');
+      assert.equal(dashboard.json.modelUsage[0].model, 'DeepSeek');
+
+      const imported = await fixture.request('/api/frist/import-url?target=Codex', {
+        cookie: registered.cookie,
+      });
+      assert.equal(imported.status, 200);
+      const importUrl = new URL(imported.json.url);
+      const providerConfig = JSON.parse(Buffer.from(importUrl.searchParams.get('config'), 'base64').toString('utf8'));
+      assert.equal(importUrl.searchParams.get('endpoint'), 'https://api.deepseek.com/v1');
+      assert.equal(providerConfig.env.OPENAI_BASE_URL, 'https://api.deepseek.com/v1');
+
+      const disabled = await fixture.request('/api/frist/token/9', {
+        method: 'PATCH',
+        cookie: registered.cookie,
+        body: { enabled: false },
+      });
+      assert.equal(disabled.status, 200);
+      assert.equal(disabled.json.key.enabled, false);
+
+      const gateway = await fixture.request('/v1/responses', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer sk-newapi-full-secret' },
+        body: { model: 'deepseek-v4-flash', input: 'hello' },
+      });
+      assert.equal(gateway.status, 200);
+      assert.equal(gateway.json.id, 'resp-newapi');
+      assert.ok(newApiCalls.some((call) => call.url === 'https://new-api.internal/v1/responses'));
     } finally {
       await fixture.close();
     }
@@ -2762,6 +3251,7 @@ async function createServerFixture(options = {}) {
     quotaCost: options.quotaCost,
     lowInventoryThresholdRatio: options.lowInventoryThresholdRatio,
     notifyLowInventory: options.notifyLowInventory,
+    balanceAlertEmailSender: options.balanceAlertEmailSender,
     requireCaptcha: options.requireCaptcha,
     authRateLimitMax: options.authRateLimitMax,
     authRateLimitWindowMs: options.authRateLimitWindowMs,
@@ -2770,6 +3260,12 @@ async function createServerFixture(options = {}) {
     publicGatewayBaseUrl: options.publicGatewayBaseUrl,
     adminPageCode: options.adminPageCode,
     adminClaimCodes: options.adminClaimCodes,
+    newApiEnabled: options.newApiEnabled,
+    newApiBaseUrl: options.newApiBaseUrl,
+    newApiAccessToken: options.newApiAccessToken,
+    newApiUserId: options.newApiUserId,
+    newApiGatewayEnabled: options.newApiGatewayEnabled,
+    newApiGatewayBaseUrl: options.newApiGatewayBaseUrl,
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;
@@ -2790,10 +3286,17 @@ async function createServerFixture(options = {}) {
       const text = await response.text();
       return {
         status: response.status,
+        setCookie: response.headers.get('set-cookie') || '',
         cookie: response.headers.get('set-cookie')?.split(';')[0] || options.cookie || '',
         json: parseJsonOrEmpty(text),
         text,
       };
+    },
+    async readData() {
+      return JSON.parse(await readFile(dataFile, 'utf8'));
+    },
+    async writeData(data) {
+      await writeFile(dataFile, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
     },
     async createVerifiedCustomer(email = `user-${Date.now()}@example.com`) {
       const registered = await this.request('/api/frist/register', {
@@ -2834,6 +3337,10 @@ function delay(ms) {
   });
 }
 
+function legacyPasswordHash(password, salt) {
+  return createHash('sha256').update(`${salt}:${password}`).digest('hex');
+}
+
 function parseJsonOrEmpty(text) {
   if (!text) return {};
   try {
@@ -2843,8 +3350,27 @@ function parseJsonOrEmpty(text) {
   }
 }
 
-function solveMathChallenge(question) {
-  const match = String(question || '').match(/(\d+)\s*\+\s*(\d+)/);
-  if (!match) return '';
-  return String(Number(match[1]) + Number(match[2]));
+function solveRegistrationChallenge(question) {
+  const text = String(question || '');
+  const arithmetic = text.match(/(\d+)\s*\+\s*(\d+)\s*-\s*(\d+)/);
+  if (arithmetic) {
+    return String(Number(arithmetic[1]) + Number(arithmetic[2]) - Number(arithmetic[3]));
+  }
+  const positions = text.match(/验证码\s+([A-Z0-9]+).*第\s*(\d+)\s*和第\s*(\d+)\s*位字符/);
+  if (positions) {
+    return `${positions[1][Number(positions[2]) - 1]}${positions[1][Number(positions[3]) - 1]}`;
+  }
+  const reverse = text.match(/把\s+([A-Z0-9]+)\s+倒序输入/);
+  if (reverse) {
+    return reverse[1].split('').reverse().join('');
+  }
+  const digits = text.match(/验证码\s+([A-Z0-9]+).*只输入其中的数字/);
+  if (digits) {
+    return digits[1].replace(/\D/g, '');
+  }
+  const suffix = text.match(/验证码\s+([A-Z0-9]+).*最后\s*3\s*位/);
+  if (suffix) {
+    return suffix[1].slice(-3);
+  }
+  return '';
 }

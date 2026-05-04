@@ -15,19 +15,19 @@ const previousDashboard = {
   accountSummary: {
     userInitials: 'DJ',
     plan: '历史套餐',
-    balance: '¥81.58',
-    todayCost: '¥18.42',
-    monthCost: '¥428.90',
-    quotaLeft: '¥81.58',
-    packageQuota: '¥64.00',
-    boosterQuota: '¥17.58',
-    usageTotal: '¥428.90',
+    balance: '$11.33',
+    todayCost: '$2.56',
+    monthCost: '$59.57',
+    quotaLeft: '$11.33',
+    packageQuota: '$8.89',
+    boosterQuota: '$2.44',
+    usageTotal: '$59.57',
     todayCalls: '186 次',
     renewalDate: '2026-05-28',
   },
   apiKeys: [{ id: 'previous-key', name: '历史 Key', preview: 'fk-live-••••••prev', enabled: true }],
   channelChecks: [{ provider: 'Claude', channel: '历史线路', ok: true, latencyMs: 300 }],
-  modelUsage: [{ model: 'Claude', amount: '¥18.42', percent: 100, calls: '18 次', tokens: '1.00M' }],
+  modelUsage: [{ model: 'Claude', amount: '$2.56', percent: 100, calls: '18 次', tokens: '1.00M' }],
 };
 
 describe('Frist-API New-API adapter', () => {
@@ -45,12 +45,12 @@ describe('Frist-API New-API adapter', () => {
     );
 
     assert.equal(dashboard.accountSummary.plan, '未登录');
-    assert.equal(dashboard.accountSummary.balance, '¥0.00');
-    assert.equal(dashboard.accountSummary.monthCost, '¥0.00');
-    assert.equal(dashboard.accountSummary.usageTotal, '¥0.00');
+    assert.equal(dashboard.accountSummary.balance, '$0.00');
+    assert.equal(dashboard.accountSummary.monthCost, '$0.00');
+    assert.equal(dashboard.accountSummary.usageTotal, '$0.00');
     assert.equal(dashboard.accountSummary.todayCalls, '0 次');
     assert.deepEqual(dashboard.modelUsage, [
-      { model: 'Claude', amount: '¥0.00', percent: 0, calls: '0 次', tokens: '0.00M' },
+      { model: 'Claude', amount: '$0.00', percent: 0, calls: '0 次', tokens: '0.00M' },
     ]);
   });
 
@@ -76,13 +76,13 @@ describe('Frist-API New-API adapter', () => {
         authenticated: true,
         account: {
           plan: '日卡',
-          balance: '¥4.00',
-          quotaLeft: '¥4.00',
-          packageQuota: '¥3.00',
-          boosterQuota: '¥1.00',
-          todayCost: '¥5.00',
-          monthCost: '¥5.00',
-          usageTotal: '¥5.00',
+          balance: '$0.56',
+          quotaLeft: '$0.56',
+          packageQuota: '$0.42',
+          boosterQuota: '$0.14',
+          todayCost: '$0.69',
+          monthCost: '$0.69',
+          usageTotal: '$0.69',
           todayCalls: '1 次',
           renewalDate: '2026-05-02',
         },
@@ -94,9 +94,9 @@ describe('Frist-API New-API adapter', () => {
       previousDashboard,
     );
 
-    assert.equal(dashboard.accountSummary.todayCost, '¥5.00');
-    assert.equal(dashboard.accountSummary.monthCost, '¥5.00');
-    assert.equal(dashboard.accountSummary.usageTotal, '¥5.00');
+    assert.equal(dashboard.accountSummary.todayCost, '$0.69');
+    assert.equal(dashboard.accountSummary.monthCost, '$0.69');
+    assert.equal(dashboard.accountSummary.usageTotal, '$0.69');
     assert.equal(dashboard.accountSummary.todayCalls, '1 次');
   });
 
@@ -121,13 +121,13 @@ describe('Frist-API New-API adapter', () => {
     assert.deepEqual(summary, {
       userInitials: 'DB',
       plan: '月卡 Pro',
-      balance: '¥81.58',
-      todayCost: '¥18.42',
-      monthCost: '¥428.90',
-      quotaLeft: '¥81.58',
-      packageQuota: '¥81.58',
-      boosterQuota: '¥0.00',
-      usageTotal: '¥428.90',
+      balance: '$11.33',
+      todayCost: '$2.56',
+      monthCost: '$59.57',
+      quotaLeft: '$11.33',
+      packageQuota: '$11.33',
+      boosterQuota: '$0.00',
+      usageTotal: '$59.57',
       todayCalls: '186 次',
       renewalDate: '2026-05-28',
     });
@@ -155,7 +155,7 @@ describe('Frist-API New-API adapter', () => {
         name: 'Claude 主力',
         preview: 'fk-live-••••••9x2a',
         enabled: true,
-        cost: '¥428.90',
+        cost: '$59.57',
         tokens: '81.58 额度',
         lastUsed: '2026-02-02',
         expiresAt: '-',
@@ -177,8 +177,8 @@ describe('Frist-API New-API adapter', () => {
     );
 
     assert.deepEqual(usage, [
-      { model: 'Claude', family: 'Anthropic', percent: 75, amount: '¥30.00', calls: '16 次', tokens: '2.40M' },
-      { model: 'OpenAI', family: 'OpenAI', percent: 25, amount: '¥10.00', calls: '4 次', tokens: '0.50M' },
+      { model: 'Claude', family: 'Anthropic', percent: 75, amount: '$4.17', calls: '16 次', tokens: '2.40M' },
+      { model: 'OpenAI', family: 'OpenAI', percent: 25, amount: '$1.39', calls: '4 次', tokens: '0.50M' },
     ]);
   });
 

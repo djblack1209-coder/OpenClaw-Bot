@@ -1,12 +1,15 @@
-# New-API (songquanpeng/new-api) — OpenAI API 管理/分发网关
+# New-API (QuantumNous/new-api) — OpenAI API 管理/分发网关
 # 用于替换自研 LLM 路由的底层通道管理
+# 源码同步: packages/new-api-upstream
+# 检查更新: make new-api-check
+# 同步最新版: make new-api-sync
 # 启动: docker compose -f docker-compose.newapi.yml up -d
 # 管理界面: http://localhost:3000
 
 services:
   new-api:
-    # 固定版本号，避免 latest 导致不可预期的升级
-    image: calciumion/new-api:v0.12.6
+    # 固定版本号，避免 latest 导致不可预期的升级；升级前先备份 data/newapi。
+    image: calciumion/new-api:v1.0.0-rc.2
     container_name: openclaw-newapi
     restart: unless-stopped
     # 安全加固: 丢弃所有 Linux 能力，禁止提权
