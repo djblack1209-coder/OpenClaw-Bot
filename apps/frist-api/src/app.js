@@ -151,6 +151,8 @@ const state = {
   selectedRechargeCny: 5.88,
   selectedRechargePlanId: '',
   selectedRechargePlan: 'day',
+  selectedPaymentMethod: 'manual_pending',
+  passwordResetRequested: false,
   apiSearch: '',
   modelSearch: '',
   playgroundModelSearch: '',
@@ -282,6 +284,9 @@ function renderAuthPanel() {
   if (captchaRow) {
     captchaRow.hidden = state.authMode !== 'register' || !state.captcha.question;
   }
+  for (const button of document.querySelectorAll('[data-payment-method]')) {
+    button.classList.toggle('is-active', button.dataset.paymentMethod === state.selectedPaymentMethod);
+  }
   const showAccountTools = state.authMode === 'login' && state.hasServerSession;
   const ownerClaimRow = document.querySelector('[data-owner-claim-row]');
   if (ownerClaimRow) {
@@ -294,6 +299,14 @@ function renderAuthPanel() {
   const passwordRow = document.querySelector('[data-password-row]');
   if (passwordRow) {
     passwordRow.hidden = !showAccountTools;
+  }
+  const resetRequestRow = document.querySelector('[data-reset-request-row]');
+  if (resetRequestRow) {
+    resetRequestRow.hidden = state.authMode !== 'login' || state.hasServerSession;
+  }
+  const resetConfirmRow = document.querySelector('[data-reset-confirm-row]');
+  if (resetConfirmRow) {
+    resetConfirmRow.hidden = state.authMode !== 'login' || !state.passwordResetRequested || state.hasServerSession;
   }
   setText('[data-auth-title]', state.authMode === 'register' ? '注册账号' : '登录账号');
   setText('[data-captcha-question]', state.captcha.question ? `验证 ${state.captcha.question}` : '安全验证');
@@ -1414,6 +1427,7 @@ function bindStaticActions() {
         prepareCaptchaChallenge();
       } else {
         state.captcha = { id: '', question: '' };
+        state.passwordResetRequested = false;
         const answerInput = document.querySelector('[data-captcha-answer]');
         if (answerInput) answerInput.value = '';
       }
@@ -1434,6 +1448,13 @@ function bindStaticActions() {
       state.selectedRechargePlan = amount.dataset.rechargePlan || 'balance';
       renderRechargeOptions();
       renderImportLink();
+      return;
+    }
+
+    const paymentMethod = event.target.closest('[data-payment-method]');
+    if (paymentMethod) {
+      state.selectedPaymentMethod = paymentMethod.dataset.paymentMethod || 'manual_pending';
+      renderAuthPanel();
       return;
     }
 
@@ -1565,6 +1586,18 @@ function bindStaticActions() {
     const changePassword = event.target.closest('[data-change-password]');
     if (changePassword) {
       handleChangePassword(changePassword);
+      return;
+    }
+
+    const resetRequest = event.target.closest('[data-password-reset-request]');
+    if (resetRequest) {
+      handlePasswordResetRequest(resetRequest);
+      return;
+    }
+
+    const resetConfirm = event.target.closest('[data-password-reset-confirm]');
+    if (resetConfirm) {
+      handlePasswordResetConfirm(resetConfirm);
       return;
     }
 
@@ -2189,6 +2222,46 @@ async function handleChangePassword(button) {
   }
 }
 
+async function handlePasswordResetRequest(button) {
+  const email = document.querySelector('[data-register-email]').value;
+  setScopedFeedback('[data-auth-feedback]', '正在发送重置验证码...', 'info');
+  setButtonBusy(button, true, '发送中');
+  try {
+    const result = await serverClient.requestPasswordReset({ email });
+    state.passwordResetRequested = true;
+    renderAuthPanel();
+    setScopedFeedback('[data-auth-feedback]', result.message || '如果邮箱存在，我们会发送重置验证码。', 'success');
+  } catch (serverError) {
+    setScopedFeedback('[data-auth-feedback]', serverError.message, 'error');
+  } finally {
+    setButtonBusy(button, false);
+  }
+}
+
+async function handlePasswordResetConfirm(button) {
+  const email = document.querySelector('[data-register-email]').value;
+  const code = document.querySelector('[data-reset-code]')?.value.trim() || '';
+  const newPassword = document.querySelector('[data-reset-password]')?.value || '';
+  setScopedFeedback('[data-auth-feedback]', '正在重置密码...', 'info');
+  setButtonBusy(button, true, '重置中');
+  try {
+    await serverClient.confirmPasswordReset({ email, code, newPassword });
+    const passwordInput = document.querySelector('[data-register-password]');
+    const resetCodeInput = document.querySelector('[data-reset-code]');
+    const resetPasswordInput = document.querySelector('[data-reset-password]');
+    if (passwordInput) passwordInput.value = newPassword;
+    if (resetCodeInput) resetCodeInput.value = '';
+    if (resetPasswordInput) resetPasswordInput.value = '';
+    state.passwordResetRequested = false;
+    renderAuthPanel();
+    setScopedFeedback('[data-auth-feedback]', '密码已重置，可以用新密码登录。', 'success');
+  } catch (serverError) {
+    setScopedFeedback('[data-auth-feedback]', serverError.message, 'error');
+  } finally {
+    setButtonBusy(button, false);
+  }
+}
+
 async function handleOwnerClaim(button) {
   const codeInput = document.querySelector('[data-owner-claim-code]');
   const code = codeInput?.value.trim() || '';
@@ -2244,19 +2317,33 @@ async function handleRecharge(button) {
       planId: state.selectedRechargePlanId,
       amountCny: state.selectedRechargeCny,
       plan: state.selectedRechargePlan,
-      method: 'web_checkout',
+      method: state.selectedPaymentMethod,
     });
     const label = rechargeLabel(state.selectedRechargePlan);
-    const message =
-      result.paymentOrder?.status === 'pending_manual_payment'
-        ? `${label}订单已提交`
-        : `${label}已入账`;
+    const message = paymentResultMessage(result, label);
+    if (result.qrCode) {
+      setScopedFeedback('[data-payment-feedback]', `${message}，二维码链接：${result.qrCode}`, 'success');
+    } else {
+      setScopedFeedback('[data-payment-feedback]', message, 'success');
+    }
     await reloadServerDashboard(message);
   } catch (serverError) {
     setActionMessage(serverError.message, 'error');
+    setScopedFeedback('[data-payment-feedback]', serverError.message, 'error');
   } finally {
     setButtonBusy(button, false);
   }
+}
+
+function paymentResultMessage(result, label) {
+  if (result.paymentOrder?.status === 'pending_provider_payment') {
+    const provider = result.provider === 'wechat' ? '微信' : result.provider === 'alipay' ? '支付宝' : '支付';
+    return `${label}${provider}订单已生成，支付成功后自动入账`;
+  }
+  if (result.paymentOrder?.status === 'pending_manual_payment') {
+    return `${label}订单已提交，等待人工确认`;
+  }
+  return `${label}已入账`;
 }
 
 async function handleBalanceAlertSave(button) {

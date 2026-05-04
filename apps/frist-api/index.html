@@ -49,6 +49,14 @@
                   <input type="password" data-new-password placeholder="新密码" aria-label="新密码" />
                   <button class="ghost-action" data-change-password type="button">改密码</button>
                 </div>
+                <div class="auth-panel__row" data-reset-request-row hidden>
+                  <button class="text-action" data-password-reset-request type="button">忘记密码？发送重置验证码</button>
+                </div>
+                <div class="auth-panel__row" data-reset-confirm-row hidden>
+                  <input type="text" inputmode="numeric" data-reset-code placeholder="重置验证码" aria-label="重置验证码" />
+                  <input type="password" data-reset-password placeholder="新密码" aria-label="重置新密码" />
+                  <button class="ghost-action" data-password-reset-confirm type="button">重置</button>
+                </div>
                 <div class="auth-panel__row captcha-row" data-captcha-row hidden>
                   <span data-captcha-question>安全验证</span>
                   <input type="text" autocomplete="off" data-captcha-answer placeholder="答案" aria-label="安全验证答案" />
@@ -435,7 +443,13 @@
               <h2>充值</h2>
             </div>
             <div class="amount-grid" data-recharge-options></div>
+            <div class="payment-method-grid" aria-label="支付方式">
+              <button class="amount-button is-active" data-payment-method="manual_pending" type="button">人工确认</button>
+              <button class="amount-button" data-payment-method="wechat_native" type="button">微信 Native</button>
+              <button class="amount-button" data-payment-method="alipay_precreate" type="button">支付宝当面付</button>
+            </div>
             <button class="primary-action is-wide" data-pay-submit type="button">提交</button>
+            <p class="field-feedback" data-payment-feedback aria-live="polite"></p>
             <article class="config-card balance-alert-card" data-balance-alert-card>
               <div class="section-head">
                 <div>

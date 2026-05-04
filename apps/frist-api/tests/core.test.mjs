@@ -649,9 +649,24 @@ describe('Frist-API user dashboard boundaries', () => {
     for (const required of ['data-auth-toggle', 'data-auth-panel', 'data-register-email', 'data-login-account']) {
       assert.equal(topbar.includes(required), true, `${required} 应该位于右上角账户区`);
     }
+    for (const required of ['data-password-reset-request', 'data-password-reset-confirm']) {
+      assert.equal(topbar.includes(required), true, `${required} 应该支持忘记密码闭环`);
+    }
 
     for (const forbidden of ['data-register-email', 'data-register-password', 'data-verify-code', 'data-login-account']) {
       assert.equal(apiPanel.includes(forbidden), false, `${forbidden} 不应该出现在 API 管理页面`);
+    }
+  });
+
+  it('keeps real payment method choices visible in the billing shell', () => {
+    const userHtml = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+    for (const required of [
+      'data-payment-method="manual_pending"',
+      'data-payment-method="wechat_native"',
+      'data-payment-method="alipay_precreate"',
+      'data-payment-feedback',
+    ]) {
+      assert.equal(userHtml.includes(required), true, `${required} 应该出现在充值页面`);
     }
   });
 
