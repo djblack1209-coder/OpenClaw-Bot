@@ -167,8 +167,7 @@
 | Key 改名 | `data-key-name` / `data-rename-key` | 修改单个用户 API Key 的显示名称 |
 | Key 删除 | `data-delete-key` | 删除单个用户 API Key |
 | Key 开关 | `data-toggle-key` | 开启或关闭单个用户 API Key |
-| 用户充值申请 | `data-pay-submit` | 生成待处理充值单，公开环境不直接入账 |
-| 支付方式选择 | `data-payment-method` | 选择人工确认、微信 Native 或支付宝当面付；接口未配置时提示用户 |
+| 兑换码购买入口 | `data-xianyu-purchase-link` | 预留闲鱼等第三方平台商品链接，用户购买卡密后回站内兑换 |
 | 微信支付回调 | `/api/frist/payments/wechat/notify` | 微信支付 APIv3 回调验签、解密和按订单号幂等入账 |
 | 支付宝支付回调 | `/api/frist/payments/alipay/notify` | 支付宝当面付异步通知验签和按订单号幂等入账 |
 | 兑换码 | `data-redeem-code` | 日卡/月卡/加油包兑换 |
@@ -208,6 +207,7 @@
 | 教程 Windows 命令 | `data-win-command` / `data-copy-win-command` | 生成并复制 Windows 一键配置命令 |
 | 教程配置复制 | `data-copy-guide-json` / `data-copy-guide-toml` | 复制教程页 JSON/TOML 配置 |
 | 管理端人工入账 | `/admin.html` + `data-admin-credit` | 管理员按用户邮箱确认人工充值入账 |
+| 管理端卡密生成 | `/admin.html` + `data-admin-redemption-cards` / `data-admin-card-create` / `/api/admin/redemption-cards` | 按套餐批量生成一次性兑换码，导出给闲鱼自动发货或客服系统 |
 | 管理端补号 | `/admin.html` + `data-admin-replenish` | 独立管理端写入号源库存，不出现在用户端 |
 | 管理端代理地址 | `/admin.html` + `data-admin-proxy-url` | 可选填写代理请求地址，补号时自动与直连路径择优 |
 | 管理端探测模式 | `/admin.html` + `data-admin-probe-mode` | 自动探测、严格探测和信任写入模式选择 |

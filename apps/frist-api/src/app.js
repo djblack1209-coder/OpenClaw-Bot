@@ -89,7 +89,7 @@ const viewMeta = {
   billing: {
     kicker: 'Billing',
     title: '充值',
-    desc: '充值单和兑换码。',
+    desc: '购买和兑换卡密。',
   },
   switch: {
     kicker: 'Import',
@@ -114,7 +114,7 @@ const viewMeta = {
   redeem: {
     kicker: 'Code',
     title: '兑换码',
-    desc: '兑换卡密和备用代收。',
+    desc: '闲鱼发货后核销。',
   },
   invite: {
     kicker: 'Referral',
@@ -151,7 +151,6 @@ const state = {
   selectedRechargeCny: 5.88,
   selectedRechargePlanId: '',
   selectedRechargePlan: 'day',
-  selectedPaymentMethod: 'manual_pending',
   passwordResetRequested: false,
   apiSearch: '',
   modelSearch: '',
@@ -198,6 +197,7 @@ function render() {
   renderApiKeys();
   renderModelGroupPicker();
   renderRechargeOptions();
+  renderXianyuPurchaseLinks();
   renderBalanceAlert();
   renderImportTargets();
   renderImportFamilyPicker();
@@ -283,9 +283,6 @@ function renderAuthPanel() {
   const captchaRow = document.querySelector('[data-captcha-row]');
   if (captchaRow) {
     captchaRow.hidden = state.authMode !== 'register' || !state.captcha.question;
-  }
-  for (const button of document.querySelectorAll('[data-payment-method]')) {
-    button.classList.toggle('is-active', button.dataset.paymentMethod === state.selectedPaymentMethod);
   }
   const showAccountTools = state.authMode === 'login' && state.hasServerSession;
   const ownerClaimRow = document.querySelector('[data-owner-claim-row]');
@@ -1148,6 +1145,21 @@ function renderRechargeOptions() {
     .join('');
 }
 
+function renderXianyuPurchaseLinks() {
+  const configuredLink = String(window.FRIST_API_XIANYU_PURCHASE_URL || '').trim();
+  for (const link of document.querySelectorAll('[data-xianyu-purchase-link]')) {
+    if (configuredLink) {
+      link.href = configuredLink;
+      link.textContent = '去闲鱼购买兑换码';
+      link.removeAttribute('aria-disabled');
+    } else {
+      link.href = '#';
+      link.textContent = '闲鱼链接待配置';
+      link.setAttribute('aria-disabled', 'true');
+    }
+  }
+}
+
 function renderBalanceAlert() {
   const alert = dashboardData.balanceAlert || {};
   const enabledInput = document.querySelector('[data-balance-alert-enabled]');
@@ -1233,7 +1245,6 @@ function renderImportLink() {
     openImport.toggleAttribute('aria-disabled', !link);
   }
   setText('[data-base-url]', normalizeBaseUrl(state.baseUrl));
-  setText('[data-pay-submit]', '提交');
   renderCrossImportGuide();
   refreshImportLinkFromServer();
 }
@@ -1451,13 +1462,6 @@ function bindStaticActions() {
       return;
     }
 
-    const paymentMethod = event.target.closest('[data-payment-method]');
-    if (paymentMethod) {
-      state.selectedPaymentMethod = paymentMethod.dataset.paymentMethod || 'manual_pending';
-      renderAuthPanel();
-      return;
-    }
-
     const createKey = event.target.closest('[data-create-key]');
     if (createKey) {
       handleCreateKey(createKey);
@@ -1646,12 +1650,6 @@ function bindStaticActions() {
         return;
       }
       openImport.setAttribute('href', importUrl);
-      return;
-    }
-
-    const pay = event.target.closest('[data-pay-submit]');
-    if (pay) {
-      handleRecharge(pay);
       return;
     }
 
@@ -2309,43 +2307,6 @@ async function handleCopyKey(id, button) {
   await copyText(key.secret, button);
 }
 
-async function handleRecharge(button) {
-  setActionMessage('充值订单提交中...', 'info');
-  setButtonBusy(button, true, '提交中');
-  try {
-    const result = await serverClient.recharge({
-      planId: state.selectedRechargePlanId,
-      amountCny: state.selectedRechargeCny,
-      plan: state.selectedRechargePlan,
-      method: state.selectedPaymentMethod,
-    });
-    const label = rechargeLabel(state.selectedRechargePlan);
-    const message = paymentResultMessage(result, label);
-    if (result.qrCode) {
-      setScopedFeedback('[data-payment-feedback]', `${message}，二维码链接：${result.qrCode}`, 'success');
-    } else {
-      setScopedFeedback('[data-payment-feedback]', message, 'success');
-    }
-    await reloadServerDashboard(message);
-  } catch (serverError) {
-    setActionMessage(serverError.message, 'error');
-    setScopedFeedback('[data-payment-feedback]', serverError.message, 'error');
-  } finally {
-    setButtonBusy(button, false);
-  }
-}
-
-function paymentResultMessage(result, label) {
-  if (result.paymentOrder?.status === 'pending_provider_payment') {
-    const provider = result.provider === 'wechat' ? '微信' : result.provider === 'alipay' ? '支付宝' : '支付';
-    return `${label}${provider}订单已生成，支付成功后自动入账`;
-  }
-  if (result.paymentOrder?.status === 'pending_manual_payment') {
-    return `${label}订单已提交，等待人工确认`;
-  }
-  return `${label}已入账`;
-}
-
 async function handleBalanceAlertSave(button) {
   if (!state.hasServerSession) {
     setActiveView('billing');
@@ -2401,23 +2362,22 @@ function readBalanceAlertForm() {
   };
 }
 
-function rechargeLabel(plan) {
-  if (plan === 'day') return '日卡';
-  if (plan === 'month') return '月卡';
-  return '余额';
-}
-
 async function handleRedeemCode(button) {
   const scope = button.closest('.view-panel') || document;
   const input = scope.querySelector('[data-exchange-code], [data-billing-exchange-code]');
   if (!input) return;
   setButtonBusy(button, true, '兑换中');
   try {
-    await serverClient.redeem({ code: input.value || '' });
+    const result = await serverClient.redeem({ code: input.value || '' });
     input.value = '';
-    await reloadServerDashboard('兑换码已生效');
+    const message = result.redemption?.credit
+      ? `兑换码已生效，到账 ${result.redemption.credit}`
+      : '兑换码已生效';
+    setScopedFeedback('[data-payment-feedback]', message, 'success');
+    await reloadServerDashboard(message);
   } catch (serverError) {
     setActionMessage(serverError.message, 'error');
+    setScopedFeedback('[data-payment-feedback]', serverError.message, 'error');
   } finally {
     setButtonBusy(button, false);
   }
