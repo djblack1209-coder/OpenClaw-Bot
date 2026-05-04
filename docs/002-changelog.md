@@ -5,6 +5,29 @@
 
 ## 最近更新（2026-05）
 
+## [2026-05-04] Frist-API 支付回调、邮箱找回和运行数据加密
+> 领域: `backend` | `frontend` | `deploy` | `docs`
+> 影响模块: `Frist-API`, `Payments`, `Auth`, `New-API Migration`, `docs`
+> 关联问题: HI-850, HI-853, HI-859, HI-863
+
+### 变更内容
+- 注册流程接入 SMTP 验证码邮件，继续保留公开模式不回显验证码；新增忘记密码请求和确认接口，验证码过期后不可复用。
+- 充值链路新增微信支付 Native 和支付宝当面付预创建下单；微信/支付宝异步通知完成验签、解密和按订单号幂等入账，重复回调不会重复加钱。
+- 充值页补充人工确认、微信 Native、支付宝当面付三种支付方式选择；接口未配置时会明确提示，不会误导用户已经自动入账。
+- Frist-API runtime JSON 增加 AES-256-GCM 字段加密，保护用户 `fk-live-*` Key 和上游 `rawKey`，兼容旧明文文件读取并在保存时迁移为密文。
+- 新增 New-API 迁移 dry-run 脚本，先只输出用户、Token、订单、日志和风险提示，不默认写入生产 New-API。
+- 免费域名公网实测后，将过渡入口从被腾讯 DNSPod 拦截的 `sslip.io` 切到当前可用的 `101-43-41-96.nip.io`；HTTPS 仍建议后续走自有域名或 Cloudflare Tunnel。
+- Docker Compose 和生产环境模板新增邮箱找回、运行数据加密、微信支付、支付宝支付相关环境变量。
+- 验证结果: `node --check apps/frist-api/server/server.js apps/frist-api/server/payments.js apps/frist-api/src/app.js apps/frist-api/src/serverClient.js scripts/frist_api_newapi_migration_dry_run.mjs` 通过；Frist-API `npm test` 为 123/123 通过；`git diff --check` 通过；New-API 迁移 dry-run 空数据验证通过。
+
+### 文件变更
+- `apps/frist-api/server/server.js` / `apps/frist-api/server/payments.js` — 接入支付下单、回调验签/解密、幂等入账、邮箱验证码/找回密码和 runtime 字段加密
+- `apps/frist-api/index.html` / `apps/frist-api/src/app.js` / `apps/frist-api/src/serverClient.js` / `apps/frist-api/src/styles.css` — 补齐忘记密码入口、支付方式选择和支付反馈
+- `apps/frist-api/tests/server.test.mjs` / `apps/frist-api/tests/core.test.mjs` — 覆盖邮箱、支付、幂等、加密、公开模式配置和前端入口
+- `scripts/frist_api_newapi_migration_dry_run.mjs` — 新增 New-API 迁移演练报告脚本
+- `docker-compose.frist-api.yml` / `apps/frist-api/deploy/production.env.example` — 登记新增生产环境变量
+- `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步新接口、支付回调、域名方案和剩余运维风险
+
 ## [2026-05-04] Frist-API 仓库清理与离线恢复体验
 > 领域: `frontend` | `docs`
 > 影响模块: `Frist-API`, `docs`

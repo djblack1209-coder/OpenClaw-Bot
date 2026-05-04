@@ -1,4 +1,4 @@
-import { createHash, pbkdf2Sync, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, pbkdf2Sync, randomBytes, timingSafeEqual } from 'node:crypto';
 import { lookup as lookupDns } from 'node:dns/promises';
 import { createServer } from 'node:http';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
@@ -8,6 +8,13 @@ import { connect as connectTls } from 'node:tls';
 import { fileURLToPath } from 'node:url';
 
 import { createNewApiBridge } from './newApiBridge.js';
+import {
+  createProviderPayment,
+  parseAlipayNotification,
+  paymentConfigFromOptions,
+  providerReady,
+  verifyWechatNotification,
+} from './payments.js';
 import {
   buildCcSwitchImportUrl,
   inferProviderGroup,
@@ -76,7 +83,7 @@ const ROOT_GATEWAY_PATHS = new Set([
 export function createFristApiServer(options = {}) {
   const serverOptions = normalizeServerOptions(options);
   const newApiBridge = createNewApiBridge(serverOptions);
-  const store = createRuntimeStore(serverOptions.dataFile);
+  const store = createRuntimeStore(serverOptions.dataFile, serverOptions.dataEncryptionKey);
   const securityState = createSecurityState();
 
   const server = createServer(async (request, response) => {
@@ -147,6 +154,22 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
     return;
   }
 
+  if (request.method === 'POST' && url.pathname === '/api/frist/password-reset/request') {
+    const body = await readJsonBody(request);
+    assertAuthRateLimit(securityState, request, serverOptions);
+    const result = await store.mutate((data) => requestCustomerPasswordReset(data, body, serverOptions));
+    writeJson(response, 200, result);
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/frist/password-reset/confirm') {
+    const body = await readJsonBody(request);
+    assertAuthRateLimit(securityState, request, serverOptions);
+    const result = await store.mutate((data) => confirmCustomerPasswordReset(data, body, serverOptions));
+    writeJson(response, 200, result);
+    return;
+  }
+
   if (request.method === 'POST' && url.pathname === '/api/frist/verify') {
     const body = await readJsonBody(request);
     const result = await store.mutate((data) => verifyCustomer(data, request, body));
@@ -172,6 +195,25 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
     const body = await readJsonBody(request);
     const result = await store.mutate((data) => rechargeCustomer(data, request, body, serverOptions));
     writeJson(response, result.status || 200, result.body || result);
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/frist/payments/wechat/notify') {
+    const rawBody = await readRequestText(request);
+    const result = await store.mutate((data) =>
+      handleWechatPaymentNotification(data, request, rawBody, serverOptions),
+    );
+    writeJson(response, 200, result);
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/frist/payments/alipay/notify') {
+    const rawBody = await readRequestText(request);
+    const result = await store.mutate((data) =>
+      handleAlipayPaymentNotification(data, rawBody, serverOptions),
+    );
+    response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
+    response.end(result.ok ? 'success' : 'fail');
     return;
   }
 
@@ -470,7 +512,7 @@ async function handleGatewayApi({ request, response, url, store, serverOptions, 
   response.end(result.bodyText);
 }
 
-function registerCustomer(data, body, serverOptions) {
+async function registerCustomer(data, body, serverOptions) {
   const email = String(body.email || '').trim().toLowerCase();
   const password = String(body.password || '');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -510,13 +552,30 @@ function registerCustomer(data, body, serverOptions) {
   data.events.push({ type: 'registered', userId: user.id, at: now });
 
   const responseUser = sanitizeUser(user);
-  return {
+  const result = {
     sessionToken,
     body: {
       user: responseUser,
       ...(serverOptions.exposeVerificationCode && verificationCode ? { verificationCode } : {}),
     },
   };
+  if (verificationCode) {
+    await scheduleEmailDelivery({
+      serverOptions,
+      to: email,
+      message: buildVerificationEmail({
+        user,
+        code: verificationCode,
+        publicGatewayBaseUrl: serverOptions.publicGatewayBaseUrl,
+        at: now,
+      }),
+      data,
+      successType: 'email_verification_sent',
+      failureType: 'email_verification_failed',
+      eventBase: { userId: user.id, email: maskEmail(email) },
+    });
+  }
+  return result;
 }
 
 function loginCustomer(data, body, serverOptions) {
@@ -561,6 +620,81 @@ function changeCustomerPassword(data, request, body, serverOptions) {
   user.updatedAt = now;
   data.events.push({ type: 'password_changed', userId: user.id, at: now });
   return { user: sanitizeUser(user), account: accountFromUser(data, user) };
+}
+
+async function requestCustomerPasswordReset(data, body, serverOptions) {
+  const email = String(body.email || '').trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw publicError(400, '邮箱格式不正确');
+  }
+  const now = new Date().toISOString();
+  const user = data.users.find((item) => item.email === email);
+  if (user) {
+    const code = generateVerificationCode();
+    user.passwordReset = {
+      codeHash: hashPasswordResetCode(code, serverOptions.sessionSecret),
+      expiresAt: new Date(Date.now() + Number(serverOptions.passwordResetTtlMs || 900_000)).toISOString(),
+      usedAt: '',
+      requestedAt: now,
+    };
+    user.updatedAt = now;
+    data.events.push({ type: 'password_reset_requested', userId: user.id, email: maskEmail(email), at: now });
+    await scheduleEmailDelivery({
+      serverOptions,
+      to: email,
+      message: buildPasswordResetEmail({
+        user,
+        code,
+        publicGatewayBaseUrl: serverOptions.publicGatewayBaseUrl,
+        expiresMinutes: Math.max(1, Math.round(Number(serverOptions.passwordResetTtlMs || 900_000) / 60_000)),
+        at: now,
+      }),
+      data,
+      successType: 'password_reset_email_sent',
+      failureType: 'password_reset_email_failed',
+      eventBase: { userId: user.id, email: maskEmail(email) },
+    });
+    return {
+      ok: true,
+      message: '如果邮箱存在，我们会发送重置验证码。',
+      ...(serverOptions.exposeVerificationCode ? { resetCode: code } : {}),
+    };
+  }
+  data.events.push({ type: 'password_reset_requested_unknown', email: maskEmail(email), at: now });
+  return { ok: true, message: '如果邮箱存在，我们会发送重置验证码。' };
+}
+
+function confirmCustomerPasswordReset(data, body, serverOptions) {
+  const email = String(body.email || '').trim().toLowerCase();
+  const code = String(body.code || '').trim();
+  const newPassword = String(body.newPassword || body.password || '');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw publicError(400, '邮箱格式不正确');
+  }
+  if (!code) {
+    throw publicError(400, '重置验证码不能为空');
+  }
+  if (newPassword.length < 6) {
+    throw publicError(400, '新密码至少 6 位');
+  }
+  const user = data.users.find((item) => item.email === email);
+  const reset = user?.passwordReset;
+  if (!user || !reset?.codeHash || reset.usedAt) {
+    throw publicError(400, '重置验证码无效或已过期');
+  }
+  if (Date.parse(reset.expiresAt || '') <= Date.now()) {
+    throw publicError(400, '重置验证码无效或已过期');
+  }
+  if (!safeEqual(reset.codeHash, hashPasswordResetCode(code, serverOptions.sessionSecret))) {
+    throw publicError(400, '重置验证码无效或已过期');
+  }
+
+  const now = new Date().toISOString();
+  user.passwordHash = hashPassword(newPassword, serverOptions.sessionSecret);
+  user.passwordReset = { ...reset, usedAt: now };
+  user.updatedAt = now;
+  data.events.push({ type: 'password_reset_confirmed', userId: user.id, at: now });
+  return { ok: true, message: '密码已重置，请用新密码登录。' };
 }
 
 function verifyCustomer(data, request, body) {
@@ -676,7 +810,7 @@ function claimAdminIdentity(data, request, body, serverOptions) {
   };
 }
 
-function rechargeCustomer(data, request, body, serverOptions) {
+async function rechargeCustomer(data, request, body, serverOptions) {
   const { user } = requireSession(data, request);
   const selectedPlan = findRechargePlan(data, body);
   const amountCents = selectedPlan ? planPriceCents(selectedPlan) : Math.round(Number(body.amountCny || 0) * 100);
@@ -688,6 +822,7 @@ function rechargeCustomer(data, request, body, serverOptions) {
 
   if (!serverOptions.allowDemoRecharge) {
     const now = new Date().toISOString();
+    const method = normalizePaymentMethod(body.method);
     const paymentOrder = {
       id: createId('pay'),
       userId: user.id,
@@ -697,11 +832,29 @@ function rechargeCustomer(data, request, body, serverOptions) {
       quotaUsd: selectedPlan?.quotaUsd || 0,
       planId: selectedPlan?.id || '',
       plan: planType,
-      method: String(body.method || 'manual_pending'),
-      status: 'pending_manual_payment',
+      method,
+      provider: paymentProviderForMethod(method),
+      status: paymentProviderForMethod(method) ? 'pending_provider_payment' : 'pending_manual_payment',
       createdAt: now,
       updatedAt: now,
     };
+    if (paymentProviderForMethod(method)) {
+      const provider = paymentProviderForMethod(method);
+      if (!providerReady(serverOptions.paymentConfig, provider)) {
+        throw publicError(503, provider === 'wechat' ? '微信支付接口未配置完成' : '支付宝接口未配置完成');
+      }
+      const providerPayment = await createProviderPayment({
+        provider,
+        order: paymentOrder,
+        plan: selectedPlan,
+        fetchImpl: serverOptions.fetchImpl || globalThis.fetch,
+        paymentConfig: serverOptions.paymentConfig,
+      });
+      paymentOrder.providerOrder = sanitizeProviderPayment(providerPayment);
+      paymentOrder.notifyUrl = providerPayment.notifyUrl;
+      paymentOrder.qrCode = providerPayment.qrCode;
+      paymentOrder.status = 'pending_provider_payment';
+    }
     data.paymentOrders.unshift(paymentOrder);
     data.events.push({
       type: 'payment_order_created',
@@ -710,12 +863,15 @@ function rechargeCustomer(data, request, body, serverOptions) {
       creditCents,
       plan: paymentOrder.plan,
       method: paymentOrder.method,
+      provider: paymentOrder.provider || '',
       at: now,
     });
     return {
       status: 202,
       body: {
         paymentOrder: sanitizePaymentOrder(paymentOrder),
+        provider: paymentOrder.provider || '',
+        qrCode: paymentOrder.qrCode || '',
         account: accountFromUser(data, user),
         user: sanitizeUser(user),
       },
@@ -807,6 +963,165 @@ function manualRechargeCustomer(data, body) {
     paymentOrder: pendingOrder ? sanitizePaymentOrder(pendingOrder) : null,
     events: sanitizeAdminEvents(data.events),
   };
+}
+
+function handleWechatPaymentNotification(data, request, rawBody, serverOptions) {
+  const transaction = verifyWechatNotification({
+    headers: request.headers,
+    rawBody,
+    paymentConfig: serverOptions.paymentConfig,
+  });
+  const orderId = String(transaction.out_trade_no || '').trim();
+  if (!orderId) {
+    throw publicError(400, '微信支付回调缺少订单号');
+  }
+  if (String(transaction.trade_state || '').toUpperCase() !== 'SUCCESS') {
+    recordPaymentCallback(data, orderId, {
+      provider: 'wechat',
+      status: 'ignored',
+      reason: transaction.trade_state || 'not_success',
+      payload: sanitizePaymentCallbackPayload(transaction),
+    });
+    return { code: 'SUCCESS', message: '成功' };
+  }
+  confirmProviderPayment(data, orderId, {
+    provider: 'wechat',
+    transactionId: transaction.transaction_id || '',
+    payload: sanitizePaymentCallbackPayload(transaction),
+  });
+  return { code: 'SUCCESS', message: '成功' };
+}
+
+function handleAlipayPaymentNotification(data, rawBody, serverOptions) {
+  const notification = parseAlipayNotification(rawBody, serverOptions.paymentConfig.alipay.publicKey);
+  const orderId = String(notification.out_trade_no || '').trim();
+  if (!orderId) {
+    throw publicError(400, '支付宝回调缺少订单号');
+  }
+  const tradeStatus = String(notification.trade_status || '').toUpperCase();
+  if (!['TRADE_SUCCESS', 'TRADE_FINISHED'].includes(tradeStatus)) {
+    recordPaymentCallback(data, orderId, {
+      provider: 'alipay',
+      status: 'ignored',
+      reason: tradeStatus || 'not_success',
+      payload: sanitizePaymentCallbackPayload(notification),
+    });
+    return { ok: true };
+  }
+  confirmProviderPayment(data, orderId, {
+    provider: 'alipay',
+    transactionId: notification.trade_no || '',
+    payload: sanitizePaymentCallbackPayload(notification),
+  });
+  return { ok: true };
+}
+
+function confirmProviderPayment(data, orderId, details = {}) {
+  const order = data.paymentOrders.find((item) => item.id === orderId);
+  if (!order) {
+    throw publicError(404, '支付订单不存在');
+  }
+  const user = data.users.find((item) => item.id === order.userId);
+  if (!user) {
+    throw publicError(404, '支付订单用户不存在');
+  }
+  const now = new Date().toISOString();
+  if (order.status === 'paid' || order.status === 'confirmed') {
+    recordPaymentCallback(data, orderId, {
+      provider: details.provider || order.provider || '',
+      status: 'duplicate',
+      transactionId: details.transactionId || order.transactionId || '',
+      payload: details.payload || {},
+    });
+    return { order, user, duplicate: true };
+  }
+
+  creditUserForOrder(user, order, now);
+  order.status = 'paid';
+  order.provider = details.provider || order.provider || '';
+  order.transactionId = details.transactionId || '';
+  order.paidAt = now;
+  order.updatedAt = now;
+  order.callbackPayload = details.payload || {};
+  data.events.push({
+    type: 'provider_payment_confirmed',
+    userId: user.id,
+    orderId: order.id,
+    provider: order.provider,
+    amountCents: order.amountCents,
+    creditCents: order.creditCents,
+    transactionId: order.transactionId,
+    at: now,
+  });
+  recordPaymentCallback(data, orderId, {
+    provider: order.provider,
+    status: 'confirmed',
+    transactionId: order.transactionId,
+    payload: details.payload || {},
+  });
+  return { order, user, duplicate: false };
+}
+
+function creditUserForOrder(user, order, now) {
+  if (normalizeRechargePlan(order.plan) === 'day') {
+    user.plan = '日卡';
+    const expiresAt = addDays(new Date(now), 1);
+    user.renewalDate = formatDate(expiresAt);
+    user.planExpiresAt = expiresAt.toISOString();
+    user.packageQuotaCents += Number(order.creditCents || 0);
+  } else if (normalizeRechargePlan(order.plan) === 'month') {
+    user.plan = '月卡';
+    const expiresAt = addDays(new Date(now), 30);
+    user.renewalDate = formatDate(expiresAt);
+    user.planExpiresAt = expiresAt.toISOString();
+    user.packageQuotaCents += Number(order.creditCents || 0);
+  } else {
+    user.boosterQuotaCents += Number(order.creditCents || 0);
+  }
+  reconcileUserBalance(user);
+  user.updatedAt = now;
+}
+
+function recordPaymentCallback(data, orderId, details = {}) {
+  data.events.push({
+    type: 'payment_callback',
+    orderId,
+    provider: details.provider || '',
+    status: details.status || '',
+    reason: details.reason || '',
+    transactionId: details.transactionId || '',
+    at: new Date().toISOString(),
+  });
+}
+
+function normalizePaymentMethod(value) {
+  const method = String(value || 'manual_pending').trim().toLowerCase();
+  if (['wechat_native', 'wechat', 'wechat_pay', 'wxpay'].includes(method)) return 'wechat_native';
+  if (['alipay_precreate', 'alipay', 'alipay_qr'].includes(method)) return 'alipay_precreate';
+  return method || 'manual_pending';
+}
+
+function paymentProviderForMethod(method) {
+  if (method === 'wechat_native') return 'wechat';
+  if (method === 'alipay_precreate') return 'alipay';
+  return '';
+}
+
+function sanitizeProviderPayment(payment) {
+  return {
+    provider: payment.provider,
+    notifyUrl: payment.notifyUrl,
+    qrCode: payment.qrCode,
+  };
+}
+
+function sanitizePaymentCallbackPayload(payload = {}) {
+  const blocked = new Set(['openid', 'payer', 'buyer_logon_id', 'buyer_user_id', 'fund_bill_list']);
+  return Object.fromEntries(
+    Object.entries(payload)
+      .filter(([key]) => !blocked.has(key))
+      .map(([key, value]) => [key, typeof value === 'object' ? JSON.stringify(value).slice(0, 300) : String(value).slice(0, 300)]),
+  );
 }
 
 function normalizeRechargePlan(value) {
@@ -2560,6 +2875,119 @@ function defaultBalanceAlert(email = '') {
   };
 }
 
+async function scheduleEmailDelivery({
+  serverOptions,
+  to,
+  message,
+  data,
+  successType,
+  failureType,
+  eventBase = {},
+}) {
+  const sender = serverOptions.accountEmailSender || serverOptions.balanceAlertEmailSender;
+  if (typeof sender !== 'function') {
+    data.events.push({
+      type: failureType,
+      ...eventBase,
+      reason: 'SMTP 邮件服务未配置',
+      at: new Date().toISOString(),
+    });
+    return;
+  }
+  try {
+    await sender({ ...message, to });
+    data.events.push({ type: successType, ...eventBase, at: new Date().toISOString() });
+  } catch (error) {
+    data.events.push({
+      type: failureType,
+      ...eventBase,
+      reason: String(error?.message || error).slice(0, 300),
+      at: new Date().toISOString(),
+    });
+  }
+}
+
+function buildVerificationEmail({ user, code, publicGatewayBaseUrl, at }) {
+  const dashboardUrl = publicGatewayBaseUrl
+    ? String(publicGatewayBaseUrl).replace(/\/v1\/?$/i, '').replace(/\/+$/, '')
+    : '';
+  const subject = 'Frist-API 注册验证码';
+  const timeText = formatEmailTime(at);
+  const html = `<!doctype html>
+<html lang="zh-CN">
+  <body style="margin:0;background:#f3f4f6;color:#111827;font-family:Arial,'PingFang SC','Microsoft YaHei',sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:28px 12px;background:#f3f4f6;">
+      <tr><td align="center">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
+          <tr><td style="background:#111827;color:#ffffff;padding:22px 26px;">
+            <div style="font-size:12px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:#fbbf24;">Frist-API</div>
+            <div style="margin-top:8px;font-size:24px;font-weight:900;">完成邮箱验证</div>
+          </td></tr>
+          <tr><td style="padding:26px;color:#111827;">
+            <p style="margin:0 0 14px;font-size:15px;line-height:1.7;">${escapeHtml(user.email)}，你的注册验证码是：</p>
+            <div style="font-size:36px;letter-spacing:8px;font-weight:900;background:#fef3c7;border:1px solid #f59e0b;border-radius:12px;padding:16px;text-align:center;color:#111827;">${escapeHtml(code)}</div>
+            <p style="margin:18px 0 0;color:#6b7280;font-size:13px;line-height:1.7;">验证码用于激活账户，请不要转发给别人。发送时间：${escapeHtml(timeText)}</p>
+            ${dashboardUrl ? `<p style="margin:18px 0 0;"><a href="${escapeAttribute(dashboardUrl)}" style="color:#111827;font-weight:800;">打开 Frist-API</a></p>` : ''}
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>`;
+  const text = [
+    subject,
+    '',
+    `账户: ${user.email}`,
+    `验证码: ${code}`,
+    `发送时间: ${timeText}`,
+    dashboardUrl ? `打开 Frist-API: ${dashboardUrl}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return { subject, html, text };
+}
+
+function buildPasswordResetEmail({ user, code, publicGatewayBaseUrl, expiresMinutes, at }) {
+  const dashboardUrl = publicGatewayBaseUrl
+    ? String(publicGatewayBaseUrl).replace(/\/v1\/?$/i, '').replace(/\/+$/, '')
+    : '';
+  const subject = 'Frist-API 密码重置验证码';
+  const timeText = formatEmailTime(at);
+  const html = `<!doctype html>
+<html lang="zh-CN">
+  <body style="margin:0;background:#f3f4f6;color:#111827;font-family:Arial,'PingFang SC','Microsoft YaHei',sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:28px 12px;background:#f3f4f6;">
+      <tr><td align="center">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
+          <tr><td style="background:#7f1d1d;color:#ffffff;padding:22px 26px;">
+            <div style="font-size:12px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:#fecaca;">Frist-API Security</div>
+            <div style="margin-top:8px;font-size:24px;font-weight:900;">重置登录密码</div>
+          </td></tr>
+          <tr><td style="padding:26px;color:#111827;">
+            <p style="margin:0 0 14px;font-size:15px;line-height:1.7;">${escapeHtml(user.email)}，你的密码重置验证码是：</p>
+            <div style="font-size:36px;letter-spacing:8px;font-weight:900;background:#fee2e2;border:1px solid #ef4444;border-radius:12px;padding:16px;text-align:center;color:#111827;">${escapeHtml(code)}</div>
+            <p style="margin:18px 0 0;color:#6b7280;font-size:13px;line-height:1.7;">${Number(expiresMinutes)} 分钟内有效。如果不是你本人操作，可以忽略这封邮件。发送时间：${escapeHtml(timeText)}</p>
+            ${dashboardUrl ? `<p style="margin:18px 0 0;"><a href="${escapeAttribute(dashboardUrl)}" style="color:#111827;font-weight:800;">打开 Frist-API</a></p>` : ''}
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>`;
+  const text = [
+    subject,
+    '',
+    `账户: ${user.email}`,
+    `重置验证码: ${code}`,
+    `有效期: ${Number(expiresMinutes)} 分钟`,
+    `发送时间: ${timeText}`,
+    dashboardUrl ? `打开 Frist-API: ${dashboardUrl}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return { subject, html, text };
+}
+
 function normalizeBalanceAlertRecord(record, fallbackEmail = '') {
   const current = record && typeof record === 'object' ? record : {};
   const fallback = defaultBalanceAlert(fallbackEmail);
@@ -3137,13 +3565,14 @@ function normalizeStreamChunk(chunk) {
   return Buffer.from(String(chunk || ''), 'utf8');
 }
 
-function createRuntimeStore(dataFile) {
+function createRuntimeStore(dataFile, encryptionKey = '') {
   let writeQueue = Promise.resolve();
+  const encryption = createRuntimeEncryption(encryptionKey);
 
   async function load() {
     try {
       const raw = await readFile(dataFile, 'utf8');
-      return normalizeRuntimeData(JSON.parse(raw));
+      return normalizeRuntimeData(decryptRuntimeData(JSON.parse(raw), encryption));
     } catch (error) {
       if (error.code !== 'ENOENT') {
         throw error;
@@ -3154,7 +3583,8 @@ function createRuntimeStore(dataFile) {
 
   async function save(data) {
     await mkdir(dirname(dataFile), { recursive: true });
-    await writeFile(dataFile, `${JSON.stringify(normalizeRuntimeData(data), null, 2)}\n`, 'utf8');
+    const normalized = normalizeRuntimeData(data);
+    await writeFile(dataFile, `${JSON.stringify(encryptRuntimeData(normalized, encryption), null, 2)}\n`, 'utf8');
   }
 
   async function mutate(mutator) {
@@ -3190,11 +3620,101 @@ function normalizeRuntimeData(data) {
   };
 }
 
+function createRuntimeEncryption(secret) {
+  const value = String(secret || '').trim();
+  if (!value) {
+    return null;
+  }
+  return createHash('sha256').update(value).digest();
+}
+
+function encryptRuntimeData(data, encryption) {
+  if (!encryption) {
+    return data;
+  }
+  const copy = structuredCloneJson(data);
+  copy.__encryption = { version: 1, algorithm: 'aes-256-gcm', fields: ['userKeys.secret', 'credentials.rawKey'] };
+  copy.userKeys = copy.userKeys.map((key) => ({
+    ...key,
+    secret: encryptSecretField(key.secret, encryption),
+  }));
+  copy.credentials = copy.credentials.map((credential) => ({
+    ...credential,
+    rawKey: encryptSecretField(credential.rawKey, encryption),
+  }));
+  return copy;
+}
+
+function decryptRuntimeData(data, encryption) {
+  const copy = structuredCloneJson(data || {});
+  if (!encryption) {
+    return copy;
+  }
+  try {
+    copy.userKeys = Array.isArray(copy.userKeys)
+      ? copy.userKeys.map((key) => ({ ...key, secret: decryptSecretField(key.secret, encryption) }))
+      : [];
+    copy.credentials = Array.isArray(copy.credentials)
+      ? copy.credentials.map((credential) => ({ ...credential, rawKey: decryptSecretField(credential.rawKey, encryption) }))
+      : [];
+    delete copy.__encryption;
+    return copy;
+  } catch (error) {
+    throw normalizePublicError(error);
+  }
+}
+
+function encryptSecretField(value, encryption) {
+  const text = String(value || '');
+  if (!text || text.startsWith('enc:v1:')) {
+    return text;
+  }
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', encryption, iv);
+  const encrypted = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
+  return `enc:v1:${iv.toString('base64url')}:${cipher.getAuthTag().toString('base64url')}:${encrypted.toString('base64url')}`;
+}
+
+function decryptSecretField(value, encryption) {
+  const text = String(value || '');
+  if (!text.startsWith('enc:v1:')) {
+    return text;
+  }
+  const [, version, ivText, authTagText, encryptedText] = text.split(':');
+  if (version !== 'v1' || !ivText || !authTagText || !encryptedText) {
+    throw publicError(500, '运行数据加密字段格式不正确');
+  }
+  try {
+    const decipher = createDecipheriv('aes-256-gcm', encryption, Buffer.from(ivText, 'base64url'));
+    decipher.setAuthTag(Buffer.from(authTagText, 'base64url'));
+    return `${decipher.update(Buffer.from(encryptedText, 'base64url'), undefined, 'utf8')}${decipher.final('utf8')}`;
+  } catch {
+    throw publicError(500, '运行数据加密密钥不匹配');
+  }
+}
+
+function structuredCloneJson(value) {
+  return JSON.parse(JSON.stringify(value || {}));
+}
+
 function normalizeUserRecord(user) {
   const email = normalizeAlertEmail(user?.email || '');
   return {
     ...user,
+    passwordReset: normalizePasswordResetRecord(user?.passwordReset),
     balanceAlert: normalizeBalanceAlertRecord(user?.balanceAlert, email),
+  };
+}
+
+function normalizePasswordResetRecord(record) {
+  if (!record || typeof record !== 'object') {
+    return null;
+  }
+  return {
+    codeHash: String(record.codeHash || ''),
+    expiresAt: String(record.expiresAt || ''),
+    usedAt: String(record.usedAt || ''),
+    requestedAt: String(record.requestedAt || ''),
   };
 }
 
@@ -3328,6 +3848,7 @@ function normalizeServerOptions(options) {
     ),
     captchaTtlMs: Number(options.captchaTtlMs ?? process.env.FRIST_API_CAPTCHA_TTL_MS ?? 600_000),
     captchaMaxAttempts: Number(options.captchaMaxAttempts ?? process.env.FRIST_API_CAPTCHA_MAX_ATTEMPTS ?? 3),
+    passwordResetTtlMs: Number(options.passwordResetTtlMs ?? process.env.FRIST_API_PASSWORD_RESET_TTL_MS ?? 900_000),
     keepAliveTimeoutMs:
       options.keepAliveTimeoutMs === undefined && process.env.FRIST_API_KEEP_ALIVE_TIMEOUT_MS === undefined
         ? Number.NaN
@@ -3335,6 +3856,7 @@ function normalizeServerOptions(options) {
     probeTimeoutMs: Number(options.probeTimeoutMs || process.env.FRIST_API_PROBE_TIMEOUT_MS || 2500),
     publicDir: options.publicDir ? resolve(options.publicDir) : resolve(root, '..'),
     publicGatewayBaseUrl: options.publicGatewayBaseUrl || process.env.FRIST_API_PUBLIC_GATEWAY_BASE_URL || '',
+    dataEncryptionKey: options.dataEncryptionKey || process.env.FRIST_API_DATA_ENCRYPTION_KEY || '',
     quotaCost: Number(options.quotaCost || DEFAULT_QUOTA_COST),
     requireEmailVerification,
     requireCaptcha,
@@ -3387,6 +3909,12 @@ function normalizeServerOptions(options) {
             family: options.smtpFamily,
           }),
   };
+  normalized.accountEmailSender =
+    typeof options.accountEmailSender === 'function' ? options.accountEmailSender : normalized.balanceAlertEmailSender;
+  normalized.paymentConfig = paymentConfigFromOptions({
+    ...options,
+    publicGatewayBaseUrl: normalized.publicGatewayBaseUrl,
+  });
   validatePublicModeOptions(normalized);
   return normalized;
 }
@@ -3408,6 +3936,9 @@ function validatePublicModeOptions(serverOptions) {
   }
   if (serverOptions.allowDemoRecharge) {
     problems.push('公开模式禁止演示充值');
+  }
+  if (!serverOptions.dataEncryptionKey) {
+    problems.push('运行数据加密密钥必须配置');
   }
   if (
     !isPublicHttpsGateway(serverOptions.publicGatewayBaseUrl) &&
@@ -3818,6 +4349,13 @@ function publicError(statusCode, message) {
   error.statusCode = statusCode;
   error.expose = true;
   return error;
+}
+
+function normalizePublicError(error) {
+  if (error?.expose) {
+    return error;
+  }
+  return publicError(500, String(error?.message || '服务暂时不可用'));
 }
 
 function requestOrigin(request) {
@@ -4471,7 +5009,12 @@ function sanitizePaymentOrder(order) {
     planId: order.planId || '',
     plan: order.plan || 'balance',
     method: order.method,
+    provider: order.provider || '',
+    qrCode: order.qrCode || '',
+    notifyUrl: order.notifyUrl || '',
+    transactionId: order.transactionId || '',
     status: order.status,
+    paidAt: order.paidAt || '',
     createdAt: order.createdAt,
     updatedAt: order.updatedAt,
   };
@@ -4573,6 +5116,10 @@ function isModernPasswordHash(storedHash) {
 
 function legacyHashPassword(password, salt) {
   return createHash('sha256').update(`${salt}:${password}`).digest('hex');
+}
+
+function hashPasswordResetCode(code, salt) {
+  return createHash('sha256').update(`${salt}:password-reset:${String(code || '').trim()}`).digest('hex');
 }
 
 function safeEqual(left, right) {

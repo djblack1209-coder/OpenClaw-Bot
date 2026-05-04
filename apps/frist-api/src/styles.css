@@ -1701,6 +1701,13 @@ textarea:focus {
   margin-bottom: 16px;
 }
 
+.payment-method-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 16px;
+}
+
 .balance-alert-card {
   margin-top: 16px;
 }
@@ -3620,6 +3627,7 @@ body[data-design-system="refero-hyperstudio"] .hamburger {
   .target-list,
   .guide-targets,
   .amount-grid,
+  .payment-method-grid,
   .balance-alert-grid,
   .model-market-toolbar,
   .selected-model-panel__facts,

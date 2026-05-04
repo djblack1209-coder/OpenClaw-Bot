@@ -158,6 +158,8 @@
 | 账户菜单 | `data-auth-toggle` / `data-auth-panel` | Frist-API 用户端右上角注册和登录入口 |
 | 用户注册 | `data-register-account` / `/api/frist/challenge` | Frist-API 用户端注册入口，注册专用验证码挑战，公开页不回显答案 |
 | 用户登录 | `data-login-account` | Frist-API 用户端邮箱密码登录入口，不再要求每次登录填写验证码 |
+| 忘记密码 | `data-password-reset-request` / `/api/frist/password-reset/request` | 登录前按邮箱发送重置验证码，SMTP 未配置时返回明确反馈 |
+| 重置密码 | `data-password-reset-confirm` / `/api/frist/password-reset/confirm` | 用户输入重置验证码和新密码后完成 PBKDF2 密码更新 |
 | 管理员身份码 | `data-owner-claim-code` / `data-owner-claim` | 登录后用一次性身份码把当前账号升级为管理员 |
 | 运营入口 | `data-owner-entry` | 仅管理员账号可见，进入独立管理页 |
 | 返回首页 | `data-back-home` / `data-route="dashboard"` | 子页面统一返回用户首页，避免导入、广场、教程等页面迷路 |
@@ -166,6 +168,9 @@
 | Key 删除 | `data-delete-key` | 删除单个用户 API Key |
 | Key 开关 | `data-toggle-key` | 开启或关闭单个用户 API Key |
 | 用户充值申请 | `data-pay-submit` | 生成待处理充值单，公开环境不直接入账 |
+| 支付方式选择 | `data-payment-method` | 选择人工确认、微信 Native 或支付宝当面付；接口未配置时提示用户 |
+| 微信支付回调 | `/api/frist/payments/wechat/notify` | 微信支付 APIv3 回调验签、解密和按订单号幂等入账 |
+| 支付宝支付回调 | `/api/frist/payments/alipay/notify` | 支付宝当面付异步通知验签和按订单号幂等入账 |
 | 兑换码 | `data-redeem-code` | 日卡/月卡/加油包兑换 |
 | 余额预警设置 | `data-balance-alert-card` / `data-balance-alert-enabled` / `data-balance-alert-threshold` / `data-balance-alert-email` | 用户在账单页自定义低余额提醒阈值和收件邮箱 |
 | 余额预警保存 | `data-balance-alert-save` | 保存当前用户的余额预警配置 |
@@ -228,6 +233,22 @@
 | `FRIST_API_BALANCE_ALERT_FROM_NAME` | 余额预警发件人名称 | 默认 `Frist-API Billing` |
 | `FRIST_API_REQUIRE_CAPTCHA` | 是否启用注册验证码挑战 | `1` 启用；登录不再要求验证码 |
 | `FRIST_API_CAPTCHA_MAX_ATTEMPTS` | 单个验证码最大错误次数 | 默认 `3`，超过后需刷新挑战 |
+| `FRIST_API_PASSWORD_RESET_TTL_MS` | 忘记密码验证码有效期 | 默认 `900000`，即 15 分钟 |
+| `FRIST_API_DATA_ENCRYPTION_KEY` | runtime 敏感字段加密密钥 | 公开模式必填；用于加密用户 Key 和上游 rawKey |
+| `FRIST_API_PAYMENT_ENABLED` | 是否启用真实支付接口 | 总开关；未启用时仍可人工确认 |
+| `FRIST_API_WECHAT_PAY_ENABLED` | 是否启用微信 Native 支付 | 需要商户平台、AppID、商户号和 APIv3 配置 |
+| `FRIST_API_WECHAT_PAY_APPID` | 微信支付 AppID | 由微信支付商户平台绑定的应用提供 |
+| `FRIST_API_WECHAT_PAY_MCH_ID` | 微信支付商户号 | 微信支付商户平台提供 |
+| `FRIST_API_WECHAT_PAY_SERIAL_NO` | 微信商户 API 证书序列号 | 用于 APIv3 请求签名 |
+| `FRIST_API_WECHAT_PAY_PRIVATE_KEY` | 微信商户私钥 PEM | 只放服务器环境变量或安全文件注入 |
+| `FRIST_API_WECHAT_PAY_PUBLIC_KEY` | 微信支付平台公钥 PEM | 用于回调验签 |
+| `FRIST_API_WECHAT_PAY_API_V3_KEY` | 微信支付 APIv3 密钥 | 32 字节，用于回调资源解密 |
+| `FRIST_API_WECHAT_PAY_NOTIFY_URL` | 微信支付回调 URL | 默认可由公开入口推导为 `/api/frist/payments/wechat/notify` |
+| `FRIST_API_ALIPAY_ENABLED` | 是否启用支付宝当面付 | 需要支付宝开放平台应用和当面付产品 |
+| `FRIST_API_ALIPAY_APP_ID` | 支付宝应用 AppID | 支付宝开放平台提供 |
+| `FRIST_API_ALIPAY_PRIVATE_KEY` | 支付宝应用私钥 PEM | 只放服务器环境变量或安全文件注入 |
+| `FRIST_API_ALIPAY_PUBLIC_KEY` | 支付宝平台公钥 PEM | 用于异步通知验签 |
+| `FRIST_API_ALIPAY_NOTIFY_URL` | 支付宝回调 URL | 默认可由公开入口推导为 `/api/frist/payments/alipay/notify` |
 | `FRIST_API_NEWAPI_ENABLED` | 是否启用 Frist-API 服务端 New-API 业务桥接 | `1` 启用；未启用时继续走本地 JSON 自研逻辑 |
 | `FRIST_API_NEWAPI_BASE_URL` | New-API 内网 API 地址 | 例如 `http://openclaw-newapi:3000`，不要暴露公网管理口 |
 | `FRIST_API_NEWAPI_ACCESS_TOKEN` | New-API 用户 access token | 只放服务器环境变量，禁止写入仓库 |
@@ -250,6 +271,7 @@
 | 同步脚本 | `sync_new_api_upstream.sh` | `scripts/sync_new_api_upstream.sh` | 支持 `check` / `update`；`check` 发现落后返回非 0，适合 CI/定时任务 |
 | 定时同步 | `New-API Scheduled Sync` | `.github/workflows/new-api-sync.yml` | 每天检查最新 release，落后时自动开 `codex/new-api-scheduled-sync` PR；不会直接升级生产数据库 |
 | Frist-API 桥接 | `newApiBridge.js` | `apps/frist-api/server/newApiBridge.js` | 通过 New-API HTTP 接口承接用户看板、Token、日志、兑换、订阅、邀请和可选网关代理 |
+| 迁移演练 | `frist_api_newapi_migration_dry_run.mjs` | `scripts/frist_api_newapi_migration_dry_run.mjs` | 默认只读 Frist-API runtime，输出用户、Token、订单、日志迁移清单和风险提示，不写生产 New-API |
 
 | 环境变量 | 用途 | 备注 |
 |----------|------|------|

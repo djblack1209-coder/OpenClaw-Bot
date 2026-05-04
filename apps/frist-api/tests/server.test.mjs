@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createCipheriv, createHash, createSign, generateKeyPairSync, randomBytes } from 'node:crypto';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -230,6 +230,55 @@ describe('Frist-API public server chain', () => {
     }
   });
 
+  it('sends registration email codes and supports password reset without requiring login', async () => {
+    const sentEmails = [];
+    const fixture = await createServerFixture({
+      requireEmailVerification: true,
+      accountEmailSender: (message) => sentEmails.push(message),
+    });
+
+    try {
+      const registered = await fixture.request('/api/frist/register', {
+        method: 'POST',
+        body: { email: 'mail-verify@example.com', password: 'OldPass123!' },
+      });
+      assert.equal(registered.status, 200);
+      assert.equal(sentEmails.length, 1);
+      assert.equal(sentEmails[0].to, 'mail-verify@example.com');
+      assert.match(sentEmails[0].subject, /注册验证码/);
+      assert.match(sentEmails[0].text, new RegExp(registered.json.verificationCode));
+
+      const resetRequested = await fixture.request('/api/frist/password-reset/request', {
+        method: 'POST',
+        body: { email: 'mail-verify@example.com' },
+      });
+      assert.equal(resetRequested.status, 200);
+      assert.equal(sentEmails.length, 2);
+      assert.match(sentEmails[1].subject, /密码重置验证码/);
+      assert.match(sentEmails[1].text, new RegExp(resetRequested.json.resetCode));
+
+      const resetConfirmed = await fixture.request('/api/frist/password-reset/confirm', {
+        method: 'POST',
+        body: { email: 'mail-verify@example.com', code: resetRequested.json.resetCode, newPassword: 'NewPass123!' },
+      });
+      assert.equal(resetConfirmed.status, 200);
+
+      const oldLogin = await fixture.request('/api/frist/login', {
+        method: 'POST',
+        body: { email: 'mail-verify@example.com', password: 'OldPass123!' },
+      });
+      assert.equal(oldLogin.status, 401);
+
+      const newLogin = await fixture.request('/api/frist/login', {
+        method: 'POST',
+        body: { email: 'mail-verify@example.com', password: 'NewPass123!' },
+      });
+      assert.equal(newLogin.status, 200);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it('lets customers rename and delete their own API keys through HTTP APIs', async () => {
     const fixture = await createServerFixture({ requireEmailVerification: false });
 
@@ -312,6 +361,150 @@ describe('Frist-API public server chain', () => {
 
       const dashboard = await fixture.request('/api/frist/dashboard', { cookie });
       assert.equal(dashboard.json.account.boosterQuota, '$1.11');
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('creates WeChat native payment orders and credits exactly once after signed notify', async () => {
+    const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const wechatPrivateKey = privateKey.export({ type: 'pkcs8', format: 'pem' });
+    const wechatPublicKey = publicKey.export({ type: 'spki', format: 'pem' });
+    const apiV3Key = '12345678901234567890123456789012';
+    const fixture = await createServerFixture({
+      paymentEnabled: true,
+      wechatPayEnabled: true,
+      wechatPayAppId: 'wx-test-app',
+      wechatPayMchId: '1900000001',
+      wechatPaySerialNo: 'SERIALNO',
+      wechatPayPrivateKey: wechatPrivateKey,
+      wechatPayPublicKey: wechatPublicKey,
+      wechatPayApiV3Key: apiV3Key,
+      fetchImpl: async (url) => {
+        assert.equal(String(url), 'https://api.mch.weixin.qq.com/v3/pay/transactions/native');
+        return jsonResponse(200, { code_url: 'weixin://wxpay/bizpayurl?pr=test' });
+      },
+    });
+
+    try {
+      const cookie = await fixture.createVerifiedCustomer('wechat-paid@example.com');
+      const created = await fixture.request('/api/frist/recharge', {
+        method: 'POST',
+        cookie,
+        body: { planId: 'codex-30-unlimited', method: 'wechat_native' },
+      });
+      assert.equal(created.status, 202);
+      assert.equal(created.json.provider, 'wechat');
+      assert.equal(created.json.qrCode, 'weixin://wxpay/bizpayurl?pr=test');
+      assert.equal(created.json.paymentOrder.status, 'pending_provider_payment');
+
+      const notifyBody = buildWechatNotifyBody({
+        apiV3Key,
+        transaction: {
+          out_trade_no: created.json.paymentOrder.id,
+          transaction_id: 'wx-transaction-1',
+          trade_state: 'SUCCESS',
+        },
+      });
+      const notify = await fixture.rawRequest('/api/frist/payments/wechat/notify', {
+        method: 'POST',
+        headers: signWechatNotifyHeaders({
+          privateKey: wechatPrivateKey,
+          bodyText: notifyBody,
+        }),
+        bodyText: notifyBody,
+      });
+      assert.equal(notify.status, 200);
+      assert.equal(notify.json.code, 'SUCCESS');
+
+      const duplicate = await fixture.rawRequest('/api/frist/payments/wechat/notify', {
+        method: 'POST',
+        headers: signWechatNotifyHeaders({
+          privateKey: wechatPrivateKey,
+          bodyText: notifyBody,
+        }),
+        bodyText: notifyBody,
+      });
+      assert.equal(duplicate.status, 200);
+
+      const dashboard = await fixture.request('/api/frist/dashboard', { cookie });
+      assert.equal(dashboard.json.account.boosterQuota, '$30.00');
+      assert.equal(dashboard.json.account.balance, '$30.00');
+      const data = await fixture.readData();
+      assert.equal(data.paymentOrders[0].status, 'paid');
+      assert.equal(data.events.filter((event) => event.type === 'provider_payment_confirmed').length, 1);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('creates Alipay precreate orders and credits customer after verified notify', async () => {
+    const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const alipayPrivateKey = privateKey.export({ type: 'pkcs8', format: 'pem' });
+    const alipayPublicKey = publicKey.export({ type: 'spki', format: 'pem' });
+    const fixture = await createServerFixture({
+      paymentEnabled: true,
+      alipayEnabled: true,
+      alipayAppId: '2021000000000000',
+      alipayPrivateKey,
+      alipayPublicKey,
+      fetchImpl: async (url, options = {}) => {
+        assert.equal(String(url), 'https://openapi.alipay.com/gateway.do');
+        assert.match(String(options.body || ''), /alipay.trade.precreate/);
+        return jsonResponse(200, {
+          alipay_trade_precreate_response: {
+            code: '10000',
+            msg: 'Success',
+            out_trade_no: 'server-generated',
+            qr_code: 'https://qr.alipay.com/test',
+          },
+        });
+      },
+    });
+
+    try {
+      const cookie = await fixture.createVerifiedCustomer('alipay-paid@example.com');
+      const created = await fixture.request('/api/frist/recharge', {
+        method: 'POST',
+        cookie,
+        body: { planId: 'codex-30-day', method: 'alipay_precreate' },
+      });
+      assert.equal(created.status, 202);
+      assert.equal(created.json.provider, 'alipay');
+      assert.equal(created.json.paymentOrder.status, 'pending_provider_payment');
+      assert.equal(created.json.qrCode, 'https://qr.alipay.com/test');
+
+      const notifyBody = signAlipayNotifyBody(
+        {
+          app_id: '2021000000000000',
+          out_trade_no: created.json.paymentOrder.id,
+          trade_no: 'ali-trade-1',
+          trade_status: 'TRADE_SUCCESS',
+          total_amount: '5.88',
+        },
+        alipayPrivateKey,
+      );
+      const notify = await fixture.rawRequest('/api/frist/payments/alipay/notify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        bodyText: notifyBody,
+      });
+      assert.equal(notify.status, 200);
+      assert.equal(notify.text, 'success');
+
+      const duplicate = await fixture.rawRequest('/api/frist/payments/alipay/notify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        bodyText: notifyBody,
+      });
+      assert.equal(duplicate.status, 200);
+
+      const dashboard = await fixture.request('/api/frist/dashboard', { cookie });
+      assert.equal(dashboard.json.account.plan, '日卡');
+      assert.equal(dashboard.json.account.packageQuota, '$30.00');
+      const data = await fixture.readData();
+      assert.equal(data.paymentOrders[0].status, 'paid');
+      assert.equal(data.events.filter((event) => event.type === 'provider_payment_confirmed').length, 1);
     } finally {
       await fixture.close();
     }
@@ -440,6 +633,67 @@ describe('Frist-API public server chain', () => {
       assert.match(upgraded.passwordHash, /^pbkdf2-sha256\$210000\$/);
       assert.equal(upgraded.passwordHash.includes('LegacyPass123!'), false);
       assert.equal(data.events.some((event) => event.type === 'password_hash_upgraded'), true);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('encrypts runtime API secrets on disk while keeping gateway reads compatible', async () => {
+    const upstreamCalls = [];
+    const fixture = await createServerFixture({
+      requireEmailVerification: false,
+      dataEncryptionKey: 'local-runtime-encryption-key-for-tests',
+      fetchImpl: async (url, options = {}) => {
+        upstreamCalls.push({
+          url: String(url),
+          authorization: options.headers?.Authorization || options.headers?.authorization,
+        });
+        return jsonResponse(200, {
+          id: 'chatcmpl-encrypted-runtime',
+          model: 'gpt-5.5',
+          choices: [{ message: { role: 'assistant', content: 'encrypted ok' } }],
+        });
+      },
+    });
+
+    try {
+      const registered = await fixture.request('/api/frist/register', {
+        method: 'POST',
+        body: { email: 'encrypted-runtime@example.com', password: 'TestPass123!' },
+      });
+      await fixture.request('/api/frist/redeem', {
+        method: 'POST',
+        cookie: registered.cookie,
+        body: { code: 'FRIST-DAY-001' },
+      });
+      const token = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie: registered.cookie,
+        body: { name: 'Encrypted Runtime Key', modelGroup: 'OpenAI' },
+      });
+      await fixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'https://supplier.example.com/openai',
+          pool: 'day',
+          models: ['gpt-5.5'],
+          keys: [{ value: 'sk-encrypted-upstream', quotaRemaining: 900, latencyMs: 80 }],
+        },
+      });
+
+      const raw = await fixture.readRawData();
+      assert.equal(raw.includes(token.json.key.secret), false);
+      assert.equal(raw.includes('sk-encrypted-upstream'), false);
+      assert.match(raw, /enc:v1:/);
+
+      const gateway = await fixture.request('/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token.json.key.secret}` },
+        body: { model: 'gpt-5.5', messages: [{ role: 'user', content: 'ping' }] },
+      });
+      assert.equal(gateway.status, 200);
+      assert.equal(upstreamCalls.at(-1).authorization, 'Bearer sk-encrypted-upstream');
     } finally {
       await fixture.close();
     }
@@ -716,6 +970,7 @@ describe('Frist-API public server chain', () => {
           keys: [{ value: 'sk-balance-alert', quotaRemaining: 900, latencyMs: 80 }],
         },
       });
+      sentEmails.length = 0;
 
       const first = await fixture.request('/v1/chat/completions', {
         method: 'POST',
@@ -3151,6 +3406,7 @@ describe('Frist-API public server chain', () => {
       publicMode: true,
       adminToken: 'admin-token-with-enough-randomness-2026',
       sessionSecret: 'session-secret-with-enough-randomness-2026',
+      dataEncryptionKey: 'runtime-encryption-key-with-enough-randomness-2026',
       publicGatewayBaseUrl: 'https://gateway.frist-api.dev/v1',
     });
     server.close();
@@ -3160,6 +3416,7 @@ describe('Frist-API public server chain', () => {
       allowInsecurePublicHttp: true,
       adminToken: 'admin-token-with-enough-randomness-2026',
       sessionSecret: 'session-secret-with-enough-randomness-2026',
+      dataEncryptionKey: 'runtime-encryption-key-with-enough-randomness-2026',
       publicGatewayBaseUrl: 'http://101.43.41.96:5566/v1',
     });
     temporaryIpServer.close();
@@ -3172,6 +3429,7 @@ describe('Frist-API public server chain', () => {
       publicGatewayBaseUrl: 'http://101.43.41.96:5566/v1',
       adminToken: 'admin-token-with-enough-randomness-2026',
       sessionSecret: 'session-secret-with-enough-randomness-2026',
+      dataEncryptionKey: 'runtime-encryption-key-with-enough-randomness-2026',
       exposeVerificationCode: false,
       adminPageCode: 'hidden-admin-entry-2026',
     });
@@ -3266,6 +3524,23 @@ async function createServerFixture(options = {}) {
     newApiUserId: options.newApiUserId,
     newApiGatewayEnabled: options.newApiGatewayEnabled,
     newApiGatewayBaseUrl: options.newApiGatewayBaseUrl,
+    dataEncryptionKey: options.dataEncryptionKey,
+    accountEmailSender: options.accountEmailSender,
+    passwordResetTtlMs: options.passwordResetTtlMs,
+    paymentEnabled: options.paymentEnabled,
+    wechatPayEnabled: options.wechatPayEnabled,
+    wechatPayAppId: options.wechatPayAppId,
+    wechatPayMchId: options.wechatPayMchId,
+    wechatPaySerialNo: options.wechatPaySerialNo,
+    wechatPayPrivateKey: options.wechatPayPrivateKey,
+    wechatPayPublicKey: options.wechatPayPublicKey,
+    wechatPayApiV3Key: options.wechatPayApiV3Key,
+    wechatPayGateway: options.wechatPayGateway,
+    alipayEnabled: options.alipayEnabled,
+    alipayAppId: options.alipayAppId,
+    alipayPrivateKey: options.alipayPrivateKey,
+    alipayPublicKey: options.alipayPublicKey,
+    alipayGateway: options.alipayGateway,
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;
@@ -3292,8 +3567,25 @@ async function createServerFixture(options = {}) {
         text,
       };
     },
+    async rawRequest(path, options = {}) {
+      const response = await fetch(`${baseUrl}${path}`, {
+        method: options.method || 'GET',
+        headers: options.headers || {},
+        body: options.bodyText,
+      });
+      const text = await response.text();
+      return {
+        status: response.status,
+        setCookie: response.headers.get('set-cookie') || '',
+        json: parseJsonOrEmpty(text),
+        text,
+      };
+    },
     async readData() {
       return JSON.parse(await readFile(dataFile, 'utf8'));
+    },
+    async readRawData() {
+      return readFile(dataFile, 'utf8');
     },
     async writeData(data) {
       await writeFile(dataFile, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
@@ -3329,6 +3621,60 @@ function textResponse(status, body, contentType = 'text/html') {
     status,
     headers: { 'content-type': contentType },
   });
+}
+
+function buildWechatNotifyBody({ apiV3Key, transaction }) {
+  const nonce = Buffer.from(randomBytes(12).toString('base64url').slice(0, 12), 'utf8');
+  const cipher = createCipheriv('aes-256-gcm', Buffer.from(apiV3Key, 'utf8'), nonce);
+  const associatedData = 'transaction';
+  cipher.setAAD(Buffer.from(associatedData, 'utf8'));
+  const encrypted = Buffer.concat([
+    cipher.update(JSON.stringify(transaction), 'utf8'),
+    cipher.final(),
+    cipher.getAuthTag(),
+  ]).toString('base64');
+  return JSON.stringify({
+    id: 'notify-id',
+    create_time: '2026-05-04T12:00:00+08:00',
+      resource_type: 'encrypt-resource',
+    event_type: 'TRANSACTION.SUCCESS',
+    resource: {
+      algorithm: 'AEAD_AES_256_GCM',
+      ciphertext: encrypted,
+      associated_data: associatedData,
+      nonce: nonce.toString('utf8'),
+    },
+  });
+}
+
+function signWechatNotifyHeaders({ privateKey, bodyText }) {
+  const timestamp = '1777777777';
+  const nonce = 'notify-nonce';
+  const message = `${timestamp}\n${nonce}\n${bodyText}\n`;
+  return {
+    'wechatpay-timestamp': timestamp,
+    'wechatpay-nonce': nonce,
+    'wechatpay-signature': createSign('RSA-SHA256').update(message).sign(privateKey, 'base64'),
+    'wechatpay-serial': 'TEST-SERIAL',
+    'content-type': 'application/json',
+  };
+}
+
+function signAlipayNotifyBody(params, privateKey) {
+  const payload = {
+    ...params,
+    charset: 'utf-8',
+    sign_type: 'RSA2',
+    version: '1.0',
+    notify_time: '2026-05-04 12:00:00',
+  };
+  const content = Object.entries(payload)
+    .filter(([key, value]) => key !== 'sign' && key !== 'sign_type' && value !== undefined && value !== null && value !== '')
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${key}=${value}`)
+    .join('&');
+  payload.sign = createSign('RSA-SHA256').update(content).sign(privateKey, 'base64');
+  return new URLSearchParams(payload).toString();
 }
 
 function delay(ms) {
