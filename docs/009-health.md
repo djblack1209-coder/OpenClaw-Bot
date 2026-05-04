@@ -108,7 +108,7 @@
 | HI-854 | UX | Frist-API 前端服务不可用时静默降级无重试入口，用户看不到明确恢复指引 | 2026-05-03 |
 | HI-856 | ARCH_LIMIT | Frist-API server.js 单文件 4432 行，账号/网关/邮件/管理全耦合在一个模块 | 2026-05-03 |
 | HI-857 | ARCH_LIMIT | Frist-API 内存态 captcha/rateLimit 在进程重启或水平扩展时丢失 | 2026-05-03 |
-| HI-863 | INFRA | Frist-API 长期入口仍缺固定品牌域名；免费域名已实测，`sslip.io` 在腾讯 DNSPod 侧被拦截，当前过渡入口切到 `101-43-41-96.nip.io`，HTTPS 仍需自有域名或 Cloudflare Tunnel 闭环 | 2026-05-04 |
+| HI-863 | INFRA | Frist-API 长期入口仍缺固定品牌域名；免费域名已实测，`sslip.io` 在腾讯 DNSPod 侧被拦截，当前过渡入口切到 `frist-api.101-43-41-96.nip.io`；Let’s Encrypt 访问 ACME challenge 被重置，HTTPS 仍需自有域名或 Cloudflare Tunnel 闭环 | 2026-05-04 |
 
 ---
 
