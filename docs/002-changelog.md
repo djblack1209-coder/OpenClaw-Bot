@@ -5,6 +5,26 @@
 
 ## 最近更新（2026-05）
 
+## [2026-05-04] Frist-API 兑换码售卖主链路
+> 领域: `backend` | `frontend` | `docs`
+> 影响模块: `Frist-API`, `Billing`, `Redeem`, `Admin`, `docs`
+> 关联问题: HI-864
+
+### 变更内容
+- 放弃个人微信/支付宝收款码自动识别路线，避免收款风险和用户上传截图的糟糕体验；用户端主路径改为“第三方平台购买兑换码，站内核销自动到账”。
+- 管理端新增兑换卡批量生成、批次导出、卡密状态展示，生成内容可直接给闲鱼自动发货或客服系统使用。
+- 后端新增运行数据里的 `redemptionCards` 库存，兑换码一次性核销，成功后绑定用户并标记已兑换；旧测试兑换码继续兼容。
+- 用户端充值页改为购买兑换码引导，独立兑换码页突出自动到账，并预留闲鱼商品链接位置。
+- 已部署到腾讯云 `/opt/frist-api`，远端应用备份为 `backups/frist-api-app-20260504-152551-before-redemption-codes.tgz`，运行数据备份为 `backups/runtime-20260504-152551-before-redemption-codes.json`；公网首页 200，游客看板返回 5 个套餐和 11 个模型，未授权 `/v1/models` 为 401，容器为 healthy，远端真实生成/兑换/重复兑换拒绝闭环通过。
+- 验证结果: `node --check apps/frist-api/server/server.js apps/frist-api/src/admin.js apps/frist-api/src/app.js` 通过；Frist-API `npm test` 为 123/123 通过；聚焦 `node --test tests/core.test.mjs tests/business-flow.test.mjs tests/server.test.mjs` 为 114/114 通过；`git diff --check` 通过。
+
+### 文件变更
+- `apps/frist-api/server/server.js` — 新增兑换卡生成接口、卡密库存、一次性核销和管理端脱敏展示
+- `apps/frist-api/admin.html` / `apps/frist-api/src/admin.js` — 新增卡密生成、复制导出和卡密状态列表
+- `apps/frist-api/index.html` / `apps/frist-api/src/app.js` / `apps/frist-api/src/styles.css` — 充值页和兑换页改为闲鱼兑换码主路径并预留购买链接
+- `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/business-flow.test.mjs` / `apps/frist-api/tests/server.test.mjs` — 覆盖用户端入口、管理端钩子和卡密一次性兑换
+- `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步兑换码售卖 SOP 和健康状态
+
 ## [2026-05-04] Frist-API 支付回调、邮箱找回和运行数据加密
 > 领域: `backend` | `frontend` | `deploy` | `docs`
 > 影响模块: `Frist-API`, `Payments`, `Auth`, `New-API Migration`, `docs`

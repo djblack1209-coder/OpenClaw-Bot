@@ -48,6 +48,7 @@ const DEFAULT_RECHARGE_PLANS = Object.freeze([
   Object.freeze({ id: 'codex-500-unlimited', label: 'Codex API 500刀额度/不限时', quotaUsd: 500, priceCny: 68.88, durationDays: 0, plan: 'balance' }),
   Object.freeze({ id: 'codex-1000-unlimited', label: 'Codex API 1000刀额度/不限时', quotaUsd: 1000, priceCny: 118.88, durationDays: 0, plan: 'balance' }),
 ]);
+const DEFAULT_CARD_BATCH_PREFIX = 'FRIST';
 const DEFAULT_MODEL_PRICES = Object.freeze([
   Object.freeze({ model: 'gpt-5.5', currency: 'CNY', inputCostCnyPerMillion: 8, outputCostCnyPerMillion: 48, inputSaleCnyPerMillion: 8, outputSaleCnyPerMillion: 48, source: 'official' }),
   Object.freeze({ model: 'gpt-5.5-c', currency: 'CNY', inputCostCnyPerMillion: 8, outputCostCnyPerMillion: 48, inputSaleCnyPerMillion: 8, outputSaleCnyPerMillion: 48, source: 'official' }),
@@ -65,10 +66,10 @@ const DEFAULT_MODEL_CATALOG = [
   { model: DEFAULT_MODEL, family: 'Claude', tagline: '复杂开发和长链路推理', context: '1M 上下文', price: '官方同档 · 折扣结算', available: true },
 ];
 const SESSION_COOKIE = 'frist_session';
-const DAY_CARD_CODES = new Map([
-  ['FRIST-DAY-001', { plan: '日卡', days: 1, packageCents: 800 }],
-  ['FRIST-MONTH-001', { plan: '月卡 Pro', days: 30, packageCents: 8000 }],
-  ['FRIST-BOOST-100', { plan: null, days: 0, boosterCents: 10000 }],
+const LEGACY_CARD_CODES = new Map([
+  ['FRIST-DAY-001', { label: 'Codex API 30刀额度/日卡', plan: 'day', days: 1, packageCents: 800, quotaUsd: 30, priceCny: 5.88 }],
+  ['FRIST-MONTH-001', { label: 'Codex API 月卡 Pro', plan: 'month', days: 30, packageCents: 8000, quotaUsd: 300, priceCny: 58.88 }],
+  ['FRIST-BOOST-100', { label: 'Codex API 100刀加油包', plan: 'balance', days: 0, boosterCents: 10000, quotaUsd: 100, priceCny: 28.88 }],
 ]);
 const CONTENT_TYPES = new Map([
   ['.css', 'text/css; charset=utf-8'], ['.html', 'text/html; charset=utf-8'],
@@ -358,9 +359,30 @@ async function handleAdminApi({ request, response, url, store, serverOptions }) 
       supplierProfiles: data.supplierProfiles,
       priceDrafts: data.priceDrafts,
       paymentOrders: data.paymentOrders.map(sanitizePaymentOrder),
+      redemptionCards: data.redemptionCards.map(sanitizeRedemptionCard),
       inventorySummary: buildInventorySummary(data),
       events: sanitizeAdminEvents(data.events),
     });
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/admin/redemption-cards') {
+    const data = await store.load();
+    requireAdmin(data, request, serverOptions);
+    writeJson(response, 200, {
+      cards: data.redemptionCards.map(sanitizeRedemptionCard),
+      events: sanitizeAdminEvents(data.events),
+    });
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/admin/redemption-cards') {
+    const body = await readJsonBody(request);
+    const result = await store.mutate((data) => {
+      requireAdmin(data, request, serverOptions);
+      return createRedemptionCards(data, body);
+    });
+    writeJson(response, 200, result);
     return;
   }
 
@@ -1170,20 +1192,108 @@ function buildRechargeOptions(data) {
   }));
 }
 
+function createRedemptionCards(data, body) {
+  const selectedPlan = findRechargePlan(data, body);
+  const planType = selectedPlan ? normalizeRechargePlan(selectedPlan.plan) : normalizeRechargePlan(body.plan);
+  const quantity = clampInteger(body.quantity, 1, 200);
+  const now = new Date().toISOString();
+  const prefix = normalizeCardPrefix(body.prefix || DEFAULT_CARD_BATCH_PREFIX);
+  const label = String(body.label || selectedPlan?.label || cardLabelForPlan(planType, body)).trim();
+  const priceCents = selectedPlan ? planPriceCents(selectedPlan) : Math.round(Number(body.priceCny || 0) * 100);
+  const creditCents = selectedPlan
+    ? planCreditCents(selectedPlan)
+    : Math.round(Number(body.quotaUsd || body.creditUsd || 0) * DEFAULT_USD_TO_CNY * 100);
+  const quotaUsd = selectedPlan ? Number(selectedPlan.quotaUsd || 0) : round2(Number(body.quotaUsd || body.creditUsd || 0));
+  const durationDays = selectedPlan
+    ? Number(selectedPlan.durationDays || 0)
+    : planType === 'day'
+      ? 1
+      : planType === 'month'
+        ? 30
+        : Math.max(0, Number(body.durationDays || 0));
+
+  if (!Number.isFinite(creditCents) || creditCents <= 0) {
+    throw publicError(400, '卡密额度必须大于 0');
+  }
+  if (!label) {
+    throw publicError(400, '卡密名称不能为空');
+  }
+
+  const batchId = createId('batch');
+  const cards = [];
+  const existingCodes = new Set([
+    ...data.redemptionCards.map((card) => card.code),
+    ...data.redemptions.map((item) => item.code),
+    ...LEGACY_CARD_CODES.keys(),
+  ]);
+  for (let index = 0; index < quantity; index += 1) {
+    let code = '';
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      code = `${prefix}-${randomCardCodeSegment()}-${randomCardCodeSegment()}`;
+      if (!existingCodes.has(code)) break;
+    }
+    if (!code || existingCodes.has(code)) {
+      throw publicError(500, '卡密生成失败，请重试');
+    }
+    existingCodes.add(code);
+    const card = {
+      id: createId('card'),
+      batchId,
+      code,
+      label,
+      plan: planType,
+      durationDays,
+      quotaUsd,
+      priceCny: round2(priceCents / 100),
+      creditCents,
+      status: 'unused',
+      source: 'xianyu',
+      note: String(body.note || '').trim(),
+      createdAt: now,
+      updatedAt: now,
+      redeemedAt: '',
+      redeemedBy: '',
+      redeemedEmail: '',
+    };
+    data.redemptionCards.unshift(card);
+    cards.push(card);
+  }
+
+  data.events.push({
+    type: 'redemption_cards_created',
+    batchId,
+    count: cards.length,
+    plan: planType,
+    creditCents,
+    at: now,
+  });
+  return {
+    batchId,
+    cards: cards.map(sanitizeRedemptionCard),
+    exportText: buildRedemptionCardExport(cards),
+    events: sanitizeAdminEvents(data.events),
+  };
+}
+
 function redeemCustomerCode(data, request, body, serverOptions) {
   const { user } = requireSession(data, request);
   const code = String(body.code || '').trim().toUpperCase();
-  const rule = DAY_CARD_CODES.get(code);
+  const card = data.redemptionCards.find((item) => item.code === code);
+  const rule = card ? redemptionRuleFromCard(card) : LEGACY_CARD_CODES.get(code);
   if (!rule) {
     throw publicError(400, '兑换码无效');
   }
   if (data.redemptions.some((item) => item.code === code)) {
     throw publicError(409, '兑换码已使用');
   }
+  if (card && card.status !== 'unused') {
+    throw publicError(409, '兑换码已使用');
+  }
 
   const now = currentDate(serverOptions);
-  if (rule.plan) {
-    user.plan = rule.plan;
+  const planType = normalizeRechargePlan(rule.plan);
+  if (planType === 'day' || planType === 'month' || rule.displayPlan) {
+    user.plan = rule.displayPlan || (planType === 'month' ? '月卡' : '日卡');
     const expiresAt = addDays(now, rule.days);
     user.renewalDate = formatDate(expiresAt);
     user.planExpiresAt = expiresAt.toISOString();
@@ -1196,11 +1306,43 @@ function redeemCustomerCode(data, request, body, serverOptions) {
   data.redemptions.push({
     code,
     userId: user.id,
-    plan: rule.plan || '加油包',
+    plan: rule.displayPlan || rule.label || (planType === 'balance' ? '加油包' : planType),
+    cardId: card?.id || '',
+    batchId: card?.batchId || '',
+    creditCents: Number(rule.packageCents || 0) + Number(rule.boosterCents || 0),
     at: user.updatedAt,
   });
+  if (card) {
+    card.status = 'redeemed';
+    card.redeemedAt = user.updatedAt;
+    card.redeemedBy = user.id;
+    card.redeemedEmail = user.email;
+    card.updatedAt = user.updatedAt;
+  }
   data.events.push({ type: 'redeemed', userId: user.id, code, at: user.updatedAt });
-  return { account: accountFromUser(data, user), user: sanitizeUser(user) };
+  return {
+    account: accountFromUser(data, user),
+    user: sanitizeUser(user),
+    redemption: {
+      code,
+      label: rule.label || '兑换码',
+      plan: rule.displayPlan || rule.plan || 'balance',
+      credit: formatUsdFromCnyCents(Number(rule.packageCents || 0) + Number(rule.boosterCents || 0)),
+    },
+  };
+}
+
+function redemptionRuleFromCard(card) {
+  const planType = normalizeRechargePlan(card.plan);
+  const creditCents = Number(card.creditCents || 0);
+  return {
+    label: card.label || 'Frist-API 兑换码',
+    plan: planType,
+    displayPlan: planType === 'day' ? '日卡' : planType === 'month' ? '月卡' : '',
+    days: Number(card.durationDays || (planType === 'month' ? 30 : planType === 'day' ? 1 : 0)),
+    packageCents: planType === 'day' || planType === 'month' ? creditCents : 0,
+    boosterCents: planType === 'balance' ? creditCents : 0,
+  };
 }
 
 function createCustomerToken(data, request, body, serverOptions) {
@@ -3613,6 +3755,7 @@ function normalizeRuntimeData(data) {
     pricing,
     paymentOrders: Array.isArray(data.paymentOrders) ? data.paymentOrders : [],
     redemptions: Array.isArray(data.redemptions) ? data.redemptions : [],
+    redemptionCards: Array.isArray(data.redemptionCards) ? data.redemptionCards.map(normalizeRedemptionCardRecord) : [],
     routeAffinities: data.routeAffinities && typeof data.routeAffinities === 'object' ? data.routeAffinities : {},
     lowInventoryAlerts: data.lowInventoryAlerts && typeof data.lowInventoryAlerts === 'object' ? data.lowInventoryAlerts : {},
     usedAdminClaimCodeHashes: Array.isArray(data.usedAdminClaimCodeHashes) ? data.usedAdminClaimCodeHashes : [],
@@ -3741,6 +3884,29 @@ function normalizeSupplierProfileRecord(profile) {
     riskStatus: normalizeRiskStatus(profile.riskStatus || 'approved'),
     backupRiskAccepted: Boolean(profile.backupRiskAccepted),
     riskNote: sanitizeRiskNote(profile.riskNote || ''),
+  };
+}
+
+function normalizeRedemptionCardRecord(card) {
+  const plan = normalizeRechargePlan(card?.plan || 'balance');
+  return {
+    id: String(card?.id || createId('card')),
+    batchId: String(card?.batchId || ''),
+    code: String(card?.code || '').trim().toUpperCase(),
+    label: String(card?.label || 'Frist-API 兑换码').trim(),
+    plan,
+    durationDays: Math.max(0, Number(card?.durationDays || (plan === 'month' ? 30 : plan === 'day' ? 1 : 0))),
+    quotaUsd: Math.max(0, Number(card?.quotaUsd || 0)),
+    priceCny: round2(Number(card?.priceCny || 0)),
+    creditCents: Math.max(0, Number(card?.creditCents || 0)),
+    status: ['unused', 'redeemed', 'disabled'].includes(String(card?.status || 'unused')) ? String(card.status) : 'unused',
+    source: String(card?.source || 'xianyu'),
+    note: String(card?.note || ''),
+    createdAt: String(card?.createdAt || ''),
+    updatedAt: String(card?.updatedAt || card?.createdAt || ''),
+    redeemedAt: String(card?.redeemedAt || ''),
+    redeemedBy: String(card?.redeemedBy || ''),
+    redeemedEmail: String(card?.redeemedEmail || ''),
   };
 }
 
@@ -5020,6 +5186,29 @@ function sanitizePaymentOrder(order) {
   };
 }
 
+function sanitizeRedemptionCard(card) {
+  return {
+    id: card.id,
+    batchId: card.batchId || '',
+    code: card.code,
+    label: card.label || 'Frist-API 兑换码',
+    plan: card.plan || 'balance',
+    durationDays: Number(card.durationDays || 0),
+    quotaUsd: Number(card.quotaUsd || 0),
+    priceCny: Number(card.priceCny || 0),
+    credit: formatUsdFromCnyCents(card.creditCents),
+    creditCny: formatCny(card.creditCents),
+    creditCents: Number(card.creditCents || 0),
+    status: card.status || 'unused',
+    source: card.source || 'xianyu',
+    note: card.note || '',
+    createdAt: card.createdAt || '',
+    updatedAt: card.updatedAt || '',
+    redeemedAt: card.redeemedAt || '',
+    redeemedEmail: maskEmail(card.redeemedEmail || ''),
+  };
+}
+
 function sanitizeParsedOrder(parsed) {
   return {
     baseUrl: parsed.baseUrl,
@@ -5079,6 +5268,7 @@ function adminEventDetail(event) {
   if (event.type === 'registered') return '新用户注册';
   if (event.type === 'logged_in') return '用户登录';
   if (event.type === 'redeemed') return `兑换码 ${event.code || ''} 已生效`;
+  if (event.type === 'redemption_cards_created') return `生成兑换卡 ${event.count || 0} 张`;
   if (event.type === 'plan_expired') return `${event.plan || '套餐'} 已到期，套餐额度已清零`;
   if (event.type === 'payment_order_created') return `用户发起充值 ${formatCny(event.amountCents)}`;
   if (event.type === 'manual_recharged') return `人工入账 ${formatCny(event.amountCents)}`;
@@ -5087,6 +5277,45 @@ function adminEventDetail(event) {
 
 function createId(prefix) {
   return `${prefix}-${randomBytes(12).toString('base64url')}`;
+}
+
+function randomCardCodeSegment() {
+  const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  let text = '';
+  for (let index = 0; index < 5; index += 1) {
+    text += alphabet[randomInt(alphabet.length)];
+  }
+  return text;
+}
+
+function normalizeCardPrefix(value) {
+  const text = String(value || DEFAULT_CARD_BATCH_PREFIX).trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return (text || DEFAULT_CARD_BATCH_PREFIX).slice(0, 10);
+}
+
+function clampInteger(value, min, max) {
+  const number = Math.round(Number(value || min));
+  if (!Number.isFinite(number)) return min;
+  return Math.min(max, Math.max(min, number));
+}
+
+function cardLabelForPlan(plan, body = {}) {
+  const quotaUsd = Number(body.quotaUsd || body.creditUsd || 0);
+  if (plan === 'day') return `Codex API ${quotaUsd || 30}刀额度/日卡`;
+  if (plan === 'month') return `Codex API ${quotaUsd || 300}刀额度/月卡`;
+  return `Codex API ${quotaUsd || 30}刀额度/不限时`;
+}
+
+function buildRedemptionCardExport(cards) {
+  return cards
+    .map((card) => [
+      card.code,
+      card.label,
+      formatUsdFromCnyCents(card.creditCents),
+      card.plan,
+      card.durationDays ? `${card.durationDays}天` : '不限时',
+    ].join('\t'))
+    .join('\n');
 }
 
 function hashPassword(password, salt) {

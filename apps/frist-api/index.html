@@ -440,15 +440,18 @@
           <button class="back-home" data-back-home data-route="dashboard" type="button">返回首页</button>
           <section class="plain-section billing-surface">
             <div class="section-head">
-              <h2>充值</h2>
+              <h2>购买兑换码</h2>
             </div>
             <div class="amount-grid" data-recharge-options></div>
-            <div class="payment-method-grid" aria-label="支付方式">
-              <button class="amount-button is-active" data-payment-method="manual_pending" type="button">人工确认</button>
-              <button class="amount-button" data-payment-method="wechat_native" type="button">微信 Native</button>
-              <button class="amount-button" data-payment-method="alipay_precreate" type="button">支付宝当面付</button>
-            </div>
-            <button class="primary-action is-wide" data-pay-submit type="button">提交</button>
+            <article class="xianyu-purchase-card">
+              <div>
+                <span class="eyebrow">Xianyu Code</span>
+                <h3>去闲鱼购买卡密，回到这里兑换</h3>
+                <p>平台完成付款和售后保障，Frist-API 只负责核销一次性兑换码并自动到账。</p>
+              </div>
+              <a class="primary-action" data-xianyu-purchase-link href="#" target="_blank" rel="noreferrer" aria-disabled="true">闲鱼链接待配置</a>
+            </article>
+            <button class="secondary-action is-wide" data-route="redeem" type="button">我已有兑换码</button>
             <p class="field-feedback" data-payment-feedback aria-live="polite"></p>
             <article class="config-card balance-alert-card" data-balance-alert-card>
               <div class="section-head">
@@ -518,20 +521,28 @@
           <section class="plain-section redeem-surface">
             <div class="section-head">
               <h2>兑换码</h2>
-              <span class="status-pill status-pill--healthy">备用入账</span>
+              <span class="status-pill status-pill--healthy">自动到账</span>
             </div>
+            <article class="redeem-hero-card">
+              <div>
+                <span class="eyebrow">Redeem</span>
+                <h3>输入闲鱼发货的兑换码</h3>
+                <p>兑换码只可使用一次，成功后额度会立即进入当前登录账户。</p>
+              </div>
+              <a class="secondary-action" data-xianyu-purchase-link href="#" target="_blank" rel="noreferrer" aria-disabled="true">购买链接待配置</a>
+            </article>
             <div class="exchange-row">
               <input type="text" data-exchange-code placeholder="FRIST-DAY-001" aria-label="兑换码" />
               <button class="secondary-action" data-redeem-code type="button">兑换</button>
             </div>
             <div class="manual-collection-panel">
               <article>
-                <strong>人民币充值美元额度</strong>
-                <span>微信/支付宝接口不可用时，页面先创建待确认订单，运营端人工确认后入账美元额度。</span>
+                <strong>平台售卖</strong>
+                <span>先在闲鱼等平台下单，利用平台付款、售后和自动发货能力完成交易闭环。</span>
               </article>
               <article>
-                <strong>代收付预留</strong>
-                <span>保留 USDT、人工转账、企业付款等备用收款位，后续接入真实回调。</span>
+                <strong>链接预留</strong>
+                <span>这里会放你的闲鱼商品链接，后续可切换到其它平台或多平台入口。</span>
               </article>
             </div>
           </section>

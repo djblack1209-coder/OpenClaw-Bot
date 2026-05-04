@@ -2,6 +2,8 @@ const STORAGE_KEY = 'frist_api_admin_token';
 
 const state = {
   adminToken: window.localStorage.getItem(STORAGE_KEY) || '',
+  rechargePlans: [],
+  lastCardExport: '',
 };
 
 function init() {
@@ -12,6 +14,8 @@ function init() {
   document.querySelector('[data-admin-replenish]').addEventListener('click', replenish);
   document.querySelector('[data-admin-refresh]').addEventListener('click', loadInventory);
   document.querySelector('[data-admin-pricing-save]').addEventListener('click', savePricing);
+  document.querySelector('[data-admin-card-create]').addEventListener('click', createRedemptionCards);
+  document.querySelector('[data-admin-card-copy]').addEventListener('click', copyLatestCardExport);
   document.querySelector('[data-admin-source-type]').addEventListener('change', applySourceTypeDefaults);
   loadInventory().catch((error) => setMessage(error.message));
   loadPricing().catch((error) => setMessage(error.message));
@@ -22,6 +26,7 @@ function saveToken() {
   window.localStorage.setItem(STORAGE_KEY, state.adminToken);
   setMessage('管理员令牌已保存');
   loadInventory().catch((error) => setMessage(error.message));
+  loadPricing().catch((error) => setMessage(error.message));
 }
 
 async function replenish() {
@@ -105,6 +110,7 @@ async function loadInventory() {
   const result = await adminRequest('/api/admin/replenishments');
   renderInventory(result.credentials || []);
   renderInventorySummary(result.inventorySummary || []);
+  renderRedemptionCards(result.redemptionCards || []);
   renderAudit(result.events || []);
   setMessage(`库存 ${result.credentials?.length || 0} 枚`);
 }
@@ -137,12 +143,64 @@ async function savePricing() {
 function renderPricing(pricing) {
   const plans = document.querySelector('[data-admin-plans]');
   const modelPrices = document.querySelector('[data-admin-model-prices]');
+  state.rechargePlans = pricing.rechargePlans || [];
   if (plans) {
-    plans.value = JSON.stringify(pricing.rechargePlans || [], null, 2);
+    plans.value = JSON.stringify(state.rechargePlans, null, 2);
   }
   if (modelPrices) {
     modelPrices.value = JSON.stringify(pricing.modelPrices || [], null, 2);
   }
+  renderCardPlanOptions();
+}
+
+function renderCardPlanOptions() {
+  const select = document.querySelector('[data-admin-card-plan]');
+  if (!select) return;
+  const current = select.value;
+  select.innerHTML = state.rechargePlans
+    .map((plan) => `<option value="${escapeHtml(plan.id)}">${escapeHtml(plan.label)} · $${Number(plan.quotaUsd || 0).toFixed(0)}</option>`)
+    .join('');
+  if (current && state.rechargePlans.some((plan) => plan.id === current)) {
+    select.value = current;
+  }
+}
+
+async function createRedemptionCards() {
+  state.adminToken = document.querySelector('[data-admin-token]').value.trim();
+  window.localStorage.setItem(STORAGE_KEY, state.adminToken);
+
+  const payload = {
+    planId: document.querySelector('[data-admin-card-plan]').value,
+    quantity: Number(document.querySelector('[data-admin-card-quantity]').value),
+    prefix: document.querySelector('[data-admin-card-prefix]').value,
+    note: document.querySelector('[data-admin-card-note]').value,
+  };
+
+  try {
+    const result = await adminRequest('/api/admin/redemption-cards', {
+      method: 'POST',
+      body: payload,
+    });
+    state.lastCardExport = result.exportText || '';
+    document.querySelector('[data-admin-card-export]').value = state.lastCardExport;
+    document.querySelector('[data-admin-card-summary]').textContent = `本批 ${result.cards?.length || 0} 张，可直接复制给闲鱼自动发货。`;
+    renderRedemptionCards(result.cards || []);
+    renderAudit(result.events || []);
+    setMessage(`已生成 ${result.cards?.length || 0} 张兑换卡`);
+  } catch (error) {
+    setMessage(error.message);
+  }
+}
+
+async function copyLatestCardExport() {
+  const output = document.querySelector('[data-admin-card-export]');
+  const text = output?.value || state.lastCardExport;
+  if (!text) {
+    setMessage('暂无可复制的卡密批次');
+    return;
+  }
+  await navigator.clipboard.writeText(text);
+  setMessage('本批卡密已复制');
 }
 
 async function adminRequest(path, options = {}) {
@@ -209,6 +267,37 @@ function renderInventorySummary(items) {
           <span>${escapeHtml(item.healthyCount)}/${escapeHtml(item.totalCount)}</span>
           <b>${escapeHtml(item.quotaRemaining)}/${escapeHtml(item.quotaTotal)}</b>
           <small>${escapeHtml(item.wasteText || '浪费 ¥0.00')}</small>
+        </article>
+      `,
+    )
+    .join('');
+}
+
+function renderRedemptionCards(cards) {
+  const container = document.querySelector('[data-admin-card-list]');
+  if (!container) return;
+  if (!cards.length) {
+    container.innerHTML = '<p>暂无兑换卡。选择套餐后生成一批，复制给闲鱼自动发货。</p>';
+    return;
+  }
+
+  container.innerHTML = cards
+    .slice(0, 80)
+    .map(
+      (card) => `
+        <article class="redemption-card-row">
+          <div>
+            <strong>${escapeHtml(card.code)}</strong>
+            <span>${escapeHtml(card.label)}</span>
+          </div>
+          <span class="status-pill status-pill--${card.status === 'unused' ? 'healthy' : 'down'}">
+            ${card.status === 'unused' ? '未售出' : card.status === 'redeemed' ? '已兑换' : '已停用'}
+          </span>
+          <div>
+            <b>${escapeHtml(card.credit)}</b>
+            <small>${escapeHtml(card.plan)} · ${card.durationDays ? `${escapeHtml(String(card.durationDays))} 天` : '不限时'}</small>
+          </div>
+          <small>${escapeHtml(card.redeemedEmail || card.note || card.createdAt || '-')}</small>
         </article>
       `,
     )

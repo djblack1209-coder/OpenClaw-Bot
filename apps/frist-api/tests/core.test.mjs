@@ -658,16 +658,18 @@ describe('Frist-API user dashboard boundaries', () => {
     }
   });
 
-  it('keeps real payment method choices visible in the billing shell', () => {
+  it('makes redemption cards the primary billing shell and leaves a Xianyu purchase slot', () => {
     const userHtml = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
     for (const required of [
-      'data-payment-method="manual_pending"',
-      'data-payment-method="wechat_native"',
-      'data-payment-method="alipay_precreate"',
+      'data-xianyu-purchase-link',
+      'data-route="redeem"',
+      'data-billing-exchange-code',
       'data-payment-feedback',
     ]) {
       assert.equal(userHtml.includes(required), true, `${required} 应该出现在充值页面`);
     }
+    assert.equal(userHtml.includes('data-payment-method="wechat_native"'), false, '用户端不再把微信商户支付作为主入口');
+    assert.equal(userHtml.includes('data-payment-method="alipay_precreate"'), false, '用户端不再把支付宝商户支付作为主入口');
   });
 
   it('uses an inroi-style customer workbench with compact navigation and fixed metrics', () => {

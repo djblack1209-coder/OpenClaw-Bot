@@ -1939,22 +1939,47 @@ describe('Frist-API public server chain', () => {
     const fixture = await createServerFixture();
 
     try {
+      const batch = await fixture.request('/api/admin/redemption-cards', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: { planId: 'codex-100-unlimited', quantity: 2, prefix: 'FRIST', note: '闲鱼测试批次' },
+      });
+      assert.equal(batch.status, 200);
+      assert.equal(batch.json.cards.length, 2);
+      assert.match(batch.json.cards[0].code, /^FRIST-/);
+      assert.match(batch.json.exportText, /Codex API 100刀额度\/不限时/);
+
+      const inventory = await fixture.request('/api/admin/redemption-cards', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+      assert.equal(inventory.status, 200);
+      assert.equal(inventory.json.cards.filter((card) => card.status === 'unused').length, 2);
+
+      const code = batch.json.cards[0].code;
       const firstCookie = await fixture.createVerifiedCustomer('first-card@example.com');
       const firstRedeem = await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie: firstCookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code },
       });
       assert.equal(firstRedeem.status, 200);
+      assert.equal(firstRedeem.json.account.boosterQuota, '$100.00');
 
       const secondCookie = await fixture.createVerifiedCustomer('second-card@example.com');
       const secondRedeem = await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie: secondCookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code },
       });
       assert.equal(secondRedeem.status, 409);
       assert.match(secondRedeem.text, /兑换码已使用/);
+
+      const afterRedeem = await fixture.request('/api/admin/redemption-cards', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+      const redeemedCard = afterRedeem.json.cards.find((card) => card.code === code);
+      assert.equal(redeemedCard.status, 'redeemed');
+      assert.equal(redeemedCard.redeemedEmail, 'fi***@example.com');
     } finally {
       await fixture.close();
     }

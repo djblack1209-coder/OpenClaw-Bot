@@ -21,9 +21,9 @@
       </header>
 
       <section class="admin-hero">
-        <span class="eyebrow">库存与路由</span>
-        <h1>补号工作台</h1>
-        <p>按请求地址归类号源，写入日卡、月卡或默认池。这里是管理端，用户控制台不会展示这些入口。</p>
+        <span class="eyebrow">库存、卡密与路由</span>
+        <h1>运营工作台</h1>
+        <p>生成可售兑换码、维护号源库存和确认异常订单。用户端只看到兑换入口，不暴露上游和管理能力。</p>
       </section>
 
       <div class="admin-grid">
@@ -66,8 +66,8 @@
         <section class="plain-section">
           <div class="section-head">
             <div>
-              <span class="eyebrow">人工充值</span>
-              <h2>确认入账</h2>
+              <span class="eyebrow">异常兜底</span>
+              <h2>人工入账</h2>
             </div>
             <button class="secondary-action" data-admin-credit type="button">入账</button>
           </div>
@@ -89,6 +89,40 @@
               </select>
             </label>
           </div>
+        </section>
+
+        <section class="plain-section admin-span" data-admin-redemption-cards>
+          <div class="section-head">
+            <div>
+              <span class="eyebrow">兑换码</span>
+              <h2>卡密生成与闲鱼发货</h2>
+            </div>
+            <button class="primary-action" data-admin-card-create type="button">生成卡密</button>
+          </div>
+          <div class="admin-card-grid">
+            <label>
+              对应套餐
+              <select data-admin-card-plan></select>
+            </label>
+            <label>
+              数量
+              <input type="number" data-admin-card-quantity min="1" max="200" step="1" value="10" />
+            </label>
+            <label>
+              前缀
+              <input type="text" data-admin-card-prefix value="FRIST" maxlength="10" />
+            </label>
+            <label>
+              备注
+              <input type="text" data-admin-card-note placeholder="闲鱼商品、批次或活动名" />
+            </label>
+          </div>
+          <div class="admin-card-actions">
+            <button class="secondary-action" data-admin-card-copy type="button">复制本批卡密</button>
+            <span data-admin-card-summary>暂无新批次。</span>
+          </div>
+          <textarea class="admin-card-export" data-admin-card-export rows="8" spellcheck="false" readonly placeholder="生成后这里会出现可复制给闲鱼自动发货系统的卡密清单。"></textarea>
+          <div class="admin-card-list" data-admin-card-list></div>
         </section>
 
         <section class="plain-section">
