@@ -2033,6 +2033,7 @@
 | schemas.py | `src/api/schemas.py` | 272 | API 请求/响应模型 (Pydantic 集中定义, freqtrade 模式) |
 | pool.py | `src/api/routers/pool.py` | 11 | API Pool 端点 (统计数据查询) |
 | shopping.py | `src/api/routers/shopping.py` | 25 | 比价购物端点 (多平台价格对比+AI 总结) |
+| store.py | `src/api/routers/store.py` | 358 | 统一插件商店端点，扫描本地 NPM Skills、NPM Extensions 和 Bot Skills |
 | system.py | `src/api/routers/system.py` | 16 | 系统状态端点 (ping/version/status) |
 | memory.py | `src/api/routers/memory.py` | 23 | 记忆搜索端点 (keyword/semantic/hybrid 模式) |
 | rpc.py | `src/api/rpc.py` | 923 | ✅ RPC 远程调用接口: _safe_error 脱敏(隐藏路径+截断) + Tauri 桌面端通信 + freqtrade RPC 模式(System/Trading/Social/Memory/Pool/Shopping) |
@@ -2184,6 +2185,7 @@
 | server.py | `src/api/server.py` | 122 | FastAPI 服务器 — 应用工厂/中间件/生命周期 |
 | routers/evolution.py | `src/api/routers/evolution.py` | 189 | 进化端点 — 自我进化/指标/报告 |
 | routers/social.py | `src/api/routers/social.py` | 225 | 社媒端点 — 发布/日历/分析 |
+| routers/store.py | `src/api/routers/store.py` | 358 | 统一插件商店端点 — `/store/catalog` 和 `/store/categories` |
 | routers/trading.py | `src/api/routers/trading.py` | 86 | 交易端点 — 下单/持仓/历史 |
 | routers/ws.py | `src/api/routers/ws.py` | 120 | WebSocket 端点 — 实时消息推送 |
 
