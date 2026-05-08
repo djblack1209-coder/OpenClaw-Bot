@@ -7,14 +7,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
-
-/** HTML 实体解码（处理 &#8217; &#039; &amp; 等） */
-function decodeHtmlEntities(text: string): string {
-  if (!text || !text.includes('&')) return text;
-  const el = document.createElement('textarea');
-  el.innerHTML = text;
-  return el.value;
-}
 import {
   Newspaper,
   ShieldAlert,
@@ -29,6 +21,7 @@ import {
 } from 'lucide-react';
 import { clawbotFetchJson } from '../../lib/tauri-core';
 import { useLanguage } from '../../i18n';
+import { decodeHtmlEntities } from '../../lib/html';
 
 /* ====== 自动刷新间隔（毫秒） ====== */
 const REFRESH_INTERVAL = 30_000;

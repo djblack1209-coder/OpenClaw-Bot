@@ -5,6 +5,27 @@
 
 ## 最近更新（2026-05）
 
+## [2026-05-08] 严格审计复核与闲鱼管理页安全部署
+> 领域: `backend` | `frontend` | `xianyu` | `deploy` | `docs`
+> 影响模块: `OpenClaw Manager`, `WorldMonitor`, `NewsFeed`, `Xianyu Admin`, `APIServer`, `Tencent Cloud`
+> 关联问题: HI-885, HI-886, HI-887, HI-889, HI-890
+
+### 变更内容
+- 明确复核上一轮审计边界：上一轮不是“全项目绝对完美生产级全量审计”，本轮用本地代码、live 命令、远端只读检查和公网冒烟补证据链。
+- 为 `/api/v1/store/catalog` 增加专项回归，防止 Store 路由缺失再次只在全量 APIServer 初始化时暴露。
+- 桌面端 `NewsFeed` 和 `WorldMonitor` 移除用 `textarea.innerHTML` 解码外部新闻文本的实现，改为共享 `decodeHtmlEntities()`，避免把外部文本交给 HTML 解析器。
+- 闲鱼管理页内嵌前端补 `escapeHtml()`，对 dashboard、系统状态、最近对话、最近订单等接口返回字段写入 `innerHTML` 前统一转义，并增加页面安全回归。
+- 已将闲鱼管理页同一安全修复单文件部署到腾讯云 `/home/clawbot/clawbot/src/xianyu/xianyu_admin.py`；部署前远端备份为 `/home/clawbot/clawbot/backups/xianyu_admin_20260508155652_before_escape.py`，远端 `py_compile` 通过，`clawbot.service` 重启后为 active。
+- 验证证据：后端全量 pytest 退出码 0，当前 pytest nodeids 为 1495；`test_api_routes_regression.py` 12/12 通过；Frist-API `npm test` 153/153 通过且 `npm audit --audit-level=moderate` 0 漏洞；桌面端 `npx tsc --noEmit` 通过；`git diff --check` 和 Frist-API JS 语法检查通过；`gitleaks git --log-opts='HEAD~2..HEAD' --redact` 0 泄漏；公网 Frist-API 首页 200、Dashboard 200、未授权 `/v1/models` 401、裸域名 301。
+- 保留真实遗留风险：New-API 本地/镜像仍为 `v1.0.0-rc.2`，GitHub live 最新为 `v1.0.0-rc.4`；用户在对话中暴露了服务器 root 密码，必须轮换；86GameStore 余额/消费/延迟风险仍需运营限额和慢线治理。
+
+### 文件变更
+- `apps/openclaw-manager-src/src/lib/html.ts` — 新增安全 HTML 实体解码工具。
+- `apps/openclaw-manager-src/src/components/NewsFeed/index.tsx` / `apps/openclaw-manager-src/src/components/WorldMonitor/index.tsx` — 复用安全实体解码，不再用 `innerHTML` 解码外部文本。
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 闲鱼管理页动态字段统一转义。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 增加 Store 路由和闲鱼管理页转义回归。
+- `docs/002-changelog.md` / `docs/009-health.md` — 同步严格审计、部署和剩余风险。
+
 ## [2026-05-08] 全量测试审计和 Store 路由恢复
 > 领域: `backend` | `frontend` | `ai-pool` | `infra` | `docs`
 > 影响模块: `APIServer`, `Store Router`, `Frist-API`, `New-API`, `docs`

@@ -319,6 +319,14 @@ th{background:#fafafa;color:#666}
 <div class="card"><h2>最近对话</h2><div id="chats">加载中...</div></div>
 <div class="card"><h2>最近订单</h2><div id="orders">加载中...</div></div>
 <script>
+function escapeHtml(value){
+  return String(value ?? '')
+    .replaceAll('&','&amp;')
+    .replaceAll('<','&lt;')
+    .replaceAll('>','&gt;')
+    .replaceAll('"','&quot;')
+    .replaceAll("'","&#39;");
+}
 async function load(){
   const [dash,status,chats,orders]=await Promise.all([
     fetch('/api/dashboard').then(r=>r.json()),
@@ -328,21 +336,21 @@ async function load(){
   ]);
   const t=dash.today;
   document.getElementById('stats').innerHTML=
-    `<div class="stat"><div class="num">${t.consultations}</div><div class="label">咨询</div></div>`+
-    `<div class="stat"><div class="num">${t.messages}</div><div class="label">消息</div></div>`+
-    `<div class="stat"><div class="num">${t.orders}</div><div class="label">订单</div></div>`+
-    `<div class="stat"><div class="num">${t.paid}</div><div class="label">付款</div></div>`+
-    `<div class="stat"><div class="num">${t.conversion_rate}</div><div class="label">转化率</div></div>`;
+    `<div class="stat"><div class="num">${escapeHtml(t.consultations)}</div><div class="label">咨询</div></div>`+
+    `<div class="stat"><div class="num">${escapeHtml(t.messages)}</div><div class="label">消息</div></div>`+
+    `<div class="stat"><div class="num">${escapeHtml(t.orders)}</div><div class="label">订单</div></div>`+
+    `<div class="stat"><div class="num">${escapeHtml(t.paid)}</div><div class="label">付款</div></div>`+
+    `<div class="stat"><div class="num">${escapeHtml(t.conversion_rate)}</div><div class="label">转化率</div></div>`;
   const ws=status.ws_connected,ck=status.cookie_ok;
   document.getElementById('sys-status').innerHTML=
     `<span class="status ${ws?'ok':'err'}"></span>WebSocket: ${ws?'已连接':'断开'} &nbsp;`+
     `<span class="status ${ck?'ok':'err'}"></span>Cookie: ${ck?'正常':'异常'} &nbsp;`+
-    `人工接管: ${status.manual_chats||0} 个`;
+    `人工接管: ${escapeHtml(status.manual_chats||0)} 个`;
   let ch='<table><tr><th>对话ID</th><th>消息数</th><th>最后消息</th><th>时间</th></tr>';
-  chats.forEach(c=>{ch+=`<tr><td>${c.chat_id.slice(0,12)}...</td><td>${c.msg_count}</td><td>${c.last_msg.slice(0,40)}</td><td>${c.last_ts||''}</td></tr>`});
+  chats.forEach(c=>{ch+=`<tr><td>${escapeHtml(String(c.chat_id||'').slice(0,12))}...</td><td>${escapeHtml(c.msg_count)}</td><td>${escapeHtml(String(c.last_msg||'').slice(0,40))}</td><td>${escapeHtml(c.last_ts||'')}</td></tr>`});
   document.getElementById('chats').innerHTML=ch+'</table>';
   let od='<table><tr><th>ID</th><th>状态</th><th>商品</th><th>时间</th></tr>';
-  orders.forEach(o=>{od+=`<tr><td>${o.id}</td><td>${o.status}</td><td>${o.item_id.slice(0,12)}</td><td>${o.ts||''}</td></tr>`});
+  orders.forEach(o=>{od+=`<tr><td>${escapeHtml(o.id)}</td><td>${escapeHtml(o.status)}</td><td>${escapeHtml(String(o.item_id||'').slice(0,12))}</td><td>${escapeHtml(o.ts||'')}</td></tr>`});
   document.getElementById('orders').innerHTML=od+'</table>';
 }
 load();setInterval(load,30000);

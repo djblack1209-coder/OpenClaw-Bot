@@ -30,6 +30,7 @@ import {
 import { clawbotFetchJson } from '../../lib/tauri-core';
 import { api } from '../../lib/api';
 import { useLanguage } from '../../i18n';
+import { decodeHtmlEntities } from '../../lib/html';
 import { LoadingState } from '../shared/LoadingState';
 import { SimpleErrorState as ErrorState } from '../shared/ErrorState';
 
@@ -544,9 +545,7 @@ export function WorldMonitor() {
         id: String(idx + 1),
         timestamp: formatTimestamp(item.published_at),
         category: mapNewsCategory(item.category),
-        message: `[${item.source}] ${item.title}`.replace(/&#\d+;/g, (m) => {
-          const el = document.createElement('textarea'); el.innerHTML = m; return el.value;
-        }),
+        message: decodeHtmlEntities(`[${item.source}] ${item.title}`),
       }));
       setIntelFeed(entries);
       setLastUpdated(new Date());

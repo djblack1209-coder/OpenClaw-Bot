@@ -106,6 +106,24 @@ def test_social_analytics_route_exists(monkeypatch):
     assert response.json()["top_posts"] == []
 
 
+def test_store_catalog_route_exists_and_returns_summary():
+    server = APIServer()
+    client = TestClient(server.app)
+
+    response = client.get("/api/v1/store/catalog")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data["skills"], list)
+    assert isinstance(data["extensions"], list)
+    assert isinstance(data["bot_skills"], list)
+    assert data["summary"]["total"] == (
+        data["summary"]["total_skills"]
+        + data["summary"]["total_extensions"]
+        + data["summary"]["total_bot_skills"]
+    )
+
+
 def test_trading_dashboard_returns_chart_data_when_assets_exist(monkeypatch):
     server = APIServer()
     client = TestClient(server.app)
@@ -217,3 +235,16 @@ def test_xianyu_admin_masks_internal_errors(monkeypatch):
 
     assert response.status_code == 500
     assert response.json()["detail"] == "内部服务错误，请稍后重试"
+
+
+def test_xianyu_admin_page_escapes_dynamic_fields():
+    client = TestClient(xianyu_admin.app)
+
+    response = client.get("/")
+    page = response.text
+
+    assert "function escapeHtml(value)" in page
+    assert "${escapeHtml(String(c.last_msg||'').slice(0,40))}" in page
+    assert "${escapeHtml(o.status)}" in page
+    assert "${c.last_msg.slice(0,40)}" not in page
+    assert "${o.status}" not in page
