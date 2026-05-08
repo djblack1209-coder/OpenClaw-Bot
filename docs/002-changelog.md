@@ -5,6 +5,24 @@
 
 ## 最近更新（2026-05）
 
+## [2026-05-08] Frist-API 登录恢复和公网配置修复
+> 领域: `backend` | `frontend` | `deploy` | `docs`
+> 影响模块: `Frist-API`, `User Console`, `Admin`, `Tencent Cloud`, `docs`
+> 关联问题: HI-884
+
+### 变更内容
+- 修复登录失败反馈：前端不再把服务端 401 “邮箱或密码不正确”统一翻译成“后端暂不可用”，找回密码和重置密码也展示真实反馈。
+- 新增管理员账号恢复接口 `POST /api/admin/customers/password`，用于 SMTP 未配置或用户无法收邮件时由管理员重置客户密码；响应和审计不回显明文密码。
+- 新增独立 `FRIST_API_PASSWORD_HASH_SECRET` 和 `FRIST_API_LEGACY_PASSWORD_HASH_SECRETS`，避免公网修复会话密钥时让旧用户密码全部失效；旧哈希登录成功后自动迁移。
+- 生产排查确认公网 `/api/frist/dashboard`、注册、登录和 Cookie 看板链路可用；腾讯云已替换默认管理令牌、开启 CSRF 并保留旧密码兼容。历史 runtime 已有 `enc:v1` 字段但缺原始加密密钥，暂不启用新的随机数据加密密钥，避免看板 500；后续需做一次性 runtime 明文迁移或找回原密钥后再启用公开模式数据加密。
+
+### 文件变更
+- `apps/frist-api/src/app.js` — 登录和找回密码反馈改为显示服务端真实错误。
+- `apps/frist-api/server/server.js` / `apps/frist-api/admin.html` / `apps/frist-api/src/admin.js` — 增加管理员密码恢复接口和管理端入口。
+- `docker-compose.frist-api.yml` / `apps/frist-api/deploy/production.env.example` — 透传独立密码哈希密钥和历史兼容密钥。
+- `apps/frist-api/tests/business-flow.test.mjs` / `apps/frist-api/tests/server.test.mjs` — 覆盖错误反馈和管理员恢复账号回归。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步本轮登录恢复、接口注册、运维配置、生产兼容模式和健康记录。
+
 ## [2026-05-08] Frist-API 用户端视觉 QA 批注修复
 > 领域: `frontend` | `backend` | `docs`
 > 影响模块: `Frist-API`, `User Console`, `CC Switch`, `Gateway Dashboard`, `docs`

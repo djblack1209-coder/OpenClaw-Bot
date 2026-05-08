@@ -570,6 +570,8 @@ docker compose -f docker-compose.frist-api.yml up -d
 - `FRIST_API_ADMIN_PAGE_CODE`: 隐藏管理入口码
 - `FRIST_API_ADMIN_CLAIM_CODES`: 一次性管理员身份码，逗号分隔；每个码成功使用后自动失效
 - `FRIST_API_SESSION_SECRET`: 强随机会话密钥
+- `FRIST_API_PASSWORD_HASH_SECRET`: 强随机密码哈希密钥；不要和会话密钥共用。轮换 `FRIST_API_SESSION_SECRET` 时旧账号密码仍可用。
+- `FRIST_API_LEGACY_PASSWORD_HASH_SECRETS`: 历史密码哈希密钥列表。上线修复旧环境时先填旧 `FRIST_API_SESSION_SECRET`，用户登录成功后会迁移到新 `FRIST_API_PASSWORD_HASH_SECRET`。
 - `FRIST_API_PUBLIC_MODE=1`
 - `NODE_ENV=production`
 - `FRIST_API_ENFORCE_PRODUCTION_READINESS=1`: 正式开放陌生付费用户时打开；缺固定 HTTPS 品牌域名、New-API 数据库、管理员 2FA 或真实支付商户会直接启动失败

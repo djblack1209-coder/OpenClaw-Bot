@@ -587,6 +587,17 @@ async function handleAdminApi({ request, response, url, store, serverOptions }) 
     return;
   }
 
+  if (request.method === 'POST' && url.pathname === '/api/admin/customers/password') {
+    const body = await readJsonBody(request);
+    const result = await store.mutate((data) => {
+      requireAdmin(data, request, serverOptions);
+      requireCsrfIfEnabled(data, request, serverOptions, { allowAdminToken: true });
+      return adminResetCustomerPassword(data, body, serverOptions);
+    });
+    writeJson(response, 200, result);
+    return;
+  }
+
   if (request.method === 'POST' && url.pathname === '/api/admin/replenishments') {
     const body = await readJsonBody(request);
     const result = await store.mutate((data) => {
@@ -746,7 +757,7 @@ async function registerCustomer(data, body, serverOptions) {
     id: createId('user'),
     email,
     emailVerified: !serverOptions.requireEmailVerification,
-    passwordHash: hashPassword(password, serverOptions.sessionSecret),
+    passwordHash: hashPassword(password, serverOptions.passwordHashSecret),
     displayName: email.split('@')[0],
     verificationCode,
     plan: '默认套餐',
@@ -800,13 +811,14 @@ function loginCustomer(data, body, serverOptions) {
   const email = String(body.email || '').trim().toLowerCase();
   const password = String(body.password || '');
   const user = data.users.find((item) => item.email === email);
-  if (!user || !verifyPassword(password, user.passwordHash, serverOptions.sessionSecret)) {
+  const passwordResult = verifyPassword(password, user?.passwordHash, serverOptions.passwordHashSecrets);
+  if (!user || !passwordResult.ok) {
     throw publicError(401, '邮箱或密码不正确');
   }
 
   const now = new Date().toISOString();
-  if (!isModernPasswordHash(user.passwordHash)) {
-    user.passwordHash = hashPassword(password, serverOptions.sessionSecret);
+  if (!isModernPasswordHash(user.passwordHash) || passwordResult.secret !== serverOptions.passwordHashSecret) {
+    user.passwordHash = hashPassword(password, serverOptions.passwordHashSecret);
     data.events.push({ type: 'password_hash_upgraded', userId: user.id, at: now });
   }
   const sessionToken = createId('sess');
@@ -830,7 +842,7 @@ function changeCustomerPassword(data, request, body, serverOptions) {
   const { user } = requireSession(data, request);
   const oldPassword = String(body.oldPassword || '');
   const newPassword = String(body.newPassword || '');
-  if (!verifyPassword(oldPassword, user.passwordHash, serverOptions.sessionSecret)) {
+  if (!verifyPassword(oldPassword, user.passwordHash, serverOptions.passwordHashSecrets).ok) {
     throw publicError(401, '旧密码不正确');
   }
   if (newPassword.length < 6) {
@@ -838,7 +850,7 @@ function changeCustomerPassword(data, request, body, serverOptions) {
   }
 
   const now = new Date().toISOString();
-  user.passwordHash = hashPassword(newPassword, serverOptions.sessionSecret);
+  user.passwordHash = hashPassword(newPassword, serverOptions.passwordHashSecret);
   user.updatedAt = now;
   data.events.push({ type: 'password_changed', userId: user.id, at: now });
   return { user: sanitizeUser(user), account: accountFromUser(data, user) };
@@ -854,7 +866,7 @@ async function requestCustomerPasswordReset(data, body, serverOptions) {
   if (user) {
     const code = generateVerificationCode();
     user.passwordReset = {
-      codeHash: hashPasswordResetCode(code, serverOptions.sessionSecret),
+      codeHash: hashPasswordResetCode(code, serverOptions.passwordHashSecret),
       expiresAt: new Date(Date.now() + Number(serverOptions.passwordResetTtlMs || 900_000)).toISOString(),
       usedAt: '',
       requestedAt: now,
@@ -907,12 +919,12 @@ function confirmCustomerPasswordReset(data, body, serverOptions) {
   if (Date.parse(reset.expiresAt || '') <= Date.now()) {
     throw publicError(400, '重置验证码无效或已过期');
   }
-  if (!safeEqual(reset.codeHash, hashPasswordResetCode(code, serverOptions.sessionSecret))) {
+  if (!safeEqual(reset.codeHash, hashPasswordResetCode(code, serverOptions.passwordHashSecret))) {
     throw publicError(400, '重置验证码无效或已过期');
   }
 
   const now = new Date().toISOString();
-  user.passwordHash = hashPassword(newPassword, serverOptions.sessionSecret);
+  user.passwordHash = hashPassword(newPassword, serverOptions.passwordHashSecret);
   user.passwordReset = { ...reset, usedAt: now };
   user.updatedAt = now;
   data.events.push({ type: 'password_reset_confirmed', userId: user.id, at: now });
@@ -1212,6 +1224,38 @@ async function rechargeCustomer(data, request, body, serverOptions) {
   return {
     status: 200,
     body: { account: accountFromUser(data, user), user: sanitizeUser(user) },
+  };
+}
+
+function adminResetCustomerPassword(data, body, serverOptions) {
+  const email = String(body.email || '').trim().toLowerCase();
+  const password = String(body.password || body.newPassword || '');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw publicError(400, '用户邮箱格式不正确');
+  }
+  if (password.length < 10) {
+    throw publicError(400, '新密码至少 10 位');
+  }
+  const user = data.users.find((item) => item.email === email);
+  if (!user) {
+    throw publicError(404, '用户不存在');
+  }
+
+  const now = new Date().toISOString();
+  user.passwordHash = hashPassword(password, serverOptions.passwordHashSecret);
+  user.passwordReset = {
+    codeHash: '',
+    expiresAt: '',
+    usedAt: now,
+    requestedAt: now,
+  };
+  user.updatedAt = now;
+  data.events.push({ type: 'admin_password_reset', userId: user.id, email: maskEmail(email), at: now });
+  return {
+    ok: true,
+    user: sanitizeUser(user),
+    message: '用户密码已重置',
+    events: sanitizeAdminEvents(data.events),
   };
 }
 
@@ -4929,6 +4973,15 @@ function normalizeServerOptions(options) {
     requireEmailVerification,
     requireCaptcha,
     sessionSecret: options.sessionSecret || process.env.FRIST_API_SESSION_SECRET || 'frist-api-dev-session-secret',
+    passwordHashSecret:
+      options.passwordHashSecret ||
+      process.env.FRIST_API_PASSWORD_HASH_SECRET ||
+      options.sessionSecret ||
+      process.env.FRIST_API_SESSION_SECRET ||
+      'frist-api-dev-session-secret',
+    legacyPasswordHashSecrets: parseSecretList(
+      options.legacyPasswordHashSecrets ?? process.env.FRIST_API_LEGACY_PASSWORD_HASH_SECRETS ?? '',
+    ),
     allowDemoRecharge,
     newApiEnabled:
       typeof options.newApiEnabled === 'boolean'
@@ -5002,6 +5055,11 @@ function normalizeServerOptions(options) {
             family: options.smtpFamily,
           }),
   };
+  normalized.passwordHashSecrets = [
+    normalized.passwordHashSecret,
+    normalized.sessionSecret,
+    ...normalized.legacyPasswordHashSecrets,
+  ].filter((secret, index, list) => secret && list.indexOf(secret) === index);
   normalized.accountEmailSender =
     typeof options.accountEmailSender === 'function' ? options.accountEmailSender : normalized.balanceAlertEmailSender;
   normalized.paymentConfig = paymentConfigFromOptions({
@@ -7117,18 +7175,23 @@ function hashPassword(password, salt) {
   return `pbkdf2-sha256$${iterations}$${passwordSalt}$${digest}`;
 }
 
-function verifyPassword(password, storedHash, salt) {
+function verifyPassword(password, storedHash, salts) {
   const stored = String(storedHash || '');
+  const candidates = Array.isArray(salts) ? salts : [salts];
   if (stored.startsWith('pbkdf2-sha256$')) {
     const [, iterationsText, passwordSalt, expectedDigest] = stored.split('$');
     const iterations = Number(iterationsText);
     if (!Number.isSafeInteger(iterations) || iterations < 100_000 || !passwordSalt || !expectedDigest) {
-      return false;
+      return { ok: false, secret: '' };
     }
-    const actualDigest = pbkdf2Sync(String(password), `${salt}:${passwordSalt}`, iterations, 32, 'sha256').toString('base64url');
-    return safeEqual(actualDigest, expectedDigest);
+    const matchedSecret = candidates.find((salt) => {
+      const actualDigest = pbkdf2Sync(String(password), `${salt}:${passwordSalt}`, iterations, 32, 'sha256').toString('base64url');
+      return safeEqual(actualDigest, expectedDigest);
+    });
+    return { ok: Boolean(matchedSecret), secret: matchedSecret || '' };
   }
-  return safeEqual(legacyHashPassword(password, salt), stored);
+  const matchedSecret = candidates.find((salt) => safeEqual(legacyHashPassword(password, salt), stored));
+  return { ok: Boolean(matchedSecret), secret: matchedSecret || '' };
 }
 
 function isModernPasswordHash(storedHash) {
@@ -7141,6 +7204,13 @@ function legacyHashPassword(password, salt) {
 
 function hashPasswordResetCode(code, salt) {
   return createHash('sha256').update(`${salt}:password-reset:${String(code || '').trim()}`).digest('hex');
+}
+
+function parseSecretList(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || '').trim()).filter(Boolean);
+  }
+  return String(value || '').split(',').map((item) => item.trim()).filter(Boolean);
 }
 
 function safeEqual(left, right) {

@@ -217,6 +217,7 @@
 | 教程配置复制 | `data-copy-guide-json` / `data-copy-guide-toml` | 复制教程页 JSON/TOML 配置 |
 | 管理端人工入账 | `/admin.html` + `data-admin-credit` | 管理员按用户邮箱确认人工充值入账 |
 | 管理端卡密生成 | `/admin.html` + `data-admin-redemption-cards` / `data-admin-card-create` / `/api/admin/redemption-cards` | 按套餐批量生成一次性兑换码，导出给闲鱼自动发货或客服系统 |
+| 管理端账号恢复 | `/admin.html` + `data-admin-password-reset` / `/api/admin/customers/password` | SMTP 不可用或用户无法收信时，由管理员重置客户密码；响应和审计不回显明文密码 |
 | 管理端 Plus 账号台账 | `/admin.html` + `data-admin-plus-accounts` / `data-admin-plus-save` / `data-admin-plus-edit` / `/api/admin/plus-accounts` | 登记和更新自用 ChatGPT Plus 账号、Apple ID、到期、TRY 余额、设备/Profile 和合规状态；不进入用户 `/v1` 路由 |
 | 管理端 RT JSON 导入 | `/admin.html` + `data-admin-rt-accounts` / `data-admin-rt-import` / `/api/admin/rt-accounts/import` | 支持 JSON 数组、单个对象和 TXT 行导入 `refresh_token`、邮箱和账号 ID；只做脱敏台账和刷新准备，不减少 New-API 原有管理能力且不进入用户 `/v1` 路由 |
 | 管理员 2FA | `/api/admin/2fa/verify` + `data-admin-2fa-code` | 管理端 TOTP 二次验证；启用 `FRIST_API_REQUIRE_ADMIN_2FA=1` 后，管理 API 除 2FA 验证入口外都必须带有效二次验证会话 |
@@ -247,6 +248,8 @@
 | `FRIST_API_SMTP_PASSWORD` | SMTP 应用专用密码 | 禁止提交到 Git 或写进文档正文 |
 | `FRIST_API_SMTP_FROM` | 余额预警发件邮箱 | 默认可与用户名一致 |
 | `FRIST_API_BALANCE_ALERT_FROM_NAME` | 余额预警发件人名称 | 默认 `Frist-API Billing` |
+| `FRIST_API_PASSWORD_HASH_SECRET` | Frist-API 用户密码哈希密钥 | 生产必须为强随机值；和会话密钥分离，便于轮换登录会话而不锁死旧账号 |
+| `FRIST_API_LEGACY_PASSWORD_HASH_SECRETS` | 历史密码哈希密钥兼容列表 | 逗号分隔；更换密码哈希密钥后临时保留旧值，用户下次登录成功后自动迁移 |
 | `FRIST_API_REQUIRE_CAPTCHA` | 是否启用注册验证码挑战 | `1` 启用；登录不再要求验证码 |
 | `FRIST_API_CAPTCHA_MAX_ATTEMPTS` | 单个验证码最大错误次数 | 默认 `3`，超过后需刷新挑战 |
 | `FRIST_API_PASSWORD_RESET_TTL_MS` | 忘记密码验证码有效期 | 默认 `900000`，即 15 分钟 |
