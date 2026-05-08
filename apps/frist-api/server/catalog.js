@@ -11,6 +11,10 @@ import {
   effectiveCredentialGroup, estimateCredentialWaste,
 } from './shared.js';
 
+const DEFAULT_MODEL_PRICE_BY_MODEL = new Map(
+  DEFAULT_MODEL_PRICES.map((price) => [normalizeOfficialModelName(price.model), price]),
+);
+
 export function pricingPayload(data) {
   const pricing = normalizePricingConfig(data.pricing || {});
   return { rechargePlans: pricing.rechargePlans, modelPrices: pricing.modelPrices };
@@ -47,15 +51,21 @@ export function normalizeModelPrices(prices) {
   for (const price of rows) {
     const model = normalizeOfficialModelName(price.model);
     if (!model) continue;
+    const source = String(price.source || 'official').trim() || 'official';
+    const officialDefault = source.toLowerCase() === 'official' && !String(price.displayPrice || '').trim()
+      ? DEFAULT_MODEL_PRICE_BY_MODEL.get(model)
+      : null;
+    const normalizedPrice = officialDefault || price;
     merged.set(model, {
       model,
-      currency: String(price.currency || 'CNY').toUpperCase(),
-      inputCostCnyPerMillion: round2(Number(price.inputCostCnyPerMillion || 0)),
-      outputCostCnyPerMillion: round2(Number(price.outputCostCnyPerMillion || 0)),
-      inputSaleCnyPerMillion: round2(Number(price.inputSaleCnyPerMillion ?? price.inputCostCnyPerMillion ?? 0)),
-      outputSaleCnyPerMillion: round2(Number(price.outputSaleCnyPerMillion ?? price.outputCostCnyPerMillion ?? 0)),
-      source: String(price.source || 'official'),
-      status: String(price.status || 'confirmed'),
+      currency: String(normalizedPrice.currency || 'CNY').toUpperCase(),
+      inputCostCnyPerMillion: round2(Number(normalizedPrice.inputCostCnyPerMillion || 0)),
+      outputCostCnyPerMillion: round2(Number(normalizedPrice.outputCostCnyPerMillion || 0)),
+      inputSaleCnyPerMillion: round2(Number(normalizedPrice.inputSaleCnyPerMillion ?? normalizedPrice.inputCostCnyPerMillion ?? 0)),
+      outputSaleCnyPerMillion: round2(Number(normalizedPrice.outputSaleCnyPerMillion ?? normalizedPrice.outputCostCnyPerMillion ?? 0)),
+      source: String(normalizedPrice.source || source),
+      status: String(price.status || normalizedPrice.status || 'confirmed'),
+      displayPrice: String(normalizedPrice.displayPrice || '').trim(),
     });
   }
   return [...merged.values()];
@@ -215,7 +225,7 @@ export function buildModelCatalog(data) {
     DEFAULT_MODEL_CATALOG.map((item) => {
       const model = normalizeOfficialModelName(item.model);
       const price = findModelPrice(data, model);
-      return [model, { ...item, model, price: price ? priceLabel(price) : item.price || '按后台价格' }];
+      return [model, { ...item, model, price: price ? priceLabel(price) : item.price || '官方价格待同步' }];
     }),
   );
   for (const model of uniqueStrings(data.credentials.flatMap((credential) => credential.models || []))) {
@@ -224,7 +234,7 @@ export function buildModelCatalog(data) {
     rowsByModel.set(model, {
       model, family: live?.provider || providerFromModel(model),
       tagline: taglineForModel(model), context: contextForModel(model),
-      price: price ? priceLabel(price) : rowsByModel.get(model)?.price || '按后台价格',
+      price: price ? priceLabel(price) : rowsByModel.get(model)?.price || '官方价格待同步',
       available: live ? Boolean(live.ok) : true,
     });
   }
@@ -242,30 +252,61 @@ export function buildChannelChecks(data) {
     for (const model of models) {
       const key = model;
       const current = grouped.get(key) || {
-        model, provider: providerFromModel(model), total: 0, healthy: 0, latencyMs: 0, checkedAt: '', status: credential.status,
+        model, provider: providerFromModel(model), total: 0, healthy: 0, down: 0, slow: 0,
+        latencyMs: 0, latencyTotal: 0, latencySamples: 0, checkedAt: '', status: credential.status, history: [],
       };
       const isHealthy = credential.enabled && credential.status === 'healthy' && isCredentialRouteApproved(credential);
+      const latency = Number(credential.latencyMs || 0);
+      const bucket = isHealthy ? (latency > 1600 ? 'slow' : 'ok') : 'down';
       current.total += 1;
       current.healthy += isHealthy ? 1 : 0;
+      current.down += isHealthy ? 0 : 1;
+      current.slow += bucket === 'slow' ? 1 : 0;
       if (isHealthy) {
-        const latency = Number(credential.latencyMs || 999999);
-        current.latencyMs = current.latencyMs ? Math.min(current.latencyMs, latency) : latency;
+        const safeLatency = latency || 999999;
+        current.latencyMs = current.latencyMs ? Math.min(current.latencyMs, safeLatency) : safeLatency;
+        current.latencyTotal += safeLatency;
+        current.latencySamples += 1;
         current.status = 'healthy';
       } else if (!current.healthy) {
         current.status = credential.status || current.status || 'failed';
       }
       current.checkedAt = [current.checkedAt, credential.updatedAt].filter(Boolean).sort().at(-1) || '';
+      current.history.push(bucket);
       grouped.set(key, current);
     }
   }
   return [...grouped.values()]
     .sort((left, right) => `${left.provider}:${left.model}`.localeCompare(`${right.provider}:${right.model}`))
-    .map((item) => ({
-      model: normalizeOfficialModelName(item.model), provider: item.provider,
-      channel: `${item.provider} 可用线路 ${item.healthy}/${item.total}`,
-      ok: item.healthy > 0, status: item.healthy > 0 ? 'healthy' : item.status,
-      latencyMs: item.healthy > 0 ? item.latencyMs : 0, checkedAt: item.checkedAt,
-    }));
+    .map((item) => {
+      const availabilityPercent = item.total ? Math.round((item.healthy / item.total) * 1000) / 10 : 0;
+      const averageLatencyMs = item.latencySamples ? Math.round(item.latencyTotal / item.latencySamples) : 0;
+      const monitorStatus = item.healthy === 0 ? '异常' : item.down > 0 || item.slow > 0 ? '降级' : '正常';
+      return {
+        model: normalizeOfficialModelName(item.model), provider: item.provider,
+        channel: `${item.provider} 可用线路 ${item.healthy}/${item.total}`,
+        endpoint: '/v1',
+        ok: item.healthy > 0,
+        status: item.healthy > 0 ? (item.slow > 0 ? 'slow' : 'healthy') : item.status,
+        latencyMs: item.healthy > 0 ? item.latencyMs : 0,
+        averageLatencyMs,
+        checkedAt: item.checkedAt,
+        availability: `${availabilityPercent}%`,
+        availability7d: availabilityPercent,
+        availability_7d: availabilityPercent,
+        availabilityWindow: '当前库存快照',
+        healthyCount: item.healthy,
+        totalCount: item.total,
+        downCount: item.down,
+        slowCount: item.slow,
+        successLabel: `${item.healthy}/${item.total} 可用`,
+        latencyLabel: item.healthy > 0 ? `最低 ${item.latencyMs}ms / 平均 ${averageLatencyMs}ms` : '未检测到可用线路',
+        monitorIntervalSeconds: 60,
+        monitorStatus,
+        officialStatus: monitorStatus,
+        history: item.history.slice(-60),
+      };
+    });
 }
 
 export function buildModelUsage(data, user) {

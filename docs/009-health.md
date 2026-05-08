@@ -8,7 +8,7 @@
 
 # HEALTH — 系统健康状态
 
-> 最后更新: 2026-05-04
+> 最后更新: 2026-05-08
 
 ---
 
@@ -23,7 +23,9 @@
 | 闲鱼客服 | ✅ 自动回复活跃 |
 | 社媒自动驾驶 | ✅ 运行中 |
 | 测试 | ✅ 1488 passed, 2 skipped, 0 failed |
-| Frist-API | ✅ HTTPS Quick Tunnel 和裸 IP 测试端口均已恢复；本地链路测试和公网冒烟通过，用户端已补齐弹窗登录注册、失败/成功反馈、API Key 创建反馈、连通性刷新不跳教程、渠道连通性聚合展示、价格管理、官方模型命名清洗、Claude Code/Codex 跨模型家族一键导入、Claude 第三方推理真实菜单流程图、Codex 导入 Claude 模型流程图、Codex 默认 Playwright/Superpowers/open-computer-use MCP、无网页 mock 数据兜底、默认最强模型导出、数据看板、模型广场、一次性管理员身份码、图片生成网关、OpenCode `/openai/chat/completions` 兼容路由、Chat Completions 到 Responses 降级、上游信息清洗、五客户端导入、日卡/小时卡轮转、会话粘滞、流式透传、公开模式硬门槛和自定义余额邮件预警；本轮已补齐授权余额站根地址自动切 `/v1`、2xx 非 JSON 响应拦截、无域名 HTTP 验收开关透传、工作台式首页、广场轻量 PNG 生图参数、余额预警 SMTP 配置、完整 Workbench 外壳、使用记录/订阅/兑换/邀请/资料页面、美元计价展示和 Codex + DeepSeek 官方端点配置；用户端和管理端已接入 Refero Hyperstudio 风格深色工作台 UI，补齐骨架加载、生产空态、当前页无障碍标记和图表可访问标签；模型广场/测试台已参考 New-API 控制台逻辑重构为模型浏览器、搜索/分组、端点/计费/状态诊断和快捷测试，后端空数据时保留未检测模型模板，避免误以为模型缺失；安全审计已将密码哈希迁移到 PBKDF2-SHA256 并兼容旧 SHA-256 登录升级，公网 HTTPS Session Cookie 自动加 `Secure`，动态 HTML 渲染补齐转义；本轮继续补齐注册验证码邮件、忘记密码、微信 Native/支付宝当面付真实回调验签和幂等入账、runtime 用户 Key/上游 Key AES-GCM 加密、New-API 迁移 dry-run；DeepSeek 官方 live 文档已重新核对，新导入默认模型改为 `deepseek-v4-flash`，并保留 `deepseek-v4-pro`、`deepseek-chat`、`deepseek-reasoner` 兼容；CPA JSON/chong 仍只作为人工风险审核备用入口；腾讯云 `/opt/frist-api` 已部署 DeepSeek v4 默认模型改动，远端备份为 `backups/frist-api-app-20260504-104527-before-deepseek-v4.tgz`，`frist-api-server` 为 healthy，公网首页 200、看板 200、模型目录包含 `deepseek-v4-flash`、未授权 `/v1/models` 为 401；腾讯云到 Gmail SMTP IPv6 发信链路已实测可用，Node 连接已补 DNS 地址轮询兜底，Compose 已透传 SMTP 环境变量；本地 `npm test` 为 123/123 通过；旧公网真实上游已禁用，新授权余额站 `/v1` 已接入；New-API 已作为 submodule 固定到 GitHub latest release `v1.0.0-rc.2`，`docker-compose.newapi.yml` 已同步 `calciumion/new-api:v1.0.0-rc.2`，`make new-api-check` / `make new-api-sync` 已落地，GitHub Actions 已新增每日定时同步 PR；Frist-API 已新增服务端 New-API 桥接层，可由 New-API 接管看板、API Key、日志、兑换、订阅/充值/邀请读取和可选 `/v1` 网关代理，同时保留 Workbench UI、CC Switch/Codex/DeepSeek 配置、余额预警、补号助手和本地 JSON 兜底；商业化自动运营仍需固定品牌域名、商户平台开户注册、数据库备份监控和历史数据迁移 |
+| Frist-API 入口 | ✅ 唯一内容入口为 `frist-api.101-43-41-96.nip.io`；`101-43-41-96.nip.io` 只做 301 跳转，不再作为第二个网站直接展示 |
+| Frist-API | ✅ HTTPS Quick Tunnel 和裸 IP 测试端口均已恢复；本地链路测试和公网冒烟通过，用户端已补齐弹窗登录注册、失败/成功反馈、API Key 创建反馈、连通性刷新不跳教程、渠道连通性聚合展示、价格管理、官方模型命名清洗、Claude Code/Codex 跨模型家族一键导入、Claude 第三方推理真实菜单流程图、Codex 导入 Claude 模型流程图、Codex 默认 Playwright/Superpowers/open-computer-use MCP、无网页 mock 数据兜底、默认最强模型导出、数据看板、模型广场、一次性管理员身份码、图片生成网关、OpenCode `/openai/chat/completions` 兼容路由、Chat Completions 到 Responses 降级、上游信息清洗、五客户端导入、日卡/小时卡轮转、会话粘滞、流式透传、公开模式硬门槛和自定义余额邮件预警；本轮已补齐授权余额站根地址自动切 `/v1`、2xx 非 JSON 响应拦截、无域名 HTTP 验收开关透传、工作台式首页、广场轻量 PNG 生图参数、余额预警 SMTP 配置、完整 Workbench 外壳、使用记录/订阅/兑换/邀请/资料页面、美元计价展示和 Codex + DeepSeek 官方端点配置；用户端和管理端已吸收 Tabcode 控制台设计，切换为 `tabcode-console` 深色控制台：深色顶栏、160px 灰色侧栏、深色工作区、14px 卡片、黑色主按钮和短动效反馈，旧设计皮肤已从入口和 CSS 中移除，并继续保留 `content-visibility`、搜索防抖、模型目录缓存和测试台局部渲染；安全审计已将密码哈希迁移到 PBKDF2-SHA256 并兼容旧 SHA-256 登录升级，公网 HTTPS Session Cookie 自动加 `Secure`，动态 HTML 渲染补齐转义；2026-05-06 上线前安全闭环已补 CSRF Token、SSRF 阻断、支付少付拒绝、runtime 原子写、用户侧 Dashboard 不再持久回显明文 Key，新建用户 Key 统一为 `fk-live-*`；CC Switch 导入已按官方短 deep link 收敛，本轮进一步修复用量脚本 `extra` 类型并真实跑通 Claude/Codex 导入链路；2026-05-07 已补用户侧导入后检测闭环、OpenAI 命名收敛、`gpt-image-2` 流程图验证入口、轻量异常消耗检测和管理端号池小白诊断；2026-05-08 已按浏览器批注完成用户端视觉 QA：顶部状态灯、中英文切换、Apple 风格 Logo、工作台导航间距、趋势图、CC Switch 导入教程、代码框复制图标、资料页和登录弹窗已调整，充值/邀请/独立教程入口暂时隐藏，未登录 Dashboard 不再展示 `channelChecks`；受控实机验证完成注册/登录、创建 `fk-live-*` Key、文本 `pong`、图片返回、记录页消费、用量脚本、异常提醒和 `gpt-image-2` `1/2 可用` 降级展示；86GameStore 授权上游已作为 Claude/OpenAI 两组库存加密写入本地 runtime，Claude CLI `claude-sonnet-4-5-c` 和 Codex CLI `gpt-5.4-mini` 均经 Frist-API 返回 `pong`；本地 `npm test` 已更新为 150/150 通过；DeepSeek 官方 live 文档已重新核对，新导入默认模型改为 `deepseek-v4-flash`，并保留 `deepseek-v4-pro`、`deepseek-chat`、`deepseek-reasoner` 兼容；CPA JSON/chong 仍只作为人工风险审核备用入口；管理端 Plus 和 RT 台账只做自用资产/刷新台账，敏感字段加密且不进入用户 `/v1` 路由；旧公网真实上游已禁用，新授权余额站 `/v1` 已接入；New-API 已作为 submodule 固定到 GitHub latest release `v1.0.0-rc.2`，`docker-compose.newapi.yml` 已同步 `calciumion/new-api:v1.0.0-rc.2`；本轮已补生产强制边界检查、管理员 TOTP 2FA、备份/恢复登记和渠道 SLA 事件摘要；商业化自动运营仍需外部绑定真实品牌域名、商户平台开户、部署备份任务和执行历史数据迁移 |
+| Frist-API 腾讯云部署 | ✅ HI-875 用户端深色体验和官方计价修复已同步到 `/opt/frist-api`；部署前应用备份 `backups/frist-api-app-20260505-211636-before-ux-deploy.tgz`、运行数据备份 `backups/frist-api-runtime-20260505-211636-before-ux-deploy.tgz`；容器 healthy，公网首页 200、看板 200、裸域名 301、未授权 `/v1/models` 401 |
 | 微信命令 | ✅ 27/27 可用 (25✅ 2⚠️数据空) |
 | Ollama 内存 | ✅ 151MB (原9.3GB) |
 | 日志目录 | ✅ 784KB (已清理本地日志) |
@@ -38,6 +40,8 @@
 
 | ID | 分类 | 描述 | 发现日期 | 状态 |
 |----|------|------|----------|------|
+| HI-872 | UX | Frist-API `#switch` 页面曾因导出模型展开逻辑被部分上游库存裁掉 `gpt-5.4`、`gpt-5.4-mini`、`gpt-image-2`、`gpt-5.3-codex`，且品牌标被 Tabcode 皮肤覆盖；已补完整 OpenAI 模型族可见逻辑、恢复原品牌标并加回归 | 2026-05-05 | ✅ 已处理 |
+| HI-873 | INFRA | Frist-API 免费 nip.io 裸域名 `101-43-41-96.nip.io` 曾和品牌域名并列直接服务同一页面，用户误以为有两个网站；已收口为 `frist-api.101-43-41-96.nip.io` 唯一内容入口，裸域名只做 301 跳转 | 2026-05-05 | ✅ 已处理 |
 | HI-817 | SECURITY | 公开 Git 历史曾提交 `.openclaw/openclaw.json*`、`.openclaw/devices/paired.json` 和数据库文件；已重写历史并通过本地 gitleaks/trufflehog 扫描 | 2026-04-28 | 🟠 待轮换密钥 + force-push 后复扫 |
 | HI-818 | SECURITY | 本机 ignored `.env` 与浏览器 profile 日志含真实 API token；已确认未进入当前跟踪文件, 但涉及 token 应按泄露预案轮换 | 2026-04-28 | 🟠 待轮换 |
 
@@ -110,6 +114,23 @@
 | HI-857 | ARCH_LIMIT | Frist-API 内存态 captcha/rateLimit 在进程重启或水平扩展时丢失 | 2026-05-03 |
 | HI-863 | INFRA | Frist-API 长期入口仍缺固定品牌域名；免费域名已实测，`sslip.io` 在腾讯 DNSPod 侧被拦截，当前过渡入口切到 `frist-api.101-43-41-96.nip.io`；Let’s Encrypt 访问 ACME challenge 被重置，HTTPS 仍需自有域名或 Cloudflare Tunnel 闭环 | 2026-05-04 |
 | HI-864 | UX/COMMERCE | Frist-API 个人阶段不再推进个人收款码自动识别；已改为管理端批量生成一次性兑换码、用户端专属兑换页核销自动到账，并预留闲鱼商品链接位置 | 2026-05-04 |
+| HI-865 | AI_POOL/UX | Frist-API 需要管理自用 ChatGPT Plus 账号资产但不能把 Plus 账号变成可售 API 路由库存；已新增管理端 Plus 台账、到期摘要、敏感备注加密和用户路由隔离回归 | 2026-05-04 |
+| HI-866 | AI_POOL/UX | Frist-API 需要参考 New-API Codex OAuth 和 Grok RT JSON 格式支持 Refresh Token 批量管理，同时不能减少原 New-API 管理侧能力；已新增管理端 RT JSON/TXT 导入、脱敏台账、加密落盘和路由隔离回归 | 2026-05-04 |
+| HI-867 | UX/PERF | Frist-API 用户端和管理端解释性文案偏多、深色 Hyperstudio 壳与 Apple 简洁方向不一致，搜索和测试台存在不必要局部重绘；已切换 Refero Apple 浅色控制台、压缩首屏指标和导航文案、保留管理侧原功能并补局部渲染优化 | 2026-05-05 |
+| HI-868 | UX/PERF | Frist-API 参考 Tabcode 控制台克隆吸收优秀设计：替换旧视觉皮肤为 `tabcode-console`，后续按用户反馈收敛为深色顶栏、深色工作区、160px 侧栏、14px 卡片和短动效反馈，管理端原有 New-API/价格/入账/卡密/Plus/RT/接入/订单/库存/审计能力不减少 | 2026-05-05 |
+| HI-869 | BUG | Frist-API Plus 台账金额字段审计发现异常数字输入可能把 `NaN` 带入运行数据；已改为有限数字归一化并补回归，异常 TRY 余额/月费统一落为 0 | 2026-05-05 |
+| HI-870 | UX/SECURITY/ARCH_LIMIT | Frist-API CC Switch 导出曾按本机 Tabcode Claude/Codex 真实导入结构补齐大块 `settings_config`；后续 HI-877 已按 CC Switch 当前官方 parser 收敛为短 deep link，页面仍展示完整模型清单，协议无响应时自动复制降级；管理认证失败脱敏审计、runtime 写入失败 warning 和 SIGTERM/SIGINT 优雅关闭已保留 | 2026-05-05 |
+| HI-871 | UX | Frist-API Tabcode 浅色皮肤存在旧深色规则残留，黑底按钮/代码栏复制按钮/返回按钮出现灰字低对比；已更新资源版本并增加对比度护栏，用户端 6 个主路由和管理端可见交互元素扫描低对比为 0 | 2026-05-05 |
+| HI-874 | AI_POOL/INFRA | 用户提供的 `https://www.inroi.shop/v1` 是授权上游请求地址，后续字符串是上游 Key，不是 Frist-API 对外入口；已按 `x-admin-token` 复查远端管理号池，同 Key 旧根地址记录为 `exhausted/enabled=false` 不可路由，正确 `/v1` 记录为 `healthy/enabled=true` 且模型 21 个，runtime 中 rawKey 为 AES-GCM 加密字段 | 2026-05-05 |
+| HI-875 | UX/AI_POOL | Frist-API 用户端日志过长、测试页文字爆炸、深色对比不足、模型价格说明不完整、记录页缺客户端/费用/延迟、API Key 前缀像 fake；已改为 5 条精简日志、短动效反馈、深色控制台逐页审计、官方输入/缓存/输出价、3 分钟自动检测、消费后余额刷新、邮箱遮罩、兑换码前置、消费返利 5% 上限和资料可编辑，并已部署到腾讯云公网入口；2026-05-06 上线前安全复审已将新 Key 前缀恢复为 `fk-live-*` | 2026-05-05 |
+| HI-876 | SECURITY | Frist-API 上线前安全闭环复审发现 CSRF、SSRF、支付少付入账、runtime 写入原子性、用户 Key 明文回显、共享脱敏前缀和生产模板开关存在上线风险；已补 CSRF Token、补号 URL 私网阻断、支付金额校验、临时文件 fsync+rename、Dashboard 不再持久回显明文 Key、`fk-live-*` 脱敏一致性和生产 `FRIST_API_REQUIRE_CSRF`/`FRIST_API_ALLOW_PRIVATE_UPSTREAM_URLS` 登记 | 2026-05-06 |
+| HI-877 | UX/BACKEND | CC Switch 用量查询曾只能靠用户按教程手填 Key 和 API 地址，且 DeepSeek 官方端点导入时用量脚本可能误用上游域名；已核对 CC Switch 3.14.1 官方 deep link 支持 `usageScript` 等字段，导入链接自动带 Base64URL 用量脚本并移除旧 `config` / `availableModels` 大块参数，新增 `/api/frist/key-usage` 只读脱敏接口，修复 New-API 用量接口 500 回归，并将模型请求地址与 Frist 用量查询地址解耦；2026-05-06 实机验证中 CC Switch 日志确认解析 `resource=provider/app=claude/name=Frist-API`，临时等价导入后 Claude CLI 返回 `Frist API CLI OK`，测试后已恢复用户原配置 | 2026-05-06 |
+| HI-878 | UX/BACKEND | Frist-API 渠道状态监视器此前只有 healthy/total 简表，用户无法判断降级、慢线、最近状态和刷新口径；已参考 86GameStore `/monitor` 补齐当前库存快照、可用率、最低/平均延迟、慢线/失败状态条和 60 秒刷新展示，响应继续脱敏；2026-05-07 已通过 HI-882 补齐持久化探测事件和 7/15/30 天 SLA 摘要 | 2026-05-06 |
+| HI-879 | BUG/AI_POOL | Frist-API “Claude 兼容入口 · 查询失败”根因是 CC Switch 用量脚本返回对象型 `extra`，同时 Claude 原生 Messages 上游未优先直连；已将 `extra` 改为字符串、补 Claude `/v1/messages` 原生路由/严格探测、同 Key 多模型组隔离和导出按模型组选 Key。86GameStore Claude/OpenAI 号源已加密写入 ignored runtime，用户流程、Claude CLI、Codex CLI 和浏览器刷新均已实测闭环 | 2026-05-06 |
+| HI-880 | UX/BUG | CC Switch 小白导入 Workflow 存在边界不清：供应商 deep link 和 MCP deep link 是两个 resource，页面曾把 MCP 偏向 Codex 且用户显式选择模型时服务端返回默认模型、深链模型和 TOML 默认模型可能不一致；已按 CC Switch `origin/main` 源码收敛为两步 Workflow，MCP 增强包覆盖 `claude,codex,gemini,opencode,hermes`，明确 OpenClaw MCP 会被当前 CC Switch 忽略，并补齐用户选择模型一致性回归 | 2026-05-06 |
+| HI-881 | UX/BACKEND | Frist-API 用户侧缺少导入后的闭环检测和异常消费提醒，管理侧号池对小白管理员仍难以判断哪个端点/渠道断了；已将 OpenAI 命名收敛、补导入后检测闭环、`gpt-image-2` 流程图验证入口、轻量异常消费检测、管理端号池首次使用流程和渠道诊断。受控实机验证中，文本 `pong`、图片返回、用量脚本、记录页消费、异常提醒和 `gpt-image-2` 降级 `1/2 可用` 均闭环 | 2026-05-07 |
+| HI-882 | SECURITY/ARCH_LIMIT | Frist-API New-API 剩余生产边界缺少统一硬门槛；已新增生产强制开关、固定品牌域名检查、New-API 数据库必备开关、管理员 TOTP 2FA、真实支付商户状态、备份/恢复登记和 7/15/30 天渠道 SLA 事件摘要。外部仍需购买/绑定真实品牌域名、在商户平台开户、部署备份任务并完成历史 JSON 到 New-API 数据迁移 | 2026-05-07 |
+| HI-883 | UX/BUG | Frist-API 用户端浏览器批注发现状态灯、导航间距、趋势图、CC Switch 教程、重复 Harmes、复制按钮、模型展示名、资料页、登录弹窗和游客库存展示存在视觉 QA 问题；已按批注修复，未登录 Dashboard 不再展示 `channelChecks`，真实内部模型 ID 继续保留以免影响路由 | 2026-05-08 |
 
 ---
 
@@ -122,13 +143,14 @@
 | TD-003 | TECH_DEBT | CLICommandsMixin (/cli) 预备代码未注册 | 🔵 |
 | TD-004 | TECH_DEBT | 源码仍有 63 个历史 `pass` 语句，多数位于可选依赖降级、异常兜底和测试辅助路径，需按模块分批审查后清理 | 🔵 |
 | TD-005 | TECH_DEBT | `ruff` 工具链已补齐，但 `make lint` 暴露 547 个历史 lint 问题，主要为 UP031(192)、B904(88)、RUF013(62)、E402(49)；已完成 monitor 路由 3 项和 API 边界异常链路 5 项机械清理 | 🟡 |
-| TD-006 | ARCH_LIMIT | Frist-API 当前仍使用 JSON 运行数据；已加公开模式配置硬门槛、轻量验证码和余额预警 SMTP 邮件，公开扩大前仍需迁移数据库、注册验证/找回密码 SMTP、Turnstile、管理员 2FA、真实支付回调和探测预算队列 | 🟠 |
-| TD-007 | INFRA | Frist-API 当前 HTTPS 入口使用 Cloudflare Quick Tunnel，适合外部实测但不是长期品牌域名；需绑定自有域名到 Cloudflare Tunnel 或修复 DNS/ACME 直签后切换为固定入口 | 🟡 |
+| TD-006 | ARCH_LIMIT | Frist-API JSON runtime 已被生产强制开关挡在正式运营外；仍需把历史用户、余额、Key、订单和日志迁移到 New-API 数据库并做回滚演练 | 🟠 |
+| TD-007 | INFRA | Frist-API 代码已要求生产使用固定 HTTPS 品牌域名；实际域名购买、DNS/Cloudflare Tunnel 或 ACME 证书仍需外部平台操作 | 🟡 |
 | TD-008 | ARCH_LIMIT | Frist-API 模型目录和默认最强模型仍有内置排序兜底；生产应改为上游 `/v1/models`、官方模型目录校验、后台可审计排序共同决定，避免硬编码模型名误导客户 | 🟠 |
-| TD-009 | TECH_DEBT | Frist-API `ccswitch://` 导入链接依赖用户已安装 CC Switch，浏览器无协议处理器时降级体验为空 | 🟡 |
-| TD-010 | SECURITY | Frist-API 管理 API 失败认证不生成审计事件，暴力破解无法检测 | 🟡 |
-| TD-011 | ARCH_LIMIT | Frist-API 无优雅关闭（SIGTERM/SIGINT），连接直接断开对网关流式请求不友好 | 🟡 |
-| TD-012 | ARCH_LIMIT | Frist-API 文件写入失败被 `catch(() => {})` 静默吞掉，store 破损后无告警 | 🔵 |
+| TD-009 | TECH_DEBT | Frist-API `ccswitch://` 导入链接依赖用户已安装 CC Switch，浏览器无协议处理器时降级体验为空；已改为点击导入自动复制链接并显示短降级反馈 | ✅ 已处理 |
+| TD-010 | SECURITY | Frist-API 管理 API 失败认证不生成审计事件，暴力破解无法检测；已补脱敏审计事件且不记录提交的 token | ✅ 已处理 |
+| TD-011 | ARCH_LIMIT | Frist-API 无优雅关闭（SIGTERM/SIGINT），连接直接断开对网关流式请求不友好；CLI 启动已补优雅关闭和超时兜底 | ✅ 已处理 |
+| TD-012 | ARCH_LIMIT | Frist-API 文件写入失败被 `catch(() => {})` 静默吞掉，store 破损后无告警；已改为 `FRIST_API_RUNTIME_WRITE_FAILED` warning | ✅ 已处理 |
+| TD-013 | ARCH_LIMIT | Frist-API 已将网关成功、慢线、失败和额度耗尽写入 `channelProbeEvents` 并返回 7/15/30 天 SLA 摘要；后续仍需独立后台探测队列覆盖无人调用时段 | 🟡 |
 
 ---
 

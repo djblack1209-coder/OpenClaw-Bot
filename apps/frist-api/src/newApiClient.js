@@ -185,10 +185,14 @@ function tokenEnabled(status) {
 
 function maskKey(value) {
   const key = String(value || '');
-  if (!key) return 'fk-live-••••••';
+  if (!key) return 'sk-••••••';
 
   const last = key.slice(-4);
-  const prefix = /^fk-live-/i.test(key) ? 'fk-live' : key.slice(0, Math.min(6, key.length)).replace(/-$/, '');
+  const prefix = /^sk-/i.test(key)
+    ? 'sk'
+    : /^fk-live-/i.test(key)
+      ? 'fk-live'
+      : key.slice(0, Math.min(6, key.length)).replace(/-$/, '');
   return `${prefix}-••••••${last}`;
 }
 

@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Frist-API 管理工作台</title>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-    <link rel="stylesheet" href="./src/styles.css?v=20260504-refero-shell" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260505-dark-console" />
   </head>
-  <body data-design-system="refero-hyperstudio">
+  <body data-design-system="tabcode-console">
     <main class="admin-shell">
       <header class="admin-topbar">
         <a class="brand" href="./admin.html" aria-label="Frist-API 管理端">
@@ -15,15 +15,15 @@
             <i></i>
             <b></b>
           </span>
-          <span>Frist-API Admin</span>
+        <span>Admin</span>
         </a>
-        <span class="action-message" data-admin-message>等待连接本地服务</span>
+        <span class="action-message" data-admin-message aria-live="polite" aria-label="待连接"></span>
       </header>
 
       <section class="admin-hero">
-        <span class="eyebrow">库存、卡密与路由</span>
-        <h1>运营工作台</h1>
-        <p>生成可售兑换码、维护号源库存和确认异常订单。用户端只看到兑换入口，不暴露上游和管理能力。</p>
+        <span class="eyebrow">库存 / 卡密 / 路由</span>
+        <h1>运营</h1>
+        <p>卡密、库存、订单。</p>
       </section>
 
       <div class="admin-grid">
@@ -31,33 +31,49 @@
           <div class="section-head">
             <div>
               <span class="eyebrow">身份</span>
-              <h2>管理员令牌</h2>
+              <h2>令牌</h2>
             </div>
             <button class="ghost-action" data-admin-save-token type="button">保存</button>
           </div>
           <div class="form-stack">
             <label>
-              管理员令牌
+              令牌
               <input type="password" data-admin-token placeholder="FRIST_API_ADMIN_TOKEN" />
             </label>
+            <label>
+              2FA 验证码
+              <input type="text" data-admin-2fa-code inputmode="numeric" maxlength="6" placeholder="000000" />
+            </label>
+            <button class="secondary-action" data-admin-2fa-verify type="button">验证</button>
           </div>
+        </section>
+
+        <section class="plain-section admin-span" data-admin-production-readiness>
+          <div class="section-head">
+            <div>
+              <span class="eyebrow">上线边界</span>
+              <h2>生产检查</h2>
+            </div>
+            <button class="secondary-action" data-admin-readiness-refresh type="button">刷新</button>
+          </div>
+          <div class="admin-readiness" data-admin-readiness></div>
         </section>
 
         <section class="plain-section admin-span" data-admin-pricing>
           <div class="section-head">
             <div>
               <span class="eyebrow">价格</span>
-              <h2>套餐与模型计价</h2>
+              <h2>价格</h2>
             </div>
-            <button class="primary-action" data-admin-pricing-save type="button">保存价格</button>
+            <button class="primary-action" data-admin-pricing-save type="button">保存</button>
           </div>
           <div class="admin-two-col">
             <label>
-              充值套餐 JSON
+              套餐 JSON
               <textarea data-admin-plans rows="12" spellcheck="false" placeholder='[{"id":"codex-30-day","quotaUsd":30,"priceCny":5.88,"durationDays":1}]'></textarea>
             </label>
             <label>
-              模型官方价格 JSON
+              模型价格 JSON
               <textarea data-admin-model-prices rows="12" spellcheck="false" placeholder='[{"model":"gpt-5.5","inputSaleCnyPerMillion":8,"outputSaleCnyPerMillion":48}]'></textarea>
             </label>
           </div>
@@ -67,7 +83,7 @@
           <div class="section-head">
             <div>
               <span class="eyebrow">异常兜底</span>
-              <h2>人工入账</h2>
+              <h2>入账</h2>
             </div>
             <button class="secondary-action" data-admin-credit type="button">入账</button>
           </div>
@@ -95,13 +111,13 @@
           <div class="section-head">
             <div>
               <span class="eyebrow">兑换码</span>
-              <h2>卡密生成与闲鱼发货</h2>
+              <h2>卡密</h2>
             </div>
-            <button class="primary-action" data-admin-card-create type="button">生成卡密</button>
+            <button class="primary-action" data-admin-card-create type="button">生成</button>
           </div>
           <div class="admin-card-grid">
             <label>
-              对应套餐
+              套餐
               <select data-admin-card-plan></select>
             </label>
             <label>
@@ -114,22 +130,149 @@
             </label>
             <label>
               备注
-              <input type="text" data-admin-card-note placeholder="闲鱼商品、批次或活动名" />
+              <input type="text" data-admin-card-note placeholder="批次" />
             </label>
           </div>
           <div class="admin-card-actions">
-            <button class="secondary-action" data-admin-card-copy type="button">复制本批卡密</button>
-            <span data-admin-card-summary>暂无新批次。</span>
+            <button class="secondary-action" data-admin-card-copy type="button">复制</button>
+            <span data-admin-card-summary>无批次</span>
           </div>
-          <textarea class="admin-card-export" data-admin-card-export rows="8" spellcheck="false" readonly placeholder="生成后这里会出现可复制给闲鱼自动发货系统的卡密清单。"></textarea>
+          <textarea class="admin-card-export" data-admin-card-export rows="8" spellcheck="false" readonly placeholder="卡密清单"></textarea>
           <div class="admin-card-list" data-admin-card-list></div>
+        </section>
+
+        <section class="plain-section admin-span" data-admin-plus-accounts>
+          <div class="section-head">
+            <div>
+              <span class="eyebrow">Plus</span>
+              <h2>账号池</h2>
+            </div>
+            <div class="section-actions">
+              <button class="secondary-action" data-admin-plus-clear type="button">清空</button>
+              <button class="primary-action" data-admin-plus-save type="button">保存</button>
+            </div>
+          </div>
+          <div class="compliance-note">
+            仅台账，不进用户路由。
+          </div>
+          <div class="admin-plus-summary" data-admin-plus-summary></div>
+          <div class="admin-plus-grid">
+            <label>
+              标签
+              <input type="text" data-admin-plus-label placeholder="工作号 / 备用号 A" />
+            </label>
+            <label>
+              OpenAI 邮箱
+              <input type="email" data-admin-plus-openai-email placeholder="plus@example.com" />
+            </label>
+            <label>
+              Apple ID 邮箱
+              <input type="email" data-admin-plus-apple-email placeholder="apple@example.com" />
+            </label>
+            <label>
+              地区
+              <select data-admin-plus-region>
+                <option value="Türkiye">Türkiye</option>
+                <option value="United States">United States</option>
+                <option value="China">China</option>
+                <option value="Other">Other</option>
+              </select>
+            </label>
+            <label>
+              状态
+              <select data-admin-plus-status>
+                <option value="warming">养号中</option>
+                <option value="active">Plus 可用</option>
+                <option value="renewal_due">待续费</option>
+                <option value="paused">暂停</option>
+                <option value="risk_hold">风险冻结</option>
+                <option value="retired">退役</option>
+              </select>
+            </label>
+            <label>
+              合规状态
+              <select data-admin-plus-compliance>
+                <option value="needs_review">待核验</option>
+                <option value="self_use_only">仅自用，禁止共享/转售</option>
+                <option value="blocked">禁止使用</option>
+              </select>
+            </label>
+            <label>
+              续费日期
+              <input type="date" data-admin-plus-renewal-at />
+            </label>
+            <label>
+              Apple 余额 TRY
+              <input type="number" data-admin-plus-balance-try min="0" step="0.01" placeholder="500" />
+            </label>
+            <label>
+              月费 TRY
+              <input type="number" data-admin-plus-cost-try min="0" step="0.01" placeholder="499.99" />
+            </label>
+            <label>
+              设备
+              <input type="text" data-admin-plus-device-profile placeholder="iPhone 备用机 / Chrome Profile 2" />
+            </label>
+            <label>
+              备注
+              <input type="text" data-admin-plus-risk-note placeholder="来源、续费责任人、异常处理规则" />
+            </label>
+            <label>
+              密码
+              <input type="password" data-admin-plus-secrets placeholder="可选" autocomplete="new-password" />
+            </label>
+          </div>
+          <div class="admin-plus-list" data-admin-plus-list></div>
+        </section>
+
+        <section class="plain-section admin-span" data-admin-rt-accounts>
+          <div class="section-head">
+            <div>
+              <span class="eyebrow">RT</span>
+              <h2>Token 池</h2>
+            </div>
+            <button class="primary-action" data-admin-rt-import type="button">导入</button>
+          </div>
+          <div class="compliance-note">
+            增量台账，New-API 管理项保留。
+          </div>
+          <div class="admin-rt-summary" data-admin-rt-summary></div>
+          <div class="admin-rt-grid">
+            <label>
+              平台
+              <select data-admin-rt-platform>
+                <option value="codex">Codex</option>
+                <option value="openai">OpenAI</option>
+                <option value="claude">Claude</option>
+                <option value="gemini">Gemini</option>
+                <option value="other">其他</option>
+              </select>
+            </label>
+            <label>
+              来源
+              <input type="text" data-admin-rt-source-label placeholder="New-API Codex OAuth / 手工导入批次" />
+            </label>
+            <label>
+              类型
+              <input type="text" data-admin-rt-account-type placeholder="Plus / Team / Codex / 备用账号" />
+            </label>
+          </div>
+          <label class="form-stack">
+            RT JSON / TXT
+              <textarea data-admin-rt-text rows="10" spellcheck="false" placeholder='[{"refresh_token":"rt_xxx","email":"user@example.com","account_id":"acct_xxx"}]&#10;rt_xxx,user@example.com,acct_xxx'></textarea>
+          </label>
+          <label class="form-stack">
+            备注
+            <textarea data-admin-rt-note rows="3" placeholder="来源、授权、复核时间"></textarea>
+          </label>
+          <div class="admin-rt-list" data-admin-rt-list></div>
         </section>
 
         <section class="plain-section">
           <div class="section-head">
             <div>
               <span class="eyebrow">接入</span>
-              <h2>请求地址与池子</h2>
+              <h2>接入</h2>
             </div>
           </div>
           <div class="form-stack">
@@ -138,7 +281,7 @@
               <input type="url" data-admin-base-url placeholder="https://supplier.example.com/v1" />
             </label>
             <label>
-              代理请求地址
+              代理地址
               <input type="url" data-admin-proxy-url placeholder="https://proxy.example.com/v1（可选）" />
             </label>
             <label>
@@ -180,10 +323,10 @@
             </label>
             <label>
               风险备注
-              <textarea data-admin-risk-note rows="3" placeholder="记录人工判断依据、来源责任人、可用范围和复核时间。"></textarea>
+              <textarea data-admin-risk-note rows="3" placeholder="来源、范围、复核时间"></textarea>
             </label>
             <label>
-              支持模型
+              模型
               <textarea data-admin-models rows="4" placeholder="claude-opus-4-6-thinking-c&#10;gpt-5.5"></textarea>
             </label>
           </div>
@@ -193,13 +336,13 @@
           <div class="section-head">
             <div>
               <span class="eyebrow">清洗</span>
-              <h2>订单详情</h2>
+              <h2>订单</h2>
             </div>
-            <button class="secondary-action" data-admin-parse-order type="button">解析订单</button>
+            <button class="secondary-action" data-admin-parse-order type="button">解析</button>
           </div>
           <label class="form-stack">
-            订单详情
-            <textarea data-admin-order-text rows="9" placeholder="直接粘贴订单详情页，系统会识别请求地址、Key、额度、卡类型和模型。"></textarea>
+            订单
+            <textarea data-admin-order-text rows="9" placeholder="粘贴订单详情"></textarea>
           </label>
           <div class="admin-inventory-summary" data-admin-inventory-summary></div>
         </section>
@@ -208,17 +351,44 @@
           <div class="section-head">
             <div>
               <span class="eyebrow">补充</span>
-              <h2>Key 与价格文本</h2>
+              <h2>库存写入</h2>
             </div>
-            <button class="primary-action" data-admin-replenish type="button">写入库存</button>
+            <button class="primary-action" data-admin-replenish type="button">写入</button>
           </div>
+          <section class="admin-onboarding-flow" aria-label="号池首次使用流程">
+            <article>
+              <b>1</b>
+              <strong>填端点</strong>
+              <span>请求地址填供应商给的 Base URL；根地址会自动尝试补 `/v1`。</span>
+            </article>
+            <article>
+              <b>2</b>
+              <strong>粘 Key</strong>
+              <span>一行一个 Key，或粘 JSON 数组；服务端会逐条校验格式和连通性。</span>
+            </article>
+            <article>
+              <b>3</b>
+              <strong>一键获取模型</strong>
+              <span>模型留空时自动请求 `/models`，不支持时再用最小请求探测。</span>
+            </article>
+            <article>
+              <b>4</b>
+              <strong>写入可用库存</strong>
+              <span>只写入探测成功的 Key；失败原因会显示在本页，不回传明文 Key。</span>
+            </article>
+            <article>
+              <b>5</b>
+              <strong>自动切换</strong>
+              <span>单个渠道认证失败、额度耗尽或 5xx 后，网关自动切到同模型可用渠道。</span>
+            </article>
+          </section>
           <div class="admin-two-col">
             <label>
-              Key 列表
+              Key
               <textarea data-admin-keys rows="10" placeholder="sk-xxx&#10;sk-yyy,900,120&#10;或 JSON 数组 [{&quot;value&quot;:&quot;sk-xxx&quot;,&quot;quotaRemaining&quot;:900}]"></textarea>
             </label>
             <label>
-              价格文本
+              价格
               <textarea data-admin-price-text rows="10" placeholder="claude-opus-4-6-thinking-c input $15/1M output $75/1M"></textarea>
             </label>
           </div>
@@ -228,10 +398,11 @@
           <div class="section-head">
             <div>
               <span class="eyebrow">库存</span>
-              <h2>当前号源状态</h2>
+              <h2>库存</h2>
             </div>
             <button class="secondary-action" data-admin-refresh type="button">刷新</button>
           </div>
+          <div class="admin-channel-diagnostics" data-admin-channel-diagnostics></div>
           <div class="admin-inventory" data-admin-inventory></div>
         </section>
 
@@ -239,7 +410,7 @@
           <div class="section-head">
             <div>
               <span class="eyebrow">审计</span>
-              <h2>最近操作</h2>
+              <h2>审计</h2>
             </div>
           </div>
           <div class="admin-audit" data-admin-audit></div>
@@ -247,6 +418,6 @@
       </div>
     </main>
 
-    <script type="module" src="./src/admin.js?v=20260504-refero-shell"></script>
+    <script type="module" src="./src/admin.js?v=20260505-dark-console"></script>
   </body>
 </html>

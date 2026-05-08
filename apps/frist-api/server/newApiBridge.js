@@ -1,4 +1,4 @@
-import { normalizeBaseUrl, normalizeModelGroup } from '../src/core.js';
+import { normalizeBaseUrl, normalizeClientAvailableModels, normalizeModelGroup } from '../src/core.js';
 
 const DEFAULT_QUOTA_PER_CNY = 100;
 const DEFAULT_USD_TO_CNY = 7.2;
@@ -75,6 +75,7 @@ export function createNewApiBridge(options = {}) {
         modelCatalog: [],
         rechargeOptions: buildBridgeRechargeOptions(localData, settledValue(topupInfo)),
         usageRecords: buildBridgeUsageRecords(usageRows),
+        usageAnomalies: buildBridgeUsageAnomalies(usageRows, settledValue(self)),
         recentLogs: buildBridgeRecentLogs(usageRows, {
           subscriptions: settledValue(subscriptions),
           affiliate: settledValue(affiliate),
@@ -146,7 +147,7 @@ export function createNewApiBridge(options = {}) {
         throw publicBridgeError(409, 'New-API 未返回完整 API Key');
       }
       const modelGroup = normalizeBridgeModelGroup(key);
-      const availableModels = normalizeModelLimits(key);
+      const availableModels = normalizeClientAvailableModels(normalizeModelLimits(key), { modelGroup });
       const defaultModel = strongestBridgeModel(availableModels, requestUrl.searchParams.get('model') || '', modelGroup);
       return buildUrl({
         target: requestUrl.searchParams.get('target') || 'Claude',
@@ -155,6 +156,52 @@ export function createNewApiBridge(options = {}) {
         availableModels,
         defaultModel,
       });
+    },
+    async buildKeyUsage(clientRequest) {
+      const secret = readBearerToken(clientRequest);
+      if (!secret) {
+        throw publicBridgeError(401, 'API Key 不可用');
+      }
+      const tokens = unwrapArray(await request(`/api/token/search?keyword=&token=${encodeURIComponent(secret)}&p=1&size=${PAGE_SIZE}`));
+      const token = tokens.find((item) => {
+        const key = String(item.key || item.token || '');
+        return key === secret && tokenEnabled(item.status ?? item.enabled);
+      });
+      if (!token) {
+        throw publicBridgeError(401, 'API Key 不可用');
+      }
+      const [self, usage, stats, quotaData] = await Promise.allSettled([
+        request('/api/user/self'),
+        request(`/api/log/self?p=1&size=${PAGE_SIZE}`),
+        request('/api/log/self/stat'),
+        request('/api/data/self'),
+      ]);
+      const account = accountFromNewApi(
+        settledValue(self),
+        unwrapArray(settledValue(usage)),
+        settledValue(stats),
+        unwrapArray(settledValue(quotaData)),
+      );
+      const remainingQuota = numberFromAny(token.remain_quota ?? token.remaining_quota ?? unwrapObject(settledValue(self)).quota);
+      const usedQuota = numberFromAny(token.used_quota ?? token.usedQuota ?? unwrapObject(settledValue(self)).used_quota);
+      return {
+        ok: true,
+        valid: true,
+        keyPreview: maskBridgeKey(secret),
+        plan: account.plan,
+        renewalDate: account.renewalDate,
+        remainingUsd: moneyNumber(remainingQuota),
+        usedUsd: moneyNumber(usedQuota),
+        totalUsd: moneyNumber(remainingQuota + usedQuota),
+        balance: account.balance,
+        todayCost: account.todayCost,
+        monthCost: account.monthCost,
+        todayCalls: account.todayCalls,
+        todayTokens: account.todayTokens,
+        totalTokens: account.totalTokens,
+        averageLatency: account.averageLatency,
+        successRate: account.successRate,
+      };
     },
     async proxyGateway({ request, response, url, bodyText }) {
       const upstream = await fetchImpl(`${config.gatewayBaseUrl}${gatewayPath(url.pathname)}`, {
@@ -271,14 +318,17 @@ function accountFromNewApi(rawSelf, usageRows, rawStats, quotaRows) {
 function sanitizeBridgeUser(localUser, rawSelf) {
   const self = unwrapObject(rawSelf);
   const email = String(self.email || localUser.email || '');
+  const displayName = String(localUser.displayName || localUser.nickname || self.username || self.display_name || '').trim();
   return {
     id: localUser.id,
     email,
+    emailMasked: maskEmail(email),
+    displayName: displayName || email.split('@')[0] || 'Frist',
     emailVerified: Boolean(localUser.emailVerified),
     isAdmin: Boolean(localUser.isAdmin),
     plan: String(self.group || localUser.plan || 'New-API'),
     renewalDate: formatDate(self.expired_time ?? self.subscription_expires_at) || localUser.renewalDate,
-    userInitials: initialsFrom(email || self.username || self.display_name),
+    userInitials: initialsFrom(displayName || email),
     newApiMode: true,
   };
 }
@@ -331,26 +381,69 @@ function buildBridgeUsageRecords(rows) {
     endpoint: String(row.endpoint || row.path || '/v1/chat/completions'),
     type: requestTypeLabel(row),
     billingMode: row.is_stream ? '流式' : '按量',
+    client: clientLabelFromNewApiRow(row),
     tokens: compactTokenText(tokenTotalFromRow(row)),
     amount: formatMoney(row.quota ?? row.used_quota ?? row.cost),
+    amountCny: `¥${formatQuota(row.quota ?? row.used_quota ?? row.cost)}`,
+    latency: numberFromAny(row.use_time ?? row.latency_ms ?? row.response_time_ms)
+      ? `${Math.round(numberFromAny(row.use_time ?? row.latency_ms ?? row.response_time_ms))}ms`
+      : '-',
     status: row.is_error || row.status === 'failed' ? 'failed' : 'success',
     at: formatDateTime(row.created_at ?? row.created_time ?? row.time),
   }));
 }
 
+function buildBridgeUsageAnomalies(rows, rawSelf = {}) {
+  const self = unwrapObject(rawSelf);
+  const todayRows = rowsForToday(rows);
+  const todayQuota = sum(todayRows, (row) => numberFromAny(row.quota ?? row.used_quota ?? row.cost));
+  const remainingQuota = numberFromAny(self.quota ?? self.remain_quota ?? self.remaining_quota);
+  const largestRow = [...todayRows].sort(
+    (left, right) =>
+      numberFromAny(right.quota ?? right.used_quota ?? right.cost) -
+      numberFromAny(left.quota ?? left.used_quota ?? left.cost),
+  )[0];
+  const largestQuota = largestRow ? numberFromAny(largestRow.quota ?? largestRow.used_quota ?? largestRow.cost) : 0;
+  const rowsOut = [];
+
+  if (todayQuota > 0 && remainingQuota > 0 && todayQuota >= remainingQuota * 0.5) {
+    rowsOut.push({
+      id: 'newapi-today-spend-balance-ratio',
+      severity: todayQuota >= remainingQuota ? 'critical' : 'warning',
+      title: '今日消耗偏高',
+      detail: `今日已用 ${formatMoney(todayQuota)}，接近当前剩余额度 ${formatMoney(remainingQuota)}。`,
+      action: '建议检查 New-API 日志和 Key 使用方',
+      at: formatDateTime(largestRow?.created_at ?? largestRow?.created_time ?? largestRow?.time),
+    });
+  }
+
+  if (largestQuota > 0 && largestQuota >= Math.max(5, todayQuota * 0.6)) {
+    rowsOut.push({
+      id: 'newapi-single-call-cost-spike',
+      severity: largestQuota >= Math.max(20, todayQuota * 0.8) ? 'critical' : 'warning',
+      title: '单次调用费用突增',
+      detail: `${largestRow?.model_name || largestRow?.model || '模型'} 单次消耗 ${formatMoney(largestQuota)}。`,
+      action: '建议核对上下文长度、图片请求和调用客户端',
+      at: formatDateTime(largestRow?.created_at ?? largestRow?.created_time ?? largestRow?.time),
+    });
+  }
+
+  return rowsOut.slice(0, 4);
+}
+
 function buildBridgeRecentLogs(rows, meta = {}) {
-  const logs = buildBridgeUsageRecords(rows).slice(0, 10).map((row) => ({
+  const logs = buildBridgeUsageRecords(rows).slice(0, 5).map((row) => ({
     type: 'newapi_usage',
     at: row.at,
-    detail: `${row.model} 调用 ${row.tokens}，计费 ${row.amount}`,
+    detail: `${row.model} · ${row.amount} · ${row.client}`,
   }));
   if (meta.subscriptions) {
-    logs.push({ type: 'newapi_subscription', at: '', detail: '订阅状态已从 New-API 同步' });
+    logs.push({ type: 'newapi_subscription', at: '', detail: '订阅已同步' });
   }
   if (meta.affiliate) {
-    logs.push({ type: 'newapi_affiliate', at: '', detail: '邀请返利数据已从 New-API 同步' });
+    logs.push({ type: 'newapi_affiliate', at: '', detail: '邀请已同步' });
   }
-  return logs.slice(0, 10);
+  return logs.slice(0, 5);
 }
 
 function buildBridgeRechargeOptions(localData, rawTopupInfo) {
@@ -440,6 +533,12 @@ function parseJson(text) {
   }
 }
 
+function readBearerToken(request) {
+  const authorization = request.headers.authorization || '';
+  const xApiKey = request.headers['x-api-key'] || request.headers['anthropic-auth-token'] || '';
+  return authorization.match(/^Bearer\s+(.+)$/i)?.[1] || String(xApiKey || '').trim();
+}
+
 function rowsForToday(rows) {
   const today = new Date().toISOString().slice(0, 10);
   return rows.filter((row) => formatDateTime(row.created_at ?? row.created_time ?? row.time).startsWith(today));
@@ -494,6 +593,10 @@ function formatMoney(quota) {
   return `$${(numberFromAny(quota) / DEFAULT_QUOTA_PER_CNY / DEFAULT_USD_TO_CNY).toFixed(2)}`;
 }
 
+function moneyNumber(quota) {
+  return Math.round((numberFromAny(quota) / DEFAULT_QUOTA_PER_CNY / DEFAULT_USD_TO_CNY) * 100) / 100;
+}
+
 function formatQuota(quota) {
   return (numberFromAny(quota) / DEFAULT_QUOTA_PER_CNY).toFixed(2);
 }
@@ -532,8 +635,29 @@ function initialsFrom(value) {
 function maskBridgeKey(value) {
   const key = String(value || '');
   if (!key) return 'sk-******';
-  const normalized = key.startsWith('sk-') ? key : `sk-${key}`;
-  return `${normalized.slice(0, 6)}••••••${normalized.slice(-4)}`;
+  const prefix = /^sk-/i.test(key)
+    ? 'sk'
+    : /^fk-live-/i.test(key)
+      ? 'fk-live'
+      : key.slice(0, Math.min(6, key.length)).replace(/-$/, '') || 'key';
+  return `${prefix}-••••••${key.slice(-4)}`;
+}
+
+function maskEmail(value) {
+  const email = String(value || '');
+  const [name = '', domain = ''] = email.split('@');
+  if (!name || !domain) return email;
+  return `${name.slice(0, 2)}***@${domain}`;
+}
+
+function clientLabelFromNewApiRow(row) {
+  const text = String(row.metadata?.frist_session_id || row.metadata || row.user_agent || row.channel || row.request_id || '').toLowerCase();
+  if (text.includes('playground') || text.includes('connectivity') || text.includes('square')) return '广场';
+  if (text.includes('mac') || text.includes('darwin')) return 'MacBook';
+  if (text.includes('windows') || text.includes('pc')) return 'PC';
+  if (text.includes('codex')) return 'Codex';
+  if (text.includes('claude')) return 'Claude';
+  return 'API';
 }
 
 function gatewayPath(pathname) {

@@ -6,7 +6,9 @@ import {
   buildClientConfig,
   buildClientSetupCommands,
   buildCcSwitchImportUrl,
+  buildCcSwitchMcpImportUrl,
   chooseNextCredential,
+  normalizeClientAvailableModels,
   normalizeOfficialModelList,
   normalizeOfficialModelName,
   normalizeBaseUrl,
@@ -16,6 +18,12 @@ import {
   summarizeModelHealth,
 } from '../src/core.js';
 
+function decodeUrlSafeBase64(value) {
+  const raw = String(value || '').replace(/-/g, '+').replace(/_/g, '/');
+  const padded = raw.padEnd(Math.ceil(raw.length / 4) * 4, '=');
+  return Buffer.from(padded, 'base64').toString('utf8');
+}
+
 describe('Frist-API core flows', () => {
   it('normalizes supplier base URLs without losing the API version path', () => {
     assert.equal(normalizeBaseUrl(' https://supplier.example.com/v1/ '), 'https://supplier.example.com/v1');
@@ -23,7 +31,7 @@ describe('Frist-API core flows', () => {
   });
 
   it('cleans legacy supplier model names into the public official catalog names', () => {
-    assert.equal(normalizeOfficialModelName('claude-haiku-4-5-20251001'), 'claude-sonnet-4-5-c');
+    assert.equal(normalizeOfficialModelName('claude-haiku-4-5-20251001'), 'claude-haiku-4-5-20251001');
     assert.equal(normalizeOfficialModelName('claude-opus-4-6'), 'claude-opus-4-6-c');
     assert.equal(normalizeOfficialModelName('claude-opus-4-6-thinking'), 'claude-opus-4-6-thinking-c');
     assert.equal(normalizeOfficialModelName('5.5'), 'gpt-5.5');
@@ -39,7 +47,7 @@ describe('Frist-API core flows', () => {
         'gpt-5.5-c',
         'gpt-5.5',
       ]),
-      ['claude-sonnet-4-5-c', 'gpt-5.5', 'gpt-image-2', 'gpt-5.5-c'],
+      ['claude-haiku-4-5-20251001', 'claude-sonnet-4-5-c', 'gpt-5.5', 'gpt-image-2', 'gpt-5.5-c'],
     );
   });
 
@@ -64,7 +72,10 @@ describe('Frist-API core flows', () => {
         app === 'claude'
           ? 'https://api.frist.example.com'
           : 'https://api.frist.example.com/v1';
-      const expectedFormat = app === 'claude' ? 'anthropic-messages' : 'responses';
+      const script = decodeUrlSafeBase64(parsed.searchParams.get('usageScript'));
+      const params = [...parsed.searchParams.keys()].sort();
+
+      assert.ok(url.length < 3500, `CC Switch deep link should stay compact, got ${url.length}`);
       assert.match(decoded, /Frist-API/);
       assert.equal(parsed.searchParams.get('resource'), 'provider');
       assert.equal(parsed.searchParams.get('name'), 'Frist-API');
@@ -72,18 +83,54 @@ describe('Frist-API core flows', () => {
       assert.equal(parsed.searchParams.get('homepage'), 'https://api.frist.example.com');
       assert.equal(parsed.searchParams.get('apiKey'), 'fk_demo_user_preview');
       assert.equal(parsed.searchParams.get('model'), 'claude-opus-4-6-thinking-c');
-      assert.equal(parsed.searchParams.get('configFormat'), 'json');
-      assert.match(decoded, /providerName=Frist-API/);
-      assert.match(decoded, /officialUrl=/);
-      assert.equal(parsed.searchParams.get('apiRequestUrl'), expectedEndpoint);
-      assert.match(decoded, /modelName=claude-opus-4-6-thinking-c/);
       assert.match(decoded, /fk_demo_user_preview/);
       assert.match(decoded, /https:\/\/api\.frist\.example\.com/);
       assert.match(decoded, /claude-opus-4-6-thinking-c/);
-      assert.equal(decoded.includes('claude-haiku-4-5-20251001'), false);
-      assert.equal(parsed.searchParams.get('wireApi'), expectedFormat);
-      assert.match(decoded, /authJson=/);
-      assert.match(decoded, /configToml=/);
+    assert.equal(decoded.includes('claude-haiku-4-5-20251001'), false);
+    assert.equal(parsed.searchParams.get('config'), null);
+    assert.equal(parsed.searchParams.get('settings_config'), null);
+    assert.equal(parsed.searchParams.get('availableModels'), null);
+    assert.equal(parsed.searchParams.get('usageEnabled'), 'true');
+      assert.equal(parsed.searchParams.get('usageApiKey'), 'fk_demo_user_preview');
+      assert.equal(parsed.searchParams.get('usageBaseUrl'), 'https://api.frist.example.com');
+      assert.equal(parsed.searchParams.get('usageAutoInterval'), '15');
+    assert.match(parsed.searchParams.get('usageScript'), /^[A-Za-z0-9_-]+$/);
+    assert.match(script, /\/api\/frist\/key-usage/);
+    assert.match(script, /Authorization/);
+    const usageConfig = Function(`return ${script}`)();
+    const extracted = usageConfig.extractor({
+      ok: true,
+      valid: true,
+      plan: '日卡',
+      remainingUsd: 1.23,
+      usedUsd: 0.45,
+      totalUsd: 1.68,
+      todayCost: '$0.45',
+      monthCost: '$0.45',
+      todayCalls: '2 次',
+      totalTokens: '128',
+    });
+    assert.equal(typeof extracted.extra, 'string');
+    assert.equal(extracted.extra.includes('今日 $0.45'), true);
+    assert.deepEqual(
+      params.filter((item) => !['opusModel', 'sonnetModel', 'haikuModel'].includes(item)),
+        [
+          'apiKey',
+          'app',
+          'enabled',
+          'endpoint',
+          'homepage',
+          'model',
+          'name',
+          'notes',
+          'resource',
+          'usageApiKey',
+          'usageAutoInterval',
+          'usageBaseUrl',
+          'usageEnabled',
+          'usageScript',
+        ],
+      );
     }
 
     assert.equal(new URL(urls[0]).searchParams.get('app'), 'claude');
@@ -92,7 +139,64 @@ describe('Frist-API core flows', () => {
     assert.equal(new URL(urls[3]).searchParams.get('app'), 'opencode');
     assert.equal(new URL(urls[4]).searchParams.get('app'), 'openclaw');
     assert.equal(new URL(urls[5]).searchParams.get('app'), 'hermes');
-    assert.equal(new URL(urls[6]).searchParams.get('app'), 'harmes');
+    assert.equal(new URL(urls[6]).searchParams.get('app'), 'hermes');
+  });
+
+  it('matches the current CC Switch provider deep-link contract without oversized config payloads', () => {
+    const claudeUrl = new URL(
+      buildCcSwitchImportUrl({
+        target: 'Claude',
+        apiKey: 'fk_ccswitch_claude_preview',
+        baseUrl: 'https://api.frist.example.com/v1',
+        model: 'gpt-5.5',
+        availableModels: ['gpt-5.5', 'claude-opus-4-6-c', 'claude-sonnet-4-5-c'],
+        modelGroup: 'OpenAI',
+      }),
+    );
+    const claudeScript = decodeUrlSafeBase64(claudeUrl.searchParams.get('usageScript'));
+
+    assert.ok(claudeUrl.toString().length < 3500);
+    assert.equal(claudeUrl.searchParams.get('resource'), 'provider');
+    assert.equal(claudeUrl.searchParams.get('app'), 'claude');
+    assert.equal(claudeUrl.searchParams.get('name'), 'Frist-API');
+    assert.equal(claudeUrl.searchParams.get('endpoint'), 'https://api.frist.example.com');
+    assert.equal(claudeUrl.searchParams.get('homepage'), 'https://api.frist.example.com');
+    assert.equal(claudeUrl.searchParams.get('enabled'), 'true');
+    assert.equal(claudeUrl.searchParams.get('apiKey'), 'fk_ccswitch_claude_preview');
+    assert.equal(claudeUrl.searchParams.get('model'), 'gpt-5.5');
+    assert.equal(claudeUrl.searchParams.get('opusModel'), 'claude-opus-4-6-c');
+    assert.equal(claudeUrl.searchParams.get('sonnetModel'), 'claude-sonnet-4-5-c');
+    assert.equal(claudeUrl.searchParams.get('haikuModel'), null);
+    assert.equal(claudeUrl.searchParams.get('config'), null);
+    assert.equal(claudeUrl.searchParams.get('settings_config'), null);
+    assert.match(claudeScript, /\/api\/frist\/key-usage/);
+    assert.match(claudeScript, /Authorization/);
+    assert.match(claudeScript, /extra: \[/);
+    assert.equal(claudeScript.includes('extra: {'), false);
+
+    const codexUrl = new URL(
+      buildCcSwitchImportUrl({
+        target: 'Codex',
+        apiKey: 'fk_ccswitch_codex_preview',
+        baseUrl: 'https://api.frist.example.com/v1',
+        model: 'gpt-5.3-codex',
+        availableModels: ['gpt-5.5', 'gpt-5.3-codex'],
+        modelGroup: 'OpenAI',
+      }),
+    );
+    const codexScript = decodeUrlSafeBase64(codexUrl.searchParams.get('usageScript'));
+
+    assert.ok(codexUrl.toString().length < 3500);
+    assert.equal(codexUrl.searchParams.get('resource'), 'provider');
+    assert.equal(codexUrl.searchParams.get('app'), 'codex');
+    assert.equal(codexUrl.searchParams.get('endpoint'), 'https://api.frist.example.com/v1');
+    assert.equal(codexUrl.searchParams.get('enabled'), 'true');
+    assert.equal(codexUrl.searchParams.get('usageBaseUrl'), 'https://api.frist.example.com');
+    assert.match(codexScript, /Authorization/);
+    assert.equal(codexUrl.searchParams.get('config'), null);
+    assert.equal(codexUrl.searchParams.get('settings_config'), null);
+    assert.equal(decodeURIComponent(codexUrl.toString()).includes('supplier.example.com'), false);
+    assert.equal(decodeURIComponent(codexUrl.toString()).includes('cr_fake_supplier_secret'), false);
   });
 
   it('builds copy-ready client config for Codex and OpenCode response-format clients', () => {
@@ -132,17 +236,11 @@ describe('Frist-API core flows', () => {
 
       const decoded = decodeURIComponent(config.ccSwitchUrl);
       const importUrl = new URL(config.ccSwitchUrl);
-      const providerConfig = JSON.parse(Buffer.from(importUrl.searchParams.get('config'), 'base64').toString('utf8'));
 
-      assert.equal(decoded.includes('supplier-codex.example.com'), false, '导入配置不能泄露上游请求地址');
-      assert.equal(decoded.includes('cr_fake_supplier_secret'), false, '导入配置不能泄露上游 Key');
-      assert.match(decoded, /providerName=Frist-API/);
-      assert.match(decoded, /officialUrl=http:\/\/101\.43\.41\.96:5566/);
-      assert.match(decoded, /interfaceFormat=responses/);
-      assert.match(decoded, /authField=OPENAI_API_KEY/);
-      assert.match(decoded, /contextWindow=1000000/);
-      assert.match(decoded, /compressionThreshold=900000/);
-      assert.match(decoded, /reasoningEffort=xhigh/);
+      assert.equal(decoded.includes('supplier-codex.example.com'), false, '导入链接不能泄露上游请求地址');
+      assert.equal(decoded.includes('cr_fake_supplier_secret'), false, '导入链接不能泄露上游 Key');
+      assert.equal(importUrl.searchParams.get('config'), null);
+      assert.equal(importUrl.searchParams.get('settings_config'), null);
 
       if (target === 'Codex') {
         assert.match(config.configToml, /\[mcp_servers\.playwright\]/);
@@ -151,19 +249,19 @@ describe('Frist-API core flows', () => {
         assert.match(config.configToml, /args = \["-y", "superpowers-mcp@latest"\]/);
         assert.match(config.configToml, /\[mcp_servers\.open_computer_use\]/);
         assert.match(config.configToml, /args = \["-y", "-p", "open-computer-use@latest", "open-codex-computer-use-mcp"\]/);
-        assert.equal(importUrl.searchParams.get('mcpEnabled'), 'true');
-        assert.equal(providerConfig.codex.mcpServers.playwright.command, 'npx');
-        assert.deepEqual(providerConfig.codex.mcpServers.playwright.args, ['-y', '@playwright/mcp@latest']);
-        assert.equal(providerConfig.codex.mcpServers.superpowers.command, 'npx');
-        assert.deepEqual(providerConfig.codex.mcpServers.superpowers.args, ['-y', 'superpowers-mcp@latest']);
-        assert.equal(providerConfig.codex.mcpServers.open_computer_use.command, 'npx');
-        assert.deepEqual(providerConfig.codex.mcpServers.open_computer_use.args, [
+        assert.equal(config.mcpServers.playwright.command, 'npx');
+        assert.deepEqual(config.mcpServers.playwright.args, ['-y', '@playwright/mcp@latest']);
+        assert.equal(config.mcpServers.superpowers.command, 'npx');
+        assert.deepEqual(config.mcpServers.superpowers.args, ['-y', 'superpowers-mcp@latest']);
+        assert.equal(config.mcpServers.open_computer_use.command, 'npx');
+        assert.deepEqual(config.mcpServers.open_computer_use.args, [
           '-y',
           '-p',
           'open-computer-use@latest',
           'open-codex-computer-use-mcp',
         ]);
       } else {
+        const providerConfig = JSON.parse(config.openCodeProviderJson).provider['frist-api'];
         assert.doesNotMatch(config.configToml, /\[mcp_servers\./);
         assert.equal(providerConfig.npm, '@ai-sdk/openai-compatible');
         assert.equal(providerConfig.options.baseURL, 'http://101.43.41.96:5566/v1');
@@ -185,7 +283,6 @@ describe('Frist-API core flows', () => {
       modelGroup: 'OpenAI',
     });
     const importUrl = new URL(config.ccSwitchUrl);
-    const providerConfig = JSON.parse(Buffer.from(importUrl.searchParams.get('config'), 'base64').toString('utf8'));
     const claudeJson = JSON.parse(config.authJson);
 
     assert.equal(config.targetSlug, 'claude');
@@ -195,16 +292,12 @@ describe('Frist-API core flows', () => {
     assert.equal(config.modelName, 'gpt-5.5');
     assert.equal(importUrl.searchParams.get('app'), 'claude');
     assert.equal(importUrl.searchParams.get('endpoint'), 'https://api.frist.example.com');
-    assert.equal(importUrl.searchParams.get('apiFormat'), 'anthropic-messages');
-    assert.equal(importUrl.searchParams.get('developerModeRequired'), 'true');
-    assert.equal(importUrl.searchParams.get('routeOpenAiModels'), 'true');
+    assert.equal(importUrl.searchParams.get('config'), null);
+    assert.equal(importUrl.searchParams.get('settings_config'), null);
     assert.equal(claudeJson.env.ANTHROPIC_AUTH_TOKEN, 'fk_claude_openai_preview');
     assert.equal(claudeJson.env.ANTHROPIC_BASE_URL, 'https://api.frist.example.com');
     assert.equal(claudeJson.env.ANTHROPIC_MODEL, 'gpt-5.5');
     assert.equal(claudeJson.env.ENABLE_TOOL_SEARCH, 'true');
-    assert.equal(providerConfig.env.ANTHROPIC_AUTH_TOKEN, 'fk_claude_openai_preview');
-    assert.equal(providerConfig.env.ANTHROPIC_BASE_URL, 'https://api.frist.example.com');
-    assert.equal(providerConfig.provider.wireApi, 'anthropic-messages');
   });
 
   it('keeps Claude models importable by Codex through the Responses provider profile', () => {
@@ -217,7 +310,6 @@ describe('Frist-API core flows', () => {
       modelGroup: 'Claude',
     });
     const importUrl = new URL(config.ccSwitchUrl);
-    const providerConfig = JSON.parse(Buffer.from(importUrl.searchParams.get('config'), 'base64').toString('utf8'));
 
     assert.equal(config.targetSlug, 'codex');
     assert.equal(config.interfaceFormat, 'responses');
@@ -226,10 +318,8 @@ describe('Frist-API core flows', () => {
     assert.match(config.configToml, /model = "claude-opus-4-6-c"/);
     assert.match(config.configToml, /base_url = "https:\/\/api\.frist\.example\.com\/v1"/);
     assert.equal(importUrl.searchParams.get('app'), 'codex');
-    assert.equal(importUrl.searchParams.get('modelGroup'), 'Claude');
-    assert.equal(importUrl.searchParams.get('routeClaudeModels'), 'true');
-    assert.equal(providerConfig.codex.defaultModel, 'claude-opus-4-6-c');
-    assert.deepEqual(providerConfig.codex.availableModels, ['claude-opus-4-6-c', 'claude-sonnet-4-5-c']);
+    assert.equal(importUrl.searchParams.get('model'), 'claude-opus-4-6-c');
+    assert.equal(importUrl.searchParams.get('config'), null);
   });
 
   it('builds Codex DeepSeek official API compatible gateway config without committing the real key', () => {
@@ -242,8 +332,8 @@ describe('Frist-API core flows', () => {
       modelGroup: 'DeepSeek',
     });
     const importUrl = new URL(config.ccSwitchUrl);
-    const providerConfig = JSON.parse(Buffer.from(importUrl.searchParams.get('config'), 'base64').toString('utf8'));
     const combined = `${config.authJson}\n${config.configToml}\n${config.ccSwitchUrl}`;
+    const usageScript = decodeUrlSafeBase64(importUrl.searchParams.get('usageScript'));
 
     assert.equal(config.targetSlug, 'codex');
     assert.equal(config.apiRequestUrl, 'https://api.deepseek.com/v1');
@@ -252,9 +342,9 @@ describe('Frist-API core flows', () => {
     assert.match(config.configToml, /base_url = "https:\/\/api\.deepseek\.com\/v1"/);
     assert.equal(JSON.parse(config.authJson).OPENAI_API_KEY, 'sk-redacted-deepseek-user-local');
     assert.equal(importUrl.searchParams.get('endpoint'), 'https://api.deepseek.com/v1');
-    assert.equal(importUrl.searchParams.get('modelGroup'), 'DeepSeek');
-    assert.equal(providerConfig.provider.endpoint, 'https://api.deepseek.com/v1');
-    assert.equal(providerConfig.env.OPENAI_BASE_URL, 'https://api.deepseek.com/v1');
+    assert.equal(importUrl.searchParams.get('usageBaseUrl'), 'https://api.frist.example.com');
+    assert.match(usageScript, /\/api\/frist\/key-usage/);
+    assert.equal(importUrl.searchParams.get('config'), null);
     assert.equal(combined.includes('sk-redacted-deepseek-user-local'), true);
   });
 
@@ -273,7 +363,7 @@ describe('Frist-API core flows', () => {
     assert.deepEqual(config.availableModels, ['deepseek-chat', 'deepseek-reasoner']);
   });
 
-  it('preserves Gemini, Hermes and Harmes as distinct CC Switch import targets', () => {
+  it('preserves Gemini, Hermes and Harmes client configs while mapping Harmes to the supported CC Switch app id', () => {
     for (const [target, expectedSlug] of [
       ['Gemini', 'gemini'],
       ['Hermes', 'hermes'],
@@ -287,11 +377,9 @@ describe('Frist-API core flows', () => {
         modelGroup: expectedSlug === 'gemini' ? 'Gemini' : 'OpenAI',
       });
       const importUrl = new URL(config.ccSwitchUrl);
-      const providerConfig = JSON.parse(Buffer.from(importUrl.searchParams.get('config'), 'base64').toString('utf8'));
 
       assert.equal(config.targetSlug, expectedSlug);
-      assert.equal(importUrl.searchParams.get('app'), expectedSlug);
-      assert.equal(providerConfig.provider.app, expectedSlug);
+      assert.equal(importUrl.searchParams.get('app'), expectedSlug === 'harmes' ? 'hermes' : expectedSlug);
       assert.match(config.configToml, /wire_api = "responses"/);
     }
   });
@@ -308,44 +396,42 @@ describe('Frist-API core flows', () => {
         modelGroup: 'OpenAI',
       });
       const importUrl = new URL(config.ccSwitchUrl);
-      const providerConfig = JSON.parse(Buffer.from(importUrl.searchParams.get('config'), 'base64').toString('utf8'));
+      const providerConfig =
+        target === 'OpenCode' ? JSON.parse(config.openCodeProviderJson).provider['frist-api'] : null;
       const expectedModels = ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano', 'gpt-image-2', 'gpt-5.3-codex'];
 
       assert.equal(config.modelName, 'gpt-5.5');
       assert.equal(config.defaultModel, 'gpt-5.5');
       assert.deepEqual(config.availableModels, expectedModels);
-      assert.equal(importUrl.searchParams.get('defaultModel'), 'gpt-5.5');
-      assert.equal(importUrl.searchParams.get('default_model'), 'gpt-5.5');
-      assert.deepEqual(JSON.parse(importUrl.searchParams.get('models')), expectedModels);
-      assert.deepEqual(JSON.parse(importUrl.searchParams.get('availableModels')), expectedModels);
-      assert.deepEqual(JSON.parse(importUrl.searchParams.get('available_models')), expectedModels);
-      assert.deepEqual(JSON.parse(importUrl.searchParams.get('modelList')), expectedModels);
+      assert.equal(importUrl.searchParams.get('model'), 'gpt-5.5');
+      assert.equal(importUrl.searchParams.get('availableModels'), null);
+      assert.equal(importUrl.searchParams.get('config'), null);
       if (target === 'OpenCode') {
         assert.equal(providerConfig.npm, '@ai-sdk/openai-compatible');
         assert.equal(providerConfig.options.baseURL, 'https://api.frist.example.com/v1');
         assert.deepEqual(Object.keys(providerConfig.models), expectedModels);
         assert.deepEqual(providerConfig.models['gpt-5.3-codex'], { name: 'gpt-5.3-codex' });
       } else {
-        assert.deepEqual(providerConfig.models, expectedModels);
-        assert.deepEqual(providerConfig.availableModels, expectedModels);
-        assert.deepEqual(providerConfig.available_models, expectedModels);
-        assert.deepEqual(providerConfig.modelList, expectedModels);
-        assert.deepEqual(providerConfig.provider.models, expectedModels);
-        assert.deepEqual(providerConfig.provider.availableModels, expectedModels);
-        assert.deepEqual(providerConfig.provider.available_models, expectedModels);
-        assert.deepEqual(providerConfig.provider.modelList, expectedModels);
-        assert.equal(providerConfig.defaultModel, 'gpt-5.5');
-        assert.equal(providerConfig.default_model, 'gpt-5.5');
-        assert.equal(providerConfig.provider.defaultModel, 'gpt-5.5');
-        assert.equal(providerConfig.provider.default_model, 'gpt-5.5');
-        assert.equal(providerConfig.codex.defaultModel, 'gpt-5.5');
-        assert.deepEqual(providerConfig.codex.availableModels, expectedModels);
-        assert.equal(providerConfig.features.responses, true);
-        assert.equal(providerConfig.features.streaming, true);
-        assert.equal(providerConfig.features.toolSearch, true);
+        assert.match(config.configToml, /available_models = \["gpt-5\.5", "gpt-5\.4", "gpt-5\.4-mini", "gpt-5\.4-nano", "gpt-image-2", "gpt-5\.3-codex"\]/);
       }
       assert.match(config.configToml, /available_models = \["gpt-5\.5", "gpt-5\.4", "gpt-5\.4-mini", "gpt-5\.4-nano", "gpt-image-2", "gpt-5\.3-codex"\]/);
     }
+  });
+
+  it('expands OpenAI wildcard model limits into the visible CC Switch model set', () => {
+    const models = normalizeClientAvailableModels(['gpt-*', 'dall-*'], { modelGroup: 'OpenAI' });
+    const expectedModels = [
+      'gpt-5.5',
+      'gpt-5.4',
+      'gpt-5.4-mini',
+      'gpt-image-2',
+      'gpt-image-1.5',
+      'gpt-5.3-codex',
+      'gpt-4o',
+      'gpt-5-codex',
+    ];
+
+    assert.deepEqual(models, expectedModels);
   });
 
   it('builds a copyable OpenCode provider fragment with the full model map', () => {
@@ -360,6 +446,8 @@ describe('Frist-API core flows', () => {
     });
     const fragment = JSON.parse(config.openCodeProviderJson);
     const provider = fragment.provider['frist-api'];
+    const importUrl = new URL(config.ccSwitchUrl);
+    const usageScript = decodeUrlSafeBase64(importUrl.searchParams.get('usageScript'));
 
     assert.deepEqual(Object.keys(fragment), ['provider']);
     assert.equal(provider.npm, '@ai-sdk/openai-compatible');
@@ -367,6 +455,12 @@ describe('Frist-API core flows', () => {
     assert.equal(provider.options.apiKey, 'fk_opencode_full_config');
     assert.deepEqual(Object.keys(provider.models), ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex']);
     assert.deepEqual(provider.models['gpt-5.3-codex'], { name: 'gpt-5.3-codex' });
+    assert.equal(importUrl.searchParams.get('usageEnabled'), 'true');
+    assert.equal(importUrl.searchParams.get('usageBaseUrl'), 'https://api.frist.example.com');
+    assert.equal(importUrl.searchParams.get('config'), null);
+    assert.match(usageScript, /remainingUsd/);
+    assert.match(usageScript, /extra: \[/);
+    assert.equal(usageScript.includes('extra: {'), false);
   });
 
   it('promotes official Pro aliases when those models are available to the customer', () => {
@@ -382,6 +476,27 @@ describe('Frist-API core flows', () => {
 
     assert.equal(config.defaultModel, 'gpt-5.5-pro');
     assert.deepEqual(config.availableModels, ['gpt-5.5-pro', 'gpt-5.5', 'gpt-5.4-pro', 'gpt-image-2']);
+  });
+
+  it('keeps a server-confirmed customer model as the imported default while preserving stronger choices', () => {
+    const config = buildClientConfig({
+      target: 'Codex',
+      apiKey: 'fk_customer_selected_model',
+      baseUrl: 'https://api.frist.example.com/v1',
+      model: 'gpt-5.4',
+      defaultModel: 'gpt-5.4',
+      availableModels: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-image-2'],
+      modelGroup: 'OpenAI',
+      preferExplicitDefaultModel: true,
+    });
+    const importUrl = new URL(config.ccSwitchUrl);
+
+    assert.equal(config.modelName, 'gpt-5.4');
+    assert.equal(config.defaultModel, 'gpt-5.4');
+    assert.deepEqual(config.availableModels, ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-image-2']);
+    assert.equal(importUrl.searchParams.get('model'), 'gpt-5.4');
+    assert.match(config.configToml, /model = "gpt-5\.4"/);
+    assert.match(config.configToml, /available_models = \["gpt-5\.5", "gpt-5\.4", "gpt-5\.4-mini", "gpt-image-2"\]/);
   });
 
   it('builds macOS and Windows one-click client setup commands without upstream supplier fields', () => {
@@ -410,6 +525,52 @@ describe('Frist-API core flows', () => {
     assert.equal(combined.includes('supplier-codex.example.com'), false, '用户教程不能泄露上游请求地址');
     assert.equal(combined.includes('cr_fake_supplier_secret'), false, '用户教程不能泄露上游 Key');
     assert.match(combined, /Frist-API/);
+  });
+
+  it('builds CC Switch MCP import and copyable real CLI test commands', () => {
+    const mcpUrl = new URL(buildCcSwitchMcpImportUrl());
+    const payload = JSON.parse(decodeUrlSafeBase64(mcpUrl.searchParams.get('config')));
+
+    assert.equal(mcpUrl.protocol, 'ccswitch:');
+    assert.equal(mcpUrl.searchParams.get('resource'), 'mcp');
+    assert.equal(mcpUrl.searchParams.get('apps'), 'claude,codex,gemini,opencode,hermes');
+    assert.equal(mcpUrl.searchParams.get('enabled'), 'true');
+    assert.deepEqual(Object.keys(payload.mcpServers), ['playwright', 'superpowers', 'open_computer_use']);
+    assert.deepEqual(payload.mcpServers.playwright.args, ['-y', '@playwright/mcp@latest']);
+    assert.deepEqual(payload.mcpServers.superpowers.args, ['-y', 'superpowers-mcp@latest']);
+    assert.deepEqual(payload.mcpServers.open_computer_use.args, [
+      '-y',
+      '-p',
+      'open-computer-use@latest',
+      'open-codex-computer-use-mcp',
+    ]);
+
+    const claudeConfig = buildClientConfig({
+      target: 'Claude',
+      apiKey: 'fk_claude_test_command',
+      baseUrl: 'https://api.frist.example.com/v1',
+      model: 'claude-sonnet-4-5-c',
+      modelGroup: 'Claude',
+    });
+    const claudeSetup = buildClientSetupCommands(claudeConfig);
+    assert.match(claudeSetup.test, /tmp_settings="\$\(mktemp\)"/);
+    assert.match(claudeSetup.test, /cat > "\$tmp_settings" <<'JSON'/);
+    assert.match(claudeSetup.test, /claude --bare --no-session-persistence --settings "\$tmp_settings"/);
+    assert.doesNotMatch(claudeSetup.test, /--settings '\{/);
+
+    const codexConfig = buildClientConfig({
+      target: 'Codex',
+      apiKey: 'fk_codex_test_command',
+      baseUrl: 'https://api.frist.example.com/v1',
+      model: 'gpt-5.4-mini',
+      modelGroup: 'OpenAI',
+    });
+    const codexSetup = buildClientSetupCommands(codexConfig);
+    assert.match(codexSetup.test, /CODEX_HOME="\$tmp_home" codex exec/);
+    assert.match(codexSetup.test, /--model gpt-5\.4-mini/);
+    assert.match(codexSetup.test, /\[mcp_servers\.playwright\]/);
+    assert.ok(codexConfig.ccSwitchCapabilities.manual.includes('Prompt 和 Skill 是 CC Switch 独立资源，需单独导入'));
+    assert.match(codexConfig.ccSwitchCapabilities.source, /provider\/mcp\/prompt\/skill/);
   });
 
   it('parses a pasted supplier order page into normalized inventory inputs', () => {
@@ -588,11 +749,49 @@ describe('Frist-API core flows', () => {
       label: '暂不可用',
       status: 'down',
       latencyText: '-',
+      averageLatencyText: '-',
+      successLabel: '0/1 可用',
+      availabilityText: '0%',
+      availabilityWindow: '当前库存快照',
+      monitorIntervalSeconds: 0,
       checkedAt: '2026-05-01T20:00:00Z',
       replacement: 'gpt-5.4',
     });
     assert.equal(Object.hasOwn(summary, 'channelId'), false);
     assert.equal(Object.hasOwn(summary, 'keySuffix'), false);
+  });
+
+  it('summarizes channel monitor metrics without exposing upstream implementation details', () => {
+    const summary = summarizeModelHealth({
+      model: 'gpt-5.5',
+      ok: true,
+      latencyMs: 90,
+      averageLatencyMs: 995,
+      healthyCount: 2,
+      totalCount: 3,
+      availability: '66.7%',
+      availabilityWindow: '当前库存快照',
+      monitorIntervalSeconds: 60,
+      channel: 'OpenAI 可用线路 2/3',
+      endpoint: 'https://supplier.example.com/v1',
+      rawKey: 'sk-upstream-secret',
+    });
+
+    assert.deepEqual(summary, {
+      model: 'gpt-5.5',
+      label: '正常',
+      status: 'healthy',
+      latencyText: '90ms',
+      averageLatencyText: '995ms',
+      successLabel: '2/3 可用',
+      availabilityText: '66.7%',
+      availabilityWindow: '当前库存快照',
+      monitorIntervalSeconds: 60,
+      checkedAt: undefined,
+      replacement: '',
+    });
+    assert.equal(Object.hasOwn(summary, 'endpoint'), false);
+    assert.equal(Object.hasOwn(summary, 'rawKey'), false);
   });
 });
 
@@ -603,13 +802,13 @@ describe('Frist-API user dashboard boundaries', () => {
   ].join('\n');
 
   it('keeps admin-only replenishment and pricing content out of the user page', () => {
-    for (const forbidden of ['管理端', '补号助手', '价格解析', '价格草稿', '号源归类', '上游号商', '新增渠道']) {
+    for (const forbidden of ['管理端', '补号助手', '价格解析', '价格草稿', '号源归类', '上游号商', '新增渠道', 'refresh_token']) {
       assert.equal(page.includes(forbidden), false, `${forbidden} 不应该出现在用户端`);
     }
   });
 
   it('keeps only the customer-facing dashboard jobs visible', () => {
-    for (const required of ['余额', '模型消耗', '连通', 'API', '充值', 'CC Switch']) {
+    for (const required of ['余额', '模型消耗', '异常消耗检测', '连通', 'API', '充值', 'CC Switch']) {
       assert.equal(page.includes(required), true, `${required} 应该出现在用户端`);
     }
   });
@@ -690,11 +889,11 @@ describe('Frist-API user dashboard boundaries', () => {
 
     const focusMetricCount = (userHtml.match(/class="focus-metric/g) || []).length;
     const headerBrandCount = (userHtml.match(/<strong>Frist-API<\/strong>/g) || []).length;
-    assert.ok(focusMetricCount >= 6, '用户首屏应该补足请求、消费、Token 和性能指标');
+    assert.ok(focusMetricCount >= 4, '用户首屏应该只保留最关键的余额、Key、今日和成功率指标');
     assert.equal((userHtml.match(/data-hero-primary-import/g) || []).length, 1, '首屏只保留一个主行动入口');
     assert.equal(headerBrandCount, 1, '顶部品牌 Logo 应该是全站唯一可见品牌块，侧栏不再重复');
-    assert.equal(userHtml.includes('Commercial API Gateway'), true, '首屏需要保留商业化品牌信号');
-    assert.equal(userHtml.includes('Commercial API Gateway'), true, '首屏需要变成操作工作台而不是营销大横幅');
+    assert.equal(userHtml.includes('Frist Gateway'), true, '首屏需要保留简短品牌信号');
+    assert.equal(userHtml.includes('Commercial API Gateway'), false, '首屏不再使用冗长英文营销文案');
     assert.equal(userHtml.includes('月卡 Pro'), false, '公开页面初始 HTML 不应该闪现演示套餐');
     assert.equal(userHtml.includes('¥428.90'), false, '公开页面初始 HTML 不应该闪现演示消耗金额');
     assert.equal(userHtml.includes('>DJ<'), false, '公开页面初始 HTML 不应该闪现演示用户缩写');
@@ -724,13 +923,17 @@ describe('Frist-API user dashboard boundaries', () => {
     const actionDock = userHtml.match(/<nav class="action-dock workspace-nav"[\s\S]*?<\/nav>/)?.[0] || '';
 
     assert.equal(userHtml.includes('data-workspace-rail'), true, '用户端应该保留紧凑工作台导航');
-    for (const required of ['仪表盘', 'API Key', '充值', 'CC Switch', '广场']) {
+    for (const required of ['首页', 'API Key', 'CC Switch', '测试', '资料']) {
       assert.equal(actionDock.includes(required), true, `${required} 应该保留为工作台直接入口`);
     }
+    for (const hidden of ['充值', '邀请', '教程']) {
+      assert.equal(actionDock.includes(hidden), false, `${hidden} 入口当前应从工作台隐藏`);
+    }
+    assert.equal(userHtml.includes('data-import-fallback'), true, 'CC Switch 协议无响应时要有复制降级提示');
     assert.equal(actionDock.includes('>01<'), false, '侧栏导航不应该再显示数字编号');
     assert.equal(actionDock.includes('>13<'), false, '侧栏导航不应该再显示数字编号');
 
-    assert.match(actionDock, /class="is-priority-path"[\s\S]*?CC Switch/, '导入入口应该成为工作台里的主路径');
+    assert.equal(actionDock.includes('is-priority-path'), false, '首页和 CC Switch 不应再用特殊大框样式');
 
     for (const link of actionDock.match(/<a [^>]+>/g) || []) {
       assert.match(link, /href="#[^"]+"/, '每个快捷入口都要有 hash 跳转');
@@ -740,10 +943,30 @@ describe('Frist-API user dashboard boundaries', () => {
     assert.equal(userHtml.includes('nav-group'), false, '用户端不再使用不可点击分组标题');
     assert.equal(userHtml.includes('nav-divider'), false, '用户端不再用文字分组隔断堆密度');
     assert.equal(readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8').includes('rgba(19, 35, 30, 0.95)'), false);
-    assert.equal(readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8').includes('position: sticky'), false);
+    assert.equal(readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8').includes('position: sticky'), true);
   });
 
-  it('ships the visual hooks for the Refero-style console skin, loading states and reduced-motion friendly animation', () => {
+  it('keeps internal Claude route ids out of visible playground labels', () => {
+    const appScript = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
+
+    assert.equal(appScript.includes('function publicModelMetaLabel'), true);
+    assert.equal(appScript.includes('const metaLabel = publicModelMetaLabel(item.model, item.family);'), true);
+    assert.equal(
+      appScript.includes('<small title="${escapeHtml(item.model)}">${escapeHtml(item.family)} · ${escapeHtml(metaLabel)}</small>'),
+      true,
+    );
+    assert.equal(
+      appScript.includes('<p title="${escapeHtml(selected.model)}">${escapeHtml(summary.label)} · ${escapeHtml(selectedMeta)}</p>'),
+      true,
+    );
+    assert.equal(
+      appScript.includes("<small>${escapeHtml(item.family)}${publicModelLabel(item.model) === item.model ? '' : ` · ${escapeHtml(item.model)}`}</small>"),
+      false,
+      '测试台副标题不应该继续把 claude-*-c 这类内部路由 ID 作为可见模型名',
+    );
+  });
+
+  it('ships the visual hooks for the Tabcode-style console skin, loading states and reduced-motion friendly animation', () => {
     const userHtml = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
     const scriptsAndStyles = [
       readFileSync(new URL('../src/app.js', import.meta.url), 'utf8'),
@@ -753,20 +976,25 @@ describe('Frist-API user dashboard boundaries', () => {
     for (const required of [
       'renderProviderSummary',
       'renderClientConfig',
+      'handleImportProtocolFallback',
+      'copyTextToClipboard',
       'data-copy-auth-json',
       'data-copy-config-toml',
       'workspace-layout',
       'workspace-rail',
       'console-metrics',
-      'data-design-system="refero-hyperstudio"',
+      'data-design-system="tabcode-console"',
       'renderLoadingState',
       'renderSkeletonRows',
       'renderEmptyState',
       'userFacingLoadError',
-      '后端暂不可用，当前显示空数据',
+      '离线',
       'data-server-recovery',
       'data-retry-dashboard',
       'handleRetryDashboard',
+      "signalAction('success')",
+      "return '已连接'",
+      "return '后端暂不可用'",
       'aria-current',
       'skeleton-row',
       'empty-row--stack',
@@ -775,16 +1003,46 @@ describe('Frist-API user dashboard boundaries', () => {
       'playground-model-row',
       'selected-model-panel',
       'playground-diagnostics',
-      'Refero Hyperstudio skin',
-      '#e7c59a',
-      '#050505',
-      'panelReveal',
+      'Tabcode console layer',
+      '--workspace: #0b0d10',
+      '#ffffff',
+      '--primary: #8fb5ff',
+      'grid-template-columns: 160px minmax(0, 1fr)',
+      'height: 54px',
+      'border-radius: 14px',
+      'content-visibility: auto',
       '@media (prefers-reduced-motion: reduce)',
+      'Tabcode contrast guard',
+      'styles.css?v=20260508-visual-qa2',
+      './serverClient.js?v=20260508-visual-qa2',
+      'body[data-design-system="tabcode-console"] .back-home',
+      'body[data-design-system="tabcode-console"] .terminal-head .text-action',
+      'body[data-design-system="tabcode-console"] .chat-delete',
+      'officialModelTemplateByGroup',
+      'gpt-5.4-mini',
+      'gpt-image-2',
+      'gpt-5.3-codex',
+      'normalizeClientAvailableModels(config?.availableModels',
+      'linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 52%)',
+      'background: var(--primary)',
     ]) {
-      assert.equal(`${userHtml}\n${scriptsAndStyles}`.includes(required), true, `${required} 应该支撑用户端深色控制台、状态和动效`);
+      assert.equal(`${userHtml}\n${scriptsAndStyles}`.includes(required), true, `${required} 应该支撑用户端 Tabcode 控制台、状态和动效`);
     }
 
     assert.equal(scriptsAndStyles.includes('transition: all'), false, '用户端动画不能使用 transition: all');
+    assert.equal(scriptsAndStyles.includes('appleStatusPulse'), false, '旧 Apple 状态动效不应再存在');
+    assert.match(scriptsAndStyles, /body\[data-design-system="tabcode-console"\] \.primary-action,[\s\S]*?color: #07080a;/);
+    assert.match(scriptsAndStyles, /body\[data-design-system="tabcode-console"\] \.back-home,[\s\S]*?color: var\(--ink\);/);
+    assert.doesNotMatch(
+      scriptsAndStyles,
+      /body\[data-design-system="tabcode-console"\] \.brand-mark \{[^}]*?background: var\(--paper\);/,
+      'Tabcode 皮肤不能替换 Frist-API 原品牌 Logo',
+    );
+    assert.match(
+      scriptsAndStyles,
+      /body\[data-design-system="tabcode-console"\] \.export-model-chip[\s\S]*?color: var\(--ink\);/,
+      '导出模型 chip 必须在深色控制台里清晰可读',
+    );
     assert.equal(userHtml.includes('aria-busy="true"'), true, '主内容初始加载阶段应该向辅助技术声明 busy');
   });
 });
