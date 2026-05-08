@@ -15,6 +15,7 @@ function init() {
   document.querySelector('[data-admin-2fa-verify]').addEventListener('click', verifyAdmin2fa);
   document.querySelector('[data-admin-readiness-refresh]').addEventListener('click', loadProductionReadiness);
   document.querySelector('[data-admin-credit]').addEventListener('click', creditCustomer);
+  document.querySelector('[data-admin-password-reset]').addEventListener('click', resetCustomerPassword);
   document.querySelector('[data-admin-parse-order]').addEventListener('click', parseOrder);
   document.querySelector('[data-admin-replenish]').addEventListener('click', replenish);
   document.querySelector('[data-admin-refresh]').addEventListener('click', loadInventory);
@@ -113,6 +114,28 @@ async function creditCustomer() {
     });
     renderAudit(result.events || []);
     setMessage(`入账 ${result.account.balance}`);
+  } catch (error) {
+    setMessage(error.message);
+  }
+}
+
+async function resetCustomerPassword() {
+  state.adminToken = document.querySelector('[data-admin-token]').value.trim();
+  window.localStorage.setItem(STORAGE_KEY, state.adminToken);
+
+  const payload = {
+    email: document.querySelector('[data-admin-reset-email]').value,
+    password: document.querySelector('[data-admin-reset-password]').value,
+  };
+
+  try {
+    const result = await adminRequest('/api/admin/customers/password', {
+      method: 'POST',
+      body: payload,
+    });
+    document.querySelector('[data-admin-reset-password]').value = '';
+    renderAudit(result.events || []);
+    setMessage(result.message || '密码已重置');
   } catch (error) {
     setMessage(error.message);
   }

@@ -410,6 +410,9 @@ describe('Frist-API page business wiring', () => {
       "element.setAttribute('aria-label'",
       "signalScoped('[data-auth-feedback]'",
       "signalScoped('[data-key-feedback]'",
+      "readableErrorMessage(serverError, '登录失败')",
+      "readableErrorMessage(serverError, '注册失败')",
+      "setScopedFeedback('[data-auth-feedback]', message, 'error')",
       'setButtonBusy(createKey',
       'setButtonBusy(login',
       'handleRefreshHealth(event)',
@@ -438,6 +441,12 @@ describe('Frist-API page business wiring', () => {
     ]) {
       assert.equal(styles.includes(required), true, `${required} 应该支撑明显反馈和升级后的连通性展示`);
     }
+
+    assert.equal(
+      appScript.includes("signalScoped('[data-auth-feedback]', 'error');\n    await refreshCaptchaAfterAuthError(serverError);"),
+      false,
+      '登录失败不能再把服务端账号错误统一翻译成后端不可用',
+    );
   });
 
   it('renders client target selection and generated config snippets on the import page', () => {

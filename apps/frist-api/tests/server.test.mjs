@@ -780,6 +780,8 @@ describe('Frist-API public server chain', () => {
     const fixture = await createServerFixture({
       requireEmailVerification: false,
       sessionSecret: 'session-secret-with-enough-randomness-2026',
+      passwordHashSecret: 'password-hash-secret-with-enough-randomness-2026',
+      legacyPasswordHashSecrets: ['session-secret-with-enough-randomness-2026'],
     });
 
     try {
@@ -807,6 +809,52 @@ describe('Frist-API public server chain', () => {
       const upgraded = data.users.find((item) => item.email === 'hash-upgrade@example.com');
       assert.match(upgraded.passwordHash, /^pbkdf2-sha256\$210000\$/);
       assert.equal(upgraded.passwordHash.includes('LegacyPass123!'), false);
+      assert.equal(data.events.some((event) => event.type === 'password_hash_upgraded'), true);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('keeps old customer passwords valid after rotating the session secret', async () => {
+    const fixture = await createServerFixture({
+      requireEmailVerification: false,
+      sessionSecret: 'new-session-secret-with-enough-randomness-2026',
+      passwordHashSecret: 'new-password-hash-secret-with-enough-randomness-2026',
+      legacyPasswordHashSecrets: ['old-session-secret-with-enough-randomness-2026'],
+    });
+
+    try {
+      const legacyHash = legacyPasswordHash('StillWorks123!', 'old-session-secret-with-enough-randomness-2026');
+      await fixture.writeData({
+        users: [
+          {
+            id: 'user-legacy-session',
+            email: 'legacy-session@example.com',
+            displayName: 'legacy-session',
+            emailVerified: true,
+            isAdmin: false,
+            plan: '默认套餐',
+            renewalDate: '2026-06-07',
+            balanceCents: 0,
+            packageQuotaCents: 0,
+            boosterQuotaCents: 0,
+            passwordHash: legacyHash,
+            createdAt: '2026-05-08T00:00:00.000Z',
+            updatedAt: '2026-05-08T00:00:00.000Z',
+          },
+        ],
+      });
+
+      const loggedIn = await fixture.request('/api/frist/login', {
+        method: 'POST',
+        body: { email: 'legacy-session@example.com', password: 'StillWorks123!' },
+      });
+      assert.equal(loggedIn.status, 200);
+
+      const data = await fixture.readData();
+      const upgraded = data.users.find((item) => item.email === 'legacy-session@example.com');
+      assert.match(upgraded.passwordHash, /^pbkdf2-sha256\$210000\$/);
+      assert.notEqual(upgraded.passwordHash, legacyHash);
       assert.equal(data.events.some((event) => event.type === 'password_hash_upgraded'), true);
     } finally {
       await fixture.close();
@@ -957,6 +1005,42 @@ describe('Frist-API public server chain', () => {
         body: { email: 'change-password@example.com', password: 'NewPass123!' },
       });
       assert.equal(newLogin.status, 200);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('lets admins recover a customer account when email reset delivery is unavailable', async () => {
+    const fixture = await createServerFixture();
+
+    try {
+      await fixture.createVerifiedCustomer('admin-reset@example.com');
+      const reset = await fixture.request('/api/admin/customers/password', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: { email: 'admin-reset@example.com', password: 'RecoveredPass123!' },
+      });
+      assert.equal(reset.status, 200);
+      assert.equal(reset.json.user.email, 'admin-reset@example.com');
+      assert.equal(reset.text.includes('RecoveredPass123!'), false);
+
+      const oldLogin = await fixture.request('/api/frist/login', {
+        method: 'POST',
+        body: { email: 'admin-reset@example.com', password: 'TestPass123!' },
+      });
+      assert.equal(oldLogin.status, 401);
+
+      const newLogin = await fixture.request('/api/frist/login', {
+        method: 'POST',
+        body: { email: 'admin-reset@example.com', password: 'RecoveredPass123!' },
+      });
+      assert.equal(newLogin.status, 200);
+
+      const data = await fixture.readData();
+      const user = data.users.find((item) => item.email === 'admin-reset@example.com');
+      assert.match(user.passwordHash, /^pbkdf2-sha256\$210000\$/);
+      assert.equal(user.passwordHash.includes('RecoveredPass123!'), false);
+      assert.equal(data.events.some((event) => event.type === 'admin_password_reset'), true);
     } finally {
       await fixture.close();
     }
@@ -4842,6 +4926,8 @@ async function createServerFixture(options = {}) {
     newApiGatewayEnabled: options.newApiGatewayEnabled,
     newApiGatewayBaseUrl: options.newApiGatewayBaseUrl,
     dataEncryptionKey: options.dataEncryptionKey,
+    passwordHashSecret: options.passwordHashSecret,
+    legacyPasswordHashSecrets: options.legacyPasswordHashSecrets,
     accountEmailSender: options.accountEmailSender,
     passwordResetTtlMs: options.passwordResetTtlMs,
     paymentEnabled: options.paymentEnabled,

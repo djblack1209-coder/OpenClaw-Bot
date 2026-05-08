@@ -2623,8 +2623,9 @@ async function handleRegisterAccount(register) {
     signalScoped('[data-auth-feedback]', 'success');
     toggleAuthPanel(false);
   } catch (serverError) {
-    signalAction('error');
-    signalScoped('[data-auth-feedback]', 'error');
+    const message = readableErrorMessage(serverError, '注册失败');
+    signalAction(message, 'error');
+    setScopedFeedback('[data-auth-feedback]', message, 'error');
     await refreshCaptchaAfterAuthError(serverError);
   } finally {
     setButtonBusy(register, false);
@@ -2649,8 +2650,9 @@ async function handleLoginAccount(login) {
     signalScoped('[data-auth-feedback]', 'success');
     toggleAuthPanel(false);
   } catch (serverError) {
-    signalAction('error');
-    signalScoped('[data-auth-feedback]', 'error');
+    const message = readableErrorMessage(serverError, '登录失败');
+    signalAction(message, 'error');
+    setScopedFeedback('[data-auth-feedback]', message, 'error');
     await refreshCaptchaAfterAuthError(serverError);
   } finally {
     setButtonBusy(login, false);
@@ -2682,9 +2684,9 @@ async function handlePasswordResetRequest(button) {
     const result = await serverClient.requestPasswordReset({ email });
     state.passwordResetRequested = true;
     renderAuthPanel();
-    signalScoped('[data-auth-feedback]', 'success');
+    setScopedFeedback('[data-auth-feedback]', result.message || '重置验证码已发送', 'success');
   } catch (serverError) {
-    signalScoped('[data-auth-feedback]', 'error');
+    setScopedFeedback('[data-auth-feedback]', readableErrorMessage(serverError, '发送失败'), 'error');
   } finally {
     setButtonBusy(button, false);
   }
@@ -2706,9 +2708,9 @@ async function handlePasswordResetConfirm(button) {
     if (resetPasswordInput) resetPasswordInput.value = '';
     state.passwordResetRequested = false;
     renderAuthPanel();
-    signalScoped('[data-auth-feedback]', 'success');
+    setScopedFeedback('[data-auth-feedback]', '密码已重置，请用新密码登录', 'success');
   } catch (serverError) {
-    signalScoped('[data-auth-feedback]', 'error');
+    setScopedFeedback('[data-auth-feedback]', readableErrorMessage(serverError, '重置失败'), 'error');
   } finally {
     setButtonBusy(button, false);
   }
@@ -3029,6 +3031,12 @@ function signalAction(type = 'success') {
 
 function signalScoped(selector, type = 'success') {
   setScopedFeedback(selector, feedbackLabel(type), type);
+}
+
+function readableErrorMessage(error, fallback = '操作失败') {
+  const message = String(error?.message || '').trim();
+  if (message && !/^请求失败:\s*\d+$/i.test(message)) return message;
+  return fallback;
 }
 
 function feedbackLabel(type = 'success') {
