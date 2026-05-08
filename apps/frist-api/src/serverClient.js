@@ -1,6 +1,7 @@
 export function createFristApiBrowserClient(options = {}) {
   const baseUrl = String(options.baseUrl || window.location.origin).replace(/\/+$/, '');
   const fetchImpl = options.fetchImpl || window.fetch.bind(window);
+  let csrfToken = '';
 
   async function request(path, requestOptions = {}) {
     const response = await fetchImpl(`${baseUrl}${path}`, {
@@ -8,12 +9,16 @@ export function createFristApiBrowserClient(options = {}) {
       credentials: 'include',
       headers: {
         ...(requestOptions.body ? { 'content-type': 'application/json' } : {}),
+        ...(csrfToken && !['GET', 'HEAD', 'OPTIONS'].includes(String(requestOptions.method || 'GET').toUpperCase()) ? { 'x-csrf-token': csrfToken } : {}),
         ...(requestOptions.headers || {}),
       },
       body: requestOptions.body ? JSON.stringify(requestOptions.body) : undefined,
     });
     const text = await response.text();
     const payload = text ? JSON.parse(text) : {};
+    if (payload.csrfToken) {
+      csrfToken = payload.csrfToken;
+    }
     if (!response.ok) {
       const error = new Error(payload.error || `请求失败: ${response.status}`);
       error.status = response.status;
@@ -54,6 +59,7 @@ export function createFristApiBrowserClient(options = {}) {
     requestPasswordReset: (body) => request('/api/frist/password-reset/request', { method: 'POST', body }),
     confirmPasswordReset: (body) => request('/api/frist/password-reset/confirm', { method: 'POST', body }),
     verify: (body) => request('/api/frist/verify', { method: 'POST', body }),
+    updateProfile: (body) => request('/api/frist/profile', { method: 'PATCH', body }),
     recharge: (body) => request('/api/frist/recharge', { method: 'POST', body }),
     redeem: (body) => request('/api/frist/redeem', { method: 'POST', body }),
     saveBalanceAlert: (body) => request('/api/frist/balance-alert', { method: 'PUT', body }),
@@ -62,8 +68,10 @@ export function createFristApiBrowserClient(options = {}) {
     setKeyEnabled: (id, body) => request(`/api/frist/token/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
     renameKey: (id, body) => request(`/api/frist/token/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
     deleteKey: (id) => request(`/api/frist/token/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-    getImportUrl: ({ target, model }) => {
+    getImportUrl: ({ target, model, modelGroup, keyId }) => {
       const params = new URLSearchParams({ target, model });
+      if (modelGroup) params.set('modelGroup', modelGroup);
+      if (keyId) params.set('keyId', keyId);
       return request(`/api/frist/import-url?${params.toString()}`);
     },
     loadDashboard: () => request('/api/frist/dashboard'),
@@ -89,6 +97,8 @@ export function normalizeFristDashboard(payload, fallback = createEmptyDashboard
     accountSummary: {
       ...accountFallback,
       userInitials: user.userInitials || accountFallback.userInitials,
+      displayName: user.displayName || accountFallback.displayName || '',
+      avatarUrl: user.avatarUrl || accountFallback.avatarUrl || '',
       plan: account.plan || accountFallback.plan,
       renewalDate: account.renewalDate || accountFallback.renewalDate,
       balance: account.balance || accountFallback.balance,
@@ -104,6 +114,7 @@ export function normalizeFristDashboard(payload, fallback = createEmptyDashboard
       averageLatency: account.averageLatency || accountFallback.averageLatency || '-',
       successRate: account.successRate || accountFallback.successRate || '0%',
       email: user.email || accountFallback.email || '',
+      emailMasked: user.emailMasked || maskEmail(user.email || accountFallback.email || ''),
       isAdmin: Boolean(user.isAdmin || accountFallback.isAdmin),
     },
     apiKeys: apiKeys.map((key) => ({
@@ -119,10 +130,11 @@ export function normalizeFristDashboard(payload, fallback = createEmptyDashboard
       modelGroup: key.modelGroup || 'All',
     })),
     modelUsage: modelUsage.length > 0 ? normalizeModelUsage(modelUsage) : zeroModelUsage(fallback.modelUsage),
-    channelChecks: normalizeChannelChecks(channelChecks, fallback.channelChecks || []),
+    channelChecks: normalizeChannelChecks(channelChecks),
     modelCatalog: normalizeModelCatalog(modelCatalog, fallback.modelCatalog || []),
     rechargeOptions: normalizeRechargeOptions(rechargeOptions, fallback.rechargeOptions || []),
     usageRecords: normalizeUsageRecords(payload.usageRecords || fallback.usageRecords || []),
+    usageAnomalies: normalizeUsageAnomalies(payload.usageAnomalies || fallback.usageAnomalies || []),
     recentLogs: normalizeRecentLogs(payload.recentLogs || fallback.recentLogs || []),
     balanceAlert,
   };
@@ -147,6 +159,9 @@ function createEmptyDashboard() {
       averageLatency: '-',
       successRate: '0%',
       email: '',
+      emailMasked: '',
+      displayName: '',
+      avatarUrl: '',
       isAdmin: false,
     },
     apiKeys: [],
@@ -156,6 +171,7 @@ function createEmptyDashboard() {
     modelUsage: [],
     modelCatalog: [],
     usageRecords: [],
+    usageAnomalies: [],
     recentLogs: [],
     rechargeOptions: [],
     balanceAlert: {
@@ -220,19 +236,35 @@ function normalizeChannelChecks(rows, fallbackRows = []) {
     const fallback = fallbackRows[index % Math.max(fallbackRows.length, 1)] || {};
     const ok = Boolean(row.ok);
     const model = normalizeOfficialModelName(row.model || fallback.model || '');
+    const healthyCount = Number(row.healthyCount ?? fallback.healthyCount ?? (ok ? 1 : 0));
+    const totalCount = Number(row.totalCount ?? fallback.totalCount ?? (healthyCount || 1));
+    const slowCount = Number(row.slowCount ?? fallback.slowCount ?? 0);
+    const downCount = Number(row.downCount ?? fallback.downCount ?? Math.max(0, totalCount - healthyCount));
+    const monitorStatus = row.monitorStatus || row.officialStatus || fallback.monitorStatus || fallback.officialStatus || (ok ? '正常' : '不可用');
     return {
       provider: row.provider || fallback.provider || 'Claude',
       channel: row.channel || `${row.provider || 'Claude'} 线路`,
       model: model || 'unknown',
-      endpoint: fallback.endpoint || '/v1/chat/completions',
+      endpoint: row.endpoint || fallback.endpoint || '/v1',
       ok,
       maintenance: false,
       latencyMs: Number(row.latencyMs || fallback.latencyMs || 0),
       pingMs: Number(row.pingMs || fallback.pingMs || 0),
+      averageLatencyMs: Number(row.averageLatencyMs || fallback.averageLatencyMs || row.latencyMs || fallback.latencyMs || 0),
       checkedAt: row.checkedAt || new Date().toISOString(),
-      officialStatus: ok ? '正常' : '不可用',
+      officialStatus: monitorStatus,
+      monitorStatus,
       availability: row.availability || (ok ? '99.9%' : '0%'),
-      successLabel: ok ? '最近可用' : '等待补充',
+      availability7d: Number(row.availability7d ?? row.availability_7d ?? fallback.availability7d ?? fallback.availability_7d ?? (ok ? 99.9 : 0)),
+      availability_7d: Number(row.availability_7d ?? row.availability7d ?? fallback.availability_7d ?? fallback.availability7d ?? (ok ? 99.9 : 0)),
+      availabilityWindow: row.availabilityWindow || fallback.availabilityWindow || '当前库存快照',
+      healthyCount,
+      totalCount,
+      downCount,
+      slowCount,
+      successLabel: row.successLabel || fallback.successLabel || `${healthyCount}/${totalCount} 可用`,
+      latencyLabel: row.latencyLabel || fallback.latencyLabel || (ok ? `${Number(row.latencyMs || fallback.latencyMs || 0)}ms` : '未检测到可用线路'),
+      monitorIntervalSeconds: Number(row.monitorIntervalSeconds || fallback.monitorIntervalSeconds || 0),
       history: Array.isArray(row.history) && row.history.length
         ? row.history
         : ok
@@ -245,15 +277,29 @@ function normalizeChannelChecks(rows, fallbackRows = []) {
 function normalizeUsageRecords(rows) {
   return (Array.isArray(rows) ? rows : []).map((row, index) => ({
     id: row.id || `usage-${index + 1}`,
-    apiKey: row.apiKey || row.key || 'fk-live-******',
+    apiKey: row.apiKey || row.key || 'sk-******',
     model: row.model || 'unknown',
     inferenceEffort: row.inferenceEffort || row.reasoningEffort || '默认',
     endpoint: row.endpoint || '-',
     type: row.type || '文本',
     billingMode: row.billingMode || '余额',
+    client: row.client || 'API',
     tokens: row.tokens || '0',
     amount: row.amount || '$0.00',
+    amountCny: row.amountCny || '',
+    latency: row.latency || '-',
     status: row.status || 'success',
+    at: row.at || '',
+  }));
+}
+
+function normalizeUsageAnomalies(rows) {
+  return (Array.isArray(rows) ? rows : []).map((row, index) => ({
+    id: row.id || `usage-anomaly-${index + 1}`,
+    severity: ['critical', 'warning', 'info'].includes(row.severity) ? row.severity : 'info',
+    title: row.title || '异常检测',
+    detail: row.detail || '',
+    action: row.action || '查看记录',
     at: row.at || '',
   }));
 }
@@ -276,7 +322,7 @@ function normalizeModelCatalog(rows, fallbackRows = []) {
     family: row.family || row.provider || 'Other',
     tagline: row.tagline || row.description || '当前可用',
     context: row.context || '按模型能力',
-    price: row.price || row.billing || '按后台价格',
+    price: row.price || row.billing || '官方价格待同步',
     available: row.available !== false,
   }));
 }
@@ -315,5 +361,12 @@ function normalizeBalanceAlert(row = {}, fallback = {}) {
 function moneyToNumber(value) {
   const number = Number(String(value || '').replace(/[^\d.-]/g, ''));
   return Number.isFinite(number) ? number : 0;
+}
+
+function maskEmail(value) {
+  const email = String(value || '');
+  const [name = '', domain = ''] = email.split('@');
+  if (!name || !domain) return email;
+  return `${name.slice(0, 2)}***@${domain}`;
 }
 import { normalizeOfficialModelName } from './core.js';

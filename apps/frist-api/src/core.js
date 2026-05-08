@@ -75,6 +75,21 @@ const MODEL_GROUP_FALLBACKS = Object.freeze({
   DeepSeek: 'deepseek-v4-flash',
   Gemini: 'gemini-2.5-flash',
 });
+const MODEL_GROUP_OFFICIAL_MODELS = Object.freeze({
+  OpenAI: Object.freeze([
+    'gpt-5.5',
+    'gpt-5.4',
+    'gpt-5.4-mini',
+    'gpt-image-2',
+    'gpt-image-1.5',
+    'gpt-5.3-codex',
+    'gpt-4o',
+    'gpt-5-codex',
+  ]),
+  DeepSeek: Object.freeze(['deepseek-v4-flash', 'deepseek-v4-pro']),
+  Claude: Object.freeze(['claude-opus-4-6-thinking-c', 'claude-opus-4-6-c', 'claude-sonnet-4-5-c']),
+  Gemini: Object.freeze(['gemini-2.5-flash']),
+});
 
 const HEALTH_LABELS = {
   healthy: '正常',
@@ -91,9 +106,6 @@ const OFFICIAL_MODEL_ALIASES = new Map([
   ['image2', 'gpt-image-2'],
   ['gpt-image2', 'gpt-image-2'],
   ['gpt_image_2', 'gpt-image-2'],
-  ['claude-haiku-4-5-20251001', 'claude-sonnet-4-5-c'],
-  ['claude-haiku-4-5', 'claude-sonnet-4-5-c'],
-  ['claude-haiku', 'claude-sonnet-4-5-c'],
   ['claude-sonnet-4-5', 'claude-sonnet-4-5-c'],
   ['claude-opus-4-6', 'claude-opus-4-6-c'],
   ['claude-opus-4-6-thinking', 'claude-opus-4-6-thinking-c'],
@@ -138,6 +150,7 @@ const CODEX_DEFAULT_MCP_SERVERS = Object.freeze({
     args: Object.freeze(['-y', '-p', 'open-computer-use@latest', 'open-codex-computer-use-mcp']),
   }),
 });
+const CC_SWITCH_MCP_APPS = Object.freeze(['claude', 'codex', 'gemini', 'opencode', 'hermes']);
 
 export function normalizeBaseUrl(value) {
   const trimmed = String(value || '').trim();
@@ -158,128 +171,89 @@ export function normalizeOfficialModelList(models = []) {
   return [...new Set((Array.isArray(models) ? models : []).map(normalizeOfficialModelName).filter(Boolean))];
 }
 
+export function normalizeClientAvailableModels(availableModels = [], options = {}) {
+  return normalizeAvailableModels(availableModels, options);
+}
+
 export function buildCcSwitchImportUrl({
   target,
   apiKey,
   baseUrl,
+  usageBaseUrl,
   model,
   defaultModel,
   availableModels,
   modelGroup,
   planExpiresAt,
   sdkOptions,
+  preferExplicitDefaultModel = false,
 }) {
   const profile = clientProfile(target);
+  const normalizedInputBaseUrl = normalizeBaseUrl(baseUrl);
   const normalizedBaseUrl = gatewayBaseUrlForModelGroup(baseUrl, modelGroup);
   const clientBaseUrl = clientBaseUrlForProfile(profile, normalizedBaseUrl);
   const modelList = normalizeAvailableModels(availableModels, { model, defaultModel, modelGroup });
-  const safeModel = chooseDefaultModel({ model, defaultModel, availableModels: modelList, modelGroup });
+  const requestedModel = normalizeOfficialModelName(model);
+  const explicitDefaultModel = normalizeOfficialModelName(defaultModel);
+  const safeModel =
+    explicitDefaultModel && explicitDefaultModel === requestedModel && modelList.includes(explicitDefaultModel)
+      ? explicitDefaultModel
+      : chooseDefaultModel({ model, defaultModel, availableModels: modelList, modelGroup });
   const safeKey = String(apiKey || '').trim();
   const officialUrl = brandOfficialUrl(clientBaseUrl);
   const remark = buildImportRemark({ profile, modelGroup, planExpiresAt });
-  const interfaceFormat = interfaceFormatForProfile(profile);
-  const authField = authFieldForProfile(profile);
-  const contextWindow = 1_000_000;
-  const compressionThreshold = 900_000;
-  const safeSdkOptions = normalizeSdkOptions(sdkOptions);
-  const mcpServers = profile.slug === 'codex' ? defaultCodexMcpServers() : undefined;
-  const authJson = buildClientAuthJson({
-    profile,
-    apiKey: safeKey,
-    baseUrl: clientBaseUrl,
-    model: safeModel,
-    availableModels: modelList,
-  });
-  const configToml = buildResponsesConfigToml({
-    baseUrl: normalizedBaseUrl,
-    model: safeModel,
-    availableModels: modelList,
-    modelGroup,
-    providerName: profile.providerName,
-    contextWindow,
-    compressionThreshold,
-    sdkOptions: safeSdkOptions,
-    mcpServers,
-  });
-  const providerConfig = buildCcSwitchProviderConfig({
-    profile,
-    apiKey: safeKey,
-    baseUrl: clientBaseUrl,
-    openAiBaseUrl: normalizedBaseUrl,
-    model: safeModel,
-    availableModels: modelList,
-    defaultModel: safeModel,
-    modelGroup,
-    officialUrl,
-    remark,
-    authJson,
-    configToml,
-    sdkOptions: safeSdkOptions,
-    interfaceFormat,
-    mcpServers,
-  });
+  const usageConfig = buildCcSwitchUsageConfig({ apiKey: safeKey, baseUrl: usageBaseUrl || normalizedInputBaseUrl });
+  const claudeModelDefaults = profile.slug === 'claude' ? buildClaudeDeepLinkModelDefaults(modelList) : {};
+  const ccSwitchApp = ccSwitchAppSlug(profile);
 
   const params = new URLSearchParams({
     resource: 'provider',
-    app: profile.slug,
+    app: ccSwitchApp,
     name: profile.providerName,
     endpoint: clientBaseUrl,
     apiKey: safeKey,
     homepage: officialUrl,
+    enabled: 'true',
     model: safeModel,
-    models: JSON.stringify(modelList),
-    availableModels: JSON.stringify(modelList),
-    available_models: JSON.stringify(modelList),
-    modelList: JSON.stringify(modelList),
-    model_list: JSON.stringify(modelList),
-    supportedModels: JSON.stringify(modelList),
+    ...claudeModelDefaults,
     notes: remark,
-    configFormat: 'json',
-    config: base64EncodeUtf8(JSON.stringify(providerConfig)),
-    provider: 'frist-api',
-    providerName: profile.providerName,
-    remark,
-    officialUrl,
-    target: profile.slug,
-    client: profile.slug,
-    baseUrl: clientBaseUrl,
-    apiRequestUrl: clientBaseUrl,
-    modelName: safeModel,
-    defaultModel: safeModel,
-    default_model: safeModel,
-    selectedModel: safeModel,
-    modelGroup: normalizeModelGroup(modelGroup),
-    interfaceFormat,
-    apiFormat: interfaceFormat,
-    api_format: interfaceFormat,
-    wireApi: interfaceFormat,
-    authField,
-    authHeaderName: 'authorization',
-    authHeaderValue: authField === 'OPENAI_API_KEY' ? 'Bearer ${OPENAI_API_KEY}' : '${ANTHROPIC_AUTH_TOKEN}',
-    contextWindow: String(contextWindow),
-    compressionThreshold: String(compressionThreshold),
-    reasoningEffort: 'xhigh',
-    billingNote: '按官方标准计费，Frist-API 自动折扣结算',
-    teammatesMode: 'false',
-    responsesEnabled: 'true',
-    streamingEnabled: 'true',
-    imagesEnabled: String(modelList.some((item) => /image|dall/i.test(item))),
-    toolSearchEnabled: 'true',
-    maxThinkingStrength: 'xhigh',
-    developerModeRequired: String(profile.slug === 'claude'),
-    routeOpenAiModels: String(profile.slug === 'claude' && inferProviderGroup(safeModel) === 'OpenAI'),
-    routeClaudeModels: String(profile.slug === 'codex' && inferProviderGroup(safeModel) === 'Claude'),
-    sdkOptions: JSON.stringify(safeSdkOptions),
-    authJson,
-    configToml,
+    usageEnabled: 'true',
+    usageScript: base64EncodeUtf8UrlSafe(usageConfig.script),
+    usageApiKey: safeKey,
+    usageBaseUrl: usageConfig.baseUrl,
+    usageAutoInterval: String(usageConfig.autoInterval),
   });
 
-  if (mcpServers) {
-    params.set('mcpEnabled', 'true');
-    params.set('mcpServers', JSON.stringify(mcpServers));
-    params.set('mcp_servers', JSON.stringify(mcpServers));
-  }
+  return `ccswitch://v1/import?${params.toString()}`;
+}
 
+export function buildCcSwitchMcpImportUrl({
+  apps = CC_SWITCH_MCP_APPS,
+  mcpServers = defaultCodexMcpServers(),
+  enabled = true,
+} = {}) {
+  const appList = normalizeCcSwitchMcpApps(apps);
+  const payload = {
+    mcpServers: Object.fromEntries(
+      Object.entries(mcpServers || {}).map(([name, config]) => [
+        name,
+        {
+          type: config.type || 'stdio',
+          command: config.command || '',
+          args: Array.isArray(config.args) ? [...config.args] : [],
+          ...(config.env && typeof config.env === 'object' && Object.keys(config.env).length > 0
+            ? { env: { ...config.env } }
+            : {}),
+        },
+      ]),
+    ),
+  };
+  const params = new URLSearchParams({
+    resource: 'mcp',
+    apps: appList.join(','),
+    enabled: String(Boolean(enabled)),
+    config: base64EncodeUtf8UrlSafe(JSON.stringify(payload)),
+  });
   return `ccswitch://v1/import?${params.toString()}`;
 }
 
@@ -293,12 +267,19 @@ export function buildClientConfig({
   modelGroup,
   planExpiresAt,
   sdkOptions,
+  preferExplicitDefaultModel = false,
 }) {
   const profile = clientProfile(target);
   const normalizedBaseUrl = gatewayBaseUrlForModelGroup(baseUrl, modelGroup);
   const clientBaseUrl = clientBaseUrlForProfile(profile, normalizedBaseUrl);
   const modelList = normalizeAvailableModels(availableModels, { model, defaultModel, modelGroup });
-  const safeModel = chooseDefaultModel({ model, defaultModel, availableModels: modelList, modelGroup });
+  const safeModel = chooseDefaultModel({
+    model,
+    defaultModel,
+    availableModels: modelList,
+    modelGroup,
+    preferExplicitDefaultModel,
+  });
   const safeKey = String(apiKey || '').trim();
   if (!safeKey) {
     throw new Error('API Key 不能为空');
@@ -307,7 +288,8 @@ export function buildClientConfig({
   const contextWindow = 1_000_000;
   const compressionThreshold = 900_000;
   const safeSdkOptions = normalizeSdkOptions(sdkOptions);
-  const mcpServers = profile.slug === 'codex' ? defaultCodexMcpServers() : undefined;
+  const mcpServers = defaultCodexMcpServers();
+  const inlineMcpServers = profile.slug === 'codex' ? mcpServers : undefined;
   const authJson = buildClientAuthJson({
     profile,
     apiKey: safeKey,
@@ -324,10 +306,11 @@ export function buildClientConfig({
     contextWindow,
     compressionThreshold,
     sdkOptions: safeSdkOptions,
-    mcpServers,
+    mcpServers: inlineMcpServers,
   });
   const interfaceFormat = interfaceFormatForProfile(profile);
   const authField = authFieldForProfile(profile);
+  const usageConfig = buildCcSwitchUsageConfig({ apiKey: safeKey, baseUrl: normalizeBaseUrl(baseUrl) });
 
   return {
     targetSlug: profile.slug,
@@ -356,6 +339,12 @@ export function buildClientConfig({
     sdkOptions: safeSdkOptions,
     features: defaultClientFeatures(modelList),
     mcpServers,
+    ccSwitchCapabilities: buildCcSwitchCapabilitySummary({ profile, modelList, mcpServers }),
+    ccSwitchMcpUrl: buildCcSwitchMcpImportUrl({ mcpServers }),
+    ccSwitchManualChecklist: buildCcSwitchManualChecklist({ profile, modelList }),
+    usageScript: usageConfig.script,
+    usageBaseUrl: usageConfig.baseUrl,
+    usageAutoInterval: usageConfig.autoInterval,
     authJson,
     configToml,
     openCodeProviderJson:
@@ -375,6 +364,7 @@ export function buildClientConfig({
       target: profile.slug,
       apiKey: safeKey,
       baseUrl: normalizedBaseUrl,
+      usageBaseUrl: normalizeBaseUrl(baseUrl),
       model: safeModel,
       defaultModel: safeModel,
       availableModels: modelList,
@@ -415,11 +405,42 @@ export function buildClientSetupCommands(config) {
       tomlConfig.trimEnd(),
       `'@ | Set-Content -Encoding UTF8 (Join-Path $dir '${paths.windowsConfigFile}')`,
     ].join('\n'),
+    test: buildClientTestCommand(config),
   };
 }
 
 function buildOpenAiAuthJson(apiKey) {
   return `${JSON.stringify({ OPENAI_API_KEY: apiKey }, null, 2)}\n`;
+}
+
+function buildClientTestCommand(config) {
+  const model = config.modelName || config.defaultModel || 'gpt-5.4-mini';
+  if (config.targetSlug === 'claude') {
+    return [
+      'tmp_settings="$(mktemp)"',
+      `cat > "$tmp_settings" <<'JSON'`,
+      config.authJson.trimEnd(),
+      'JSON',
+      `claude --bare --no-session-persistence --settings "$tmp_settings" --model ${shellQuote(model)} -p "只回复 pong"`,
+    ].join('\n');
+  }
+  if (config.targetSlug === 'codex') {
+    return [
+      'tmp_home="$(mktemp -d)"',
+      'mkdir -p "$tmp_home"',
+      `cat > "$tmp_home/auth.json" <<'JSON'`,
+      config.authJson.trimEnd(),
+      'JSON',
+      `cat > "$tmp_home/config.toml" <<'TOML'`,
+      config.configToml.trimEnd(),
+      'TOML',
+      `CODEX_HOME="$tmp_home" codex exec --skip-git-repo-check --ignore-rules --model ${shellQuote(model)} "只回复 pong"`,
+    ].join('\n');
+  }
+  return [
+    '# 先按上面的 JSON/TOML 写入对应客户端目录。',
+    `# 然后在客户端里选择模型 ${model}，发送: 只回复 pong`,
+  ].join('\n');
 }
 
 function buildClientAuthJson({ profile, apiKey, baseUrl, model, availableModels }) {
@@ -431,9 +452,11 @@ function buildClientAuthJson({ profile, apiKey, baseUrl, model, availableModels 
 
 function buildClaudeCodeConfigJson({ apiKey, baseUrl, model, availableModels }) {
   const models = normalizeAvailableModels(availableModels, { model });
-  const opusModel = findModelByPattern(models, /opus/i, model);
-  const sonnetModel = findModelByPattern(models, /sonnet/i, model);
-  const haikuModel = findModelByPattern(models, /haiku/i, sonnetModel);
+  const modelDefaults = compactObject({
+    ANTHROPIC_DEFAULT_OPUS_MODEL: findOptionalModelByPattern(models, /opus/i),
+    ANTHROPIC_DEFAULT_HAIKU_MODEL: findOptionalModelByPattern(models, /haiku/i),
+    ANTHROPIC_DEFAULT_SONNET_MODEL: findOptionalModelByPattern(models, /sonnet/i),
+  });
   return `${JSON.stringify(
     {
       env: {
@@ -442,9 +465,7 @@ function buildClaudeCodeConfigJson({ apiKey, baseUrl, model, availableModels }) 
         ENABLE_TOOL_SEARCH: 'true',
         CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
         ANTHROPIC_MODEL: model,
-        ANTHROPIC_DEFAULT_OPUS_MODEL: opusModel,
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: haikuModel,
-        ANTHROPIC_DEFAULT_SONNET_MODEL: sonnetModel,
+        ...modelDefaults,
       },
       effortLevel: 'max',
       includeCoAuthoredBy: false,
@@ -454,129 +475,49 @@ function buildClaudeCodeConfigJson({ apiKey, baseUrl, model, availableModels }) 
   )}\n`;
 }
 
-function buildCcSwitchProviderConfig({
-  profile,
-  apiKey,
-  baseUrl,
-  openAiBaseUrl,
-  model,
-  defaultModel,
-  availableModels,
-  modelGroup,
-  officialUrl,
-  remark,
-  authJson,
-  configToml,
-  sdkOptions,
-  interfaceFormat,
-  mcpServers,
-}) {
-  const exportModels = normalizeAvailableModels(availableModels, { model, defaultModel, modelGroup });
-  const selectedModel = chooseDefaultModel({ model, defaultModel, availableModels: exportModels, modelGroup });
-  if (profile.slug === 'opencode') {
-    return buildOpenCodeProviderEntry({
-      apiKey,
-      baseUrl,
-      availableModels: exportModels,
-      sdkOptions,
-    });
-  }
-  const commonEnv = {
-    OPENAI_API_KEY: apiKey,
-    OPENAI_BASE_URL: openAiBaseUrl || baseUrl,
-    OPENAI_MODEL: selectedModel,
-    OPENAI_AVAILABLE_MODELS: exportModels.join(','),
-    OPENAI_MODEL_LIST: exportModels.join(','),
-    FRIST_API_MODEL_GROUP: normalizeModelGroup(modelGroup),
-  };
-  const clientEnvBySlug = {
-    claude: {
-      ANTHROPIC_AUTH_TOKEN: apiKey,
-      ANTHROPIC_BASE_URL: baseUrl,
-      ENABLE_TOOL_SEARCH: 'true',
-      CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
-      ANTHROPIC_MODEL: selectedModel,
-      ANTHROPIC_DEFAULT_OPUS_MODEL: findModelByPattern(exportModels, /opus/i, selectedModel),
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: findModelByPattern(exportModels, /haiku/i, selectedModel),
-      ANTHROPIC_DEFAULT_SONNET_MODEL: findModelByPattern(exportModels, /sonnet/i, selectedModel),
-    },
-    codex: {
-      CODEX_MODEL: selectedModel,
-      CODEX_PROVIDER: 'custom',
-    },
-    opencode: {
-      OPENCODE_MODEL: selectedModel,
-    },
-    openclaw: {
-      OPENCLAW_MODEL: selectedModel,
-    },
-    hermes: {
-      HERMES_MODEL: selectedModel,
-    },
-    harmes: {
-      HERMES_MODEL: selectedModel,
-    },
-  };
-
+function buildCcSwitchUsageConfig({ apiKey, baseUrl }) {
+  const usageBaseUrl = usageBaseUrlFromGateway(baseUrl);
+  const script = [
+    '({',
+    '  request: {',
+    '    url: "{{baseUrl}}/api/frist/key-usage",',
+    '    method: "GET",',
+    '    headers: {',
+    '      "Authorization": "Bearer {{apiKey}}",',
+    '      "User-Agent": "cc-switch/frist-api"',
+    '    }',
+    '  },',
+    '  extractor: function(response) {',
+    '    if (!response || response.ok === false) {',
+    '      return {',
+    '        isValid: false,',
+    '        invalidMessage: response && (response.error || response.message) || "Frist-API 用量查询失败"',
+    '      };',
+    '    }',
+    '    return {',
+    '      isValid: response.valid !== false,',
+    '      planName: response.plan || "Frist-API",',
+    '      remaining: Number(response.remainingUsd || 0),',
+    '      used: Number(response.usedUsd || 0),',
+    '      total: Number(response.totalUsd || 0),',
+    '      unit: "USD",',
+    '      extra: [',
+    '        "今日 " + (response.todayCost || "$0.00"),',
+    '        "本月 " + (response.monthCost || "$0.00"),',
+    '        "请求 " + (response.todayCalls || "0 次"),',
+    '        "Token " + (response.totalTokens || "0")',
+    '      ].join(" · ")',
+    '    };',
+    '  }',
+    '})',
+  ].join('\n');
   return {
-    provider: {
-      id: 'frist-api',
-      name: profile.providerName,
-      app: profile.slug,
-      endpoint: baseUrl,
-      homepage: officialUrl,
-      model: selectedModel,
-      modelName: selectedModel,
-      defaultModel: selectedModel,
-      default_model: selectedModel,
-      selectedModel,
-      models: exportModels,
-      availableModels: exportModels,
-      available_models: exportModels,
-      modelList: exportModels,
-      model_list: exportModels,
-      supportedModels: exportModels,
-      wireApi: interfaceFormat || profile.wireApi,
-      apiFormat: interfaceFormat || profile.wireApi,
-      notes: remark,
-    },
-    model: selectedModel,
-    modelName: selectedModel,
-    defaultModel: selectedModel,
-    default_model: selectedModel,
-    selectedModel,
-    models: exportModels,
-    availableModels: exportModels,
-    available_models: exportModels,
-    modelList: exportModels,
-    model_list: exportModels,
-    supportedModels: exportModels,
-    env: {
-      ...commonEnv,
-      ...(clientEnvBySlug[profile.slug] || {}),
-    },
-    codex: {
-      authJson,
-      configToml,
-      defaultModel: selectedModel,
-      default_model: selectedModel,
-      models: exportModels,
-      availableModels: exportModels,
-      available_models: exportModels,
-      modelList: exportModels,
-      ...(mcpServers ? { mcpServers, mcp_servers: mcpServers } : {}),
-    },
-    opencode: {
-      defaultModel: selectedModel,
-      default_model: selectedModel,
-      models: exportModels,
-      availableModels: exportModels,
-      available_models: exportModels,
-      modelList: exportModels,
-    },
-    sdkOptions,
-    ...(mcpServers ? { mcpServers, mcp_servers: mcpServers } : {}),
-    features: defaultClientFeatures(exportModels),
+    enabled: true,
+    template: 'custom',
+    baseUrl: usageBaseUrl,
+    apiKey,
+    autoInterval: 15,
+    script,
   };
 }
 
@@ -626,7 +567,11 @@ function buildResponsesConfigToml({
 }) {
   const timeout = Number(sdkOptions.timeout || 600);
   const modelList = normalizeAvailableModels(availableModels, { model, defaultModel, modelGroup });
-  const safeDefaultModel = chooseDefaultModel({ model, defaultModel, availableModels: modelList, modelGroup });
+  const requestedDefault = normalizeOfficialModelName(defaultModel || model);
+  const safeDefaultModel =
+    requestedDefault && modelList.includes(requestedDefault)
+      ? requestedDefault
+      : chooseDefaultModel({ model, defaultModel, availableModels: modelList, modelGroup });
   return [
     'model_provider = "custom"',
     `model = "${tomlString(safeDefaultModel)}"`,
@@ -819,8 +764,12 @@ export function poolPriority(pool) {
 }
 
 export function summarizeModelHealth(snapshot) {
+  const latencyMs = Number(snapshot.latencyMs || 0);
+  const averageLatencyMs = Number(snapshot.averageLatencyMs || latencyMs || 0);
+  const healthyCount = Number(snapshot.healthyCount || (snapshot.ok ? 1 : 0));
+  const totalCount = Number(snapshot.totalCount || (healthyCount || 1));
   const status = snapshot.ok
-    ? Number(snapshot.latencyMs || 0) > 1200
+    ? latencyMs > 1200
       ? 'slow'
       : 'healthy'
     : snapshot.maintenance
@@ -831,7 +780,12 @@ export function summarizeModelHealth(snapshot) {
     model: snapshot.model,
     label: HEALTH_LABELS[status],
     status,
-    latencyText: snapshot.ok ? `${snapshot.latencyMs}ms` : '-',
+    latencyText: snapshot.ok ? `${latencyMs}ms` : '-',
+    averageLatencyText: snapshot.ok && averageLatencyMs ? `${averageLatencyMs}ms` : '-',
+    successLabel: snapshot.successLabel || `${healthyCount}/${totalCount} 可用`,
+    availabilityText: snapshot.availability || `${Number(snapshot.availability7d ?? snapshot.availability_7d ?? 0)}%`,
+    availabilityWindow: snapshot.availabilityWindow || '当前库存快照',
+    monitorIntervalSeconds: Number(snapshot.monitorIntervalSeconds || 0),
     checkedAt: snapshot.checkedAt,
     replacement: snapshot.replacement || '',
   };
@@ -1029,8 +983,9 @@ function buildImportRemark({ profile, modelGroup, planExpiresAt }) {
 function normalizeAvailableModels(availableModels = [], options = {}) {
   const providedModels = Array.isArray(availableModels) ? availableModels : [];
   const fallbackModel = MODEL_GROUP_FALLBACKS[normalizeModelGroup(options.modelGroup)] || DEFAULT_PUBLIC_MODEL;
+  const expandedModels = expandModelPatterns(providedModels, options.modelGroup);
   const models = [
-    ...providedModels,
+    ...expandedModels,
     options.defaultModel,
     options.model,
     ...(providedModels.length === 0 && !options.defaultModel && !options.model ? [fallbackModel] : []),
@@ -1040,8 +995,40 @@ function normalizeAvailableModels(availableModels = [], options = {}) {
   return sortModelsByStrength([...new Set(models)]);
 }
 
-function chooseDefaultModel({ model, defaultModel, availableModels = [], modelGroup }) {
+function expandModelPatterns(models = [], modelGroup) {
+  const group = normalizeModelGroup(modelGroup);
+  const officialModels = MODEL_GROUP_OFFICIAL_MODELS[group] || [];
+  let shouldAddOfficialModels = false;
+  const exactModels = [];
+
+  for (const rawModel of models) {
+    const model = normalizeOfficialModelName(rawModel);
+    if (!model) continue;
+    if (model.includes('*')) {
+      shouldAddOfficialModels = shouldAddOfficialModels || modelPatternMatchesGroup(model, group);
+      continue;
+    }
+    exactModels.push(model);
+  }
+
+  return shouldAddOfficialModels ? [...officialModels, ...exactModels] : exactModels;
+}
+
+function modelPatternMatchesGroup(pattern, group) {
+  const value = String(pattern || '').toLowerCase();
+  if (group === 'OpenAI') return /gpt|dall|image|^o\*/.test(value);
+  if (group === 'Claude') return /claude|anthropic/.test(value);
+  if (group === 'Gemini') return /gemini/.test(value);
+  if (group === 'DeepSeek') return /deepseek/.test(value);
+  return false;
+}
+
+function chooseDefaultModel({ model, defaultModel, availableModels = [], modelGroup, preferExplicitDefaultModel = false }) {
   const models = normalizeAvailableModels(availableModels, { model, defaultModel, modelGroup });
+  const explicitDefault = normalizeOfficialModelName(defaultModel);
+  if (preferExplicitDefaultModel && explicitDefault && models.includes(explicitDefault)) {
+    return explicitDefault;
+  }
   return models[0] || MODEL_GROUP_FALLBACKS[normalizeModelGroup(modelGroup)] || DEFAULT_PUBLIC_MODEL;
 }
 
@@ -1067,6 +1054,77 @@ function defaultClientFeatures(models = []) {
   };
 }
 
+function buildCcSwitchCapabilitySummary({ profile, modelList, mcpServers }) {
+  const oneClick = [
+    '供应商名称',
+    'API 请求地址',
+    '用户 API Key',
+    '默认模型',
+    '启用状态',
+    '备注',
+    '用量查询脚本',
+  ];
+  if (profile.slug === 'claude') {
+    oneClick.push('Opus/Sonnet/Haiku 默认模型');
+  }
+  const manual = ['MCP 增强包: Claude/Codex/Gemini/OpenCode/Hermes'];
+  if (profile.slug === 'openclaw') {
+    manual.push('OpenClaw 供应商可导入；CC Switch 当前会忽略 OpenClaw MCP');
+  }
+  manual.push('Prompt 和 Skill 是 CC Switch 独立资源，需单独导入');
+  if (profile.slug === 'codex') {
+    manual.push('完整 config.toml', 'Playwright MCP', 'Superpowers MCP', 'open-computer-use MCP');
+  }
+  if (profile.slug === 'opencode' && modelList.length > 1) {
+    manual.push('OpenCode 全模型 provider.models 映射');
+  }
+  if (!['claude', 'codex', 'gemini', 'opencode', 'openclaw', 'hermes', 'harmes'].includes(profile.slug)) {
+    manual.push('客户端专属配置');
+  }
+  return {
+    oneClick,
+    manual,
+    source: 'CC Switch v1 provider/mcp/prompt/skill deep link',
+    mcpSupported: Boolean(mcpServers && Object.keys(mcpServers).length),
+  };
+}
+
+function buildCcSwitchManualChecklist({ profile, modelList }) {
+  const common = [
+    '导入后确认供应商卡片显示 Frist-API。',
+    `默认模型应为 ${modelList[0] || DEFAULT_PUBLIC_MODEL}。`,
+    '右侧用量查询显示已启用，测试脚本返回余额。',
+    'Prompt/Skill 不会跟随供应商链接写入；有自定义提示词或 Skill 仓库时按 CC Switch 单独资源导入。',
+  ];
+  if (profile.slug === 'codex') {
+    return [
+      ...common,
+      '如需浏览器/电脑操作能力，再导入 MCP 或复制完整 config.toml。',
+      '终端重启 Codex 后发送“只回复 pong”做连通测试。',
+    ];
+  }
+  if (profile.slug === 'openclaw') {
+    return [
+      ...common,
+      'OpenClaw 供应商可一键导入；MCP 增强包按 CC Switch 当前实现不会写入 OpenClaw。',
+    ];
+  }
+  if (profile.slug === 'opencode') {
+    return [
+      ...common,
+      '如只看到一个模型，复制 OpenCode provider 片段覆盖 provider.frist-api。',
+    ];
+  }
+  if (profile.slug === 'claude') {
+    return [
+      ...common,
+      'Claude Code 使用不带 /v1 的 Base URL。',
+      '终端重启 Claude 后发送“只回复 pong”做连通测试。',
+    ];
+  }
+  return common;
+}
+
 function defaultCodexMcpServers() {
   return Object.fromEntries(
     Object.entries(CODEX_DEFAULT_MCP_SERVERS).map(([name, config]) => [
@@ -1080,9 +1138,25 @@ function defaultCodexMcpServers() {
   );
 }
 
+function normalizeCcSwitchMcpApps(apps = []) {
+  const allowed = new Set(['claude', 'codex', 'gemini', 'opencode', 'hermes']);
+  const values = (Array.isArray(apps) ? apps : String(apps || '').split(','))
+    .map((item) => String(item || '').trim().toLowerCase())
+    .filter((item) => allowed.has(item));
+  return [...new Set(values.length ? values : CC_SWITCH_MCP_APPS)];
+}
+
 function brandOfficialUrl(baseUrl) {
   const url = new URL(baseUrl);
   return url.origin;
+}
+
+function usageBaseUrlFromGateway(baseUrl) {
+  const url = new URL(normalizeBaseUrl(baseUrl));
+  if (url.pathname === '/v1' || url.pathname.startsWith('/v1/')) {
+    url.pathname = '/';
+  }
+  return url.toString().replace(/\/+$/, '');
 }
 
 function normalizeSdkOptions(options = {}) {
@@ -1103,6 +1177,10 @@ function base64EncodeUtf8(value) {
     binary += String.fromCharCode(byte);
   }
   return globalThis.btoa(binary);
+}
+
+function base64EncodeUtf8UrlSafe(value) {
+  return base64EncodeUtf8(value).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
 function round2(value) {
@@ -1241,8 +1319,25 @@ function authFieldForProfile(profile) {
   return 'OPENAI_API_KEY';
 }
 
-function findModelByPattern(models, pattern, fallback) {
-  return normalizeAvailableModels(models, { model: fallback }).find((item) => pattern.test(item)) || fallback;
+function compactObject(value) {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined && item !== null && item !== ''));
+}
+
+function findOptionalModelByPattern(models, pattern) {
+  return normalizeAvailableModels(models).find((item) => pattern.test(item)) || '';
+}
+
+function buildClaudeDeepLinkModelDefaults(models = []) {
+  const defaults = {
+    opusModel: findOptionalModelByPattern(models, /opus/i),
+    haikuModel: findOptionalModelByPattern(models, /haiku/i),
+    sonnetModel: findOptionalModelByPattern(models, /sonnet/i),
+  };
+  return Object.fromEntries(Object.entries(defaults).filter(([, value]) => Boolean(value)));
+}
+
+function ccSwitchAppSlug(profile) {
+  return profile.slug === 'harmes' ? 'hermes' : profile.slug;
 }
 
 function shellQuote(value) {

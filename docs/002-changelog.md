@@ -5,6 +5,374 @@
 
 ## 最近更新（2026-05）
 
+## [2026-05-08] Frist-API 用户端视觉 QA 批注修复
+> 领域: `frontend` | `backend` | `docs`
+> 影响模块: `Frist-API`, `User Console`, `CC Switch`, `Gateway Dashboard`, `docs`
+> 关联问题: HI-883
+
+### 变更内容
+- 按 26 条浏览器批注重做用户端视觉细节：顶部状态灯改为带语义状态，新增中/英文切换，Logo 改为 Apple 风格的简洁 `F` 标识。
+- 重新调整工作台导航间距和选中态，隐藏暂不运营的充值、邀请、独立配置教程入口；首页移除最近日志板块，日志统一到使用记录页查看。
+- Token 趋势从难读日期堆叠改为 SVG 折线/面积趋势图；未登录 Dashboard 不再返回 `channelChecks`，避免把真实库存快照误认为 mock 数据。
+- CC Switch 页面去掉重复 `Harmes`，顶部增加导入按钮，用量查询说明下移为教程，代码框复制改为框内图标按钮。
+- Claude Code 教程改为“OpenAI 模型以 Claude 名称导入 Claude Code”的当前约束说明；用户端模型展示使用官方友好名称，不改真实内部模型 ID，避免影响路由。
+- 测试台参考 OpenAI Web 端重排为模型选择侧栏、对话区和底部输入框；资料页重做为头像/昵称/邮箱可编辑布局，登录注册弹窗也同步调整。
+
+### 文件变更
+- `apps/frist-api/index.html` / `apps/frist-api/src/app.js` / `apps/frist-api/src/styles.css` — 用户端导航、顶部、趋势图、CC Switch、测试台、资料页和登录弹窗视觉修复
+- `apps/frist-api/src/core.js` / `apps/frist-api/server/server.js` / `apps/frist-api/src/serverClient.js` — 用户友好模型名、游客安静看板和导入配置展示边界
+- `apps/frist-api/tests/business-flow.test.mjs` / `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/server.test.mjs` — 覆盖隐藏入口、去重目标、复制框、资料编辑、语言切换、游客 `channelChecks` 空态和登录态 SLA
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/009-health.md` — 同步本轮视觉 QA 和入口注册表
+
+## [2026-05-07] Frist-API New-API 生产边界硬门槛
+> 领域: `backend` | `frontend` | `deploy` | `docs`
+> 影响模块: `Frist-API`, `Admin`, `Gateway`, `New-API`, `docs`
+> 关联问题: HI-882
+
+### 变更内容
+- 新增生产强制边界开关 `FRIST_API_ENFORCE_PRODUCTION_READINESS`：正式模式会检查固定 HTTPS 品牌域名、New-API 数据库、管理员 2FA、真实支付商户、备份监控和渠道 SLA 状态，缺核心项时阻止启动。
+- 管理端新增 TOTP 2FA 验证入口和 `/api/admin/2fa/verify`；启用 `FRIST_API_REQUIRE_ADMIN_2FA=1` 后，管理 API 必须先通过二次验证。
+- 新增 `/api/admin/production-readiness` 和 `/api/admin/backups/status`，用于登记备份/恢复演练并在管理端展示生产边界状态。
+- 渠道健康从“当前库存快照”升级为可持久化 SLA 事件：成功、慢线、失败和额度耗尽会写入 `channelProbeEvents`，Dashboard 返回 7/15/30 天窗口摘要。
+- 生产环境模板和 Compose 透传 `FRIST_API_REQUIRE_NEWAPI_DATABASE`、管理员 2FA、备份新鲜度、SLA 保留天数等变量。
+
+### 文件变更
+- `apps/frist-api/server/server.js` — 生产硬门槛、TOTP 管理员 2FA、备份状态、SLA 事件和 readiness API
+- `apps/frist-api/admin.html` / `apps/frist-api/src/admin.js` / `apps/frist-api/src/styles.css` — 管理端 2FA 输入和生产检查面板
+- `apps/frist-api/tests/server.test.mjs` — 覆盖生产边界、管理员 2FA、备份状态和真实 SLA 事件
+- `apps/frist-api/deploy/production.env.example` / `docker-compose.frist-api.yml` — 登记生产变量和强制边界开关
+- `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步生产边界、环境变量和剩余外部操作
+
+## [2026-05-07] Frist-API 用户与管理闭环实机验收
+> 领域: `backend` | `frontend` | `ai-pool` | `docs`
+> 影响模块: `Frist-API`, `CC Switch`, `User Console`, `Admin`, `Gateway`, `docs`
+> 关联问题: HI-881
+
+### 变更内容
+- 用户侧把 `ChatGPT / OpenAI` 展示统一收敛为 `OpenAI`，并在 CC Switch 页新增“导入后检测闭环”：供应商卡片、用量脚本、真实调用、`gpt-image-2` 流程图测试和记录页消费回写。
+- 管理侧新增号池首次使用流程和渠道诊断：管理员只需要填端点、粘 Key、写入库存；页面按模型组汇总可用/断开/降级、最快延迟、失败原因和模型清单，方便判断哪个渠道断了。
+- Dashboard 新增轻量异常消耗检测，覆盖今日消耗接近余额、单次调用费用突增和高延迟请求；响应只返回用户可读摘要，不泄露上游 Key、供应商原始地址或 raw usage。
+- 受控实机验收使用临时 runtime 和本地 mock 上游完成：登录、创建 `fk-live-*` Key、CC Switch 导入链接含用量脚本、文本 `pong`、`gpt-image-2` 图片返回、记录页文本/图片消费、异常消耗提醒、`gpt-image-2` `1/2 可用` 降级状态。
+- 修复异常消耗回归用例的阈值样本：模拟 usage 调整为真实会触发“今日消耗偏高”的大额调用，避免把业务规则放宽成假通过。
+
+### 文件变更
+- `apps/frist-api/index.html` / `apps/frist-api/src/app.js` / `apps/frist-api/src/serverClient.js` / `apps/frist-api/src/styles.css` — 用户侧 OpenAI 命名、导入后检测闭环和异常消耗卡片
+- `apps/frist-api/admin.html` / `apps/frist-api/src/admin.js` / `apps/frist-api/src/styles.css` — 管理端号池小白流程、库存诊断和状态展示
+- `apps/frist-api/server/server.js` / `apps/frist-api/server/newApiBridge.js` — Dashboard 和 New-API 桥接层输出轻量异常消耗摘要
+- `apps/frist-api/tests/business-flow.test.mjs` / `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/new-api-adapter.test.mjs` / `apps/frist-api/tests/server.test.mjs` — 覆盖导入检测、管理诊断、异常消耗和阈值回归
+- `docs/006-registries.md` / `docs/009-health.md` — 登记本轮闭环能力和剩余生产边界
+
+## [2026-05-06] Frist-API CC Switch 小白满血导入收尾
+> 领域: `backend` | `frontend` | `docs`
+> 影响模块: `Frist-API`, `CC Switch`, `Claude`, `Codex`, `OpenCode`, `OpenClaw`, `Hermes`, `docs`
+> 关联问题: HI-880
+
+### 变更内容
+- 按 CC Switch 当前 `origin/main` 源码重新核对 provider/MCP deep link：供应商导入和 MCP 导入是两个 `resource`，一键供应商导入不能假装同时写入 MCP；页面改成“小白两步”：先导入供应商，再导入 MCP 增强包。
+- MCP 增强包默认覆盖 CC Switch 当前支持的 `claude,codex,gemini,opencode,hermes`；页面明确说明 OpenClaw 供应商可导入，但 CC Switch 当前会忽略 OpenClaw MCP。
+- 补充 CC Switch `prompt` / `skill` 资源边界：它们是独立 deep link 资源，不会随 provider 一键导入同时写入；没有公开 Skill 仓库时不生成虚假链接。
+- 修复 `/api/frist/import-url` 用户显式选择模型时的导出不一致：服务端返回的默认模型、CC Switch 链接的 `model`、Codex `config.toml` 的 `model/default_model` 现在保持一致；未显式选择时仍默认最强可用模型。
+- 保留 Codex 本地 `config.toml` 内联 Playwright/Superpowers/open-computer-use MCP；Claude、Gemini、OpenCode、Hermes 不再误塞 Codex TOML 段，而是使用单独的 CC Switch MCP deep link。
+- 页面新增更直白的完整 Workflow：登录创建 Key、一键导入供应商、确认默认模型、测试用量查询、导入 MCP 增强包、复制终端测试命令；手动用户仍可复制 JSON/TOML、OpenCode provider 片段、用量脚本和 CLI 测试命令。
+
+### 文件变更
+- `apps/frist-api/src/core.js` — 增加服务端显式默认模型选项、全客户端 MCP deep link、Codex-only TOML MCP 内联和 CC Switch MCP 支持范围
+- `apps/frist-api/server/server.js` — `/api/frist/import-url` 对服务端确认模型启用显式默认，避免导入链接和返回字段不一致
+- `apps/frist-api/index.html` / `apps/frist-api/src/app.js` / `apps/frist-api/src/styles.css` — CC Switch 小白 Workflow、MCP 增强包、Prompt/Skill 边界和手动配置展示
+- `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/business-flow.test.mjs` / `apps/frist-api/tests/server.test.mjs` — 覆盖全客户端 MCP deep link、OpenClaw MCP 边界和用户选择模型一致性
+- `docs/006-registries.md` / `docs/009-health.md` — 登记 CC Switch 满血导入边界和本轮收尾状态
+
+## [2026-05-06] Frist-API 86GameStore 号源接入与查询失败修复
+> 领域: `backend` | `frontend` | `ai-pool` | `docs`
+> 影响模块: `Frist-API`, `Gateway`, `CC Switch`, `Claude CLI`, `Codex CLI`, `docs`
+> 关联问题: HI-879
+
+### 变更内容
+- 修复 CC Switch 用量查询“查询失败”：导出的 `usageScript.extractor.extra` 从对象改为字符串摘要，匹配当前 CC Switch provider 用量脚本解析契约，并增加回归断言。
+- Claude 兼容入口优先走原生 Anthropic Messages `/v1/messages` 上游；如果上游不支持，再回退到 OpenAI Chat Completions 适配，避免 Claude CLI 导入后真实请求卡在适配层。
+- 严格补号探测新增原生 Claude Messages 探测；对象形式补号 Key 未填 `modelGroup` 时继承补号单模型组；同一个上游 Key 作为 Claude/OpenAI 两组库存时按 `baseUrl + modelGroup + rawKey` 分开保存，避免后写覆盖先写。
+- 本地 runtime 已接入 86GameStore 授权上游：Claude 组 `claude-sonnet-4-5-c`、`claude-opus-4-6-c` 为 healthy；OpenAI 组 `gpt-5.4-mini`、`gpt-5.3-codex`、`gpt-5.4`、`gpt-5.5` 为 healthy。真实上游 Key 只在 ignored runtime 中以 `enc:v1:` AES-GCM 形式保存。
+- 实测用户闭环：注册/登录、管理员入账、创建 Claude/OpenAI 用户 Key、`/v1/models`、导出 Claude/Codex CC Switch 链接、`/api/frist/key-usage`、Claude `/v1/messages`、Codex `/v1/responses` 均成功，真实请求返回 `pong` 并写入使用记录。
+- 实测 CLI 闭环：Claude CLI 使用临时 settings 指向本地 Frist-API，`claude-sonnet-4-5-c` 返回 `pong`；Codex CLI 使用临时 `CODEX_HOME` provider，`gpt-5.4-mini` 返回 `pong`。测试未覆盖或改写用户原有 Claude/Codex 配置。
+- 前端顶部连接状态修复为 Dashboard 成功后显示“已连接”，失败时显示“后端暂不可用”；浏览器刷新后确认不再长期停在“连接中”。
+
+### 文件变更
+- `apps/frist-api/src/core.js` — CC Switch 用量脚本字段类型修复、导出按模型组选择匹配用户 Key
+- `apps/frist-api/server/server.js` — Claude 原生 Messages 路由和严格探测、同 Key 多模型组库存隔离、补号模型组继承、探测超时默认 8 秒
+- `apps/frist-api/src/serverClient.js` / `apps/frist-api/src/app.js` — 用户端连接状态成功/失败反馈收敛
+- `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/server.test.mjs` — 补 CC Switch 用量脚本、Claude 原生路由、原生探测、共享 Key 分组隔离、导出选 Key 和连接状态回归
+- `apps/frist-api/deploy/production.env.example` / `docs/006-registries.md` / `docs/009-health.md` — 登记 8 秒探测超时、86GameStore 授权上游和本轮实测状态
+
+## [2026-05-06] Frist-API 渠道状态监视器增强
+> 领域: `backend` | `frontend` | `docs`
+> 影响模块: `Frist-API`, `User Console`, `Channel Monitor`, `docs`
+> 关联问题: HI-878
+
+### 变更内容
+- 参考 86GameStore `/monitor` 的用户侧监控形态，确认其公开页采用 `/channel-monitors`、7/15/30 天窗口、主模型延迟、endpoint ping、最近 60 点状态条和 30/60/120 秒自动刷新；本项目先按现有 runtime 库存能力落地“当前库存快照”，不伪造真实 7/15/30 天时间序列。
+- Frist-API Dashboard 的 `channelChecks` 增加 `healthyCount`、`totalCount`、`downCount`、`slowCount`、`availability7d`、`availabilityWindow`、`successLabel`、`latencyLabel`、`averageLatencyMs`、`monitorIntervalSeconds`、`monitorStatus` 和 60 点 `history`，响应仍只暴露 `/v1`，不返回上游地址、上游 Key 或号商字段。
+- 用户首页“通道”和趋势页“服务可用性”补齐状态标签、可用率、最低/平均延迟、最近检测、60 秒刷新口径和状态条；降级线路会用慢/失败状态点标记。
+- 补充服务端、浏览器归一化和用户页面 wiring 回归，覆盖聚合监控字段、降级状态、当前快照口径和敏感字段不泄露。
+
+### 文件变更
+- `apps/frist-api/server/server.js` / `apps/frist-api/server/catalog.js` — 渠道监控聚合字段从单纯 healthy/total 扩展为可用率、降级、慢线、平均延迟和 60 点状态条
+- `apps/frist-api/src/serverClient.js` / `apps/frist-api/src/core.js` — 浏览器归一化和安全摘要支持新监控字段
+- `apps/frist-api/src/app.js` / `apps/frist-api/src/styles.css` — 用户侧通道摘要和服务卡增加状态标签、指标格和历史条
+- `apps/frist-api/tests/server.test.mjs` / `apps/frist-api/tests/new-api-adapter.test.mjs` / `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/business-flow.test.mjs` — 覆盖监控字段、降级状态、脱敏边界和页面钩子
+- `docs/006-registries.md` / `docs/009-health.md` — 登记渠道监控口径和剩余真实时间序列技术债
+
+## [2026-05-06] Frist-API CC Switch 用量查询一键导入与 CLI 实测闭环
+> 领域: `backend` | `frontend` | `docs`
+> 影响模块: `Frist-API`, `CC Switch`, `New-API Bridge`, `User Console`, `docs`
+> 关联问题: HI-877
+
+### 变更内容
+- 核对 CC Switch 官方 Deep Link 协议和本机 CC Switch 3.14.1 行为，确认当前 provider deep link 消费 `resource/app/name/homepage/endpoint/apiKey/model/*Model/notes/usage*` 字段；导入链接已收敛为官方短字段，不再塞旧 `config`、`availableModels` 等大块配置。
+- `usageScript` 改为 Base64URL 编码，匹配 CC Switch 当前 `usage_script` 解码逻辑；语雀公开可读摘要中的“右侧用量查询、填入秘钥和 API”步骤已落到页面教程。
+- CC Switch 导入链接现在同步写入自定义用量查询脚本，默认 15 分钟自动查询；脚本调用 Frist-API 自己的 `/api/frist/key-usage`，返回余额、已用额度、总额度、今日/本月消费、请求量、Token、延迟和成功率。
+- 新增 `/api/frist/key-usage` 只读接口，用户 Key 通过 Bearer 或 `x-api-key` 鉴权；响应只返回脱敏统计，不返回用户完整 Key、上游 rawKey、供应商地址或号商信息。
+- 修复 New-API 桥接层 `buildKeyUsage` 参数名遮蔽内部请求函数导致 500 的回归，并覆盖 New-API Token 查询、Dashboard、导入和网关代理闭环。
+- DeepSeek 等模型组继续把模型请求地址导向官方兼容端点，但用量查询地址固定从 Frist-API 公开网关地址派生，避免余额脚本误打到 `api.deepseek.com`。
+- 实机闭环：使用临时 Frist API 和本地受控上游生成真实 `fk-live-*` Key，CC Switch 日志确认收到并解析 `resource=provider/app=claude/name=Frist-API` deep link；因当前 CC Switch 窗口无可访问确认按钮，按官方导入结构等价写入临时 provider 后，`claude --bare --no-session-persistence --model claude-sonnet-4-5-c` 返回 `Frist API CLI OK`。测试后已恢复用户原 CC Switch/Claude 配置。
+
+### 文件变更
+- `apps/frist-api/src/core.js` — CC Switch 导入新增用量查询脚本、Base64URL 编码、短 deep link 字段和 Frist/API 上游地址解耦
+- `apps/frist-api/server/server.js` / `apps/frist-api/server/newApiBridge.js` — 新增用户 Key 用量查询接口并修复 New-API 桥接回归
+- `apps/frist-api/index.html` / `apps/frist-api/src/app.js` / `apps/frist-api/src/styles.css` — CC Switch 页面补“用量查询、启用、测试脚本、自动查询间隔”教程和状态文案
+- `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/server.test.mjs` / `apps/frist-api/tests/business-flow.test.mjs` — 覆盖 deep link 用量字段、短链接契约、OpenCode 配置、New-API 用量接口和教程文案
+- `docs/006-registries.md` / `docs/009-health.md` — 登记新接口、教程闭环和剩余真实客户端验收边界
+
+## [2026-05-06] Frist-API 上线前安全闭环修复
+> 领域: `backend` | `frontend` | `deploy` | `docs`
+> 影响模块: `Frist-API`, `Gateway`, `Runtime Store`, `Payments`, `User Console`, `docs`
+> 关联问题: HI-876
+
+### 变更内容
+- 用户 API Key 新建前缀恢复为 `fk-live-*`，生成使用 `crypto.randomBytes(32).toString('base64url')`，校验统一走恒定时间比较，Dashboard 刷新后不再返回明文 Key。
+- Cookie 登录态的非幂等接口增加 CSRF Token 校验；注册/登录返回 CSRF Token 并设置 `frist_csrf` Cookie，浏览器客户端自动带 `x-csrf-token`。
+- 微信/支付宝回调入账前校验实付金额和订单金额；少付通知拒绝入账，重复通知仍按订单号幂等处理。
+- 管理端补号 URL 增加 SSRF 防护，默认拒绝 localhost、私网、link-local 和云 metadata 地址，测试环境可显式注入解析器。
+- runtime 写入改为临时文件 fsync 后 rename，写入失败发出 `FRIST_API_RUNTIME_WRITE_FAILED` warning；共享脱敏和 CORS 头同步支持 `fk-live-*` 与 `x-csrf-token`。
+- 生产模板补齐 `FRIST_API_REQUIRE_CSRF`、`FRIST_API_ALLOW_PRIVATE_UPSTREAM_URLS`，公网网关示例恢复为 HTTPS 占位域名，避免生产硬门槛被 HTTP 示例误导。
+
+### 文件变更
+- `apps/frist-api/server/server.js` / `apps/frist-api/server/shared.js` / `apps/frist-api/server/newApiBridge.js` — Key 生成和脱敏、CSRF、SSRF、金额校验、runtime 原子写和 CORS 头
+- `apps/frist-api/src/serverClient.js` / `apps/frist-api/src/app.js` / `apps/frist-api/src/newApiClient.js` — 浏览器 CSRF 头、创建后一次性显示 Key、刷新后不依赖明文 Key
+- `apps/frist-api/tests/server.test.mjs` / `apps/frist-api/tests/business-flow.test.mjs` — 覆盖 `fk-live-*`、CSRF、少付回调、SSRF 阻断和用户侧不泄露明文 Key
+- `apps/frist-api/deploy/production.env.example` / `docker-compose.frist-api.yml` — 登记生产 CSRF 和 SSRF 开关，修正公网 HTTPS 示例
+- `docs/006-registries.md` / `docs/009-health.md` — 同步生产变量和上线前剩余风险
+
+## [2026-05-05] Frist-API 用户端深色体验和官方计价修复
+> 领域: `frontend` | `backend` | `ai-pool` | `deploy` | `docs`
+> 影响模块: `Frist-API`, `User Console`, `Gateway Billing`, `docs`
+> 关联问题: HI-875
+
+### 变更内容
+- 用户首页最近日志改为 5 条内的精简事件，过滤管理认证失败等噪音；使用记录页补充客户端、费用、延迟和 Token，让广场、MacBook、PC 等来源能分开看。
+- API Key 展示曾短暂改为通用 `sk-*`；2026-05-06 已按安全审计恢复为新建 `fk-live-*`、兼容旧 `sk-*`。
+- 测试页减少解释文字、修复深色气泡对比度，模型连通改为 3 分钟自动检测一次；顶部和局部反馈改为短动效状态，不再显示塑料感长文案。
+- 模型价目表按官方输入、缓存输入/缓存读写、输出口径统一展示；覆盖 OpenAI、Claude、DeepSeek、Gemini 和图片模型。
+- 账单页前置展开兑换码，预警邮箱只遮罩展示；邀请改为“消费才返利”，返利上限为受邀方首次充值金额 5%；资料页支持修改昵称和邮箱。
+- 深色控制台逐页补齐对比度护栏，修复 API 页面布局闭合标签，消费后自动刷新余额。
+- 已部署到腾讯云 `/opt/frist-api`，远端应用备份为 `backups/frist-api-app-20260505-211636-before-ux-deploy.tgz`，运行数据备份为 `backups/frist-api-runtime-20260505-211636-before-ux-deploy.tgz`；`frist-api-server` 为 healthy，公网首页和看板均返回 200，裸域名返回 301 到品牌入口，未授权 `/v1/models` 保持 401。
+
+### 文件变更
+- `apps/frist-api/index.html` / `apps/frist-api/src/styles.css` — 深色控制台、兑换码前置、API 页面布局和对比度修复
+- `apps/frist-api/src/app.js` / `apps/frist-api/src/serverClient.js` — 日志降噪、测试页降噪、余额刷新、反馈动效、资料/邀请/预警展示
+- `apps/frist-api/server/server.js` / `apps/frist-api/server/shared.js` — Key 展示、记录字段、价目表、消费扣费和余额刷新数据
+- `apps/frist-api/deploy/smoke-test.sh` — 冒烟脚本兼容中文管理工作台和可关闭验证码场景
+- `apps/frist-api/tests/*.test.mjs` — 覆盖 Key 前缀、日志/记录、官方价格、深色 UI 入口和自动测试
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步本轮修复
+
+## [2026-05-05] Frist-API inroi 授权上游号池检测
+> 领域: `ai-pool` | `deploy` | `docs`
+> 影响模块: `Frist-API`, `AI Pool`, `Admin`, `docs`
+> 关联问题: HI-874
+
+### 变更内容
+- 核对 `https://www.inroi.shop/v1` 是上游请求地址，不是 Frist-API 对外入口；Frist-API 公网入口仍按 `frist-api.101-43-41-96.nip.io` 收口，裸域名只做 301。
+- 远端管理接口检测到同一 Key 的旧根地址记录 `https://www.inroi.shop` 已是 `exhausted/enabled=false`，不可路由；正确请求地址 `https://www.inroi.shop/v1` 已加入号池并处于 `healthy/enabled=true`。
+- 已实测 inroi 上游 `/v1/models` 返回 21 个模型，`gpt-5.4-mini` Chat Completions 返回 200；真实 Key 只通过服务器管理 API 写入远端加密 runtime，不进入 Git 或文档正文。
+
+### 文件变更
+- `docs/006-registries.md` / `docs/009-health.md` — 同步 inroi 授权上游检测状态
+
+## [2026-05-05] Frist-API 公网入口收口
+> 领域: `backend` | `deploy` | `docs`
+> 影响模块: `Frist-API`, `Nginx`, `Public Gateway`, `docs`
+> 关联问题: HI-873
+
+### 变更内容
+- 将 Frist-API 唯一内容入口统一为 `frist-api.101-43-41-96.nip.io`，避免 `101-43-41-96.nip.io` 被误认为第二个网站。
+- Nginx 配置改为品牌域名反代到 Frist-API 服务，裸域名只返回 301 到品牌域名。
+- Node 服务增加应用层兜底跳转，绕过 Nginx 或未来反代配置变更时也不会直接渲染裸域名页面。
+- 生产环境模板新增 `FRIST_API_CANONICAL_HOST` 和 `FRIST_API_REDIRECT_HOSTS`，导出和邮件公网地址统一到品牌域名。
+- Docker Compose 透传 canonical/redirect 环境变量，确保公网容器重启后仍按唯一入口策略运行。
+
+### 文件变更
+- `apps/frist-api/server/server.js` — 增加 canonical host 和裸域名 301 兜底
+- `docker-compose.frist-api.yml` / `apps/frist-api/deploy/nginx.conf` / `apps/frist-api/deploy/production.env.example` — 收口公网入口和环境变量模板
+- `apps/frist-api/tests/server.test.mjs` — 覆盖裸域名 301 和品牌域名正常服务
+- `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步唯一入口、运维步骤和健康状态
+
+## [2026-05-05] Frist-API CC Switch 导出模型与品牌标复原
+> 领域: `frontend` | `backend` | `docs`
+> 影响模块: `Frist-API`, `CC Switch`, `New-API Bridge`, `docs`
+> 关联问题: HI-872
+
+### 变更内容
+- 修复用户在 `#switch` 页面看不到 `gpt-5.4`、`gpt-5.4-mini`、`gpt-image-2`、`gpt-5.3-codex` 的问题：OpenAI 家族导出清单现在会补齐官方完整模型集，不再被部分上游库存或桥接层裁掉。
+- CC Switch 导出预览和 New-API 桥接层都改用同一套可见模型展开逻辑，保证 `/api/frist/import-url`、`ccswitch://` 和手动配置看到的是同一份完整模型表。
+- 恢复 Frist-API 品牌标识为原黑红白 logo，Tabcode 皮肤只保留布局和对比度，不再把品牌标改成灰白抽象块。
+- 给导出模型 chip 和相关回归补上测试门槛，防止以后再把核心模型藏掉。
+
+### 文件变更
+- `apps/frist-api/src/core.js` — 增加 OpenAI 官方模型族展开和统一可见模型归一化
+- `apps/frist-api/src/app.js` — CC Switch 导出清单改为强制显示完整模型集
+- `apps/frist-api/server/newApiBridge.js` / `apps/frist-api/server/server.js` — 桥接层与服务端导出链路同步完整模型集
+- `apps/frist-api/src/styles.css` — 恢复品牌标视觉并强化导出 chip 可读性
+- `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/server.test.mjs` — 补回归
+- `docs/002-changelog.md` / `docs/009-health.md` — 记录本轮修复
+
+## [2026-05-05] Frist-API Tabcode 皮肤对比度修复
+> 领域: `frontend` | `docs`
+> 影响模块: `Frist-API`, `User Console`, `Admin`, `CC Switch`, `docs`
+> 关联问题: HI-871
+
+### 变更内容
+- 修复 Tabcode 浅色控制台里旧深色皮肤残留导致的黑底灰字问题，重点覆盖 CC Switch 目标按钮、返回按钮、代码栏复制按钮、测试页删除按钮和分段选中态。
+- 静态资源版本号切到 `20260505-contrast-fix`，避免浏览器继续命中旧 CSS 缓存。
+- 增加 Tabcode 对比度护栏：主按钮/选中态统一黑底白字，普通按钮统一白底深字，深色代码栏内复制按钮使用白底深字。
+- 浏览器实测用户端 6 个主路由和管理端可见交互元素低对比扫描均为 0；桌面和 390px 移动端截图已验证。
+
+### 文件变更
+- `apps/frist-api/index.html` / `apps/frist-api/admin.html` — 更新 CSS/JS 资源版本号
+- `apps/frist-api/src/styles.css` — 增加 Tabcode 对比度护栏和可读性颜色修复
+- `apps/frist-api/tests/core.test.mjs` — 补充对比度护栏和资源版本回归断言
+- `docs/002-changelog.md` / `docs/009-health.md` — 记录本轮 UI 修复
+
+## [2026-05-05] Frist-API CC Switch 导出和运行遗留项收尾
+> 领域: `backend` | `frontend` | `ai-pool` | `docs`
+> 影响模块: `Frist-API`, `CC Switch`, `Admin`, `Runtime Store`, `docs`
+> 关联问题: HI-870
+
+### 变更内容
+- 参考本机 CC Switch 已导入的 Tabcode Claude/Codex 配置，把一键导入补齐为 New-API 基础深链字段 + Tabcode 真实 `settings_config` 落库结构。
+- Claude 导出写入 `ANTHROPIC_AUTH_TOKEN` 和不带 `/v1` 的 `ANTHROPIC_BASE_URL`；Codex 导出写入 `OPENAI_API_KEY` 和 Responses `config.toml`，同时保留完整模型清单、MCP 和现有扩展字段。
+- 用户点击 `ccswitch://` 导入时自动复制链接并显示短降级反馈，浏览器未弹出 CC Switch 时仍可粘贴导入。
+- 管理 API 认证失败会写入脱敏审计事件；runtime 写入失败会发出 Node warning，不再静默吞掉；CLI 启动增加 SIGTERM/SIGINT 优雅关闭。
+
+### 文件变更
+- `apps/frist-api/src/core.js` — 增加 CC Switch `settingsConfig/settings_config` 和 New-API 基础字段兼容
+- `apps/frist-api/index.html` / `apps/frist-api/src/app.js` / `apps/frist-api/src/styles.css` — 增加 CC Switch 协议降级反馈和自动复制
+- `apps/frist-api/server/server.js` — 增加管理失败审计、runtime 写入告警和优雅关闭
+- `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/server.test.mjs` — 补齐 CC Switch 导出契约、管理失败审计和运行遗留项回归
+- `docs/006-registries.md` / `docs/009-health.md` — 同步入口和健康状态
+
+## [2026-05-05] Frist-API Plus 金额审计修复
+> 领域: `backend` | `ai-pool` | `docs`
+> 影响模块: `Frist-API`, `Admin`, `Plus Ledger`, `docs`
+> 关联问题: HI-869
+
+### 变更内容
+- 全量审计时发现 Plus 账号台账的 TRY 余额/月费如果收到异常数字输入，可能把 `NaN` 带入运行数据和摘要。
+- 后端新增有限数字归一化，异常金额统一落为 0，避免管理响应出现 `null` 或污染 Plus 摘要。
+- 回归测试补充异常金额输入断言，确保 Plus 敏感字段仍脱敏且金额字段稳定返回数字。
+
+### 文件变更
+- `apps/frist-api/server/server.js` — Plus 台账金额改用有限数字归一化
+- `apps/frist-api/tests/server.test.mjs` — 补充异常 TRY 金额回归覆盖
+- `docs/002-changelog.md` / `docs/009-health.md` — 记录本轮审计修复
+
+## [2026-05-05] Frist-API Tabcode Console 设计吸收
+> 领域: `frontend` | `docs`
+> 影响模块: `Frist-API`, `User Console`, `Admin`, `docs`
+> 关联问题: HI-868
+
+### 变更内容
+- 参考本地 Tabcode Dashboard 克隆，把 Frist-API 用户端和管理端切换为 `tabcode-console`：54px 白色顶栏、160px 灰色侧栏、灰色工作区、14px 白色卡片、轻阴影和黑色主按钮。
+- 移除上一版设计皮肤入口和 CSS 残留，图表配色从蓝色体系改为中性黑灰加状态色，登录弹窗改为 Tabcode 两栏桌面布局并保留移动端可滚动关闭。
+- 管理端仅替换视觉壳，不删管理功能；New-API/价格/入账/卡密/Plus/RT/接入/订单/库存/审计等原有入口继续保留。
+- 性能优化继续保留 `content-visibility`、隐藏面板跳过渲染、搜索防抖、模型目录缓存和测试台局部渲染，避免控制台高频切换时反复重绘。
+
+### 文件变更
+- `apps/frist-api/index.html` / `apps/frist-api/admin.html` — 设计系统标记和静态资源版本切到 Tabcode Console
+- `apps/frist-api/src/styles.css` — 删除旧设计皮肤，新增 Tabcode Console token、布局、卡片、表格、弹窗和移动端规则
+- `apps/frist-api/src/app.js` — 图表颜色切到中性控制台色系
+- `apps/frist-api/tests/core.test.mjs` — 回归断言切到 Tabcode Console 视觉 token 和旧皮肤移除
+- `docs/006-registries.md` / `docs/009-health.md` — 同步设计系统登记和健康状态
+
+## [2026-05-05] Frist-API Refero Apple UI 降噪
+> 领域: `frontend` | `docs`
+> 影响模块: `Frist-API`, `User Console`, `Admin`, `docs`
+> 关联问题: HI-867
+
+### 变更内容
+- 参考 Refero Styles 的 Apple 高热样式，把 Frist-API 用户端和管理端从深色 Hyperstudio 壳切到浅色 Apple 控制台：`#f5f5f7` 画布、白色面板、`#0071e3` 主操作、弱边界和短状态动效。
+- 用户端以“前端入口”为准做降噪：首屏指标压到余额、Key、今日和成功率四项；导航把“仪表盘/广场/教程”等长标签改为“首页/测试/配置”，状态空态改为“无记录/未检测/离线”等短标签。
+- 管理端保留价格、入账、卡密、Plus、RT、接入、订单、库存和审计等原有管理项，只压缩提示文案；New-API 管理侧能力没有减少。
+- 性能上减少不必要渲染：模型目录缓存、测试台日志/图片签名复用、搜索输入防抖、面板 `content-visibility` 和克制状态动效，避免全量 DOM 反复重绘。
+
+### 文件变更
+- `apps/frist-api/index.html` — 精简用户端导航、状态、导入流程和兑换/邀请文案
+- `apps/frist-api/admin.html` — 精简管理端说明文案，保留原管理区块和 RT JSON/TXT 入口
+- `apps/frist-api/src/app.js` — 缩短空态/反馈文案，保留测试台和模型目录渲染缓存
+- `apps/frist-api/src/admin.js` — 缩短管理端反馈和空态文案
+- `apps/frist-api/src/styles.css` — 增加 Refero Apple final layer、状态微动效和 `content-visibility` 渲染优化
+- `apps/frist-api/tests/core.test.mjs` — 回归断言切到 Refero Apple 视觉 token 与四指标首屏
+- `docs/006-registries.md` / `docs/009-health.md` — 同步入口命名和健康状态
+
+## [2026-05-04] Open Design 本机配置接入
+> 领域: `infra` | `docs`
+> 影响模块: `Codex Skills`, `Open Design`, `MCP`
+> 关联问题: 无
+
+### 变更内容
+- 将 Open Design 克隆到 `/Users/blackdj/Desktop/open-design`，按官方要求启用 Node 24 和 pnpm 10.33.2，并完成依赖安装、daemon 构建和 Web 服务启动。
+- 固定 Open Design 本机端口：Web 为 `http://127.0.0.1:17573`，daemon 为 `http://127.0.0.1:17456`，便于后续稳定接入 Codex。
+- 在 `~/.codex/config.toml` 新增只读 `open-design` MCP server，让 Codex 后续能读取当前 Open Design 项目/文件/Artifact。
+- 新增 Codex skill `~/.codex/skills/open-design`，记录启动、诊断、MCP 使用和把 Open Design 产物落地到项目 UI 的工作流。
+
+### 文件变更
+- `~/.codex/config.toml` — 新增 `mcp_servers.open-design`
+- `~/.codex/skills/open-design/SKILL.md` — 新增 Open Design 使用工作流
+- `~/.codex/skills/open-design/references/local-setup.md` — 记录本机路径、端口、启动命令和验证命令
+
+## [2026-05-04] Frist-API RT JSON 批量导入管理
+> 领域: `backend` | `frontend` | `ai-pool` | `docs`
+> 影响模块: `Frist-API`, `Admin`, `New-API`, `AI Pool`, `docs`
+> 关联问题: HI-866
+
+### 变更内容
+- 参考 New-API Codex OAuth 与 Grok 给出的 RT JSON 格式，在 Frist-API 管理端新增 Refresh Token 账号池，支持 JSON 数组、单个 JSON 对象和 TXT 每行一个 RT 的导入方式。
+- 管理侧是在原有 New-API/补号/价格/卡密/Plus/审计内容上增量增加，原有管理入口不减少；RT 默认只作为后台台账和刷新准备，不直接进入用户 `/v1` 路由库存。
+- 后端新增 `/api/admin/rt-accounts` 和 `/api/admin/rt-accounts/import`，导入后只返回脱敏邮箱、账号 ID、RT 预览和指纹；`refreshToken` 纳入 runtime AES-GCM 加密字段。
+- 回归覆盖 JSON/TXT 导入、重复 RT 更新、明文 RT/账号 ID 不出现在管理响应和落盘文件、RT 台账不污染可售上游 Key 库存。
+- 验证结果: `node --check apps/frist-api/server/server.js apps/frist-api/src/admin.js` 通过；聚焦 `node --test tests/business-flow.test.mjs tests/server.test.mjs` 为 85/85 通过；Frist-API 全量 `npm test` 为 125/125 通过；`git diff --check` 通过。
+
+### 文件变更
+- `apps/frist-api/server/server.js` — 新增 RT 台账模型、导入解析、管理 API、脱敏展示、摘要和加密字段
+- `apps/frist-api/admin.html` / `apps/frist-api/src/admin.js` / `apps/frist-api/src/styles.css` — 新增管理端 RT 导入区块、摘要和脱敏列表
+- `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/server.test.mjs` — 覆盖用户端隔离和 RT 导入安全边界
+- `docs/006-registries.md` / `docs/009-health.md` — 同步管理入口和健康状态
+
+## [2026-05-04] Frist-API Plus 自用账号台账入口
+> 领域: `backend` | `frontend` | `ai-pool` | `docs`
+> 影响模块: `Frist-API`, `Admin`, `AI Pool`, `docs`
+> 关联问题: HI-865
+
+### 变更内容
+- 参考 Grok 方案后收敛边界：新增“ChatGPT Plus 自用账号台账”，只管理自有 Plus 账号资产、续费日期、TRY 余额、设备/Profile 和合规状态，不做自动登录、不导出密码、不接入用户 `/v1` 路由。
+- 管理端新增 Plus 账号登记/编辑表、摘要指标和账号列表，支持状态、合规、地区、到期和余额展示。
+- 后端新增 `/api/admin/plus-accounts` 管理接口，返回数据统一脱敏；Plus 密码备注纳入 runtime 敏感字段加密，`/api/admin/replenishments` 可同时返回 Plus 台账摘要但不会污染上游 Key 库存。
+- 回归覆盖 Plus 台账不会泄露邮箱明文/密码备注、不会生成可路由库存，避免把 Plus 账号误当作售卖 API 号源。
+
+### 文件变更
+- `apps/frist-api/server/server.js` — 新增 Plus 账号台账模型、管理 API、脱敏展示、到期摘要和加密字段
+- `apps/frist-api/admin.html` / `apps/frist-api/src/admin.js` / `apps/frist-api/src/styles.css` — 新增管理端 Plus 台账入口、表单、摘要和列表样式
+- `apps/frist-api/tests/business-flow.test.mjs` / `apps/frist-api/tests/server.test.mjs` — 覆盖管理端入口和 Plus 台账安全边界
+- `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步入口、运营规则和健康状态
+
 ## [2026-05-04] Frist-API 兑换码售卖主链路
 > 领域: `backend` | `frontend` | `docs`
 > 影响模块: `Frist-API`, `Billing`, `Redeem`, `Admin`, `docs`

@@ -29,20 +29,35 @@ export const DEFAULT_RECHARGE_PLANS = Object.freeze([
   Object.freeze({ id: 'codex-1000-unlimited', label: 'Codex API 1000刀额度/不限时', quotaUsd: 1000, priceCny: 118.88, durationDays: 0, plan: 'balance' }),
 ]);
 export const DEFAULT_MODEL_PRICES = Object.freeze([
-  Object.freeze({ model: 'gpt-5.5', currency: 'CNY', inputCostCnyPerMillion: 8, outputCostCnyPerMillion: 48, inputSaleCnyPerMillion: 8, outputSaleCnyPerMillion: 48, source: 'official' }),
-  Object.freeze({ model: 'gpt-5.5-c', currency: 'CNY', inputCostCnyPerMillion: 8, outputCostCnyPerMillion: 48, inputSaleCnyPerMillion: 8, outputSaleCnyPerMillion: 48, source: 'official' }),
-  Object.freeze({ model: 'claude-opus-4-6-thinking-c', currency: 'CNY', inputCostCnyPerMillion: 108, outputCostCnyPerMillion: 540, inputSaleCnyPerMillion: 108, outputSaleCnyPerMillion: 540, source: 'official' }),
-  Object.freeze({ model: 'claude-opus-4-6-c', currency: 'CNY', inputCostCnyPerMillion: 108, outputCostCnyPerMillion: 540, inputSaleCnyPerMillion: 108, outputSaleCnyPerMillion: 540, source: 'official' }),
-  Object.freeze({ model: 'claude-sonnet-4-5-c', currency: 'CNY', inputCostCnyPerMillion: 21.6, outputCostCnyPerMillion: 108, inputSaleCnyPerMillion: 21.6, outputSaleCnyPerMillion: 108, source: 'official' }),
+  Object.freeze({ model: 'gpt-5.5', currency: 'CNY', inputCostCnyPerMillion: 36, outputCostCnyPerMillion: 216, inputSaleCnyPerMillion: 36, outputSaleCnyPerMillion: 216, source: 'official', displayPrice: '官方 输入 $5.00 / 缓存 $0.50 / 输出 $30.00 每 1M' }),
+  Object.freeze({ model: 'gpt-5.5-c', currency: 'CNY', inputCostCnyPerMillion: 36, outputCostCnyPerMillion: 216, inputSaleCnyPerMillion: 36, outputSaleCnyPerMillion: 216, source: 'official', displayPrice: '官方 输入 $5.00 / 缓存 $0.50 / 输出 $30.00 每 1M' }),
+  Object.freeze({ model: 'gpt-5.4', currency: 'CNY', inputCostCnyPerMillion: 18, outputCostCnyPerMillion: 108, inputSaleCnyPerMillion: 18, outputSaleCnyPerMillion: 108, source: 'official', displayPrice: '官方 输入 $2.50 / 缓存 $0.25 / 输出 $15.00 每 1M' }),
+  Object.freeze({ model: 'gpt-5.4-mini', currency: 'CNY', inputCostCnyPerMillion: 5.4, outputCostCnyPerMillion: 32.4, inputSaleCnyPerMillion: 5.4, outputSaleCnyPerMillion: 32.4, source: 'official', displayPrice: '官方 输入 $0.75 / 缓存 $0.075 / 输出 $4.50 每 1M' }),
+  Object.freeze({ model: 'gpt-5.3-codex', currency: 'CNY', inputCostCnyPerMillion: 12.6, outputCostCnyPerMillion: 100.8, inputSaleCnyPerMillion: 12.6, outputSaleCnyPerMillion: 100.8, source: 'official', displayPrice: '官方 输入 $1.75 / 缓存 $0.175 / 输出 $14.00 每 1M' }),
+  Object.freeze({ model: 'gpt-5-codex', currency: 'CNY', inputCostCnyPerMillion: 9, outputCostCnyPerMillion: 72, inputSaleCnyPerMillion: 9, outputSaleCnyPerMillion: 72, source: 'official', displayPrice: '官方 输入 $1.25 / 缓存 $0.125 / 输出 $10.00 每 1M' }),
+  Object.freeze({ model: 'gpt-4o', currency: 'CNY', inputCostCnyPerMillion: 18, outputCostCnyPerMillion: 72, inputSaleCnyPerMillion: 18, outputSaleCnyPerMillion: 72, source: 'official', displayPrice: '官方 输入 $2.50 / 缓存 $1.25 / 输出 $10.00 每 1M' }),
+  Object.freeze({ model: 'gpt-image-2', currency: 'CNY', inputCostCnyPerMillion: 36, outputCostCnyPerMillion: 216, inputSaleCnyPerMillion: 36, outputSaleCnyPerMillion: 216, source: 'official', displayPrice: '官方 文字入 $5 / 文字缓存 $1.25 / 图入 $8 / 图缓存 $2 / 图出 $30 每 1M' }),
+  Object.freeze({ model: 'gpt-image-1.5', currency: 'CNY', inputCostCnyPerMillion: 36, outputCostCnyPerMillion: 230.4, inputSaleCnyPerMillion: 36, outputSaleCnyPerMillion: 230.4, source: 'official', displayPrice: '官方 文字入 $5 / 文字缓存 $1.25 / 文字出 $10 / 图入 $8 / 图缓存 $2 / 图出 $32 每 1M' }),
+  Object.freeze({ model: 'claude-opus-4-6-thinking-c', currency: 'CNY', inputCostCnyPerMillion: 36, outputCostCnyPerMillion: 180, inputSaleCnyPerMillion: 36, outputSaleCnyPerMillion: 180, source: 'official', displayPrice: '官方 输入 $5.00 / 缓存写 $6.25 / 缓存读 $0.50 / 输出 $25.00 每 1M' }),
+  Object.freeze({ model: 'claude-opus-4-6-c', currency: 'CNY', inputCostCnyPerMillion: 36, outputCostCnyPerMillion: 180, inputSaleCnyPerMillion: 36, outputSaleCnyPerMillion: 180, source: 'official', displayPrice: '官方 输入 $5.00 / 缓存写 $6.25 / 缓存读 $0.50 / 输出 $25.00 每 1M' }),
+  Object.freeze({ model: 'claude-sonnet-4-5-c', currency: 'CNY', inputCostCnyPerMillion: 21.6, outputCostCnyPerMillion: 108, inputSaleCnyPerMillion: 21.6, outputSaleCnyPerMillion: 108, source: 'official', displayPrice: '官方 输入 $3.00 / 缓存写 $3.75 / 缓存读 $0.30 / 输出 $15.00 每 1M' }),
+  Object.freeze({ model: 'gemini-2.5-flash', currency: 'CNY', inputCostCnyPerMillion: 2.16, outputCostCnyPerMillion: 18, inputSaleCnyPerMillion: 2.16, outputSaleCnyPerMillion: 18, source: 'official', displayPrice: '官方 ≤200K 输入 $0.30 / 缓存 $0.03 / 输出 $2.50 每 1M' }),
+  Object.freeze({ model: 'deepseek-v4-flash', currency: 'CNY', inputCostCnyPerMillion: 1.01, outputCostCnyPerMillion: 2.02, inputSaleCnyPerMillion: 1.01, outputSaleCnyPerMillion: 2.02, source: 'official', displayPrice: '官方 缓存命中 $0.014 / 输入 $0.14 / 输出 $0.28 每 1M' }),
+  Object.freeze({ model: 'deepseek-v4-pro', currency: 'CNY', inputCostCnyPerMillion: 3.13, outputCostCnyPerMillion: 6.26, inputSaleCnyPerMillion: 3.13, outputSaleCnyPerMillion: 6.26, source: 'official', displayPrice: '官方 缓存命中 $0.035 / 输入 $0.435 / 输出 $0.87 每 1M' }),
 ]);
 export const DEFAULT_MODEL_CATALOG = [
-  { model: 'gpt-5.5', family: 'OpenAI', tagline: '推理和代码主力', context: '1M 上下文', price: '官方同档 · 折扣结算', available: true },
-  { model: 'gpt-5.4', family: 'OpenAI', tagline: '日常问答和代码补全', context: '1M 上下文', price: '官方同档 · 折扣结算', available: true },
-  { model: 'gpt-5.4-mini', family: 'OpenAI', tagline: '轻量代码和快速问答', context: '长上下文', price: '官方同档 · 折扣结算', available: true },
-  { model: 'gpt-image-2', family: 'OpenAI', tagline: '图片生成', context: '按图计费', price: '按张结算', available: true },
-  { model: 'gpt-5.3-codex', family: 'OpenAI', tagline: 'Codex 专用代码模型', context: '长上下文', price: '官方同档 · 折扣结算', available: true },
-  { model: 'deepseek-v4-flash', family: 'DeepSeek', tagline: 'Codex 桌面版官方兼容网关', context: 'OpenAI v1 兼容', price: '按官方 API 结算', available: true },
-  { model: DEFAULT_MODEL, family: 'Claude', tagline: '复杂开发和长链路推理', context: '1M 上下文', price: '官方同档 · 折扣结算', available: true },
+  { model: 'gpt-5.5', family: 'OpenAI', tagline: '推理和代码主力', context: '1M 上下文', price: '官方 输入 $5.00 / 缓存 $0.50 / 输出 $30.00 每 1M', available: true },
+  { model: 'gpt-5.4', family: 'OpenAI', tagline: '日常问答和代码补全', context: '1M 上下文', price: '官方 输入 $2.50 / 缓存 $0.25 / 输出 $15.00 每 1M', available: true },
+  { model: 'gpt-5.4-mini', family: 'OpenAI', tagline: '轻量代码和快速问答', context: '400K 上下文', price: '官方 输入 $0.75 / 缓存 $0.075 / 输出 $4.50 每 1M', available: true },
+  { model: 'gpt-image-2', family: 'OpenAI', tagline: '图片生成', context: '图像输入/输出', price: '官方 文字入 $5 / 文字缓存 $1.25 / 图入 $8 / 图缓存 $2 / 图出 $30 每 1M', available: true },
+  { model: 'gpt-image-1.5', family: 'OpenAI', tagline: '图片生成', context: '图像输入/输出', price: '官方 文字入 $5 / 文字缓存 $1.25 / 文字出 $10 / 图入 $8 / 图缓存 $2 / 图出 $32 每 1M', available: true },
+  { model: 'gpt-5.3-codex', family: 'OpenAI', tagline: 'Codex 专用代码模型', context: '400K 上下文', price: '官方 输入 $1.75 / 缓存 $0.175 / 输出 $14.00 每 1M', available: true },
+  { model: 'gpt-5-codex', family: 'OpenAI', tagline: 'Codex 代码模型', context: '400K 上下文', price: '官方 输入 $1.25 / 缓存 $0.125 / 输出 $10.00 每 1M', available: true },
+  { model: 'gpt-4o', family: 'OpenAI', tagline: '通用多模态', context: '128K 上下文', price: '官方 输入 $2.50 / 缓存 $1.25 / 输出 $10.00 每 1M', available: true },
+  { model: 'deepseek-v4-flash', family: 'DeepSeek', tagline: 'Codex 桌面版官方兼容网关', context: 'OpenAI v1 兼容', price: '官方 缓存命中 $0.014 / 输入 $0.14 / 输出 $0.28 每 1M', available: true },
+  { model: 'deepseek-v4-pro', family: 'DeepSeek', tagline: '推理模型别名', context: 'OpenAI v1 兼容', price: '官方 缓存命中 $0.035 / 输入 $0.435 / 输出 $0.87 每 1M', available: true },
+  { model: 'gemini-2.5-flash', family: 'Gemini', tagline: '多模态和轻量任务', context: '1M 上下文', price: '官方 ≤200K 输入 $0.30 / 缓存 $0.03 / 输出 $2.50 每 1M', available: true },
+  { model: DEFAULT_MODEL, family: 'Claude', tagline: '复杂开发和长链路推理', context: '长上下文', price: '官方 输入 $5.00 / 缓存写 $6.25 / 缓存读 $0.50 / 输出 $25.00 每 1M', available: true },
 ];
 export const SESSION_COOKIE = 'frist_session';
 export const DAY_CARD_CODES = new Map([
@@ -96,7 +111,11 @@ export function generateVerificationCode() {
 export function maskKey(value) {
   const key = String(value || '');
   if (!key) return 'sk-******';
-  const prefix = /^fk-live-/i.test(key) ? 'fk-live' : key.slice(0, Math.min(6, key.length)).replace(/-$/, '');
+  const prefix = /^sk-/i.test(key)
+    ? 'sk'
+    : /^fk-live-/i.test(key)
+      ? 'fk-live'
+      : key.slice(0, Math.min(6, key.length)).replace(/-$/, '');
   return `${prefix}-••••••${key.slice(-4)}`;
 }
 
@@ -630,7 +649,7 @@ export function writeJson(response, status, payload, headers = {}) {
   response.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
     'access-control-allow-origin': '*',
-    'access-control-allow-headers': 'content-type, authorization, x-api-key, anthropic-auth-token, x-admin-token, x-frist-session-id, x-conversation-id',
+    'access-control-allow-headers': 'content-type, authorization, x-api-key, anthropic-auth-token, x-admin-token, x-csrf-token, x-frist-session-id, x-conversation-id',
     'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
     ...headers,
   });
@@ -640,7 +659,7 @@ export function writeJson(response, status, payload, headers = {}) {
 export function writeNoContent(response) {
   response.writeHead(204, {
     'access-control-allow-origin': '*',
-    'access-control-allow-headers': 'content-type, authorization, x-api-key, anthropic-auth-token, x-admin-token, x-frist-session-id, x-conversation-id',
+    'access-control-allow-headers': 'content-type, authorization, x-api-key, anthropic-auth-token, x-admin-token, x-csrf-token, x-frist-session-id, x-conversation-id',
     'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
   });
   response.end();
@@ -685,10 +704,13 @@ export function contextForModel(model = '') {
 }
 
 export function priceLabel(price) {
+  if (price.displayPrice) {
+    return price.displayPrice;
+  }
   const input = Number(price.inputSaleCnyPerMillion || 0);
   const output = Number(price.outputSaleCnyPerMillion || 0);
   if (input <= 0 && output <= 0) {
-    return '按后台价格';
+    return '官方价格待同步';
   }
   return `${formatUsdPriceFromCny(input)}/${formatUsdPriceFromCny(output)} 每 1M`;
 }

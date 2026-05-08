@@ -1,16 +1,18 @@
 import {
   buildClientSetupCommands,
+  buildCcSwitchMcpImportUrl,
+  normalizeClientAvailableModels,
   normalizeBaseUrl,
   normalizeOfficialModelList,
   normalizeOfficialModelName,
   summarizeModelHealth,
-} from './core.js';
+} from './core.js?v=20260508-visual-qa2';
 import {
   buildBusinessClientConfig,
   buildBusinessImportUrl,
   createBusinessStateFromDashboard,
-} from './businessFlow.js';
-import { createFristApiBrowserClient, normalizeFristDashboard } from './serverClient.js';
+} from './businessFlow.js?v=20260508-visual-qa2';
+import { createFristApiBrowserClient, normalizeFristDashboard } from './serverClient.js?v=20260508-visual-qa2';
 
 const emptyDashboard = {
   accountSummary: {
@@ -30,15 +32,19 @@ const emptyDashboard = {
     averageLatency: '-',
     successRate: '0%',
     email: '',
+    emailMasked: '',
+    displayName: '',
+    avatarUrl: '',
     isAdmin: false,
   },
   apiKeys: [],
   channelChecks: [],
   helpLinks: [],
-  importTargets: ['Claude', 'Codex', 'Gemini', 'OpenCode', 'OpenClaw', 'Hermes', 'Harmes'],
+  importTargets: ['Claude', 'Codex', 'Gemini', 'OpenCode', 'OpenClaw', 'Hermes'],
   modelUsage: [],
   modelCatalog: [],
   usageRecords: [],
+  usageAnomalies: [],
   recentLogs: [],
   rechargeOptions: [],
   balanceAlert: {
@@ -54,87 +60,98 @@ const emptyDashboard = {
 
 const dashboardData = structuredClone(emptyDashboard);
 let businessState = createBusinessStateFromDashboard(dashboardData, { now: new Date().toISOString() });
+const revealedApiKeys = new Map();
 
 const serverClient = createFristApiBrowserClient({
   baseUrl: window.FRIST_API_SERVER_BASE_URL || window.location.origin,
 });
 
 const catalogTemplate = [
-  { model: 'gpt-5.5', family: 'OpenAI', tagline: '推理和代码主力', context: '1M 上下文', price: '按后台价格', available: false },
-  { model: 'gpt-5.4', family: 'OpenAI', tagline: '日常问答和代码补全', context: '1M 上下文', price: '按后台价格', available: false },
-  { model: 'gpt-5.4-mini', family: 'OpenAI', tagline: '轻量代码和快速问答', context: '长上下文', price: '按后台价格', available: false },
-  { model: 'gpt-image-2', family: 'OpenAI', tagline: '图片生成', context: '按图计费', price: '按张结算', available: false },
-  { model: 'gpt-5.3-codex', family: 'OpenAI', tagline: 'Codex 专用代码模型', context: '长上下文', price: '按后台价格', available: false },
-  { model: 'claude-opus-4-6-thinking-c', family: 'Claude', tagline: '复杂开发和长链路推理', context: '1M 上下文', price: '按后台价格', available: false },
-  { model: 'gemini-2.5-flash', family: 'Gemini', tagline: '多模态和轻量任务', context: '长上下文', price: '按后台价格', available: false },
-  { model: 'deepseek-v4-flash', family: 'DeepSeek', tagline: 'Codex 桌面版官方兼容网关', context: 'OpenAI v1 兼容', price: '按官方 API 结算', available: false },
+  { model: 'gpt-5.5', family: 'OpenAI', tagline: '推理和代码主力', context: '1M 上下文', price: '官方 输入 $5.00 / 缓存 $0.50 / 输出 $30.00 每 1M', available: false },
+  { model: 'gpt-5.4', family: 'OpenAI', tagline: '日常问答和代码补全', context: '1M 上下文', price: '官方 输入 $2.50 / 缓存 $0.25 / 输出 $15.00 每 1M', available: false },
+  { model: 'gpt-5.4-mini', family: 'OpenAI', tagline: '轻量代码和快速问答', context: '400K 上下文', price: '官方 输入 $0.75 / 缓存 $0.075 / 输出 $4.50 每 1M', available: false },
+  { model: 'gpt-image-2', family: 'OpenAI', tagline: '图片生成', context: '图像输入/输出', price: '官方 文字入 $5 / 文字缓存 $1.25 / 图入 $8 / 图缓存 $2 / 图出 $30 每 1M', available: false },
+  { model: 'gpt-image-1.5', family: 'OpenAI', tagline: '图片生成', context: '图像输入/输出', price: '官方 文字入 $5 / 文字缓存 $1.25 / 文字出 $10 / 图入 $8 / 图缓存 $2 / 图出 $32 每 1M', available: false },
+  { model: 'gpt-5.3-codex', family: 'OpenAI', tagline: 'Codex 专用代码模型', context: '400K 上下文', price: '官方 输入 $1.75 / 缓存 $0.175 / 输出 $14.00 每 1M', available: false },
+  { model: 'gpt-5-codex', family: 'OpenAI', tagline: 'Codex 代码模型', context: '400K 上下文', price: '官方 输入 $1.25 / 缓存 $0.125 / 输出 $10.00 每 1M', available: false },
+  { model: 'gpt-4o', family: 'OpenAI', tagline: '通用多模态', context: '128K 上下文', price: '官方 输入 $2.50 / 缓存 $1.25 / 输出 $10.00 每 1M', available: false },
+  { model: 'claude-opus-4-6-thinking-c', family: 'Claude', tagline: '复杂开发和长链路推理', context: '长上下文', price: '官方 输入 $5.00 / 缓存写 $6.25 / 缓存读 $0.50 / 输出 $25.00 每 1M', available: false },
+  { model: 'gemini-2.5-flash', family: 'Gemini', tagline: '多模态和轻量任务', context: '1M 上下文', price: '官方 ≤200K 输入 $0.30 / 缓存 $0.03 / 输出 $2.50 每 1M', available: false },
+  { model: 'deepseek-v4-flash', family: 'DeepSeek', tagline: 'Codex 桌面版官方兼容网关', context: 'OpenAI v1 兼容', price: '官方 缓存命中 $0.014 / 输入 $0.14 / 输出 $0.28 每 1M', available: false },
+  { model: 'deepseek-v4-pro', family: 'DeepSeek', tagline: '推理模型别名', context: 'OpenAI v1 兼容', price: '官方 缓存命中 $0.035 / 输入 $0.435 / 输出 $0.87 每 1M', available: false },
 ];
+const officialModelTemplateByGroup = Object.freeze({
+  OpenAI: Object.freeze(['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-image-2', 'gpt-image-1.5', 'gpt-5.3-codex', 'gpt-5-codex', 'gpt-4o']),
+  Claude: Object.freeze(['claude-opus-4-6-thinking-c', 'claude-opus-4-6-c', 'claude-sonnet-4-5-c']),
+  Gemini: Object.freeze(['gemini-2.5-flash']),
+  DeepSeek: Object.freeze(['deepseek-v4-flash', 'deepseek-v4-pro']),
+});
 
 const viewMeta = {
   dashboard: {
     kicker: 'Frist',
-    title: '首页',
-    desc: '余额、消耗、连通和导入。',
+    title: '工作台',
+    desc: '',
   },
   playground: {
-    kicker: 'Square',
-    title: '广场',
-    desc: '直接试模型，顺手出图。',
+    kicker: 'Test',
+    title: '测试',
+    desc: '',
   },
   api: {
     kicker: 'Key',
     title: 'API',
-    desc: '创建、开关、复制。',
+    desc: '',
   },
   billing: {
     kicker: 'Billing',
     title: '充值',
-    desc: '购买和兑换卡密。',
+    desc: '',
   },
   switch: {
     kicker: 'Import',
     title: '导入',
-    desc: '选择客户端。',
+    desc: '',
   },
   analytics: {
     kicker: 'Data',
-    title: '数据看板',
-    desc: '看模型消耗和可用性。',
+    title: '趋势',
+    desc: '',
   },
   records: {
     kicker: 'Records',
-    title: '使用记录',
-    desc: '按 Key、模型和端点追踪。',
+    title: '记录',
+    desc: '',
   },
   subscription: {
     kicker: 'Plan',
-    title: '我的订阅',
-    desc: '为时限套餐预留。',
+    title: '订阅',
+    desc: '',
   },
   redeem: {
     kicker: 'Code',
     title: '兑换码',
-    desc: '闲鱼发货后核销。',
+    desc: '',
   },
   invite: {
     kicker: 'Referral',
-    title: '邀请返利',
-    desc: '客户增长入口。',
+    title: '邀请',
+    desc: '',
   },
   profile: {
     kicker: 'Profile',
-    title: '个人资料',
-    desc: '账户和偏好。',
+    title: '资料',
+    desc: '',
   },
   models: {
     kicker: 'Market',
-    title: '模型广场',
-    desc: '看模型和价格。',
+    title: '模型',
+    desc: '',
   },
   docs: {
     kicker: 'Guide',
-    title: '使用教程',
-    desc: '一键配置客户端。',
+    title: '配置',
+    desc: '',
   },
 };
 
@@ -156,29 +173,42 @@ const state = {
   modelSearch: '',
   playgroundModelSearch: '',
   playgroundFamily: 'All',
+  language: 'zh',
   serverAvailable: false,
   hasServerSession: false,
   importRequestId: 0,
+  importFallbackTimer: 0,
   playgroundBusy: false,
   playgroundConnectivity: {
     status: 'idle',
-    text: '等待实测',
+    text: '每 3 分钟检测',
   },
   playgroundMessageSeq: 0,
   playgroundMessages: [
     {
       id: 'msg-welcome',
       role: 'assistant',
-      content: '先从左侧选择模型，再直接测试文字、代码或图片能力。',
+      content: '选择模型后测试。',
     },
   ],
   generatedImage: null,
   guideTarget: 'Codex',
+  importServerConfig: null,
+  importServerSetup: null,
   captcha: {
     id: '',
     question: '',
   },
 };
+
+const renderTimers = new Map();
+const catalogCache = {
+  signature: '',
+  rows: [],
+};
+let lastPlaygroundModelsSignature = '';
+let lastPlaygroundLogSignature = '';
+let lastPlaygroundImageSignature = '';
 
 function render() {
   renderLoadingState();
@@ -186,6 +216,7 @@ function render() {
   renderAuthPanel();
   renderDashboard();
   renderUsage();
+  renderUsageAnomalies();
   renderChannelHealth();
   renderTrendChart();
   renderRecentLogs();
@@ -204,6 +235,7 @@ function render() {
   renderImportLink();
   renderClientConfig();
   renderSetupGuides();
+  renderCcSwitchUsageGuide();
   renderHelpLinks();
   routeFromHash();
 }
@@ -217,10 +249,11 @@ async function loadDashboardData() {
     nextData = normalizeFristDashboard(serverDashboard, emptyDashboard);
     state.serverAvailable = true;
     state.hasServerSession = Boolean(serverDashboard.authenticated);
+    signalAction('success');
   } catch (error) {
     state.serverAvailable = false;
     state.hasServerSession = false;
-    setActionMessage(userFacingLoadError(error), 'error');
+    signalAction('error');
   }
 
   state.dashboardLoading = false;
@@ -242,6 +275,7 @@ function emptyServerPayload() {
     modelUsage: [],
     modelCatalog: [],
     usageRecords: [],
+    usageAnomalies: [],
     recentLogs: [],
     rechargeOptions: [],
     balanceAlert: {},
@@ -264,8 +298,10 @@ function renderAccountSummary() {
   setText('[data-total-tokens]', accountSummary.totalTokens || '0');
   setText('[data-average-latency]', accountSummary.averageLatency || '-');
   setText('[data-success-rate]', accountSummary.successRate || '0%');
-  setText('[data-profile-email]', accountSummary.email || '未登录');
+  setText('[data-profile-email]', accountSummary.emailMasked || maskEmail(accountSummary.email) || '未登录');
+  setText('[data-profile-display-name]', accountSummary.displayName || accountSummary.userInitials || '未登录');
   setText('[data-profile-plan]', accountSummary.plan || '未登录');
+  renderProfileAvatar();
 }
 
 function renderAuthPanel() {
@@ -275,7 +311,7 @@ function renderAuthPanel() {
     ? businessState.customer.emailVerified
       ? '已登录'
       : '已登录'
-    : '登录后创建 Key。';
+    : '登录创建 Key';
 
   if (emailInput && document.activeElement !== emailInput) {
     emailInput.value = businessState.customer.email;
@@ -305,10 +341,10 @@ function renderAuthPanel() {
   if (resetConfirmRow) {
     resetConfirmRow.hidden = state.authMode !== 'login' || !state.passwordResetRequested || state.hasServerSession;
   }
-  setText('[data-auth-title]', state.authMode === 'register' ? '注册账号' : '登录账号');
+  setText('[data-auth-title]', state.authMode === 'register' ? '注册' : '登录');
   setText('[data-captcha-question]', state.captcha.question ? `验证 ${state.captcha.question}` : '安全验证');
   setText('[data-email-status]', status);
-  setText('[data-verification-hint]', isAdmin ? '管理员身份已激活。' : state.hasServerSession ? '可以创建 Key。' : status);
+  setText('[data-verification-hint]', isAdmin ? '管理员已激活' : state.hasServerSession ? '可创建 Key' : status);
 
   for (const button of document.querySelectorAll('[data-auth-mode]')) {
     const selected = button.dataset.authMode === state.authMode;
@@ -350,8 +386,39 @@ function renderUsage() {
 
   if (compact) {
     compact.innerHTML = state.dashboardLoading
-      ? renderSkeletonRows(2, '模型消耗加载中')
-      : renderRows(modelUsage.slice(0, 2), { compact: true }) || renderEmptyState('暂无模型消耗', '创建 Key 并发起请求后展示占比。');
+      ? renderSkeletonRows(2, '消耗')
+      : renderRows(modelUsage.slice(0, 2), { compact: true }) || renderEmptyState('无请求');
+  }
+}
+
+function renderUsageAnomalies() {
+  const rows = dashboardData.usageAnomalies || [];
+  const status = rows.some((item) => item.severity === 'critical')
+    ? '异常'
+    : rows.some((item) => item.severity === 'warning')
+      ? '关注'
+      : '正常';
+  for (const statusElement of document.querySelectorAll('[data-usage-anomaly-status]')) {
+    statusElement.textContent = status;
+    statusElement.className = `status-pill status-pill--${status === '正常' ? 'healthy' : status === '关注' ? 'pending' : 'down'}`;
+  }
+  for (const container of document.querySelectorAll('[data-usage-anomalies]')) {
+    container.innerHTML = rows.length
+      ? rows
+          .slice(0, 4)
+          .map(
+            (item) => `
+              <article class="usage-anomaly-row usage-anomaly-row--${escapeHtml(item.severity || 'info')}">
+                <div>
+                  <strong>${escapeHtml(item.title || '异常检测')}</strong>
+                  <span>${escapeHtml(item.detail || '')}</span>
+                </div>
+                <small>${escapeHtml(item.action || '查看记录')}</small>
+              </article>
+            `,
+          )
+          .join('')
+      : renderEmptyState('无异常');
   }
 }
 
@@ -361,17 +428,40 @@ function renderTrendChart() {
   const rows = tokenTrendRows();
   const max = Math.max(1, ...rows.map((item) => item.tokens));
   const hasTokens = rows.some((item) => item.tokens > 0);
+  const width = 640;
+  const height = 180;
+  const padding = { top: 20, right: 18, bottom: 32, left: 44 };
+  const innerWidth = width - padding.left - padding.right;
+  const innerHeight = height - padding.top - padding.bottom;
+  const points = rows.map((item, index) => {
+    const x = padding.left + (innerWidth / Math.max(rows.length - 1, 1)) * index;
+    const y = padding.top + innerHeight - (hasTokens ? (item.tokens / max) * innerHeight : innerHeight * 0.38);
+    return { ...item, x, y };
+  });
+  const path = points
+    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`)
+    .join(' ');
+  const baseline = height - padding.bottom;
+  const area = `${path} L ${points.at(-1).x.toFixed(1)} ${baseline} L ${points[0].x.toFixed(1)} ${baseline} Z`;
+  const total = rows.reduce((sum, item) => sum + item.tokens, 0);
   chart.classList.toggle('is-empty', !hasTokens && !state.dashboardLoading);
-  chart.innerHTML = rows
-    .map(
-      (item) => `
-        <span class="trend-bar" role="img" aria-label="${escapeHtml(item.label)} ${item.tokens} Token" style="--height:${Math.max(8, Math.round((item.tokens / max) * 100))}%">
-          <i></i>
-          <b>${escapeHtml(item.label)}</b>
-        </span>
-      `,
-    )
-    .join('');
+  chart.innerHTML = `
+    <div class="trend-chart__summary">
+      <span>7 天 Token</span>
+      <strong>${escapeHtml(compactNumber(total))}</strong>
+      <small>${hasTokens ? `峰值 ${escapeHtml(compactNumber(max))}` : '暂无真实调用'}</small>
+    </div>
+    <svg class="trend-chart__svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="最近 7 天 Token 使用趋势">
+      <line x1="${padding.left}" y1="${baseline}" x2="${width - padding.right}" y2="${baseline}"></line>
+      <line x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${baseline}"></line>
+      <path class="trend-chart__area" d="${area}"></path>
+      <path class="trend-chart__line" d="${path}"></path>
+      ${points.map((point) => `<circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="${point.tokens > 0 ? 4.5 : 3}" aria-label="${escapeHtml(point.label)} ${escapeHtml(compactNumber(point.tokens))} Token"></circle>`).join('')}
+    </svg>
+    <div class="trend-chart__labels">
+      ${points.map((point) => `<span><b>${escapeHtml(point.label)}</b><em>${escapeHtml(compactNumber(point.tokens))}</em></span>`).join('')}
+    </div>
+  `;
 }
 
 function tokenTrendRows() {
@@ -403,23 +493,30 @@ function tokenNumber(value) {
   return number;
 }
 
+function compactNumber(value) {
+  const number = Number(value || 0);
+  if (!Number.isFinite(number) || number <= 0) return '0';
+  if (number >= 1_000_000) return `${(number / 1_000_000).toFixed(number >= 10_000_000 ? 0 : 1)}M`;
+  if (number >= 1_000) return `${(number / 1_000).toFixed(number >= 10_000 ? 0 : 1)}K`;
+  return String(Math.round(number));
+}
+
 function renderRecentLogs() {
   const container = document.querySelector('[data-recent-logs]');
   if (!container) return;
-  const rows = dashboardData.recentLogs || [];
+  const rows = (dashboardData.recentLogs || []).slice(0, 5);
   container.innerHTML = rows.length
     ? rows
         .map(
           (item) => `
-            <article class="log-row">
+            <article class="log-row log-row--compact">
               <span>${escapeHtml(formatCheckedAt(item.at))}</span>
               <strong>${escapeHtml(item.detail)}</strong>
-              <small>${escapeHtml(item.type)}</small>
             </article>
           `,
         )
         .join('')
-    : renderEmptyState('暂无使用日志', '发起请求后会在这里显示最近路由、计费和错误。');
+    : renderEmptyState('无日志');
 }
 
 function renderUsageRecords() {
@@ -429,7 +526,7 @@ function renderUsageRecords() {
   const rows = dashboardData.usageRecords || [];
   if (empty) {
     empty.hidden = rows.length > 0;
-    empty.innerHTML = rows.length ? '' : renderEmptyState('暂无使用记录', '发起请求后会展示 Key、模型、端点、计费模式和 Token。');
+    empty.innerHTML = rows.length ? '' : renderEmptyState('无记录');
   }
   container.innerHTML = rows.length
     ? rows
@@ -438,21 +535,45 @@ function renderUsageRecords() {
             <tr>
               <td>${escapeHtml(item.apiKey)}</td>
               <td>${escapeHtml(item.model)}</td>
-              <td>${escapeHtml(item.inferenceEffort)}</td>
-              <td>${escapeHtml(item.endpoint)}</td>
+              <td>${escapeHtml(item.client)}</td>
               <td>${escapeHtml(item.type)}</td>
-              <td>${escapeHtml(item.billingMode)}</td>
               <td>${escapeHtml(item.tokens)}</td>
+              <td>${escapeHtml(item.amount)}</td>
+              <td>${escapeHtml(item.latency)}</td>
+              <td>${escapeHtml(formatCheckedAt(item.at))}</td>
             </tr>
           `,
         )
         .join('')
-    : '<tr class="table-empty"><td colspan="7">暂无使用记录</td></tr>';
+    : '<tr class="table-empty"><td colspan="8">无记录</td></tr>';
 }
 
 function renderProfile() {
   setText('[data-profile-key-count]', `${dashboardData.apiKeys.length} 个`);
   setText('[data-profile-balance]', dashboardData.accountSummary.quotaLeft || '$0.00');
+  const nameInput = document.querySelector('[data-profile-name-input]');
+  const emailInput = document.querySelector('[data-profile-email-input]');
+  const avatarInput = document.querySelector('[data-profile-avatar-input]');
+  if (nameInput && document.activeElement !== nameInput) {
+    nameInput.value = dashboardData.accountSummary.displayName || '';
+  }
+  if (emailInput && document.activeElement !== emailInput) {
+    emailInput.value = dashboardData.accountSummary.email || '';
+  }
+  if (avatarInput && document.activeElement !== avatarInput) {
+    avatarInput.value = dashboardData.accountSummary.avatarUrl || '';
+  }
+  renderProfileAvatar();
+}
+
+function renderProfileAvatar() {
+  const initials = dashboardData.accountSummary.userInitials || 'FA';
+  const avatarUrl = safeAvatarUrl(dashboardData.accountSummary.avatarUrl || '');
+  for (const avatar of document.querySelectorAll('[data-profile-avatar], [data-profile-avatar-mini]')) {
+    avatar.classList.toggle('has-image', Boolean(avatarUrl));
+    avatar.textContent = avatarUrl ? '' : initials;
+    avatar.style.backgroundImage = avatarUrl ? `url("${avatarUrl}")` : '';
+  }
 }
 
 function renderChannelHealth() {
@@ -463,20 +584,26 @@ function renderChannelHealth() {
 
   if (compact) {
     compact.innerHTML = state.dashboardLoading
-      ? renderSkeletonRows(2, '渠道连通性加载中')
-      : compactItems || renderEmptyState('暂无渠道检测', '刷新连通后展示 OpenAI、Claude 等可用线路。');
+      ? renderSkeletonRows(2, '通道')
+      : compactItems || renderEmptyState('未检测');
   }
 }
 
 function renderProviderSummary(item) {
   return `
-    <article class="provider-row">
+    <article class="provider-row" data-channel-monitor-summary>
       <span class="health-dot health-dot--${item.status}" aria-hidden="true"></span>
       <div class="provider-main">
-        <strong>${escapeHtml(item.provider)}</strong>
-        <small class="provider-meta">${escapeHtml(item.okText)} · 最低 ${escapeHtml(item.latencyText)} · ${escapeHtml(item.checkedText)}</small>
+        <div class="provider-title">
+          <strong>${escapeHtml(item.provider)}</strong>
+          <span class="monitor-chip monitor-chip--${item.status}">${escapeHtml(item.statusText)}</span>
+        </div>
+        <small class="provider-meta">${escapeHtml([item.okText, `可用率 ${item.availabilityText}`, item.latencyText, item.checkedText].filter(Boolean).join(' · '))}</small>
+        <div class="monitor-history monitor-history--compact" data-channel-monitor-history>
+          ${item.history.map((status) => `<i class="${monitorHistoryClass(status)}"></i>`).join('')}
+        </div>
         <div class="provider-models">
-          ${item.models.map((model) => `<span>${escapeHtml(model)}</span>`).join('')}
+          ${item.models.map((model) => `<span title="${escapeHtml(model)}">${escapeHtml(publicModelLabel(model))}</span>`).join('')}
         </div>
       </div>
     </article>
@@ -491,33 +618,59 @@ function providerSummaries(channelChecks) {
       provider: snapshot.provider,
       total: 0,
       healthy: 0,
+      slow: 0,
+      down: 0,
+      latencyTotal: 0,
+      latencySamples: 0,
       bestLatency: 0,
       models: [],
       checkedAt: '',
       lastReason: '',
+      history: [],
+      monitorIntervalSeconds: 0,
     };
-    current.total += 1;
-    current.healthy += snapshot.ok && !snapshot.maintenance ? 1 : 0;
+    const totalCount = Number(snapshot.totalCount || 1);
+    const healthyCount = Number(snapshot.healthyCount ?? (snapshot.ok && !snapshot.maintenance ? 1 : 0));
+    const downCount = Number(snapshot.downCount ?? Math.max(0, totalCount - healthyCount));
+    const slowCount = Number(snapshot.slowCount || 0);
+    current.total += totalCount;
+    current.healthy += healthyCount;
+    current.down += downCount;
+    current.slow += slowCount;
     if (snapshot.ok) {
-      current.bestLatency = current.bestLatency
-        ? Math.min(current.bestLatency, Number(snapshot.latencyMs || 0))
-        : Number(snapshot.latencyMs || 0);
+      const latency = Number(snapshot.latencyMs || 0);
+      const averageLatency = Number(snapshot.averageLatencyMs || latency || 0);
+      current.bestLatency = current.bestLatency ? Math.min(current.bestLatency, latency) : latency;
+      current.latencyTotal += averageLatency || latency;
+      current.latencySamples += 1;
     }
     current.models.push(snapshot.model);
     current.checkedAt = [current.checkedAt, snapshot.checkedAt].filter(Boolean).sort().at(-1) || '';
     current.lastReason = snapshot.officialStatus || snapshot.status || current.lastReason;
     current.status = current.healthy > 0 ? summary.status : 'down';
+    const interval = Number(snapshot.monitorIntervalSeconds || current.monitorIntervalSeconds || 0);
+    current.monitorIntervalSeconds = Number.isFinite(interval) ? interval : 0;
+    current.history.push(...(Array.isArray(snapshot.history) ? snapshot.history : []));
     grouped.set(snapshot.provider, current);
   }
 
-  return [...grouped.values()].map((item) => ({
-    provider: item.provider,
-    status: item.healthy > 0 ? (item.bestLatency > 1600 ? 'slow' : 'healthy') : 'down',
-    okText: item.healthy > 0 ? `${item.healthy}/${item.total}` : '不可用',
-    latencyText: item.bestLatency ? `${item.bestLatency}ms` : '-',
-    checkedText: item.checkedAt ? `最近 ${formatCheckedAt(item.checkedAt)}` : item.lastReason || '等待检测',
-    models: normalizeOfficialModelList([...new Set(item.models)]).slice(0, 4),
-  }));
+  return [...grouped.values()].map((item) => {
+    const availability = item.total ? Math.round((item.healthy / item.total) * 1000) / 10 : 0;
+    const averageLatency = item.latencySamples ? Math.round(item.latencyTotal / item.latencySamples) : 0;
+    const status = item.healthy === 0 ? 'down' : item.down > 0 || item.slow > 0 || item.bestLatency > 1600 ? 'slow' : 'healthy';
+    return {
+      provider: item.provider,
+      status,
+      statusText: status === 'healthy' ? '正常' : status === 'slow' ? '降级' : '异常',
+      okText: item.healthy > 0 ? `可用 ${item.healthy}/${item.total}` : '离线',
+      availabilityText: `${availability}%`,
+      latencyText: item.bestLatency ? `最低 ${item.bestLatency}ms / 平均 ${averageLatency}ms` : '',
+      checkedText: item.checkedAt ? `最近 ${formatCheckedAt(item.checkedAt)}` : item.lastReason || '未检测',
+      intervalText: item.monitorIntervalSeconds ? `${item.monitorIntervalSeconds} 秒刷新` : '',
+      history: item.history.slice(-12),
+      models: normalizeOfficialModelList([...new Set(item.models)]).slice(0, 4),
+    };
+  });
 }
 
 function formatCheckedAt(value) {
@@ -525,7 +678,17 @@ function formatCheckedAt(value) {
   if (Number.isNaN(date.getTime())) {
     return String(value || '-');
   }
+  return formatClockTime(date);
+}
+
+function formatClockTime(date) {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function monitorHistoryClass(status) {
+  if (status === 'ok' || status === 'healthy' || status === 'operational') return 'is-ok';
+  if (status === 'slow' || status === 'degraded') return 'is-slow';
+  return 'is-down';
 }
 
 function renderPlayground() {
@@ -537,10 +700,14 @@ function renderPlayground() {
     state.playgroundModel = models[0] || 'gpt-5.5';
   }
 
-  if (select && document.activeElement !== select) {
+  const modelsSignature = models.join('|');
+  if (select && document.activeElement !== select && modelsSignature !== lastPlaygroundModelsSignature) {
     select.innerHTML = models
-      .map((model) => `<option value="${escapeHtml(model)}">${escapeHtml(model)}</option>`)
+      .map((model) => `<option value="${escapeHtml(model)}">${escapeHtml(publicModelLabel(model))}</option>`)
       .join('');
+    lastPlaygroundModelsSignature = modelsSignature;
+  }
+  if (select && document.activeElement !== select) {
     select.value = state.playgroundModel;
   }
 
@@ -554,46 +721,21 @@ function renderPlayground() {
   renderSelectedPlaygroundModel();
   renderPlaygroundDiagnostics();
 
-  const log = document.querySelector('[data-playground-log]');
-  if (log) {
-    log.innerHTML = state.playgroundMessages
-      .map(
-        (message) => `
-          <article class="chat-bubble chat-bubble--${message.role}">
-            <div class="chat-bubble__head">
-              <span>${message.role === 'user' ? '你' : 'Frist'}</span>
-              <button class="chat-delete" data-delete-message="${escapeHtml(message.id)}" type="button" aria-label="删除这条消息">×</button>
-            </div>
-            <p>${escapeHtml(message.content)}</p>
-          </article>
-        `,
-      )
-      .join('');
-    log.scrollTop = log.scrollHeight;
-  }
-
-  const imageOutput = document.querySelector('[data-image-output]');
-  if (imageOutput) {
-    imageOutput.hidden = !state.generatedImage;
-    imageOutput.innerHTML = state.generatedImage
-      ? `<img src="${escapeHtml(state.generatedImage)}" alt="生成结果" />`
-      : '';
-  }
+  renderPlaygroundLog();
+  renderPlaygroundImageOutput();
 
   const sendButton = document.querySelector('[data-playground-send]');
   if (sendButton) {
     sendButton.disabled = state.playgroundBusy;
-    sendButton.textContent = state.playgroundBusy
-      ? '处理中'
-      : isImageModel(state.playgroundModel)
-        ? '生成'
-        : '发送';
+    sendButton.textContent = isImageModel(state.playgroundModel) ? '生成' : '发送';
+    sendButton.classList.toggle('is-busy', state.playgroundBusy);
+    sendButton.toggleAttribute('aria-busy', state.playgroundBusy);
   }
 
   const testButton = document.querySelector('[data-playground-test]');
   if (testButton) {
     testButton.disabled = state.playgroundBusy;
-    testButton.textContent = state.playgroundBusy ? '实测中' : '实测连通';
+    testButton.textContent = '检测';
   }
 
   const status = document.querySelector('[data-playground-status]');
@@ -618,13 +760,15 @@ function renderPlaygroundFamilyFilter() {
 
 function renderPlaygroundModelGrid(rows) {
   const container = document.querySelector('[data-playground-model-grid]');
-  setText('[data-playground-model-count]', `${rows.length} 个模型`);
+  setText('[data-playground-model-count]', `${rows.length} 个`);
   if (!container) return;
 
   container.innerHTML = rows
     .map((item) => {
       const active = item.model === state.playgroundModel;
       const summary = modelHealthSummaryFor(item.model);
+      const label = publicModelLabel(item.model);
+      const metaLabel = publicModelMetaLabel(item.model, item.family);
       return `
         <button
           class="playground-model-row ${active ? 'is-active' : ''} ${item.available ? 'is-available' : 'is-unavailable'}"
@@ -635,14 +779,48 @@ function renderPlaygroundModelGrid(rows) {
         >
           <span class="health-dot health-dot--${summary.status}" aria-hidden="true"></span>
           <span class="playground-model-row__main">
-            <strong>${escapeHtml(item.model)}</strong>
-            <small>${escapeHtml(item.family)} · ${escapeHtml(item.endpointType)}</small>
+            <strong title="${escapeHtml(item.model)}">${escapeHtml(label)}</strong>
+            <small title="${escapeHtml(item.model)}">${escapeHtml(item.family)} · ${escapeHtml(metaLabel)}</small>
           </span>
-          <span class="playground-model-row__meta">${escapeHtml(item.price)}</span>
+          <span class="playground-model-row__meta">${escapeHtml(summary.label)}</span>
         </button>
       `;
     })
-    .join('') || renderEmptyState('没有匹配的模型', '换一个关键词或切到全部分组。');
+    .join('') || renderEmptyState('无结果');
+}
+
+function renderPlaygroundLog() {
+  const log = document.querySelector('[data-playground-log]');
+  if (!log) return;
+  const signature = state.playgroundMessages.map((message) => `${message.id}:${message.role}:${message.content}`).join('|');
+  if (signature === lastPlaygroundLogSignature) return;
+  lastPlaygroundLogSignature = signature;
+  log.innerHTML = state.playgroundMessages
+    .map(
+      (message) => `
+        <article class="chat-bubble chat-bubble--${message.role}">
+          <div class="chat-bubble__head">
+            <span>${message.role === 'user' ? '你' : 'Frist'}</span>
+            <button class="chat-delete" data-delete-message="${escapeHtml(message.id)}" type="button" aria-label="删除这条消息">×</button>
+          </div>
+          <p>${escapeHtml(message.content)}</p>
+        </article>
+      `,
+    )
+    .join('');
+  log.scrollTop = log.scrollHeight;
+}
+
+function renderPlaygroundImageOutput() {
+  const imageOutput = document.querySelector('[data-image-output]');
+  if (!imageOutput) return;
+  const signature = state.generatedImage || '';
+  imageOutput.hidden = !state.generatedImage;
+  if (signature === lastPlaygroundImageSignature) return;
+  lastPlaygroundImageSignature = signature;
+  imageOutput.innerHTML = state.generatedImage
+    ? `<img src="${escapeHtml(state.generatedImage)}" alt="生成结果" />`
+    : '';
 }
 
 function renderSelectedPlaygroundModel() {
@@ -651,19 +829,13 @@ function renderSelectedPlaygroundModel() {
 
   const selected = modelCatalogRows().find((item) => item.model === state.playgroundModel) || fallbackModelRow(state.playgroundModel);
   const summary = modelHealthSummaryFor(selected.model);
-  const endpoint = endpointForModel(selected);
-  const isImage = isImageModel(selected.model);
+  const selectedLabel = publicModelLabel(selected.model);
+  const selectedMeta = publicModelMetaLabel(selected.model, selected.family);
   container.innerHTML = `
     <div class="selected-model-panel__main">
       <span class="provider-badge">${escapeHtml(selected.family)}</span>
-      <h3>${escapeHtml(selected.model)}</h3>
-      <p>${escapeHtml(selected.tagline || (isImage ? '图片生成模型' : '文本和代码模型'))}</p>
-    </div>
-    <div class="selected-model-panel__facts">
-      <span><b>${escapeHtml(summary.label)}</b><small>状态</small></span>
-      <span><b>${escapeHtml(selected.price || '按后台价格')}</b><small>计费</small></span>
-      <span><b>${escapeHtml(selected.context || '按模型能力')}</b><small>上下文</small></span>
-      <code>${escapeHtml(endpoint)}</code>
+      <h3 title="${escapeHtml(selected.model)}">${escapeHtml(selectedLabel)}</h3>
+      <p title="${escapeHtml(selected.model)}">${escapeHtml(summary.label)} · ${escapeHtml(selectedMeta)}</p>
     </div>
   `;
 }
@@ -675,9 +847,7 @@ function renderPlaygroundDiagnostics() {
   const summary = modelHealthSummaryFor(selected.model);
   const key = activeApiKey();
   const rows = [
-    ['Key', key ? `${key.name} · ${key.enabled ? '已开启' : '已禁用'}` : '未创建'],
-    ['端点', endpointForModel(selected)],
-    ['类型', isImageModel(selected.model) ? '图片生成' : 'Chat Completions'],
+    ['Key', key ? key.name : '未创建'],
     ['连通', `${summary.label} · ${summary.latencyText}`],
   ];
   container.innerHTML = rows
@@ -698,12 +868,12 @@ function renderAnalytics() {
         (item, index) => `
           <article class="analytics-row">
             <i style="background:${chartColor(index)}"></i>
-            <strong>${escapeHtml(item.model)}</strong>
+            <strong title="${escapeHtml(item.model)}">${escapeHtml(publicModelLabel(item.model))}</strong>
             <span>${escapeHtml(item.amount)} · ${escapeHtml(item.calls || '0 次')}</span>
           </article>
         `,
       )
-      .join('') || renderEmptyState('暂无消耗分布', '有请求后会按模型展示美元消耗。');
+    .join('') || renderEmptyState('无消耗');
   }
 
   const health = document.querySelector('[data-service-health]');
@@ -711,23 +881,30 @@ function renderAnalytics() {
     health.innerHTML = (dashboardData.channelChecks || [])
       .map((item) => {
         const summary = summarizeModelHealth(item);
+        const history = Array.isArray(item.history) ? item.history.slice(-12) : [];
         return `
           <article class="service-card service-card--${escapeHtml(summary.status)}">
             <div class="service-card__top">
               <span class="health-dot health-dot--${summary.status}" aria-hidden="true"></span>
               <strong>${escapeHtml(item.provider || summary.model)}</strong>
-              <small>${escapeHtml(item.availability || (item.ok ? '99.9%' : '0%'))}</small>
+              <small>${escapeHtml(summary.availabilityText)}</small>
             </div>
-            <b>${escapeHtml(summary.model)}</b>
+            <b title="${escapeHtml(summary.model)}">${escapeHtml(publicModelLabel(summary.model))}</b>
             <code>${escapeHtml(item.endpoint || '/v1')}</code>
-            <div class="availability-strip">
-              ${(item.history || []).slice(-12).map((status) => `<i class="${status === 'ok' ? 'is-ok' : 'is-down'}"></i>`).join('')}
+            <div class="channel-monitor-metrics" data-channel-monitor-metrics>
+              <span><em>状态</em>${escapeHtml(item.monitorStatus || item.officialStatus || summary.label)}</span>
+              <span><em>可用</em>${escapeHtml(summary.successLabel)}</span>
+              <span><em>最低</em>${escapeHtml(summary.latencyText)}</span>
+              <span><em>平均</em>${escapeHtml(summary.averageLatencyText)}</span>
             </div>
-            <small>${escapeHtml(summary.label)} · ${escapeHtml(summary.latencyText)} · ${escapeHtml(formatCheckedAt(item.checkedAt))}</small>
+            <div class="availability-strip" data-channel-monitor-history aria-label="最近 60 点快照">
+              ${history.map((status) => `<i class="${monitorHistoryClass(status)}"></i>`).join('')}
+            </div>
+            <small>${escapeHtml([summary.availabilityWindow, summary.monitorIntervalSeconds ? `${summary.monitorIntervalSeconds} 秒刷新` : '', item.checkedAt ? `最近检测 ${formatCheckedAt(item.checkedAt)}` : '待检测'].filter(Boolean).join(' · '))}</small>
           </article>
         `;
       })
-      .join('') || renderEmptyState('暂无服务可用性', '登录或刷新连通后展示最近 12 次检测图。');
+    .join('') || renderEmptyState('未检测');
   }
 }
 
@@ -748,13 +925,11 @@ function renderModelCatalog() {
         <article class="model-card ${item.available ? 'is-available' : ''}" data-model-card="${escapeHtml(item.model)}">
           <div>
             <span class="provider-badge">${escapeHtml(item.family)}</span>
-            <strong>${escapeHtml(item.model)}</strong>
+            <strong title="${escapeHtml(item.model)}">${escapeHtml(publicModelLabel(item.model))}</strong>
           </div>
           <p>${escapeHtml(item.tagline)}</p>
           <div class="model-meta">
-            <span>${escapeHtml(item.context)}</span>
             <span>${escapeHtml(item.price)}</span>
-            <span>${escapeHtml(endpointForModel(item))}</span>
           </div>
           <div class="model-card-actions">
             <button class="text-action" data-select-playground-model="${escapeHtml(item.model)}" type="button">测试</button>
@@ -763,13 +938,13 @@ function renderModelCatalog() {
         </article>
       `,
     )
-    .join('') || renderEmptyState('没有匹配的模型', '清空搜索后查看全部模型。');
+    .join('') || renderEmptyState('无结果');
 }
 
 function renderSetupGuides() {
   renderGuideTargets();
   const key = activeApiKey();
-  setText('[data-guide-key-status]', key ? 'Key 已开启' : '请先创建 Key');
+  setText('[data-guide-key-status]', key ? 'Key 开启' : '创建 Key');
 
   let config = null;
   try {
@@ -785,7 +960,7 @@ function renderSetupGuides() {
   }
 
   if (!config) {
-    const empty = '# 请先登录并创建 API Key';
+    const empty = '# 创建 API Key';
     setText('[data-guide-json]', '{}\n');
     setText('[data-guide-toml]', '');
     setText('[data-mac-command]', empty);
@@ -817,8 +992,15 @@ function availableModels() {
 }
 
 function availableModelsForGroup(group) {
-  const models = availableModels().filter((model) => modelMatchesUiGroup(model, group));
-  return models.length ? models : [defaultModelForGroup(group)];
+  const normalized = normalizeUiModelGroup(group);
+  const models = [
+    ...(officialModelTemplateByGroup[normalized] || []),
+    ...availableModels().filter((model) => modelMatchesUiGroup(model, normalized)),
+  ];
+  return normalizeClientAvailableModels(models, {
+    defaultModel: defaultModelForGroup(normalized),
+    modelGroup: normalized,
+  });
 }
 
 function filteredPlaygroundModels() {
@@ -839,6 +1021,7 @@ function modelRowMatchesQuery(item, query) {
   const endpoint = endpointForModel(item);
   return [
     item.model,
+    publicModelLabel(item.model),
     item.family,
     item.tagline,
     item.context,
@@ -898,6 +1081,26 @@ function sortModelsByStrength(models) {
 }
 
 function modelCatalogRows() {
+  const signature = JSON.stringify({
+    checks: (dashboardData.channelChecks || []).map((item) => [
+      item.provider,
+      item.model,
+      item.ok,
+      item.maintenance,
+      item.latencyMs,
+      item.checkedAt,
+    ]),
+    catalog: (dashboardData.modelCatalog || []).map((item) => [
+      item.model,
+      item.family,
+      item.price,
+      item.available,
+      item.endpointType,
+    ]),
+  });
+  if (catalogCache.signature === signature) {
+    return catalogCache.rows;
+  }
   const statusByModel = new Map((dashboardData.channelChecks || []).map((item) => [normalizeOfficialModelName(item.model), item]));
   const catalog = (dashboardData.modelCatalog || []).map((item) => ({
     ...item,
@@ -914,7 +1117,7 @@ function modelCatalogRows() {
       family: item.provider || inferUiFamily(item.model),
       tagline: '当前可用',
       context: '按模型能力',
-      price: '按后台价格',
+      price: '官方价格待同步',
       endpointType: endpointTypeForModel(item.model),
       available: Boolean(item.ok),
     }));
@@ -929,7 +1132,9 @@ function modelCatalogRows() {
   for (const item of [...catalog, ...liveAdditions]) {
     rowsByModel.set(item.model, item);
   }
-  return sortModelRows([...rowsByModel.values()]);
+  catalogCache.signature = signature;
+  catalogCache.rows = sortModelRows([...rowsByModel.values()]);
+  return catalogCache.rows;
 }
 
 function sortModelRows(rows) {
@@ -948,9 +1153,9 @@ function fallbackModelRow(model) {
   return {
     model: normalizeOfficialModelName(model),
     family: inferUiFamily(model),
-    tagline: isImageModel(model) ? '图片生成模型' : '文本和代码模型',
-    context: '按模型能力',
-    price: '按后台价格',
+    tagline: isImageModel(model) ? '图片生成' : '文本 / 代码',
+    context: '模型能力',
+    price: '官方价格待同步',
     endpointType: endpointTypeForModel(model),
     available: false,
   };
@@ -971,6 +1176,26 @@ function inferUiFamily(model) {
   if (/gemini/.test(value)) return 'Gemini';
   if (/deepseek/.test(value)) return 'DeepSeek';
   return 'Other';
+}
+
+function publicModelLabel(model) {
+  const normalized = normalizeOfficialModelName(model);
+  const labels = {
+    'claude-opus-4-6-thinking-c': 'Claude Opus 4.6 Thinking',
+    'claude-opus-4-6-c': 'Claude Opus 4.6',
+    'claude-sonnet-4-5-c': 'Claude Sonnet 4.5',
+    'gpt-5.5-c': 'GPT-5.5',
+    'gpt-5.4-c': 'GPT-5.4',
+  };
+  return labels[normalized] || normalized || String(model || '');
+}
+
+function publicModelMetaLabel(model, family) {
+  const label = publicModelLabel(model);
+  if (label !== model) return label;
+  const normalized = normalizeOfficialModelName(model);
+  if (normalized !== model) return normalized;
+  return family || inferUiFamily(model);
 }
 
 function modelHealthSummaryFor(model) {
@@ -998,11 +1223,11 @@ function usageDonutGradient(rows) {
     .filter((segment) => !segment.endsWith(' 0%'));
   return segments.length
     ? `conic-gradient(${segments.join(', ')}, rgba(245,240,232,0.08) ${Math.min(cursor, 100)}% 100%)`
-    : 'conic-gradient(rgba(245,240,232,0.08) 0 100%)';
+    : 'conic-gradient(rgba(210,210,215,0.55) 0 100%)';
 }
 
 function chartColor(index) {
-  return ['#e7c59a', '#00ac5c', '#f3f3f3', '#949494', '#333333'][index % 5];
+  return ['#171717', '#16a34a', '#525252', '#a16207', '#dc2626'][index % 5];
 }
 
 function safePercent(value) {
@@ -1066,11 +1291,10 @@ function renderApiKeys() {
       `,
     )
     .join('') || renderEmptyState(
-      state.apiSearch ? '没有匹配的 API Key' : '暂无 API Key',
-      state.apiSearch ? '换一个名称或 key 片段再试。' : '创建 Key 后会显示端点、状态和操作按钮。',
+      state.apiSearch ? '无结果' : '创建 Key',
+      '',
     );
 
-  bindCopyButtons(list);
 }
 
 function renderLoadingState() {
@@ -1110,9 +1334,9 @@ function renderEmptyState(title, detail = '') {
 function userFacingLoadError(error) {
   const message = String(error?.message || '');
   if (/unexpected token|not valid json|json|failed to fetch|404|network/i.test(message)) {
-    return '后端暂不可用，当前显示空数据。启动 Frist-API 服务后刷新。';
+    return '离线';
   }
-  return message || '服务暂时不可用，请先启动后端';
+  return message || '离线';
 }
 
 function renderModelGroupPicker() {
@@ -1136,7 +1360,7 @@ function renderRechargeOptions() {
         <button class="amount-button ${option.id === state.selectedRechargePlanId || option.active ? 'is-active' : ''}" data-recharge-plan-id="${escapeHtml(option.id || '')}" data-recharge-plan="${option.plan || 'balance'}" data-recharge-option="${Number(
           option.priceCny || String(option.cny).replace(/[^\d.]/g, ''),
         )}" type="button">
-          <em>${escapeHtml(option.label || '余额')}</em>
+          <em>${escapeHtml(shortRechargeLabel(option.label || '余额'))}</em>
           <strong>${escapeHtml(option.cny)}</strong>
           ${option.quotaUsd ? `<span>${escapeHtml(option.quota || `$${option.quotaUsd}`)} 额度</span>` : ''}
         </button>
@@ -1150,11 +1374,11 @@ function renderXianyuPurchaseLinks() {
   for (const link of document.querySelectorAll('[data-xianyu-purchase-link]')) {
     if (configuredLink) {
       link.href = configuredLink;
-      link.textContent = '去闲鱼购买兑换码';
+      link.textContent = '购买';
       link.removeAttribute('aria-disabled');
     } else {
       link.href = '#';
-      link.textContent = '闲鱼链接待配置';
+      link.textContent = '待配置';
       link.setAttribute('aria-disabled', 'true');
     }
   }
@@ -1175,15 +1399,26 @@ function renderBalanceAlert() {
     thresholdInput.value = Number(alert.thresholdUsd || 5).toFixed(2);
   }
   if (emailInput && document.activeElement !== emailInput) {
-    emailInput.value = alert.email || dashboardData.accountSummary.email || '';
+    emailInput.value = '';
+    emailInput.placeholder = alert.email ? maskEmail(alert.email) : '通知邮箱';
   }
   if (status) {
-    status.textContent = alert.enabled === false ? '已关闭' : `低于 ${alert.threshold || '$5.00'} 发送`;
+    status.textContent = alert.enabled === false ? '关闭' : `低于 ${alert.threshold || '$5.00'}`;
     status.classList.toggle('is-off', alert.enabled === false);
   }
   if (last) {
-    last.textContent = alert.lastAlertAt ? `上次通知 ${formatCheckedAt(alert.lastAlertAt)}` : '暂未触发';
+    last.textContent = alert.lastAlertAt ? formatCheckedAt(alert.lastAlertAt) : '未触发';
   }
+}
+
+function shortRechargeLabel(label) {
+  const text = String(label || '');
+  if (/日卡/.test(text)) return '日卡';
+  if (/1000/.test(text)) return '$1000';
+  if (/500/.test(text)) return '$500';
+  if (/100/.test(text)) return '$100';
+  if (/30/.test(text)) return '$30';
+  return text.replace(/Codex API|额度|不限时|\//g, '').trim() || '余额';
 }
 
 function renderImportTargets() {
@@ -1202,6 +1437,7 @@ function renderImportTargets() {
   for (const button of container.querySelectorAll('button')) {
     button.addEventListener('click', () => {
       state.target = button.dataset.target;
+      resetImportServerConfig();
       renderImportTargets();
       renderImportFamilyPicker();
       renderImportLink();
@@ -1235,12 +1471,18 @@ function renderImportLink() {
     link = '';
   }
 
+  if (state.importServerConfig && configMatchesCurrentSelection(state.importServerConfig)) {
+    config = state.importServerConfig;
+    link = config.ccSwitchUrl || link;
+  }
+
+  renderCcSwitchWorkflow(config);
+  renderCcSwitchManualEnhancements(config);
   renderExportModelSummary(config);
   renderOpenCodeConfig(config);
   setText('[data-key-inline-status]', state.keyEnabled ? 'Key 已开启' : 'Key 已关闭');
   document.querySelector('[data-import-link]').value = link;
-  const openImport = document.querySelector('[data-open-import]');
-  if (openImport) {
+  for (const openImport of document.querySelectorAll('[data-open-import]')) {
     openImport.setAttribute('href', link || '#');
     openImport.toggleAttribute('aria-disabled', !link);
   }
@@ -1259,12 +1501,12 @@ function renderCrossImportGuide() {
   if (!title || !copy || !guide) return;
 
   if (isClaudeTarget && isOpenAiFamily) {
-    title.textContent = 'ChatGPT 模型导入 Claude Code';
-    copy.textContent = '选 Claude + ChatGPT，按红色重点填 Base URL、bearer 和默认模型。';
+    title.textContent = 'OpenAI 模型导入 Claude Code';
+    copy.textContent = 'Claude + OpenAI，用量查询随导入脚本一起写入。';
     guide.innerHTML = [
-      '<li data-claude-guide-step><strong>Developer</strong> 进入第三方推理配置。</li>',
+      '<li data-claude-guide-step><strong>Developer</strong> → Third-Party Inference。</li>',
       '<li data-claude-guide-step><strong class="danger-text">Base URL 不带 /v1</strong>，认证方式选 bearer。</li>',
-      '<li data-claude-guide-step>导入后新会话选择 Frist-API Gateway。</li>',
+      '<li data-claude-guide-step>导入后新会话选择 Frist-API Gateway，再在 CC Switch 卡片测试用量查询。</li>',
     ].join('');
     setActiveWalkthrough('openai-to-claude');
     return;
@@ -1272,7 +1514,7 @@ function renderCrossImportGuide() {
 
   if (state.target === 'Codex' && state.modelGroup === 'Claude') {
     title.textContent = 'Claude 模型导入 Codex';
-    copy.textContent = '选 Codex + Claude，一键写入 Responses、/v1 地址、默认模型和 MCP。';
+    copy.textContent = 'Codex + Claude';
     guide.innerHTML = [
       '<li data-claude-guide-step>目标客户端选 <strong>Codex</strong>。</li>',
       '<li data-claude-guide-step><strong class="danger-text">API 请求地址必须带 /v1</strong>。</li>',
@@ -1285,13 +1527,13 @@ function renderCrossImportGuide() {
   if (state.target === 'Codex') {
     title.textContent = state.modelGroup === 'DeepSeek' ? 'Codex DeepSeek 官方网关' : 'Codex 最强开发配置';
     copy.textContent = state.modelGroup === 'DeepSeek'
-      ? '写入 DeepSeek 官方 OpenAI 兼容入口，供 Codex 桌面版直接测试。'
-      : '默认启用 Responses、xhigh 推理和常用开发 MCP。';
+      ? 'DeepSeek 官方入口'
+      : 'Responses + MCP';
     guide.innerHTML = [
       '<li data-claude-guide-step>目标客户端选 <strong>Codex</strong>。</li>',
       state.modelGroup === 'DeepSeek'
         ? '<li data-claude-guide-step>模型家族选 <strong>DeepSeek</strong>，默认模型 deepseek-v4-flash。</li>'
-        : '<li data-claude-guide-step>确认 auth.json 和 config.toml 已写入。</li>',
+        : '<li data-claude-guide-step>确认 auth.json 和 config.toml。</li>',
       '<li data-claude-guide-step>Computer Use 首次调用按系统提示授权。</li>',
     ].join('');
     setActiveWalkthrough('claude-to-codex');
@@ -1299,7 +1541,7 @@ function renderCrossImportGuide() {
   }
 
   title.textContent = '一键导入';
-  copy.textContent = '选目标客户端后直接导入，模型清单会随当前库存更新。';
+  copy.textContent = '选择后导入。';
   guide.innerHTML = [
     '<li data-claude-guide-step>确认至少有一个开启的 API Key。</li>',
     '<li data-claude-guide-step>选择目标客户端和模型家族。</li>',
@@ -1308,17 +1550,32 @@ function renderCrossImportGuide() {
   setActiveWalkthrough('');
 }
 
+function renderCcSwitchUsageGuide() {
+  const usageGuide = document.querySelector('.usage-import-guide');
+  if (!usageGuide) return;
+  const hasServerKey = state.serverAvailable && state.hasServerSession && enabledKeyCount() > 0;
+  usageGuide.classList.toggle('is-live', hasServerKey);
+  const paragraph = usageGuide.querySelector('p');
+  if (paragraph) {
+    paragraph.textContent = hasServerKey
+      ? '一键导入会写入 CC Switch 用量查询脚本，卡片启用后可刷新 Frist-API 余额、已用额度和调用统计。'
+      : '本地预览会展示用量查询步骤；登录并创建 Key 后，一键导入会自动带上可测试的用量查询脚本。';
+  }
+}
+
 function syncWalkthroughFields() {
   const codexBase = normalizeBaseUrl(state.baseUrl);
   const claudeBase = codexBase.replace(/\/v1\/?$/i, '');
   const openAiModel = availableModelsForGroup('OpenAI')[0] || 'gpt-5.5';
   const claudeModel = availableModelsForGroup('Claude')[0] || 'claude-opus-4-6-thinking-c';
+  const claudeAlias = publicModelLabel(claudeModel);
   const deepseekModel = availableModelsForGroup('DeepSeek')[0] || 'deepseek-v4-flash';
-  const keyLabel = enabledKeyCount() ? 'fk-live-你的用户Key' : '先在 API 页面创建 fk-live 用户 Key';
+  const keyLabel = enabledKeyCount() ? 'fk-live-你的用户Key' : '先创建 Key';
   setText('[data-flow-codex-base]', codexBase);
   setText('[data-flow-claude-base]', claudeBase);
   setText('[data-flow-openai-model]', openAiModel);
   setText('[data-flow-claude-model]', claudeModel);
+  setText('[data-flow-claude-alias]', claudeAlias);
   setText('[data-flow-deepseek-model]', deepseekModel);
   setText('[data-flow-user-key]', keyLabel);
 }
@@ -1344,17 +1601,25 @@ function renderClientConfig() {
   } catch {
     // 没有 Key 时保持空配置，避免把示例 Key 误当成可用配置。
   }
+  if (state.importServerConfig && configMatchesCurrentSelection(state.importServerConfig)) {
+    config = state.importServerConfig;
+  }
 
   setText('[data-auth-json]', config.authJson);
   setText('[data-config-toml]', config.configToml);
+  renderCcSwitchWorkflow(config);
+  renderCcSwitchManualEnhancements(config);
   renderExportModelSummary(config);
   renderOpenCodeConfig(config);
 }
 
 function renderExportModelSummary(config) {
-  const modelList = sortModelsByStrength(config?.availableModels || availableModelsForGroup(state.modelGroup));
+  const modelList = normalizeClientAvailableModels(config?.availableModels || availableModelsForGroup(state.modelGroup), {
+    defaultModel: config?.defaultModel || defaultModelForGroup(state.modelGroup),
+    modelGroup: config?.modelGroup || state.modelGroup,
+  });
   const defaultModel = config?.defaultModel || modelList[0] || defaultModelForGroup(state.modelGroup);
-  setText('[data-export-default-model]', defaultModel);
+  setText('[data-export-default-model]', publicModelLabel(defaultModel));
   setText('[data-export-model-count]', `${modelList.length} 个`);
   const container = document.querySelector('[data-export-models]');
   if (!container) return;
@@ -1364,9 +1629,10 @@ function renderExportModelSummary(config) {
         <span
           class="export-model-chip ${model === defaultModel ? 'is-default' : ''}"
           data-export-model-chip="${escapeHtml(model)}"
+          title="${escapeHtml(model)}"
           role="listitem"
         >
-          ${escapeHtml(model)}${model === defaultModel ? ' · 默认' : ''}
+          ${escapeHtml(publicModelLabel(model))}${model === defaultModel ? ' · 默认' : ''}
         </span>
       `,
     )
@@ -1382,19 +1648,129 @@ function renderOpenCodeConfig(config) {
   output.textContent = config?.openCodeProviderJson || '{}\n';
 }
 
+function renderCcSwitchWorkflow(config) {
+  const profileName = config?.targetSlug ? clientDisplayName(config.targetSlug) : state.target;
+  setText('[data-ccswitch-workflow-target]', profileName);
+  setText('[data-ccswitch-workflow-model]', publicModelLabel(config?.modelName || defaultModelForGroup(state.modelGroup)));
+  setText('[data-ccswitch-workflow-base]', config?.apiRequestUrl || normalizeBaseUrl(state.baseUrl));
+  setText('[data-ccswitch-workflow-usage]', config?.usageBaseUrl || normalizeBaseUrl(state.baseUrl).replace(/\/v1\/?$/i, ''));
+  setText('[data-ccswitch-workflow-test]', config?.usageScript ? '导入后点测试脚本' : '登录后自动生成');
+}
+
+function renderCcSwitchManualEnhancements(config, setup = state.importServerSetup) {
+  const capabilities = config?.ccSwitchCapabilities || { oneClick: [], manual: [] };
+  const oneClick = document.querySelector('[data-ccswitch-capability-one-click]');
+  const manual = document.querySelector('[data-ccswitch-capability-manual]');
+  const checklist = document.querySelector('[data-ccswitch-checklist]');
+  const mcpLink = document.querySelector('[data-ccswitch-mcp-link]');
+  const usageScript = document.querySelector('[data-usage-script]');
+  const testCommand = document.querySelector('[data-test-command]');
+  const promptSkillSnippet = document.querySelector('[data-prompt-skill-snippet]');
+
+  if (oneClick) {
+    oneClick.innerHTML = renderTagList(capabilities.oneClick, '登录后生成一键导入能力');
+  }
+  if (manual) {
+    manual.innerHTML = renderTagList(capabilities.manual.length ? capabilities.manual : ['当前目标无需额外手动增强'], '无额外增强');
+  }
+  if (checklist) {
+    checklist.innerHTML = (config?.ccSwitchManualChecklist || ['登录并创建 Key 后，点击一键导入。'])
+      .map((item) => `<li>${escapeHtml(item)}</li>`)
+      .join('');
+  }
+
+  const mcpUrl = config?.ccSwitchMcpUrl || (state.target === 'Codex' ? buildCcSwitchMcpImportUrl() : '');
+  if (mcpLink) {
+    mcpLink.value = mcpUrl;
+  }
+  setCopyButtonValue('[data-copy-ccswitch-mcp]', mcpUrl);
+  const openMcp = document.querySelector('[data-open-ccswitch-mcp]');
+  if (openMcp) {
+    openMcp.href = mcpUrl || '#';
+    openMcp.toggleAttribute('aria-disabled', !mcpUrl);
+  }
+
+  if (usageScript) {
+    usageScript.textContent = config?.usageScript || '// 登录并创建 Key 后，这里会显示 CC Switch 自定义用量查询脚本。';
+  }
+  setCopyButtonValue('[data-copy-usage-script]', config?.usageScript || '');
+
+  const command = setup?.test || (config ? buildClientSetupCommands(config).test : '# 登录并创建 Key 后生成真实连通测试命令。');
+  if (testCommand) {
+    testCommand.textContent = command;
+  }
+  setCopyButtonValue('[data-copy-test-command]', command);
+  setCopyButtonValue('[data-copy-prompt-skill]', promptSkillSnippet?.textContent || '');
+}
+
+function renderTagList(items, emptyLabel) {
+  const rows = (items || []).filter(Boolean);
+  return rows.length
+    ? rows.map((item) => `<span>${escapeHtml(item)}</span>`).join('')
+    : `<span>${escapeHtml(emptyLabel)}</span>`;
+}
+
+function setCopyButtonValue(selector, value) {
+  const button = document.querySelector(selector);
+  if (button) {
+    button.dataset.copyValue = value || '';
+    button.disabled = !value;
+  }
+}
+
+function configMatchesCurrentSelection(config) {
+  if (!config) return false;
+  return (
+    clientDisplayName(config.targetSlug).toLowerCase() === String(state.target || '').toLowerCase() &&
+    normalizeUiModelGroup(config.modelGroup) === normalizeUiModelGroup(state.modelGroup)
+  );
+}
+
+function resetImportServerConfig() {
+  state.importServerConfig = null;
+  state.importServerSetup = null;
+}
+
+function clientDisplayName(slug) {
+  const labels = {
+    claude: 'Claude',
+    codex: 'Codex',
+    gemini: 'Gemini',
+    opencode: 'OpenCode',
+    openclaw: 'OpenClaw',
+    hermes: 'Hermes',
+  };
+  return labels[String(slug || '').toLowerCase()] || String(slug || state.target || 'Codex');
+}
+
 async function refreshImportLinkFromServer() {
   if (!state.serverAvailable || !state.hasServerSession || !enabledKeyCount()) return;
   const requestId = (state.importRequestId += 1);
   try {
-    const result = await serverClient.getImportUrl({ target: state.target, model: state.model });
+    const result = await serverClient.getImportUrl({
+      target: state.target,
+      model: state.model,
+      modelGroup: state.modelGroup,
+      keyId: selectedImportKeyId(),
+    });
     if (requestId === state.importRequestId) {
+      state.importServerConfig = result.config || null;
+      state.importServerSetup = result.setup || null;
       document.querySelector('[data-import-link]').value = result.url;
-      renderExportModelSummary({
+      const liveConfig = result.config || {
         defaultModel: result.defaultModel,
         availableModels: result.availableModels,
-      });
-      const openImport = document.querySelector('[data-open-import]');
-      if (openImport) {
+        modelGroup: state.modelGroup,
+      };
+      renderExportModelSummary(liveConfig);
+      renderCcSwitchWorkflow(result.config || null);
+      renderCcSwitchManualEnhancements(result.config || null, result.setup || null);
+      if (result.config) {
+        setText('[data-auth-json]', result.config.authJson || '{}\n');
+        setText('[data-config-toml]', result.config.configToml || '');
+        renderOpenCodeConfig(result.config);
+      }
+      for (const openImport of document.querySelectorAll('[data-open-import]')) {
         openImport.setAttribute('href', result.url);
         openImport.removeAttribute('aria-disabled');
       }
@@ -1412,10 +1788,28 @@ function renderHelpLinks() {
 }
 
 function bindStaticActions() {
-  document.querySelector('[data-copy-link]').addEventListener('click', async (event) => {
-    const input = document.querySelector('[data-import-link]');
-    await copyText(input.value, event.currentTarget);
-  });
+  for (const button of document.querySelectorAll('[data-copy-link]')) {
+    button.addEventListener('click', async (event) => {
+      const input = document.querySelector('[data-import-link]');
+      await copyText(input.value, event.currentTarget);
+    });
+  }
+
+  for (const button of document.querySelectorAll('[data-language-toggle]')) {
+    button.addEventListener('click', () => {
+      state.language = state.language === 'zh' ? 'en' : 'zh';
+      document.documentElement.lang = state.language === 'en' ? 'en' : 'zh-CN';
+      button.textContent = state.language === 'en' ? 'EN / 中' : '中 / EN';
+      button.setAttribute('aria-label', state.language === 'en' ? 'Switch language' : '切换语言');
+      signalAction('info');
+    });
+  }
+
+  for (const button of document.querySelectorAll('[data-copy-value]')) {
+    button.addEventListener('click', async () => {
+      await copyText(button.dataset.copyValue || '', button);
+    });
+  }
 
   window.addEventListener('hashchange', routeFromHash);
   document.addEventListener('click', (event) => {
@@ -1473,6 +1867,7 @@ function bindStaticActions() {
       state.modelGroup = modelGroup.dataset.modelGroupOption || 'OpenAI';
       state.model = defaultModelForGroup(state.modelGroup);
       state.playgroundModel = state.model;
+      resetImportServerConfig();
       renderModelGroupPicker();
       renderImportFamilyPicker();
       renderImportLink();
@@ -1487,6 +1882,7 @@ function bindStaticActions() {
       state.modelGroup = family.dataset.importFamilyOption || 'OpenAI';
       state.model = defaultModelForGroup(state.modelGroup);
       state.playgroundModel = state.model;
+      resetImportServerConfig();
       renderModelGroupPicker();
       renderImportFamilyPicker();
       renderImportLink();
@@ -1536,6 +1932,7 @@ function bindStaticActions() {
     if (playgroundModelCard) {
       state.playgroundModel = playgroundModelCard.dataset.playgroundModelCard || state.playgroundModel;
       state.model = state.playgroundModel;
+      resetImportServerConfig();
       renderPlayground();
       renderImportLink();
       renderClientConfig();
@@ -1641,15 +2038,22 @@ function bindStaticActions() {
       return;
     }
 
+    const profileSave = event.target.closest('[data-profile-save]');
+    if (profileSave) {
+      handleProfileSave(profileSave);
+      return;
+    }
+
     const openImport = event.target.closest('[data-open-import]');
     if (openImport) {
       const importUrl = document.querySelector('[data-import-link]').value;
       if (!importUrl) {
         event.preventDefault();
-        setActionMessage('请先创建并开启 Key');
+        signalAction('error');
         return;
       }
       openImport.setAttribute('href', importUrl);
+      handleImportProtocolFallback(importUrl);
       return;
     }
 
@@ -1730,6 +2134,19 @@ function bindStaticActions() {
       const manualToml = document.querySelector('[data-config-toml]')?.textContent || '';
       const flowToml = document.querySelector('[data-flow-codex-toml]')?.innerText.replace(/^7\s*/, '') || '';
       copyText(manualToml || flowToml, copyFlowCodexToml);
+      return;
+    }
+
+    const openMcpImport = event.target.closest('[data-open-ccswitch-mcp]');
+    if (openMcpImport) {
+      const mcpUrl = document.querySelector('[data-ccswitch-mcp-link]')?.value || '';
+      if (!mcpUrl) {
+        event.preventDefault();
+        signalAction('error');
+        return;
+      }
+      openMcpImport.setAttribute('href', mcpUrl);
+      handleImportProtocolFallback(mcpUrl);
     }
   });
 
@@ -1750,6 +2167,7 @@ function bindStaticActions() {
     if (playgroundModel) {
       state.playgroundModel = playgroundModel.value || state.playgroundModel;
       state.model = state.playgroundModel;
+      resetImportServerConfig();
       renderPlayground();
     }
   });
@@ -1758,21 +2176,32 @@ function bindStaticActions() {
     const apiSearch = event.target.closest('[data-api-search]');
     if (apiSearch) {
       state.apiSearch = apiSearch.value.trim();
-      renderApiKeys();
+      scheduleRender('api-keys', renderApiKeys);
     }
 
     const modelSearch = event.target.closest('[data-model-catalog-search]');
     if (modelSearch) {
       state.modelSearch = modelSearch.value.trim();
-      renderModelCatalog();
+      scheduleRender('model-catalog', renderModelCatalog);
     }
 
     const playgroundSearch = event.target.closest('[data-playground-model-search]');
     if (playgroundSearch) {
       state.playgroundModelSearch = playgroundSearch.value.trim();
-      renderPlayground();
+      scheduleRender('playground', renderPlayground);
     }
   });
+}
+
+function scheduleRender(key, renderFn, delay = 120) {
+  window.clearTimeout(renderTimers.get(key));
+  renderTimers.set(
+    key,
+    window.setTimeout(() => {
+      renderTimers.delete(key);
+      renderFn();
+    }, delay),
+  );
 }
 
 function startCarouselTimer() {
@@ -1863,6 +2292,13 @@ function routeFromHash() {
   setActiveView(viewMeta[requested] ? requested : 'dashboard');
 }
 
+function startPlaygroundAutoTest() {
+  window.setInterval(() => {
+    if (state.view !== 'playground' || state.playgroundBusy || !activeApiKey()) return;
+    handlePlaygroundConnectivityTest({ auto: true });
+  }, 180_000);
+}
+
 function setActiveView(view) {
   state.view = view;
   document.body.dataset.currentView = view;
@@ -1914,7 +2350,7 @@ function resetPlaygroundMessages() {
     {
       id: 'msg-welcome',
       role: 'assistant',
-      content: '先从左侧选择模型，再直接测试文字、代码或图片能力。',
+      content: '选择模型后测试。',
     },
   ];
 }
@@ -1927,14 +2363,14 @@ function deletePlaygroundMessage(id) {
   }
   if (state.playgroundMessages.length !== before) {
     renderPlayground();
-    setActionMessage('消息已删除');
+    signalAction('success');
   }
 }
 
 function clearPlaygroundMessages() {
   resetPlaygroundMessages();
   renderPlayground();
-  setActionMessage('广场已清空');
+  signalAction('success');
 }
 
 async function handlePlaygroundSend() {
@@ -1942,7 +2378,7 @@ async function handlePlaygroundSend() {
   const prompt = promptInput?.value.trim() || '';
   const key = activeApiKey();
   if (!key) {
-    setActionMessage('请先登录并创建 Key');
+    signalAction('error');
     setActiveView('api');
     return;
   }
@@ -1964,7 +2400,7 @@ async function handlePlaygroundSend() {
       });
       state.generatedImage = firstImageSource(result);
       state.playgroundMessages.push(
-        createPlaygroundMessage('assistant', state.generatedImage ? '图片已生成。' : '上游返回成功，但没有图片地址。'),
+        createPlaygroundMessage('assistant', state.generatedImage ? '已生成' : '成功，无图片'),
       );
     } else {
       const result = await serverClient.chatCompletion({
@@ -1983,10 +2419,11 @@ async function handlePlaygroundSend() {
       });
       state.playgroundMessages.push(createPlaygroundMessage('assistant', assistantTextFromPayload(result)));
     }
-    setActionMessage('广场返回成功');
+    await refreshDashboardSilently();
+    signalAction('success');
   } catch (error) {
-    state.playgroundMessages.push(createPlaygroundMessage('assistant', error.message || '模型暂时不可用'));
-    setActionMessage(error.message || '模型暂时不可用');
+    state.playgroundMessages.push(createPlaygroundMessage('assistant', error.message || '模型不可用'));
+    signalAction('error');
   } finally {
     state.playgroundBusy = false;
     renderPlayground();
@@ -1998,7 +2435,7 @@ async function handlePlaygroundConnectivityTest() {
   const prompt = promptInput?.value.trim() || '';
   const key = activeApiKey();
   if (!key) {
-    setActionMessage('请先登录并创建 Key');
+    signalAction('error');
     setActiveView('api');
     return;
   }
@@ -2010,7 +2447,7 @@ async function handlePlaygroundConnectivityTest() {
   state.generatedImage = null;
   state.playgroundConnectivity = {
     status: 'info',
-    text: `正在实测 ${state.playgroundModel}`,
+    text: '检测',
   };
   const startedAt = performance.now();
   renderPlayground();
@@ -2020,10 +2457,10 @@ async function handlePlaygroundConnectivityTest() {
     if (isImageModel(state.playgroundModel)) {
       const result = await serverClient.generateImage({
         apiKey: key.secret,
-        body: buildImageRequestBody(state.playgroundModel, prompt || 'Frist-API 连通性测试'),
+        body: buildImageRequestBody(state.playgroundModel, prompt || 'Frist-API 测试'),
       });
       state.generatedImage = firstImageSource(result);
-      resultText = state.generatedImage ? '图片已返回' : '上游成功但无图片地址';
+      resultText = state.generatedImage ? '图片已返回' : '成功，无图片';
     } else {
       const result = await serverClient.chatCompletion({
         apiKey: key.secret,
@@ -2037,20 +2474,20 @@ async function handlePlaygroundConnectivityTest() {
       resultText = assistantTextFromPayload(result) || 'OK';
     }
     const latencyMs = Math.max(1, Math.round(performance.now() - startedAt));
-    const compactResult = resultText.length > 28 ? `${resultText.slice(0, 28)}...` : resultText;
     state.playgroundConnectivity = {
       status: 'success',
-      text: `${state.playgroundModel} 通过 · ${latencyMs}ms · ${compactResult}`,
+      text: `正常 · ${latencyMs}ms · ${formatClockTime(new Date())}`,
     };
-    state.playgroundMessages.push(createPlaygroundMessage('assistant', `连通实测通过：${state.playgroundModel}，${latencyMs}ms。`));
-    setActionMessage('广场连通实测通过');
+    state.playgroundMessages.push(createPlaygroundMessage('assistant', `${state.playgroundModel} · ${latencyMs}ms`));
+    await refreshDashboardSilently();
+    signalAction('success');
   } catch (error) {
     state.playgroundConnectivity = {
       status: 'error',
-      text: `${state.playgroundModel} 失败 · ${error.message || '模型暂时不可用'}`,
+      text: `失败 · ${error.message || '模型不可用'}`,
     };
-    state.playgroundMessages.push(createPlaygroundMessage('assistant', error.message || '模型暂时不可用'));
-    setActionMessage(error.message || '模型暂时不可用', 'error');
+    state.playgroundMessages.push(createPlaygroundMessage('assistant', error.message || '模型不可用'));
+    signalAction('error');
   } finally {
     state.playgroundBusy = false;
     renderPlayground();
@@ -2062,9 +2499,9 @@ async function toggleKey(id) {
   if (!key) return;
   try {
     await serverClient.setKeyEnabled(id, { enabled: !key.enabled });
-    await reloadServerDashboard(key.enabled ? 'API Key 已关闭' : 'API Key 已开启');
+    await reloadServerDashboard(key.enabled ? 'Key 已关闭' : 'Key 已开启');
   } catch (serverError) {
-    setActionMessage(serverError.message, 'error');
+    signalAction('error');
   }
 }
 
@@ -2075,16 +2512,16 @@ async function renameKey(id) {
 
   const name = keyInput.value.trim();
   if (!name) {
-    setActionMessage('API Key 名称不能为空');
+    signalAction('error');
     keyInput.value = key.name;
     return;
   }
 
   try {
     await serverClient.renameKey(id, { name });
-    await reloadServerDashboard('API Key 已改名');
+    await reloadServerDashboard('Key 已改名');
   } catch (serverError) {
-    setActionMessage(serverError.message, 'error');
+    signalAction('error');
   }
 }
 
@@ -2103,9 +2540,9 @@ async function deleteKey(id) {
 
   try {
     await serverClient.deleteKey(id);
-    await reloadServerDashboard('API Key 已删除');
+    await reloadServerDashboard('Key 已删除');
   } catch (serverError) {
-    setActionMessage(serverError.message, 'error');
+    signalAction('error');
   }
 }
 
@@ -2119,34 +2556,51 @@ function syncPrimaryAccountState() {
 }
 
 function defaultModelForGroup(group) {
-  const normalized = String(group || 'OpenAI').toLowerCase();
+  const normalized = normalizeUiModelGroup(group);
   const models = availableModels().filter((model) => modelMatchesUiGroup(model, group));
   if (models.length > 0) return sortModelsByStrength(models)[0];
-  if (normalized === 'claude') return 'claude-opus-4-6-thinking-c';
-  if (normalized === 'gemini') return 'gemini-2.5-flash';
-  if (normalized === 'deepseek') return 'deepseek-v4-flash';
-  if (normalized === 'other') return 'deepseek-v4-flash';
+  if (normalized === 'Claude') return 'claude-opus-4-6-thinking-c';
+  if (normalized === 'Gemini') return 'gemini-2.5-flash';
+  if (normalized === 'DeepSeek') return 'deepseek-v4-flash';
+  if (normalized === 'Other') return 'deepseek-v4-flash';
   return 'gpt-5.5';
+}
+
+function normalizeUiModelGroup(group) {
+  const normalized = String(group || 'OpenAI').toLowerCase();
+  if (normalized === 'claude') return 'Claude';
+  if (normalized === 'gemini') return 'Gemini';
+  if (normalized === 'deepseek') return 'DeepSeek';
+  if (normalized === 'other') return 'Other';
+  return 'OpenAI';
 }
 
 function enabledKeyCount() {
   return dashboardData.apiKeys.filter((item) => item.enabled).length;
 }
 
+function selectedImportKeyId() {
+  const targetGroup = normalizeUiModelGroup(state.modelGroup);
+  return dashboardData.apiKeys.find((item) => item.enabled && normalizeUiModelGroup(item.modelGroup) === targetGroup)?.id || '';
+}
+
 async function handleCreateKey(createKey) {
-  setScopedFeedback('[data-key-feedback]', '正在创建 API Key...', 'info');
-  setActionMessage('API Key 创建中...', 'info');
-  setButtonBusy(createKey, true, '创建中');
+  signalScoped('[data-key-feedback]', 'info');
+  signalAction('info');
+  setButtonBusy(createKey, true, '');
   try {
-    await serverClient.createKey({
+    const created = await serverClient.createKey({
       name: `Frist Key ${dashboardData.apiKeys.length + 1}`,
       modelGroup: state.modelGroup,
     });
-    await reloadServerDashboard('API Key 已创建，可直接导入 CC Switch');
-    setScopedFeedback('[data-key-feedback]', 'API Key 已创建，可直接复制或导入 CC Switch。', 'success');
+    if (created.key?.id && created.key?.secret) {
+      revealedApiKeys.set(created.key.id, created.key.secret);
+    }
+    await reloadServerDashboard('Key 已创建');
+    signalScoped('[data-key-feedback]', 'success');
   } catch (serverError) {
-    setActionMessage(serverError.message, 'error');
-    setScopedFeedback('[data-key-feedback]', serverError.message, 'error');
+    signalAction('error');
+    signalScoped('[data-key-feedback]', 'error');
   } finally {
     setButtonBusy(createKey, false);
   }
@@ -2156,21 +2610,21 @@ async function handleRegisterAccount(register) {
   const email = document.querySelector('[data-register-email]').value;
   const password = document.querySelector('[data-register-password]').value;
 
-  setActionMessage('注册中...', 'info');
-  setScopedFeedback('[data-auth-feedback]', '正在提交注册信息...', 'info');
-  setButtonBusy(register, true, '注册中');
+  signalAction('info');
+  signalScoped('[data-auth-feedback]', 'info');
+  setButtonBusy(register, true, '');
   try {
     const payload = await buildAuthPayload({ email, password, requireCaptcha: true });
     await serverClient.register(payload);
     state.serverAvailable = true;
     state.hasServerSession = true;
-    setText('[data-verification-hint]', '注册成功，可以创建 Key。');
-    await reloadServerDashboard('注册成功，可以创建 Key');
-    setScopedFeedback('[data-auth-feedback]', '注册成功，可以创建 Key。', 'success');
+    setText('[data-verification-hint]', '可创建 Key');
+    await reloadServerDashboard('注册成功');
+    signalScoped('[data-auth-feedback]', 'success');
     toggleAuthPanel(false);
   } catch (serverError) {
-    setActionMessage(serverError.message, 'error');
-    setScopedFeedback('[data-auth-feedback]', serverError.message, 'error');
+    signalAction('error');
+    signalScoped('[data-auth-feedback]', 'error');
     await refreshCaptchaAfterAuthError(serverError);
   } finally {
     setButtonBusy(register, false);
@@ -2181,22 +2635,22 @@ async function handleLoginAccount(login) {
   const email = document.querySelector('[data-register-email]').value;
   const password = document.querySelector('[data-register-password]').value;
 
-  setActionMessage('登录中...', 'info');
-  setScopedFeedback('[data-auth-feedback]', '正在验证邮箱和密码...', 'info');
-  setButtonBusy(login, true, '登录中');
+  signalAction('info');
+  signalScoped('[data-auth-feedback]', 'info');
+  setButtonBusy(login, true, '');
   try {
     const payload = await buildAuthPayload({ email, password });
     await serverClient.login(payload);
     state.serverAvailable = true;
     state.hasServerSession = true;
-    setText('[data-verification-hint]', '登录成功，可以继续充值、创建 Key 或导入 CC Switch。');
+    setText('[data-verification-hint]', '已登录');
     await reloadServerDashboard('登录成功');
-    setActionMessage('登录成功', 'success');
-    setScopedFeedback('[data-auth-feedback]', '登录成功，可以继续创建 Key。', 'success');
+    signalAction('success');
+    signalScoped('[data-auth-feedback]', 'success');
     toggleAuthPanel(false);
   } catch (serverError) {
-    setActionMessage(serverError.message, 'error');
-    setScopedFeedback('[data-auth-feedback]', serverError.message, 'error');
+    signalAction('error');
+    signalScoped('[data-auth-feedback]', 'error');
     await refreshCaptchaAfterAuthError(serverError);
   } finally {
     setButtonBusy(login, false);
@@ -2207,14 +2661,14 @@ async function handleChangePassword(button) {
   const currentPassword = document.querySelector('[data-register-password]').value;
   const newPassword = document.querySelector('[data-new-password]').value;
 
-  setButtonBusy(button, true, '保存中');
+  setButtonBusy(button, true, '');
   try {
     await serverClient.changePassword({ oldPassword: currentPassword, newPassword });
     document.querySelector('[data-register-password]').value = newPassword;
     document.querySelector('[data-new-password]').value = '';
     await reloadServerDashboard('密码已更新');
   } catch (serverError) {
-    setActionMessage(serverError.message, 'error');
+    signalAction('error');
   } finally {
     setButtonBusy(button, false);
   }
@@ -2222,15 +2676,15 @@ async function handleChangePassword(button) {
 
 async function handlePasswordResetRequest(button) {
   const email = document.querySelector('[data-register-email]').value;
-  setScopedFeedback('[data-auth-feedback]', '正在发送重置验证码...', 'info');
-  setButtonBusy(button, true, '发送中');
+  signalScoped('[data-auth-feedback]', 'info');
+  setButtonBusy(button, true, '');
   try {
     const result = await serverClient.requestPasswordReset({ email });
     state.passwordResetRequested = true;
     renderAuthPanel();
-    setScopedFeedback('[data-auth-feedback]', result.message || '如果邮箱存在，我们会发送重置验证码。', 'success');
+    signalScoped('[data-auth-feedback]', 'success');
   } catch (serverError) {
-    setScopedFeedback('[data-auth-feedback]', serverError.message, 'error');
+    signalScoped('[data-auth-feedback]', 'error');
   } finally {
     setButtonBusy(button, false);
   }
@@ -2240,8 +2694,8 @@ async function handlePasswordResetConfirm(button) {
   const email = document.querySelector('[data-register-email]').value;
   const code = document.querySelector('[data-reset-code]')?.value.trim() || '';
   const newPassword = document.querySelector('[data-reset-password]')?.value || '';
-  setScopedFeedback('[data-auth-feedback]', '正在重置密码...', 'info');
-  setButtonBusy(button, true, '重置中');
+  signalScoped('[data-auth-feedback]', 'info');
+  setButtonBusy(button, true, '');
   try {
     await serverClient.confirmPasswordReset({ email, code, newPassword });
     const passwordInput = document.querySelector('[data-register-password]');
@@ -2252,9 +2706,9 @@ async function handlePasswordResetConfirm(button) {
     if (resetPasswordInput) resetPasswordInput.value = '';
     state.passwordResetRequested = false;
     renderAuthPanel();
-    setScopedFeedback('[data-auth-feedback]', '密码已重置，可以用新密码登录。', 'success');
+    signalScoped('[data-auth-feedback]', 'success');
   } catch (serverError) {
-    setScopedFeedback('[data-auth-feedback]', serverError.message, 'error');
+    signalScoped('[data-auth-feedback]', 'error');
   } finally {
     setButtonBusy(button, false);
   }
@@ -2264,11 +2718,11 @@ async function handleOwnerClaim(button) {
   const codeInput = document.querySelector('[data-owner-claim-code]');
   const code = codeInput?.value.trim() || '';
   if (!code) {
-    setActionMessage('请填写一次性身份码', 'error');
+    signalAction('error');
     return;
   }
 
-  setButtonBusy(button, true, '激活中');
+  setButtonBusy(button, true, '');
   try {
     const result = await serverClient.claimAdmin({ code });
     if (codeInput) {
@@ -2277,7 +2731,7 @@ async function handleOwnerClaim(button) {
     businessState.customer.isAdmin = Boolean(result.user?.isAdmin);
     await reloadServerDashboard(result.message || '管理员身份已激活');
   } catch (serverError) {
-    setActionMessage(serverError.message, 'error');
+    signalAction('error');
   } finally {
     setButtonBusy(button, false);
   }
@@ -2288,14 +2742,14 @@ async function handleVerifyAccount(button) {
   if (!codeInput) return;
   const code = codeInput.value;
 
-  setButtonBusy(button, true, '验证中');
+  setButtonBusy(button, true, '');
   try {
     await serverClient.verify({ code });
     codeInput.value = '';
     setText('[data-verification-hint]', '邮箱已验证，可以充值并创建 Key。');
     await reloadServerDashboard('邮箱已验证');
   } catch (serverError) {
-    setActionMessage(serverError.message, 'error');
+    signalAction('error');
   } finally {
     setButtonBusy(button, false);
   }
@@ -2307,23 +2761,45 @@ async function handleCopyKey(id, button) {
   await copyText(key.secret, button);
 }
 
+async function handleProfileSave(button) {
+  if (!state.hasServerSession) {
+    toggleAuthPanel(true);
+    signalScoped('[data-profile-feedback]', 'error');
+    return;
+  }
+  const displayName = document.querySelector('[data-profile-name-input]')?.value.trim() || '';
+  const email = document.querySelector('[data-profile-email-input]')?.value.trim() || '';
+  const avatarUrl = document.querySelector('[data-profile-avatar-input]')?.value.trim() || '';
+  setButtonBusy(button, true, '');
+  try {
+    await serverClient.updateProfile({ displayName, email, avatarUrl });
+    await reloadServerDashboard('资料已保存');
+    signalScoped('[data-profile-feedback]', 'success');
+  } catch (serverError) {
+    signalAction('error');
+    signalScoped('[data-profile-feedback]', 'error');
+  } finally {
+    setButtonBusy(button, false);
+  }
+}
+
 async function handleBalanceAlertSave(button) {
   if (!state.hasServerSession) {
     setActiveView('billing');
-    setScopedFeedback('[data-balance-alert-feedback]', '请先登录，再保存余额预警。', 'error');
+    signalScoped('[data-balance-alert-feedback]', 'error');
     return;
   }
 
   const payload = readBalanceAlertForm();
-  setScopedFeedback('[data-balance-alert-feedback]', '正在保存余额预警...', 'info');
-  setButtonBusy(button, true, '保存中');
+  signalScoped('[data-balance-alert-feedback]', 'info');
+  setButtonBusy(button, true, '');
   try {
     await serverClient.saveBalanceAlert(payload);
-    await reloadServerDashboard('余额预警已保存');
-    setScopedFeedback('[data-balance-alert-feedback]', '余额预警已保存。', 'success');
+    await reloadServerDashboard('预警已保存');
+    signalScoped('[data-balance-alert-feedback]', 'success');
   } catch (serverError) {
-    setActionMessage(serverError.message, 'error');
-    setScopedFeedback('[data-balance-alert-feedback]', serverError.message, 'error');
+    signalAction('error');
+    signalScoped('[data-balance-alert-feedback]', 'error');
   } finally {
     setButtonBusy(button, false);
   }
@@ -2332,20 +2808,20 @@ async function handleBalanceAlertSave(button) {
 async function handleBalanceAlertTest(button) {
   if (!state.hasServerSession) {
     setActiveView('billing');
-    setScopedFeedback('[data-balance-alert-feedback]', '请先登录，再发送测试邮件。', 'error');
+    signalScoped('[data-balance-alert-feedback]', 'error');
     return;
   }
 
   const payload = readBalanceAlertForm();
-  setScopedFeedback('[data-balance-alert-feedback]', '正在发送测试邮件...', 'info');
-  setButtonBusy(button, true, '发送中');
+  signalScoped('[data-balance-alert-feedback]', 'info');
+  setButtonBusy(button, true, '');
   try {
     await serverClient.sendBalanceAlertTest(payload);
-    await reloadServerDashboard('测试邮件已发送');
-    setScopedFeedback('[data-balance-alert-feedback]', '测试邮件已发送，请检查收件箱。', 'success');
+    await reloadServerDashboard('邮件已发送');
+    signalScoped('[data-balance-alert-feedback]', 'success');
   } catch (serverError) {
-    setActionMessage(serverError.message, 'error');
-    setScopedFeedback('[data-balance-alert-feedback]', serverError.message, 'error');
+    signalAction('error');
+    signalScoped('[data-balance-alert-feedback]', 'error');
   } finally {
     setButtonBusy(button, false);
   }
@@ -2354,7 +2830,7 @@ async function handleBalanceAlertTest(button) {
 function readBalanceAlertForm() {
   const enabled = document.querySelector('[data-balance-alert-enabled]')?.checked !== false;
   const thresholdUsd = Number(document.querySelector('[data-balance-alert-threshold]')?.value || 0);
-  const email = document.querySelector('[data-balance-alert-email]')?.value.trim() || dashboardData.accountSummary.email;
+  const email = document.querySelector('[data-balance-alert-email]')?.value.trim() || dashboardData.balanceAlert?.email || dashboardData.accountSummary.email;
   return {
     enabled,
     thresholdUsd: Number.isFinite(thresholdUsd) ? thresholdUsd : 0,
@@ -2366,18 +2842,18 @@ async function handleRedeemCode(button) {
   const scope = button.closest('.view-panel') || document;
   const input = scope.querySelector('[data-exchange-code], [data-billing-exchange-code]');
   if (!input) return;
-  setButtonBusy(button, true, '兑换中');
+  setButtonBusy(button, true, '');
   try {
     const result = await serverClient.redeem({ code: input.value || '' });
     input.value = '';
     const message = result.redemption?.credit
-      ? `兑换码已生效，到账 ${result.redemption.credit}`
-      : '兑换码已生效';
-    setScopedFeedback('[data-payment-feedback]', message, 'success');
+      ? `到账 ${result.redemption.credit}`
+      : '已到账';
+    signalScoped('[data-payment-feedback]', 'success');
     await reloadServerDashboard(message);
   } catch (serverError) {
-    setActionMessage(serverError.message, 'error');
-    setScopedFeedback('[data-payment-feedback]', serverError.message, 'error');
+    signalAction('error');
+    signalScoped('[data-payment-feedback]', 'error');
   } finally {
     setButtonBusy(button, false);
   }
@@ -2385,21 +2861,21 @@ async function handleRedeemCode(button) {
 
 async function handleRefreshHealth(event) {
   event?.preventDefault();
-  setActionMessage('连通性刷新中...', 'info');
+  signalAction('info');
   try {
-    await reloadServerDashboard('连通性已刷新');
-    setActionMessage('连通性已刷新', 'success');
+    await reloadServerDashboard('已检测');
+    signalAction('success');
   } catch (error) {
-    setActionMessage(error.message || '刷新失败', 'error');
+    signalAction('error');
   }
 }
 
 async function handleRetryDashboard(button) {
-  setButtonBusy(button, true, '连接中');
-  setActionMessage('正在重新连接...', 'info');
+  setButtonBusy(button, true, '');
+  signalAction('info');
   try {
     await loadDashboardData();
-    setActionMessage(state.serverAvailable ? '后端已连接' : '后端仍不可用', state.serverAvailable ? 'success' : 'error');
+    signalAction(state.serverAvailable ? 'success' : 'error');
   } finally {
     setButtonBusy(button, false);
   }
@@ -2408,6 +2884,7 @@ async function handleRetryDashboard(button) {
 async function reloadServerDashboard(message) {
   const payload = await serverClient.loadDashboard();
   const nextData = normalizeFristDashboard(payload, emptyDashboard);
+  applyRevealedApiKeys(nextData);
   state.serverAvailable = true;
   state.hasServerSession = Boolean(payload.authenticated);
   for (const [key, value] of Object.entries(nextData)) {
@@ -2416,7 +2893,33 @@ async function reloadServerDashboard(message) {
   businessState = createBusinessStateFromDashboard(dashboardData, { now: new Date().toISOString() });
   syncPrimaryAccountState();
   render();
-  setActionMessage(message, 'success');
+  signalAction('success');
+}
+
+async function refreshDashboardSilently() {
+  try {
+    const payload = await serverClient.loadDashboard();
+    const nextData = normalizeFristDashboard(payload, emptyDashboard);
+    applyRevealedApiKeys(nextData);
+    state.serverAvailable = true;
+    state.hasServerSession = Boolean(payload.authenticated);
+    for (const [key, value] of Object.entries(nextData)) {
+      dashboardData[key] = value;
+    }
+    businessState = createBusinessStateFromDashboard(dashboardData, { now: new Date().toISOString() });
+    syncPrimaryAccountState();
+    render();
+  } catch {
+    state.serverAvailable = false;
+  }
+}
+
+function applyRevealedApiKeys(nextData) {
+  for (const key of nextData.apiKeys || []) {
+    if (!key.secret && revealedApiKeys.has(key.id)) {
+      key.secret = revealedApiKeys.get(key.id);
+    }
+  }
 }
 
 function activeApiKey() {
@@ -2427,7 +2930,7 @@ function isImageModel(model) {
   return /image|dall|gpt-image/i.test(String(model || ''));
 }
 
-// 广场生图默认走轻量 PNG，避免低带宽公网验收被慢图拖垮。
+// 生图默认走轻量 PNG，避免低带宽验收被慢图拖垮。
 function buildImageRequestBody(model, prompt) {
   return {
     model,
@@ -2455,7 +2958,7 @@ function assistantTextFromPayload(payload) {
   if (typeof payload?.text === 'string' && payload.text.trim()) {
     return payload.text.trim();
   }
-  return '模型已返回，但没有文本内容。';
+  return '已返回，无文本';
 }
 
 function firstImageSource(payload) {
@@ -2479,9 +2982,30 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function safeAvatarUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const url = new URL(raw, window.location.origin);
+    if (!/^https?:$/i.test(url.protocol)) return '';
+    return url.href.replace(/["\\]/g, '');
+  } catch {
+    return '';
+  }
+}
+
+function maskEmail(value) {
+  const email = String(value || '');
+  const [name = '', domain = ''] = email.split('@');
+  if (!name || !domain) return email;
+  return `${name.slice(0, 2)}***@${domain}`;
+}
+
 function setActionMessage(message, type = 'success') {
   for (const element of document.querySelectorAll('[data-action-message]')) {
-    element.textContent = message;
+    const label = message || feedbackLabel(type);
+    element.textContent = label;
+    element.setAttribute('aria-label', label);
     element.classList.add('is-visible');
     element.classList.toggle('action-message--success', type === 'success');
     element.classList.toggle('action-message--error', type === 'error');
@@ -2491,31 +3015,67 @@ function setActionMessage(message, type = 'success') {
 
 function setScopedFeedback(selector, message, type = 'info') {
   for (const element of document.querySelectorAll(selector)) {
-    element.textContent = message;
+    element.textContent = message || feedbackLabel(type);
+    element.setAttribute('aria-label', message || feedbackLabel(type));
     element.classList.toggle('field-feedback--success', type === 'success');
     element.classList.toggle('field-feedback--error', type === 'error');
     element.classList.toggle('field-feedback--info', type === 'info');
   }
 }
 
-function setButtonBusy(button, busy, busyText = '处理中') {
+function signalAction(type = 'success') {
+  setActionMessage(feedbackLabel(type), type);
+}
+
+function signalScoped(selector, type = 'success') {
+  setScopedFeedback(selector, feedbackLabel(type), type);
+}
+
+function feedbackLabel(type = 'success') {
+  if (type === 'error') return '后端暂不可用';
+  if (type === 'info') return '处理中';
+  return '已连接';
+}
+
+function setButtonBusy(button, busy, busyText = '') {
   if (!button) return;
   if (busy) {
     button.dataset.previousText = button.textContent || '';
     button.textContent = busyText;
+    button.classList.add('is-busy');
     button.disabled = true;
     button.setAttribute('aria-busy', 'true');
     return;
   }
   button.textContent = button.dataset.previousText || button.textContent;
   button.disabled = false;
+  button.classList.remove('is-busy');
   button.removeAttribute('aria-busy');
   delete button.dataset.previousText;
 }
 
 async function copyText(text, button) {
+  await copyTextToClipboard(text);
+  button.classList.add('is-copied');
+  button.setAttribute('aria-label', '已复制');
+  window.setTimeout(() => button.classList.remove('is-copied'), 900);
+}
+
+async function handleImportProtocolFallback(importUrl) {
+  await copyTextToClipboard(importUrl);
+  const fallback = document.querySelector('[data-import-fallback]');
+  if (!fallback) return;
+  fallback.hidden = false;
+  window.clearTimeout(state.importFallbackTimer);
+  state.importFallbackTimer = window.setTimeout(() => {
+    fallback.hidden = true;
+  }, 3200);
+}
+
+async function copyTextToClipboard(text) {
   try {
     await navigator.clipboard.writeText(text);
+    return;
   } catch {
     const fallback = document.createElement('textarea');
     fallback.value = text;
@@ -2527,11 +3087,6 @@ async function copyText(text, button) {
     document.execCommand('copy');
     fallback.remove();
   }
-  const previous = button.textContent;
-  button.textContent = '已复制';
-  window.setTimeout(() => {
-    button.textContent = previous;
-  }, 1200);
 }
 
 function setText(selector, value) {
@@ -2543,6 +3098,7 @@ function setText(selector, value) {
 bindStaticActions();
 render();
 startCarouselTimer();
+startPlaygroundAutoTest();
 loadDashboardData().catch(() => {
   state.dashboardLoading = false;
   render();

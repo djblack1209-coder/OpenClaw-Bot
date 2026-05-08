@@ -1,9 +1,9 @@
-import { createCipheriv, createDecipheriv, createHash, pbkdf2Sync, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, createHmac, pbkdf2Sync, randomBytes, timingSafeEqual } from 'node:crypto';
 import { lookup as lookupDns } from 'node:dns/promises';
 import { createServer } from 'node:http';
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, open, readFile, rename, rm, stat } from 'node:fs/promises';
 import { connect as connectNet, isIP } from 'node:net';
-import { dirname, extname, join, normalize, relative, resolve } from 'node:path';
+import { basename, dirname, extname, join, normalize, relative, resolve } from 'node:path';
 import { connect as connectTls } from 'node:tls';
 import { fileURLToPath } from 'node:url';
 
@@ -16,10 +16,12 @@ import {
   verifyWechatNotification,
 } from './payments.js';
 import {
-  buildCcSwitchImportUrl,
+  buildClientConfig,
+  buildClientSetupCommands,
   inferProviderGroup,
   modelMatchesGroup,
   normalizeBaseUrl,
+  normalizeClientAvailableModels,
   normalizeModelGroup,
   normalizeOfficialModelList,
   normalizeOfficialModelName,
@@ -41,6 +43,11 @@ const DEFAULT_PROBE_MODELS = Object.freeze([
 const DEFAULT_QUOTA_COST = 10;
 const PRIMARY_SOURCE_TYPE = 'authorized';
 const BACKUP_SOURCE_TYPES = new Set(['cpa_json_backup', 'chong_backup', 'manual_backup']);
+const PLUS_ACCOUNT_STATUSES = new Set(['warming', 'active', 'renewal_due', 'paused', 'risk_hold', 'retired']);
+const PLUS_ACCOUNT_COMPLIANCE_STATUSES = new Set(['self_use_only', 'needs_review', 'blocked']);
+const PLUS_ACCOUNT_REGIONS = new Set(['Türkiye', 'United States', 'China', 'Other']);
+const RT_ACCOUNT_STATUSES = new Set(['ready_for_refresh', 'active', 'needs_refresh', 'blocked', 'retired']);
+const RT_ACCOUNT_PLATFORMS = new Set(['codex', 'openai', 'claude', 'gemini', 'other']);
 const DEFAULT_RECHARGE_PLANS = Object.freeze([
   Object.freeze({ id: 'codex-30-day', label: 'Codex API 30刀额度/日卡', quotaUsd: 30, priceCny: 5.88, durationDays: 1, plan: 'day' }),
   Object.freeze({ id: 'codex-30-unlimited', label: 'Codex API 30刀额度/不限时', quotaUsd: 30, priceCny: 8.88, durationDays: 0, plan: 'balance' }),
@@ -50,22 +57,45 @@ const DEFAULT_RECHARGE_PLANS = Object.freeze([
 ]);
 const DEFAULT_CARD_BATCH_PREFIX = 'FRIST';
 const DEFAULT_MODEL_PRICES = Object.freeze([
-  Object.freeze({ model: 'gpt-5.5', currency: 'CNY', inputCostCnyPerMillion: 8, outputCostCnyPerMillion: 48, inputSaleCnyPerMillion: 8, outputSaleCnyPerMillion: 48, source: 'official' }),
-  Object.freeze({ model: 'gpt-5.5-c', currency: 'CNY', inputCostCnyPerMillion: 8, outputCostCnyPerMillion: 48, inputSaleCnyPerMillion: 8, outputSaleCnyPerMillion: 48, source: 'official' }),
-  Object.freeze({ model: 'claude-opus-4-6-thinking-c', currency: 'CNY', inputCostCnyPerMillion: 108, outputCostCnyPerMillion: 540, inputSaleCnyPerMillion: 108, outputSaleCnyPerMillion: 540, source: 'official' }),
-  Object.freeze({ model: 'claude-opus-4-6-c', currency: 'CNY', inputCostCnyPerMillion: 108, outputCostCnyPerMillion: 540, inputSaleCnyPerMillion: 108, outputSaleCnyPerMillion: 540, source: 'official' }),
-  Object.freeze({ model: 'claude-sonnet-4-5-c', currency: 'CNY', inputCostCnyPerMillion: 21.6, outputCostCnyPerMillion: 108, inputSaleCnyPerMillion: 21.6, outputSaleCnyPerMillion: 108, source: 'official' }),
+  Object.freeze({ model: 'gpt-5.5', currency: 'CNY', inputCostCnyPerMillion: 36, outputCostCnyPerMillion: 216, inputSaleCnyPerMillion: 36, outputSaleCnyPerMillion: 216, source: 'official', displayPrice: '官方 输入 $5.00 / 缓存 $0.50 / 输出 $30.00 每 1M' }),
+  Object.freeze({ model: 'gpt-5.5-c', currency: 'CNY', inputCostCnyPerMillion: 36, outputCostCnyPerMillion: 216, inputSaleCnyPerMillion: 36, outputSaleCnyPerMillion: 216, source: 'official', displayPrice: '官方 输入 $5.00 / 缓存 $0.50 / 输出 $30.00 每 1M' }),
+  Object.freeze({ model: 'gpt-5.4', currency: 'CNY', inputCostCnyPerMillion: 18, outputCostCnyPerMillion: 108, inputSaleCnyPerMillion: 18, outputSaleCnyPerMillion: 108, source: 'official', displayPrice: '官方 输入 $2.50 / 缓存 $0.25 / 输出 $15.00 每 1M' }),
+  Object.freeze({ model: 'gpt-5.4-mini', currency: 'CNY', inputCostCnyPerMillion: 5.4, outputCostCnyPerMillion: 32.4, inputSaleCnyPerMillion: 5.4, outputSaleCnyPerMillion: 32.4, source: 'official', displayPrice: '官方 输入 $0.75 / 缓存 $0.075 / 输出 $4.50 每 1M' }),
+  Object.freeze({ model: 'gpt-5.3-codex', currency: 'CNY', inputCostCnyPerMillion: 12.6, outputCostCnyPerMillion: 100.8, inputSaleCnyPerMillion: 12.6, outputSaleCnyPerMillion: 100.8, source: 'official', displayPrice: '官方 输入 $1.75 / 缓存 $0.175 / 输出 $14.00 每 1M' }),
+  Object.freeze({ model: 'gpt-5-codex', currency: 'CNY', inputCostCnyPerMillion: 9, outputCostCnyPerMillion: 72, inputSaleCnyPerMillion: 9, outputSaleCnyPerMillion: 72, source: 'official', displayPrice: '官方 输入 $1.25 / 缓存 $0.125 / 输出 $10.00 每 1M' }),
+  Object.freeze({ model: 'gpt-4o', currency: 'CNY', inputCostCnyPerMillion: 18, outputCostCnyPerMillion: 72, inputSaleCnyPerMillion: 18, outputSaleCnyPerMillion: 72, source: 'official', displayPrice: '官方 输入 $2.50 / 缓存 $1.25 / 输出 $10.00 每 1M' }),
+  Object.freeze({ model: 'gpt-image-2', currency: 'CNY', inputCostCnyPerMillion: 36, outputCostCnyPerMillion: 216, inputSaleCnyPerMillion: 36, outputSaleCnyPerMillion: 216, source: 'official', displayPrice: '官方 文字入 $5 / 文字缓存 $1.25 / 图入 $8 / 图缓存 $2 / 图出 $30 每 1M' }),
+  Object.freeze({ model: 'gpt-image-1.5', currency: 'CNY', inputCostCnyPerMillion: 36, outputCostCnyPerMillion: 230.4, inputSaleCnyPerMillion: 36, outputSaleCnyPerMillion: 230.4, source: 'official', displayPrice: '官方 文字入 $5 / 文字缓存 $1.25 / 文字出 $10 / 图入 $8 / 图缓存 $2 / 图出 $32 每 1M' }),
+  Object.freeze({ model: 'claude-opus-4-6-thinking-c', currency: 'CNY', inputCostCnyPerMillion: 36, outputCostCnyPerMillion: 180, inputSaleCnyPerMillion: 36, outputSaleCnyPerMillion: 180, source: 'official', displayPrice: '官方 输入 $5.00 / 缓存写 $6.25 / 缓存读 $0.50 / 输出 $25.00 每 1M' }),
+  Object.freeze({ model: 'claude-opus-4-6-c', currency: 'CNY', inputCostCnyPerMillion: 36, outputCostCnyPerMillion: 180, inputSaleCnyPerMillion: 36, outputSaleCnyPerMillion: 180, source: 'official', displayPrice: '官方 输入 $5.00 / 缓存写 $6.25 / 缓存读 $0.50 / 输出 $25.00 每 1M' }),
+  Object.freeze({ model: 'claude-sonnet-4-5-c', currency: 'CNY', inputCostCnyPerMillion: 21.6, outputCostCnyPerMillion: 108, inputSaleCnyPerMillion: 21.6, outputSaleCnyPerMillion: 108, source: 'official', displayPrice: '官方 输入 $3.00 / 缓存写 $3.75 / 缓存读 $0.30 / 输出 $15.00 每 1M' }),
+  Object.freeze({ model: 'gemini-2.5-flash', currency: 'CNY', inputCostCnyPerMillion: 2.16, outputCostCnyPerMillion: 18, inputSaleCnyPerMillion: 2.16, outputSaleCnyPerMillion: 18, source: 'official', displayPrice: '官方 ≤200K 输入 $0.30 / 缓存 $0.03 / 输出 $2.50 每 1M' }),
+  Object.freeze({ model: 'deepseek-v4-flash', currency: 'CNY', inputCostCnyPerMillion: 1.01, outputCostCnyPerMillion: 2.02, inputSaleCnyPerMillion: 1.01, outputSaleCnyPerMillion: 2.02, source: 'official', displayPrice: '官方 缓存命中 $0.014 / 输入 $0.14 / 输出 $0.28 每 1M' }),
+  Object.freeze({ model: 'deepseek-v4-pro', currency: 'CNY', inputCostCnyPerMillion: 3.13, outputCostCnyPerMillion: 6.26, inputSaleCnyPerMillion: 3.13, outputSaleCnyPerMillion: 6.26, source: 'official', displayPrice: '官方 缓存命中 $0.035 / 输入 $0.435 / 输出 $0.87 每 1M' }),
 ]);
+const DEFAULT_MODEL_PRICE_BY_MODEL = new Map(
+  DEFAULT_MODEL_PRICES.map((price) => [normalizeOfficialModelName(price.model), price]),
+);
 const DEFAULT_MODEL_CATALOG = [
-  { model: 'gpt-5.5', family: 'OpenAI', tagline: '推理和代码主力', context: '1M 上下文', price: '官方同档 · 折扣结算', available: true },
-  { model: 'gpt-5.4', family: 'OpenAI', tagline: '日常问答和代码补全', context: '1M 上下文', price: '官方同档 · 折扣结算', available: true },
-  { model: 'gpt-5.4-mini', family: 'OpenAI', tagline: '轻量代码和快速问答', context: '长上下文', price: '官方同档 · 折扣结算', available: true },
-  { model: 'gpt-image-2', family: 'OpenAI', tagline: '图片生成', context: '按图计费', price: '按张结算', available: true },
-  { model: 'gpt-5.3-codex', family: 'OpenAI', tagline: 'Codex 专用代码模型', context: '长上下文', price: '官方同档 · 折扣结算', available: true },
-  { model: 'deepseek-v4-flash', family: 'DeepSeek', tagline: 'Codex 桌面版官方兼容网关', context: 'OpenAI v1 兼容', price: '按官方 API 结算', available: true },
-  { model: DEFAULT_MODEL, family: 'Claude', tagline: '复杂开发和长链路推理', context: '1M 上下文', price: '官方同档 · 折扣结算', available: true },
+  { model: 'gpt-5.5', family: 'OpenAI', tagline: '推理和代码主力', context: '1M 上下文', price: '官方 输入 $5.00 / 缓存 $0.50 / 输出 $30.00 每 1M', available: true },
+  { model: 'gpt-5.4', family: 'OpenAI', tagline: '日常问答和代码补全', context: '1M 上下文', price: '官方 输入 $2.50 / 缓存 $0.25 / 输出 $15.00 每 1M', available: true },
+  { model: 'gpt-5.4-mini', family: 'OpenAI', tagline: '轻量代码和快速问答', context: '400K 上下文', price: '官方 输入 $0.75 / 缓存 $0.075 / 输出 $4.50 每 1M', available: true },
+  { model: 'gpt-image-2', family: 'OpenAI', tagline: '图片生成', context: '图像输入/输出', price: '官方 文字入 $5 / 文字缓存 $1.25 / 图入 $8 / 图缓存 $2 / 图出 $30 每 1M', available: true },
+  { model: 'gpt-image-1.5', family: 'OpenAI', tagline: '图片生成', context: '图像输入/输出', price: '官方 文字入 $5 / 文字缓存 $1.25 / 文字出 $10 / 图入 $8 / 图缓存 $2 / 图出 $32 每 1M', available: true },
+  { model: 'gpt-5.3-codex', family: 'OpenAI', tagline: 'Codex 专用代码模型', context: '400K 上下文', price: '官方 输入 $1.75 / 缓存 $0.175 / 输出 $14.00 每 1M', available: true },
+  { model: 'gpt-5-codex', family: 'OpenAI', tagline: 'Codex 代码模型', context: '400K 上下文', price: '官方 输入 $1.25 / 缓存 $0.125 / 输出 $10.00 每 1M', available: true },
+  { model: 'gpt-4o', family: 'OpenAI', tagline: '通用多模态', context: '128K 上下文', price: '官方 输入 $2.50 / 缓存 $1.25 / 输出 $10.00 每 1M', available: true },
+  { model: 'deepseek-v4-flash', family: 'DeepSeek', tagline: 'Codex 桌面版官方兼容网关', context: 'OpenAI v1 兼容', price: '官方 缓存命中 $0.014 / 输入 $0.14 / 输出 $0.28 每 1M', available: true },
+  { model: 'deepseek-v4-pro', family: 'DeepSeek', tagline: '推理模型别名', context: 'OpenAI v1 兼容', price: '官方 缓存命中 $0.035 / 输入 $0.435 / 输出 $0.87 每 1M', available: true },
+  { model: 'gemini-2.5-flash', family: 'Gemini', tagline: '多模态和轻量任务', context: '1M 上下文', price: '官方 ≤200K 输入 $0.30 / 缓存 $0.03 / 输出 $2.50 每 1M', available: true },
+  { model: DEFAULT_MODEL, family: 'Claude', tagline: '复杂开发和长链路推理', context: '长上下文', price: '官方 输入 $5.00 / 缓存写 $6.25 / 缓存读 $0.50 / 输出 $25.00 每 1M', available: true },
 ];
 const SESSION_COOKIE = 'frist_session';
+const CSRF_COOKIE = 'frist_csrf';
+const ADMIN_2FA_COOKIE = 'frist_admin_2fa';
+const TOTP_STEP_SECONDS = 30;
+const TOTP_DIGITS = 6;
+const DEFAULT_SLA_RETENTION_DAYS = 30;
 const LEGACY_CARD_CODES = new Map([
   ['FRIST-DAY-001', { label: 'Codex API 30刀额度/日卡', plan: 'day', days: 1, packageCents: 800, quotaUsd: 30, priceCny: 5.88 }],
   ['FRIST-MONTH-001', { label: 'Codex API 月卡 Pro', plan: 'month', days: 30, packageCents: 8000, quotaUsd: 300, priceCny: 58.88 }],
@@ -80,6 +110,8 @@ const ROOT_GATEWAY_PATHS = new Set([
   '/chat/completions', '/openai/chat/completions', '/responses', '/openai/responses',
   '/images/generations', '/openai/images/generations', '/messages',
 ]);
+const DEFAULT_CANONICAL_HOST = 'frist-api.101-43-41-96.nip.io';
+const DEFAULT_REDIRECT_HOSTS = Object.freeze(['101-43-41-96.nip.io']);
 
 export function createFristApiServer(options = {}) {
   const serverOptions = normalizeServerOptions(options);
@@ -95,6 +127,9 @@ export function createFristApiServer(options = {}) {
       }
 
       const url = new URL(request.url || '/', requestOrigin(request));
+      if (redirectToCanonicalHost({ request, response, url, serverOptions })) {
+        return;
+      }
       if (url.pathname.startsWith('/api/frist/')) {
         await handleCustomerApi({ request, response, url, store, serverOptions, securityState, newApiBridge });
         return;
@@ -110,6 +145,10 @@ export function createFristApiServer(options = {}) {
 
       await serveStaticFile({ request, response, url, publicDir: serverOptions.publicDir, serverOptions, store });
     } catch (error) {
+      const url = new URL(request.url || '/', requestOrigin(request));
+      if (url.pathname.startsWith('/api/admin/') && error?.statusCode === 401) {
+        await recordAdminAuthFailure(store, request, url);
+      }
       const message = error.expose ? error.message : '服务暂时不可用';
       writeJson(response, error.statusCode || 500, { error: message });
     }
@@ -133,7 +172,7 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
     requireCaptchaIfEnabled(securityState, body, serverOptions);
     const result = await store.mutate((data) => registerCustomer(data, body, serverOptions));
     writeJson(response, 200, result.body, {
-      'set-cookie': sessionCookie(result.sessionToken, request, serverOptions),
+      'set-cookie': sessionCookies(result.sessionToken, result.csrfToken, request, serverOptions),
     });
     return;
   }
@@ -143,14 +182,17 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
     assertAuthRateLimit(securityState, request, serverOptions);
     const result = await store.mutate((data) => loginCustomer(data, body, serverOptions));
     writeJson(response, 200, result.body, {
-      'set-cookie': sessionCookie(result.sessionToken, request, serverOptions),
+      'set-cookie': sessionCookies(result.sessionToken, result.csrfToken, request, serverOptions),
     });
     return;
   }
 
   if (request.method === 'POST' && url.pathname === '/api/frist/password') {
     const body = await readJsonBody(request);
-    const result = await store.mutate((data) => changeCustomerPassword(data, request, body, serverOptions));
+    const result = await store.mutate((data) => {
+      requireCsrfIfEnabled(data, request, serverOptions);
+      return changeCustomerPassword(data, request, body, serverOptions);
+    });
     writeJson(response, 200, result);
     return;
   }
@@ -173,28 +215,50 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
 
   if (request.method === 'POST' && url.pathname === '/api/frist/verify') {
     const body = await readJsonBody(request);
-    const result = await store.mutate((data) => verifyCustomer(data, request, body));
+    const result = await store.mutate((data) => {
+      requireCsrfIfEnabled(data, request, serverOptions);
+      return verifyCustomer(data, request, body);
+    });
+    writeJson(response, 200, result);
+    return;
+  }
+
+  if (request.method === 'PATCH' && url.pathname === '/api/frist/profile') {
+    const body = await readJsonBody(request);
+    const result = await store.mutate((data) => {
+      requireCsrfIfEnabled(data, request, serverOptions);
+      return updateCustomerProfile(data, request, body);
+    });
     writeJson(response, 200, result);
     return;
   }
 
   if (request.method === 'PUT' && url.pathname === '/api/frist/balance-alert') {
     const body = await readJsonBody(request);
-    const result = await store.mutate((data) => updateCustomerBalanceAlert(data, request, body));
+    const result = await store.mutate((data) => {
+      requireCsrfIfEnabled(data, request, serverOptions);
+      return updateCustomerBalanceAlert(data, request, body);
+    });
     writeJson(response, 200, result);
     return;
   }
 
   if (request.method === 'POST' && url.pathname === '/api/frist/balance-alert/test') {
     const body = await readJsonBody(request);
-    const result = await store.mutate((data) => sendCustomerBalanceAlertTest(data, request, body, serverOptions));
+    const result = await store.mutate((data) => {
+      requireCsrfIfEnabled(data, request, serverOptions);
+      return sendCustomerBalanceAlertTest(data, request, body, serverOptions);
+    });
     writeJson(response, 200, result);
     return;
   }
 
   if (request.method === 'POST' && url.pathname === '/api/frist/recharge') {
     const body = await readJsonBody(request);
-    const result = await store.mutate((data) => rechargeCustomer(data, request, body, serverOptions));
+    const result = await store.mutate((data) => {
+      requireCsrfIfEnabled(data, request, serverOptions);
+      return rechargeCustomer(data, request, body, serverOptions);
+    });
     writeJson(response, result.status || 200, result.body || result);
     return;
   }
@@ -222,13 +286,17 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
     const body = await readJsonBody(request);
     if (newApiBridge) {
       const data = await store.load();
+      requireCsrfIfEnabled(data, request, serverOptions);
       const { user } = requireSession(data, request);
       const result = await newApiBridge.redeemCode(body);
       result.user = sanitizeUser(user);
       writeJson(response, 200, result);
       return;
     }
-    const result = await store.mutate((data) => redeemCustomerCode(data, request, body, serverOptions));
+    const result = await store.mutate((data) => {
+      requireCsrfIfEnabled(data, request, serverOptions);
+      return redeemCustomerCode(data, request, body, serverOptions);
+    });
     writeJson(response, 200, result);
     return;
   }
@@ -237,6 +305,7 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
     const body = await readJsonBody(request);
     if (newApiBridge) {
       const data = await store.load();
+      requireCsrfIfEnabled(data, request, serverOptions);
       const { user } = requireSession(data, request);
       if (serverOptions.requireEmailVerification && !user.emailVerified) {
         throw publicError(403, '请先完成邮箱验证');
@@ -244,7 +313,10 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
       writeJson(response, 200, await newApiBridge.createToken(body));
       return;
     }
-    const result = await store.mutate((data) => createCustomerToken(data, request, body, serverOptions));
+    const result = await store.mutate((data) => {
+      requireCsrfIfEnabled(data, request, serverOptions);
+      return createCustomerToken(data, request, body, serverOptions);
+    });
     writeJson(response, 200, result);
     return;
   }
@@ -254,11 +326,15 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
     const body = await readJsonBody(request);
     if (newApiBridge) {
       const data = await store.load();
+      requireCsrfIfEnabled(data, request, serverOptions);
       requireSession(data, request);
       writeJson(response, 200, await newApiBridge.updateToken(tokenMatch[1], body));
       return;
     }
-    const result = await store.mutate((data) => updateCustomerToken(data, request, tokenMatch[1], body));
+    const result = await store.mutate((data) => {
+      requireCsrfIfEnabled(data, request, serverOptions);
+      return updateCustomerToken(data, request, tokenMatch[1], body);
+    });
     writeJson(response, 200, result);
     return;
   }
@@ -266,11 +342,15 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
   if (request.method === 'DELETE' && tokenMatch) {
     if (newApiBridge) {
       const data = await store.load();
+      requireCsrfIfEnabled(data, request, serverOptions);
       requireSession(data, request);
       writeJson(response, 200, await newApiBridge.deleteToken(tokenMatch[1]));
       return;
     }
-    const result = await store.mutate((data) => deleteCustomerToken(data, request, tokenMatch[1]));
+    const result = await store.mutate((data) => {
+      requireCsrfIfEnabled(data, request, serverOptions);
+      return deleteCustomerToken(data, request, tokenMatch[1]);
+    });
     writeJson(response, 200, result);
     return;
   }
@@ -282,17 +362,22 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
       const result = await newApiBridge.buildImportUrl(url, ({ target, apiKey, modelGroup, availableModels, defaultModel }) => {
         const baseUrl = serverOptions.publicGatewayBaseUrl || `${requestOrigin(request)}/v1`;
         const requestedModel = url.searchParams.get('model') || '';
+        const config = buildClientConfig({
+          target,
+          apiKey,
+          baseUrl,
+          model: requestedModel || defaultModel,
+          defaultModel,
+          availableModels,
+          modelGroup,
+          planExpiresAt: user.planExpiresAt,
+          preferExplicitDefaultModel: Boolean(requestedModel || defaultModel),
+        });
+        const setup = buildClientSetupCommands(config);
         return {
-          url: buildCcSwitchImportUrl({
-            target,
-            apiKey,
-            baseUrl,
-            model: requestedModel || defaultModel,
-            defaultModel,
-            availableModels,
-            modelGroup,
-            planExpiresAt: user.planExpiresAt,
-          }),
+          url: config.ccSwitchUrl,
+          config,
+          setup,
           defaultModel,
           availableModels,
         };
@@ -302,6 +387,20 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
     }
     const result = buildCustomerImportUrl(data, request, url, serverOptions);
     writeJson(response, 200, result);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/frist/key-usage') {
+    const data = await store.load();
+    if (newApiBridge) {
+      writeJson(response, 200, await newApiBridge.buildKeyUsage(request), {
+        'cache-control': 'no-store',
+      });
+      return;
+    }
+    writeJson(response, 200, buildKeyUsagePayload(data, request, serverOptions), {
+      'cache-control': 'no-store',
+    });
     return;
   }
 
@@ -318,7 +417,10 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
 
   if (request.method === 'POST' && url.pathname === '/api/frist/admin/claim') {
     const body = await readJsonBody(request);
-    const result = await store.mutate((data) => claimAdminIdentity(data, request, body, serverOptions));
+    const result = await store.mutate((data) => {
+      requireCsrfIfEnabled(data, request, serverOptions);
+      return claimAdminIdentity(data, request, body, serverOptions);
+    });
     writeJson(response, 200, result, adminGateCookie(serverOptions));
     return;
   }
@@ -327,6 +429,33 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
 }
 
 async function handleAdminApi({ request, response, url, store, serverOptions }) {
+  if (request.method === 'POST' && url.pathname === '/api/admin/2fa/verify') {
+    const body = await readJsonBody(request);
+    const result = await store.mutate((data) => verifyAdminSecondFactor(data, request, body, serverOptions));
+    writeJson(response, 200, result.body, {
+      'set-cookie': adminSecondFactorCookie(result.sessionToken, request, serverOptions),
+    });
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/admin/production-readiness') {
+    const data = await store.load();
+    requireAdmin(data, request, serverOptions);
+    writeJson(response, 200, await buildProductionReadiness(data, serverOptions));
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/admin/backups/status') {
+    const body = await readJsonBody(request);
+    const result = await store.mutate((data) => {
+      requireAdmin(data, request, serverOptions);
+      requireCsrfIfEnabled(data, request, serverOptions, { allowAdminToken: true });
+      return recordBackupStatus(data, body, serverOptions);
+    });
+    writeJson(response, 200, result);
+    return;
+  }
+
   if (request.method === 'GET' && url.pathname === '/api/admin/pricing') {
     const data = await store.load();
     requireAdmin(data, request, serverOptions);
@@ -338,6 +467,7 @@ async function handleAdminApi({ request, response, url, store, serverOptions }) 
     const body = await readJsonBody(request);
     const result = await store.mutate((data) => {
       requireAdmin(data, request, serverOptions);
+      requireCsrfIfEnabled(data, request, serverOptions, { allowAdminToken: true });
       data.pricing = normalizePricingConfig(body);
       data.priceDrafts = mergeModelPrices(data.priceDrafts, data.pricing.modelPrices);
       data.events.unshift({
@@ -360,9 +490,58 @@ async function handleAdminApi({ request, response, url, store, serverOptions }) 
       priceDrafts: data.priceDrafts,
       paymentOrders: data.paymentOrders.map(sanitizePaymentOrder),
       redemptionCards: data.redemptionCards.map(sanitizeRedemptionCard),
+      plusAccounts: data.plusAccounts.map((account) => sanitizePlusAccount(account, serverOptions)),
+      plusAccountSummary: buildPlusAccountSummary(data.plusAccounts, serverOptions),
+      rtAccounts: data.rtAccounts.map(sanitizeRtAccount),
+      rtAccountSummary: buildRtAccountSummary(data.rtAccounts),
       inventorySummary: buildInventorySummary(data),
+      productionReadiness: await buildProductionReadiness(data, serverOptions),
       events: sanitizeAdminEvents(data.events),
     });
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/admin/plus-accounts') {
+    const data = await store.load();
+    requireAdmin(data, request, serverOptions);
+    writeJson(response, 200, {
+      accounts: data.plusAccounts.map((account) => sanitizePlusAccount(account, serverOptions)),
+      summary: buildPlusAccountSummary(data.plusAccounts, serverOptions),
+      events: sanitizeAdminEvents(data.events),
+    });
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/admin/plus-accounts') {
+    const body = await readJsonBody(request);
+    const result = await store.mutate((data) => {
+      requireAdmin(data, request, serverOptions);
+      requireCsrfIfEnabled(data, request, serverOptions, { allowAdminToken: true });
+      return upsertPlusAccount(data, body, serverOptions);
+    });
+    writeJson(response, 200, result);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/admin/rt-accounts') {
+    const data = await store.load();
+    requireAdmin(data, request, serverOptions);
+    writeJson(response, 200, {
+      accounts: data.rtAccounts.map(sanitizeRtAccount),
+      summary: buildRtAccountSummary(data.rtAccounts),
+      events: sanitizeAdminEvents(data.events),
+    });
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/admin/rt-accounts/import') {
+    const body = await readJsonBody(request);
+    const result = await store.mutate((data) => {
+      requireAdmin(data, request, serverOptions);
+      requireCsrfIfEnabled(data, request, serverOptions, { allowAdminToken: true });
+      return importRtAccounts(data, body, serverOptions);
+    });
+    writeJson(response, 200, result);
     return;
   }
 
@@ -380,6 +559,7 @@ async function handleAdminApi({ request, response, url, store, serverOptions }) 
     const body = await readJsonBody(request);
     const result = await store.mutate((data) => {
       requireAdmin(data, request, serverOptions);
+      requireCsrfIfEnabled(data, request, serverOptions, { allowAdminToken: true });
       return createRedemptionCards(data, body);
     });
     writeJson(response, 200, result);
@@ -390,6 +570,7 @@ async function handleAdminApi({ request, response, url, store, serverOptions }) 
     const body = await readJsonBody(request);
     const data = await store.load();
     requireAdmin(data, request, serverOptions);
+    requireCsrfIfEnabled(data, request, serverOptions, { allowAdminToken: true });
     const parsed = parseSupplierOrderText(body.orderText || '', body.pricing || {});
     writeJson(response, 200, sanitizeParsedOrder(parsed));
     return;
@@ -399,6 +580,7 @@ async function handleAdminApi({ request, response, url, store, serverOptions }) 
     const body = await readJsonBody(request);
     const result = await store.mutate((data) => {
       requireAdmin(data, request, serverOptions);
+      requireCsrfIfEnabled(data, request, serverOptions, { allowAdminToken: true });
       return manualRechargeCustomer(data, body);
     });
     writeJson(response, 200, result);
@@ -409,6 +591,7 @@ async function handleAdminApi({ request, response, url, store, serverOptions }) 
     const body = await readJsonBody(request);
     const result = await store.mutate((data) => {
       requireAdmin(data, request, serverOptions);
+      requireCsrfIfEnabled(data, request, serverOptions, { allowAdminToken: true });
       return replenishCredentials(data, body, serverOptions);
     });
     writeJson(response, 200, result);
@@ -416,6 +599,23 @@ async function handleAdminApi({ request, response, url, store, serverOptions }) 
   }
 
   writeJson(response, 404, { error: '接口不存在' });
+}
+
+async function recordAdminAuthFailure(store, request, url) {
+  try {
+    await store.mutate((data) => {
+      data.events.push({
+        type: 'admin_auth_failed',
+        path: url.pathname,
+        ipHash: hashId(clientIp(request)),
+        at: new Date().toISOString(),
+      });
+    });
+  } catch (error) {
+    process.emitWarning(`Frist-API 管理认证失败审计写入失败: ${error.message}`, {
+      code: 'FRIST_API_ADMIN_AUDIT_WRITE_FAILED',
+    });
+  }
 }
 
 async function handleGatewayApi({ request, response, url, store, serverOptions, newApiBridge }) {
@@ -472,6 +672,19 @@ async function handleGatewayApi({ request, response, url, store, serverOptions, 
       },
     ],
   };
+  const anthropicMessagesRouteOptions = {
+    upstreamAttempts: [
+      {
+        upstreamPath: '/messages',
+        validateResponse: isAnthropicMessagePayload,
+      },
+      {
+        upstreamPath: '/chat/completions',
+        transformRequest: anthropicMessagesToChatCompletion,
+        transformResponse: chatCompletionToAnthropicMessageResponse,
+      },
+    ],
+  };
 
   const upstreamPathByRoute = new Map([
     ['/v1/chat/completions', chatCompletionRouteOptions],
@@ -486,30 +699,8 @@ async function handleGatewayApi({ request, response, url, store, serverOptions, 
     ['/v1/openai/images/generations', { upstreamPath: '/images/generations' }],
     ['/images/generations', { upstreamPath: '/images/generations' }],
     ['/openai/images/generations', { upstreamPath: '/images/generations' }],
-    [
-      '/v1/messages',
-      {
-        upstreamAttempts: [
-          {
-            upstreamPath: '/chat/completions',
-            transformRequest: anthropicMessagesToChatCompletion,
-            transformResponse: chatCompletionToAnthropicMessageResponse,
-          },
-        ],
-      },
-    ],
-    [
-      '/messages',
-      {
-        upstreamAttempts: [
-          {
-            upstreamPath: '/chat/completions',
-            transformRequest: anthropicMessagesToChatCompletion,
-            transformResponse: chatCompletionToAnthropicMessageResponse,
-          },
-        ],
-      },
-    ],
+    ['/v1/messages', anthropicMessagesRouteOptions],
+    ['/messages', anthropicMessagesRouteOptions],
   ]);
   const routeOptions = upstreamPathByRoute.get(url.pathname);
   if (request.method !== 'POST' || !routeOptions) {
@@ -519,7 +710,7 @@ async function handleGatewayApi({ request, response, url, store, serverOptions, 
 
   const body = await readJsonBody(request);
   const result = await store.mutate((data) =>
-    routeChatCompletion(data, request, body, serverOptions, routeOptions),
+    routeChatCompletion(data, request, body, serverOptions, { ...routeOptions, request }),
   );
   response.writeHead(result.status, {
     'content-type': result.contentType,
@@ -528,7 +719,7 @@ async function handleGatewayApi({ request, response, url, store, serverOptions, 
     ...(result.bodyStream ? { 'x-accel-buffering': 'no' } : {}),
   });
   if (result.bodyStream) {
-    await pipeReadableStreamToResponse(result.bodyStream, response);
+    await pipeReadableStreamToResponse(result.bodyStream, response, { abort: result.abort });
     return;
   }
   response.end(result.bodyText);
@@ -556,6 +747,7 @@ async function registerCustomer(data, body, serverOptions) {
     email,
     emailVerified: !serverOptions.requireEmailVerification,
     passwordHash: hashPassword(password, serverOptions.sessionSecret),
+    displayName: email.split('@')[0],
     verificationCode,
     plan: '默认套餐',
     renewalDate: formatDate(addDays(new Date(), 30)),
@@ -570,14 +762,18 @@ async function registerCustomer(data, body, serverOptions) {
   data.users.push(user);
 
   const sessionToken = createId('sess');
+  const csrfToken = createId('csrf');
   data.sessions[sessionToken] = user.id;
+  data.sessionCsrfTokens[sessionToken] = csrfToken;
   data.events.push({ type: 'registered', userId: user.id, at: now });
 
   const responseUser = sanitizeUser(user);
   const result = {
     sessionToken,
+    csrfToken,
     body: {
       user: responseUser,
+      csrfToken,
       ...(serverOptions.exposeVerificationCode && verificationCode ? { verificationCode } : {}),
     },
   };
@@ -614,14 +810,18 @@ function loginCustomer(data, body, serverOptions) {
     data.events.push({ type: 'password_hash_upgraded', userId: user.id, at: now });
   }
   const sessionToken = createId('sess');
+  const csrfToken = createId('csrf');
   data.sessions[sessionToken] = user.id;
+  data.sessionCsrfTokens[sessionToken] = csrfToken;
   user.updatedAt = now;
   data.events.push({ type: 'logged_in', userId: user.id, at: now });
   return {
     sessionToken,
+    csrfToken,
     body: {
       user: sanitizeUser(user),
       account: accountFromUser(data, user),
+      csrfToken,
     },
   };
 }
@@ -734,6 +934,52 @@ function verifyCustomer(data, request, body) {
   return { user: sanitizeUser(user) };
 }
 
+function updateCustomerProfile(data, request, body) {
+  const { user } = requireSession(data, request);
+  const displayName = String(body.displayName ?? body.nickname ?? '').trim();
+  const nextEmail = String(body.email ?? user.email ?? '').trim().toLowerCase();
+  const avatarUrl = sanitizeAvatarUrl(body.avatarUrl ?? user.avatarUrl ?? '');
+  if (!displayName || displayName.length > 40) {
+    throw publicError(400, '昵称需要 1-40 个字符');
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nextEmail)) {
+    throw publicError(400, '邮箱格式不正确');
+  }
+  const oldEmail = String(user.email || '').toLowerCase();
+  if (nextEmail !== oldEmail && data.users.some((item) => item.id !== user.id && item.email === nextEmail)) {
+    throw publicError(409, '邮箱已被占用');
+  }
+
+  const now = new Date().toISOString();
+  user.displayName = displayName.slice(0, 40);
+  user.avatarUrl = avatarUrl;
+  if (nextEmail !== oldEmail) {
+    const previousAlertEmail = normalizeAlertEmail(user.balanceAlert?.email || '');
+    user.email = nextEmail;
+    user.emailVerified = false;
+    user.verificationCode = '';
+    if (!previousAlertEmail || previousAlertEmail === oldEmail) {
+      user.balanceAlert = {
+        ...normalizeBalanceAlertRecord(user.balanceAlert, nextEmail),
+        email: nextEmail,
+        updatedAt: now,
+      };
+    }
+  }
+  user.updatedAt = now;
+  data.events.push({
+    type: 'profile_updated',
+    userId: user.id,
+    emailChanged: nextEmail !== oldEmail,
+    at: now,
+  });
+  return {
+    user: sanitizeUser(user),
+    account: accountFromUser(data, user),
+    balanceAlert: sanitizeBalanceAlert(user.balanceAlert, user.email),
+  };
+}
+
 function updateCustomerBalanceAlert(data, request, body) {
   const { user } = requireSession(data, request);
   const thresholdCents = normalizeAlertThresholdCents(body);
@@ -829,6 +1075,50 @@ function claimAdminIdentity(data, request, body, serverOptions) {
     user: sanitizeUser(user),
     adminUrl: '/admin.html',
     message: '管理员身份已激活',
+  };
+}
+
+function verifyAdminSecondFactor(data, request, body, serverOptions) {
+  requireAdmin(data, request, serverOptions, { allowPendingSecondFactor: true });
+  if (!serverOptions.requireAdmin2fa) {
+    return {
+      sessionToken: '',
+      body: {
+        ok: true,
+        secondFactorRequired: false,
+        message: '管理员 2FA 未启用',
+      },
+    };
+  }
+  const code = String(body.code || body.totp || '').replace(/\s+/g, '');
+  if (!verifyTotpCode(serverOptions.adminTotpSecrets, code, serverOptions.nowFactory())) {
+    data.events.push({
+      type: 'admin_2fa_failed',
+      ipHash: hashId(clientIp(request)),
+      at: currentDate(serverOptions).toISOString(),
+    });
+    throw publicError(401, '管理员 2FA 验证码无效');
+  }
+  const now = currentDate(serverOptions).toISOString();
+  const sessionToken = createId('mfa');
+  data.adminSecondFactorSessions[sessionToken] = {
+    createdAt: now,
+    expiresAt: new Date(currentDate(serverOptions).getTime() + Number(serverOptions.admin2faSessionTtlMs || 3_600_000)).toISOString(),
+    ipHash: hashId(clientIp(request)),
+  };
+  pruneAdminSecondFactorSessions(data, serverOptions);
+  data.events.push({
+    type: 'admin_2fa_verified',
+    ipHash: hashId(clientIp(request)),
+    at: now,
+  });
+  return {
+    sessionToken,
+    body: {
+      ok: true,
+      secondFactorRequired: false,
+      message: '管理员 2FA 已通过',
+    },
   };
 }
 
@@ -1010,6 +1300,7 @@ function handleWechatPaymentNotification(data, request, rawBody, serverOptions) 
     provider: 'wechat',
     transactionId: transaction.transaction_id || '',
     payload: sanitizePaymentCallbackPayload(transaction),
+    rawPayload: transaction,
   });
   return { code: 'SUCCESS', message: '成功' };
 }
@@ -1034,6 +1325,7 @@ function handleAlipayPaymentNotification(data, rawBody, serverOptions) {
     provider: 'alipay',
     transactionId: notification.trade_no || '',
     payload: sanitizePaymentCallbackPayload(notification),
+    rawPayload: notification,
   });
   return { ok: true };
 }
@@ -1057,6 +1349,7 @@ function confirmProviderPayment(data, orderId, details = {}) {
     });
     return { order, user, duplicate: true };
   }
+  assertPaymentAmountMatchesOrder(order, details.provider || order.provider || '', details.rawPayload || details.payload || {});
 
   creditUserForOrder(user, order, now);
   order.status = 'paid';
@@ -1082,6 +1375,33 @@ function confirmProviderPayment(data, orderId, details = {}) {
     payload: details.payload || {},
   });
   return { order, user, duplicate: false };
+}
+
+function assertPaymentAmountMatchesOrder(order, provider, payload) {
+  const expected = Number(order.amountCents || 0);
+  const actual = providerPaymentAmountCents(provider, payload);
+  if (!Number.isFinite(actual) || actual !== expected) {
+    throw publicError(400, '支付金额与订单金额不一致');
+  }
+}
+
+function providerPaymentAmountCents(provider, payload = {}) {
+  if (provider === 'wechat') {
+    return Number(payload?.amount?.payer_total ?? payload?.amount?.total);
+  }
+  if (provider === 'alipay') {
+    return yuanToCents(payload.receipt_amount || payload.buyer_pay_amount || payload.total_amount);
+  }
+  return Number.NaN;
+}
+
+function yuanToCents(value) {
+  const text = String(value ?? '').trim();
+  if (!/^\d+(\.\d{1,2})?$/.test(text)) {
+    return Number.NaN;
+  }
+  const [yuan, cents = ''] = text.split('.');
+  return Number(yuan) * 100 + Number(cents.padEnd(2, '0'));
 }
 
 function creditUserForOrder(user, order, now) {
@@ -1114,6 +1434,61 @@ function recordPaymentCallback(data, orderId, details = {}) {
     transactionId: details.transactionId || '',
     at: new Date().toISOString(),
   });
+}
+
+function buildPaymentClosureStatus(serverOptions) {
+  const paymentConfig = serverOptions.paymentConfig || {};
+  const wechatReady = providerReady(paymentConfig, 'wechat');
+  const alipayReady = providerReady(paymentConfig, 'alipay');
+  const wechatNotifyUrl = paymentConfig.wechat?.notifyUrl || (
+    paymentConfig.publicBaseUrl ? `${paymentConfig.publicBaseUrl}/api/frist/payments/wechat/notify` : ''
+  );
+  const alipayNotifyUrl = paymentConfig.alipay?.notifyUrl || (
+    paymentConfig.publicBaseUrl ? `${paymentConfig.publicBaseUrl}/api/frist/payments/alipay/notify` : ''
+  );
+  const providers = [
+    {
+      id: 'wechat',
+      name: '微信支付',
+      ready: wechatReady,
+      notifyUrl: wechatNotifyUrl,
+      missing: paymentMissingFields(paymentConfig.wechat || {}, [
+        ['enabled', 'FRIST_API_WECHAT_PAY_ENABLED'],
+        ['appid', 'FRIST_API_WECHAT_PAY_APPID'],
+        ['mchid', 'FRIST_API_WECHAT_PAY_MCH_ID'],
+        ['serialNo', 'FRIST_API_WECHAT_PAY_SERIAL_NO'],
+        ['privateKey', 'FRIST_API_WECHAT_PAY_PRIVATE_KEY'],
+        ['publicKey', 'FRIST_API_WECHAT_PAY_PUBLIC_KEY'],
+        ['apiV3Key', 'FRIST_API_WECHAT_PAY_API_V3_KEY'],
+      ]),
+    },
+    {
+      id: 'alipay',
+      name: '支付宝',
+      ready: alipayReady,
+      notifyUrl: alipayNotifyUrl,
+      missing: paymentMissingFields(paymentConfig.alipay || {}, [
+        ['enabled', 'FRIST_API_ALIPAY_ENABLED'],
+        ['appId', 'FRIST_API_ALIPAY_APP_ID'],
+        ['privateKey', 'FRIST_API_ALIPAY_PRIVATE_KEY'],
+        ['publicKey', 'FRIST_API_ALIPAY_PUBLIC_KEY'],
+      ]),
+    },
+  ];
+  return {
+    enabled: Boolean(paymentConfig.enabled),
+    ready: Boolean(paymentConfig.enabled && providers.some((provider) => provider.ready)),
+    providers,
+  };
+}
+
+function paymentMissingFields(config, fields) {
+  return fields
+    .filter(([key]) => {
+      if (key === 'enabled') return !config.enabled;
+      return !String(config[key] || '').trim();
+    })
+    .map(([, envName]) => envName);
 }
 
 function normalizePaymentMethod(value) {
@@ -1345,6 +1720,127 @@ function redemptionRuleFromCard(card) {
   };
 }
 
+function upsertPlusAccount(data, body, serverOptions) {
+  const now = currentDate(serverOptions).toISOString();
+  const existing = body.id ? data.plusAccounts.find((account) => account.id === String(body.id)) : null;
+  const mergedBody = existing
+    ? {
+        ...existing,
+        ...body,
+        openaiEmail: body.openaiEmail || existing.openaiEmail,
+        appleEmail: body.appleEmail || existing.appleEmail,
+        secrets: body.secrets || existing.secrets,
+      }
+    : body;
+  const input = normalizePlusAccountRecord({
+    ...mergedBody,
+    id: existing?.id || '',
+    createdAt: existing?.createdAt || body.createdAt || now,
+    updatedAt: now,
+  });
+  if (!input.openaiEmail && !input.appleEmail) {
+    throw publicError(400, '至少填写一个 OpenAI 或 Apple ID 邮箱');
+  }
+  if (input.complianceStatus === 'blocked' && input.status !== 'risk_hold' && input.status !== 'retired') {
+    input.status = 'risk_hold';
+  }
+  if (input.status === 'active' && input.complianceStatus !== 'self_use_only') {
+    throw publicError(400, 'Plus 账号必须标记为仅自用后才能设为活跃');
+  }
+
+  const account = existing
+    ? Object.assign(existing, {
+        ...input,
+        id: existing.id,
+        createdAt: existing.createdAt || input.createdAt || now,
+        updatedAt: now,
+      })
+    : input;
+  if (!existing) {
+    data.plusAccounts.unshift(account);
+  }
+
+  data.events.push({
+    type: 'plus_account_upserted',
+    accountId: account.id,
+    status: account.status,
+    renewalAt: account.plusRenewalAt || '',
+    at: now,
+  });
+  return {
+    account: sanitizePlusAccount(account, serverOptions),
+    summary: buildPlusAccountSummary(data.plusAccounts, serverOptions),
+    events: sanitizeAdminEvents(data.events),
+  };
+}
+
+function importRtAccounts(data, body, serverOptions) {
+  const now = currentDate(serverOptions).toISOString();
+  const parsedRows = parseRtImportText(body.rtText ?? body.text ?? body.json ?? body.items);
+  const platform = normalizeRtPlatform(body.platform || '');
+  const sourceLabel = String(body.sourceLabel || '').trim().slice(0, 80);
+  const accountType = String(body.accountType || '').trim().slice(0, 60);
+  const note = sanitizeRiskNote(body.note || '');
+  const imported = [];
+  const skipped = [];
+  for (const row of parsedRows) {
+    const normalized = normalizeRtAccountRecord({
+      ...row,
+      platform: row.platform || platform,
+      sourceLabel: row.sourceLabel || sourceLabel,
+      accountType: row.accountType || accountType,
+      note: row.note || note,
+      createdAt: row.createdAt || now,
+      updatedAt: now,
+      importedAt: now,
+    });
+    if (!normalized.refreshToken) {
+      skipped.push({ email: normalized.email || row.email || '', reason: '缺少 refresh_token' });
+      continue;
+    }
+    const fingerprint = normalized.refreshTokenFingerprint;
+    const existing = data.rtAccounts.find(
+      (account) =>
+        account.refreshTokenFingerprint === fingerprint ||
+        (normalized.email && account.email === normalized.email && account.platform === normalized.platform),
+    );
+    if (existing) {
+      Object.assign(existing, {
+        ...normalized,
+        id: existing.id,
+        createdAt: existing.createdAt || normalized.createdAt,
+        updatedAt: now,
+      });
+      imported.push(existing);
+    } else {
+      data.rtAccounts.unshift(normalized);
+      imported.push(normalized);
+    }
+  }
+
+  if (!parsedRows.length) {
+    throw publicError(400, '没有识别到 RT 账号，请粘贴 JSON 数组、单个 JSON 对象或每行一个 RT');
+  }
+  if (!imported.length) {
+    throw publicError(400, '没有可导入的 refresh_token');
+  }
+
+  data.events.push({
+    type: 'rt_accounts_imported',
+    count: imported.length,
+    skipped: skipped.length,
+    platform,
+    at: now,
+  });
+  return {
+    imported: imported.map(sanitizeRtAccount),
+    skipped,
+    accounts: data.rtAccounts.map(sanitizeRtAccount),
+    summary: buildRtAccountSummary(data.rtAccounts),
+    events: sanitizeAdminEvents(data.events),
+  };
+}
+
 function createCustomerToken(data, request, body, serverOptions) {
   const { user } = requireSession(data, request);
   if (serverOptions.requireEmailVerification && !user.emailVerified) {
@@ -1352,7 +1848,7 @@ function createCustomerToken(data, request, body, serverOptions) {
   }
 
   const now = new Date().toISOString();
-  const secret = `fk-live-${randomBytes(18).toString('base64url')}`;
+  const secret = generateCustomerApiKey();
   const key = {
     id: createId('key'),
     userId: user.id,
@@ -1430,7 +1926,16 @@ function deleteCustomerToken(data, request, keyId) {
 
 function buildCustomerImportUrl(data, request, url, serverOptions) {
   const { user } = requireSession(data, request);
-  const key = data.userKeys.find((item) => item.userId === user.id && item.enabled);
+  const targetModelGroup = normalizeModelGroup(
+    url.searchParams.get('modelGroup') || inferProviderGroup(url.searchParams.get('model') || ''),
+  );
+  const requestedKeyId = String(url.searchParams.get('keyId') || '').trim();
+  const enabledKeys = data.userKeys.filter((item) => item.userId === user.id && item.enabled);
+  const key =
+    enabledKeys.find((item) => requestedKeyId && item.id === requestedKeyId) ||
+    enabledKeys.find((item) => targetModelGroup !== 'All' && normalizeModelGroup(item.modelGroup) === targetModelGroup) ||
+    enabledKeys.find((item) => targetModelGroup !== 'All' && normalizeModelGroup(item.modelGroup) === 'All') ||
+    enabledKeys[0];
   if (!key) {
     throw publicError(409, '没有可用的 API Key');
   }
@@ -1438,21 +1943,61 @@ function buildCustomerImportUrl(data, request, url, serverOptions) {
   const target = url.searchParams.get('target') || 'Claude';
   const requestedModel = url.searchParams.get('model') || '';
   const baseUrl = serverOptions.publicGatewayBaseUrl || `${requestOrigin(request)}/v1`;
-  const availableModels = availableModelsForCustomer(data, user, key, requestedModel);
-  const defaultModel = strongestModel(availableModels);
-  return {
-    url: buildCcSwitchImportUrl({
-      target,
-      apiKey: key.secret,
-      baseUrl,
-      model: requestedModel || defaultModel,
-      defaultModel,
-      availableModels,
-      modelGroup: key.modelGroup,
-      planExpiresAt: user.planExpiresAt,
-    }),
+  const { availableModels, defaultModel } = customerImportModelSelection(data, user, key, requestedModel);
+  const config = buildClientConfig({
+    target,
+    apiKey: key.secret,
+    baseUrl,
+    model: requestedModel || defaultModel,
     defaultModel,
     availableModels,
+    modelGroup: key.modelGroup,
+    planExpiresAt: user.planExpiresAt,
+    preferExplicitDefaultModel: Boolean(requestedModel || defaultModel),
+  });
+  const setup = buildClientSetupCommands(config);
+  return {
+    url: config.ccSwitchUrl,
+    config,
+    setup,
+    defaultModel,
+    availableModels,
+  };
+}
+
+function buildKeyUsagePayload(data, request, serverOptions) {
+  const key = requireUserKey(data, request);
+  const user = data.users.find((item) => item.id === key.userId);
+  if (!user) {
+    throw publicError(401, '用户不存在');
+  }
+  expireUserPlanIfNeeded(data, user, serverOptions, { recordEvent: false });
+  const account = accountFromUser(data, user);
+  const remainingCents = Number(user.balanceCents || 0);
+  const usedMonthCents = sumUserGatewayCost(data, user.id, currentDate(serverOptions).toISOString().slice(0, 7));
+  const totalCents = remainingCents + usedMonthCents;
+  return {
+    ok: true,
+    valid: true,
+    keyPreview: sanitizeUserKey(key).preview,
+    plan: user.plan || '默认套餐',
+    renewalDate: user.renewalDate || '-',
+    remainingUsd: usdNumberFromCnyCents(remainingCents),
+    usedUsd: usdNumberFromCnyCents(usedMonthCents),
+    totalUsd: usdNumberFromCnyCents(totalCents),
+    remainingCny: cnyNumberFromCents(remainingCents),
+    usedCny: cnyNumberFromCents(usedMonthCents),
+    totalCny: cnyNumberFromCents(totalCents),
+    balance: account.balance,
+    packageQuota: account.packageQuota,
+    boosterQuota: account.boosterQuota,
+    todayCost: account.todayCost,
+    monthCost: account.monthCost,
+    todayCalls: account.todayCalls,
+    todayTokens: account.todayTokens,
+    totalTokens: account.totalTokens,
+    averageLatency: account.averageLatency,
+    successRate: account.successRate,
   };
 }
 
@@ -1460,7 +2005,7 @@ function buildDashboard(data, user, serverOptions) {
   expireUserPlanIfNeeded(data, user, serverOptions, { recordEvent: false });
   const apiKeys = data.userKeys
     .filter((item) => item.userId === user.id)
-    .map((item) => sanitizeUserKey(item, { revealSecret: true }));
+    .map((item) => sanitizeUserKey(item));
   return {
     authenticated: true,
     account: accountFromUser(data, user),
@@ -1472,6 +2017,7 @@ function buildDashboard(data, user, serverOptions) {
     modelCatalog: buildModelCatalog(data),
     rechargeOptions: buildRechargeOptions(data),
     usageRecords: buildUsageRecords(data, user),
+    usageAnomalies: buildUsageAnomalies(data, user),
     recentLogs: buildRecentLogs(data, user),
   };
 }
@@ -1502,10 +2048,11 @@ function buildGuestDashboard(data) {
     balanceAlert: sanitizeBalanceAlert(defaultBalanceAlert(''), ''),
     apiKeys: [],
     modelUsage: [],
-    channelChecks: buildChannelChecks(data),
+    channelChecks: [],
     modelCatalog: buildModelCatalog(data),
     rechargeOptions: buildRechargeOptions(data),
     usageRecords: [],
+    usageAnomalies: [],
     recentLogs: [],
   };
 }
@@ -1514,6 +2061,10 @@ async function replenishCredentials(data, body, serverOptions) {
   const parsedOrder = body.orderText ? parseSupplierOrderText(body.orderText, body.pricing || {}) : null;
   const normalizedBaseUrl = normalizeBaseUrl(body.baseUrl || parsedOrder?.baseUrl);
   const normalizedProxyBaseUrl = String(body.proxyBaseUrl || '').trim() ? normalizeBaseUrl(body.proxyBaseUrl) : '';
+  await assertSafeUpstreamBaseUrl(normalizedBaseUrl, serverOptions);
+  if (normalizedProxyBaseUrl) {
+    await assertSafeUpstreamBaseUrl(normalizedProxyBaseUrl, serverOptions);
+  }
   const pool = normalizePool(body.pool || parsedOrder?.pool || 'default');
   const modelGroup = normalizeModelGroup(body.modelGroup || parsedOrder?.providerGroup || '');
   const cardType = normalizePool(body.cardType || parsedOrder?.cardType || pool);
@@ -1539,11 +2090,16 @@ async function replenishCredentials(data, body, serverOptions) {
     proxyBaseUrl: normalizedProxyBaseUrl,
     keyInputs,
     models: providedModels,
+    modelGroup,
     probeMode,
     serverOptions,
   });
   const models = providedModels.length > 0 ? providedModels : probeReport.models;
-  const sourceFingerprint = sourceType === PRIMARY_SOURCE_TYPE ? normalizedBaseUrl : `${sourceType}:${normalizedBaseUrl}`;
+  const sourceGroup = modelGroup || inferProviderGroup(models.join('\n'));
+  const sourceFingerprint =
+    sourceType === PRIMARY_SOURCE_TYPE
+      ? `${normalizedBaseUrl}:${sourceGroup}`
+      : `${sourceType}:${normalizedBaseUrl}:${sourceGroup}`;
   const sourceId = `source-${hashId(sourceFingerprint)}`;
   const source = upsertSupplierProfile(data, {
     id: sourceId,
@@ -1552,7 +2108,7 @@ async function replenishCredentials(data, body, serverOptions) {
     routeBaseUrl: probeReport.routeBaseUrl,
     pool,
     models,
-    modelGroup,
+    modelGroup: sourceGroup,
     cardType,
     expiresAt,
     sourceType,
@@ -1571,6 +2127,7 @@ async function replenishCredentials(data, body, serverOptions) {
       failedKeys.push({
         keyPreview: maskKey(key.value),
         reason: probe.reason || '检测失败',
+        status: probe.status || 'probe_failed',
       });
       continue;
     }
@@ -1640,7 +2197,7 @@ async function replenishCredentials(data, body, serverOptions) {
   };
 }
 
-async function probeReplenishment({ baseUrl, proxyBaseUrl, keyInputs, models, probeMode, serverOptions }) {
+async function probeReplenishment({ baseUrl, proxyBaseUrl, keyInputs, models, modelGroup = '', probeMode, serverOptions }) {
   if (probeMode === 'trusted') {
     const routeBaseUrl = proxyBaseUrl || baseUrl;
     return {
@@ -1678,6 +2235,7 @@ async function probeReplenishment({ baseUrl, proxyBaseUrl, keyInputs, models, pr
       models: candidateModels,
       serverOptions,
       collectAllModels: shouldCollectSupportedModels,
+      preferAnthropicMessages: normalizeModelGroup(key.modelGroup || modelGroup || '') === 'Claude',
     });
     keyResults.set(key.value, probe);
   }
@@ -1728,6 +2286,11 @@ async function probeCredentialModels(baseUrl, rawKey, serverOptions, authConfig 
   if (!fetchImpl) {
     return { ok: false, status: 'probe_unavailable', reason: '当前 Node 环境缺少 fetch', models: [] };
   }
+  try {
+    await assertSafeUpstreamBaseUrl(baseUrl, serverOptions);
+  } catch (error) {
+    return { ok: false, status: 'network_failed', reason: error.message || '请求地址不可达', models: [] };
+  }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), Number(serverOptions.probeTimeoutMs || 2500));
@@ -1759,8 +2322,21 @@ async function probeCredentialModels(baseUrl, rawKey, serverOptions, authConfig 
   }
 }
 
-async function probeCredentialRoutes({ baseUrl, proxyBaseUrl, rawKey, authConfig = {}, models, serverOptions, collectAllModels }) {
-  const direct = await probeCredentialRouteCandidates(baseUrl, rawKey, models, serverOptions, { collectAllModels, authConfig });
+async function probeCredentialRoutes({
+  baseUrl,
+  proxyBaseUrl,
+  rawKey,
+  authConfig = {},
+  models,
+  serverOptions,
+  collectAllModels,
+  preferAnthropicMessages = false,
+}) {
+  const direct = await probeCredentialRouteCandidates(baseUrl, rawKey, models, serverOptions, {
+    collectAllModels,
+    authConfig,
+    preferAnthropicMessages,
+  });
   if (!proxyBaseUrl) {
     return {
       ...direct,
@@ -1769,7 +2345,11 @@ async function probeCredentialRoutes({ baseUrl, proxyBaseUrl, rawKey, authConfig
     };
   }
 
-  const proxy = await probeCredentialRouteCandidates(proxyBaseUrl, rawKey, models, serverOptions, { collectAllModels, authConfig });
+  const proxy = await probeCredentialRouteCandidates(proxyBaseUrl, rawKey, models, serverOptions, {
+    collectAllModels,
+    authConfig,
+    preferAnthropicMessages,
+  });
   const connectionPath = recommendConnectionPath({
     direct: { ok: direct.ok, p95Ms: direct.latencyMs || 999999, failureRate: direct.ok ? 0 : 1 },
     proxy: { ok: proxy.ok, p95Ms: proxy.latencyMs || 999999, failureRate: proxy.ok ? 0 : 1 },
@@ -1833,6 +2413,15 @@ function routeBaseUrlCandidates(baseUrl) {
   return [...new Set(candidates)];
 }
 
+function isRootUpstreamBaseUrl(baseUrl) {
+  try {
+    const pathname = new URL(normalizeBaseUrl(baseUrl)).pathname.replace(/\/+$/, '');
+    return pathname === '';
+  } catch {
+    return false;
+  }
+}
+
 async function probeCredentialChat(baseUrl, rawKey, models, serverOptions, options = {}) {
   const fetchImpl = serverOptions.fetchImpl || globalThis.fetch;
   if (!fetchImpl) {
@@ -1844,6 +2433,36 @@ async function probeCredentialChat(baseUrl, rawKey, models, serverOptions, optio
   let lastFailure = null;
 
   for (const model of models) {
+    if (options.preferAnthropicMessages && inferProviderGroup(model) === 'Claude') {
+      const anthropicProbe = await probeCredentialAnthropicMessages(
+        baseUrl,
+        rawKey,
+        model,
+        serverOptions,
+        Date.now(),
+        options.authConfig || {},
+      );
+      if (anthropicProbe.status === 'auth_failed' || anthropicProbe.status === 'quota_failed' || anthropicProbe.status === 'network_failed') {
+        return anthropicProbe;
+      }
+      if (anthropicProbe.ok) {
+        supportedModels.push(model);
+        bestLatencyMs = bestLatencyMs ? Math.min(bestLatencyMs, anthropicProbe.latencyMs) : anthropicProbe.latencyMs;
+        if (!options.collectAllModels) {
+          return anthropicProbe;
+        }
+        continue;
+      }
+      if (!isGatewayAdapterUnsupported({ status: anthropicProbe.httpStatus, bodyText: anthropicProbe.bodyText })) {
+        lastFailure = anthropicProbe;
+        if (!options.collectAllModels) {
+          return lastFailure;
+        }
+      } else if (isRootUpstreamBaseUrl(baseUrl)) {
+        return anthropicProbe;
+      }
+    }
+
     if (isImageGenerationModel(model)) {
       const imageProbe = await probeCredentialImageGeneration(
         baseUrl,
@@ -1991,6 +2610,77 @@ async function probeCredentialChat(baseUrl, rawKey, models, serverOptions, optio
   }
 
   return { ok: false, status: 'model_failed', reason: '预设模型均不可用', models: [] };
+}
+
+async function probeCredentialAnthropicMessages(baseUrl, rawKey, model, serverOptions, startedAt, authConfig = {}) {
+  const fetchImpl = serverOptions.fetchImpl || globalThis.fetch;
+  if (!fetchImpl) {
+    return { ok: false, status: 'probe_unavailable', reason: '当前 Node 环境缺少 fetch', models: [] };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Number(serverOptions.probeTimeoutMs || 2500));
+  try {
+    const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/messages`, {
+      method: 'POST',
+      headers: {
+        ...authHeadersForKey(rawKey, authConfig),
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: 'ping' }],
+        max_tokens: 1,
+        stream: false,
+      }),
+      signal: controller.signal,
+    });
+    const bodyText = await response.text();
+    if (response.status === 401 || response.status === 403) {
+      return { ok: false, status: 'auth_failed', reason: '认证失败或 Key 无效', models: [], httpStatus: response.status, bodyText };
+    }
+    if (response.status === 402 || response.status === 429) {
+      return { ok: false, status: 'quota_failed', reason: '上游额度不足或限速', models: [], httpStatus: response.status, bodyText };
+    }
+    if (response.status >= 200 && response.status < 300) {
+      if (!isAnthropicMessagePayload(bodyText)) {
+        return {
+          ok: false,
+          status: 'adapter_unsupported',
+          reason: '上游返回非 Anthropic Messages 响应',
+          models: [],
+          httpStatus: response.status,
+          bodyText,
+        };
+      }
+      return {
+        ok: true,
+        status: 'anthropic_messages_probe_ok',
+        reason: '',
+        models: [model],
+        latencyMs: Math.max(1, Date.now() - startedAt),
+        httpStatus: response.status,
+        bodyText,
+      };
+    }
+    return {
+      ok: false,
+      status: 'http_failed',
+      reason: `上游返回 HTTP ${response.status}`,
+      models: [],
+      httpStatus: response.status,
+      bodyText,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 'network_failed',
+      reason: error.name === 'AbortError' ? '探测超时' : '请求地址不可达',
+      models: [],
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function probeCredentialImageGeneration(baseUrl, rawKey, model, serverOptions, startedAt, authConfig = {}) {
@@ -2149,6 +2839,11 @@ function isOpenAiImageGenerationPayload(bodyText) {
   return Array.isArray(payload.data);
 }
 
+function isAnthropicMessagePayload(bodyText) {
+  const payload = parseJsonPayload(bodyText);
+  return payload.type === 'message' && Array.isArray(payload.content);
+}
+
 function isModelUnsupportedResponse(status, bodyText) {
   return (status === 400 || status === 404) && /model|not found|unsupported|not supported|不存在|不支持/i.test(bodyText || '');
 }
@@ -2242,6 +2937,7 @@ async function routeChatCompletion(data, request, body, serverOptions, options =
       const quotaCost = resolveQuotaCostCents(data, model, routedBody, upstream, serverOptions);
       const usage = parseUpstreamUsage(upstream.bodyText);
       const beforeUserQuota = availableQuotaCents(user);
+      const client = clientLabelFromRequest(request, routedBody);
       credential.quotaRemaining = Math.max(0, Number(credential.quotaRemaining || 0) - quotaCost);
       credential.status = credential.quotaRemaining > 0 ? 'healthy' : 'exhausted';
       credential.enabled = credential.quotaRemaining > 0;
@@ -2261,6 +2957,7 @@ async function routeChatCompletion(data, request, body, serverOptions, options =
         pool: credential.pool,
         quotaCost,
         endpoint: credential.baseUrl,
+        client,
         apiKeyPreview: userKey.preview || maskKey(userKey.secret),
         inferenceEffort: String(routedBody.reasoning_effort || routedBody.reasoning?.effort || routedBody.thinking?.budget_tokens || '默认'),
         requestType: options.requestType || (isImageGenerationModel(model) ? '图片' : '文本'),
@@ -2271,6 +2968,9 @@ async function routeChatCompletion(data, request, body, serverOptions, options =
         latencyMs: Number(upstream.latencyMs || credential.latencyMs || 0),
         status: 'success',
         at: credential.updatedAt,
+      });
+      recordChannelProbeEvent(data, credential, Number(upstream.latencyMs || credential.latencyMs || 0) > 1600 ? 'slow' : 'ok', 'gateway_success', serverOptions, {
+        latencyMs: Number(upstream.latencyMs || credential.latencyMs || 0),
       });
       rememberRouteAffinity(data, sessionKey, {
         userId: user.id,
@@ -2307,7 +3007,22 @@ async function callGatewayAttempts(credential, body, serverOptions, options = {}
     const upstream = await callUpstreamChatCompletion(credential, upstreamBody, serverOptions, {
       streamResponse: body.stream === true && !attempt.transformResponse,
       upstreamPath: attempt.upstreamPath,
+      request: options.request,
     });
+    if (
+      attempt.validateResponse &&
+      upstream.status >= 200 &&
+      upstream.status < 300 &&
+      !upstream.bodyStream &&
+      !attempt.validateResponse(upstream.bodyText)
+    ) {
+      lastUpstream = {
+        ...upstream,
+        status: 415,
+        bodyText: JSON.stringify({ error: '上游返回格式不兼容' }),
+      };
+      continue;
+    }
     if (isGatewayAdapterUnsupported(upstream) && index < attempts.length - 1) {
       lastUpstream = upstream;
       continue;
@@ -2626,7 +3341,12 @@ async function callUpstreamChatCompletion(credential, body, serverOptions, optio
   const upstreamPath = String(options.upstreamPath || '/chat/completions').startsWith('/')
     ? options.upstreamPath
     : `/${options.upstreamPath}`;
-  const upstreamUrl = `${normalizeBaseUrl(credential.routeBaseUrl || credential.baseUrl)}${upstreamPath}`;
+  const upstreamBaseUrl = normalizeBaseUrl(credential.routeBaseUrl || credential.baseUrl);
+  await assertSafeUpstreamBaseUrl(upstreamBaseUrl, serverOptions);
+  const upstreamUrl = `${upstreamBaseUrl}${upstreamPath}`;
+  const controller = new AbortController();
+  const abortUpstream = () => controller.abort();
+  options.request?.once?.('close', abortUpstream);
   const response = await fetchImpl(upstreamUrl, {
     method: 'POST',
     headers: {
@@ -2634,6 +3354,8 @@ async function callUpstreamChatCompletion(credential, body, serverOptions, optio
       'content-type': 'application/json',
     },
     body: JSON.stringify(body),
+    signal: controller.signal,
+    redirect: 'manual',
   });
   const contentType = response.headers?.get?.('content-type') || 'application/json; charset=utf-8';
   if (options.streamResponse && response.status >= 200 && response.status < 300 && response.body) {
@@ -2642,14 +3364,17 @@ async function callUpstreamChatCompletion(credential, body, serverOptions, optio
       contentType,
       bodyText: '',
       bodyStream: response.body,
+      abort: abortUpstream,
     };
   }
 
   const bodyText = await response.text();
+  options.request?.off?.('close', abortUpstream);
   return {
     status: response.status,
     contentType,
     bodyText,
+    latencyMs: Number(response.headers?.get?.('x-frist-upstream-latency-ms') || 0) || Number(credential.latencyMs || 0),
   };
 }
 
@@ -2698,6 +3423,7 @@ function exhaustCredential(data, credential, reason) {
   credential.status = 'exhausted';
   credential.enabled = false;
   credential.updatedAt = new Date().toISOString();
+  recordChannelProbeEvent(data, credential, 'exhausted', reason, {});
   data.events.push({
     type: 'credential_exhausted',
     credentialId: credential.id,
@@ -2710,6 +3436,7 @@ function failCredential(data, credential, reason) {
   credential.status = 'failed';
   credential.enabled = false;
   credential.updatedAt = new Date().toISOString();
+  recordChannelProbeEvent(data, credential, 'down', reason, {});
   data.events.push({
     type: 'credential_failed',
     credentialId: credential.id,
@@ -3671,18 +4398,29 @@ function headerValue(request, name) {
   return value || '';
 }
 
-async function pipeReadableStreamToResponse(bodyStream, response) {
+async function pipeReadableStreamToResponse(bodyStream, response, options = {}) {
+  const abort = typeof options.abort === 'function' ? options.abort : null;
+  let closed = false;
+  response.once?.('close', () => {
+    closed = true;
+    abort?.();
+  });
   if (typeof bodyStream.getReader === 'function') {
     const reader = bodyStream.getReader();
     try {
       while (true) {
         const chunk = await reader.read();
         if (chunk.done) break;
+        if (closed || response.destroyed) {
+          await reader.cancel?.();
+          break;
+        }
         response.write(normalizeStreamChunk(chunk.value));
       }
     } finally {
+      abort?.();
       reader.releaseLock?.();
-      response.end();
+      if (!response.destroyed) response.end();
     }
     return;
   }
@@ -3690,21 +4428,40 @@ async function pipeReadableStreamToResponse(bodyStream, response) {
   if (typeof bodyStream[Symbol.asyncIterator] === 'function') {
     try {
       for await (const chunk of bodyStream) {
+        if (closed || response.destroyed) break;
         response.write(normalizeStreamChunk(chunk));
       }
     } finally {
-      response.end();
+      abort?.();
+      if (!response.destroyed) response.end();
     }
     return;
   }
 
-  response.end();
+  abort?.();
+  if (!response.destroyed) response.end();
 }
 
 function normalizeStreamChunk(chunk) {
   if (Buffer.isBuffer(chunk)) return chunk;
   if (chunk instanceof Uint8Array) return Buffer.from(chunk);
   return Buffer.from(String(chunk || ''), 'utf8');
+}
+
+async function writeFileAtomic(filePath, text) {
+  await mkdir(dirname(filePath), { recursive: true });
+  const tempPath = join(dirname(filePath), `.${basename(filePath)}.${process.pid}.${Date.now()}.${randomBytes(4).toString('hex')}.tmp`);
+  const handle = await open(tempPath, 'w', 0o600);
+  try {
+    await handle.writeFile(text, 'utf8');
+    await handle.sync();
+  } catch (error) {
+    await rm(tempPath, { force: true }).catch(() => {});
+    throw error;
+  } finally {
+    await handle.close();
+  }
+  await rename(tempPath, filePath);
 }
 
 function createRuntimeStore(dataFile, encryptionKey = '') {
@@ -3726,14 +4483,21 @@ function createRuntimeStore(dataFile, encryptionKey = '') {
   async function save(data) {
     await mkdir(dirname(dataFile), { recursive: true });
     const normalized = normalizeRuntimeData(data);
-    await writeFile(dataFile, `${JSON.stringify(encryptRuntimeData(normalized, encryption), null, 2)}\n`, 'utf8');
+    await writeFileAtomic(dataFile, `${JSON.stringify(encryptRuntimeData(normalized, encryption), null, 2)}\n`);
   }
 
   async function mutate(mutator) {
     const run = writeQueue.then(async () => {
       const data = await load();
       const result = await mutator(data);
-      await save(data);
+      try {
+        await save(data);
+      } catch (error) {
+        process.emitWarning(`Frist-API runtime 写入失败: ${error.message}`, {
+          code: 'FRIST_API_RUNTIME_WRITE_FAILED',
+        });
+        throw error;
+      }
       return result;
     });
     writeQueue = run.catch(() => {});
@@ -3748,6 +4512,8 @@ function normalizeRuntimeData(data) {
   return {
     users: Array.isArray(data.users) ? data.users.map(normalizeUserRecord) : [],
     sessions: data.sessions && typeof data.sessions === 'object' ? data.sessions : {},
+    sessionCsrfTokens: data.sessionCsrfTokens && typeof data.sessionCsrfTokens === 'object' ? data.sessionCsrfTokens : {},
+    adminSecondFactorSessions: data.adminSecondFactorSessions && typeof data.adminSecondFactorSessions === 'object' ? data.adminSecondFactorSessions : {},
     userKeys: Array.isArray(data.userKeys) ? data.userKeys : [],
     credentials: Array.isArray(data.credentials) ? data.credentials.map(normalizeCredentialRecord) : [],
     supplierProfiles: Array.isArray(data.supplierProfiles) ? data.supplierProfiles.map(normalizeSupplierProfileRecord) : [],
@@ -3756,8 +4522,12 @@ function normalizeRuntimeData(data) {
     paymentOrders: Array.isArray(data.paymentOrders) ? data.paymentOrders : [],
     redemptions: Array.isArray(data.redemptions) ? data.redemptions : [],
     redemptionCards: Array.isArray(data.redemptionCards) ? data.redemptionCards.map(normalizeRedemptionCardRecord) : [],
+    plusAccounts: Array.isArray(data.plusAccounts) ? data.plusAccounts.map(normalizePlusAccountRecord) : [],
+    rtAccounts: Array.isArray(data.rtAccounts) ? data.rtAccounts.map(normalizeRtAccountRecord) : [],
     routeAffinities: data.routeAffinities && typeof data.routeAffinities === 'object' ? data.routeAffinities : {},
     lowInventoryAlerts: data.lowInventoryAlerts && typeof data.lowInventoryAlerts === 'object' ? data.lowInventoryAlerts : {},
+    backupStatus: normalizeBackupStatusRecord(data.backupStatus),
+    channelProbeEvents: Array.isArray(data.channelProbeEvents) ? data.channelProbeEvents.map(normalizeChannelProbeEvent).filter(Boolean) : [],
     usedAdminClaimCodeHashes: Array.isArray(data.usedAdminClaimCodeHashes) ? data.usedAdminClaimCodeHashes : [],
     events: Array.isArray(data.events) ? data.events : [],
   };
@@ -3776,7 +4546,7 @@ function encryptRuntimeData(data, encryption) {
     return data;
   }
   const copy = structuredCloneJson(data);
-  copy.__encryption = { version: 1, algorithm: 'aes-256-gcm', fields: ['userKeys.secret', 'credentials.rawKey'] };
+  copy.__encryption = { version: 1, algorithm: 'aes-256-gcm', fields: ['userKeys.secret', 'credentials.rawKey', 'plusAccounts.secrets', 'rtAccounts.refreshToken'] };
   copy.userKeys = copy.userKeys.map((key) => ({
     ...key,
     secret: encryptSecretField(key.secret, encryption),
@@ -3784,6 +4554,14 @@ function encryptRuntimeData(data, encryption) {
   copy.credentials = copy.credentials.map((credential) => ({
     ...credential,
     rawKey: encryptSecretField(credential.rawKey, encryption),
+  }));
+  copy.plusAccounts = copy.plusAccounts.map((account) => ({
+    ...account,
+    secrets: encryptSecretField(account.secrets, encryption),
+  }));
+  copy.rtAccounts = copy.rtAccounts.map((account) => ({
+    ...account,
+    refreshToken: encryptSecretField(account.refreshToken, encryption),
   }));
   return copy;
 }
@@ -3799,6 +4577,12 @@ function decryptRuntimeData(data, encryption) {
       : [];
     copy.credentials = Array.isArray(copy.credentials)
       ? copy.credentials.map((credential) => ({ ...credential, rawKey: decryptSecretField(credential.rawKey, encryption) }))
+      : [];
+    copy.plusAccounts = Array.isArray(copy.plusAccounts)
+      ? copy.plusAccounts.map((account) => ({ ...account, secrets: decryptSecretField(account.secrets, encryption) }))
+      : [];
+    copy.rtAccounts = Array.isArray(copy.rtAccounts)
+      ? copy.rtAccounts.map((account) => ({ ...account, refreshToken: decryptSecretField(account.refreshToken, encryption) }))
       : [];
     delete copy.__encryption;
     return copy;
@@ -3910,6 +4694,112 @@ function normalizeRedemptionCardRecord(card) {
   };
 }
 
+function normalizePlusAccountRecord(account) {
+  const openaiEmail = normalizeAlertEmail(account?.openaiEmail || '');
+  const appleEmail = normalizeAlertEmail(account?.appleEmail || '');
+  const status = normalizePlusAccountStatus(account?.status || '');
+  const complianceStatus = normalizePlusAccountComplianceStatus(account?.complianceStatus || '');
+  return {
+    id: String(account?.id || createId('plus')),
+    label: String(account?.label || openaiEmail || appleEmail || 'ChatGPT Plus 账号').trim().slice(0, 80),
+    openaiEmail,
+    appleEmail,
+    region: normalizePlusAccountRegion(account?.region || 'Türkiye'),
+    status,
+    complianceStatus,
+    billingMethod: String(account?.billingMethod || 'apple_iap').trim().slice(0, 60),
+    appleBalanceTry: round2Finite(account?.appleBalanceTry),
+    monthlyCostTry: round2Finite(account?.monthlyCostTry),
+    plusRenewalAt: String(account?.plusRenewalAt || ''),
+    lastCheckedAt: String(account?.lastCheckedAt || ''),
+    deviceProfile: String(account?.deviceProfile || '').trim().slice(0, 120),
+    browserProfile: String(account?.browserProfile || '').trim().slice(0, 120),
+    riskNote: sanitizeRiskNote(account?.riskNote || ''),
+    operatorNote: String(account?.operatorNote || '').trim().slice(0, 500),
+    secrets: String(account?.secrets || '').trim().slice(0, 1000),
+    routingEnabled: false,
+    createdAt: String(account?.createdAt || ''),
+    updatedAt: String(account?.updatedAt || ''),
+  };
+}
+
+function normalizeRtAccountRecord(account) {
+  const refreshToken = String(
+    account?.refreshToken ?? account?.refresh_token ?? account?.rt ?? account?.token ?? '',
+  ).trim().slice(0, 4000);
+  const email = normalizeAlertEmail(account?.email || '');
+  const platform = normalizeRtPlatform(account?.platform || account?.provider || '');
+  const status = normalizeRtAccountStatus(account?.status || '');
+  const accountId = String(account?.accountId ?? account?.account_id ?? '').trim().slice(0, 160);
+  const fingerprint = String(account?.refreshTokenFingerprint || tokenFingerprint(refreshToken)).trim();
+  return {
+    id: String(account?.id || createId('rt')),
+    label: String(account?.label || email || accountId || 'RT 账号').trim().slice(0, 80),
+    platform,
+    status,
+    email,
+    accountId,
+    refreshToken,
+    refreshTokenFingerprint: fingerprint,
+    sourceLabel: String(account?.sourceLabel || '').trim().slice(0, 80),
+    accountType: String(account?.accountType || '').trim().slice(0, 60),
+    note: sanitizeRiskNote(account?.note || account?.riskNote || ''),
+    lastRefreshAt: String(account?.lastRefreshAt || ''),
+    expiresAt: String(account?.expiresAt || account?.expired || ''),
+    importedAt: String(account?.importedAt || account?.createdAt || ''),
+    createdAt: String(account?.createdAt || ''),
+    updatedAt: String(account?.updatedAt || ''),
+    routingEnabled: false,
+  };
+}
+
+function normalizeBackupStatusRecord(record) {
+  const current = record && typeof record === 'object' ? record : {};
+  return {
+    provider: String(current.provider || '').trim().slice(0, 80),
+    target: String(current.target || '').trim().slice(0, 160),
+    lastBackupAt: String(current.lastBackupAt || ''),
+    lastRestoreTestAt: String(current.lastRestoreTestAt || ''),
+    status: ['ok', 'warning', 'failed'].includes(String(current.status || '')) ? String(current.status) : 'warning',
+    artifact: String(current.artifact || '').trim().slice(0, 180),
+    sizeBytes: Math.max(0, Number(current.sizeBytes || 0) || 0),
+    checksum: String(current.checksum || '').trim().slice(0, 128),
+    message: String(current.message || '').trim().slice(0, 240),
+    updatedAt: String(current.updatedAt || current.lastBackupAt || ''),
+  };
+}
+
+function normalizeChannelProbeEvent(event) {
+  if (!event || typeof event !== 'object') {
+    return null;
+  }
+  const model = normalizeOfficialModelName(event.model);
+  const status = normalizeSlaStatus(event.status);
+  const at = String(event.at || '');
+  if (!model || !status || !at) {
+    return null;
+  }
+  return {
+    id: String(event.id || createId('sla')),
+    model,
+    provider: event.provider || providerFromModel(model),
+    credentialId: String(event.credentialId || ''),
+    status,
+    reason: String(event.reason || '').slice(0, 120),
+    latencyMs: Math.max(0, Number(event.latencyMs || 0) || 0),
+    pool: String(event.pool || ''),
+    at,
+  };
+}
+
+function normalizeSlaStatus(value) {
+  const status = String(value || '').trim().toLowerCase();
+  if (status === 'ok' || status === 'healthy' || status === 'success') return 'ok';
+  if (status === 'slow' || status === 'degraded') return 'slow';
+  if (status === 'down' || status === 'failed' || status === 'exhausted') return 'down';
+  return '';
+}
+
 function pricingPayload(data) {
   const pricing = normalizePricingConfig(data.pricing || {});
   return {
@@ -3951,15 +4841,21 @@ function normalizeModelPrices(prices) {
   for (const price of rows) {
     const model = normalizeOfficialModelName(price.model);
     if (!model) continue;
+    const source = String(price.source || 'official').trim() || 'official';
+    const officialDefault = source.toLowerCase() === 'official' && !String(price.displayPrice || '').trim()
+      ? DEFAULT_MODEL_PRICE_BY_MODEL.get(model)
+      : null;
+    const normalizedPrice = officialDefault || price;
     merged.set(model, {
       model,
-      currency: String(price.currency || 'CNY').toUpperCase(),
-      inputCostCnyPerMillion: round2(Number(price.inputCostCnyPerMillion || 0)),
-      outputCostCnyPerMillion: round2(Number(price.outputCostCnyPerMillion || 0)),
-      inputSaleCnyPerMillion: round2(Number(price.inputSaleCnyPerMillion ?? price.inputCostCnyPerMillion ?? 0)),
-      outputSaleCnyPerMillion: round2(Number(price.outputSaleCnyPerMillion ?? price.outputCostCnyPerMillion ?? 0)),
-      source: String(price.source || 'official'),
-      status: String(price.status || 'confirmed'),
+      currency: String(normalizedPrice.currency || 'CNY').toUpperCase(),
+      inputCostCnyPerMillion: round2(Number(normalizedPrice.inputCostCnyPerMillion || 0)),
+      outputCostCnyPerMillion: round2(Number(normalizedPrice.outputCostCnyPerMillion || 0)),
+      inputSaleCnyPerMillion: round2(Number(normalizedPrice.inputSaleCnyPerMillion ?? normalizedPrice.inputCostCnyPerMillion ?? 0)),
+      outputSaleCnyPerMillion: round2(Number(normalizedPrice.outputSaleCnyPerMillion ?? normalizedPrice.outputCostCnyPerMillion ?? 0)),
+      source: String(normalizedPrice.source || source),
+      displayPrice: String(normalizedPrice.displayPrice || '').trim(),
+      status: String(price.status || normalizedPrice.status || 'confirmed'),
     });
   }
   return [...merged.values()];
@@ -4019,9 +4915,15 @@ function normalizeServerOptions(options) {
       options.keepAliveTimeoutMs === undefined && process.env.FRIST_API_KEEP_ALIVE_TIMEOUT_MS === undefined
         ? Number.NaN
         : Number(options.keepAliveTimeoutMs ?? process.env.FRIST_API_KEEP_ALIVE_TIMEOUT_MS),
-    probeTimeoutMs: Number(options.probeTimeoutMs || process.env.FRIST_API_PROBE_TIMEOUT_MS || 2500),
+    probeTimeoutMs: Number(options.probeTimeoutMs || process.env.FRIST_API_PROBE_TIMEOUT_MS || 8000),
     publicDir: options.publicDir ? resolve(options.publicDir) : resolve(root, '..'),
     publicGatewayBaseUrl: options.publicGatewayBaseUrl || process.env.FRIST_API_PUBLIC_GATEWAY_BASE_URL || '',
+    canonicalHost: normalizeCanonicalHost(
+      options.canonicalHost ?? process.env.FRIST_API_CANONICAL_HOST ?? DEFAULT_CANONICAL_HOST,
+    ),
+    redirectHosts: parseRedirectHosts(
+      options.redirectHosts ?? process.env.FRIST_API_REDIRECT_HOSTS ?? DEFAULT_REDIRECT_HOSTS.join(','),
+    ),
     dataEncryptionKey: options.dataEncryptionKey || process.env.FRIST_API_DATA_ENCRYPTION_KEY || '',
     quotaCost: Number(options.quotaCost || DEFAULT_QUOTA_COST),
     requireEmailVerification,
@@ -4045,10 +4947,35 @@ function normalizeServerOptions(options) {
       typeof options.newApiGatewayEnabled === 'boolean'
         ? options.newApiGatewayEnabled
         : process.env.FRIST_API_NEWAPI_GATEWAY_ENABLED === '1',
+    requireNewApiDatabase:
+      typeof options.requireNewApiDatabase === 'boolean'
+        ? options.requireNewApiDatabase
+        : process.env.FRIST_API_REQUIRE_NEWAPI_DATABASE === '1',
+    enforceProductionReadiness:
+      typeof options.enforceProductionReadiness === 'boolean'
+        ? options.enforceProductionReadiness
+        : process.env.FRIST_API_ENFORCE_PRODUCTION_READINESS === '1',
+    requireAdmin2fa:
+      typeof options.requireAdmin2fa === 'boolean'
+        ? options.requireAdmin2fa
+        : process.env.FRIST_API_REQUIRE_ADMIN_2FA === '1',
+    adminTotpSecrets: normalizeTotpSecrets(options.adminTotpSecrets ?? process.env.FRIST_API_ADMIN_TOTP_SECRETS ?? process.env.FRIST_API_ADMIN_TOTP_SECRET ?? ''),
+    admin2faSessionTtlMs: Number(options.admin2faSessionTtlMs ?? process.env.FRIST_API_ADMIN_2FA_SESSION_TTL_MS ?? 3_600_000),
+    backupStatusMaxAgeHours: Number(options.backupStatusMaxAgeHours ?? process.env.FRIST_API_BACKUP_STATUS_MAX_AGE_HOURS ?? 26),
+    slaRetentionDays: Number(options.slaRetentionDays ?? process.env.FRIST_API_SLA_RETENTION_DAYS ?? DEFAULT_SLA_RETENTION_DAYS),
     allowInsecurePublicHttp:
       typeof options.allowInsecurePublicHttp === 'boolean'
         ? options.allowInsecurePublicHttp
         : process.env.FRIST_API_ALLOW_INSECURE_PUBLIC_HTTP === '1',
+    requireCsrf:
+      typeof options.requireCsrf === 'boolean'
+        ? options.requireCsrf
+        : process.env.FRIST_API_REQUIRE_CSRF === '1' || process.env.FRIST_API_PUBLIC_MODE === '1' || process.env.NODE_ENV === 'production',
+    allowPrivateUpstreamUrls:
+      typeof options.allowPrivateUpstreamUrls === 'boolean'
+        ? options.allowPrivateUpstreamUrls
+        : process.env.FRIST_API_ALLOW_PRIVATE_UPSTREAM_URLS === '1',
+    resolveUpstreamAddresses: options.resolveUpstreamAddresses,
     publicMode:
       typeof options.publicMode === 'boolean'
         ? options.publicMode
@@ -4106,11 +5033,35 @@ function validatePublicModeOptions(serverOptions) {
   if (!serverOptions.dataEncryptionKey) {
     problems.push('运行数据加密密钥必须配置');
   }
+  if (!serverOptions.adminPageCode) {
+    problems.push('管理页隐藏入口码必须配置');
+  }
+  if (!serverOptions.requireCsrf) {
+    problems.push('公开模式必须开启 CSRF 防护');
+  }
   if (
     !isPublicHttpsGateway(serverOptions.publicGatewayBaseUrl) &&
     !(serverOptions.allowInsecurePublicHttp && isPublicHttpGateway(serverOptions.publicGatewayBaseUrl))
   ) {
     problems.push('公开网关地址必须是 HTTPS 域名，或显式允许临时公网 HTTP IP');
+  }
+  if (serverOptions.enforceProductionReadiness) {
+    if (!isPublicHttpsGateway(serverOptions.publicGatewayBaseUrl)) {
+      problems.push('生产强制模式必须使用固定 HTTPS 品牌域名');
+    }
+    if (!serverOptions.canonicalHost || isTemporaryHost(serverOptions.canonicalHost)) {
+      problems.push('生产强制模式必须配置固定品牌域名 FRIST_API_CANONICAL_HOST');
+    }
+    if (!serverOptions.newApiEnabled || !serverOptions.requireNewApiDatabase) {
+      problems.push('生产强制模式必须启用 New-API 数据库替代 JSON runtime');
+    }
+    if (!serverOptions.requireAdmin2fa || serverOptions.adminTotpSecrets.length === 0) {
+      problems.push('生产强制模式必须启用管理员 2FA');
+    }
+    const paymentStatus = buildPaymentClosureStatus(serverOptions);
+    if (!paymentStatus.ready) {
+      problems.push('生产强制模式必须接通至少一个真实支付商户回调');
+    }
   }
 
   if (problems.length > 0) {
@@ -4141,6 +5092,111 @@ function createLowInventoryWebhookNotifier(fetchImpl) {
   };
 }
 
+function normalizeCanonicalHost(value) {
+  const host = String(value || '')
+    .split(',')[0]
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/\/.*$/, '')
+    .toLowerCase();
+  if (/^\[[^\]]+\]/.test(host)) {
+    return host.replace(/:(80|443)$/, '');
+  }
+  return host.replace(/:\d+$/, '');
+}
+
+function parseRedirectHosts(value) {
+  const items = Array.isArray(value) ? value : String(value || '').split(',');
+  return new Set(items.map(normalizeCanonicalHost).filter(Boolean));
+}
+
+async function assertSafeUpstreamBaseUrl(value, serverOptions) {
+  if (serverOptions.allowPrivateUpstreamUrls) {
+    return;
+  }
+  const parsed = parseUpstreamUrl(value);
+  if (isPrivateHostname(parsed.hostname) || isPrivateIpLiteral(parsed.hostname)) {
+    throw publicError(400, '请求地址不能指向内网或本机地址');
+  }
+  const records = await resolveUpstreamAddresses(parsed.hostname, serverOptions);
+  if (!records.length || records.some((record) => isPrivateIpLiteral(record.address))) {
+    throw publicError(400, '请求地址不能解析到内网或本机地址');
+  }
+}
+
+function parseUpstreamUrl(value) {
+  let parsed;
+  try {
+    parsed = new URL(normalizeBaseUrl(value));
+  } catch {
+    throw publicError(400, '请求地址格式不正确');
+  }
+  if (!['https:', 'http:'].includes(parsed.protocol)) {
+    throw publicError(400, '请求地址只支持 HTTP 或 HTTPS');
+  }
+  if (!parsed.hostname) {
+    throw publicError(400, '请求地址缺少域名');
+  }
+  return parsed;
+}
+
+async function resolveUpstreamAddresses(hostname, serverOptions) {
+  if (typeof serverOptions.resolveUpstreamAddresses === 'function') {
+    return serverOptions.resolveUpstreamAddresses(hostname);
+  }
+  const literalFamily = isIP(hostname);
+  if (literalFamily) {
+    return [{ address: hostname, family: literalFamily }];
+  }
+  return lookupDns(hostname, { all: true, verbatim: true });
+}
+
+function isPrivateHostname(hostname) {
+  const host = String(hostname || '').toLowerCase();
+  return host === 'localhost' || host.endsWith('.localhost');
+}
+
+function isPrivateIpLiteral(value) {
+  const ip = String(value || '').replace(/^\[|\]$/g, '').toLowerCase();
+  if (!isIP(ip)) return false;
+  if (ip === '::1' || ip === '0:0:0:0:0:0:0:1') return true;
+  if (/^(fc|fd|fe80):/i.test(ip)) return true;
+  if (ip.startsWith('::ffff:')) {
+    return isPrivateIpLiteral(ip.slice('::ffff:'.length));
+  }
+  const parts = ip.split('.').map((item) => Number(item));
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+    return false;
+  }
+  const [first, second] = parts;
+  return (
+    first === 0 ||
+    first === 10 ||
+    first === 127 ||
+    (first === 100 && second >= 64 && second <= 127) ||
+    (first === 169 && second === 254) ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168)
+  );
+}
+
+function redirectToCanonicalHost({ request, response, url, serverOptions }) {
+  if (!serverOptions.canonicalHost || !serverOptions.redirectHosts?.size) {
+    return false;
+  }
+  const requestHost = normalizeCanonicalHost(request.headers['x-forwarded-host'] || request.headers.host || '');
+  if (!requestHost || !serverOptions.redirectHosts.has(requestHost)) {
+    return false;
+  }
+  url.host = serverOptions.canonicalHost;
+  response.writeHead(301, {
+    location: url.toString(),
+    'cache-control': 'no-store',
+  });
+  response.end();
+  return true;
+}
+
 function isUnsafeSecret(value, minLength) {
   const secret = String(value || '');
   if (secret.length < minLength) {
@@ -4165,6 +5221,11 @@ function isPublicHttpGateway(value) {
   return !/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|example\.(com|org|net))/i.test(gateway);
 }
 
+function isTemporaryHost(value) {
+  const host = normalizeCanonicalHost(value);
+  return !host || /\.nip\.io$/i.test(host) || /\.sslip\.io$/i.test(host) || /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
+}
+
 function requireSession(data, request) {
   const session = findSession(data, request);
   if (!session.user) {
@@ -4180,27 +5241,70 @@ function findSession(data, request) {
   return { token, user };
 }
 
+function requireCsrfIfEnabled(data, request, serverOptions, options = {}) {
+  if (!serverOptions.requireCsrf || request.method === 'GET' || request.method === 'HEAD' || request.method === 'OPTIONS') {
+    return;
+  }
+  if (options.allowAdminToken && request.headers['x-admin-token']) {
+    return;
+  }
+  const { token, user } = findSession(data, request);
+  if (!user || !token) {
+    throw publicError(401, '请先登录');
+  }
+  const expected = String(data.sessionCsrfTokens?.[token] || parseCookies(request.headers.cookie || '')[CSRF_COOKIE] || '');
+  const actual = String(request.headers['x-csrf-token'] || '').trim();
+  if (!expected || !actual || !safeEqual(expected, actual)) {
+    throw publicError(403, '页面安全校验失败，请刷新后重试');
+  }
+}
+
 function requireUserKey(data, request) {
   const authorization = request.headers.authorization || '';
   const xApiKey = request.headers['x-api-key'] || request.headers['anthropic-auth-token'] || '';
   const secret = authorization.match(/^Bearer\s+(.+)$/i)?.[1] || String(xApiKey || '').trim();
-  const key = data.userKeys.find((item) => item.secret === secret);
+  const key = data.userKeys.find((item) => safeEqual(item.secret, secret));
   if (!key || !key.enabled) {
     throw publicError(401, 'API Key 不可用');
   }
   return key;
 }
 
-function requireAdmin(data, request, serverOptions) {
+function requireAdmin(data, request, serverOptions, options = {}) {
   const token = request.headers['x-admin-token'];
   if (token && token === serverOptions.adminToken) {
+    requireAdminSecondFactorIfEnabled(data, request, serverOptions, options);
     return;
   }
   const { user } = findSession(data, request);
   if (user?.isAdmin) {
+    requireAdminSecondFactorIfEnabled(data, request, serverOptions, options);
     return;
   }
   throw publicError(401, '管理员身份无效');
+}
+
+function requireAdminSecondFactorIfEnabled(data, request, serverOptions, options = {}) {
+  if (!serverOptions.requireAdmin2fa || options.allowPendingSecondFactor) {
+    return;
+  }
+  pruneAdminSecondFactorSessions(data, serverOptions);
+  const token = parseCookies(request.headers.cookie || '')[ADMIN_2FA_COOKIE] || headerValue(request, 'x-admin-2fa-session');
+  const session = token ? data.adminSecondFactorSessions?.[token] : null;
+  const expiresAt = Date.parse(session?.expiresAt || '');
+  if (!session || !Number.isFinite(expiresAt) || expiresAt <= currentDate(serverOptions).getTime()) {
+    throw publicError(401, '需要管理员 2FA 验证');
+  }
+}
+
+function pruneAdminSecondFactorSessions(data, serverOptions) {
+  const now = currentDate(serverOptions).getTime();
+  data.adminSecondFactorSessions = Object.fromEntries(
+    Object.entries(data.adminSecondFactorSessions || {}).filter(([, session]) => {
+      const expiresAt = Date.parse(session?.expiresAt || '');
+      return Number.isFinite(expiresAt) && expiresAt > now;
+    }),
+  );
 }
 
 function normalizeReplenishmentKeys(keys) {
@@ -4240,7 +5344,7 @@ function normalizeReplenishmentKeys(keys) {
           ? ''
           : String(item.authHeaderValuePrefix || 'Bearer').trim(),
       extraHeaders: sanitizeExtraHeaders(item.extraHeaders),
-      modelGroup: normalizeModelGroup(item.modelGroup || ''),
+      modelGroup: item.modelGroup ? normalizeModelGroup(item.modelGroup) : '',
       cardType: normalizePool(item.cardType || ''),
       expiresAt: String(item.expiresAt || ''),
     }))
@@ -4265,6 +5369,40 @@ function normalizeRiskStatus(value) {
 
 function sanitizeRiskNote(value) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 500);
+}
+
+function normalizePlusAccountStatus(value) {
+  const status = String(value || '').trim().toLowerCase();
+  if (PLUS_ACCOUNT_STATUSES.has(status)) return status;
+  return 'warming';
+}
+
+function normalizePlusAccountComplianceStatus(value) {
+  const status = String(value || '').trim().toLowerCase();
+  if (PLUS_ACCOUNT_COMPLIANCE_STATUSES.has(status)) return status;
+  return 'needs_review';
+}
+
+function normalizePlusAccountRegion(value) {
+  const text = String(value || '').trim();
+  if (text.toLowerCase() === 'turkey' || text.toLowerCase() === 'turkiye' || text === '土耳其') {
+    return 'Türkiye';
+  }
+  if (PLUS_ACCOUNT_REGIONS.has(text)) return text;
+  return 'Other';
+}
+
+function normalizeRtAccountStatus(value) {
+  const status = String(value || '').trim().toLowerCase();
+  if (RT_ACCOUNT_STATUSES.has(status)) return status;
+  return 'ready_for_refresh';
+}
+
+function normalizeRtPlatform(value) {
+  const platform = String(value || '').trim().toLowerCase();
+  if (platform === 'chatgpt') return 'openai';
+  if (RT_ACCOUNT_PLATFORMS.has(platform)) return platform;
+  return 'codex';
 }
 
 function isSourceRouteApproved({ sourceType, riskStatus, backupRiskAccepted }) {
@@ -4346,7 +5484,10 @@ function upsertSupplierProfile(data, profile) {
 
 function upsertCredential(data, nextCredential) {
   let credential = data.credentials.find(
-    (item) => item.sourceId === nextCredential.sourceId && item.rawKey === nextCredential.rawKey,
+    (item) =>
+      item.sourceId === nextCredential.sourceId &&
+      normalizeModelGroup(item.modelGroup) === normalizeModelGroup(nextCredential.modelGroup) &&
+      item.rawKey === nextCredential.rawKey,
   );
   if (!credential) {
     credential = {
@@ -4447,11 +5588,40 @@ function adminGateCookie(serverOptions) {
   };
 }
 
+function sessionCookies(sessionToken, csrfToken, request, serverOptions) {
+  return [
+    sessionCookie(sessionToken, request, serverOptions),
+    csrfCookie(csrfToken, request, serverOptions),
+  ];
+}
+
+function adminSecondFactorCookie(sessionToken, request, serverOptions) {
+  if (!sessionToken) {
+    return '';
+  }
+  return [
+    `${ADMIN_2FA_COOKIE}=${sessionToken}`,
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Lax',
+    shouldUseSecureCookie(request, serverOptions) ? 'Secure' : '',
+  ].filter(Boolean).join('; ');
+}
+
 function sessionCookie(sessionToken, request, serverOptions) {
   return [
     `${SESSION_COOKIE}=${sessionToken}`,
     'Path=/',
     'HttpOnly',
+    'SameSite=Lax',
+    shouldUseSecureCookie(request, serverOptions) ? 'Secure' : '',
+  ].filter(Boolean).join('; ');
+}
+
+function csrfCookie(csrfToken, request, serverOptions) {
+  return [
+    `${CSRF_COOKIE}=${csrfToken}`,
+    'Path=/',
     'SameSite=Lax',
     shouldUseSecureCookie(request, serverOptions) ? 'Secure' : '',
   ].filter(Boolean).join('; ');
@@ -4494,7 +5664,7 @@ function writeJson(response, status, payload, headers = {}) {
   response.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
     'access-control-allow-origin': '*',
-    'access-control-allow-headers': 'content-type, authorization, x-api-key, anthropic-auth-token, x-admin-token, x-frist-session-id, x-conversation-id',
+    'access-control-allow-headers': 'content-type, authorization, x-api-key, anthropic-auth-token, x-admin-token, x-csrf-token, x-frist-session-id, x-conversation-id',
     'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
     ...headers,
   });
@@ -4504,7 +5674,7 @@ function writeJson(response, status, payload, headers = {}) {
 function writeNoContent(response) {
   response.writeHead(204, {
     'access-control-allow-origin': '*',
-    'access-control-allow-headers': 'content-type, authorization, x-api-key, anthropic-auth-token, x-admin-token, x-frist-session-id, x-conversation-id',
+    'access-control-allow-headers': 'content-type, authorization, x-api-key, anthropic-auth-token, x-admin-token, x-csrf-token, x-frist-session-id, x-conversation-id',
     'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
   });
   response.end();
@@ -4595,7 +5765,7 @@ function expiryMs(value) {
 
 function accountFromUser(data, user) {
   reconcileUserBalance(user);
-  const now = new Date();
+  const now = currentDate();
   const today = now.toISOString().slice(0, 10);
   const month = now.toISOString().slice(0, 7);
   const routedEvents = data.events.filter((item) => item.type === 'gateway_routed' && item.userId === user.id);
@@ -4631,6 +5801,13 @@ function accountFromUser(data, user) {
     averageLatency: averageLatency ? `${averageLatency}ms` : '-',
     successRate,
   };
+}
+
+function sumUserGatewayCost(data, userId, periodPrefix = '') {
+  return data.events
+    .filter((item) => item.type === 'gateway_routed' && item.userId === userId)
+    .filter((item) => !periodPrefix || String(item.at || '').startsWith(periodPrefix))
+    .reduce((sum, item) => sum + Number(item.quotaCost || 0), 0);
 }
 
 function availableQuotaCents(user) {
@@ -4701,6 +5878,10 @@ function buildGatewayModels(data, request) {
 }
 
 function availableModelsForCustomer(data, user, key, requestedModel = '') {
+  return customerImportModelSelection(data, user, key, requestedModel).availableModels;
+}
+
+function customerImportModelSelection(data, user, key, requestedModel = '') {
   expireUserPlanIfNeeded(data, user, {});
   const allowedPools = allowedPoolsForUser(user);
   const liveModels = data.credentials
@@ -4712,12 +5893,32 @@ function availableModelsForCustomer(data, user, key, requestedModel = '') {
     .filter((credential) => credentialMatchesModelGroup(credential, '', key.modelGroup))
     .flatMap((credential) => credential.models || [])
     .filter((model) => modelMatchesGroup(model, key.modelGroup || 'All'));
+  const requested = normalizeOfficialModelName(requestedModel);
+  const liveSet = new Set(normalizeClientAvailableModels(liveModels, { modelGroup: key.modelGroup }));
+  const safeRequested = requested && liveSet.has(requested) ? requested : '';
+  const primaryModels = normalizeClientAvailableModels(uniqueStrings([...liveSet, safeRequested]), {
+    model: safeRequested,
+    modelGroup: key.modelGroup,
+  });
+
+  if (primaryModels.length) {
+    return {
+      availableModels: primaryModels,
+      defaultModel: safeRequested || strongestModel(primaryModels),
+    };
+  }
+
   const catalogModels = buildModelCatalog(data)
     .filter((item) => item.available !== false)
     .map((item) => item.model)
     .filter((model) => modelMatchesGroup(model, key.modelGroup || 'All'));
-  const models = uniqueStrings([requestedModel, ...liveModels, ...catalogModels]);
-  return sortModelsByStrength(models.length ? models : [DEFAULT_PUBLIC_MODEL]);
+  const fallbackModels = normalizeClientAvailableModels(catalogModels.length ? catalogModels : [DEFAULT_PUBLIC_MODEL], {
+    modelGroup: key.modelGroup,
+  });
+  return {
+    availableModels: fallbackModels,
+    defaultModel: strongestModel(fallbackModels),
+  };
 }
 
 function strongestModel(models = []) {
@@ -4894,30 +6095,156 @@ function buildUsageRecords(data, user) {
       const key = keyById.get(event.keyId);
       return {
         id: `${event.at || ''}-${event.keyId || ''}-${event.model || ''}`,
-        apiKey: event.apiKeyPreview || key?.preview || 'fk-live-******',
+        apiKey: event.apiKeyPreview || key?.preview || 'sk-******',
         model: normalizeOfficialModelName(event.model || 'unknown'),
         inferenceEffort: event.inferenceEffort || '默认',
         endpoint: event.endpoint || '-',
         type: event.requestType || '文本',
         billingMode: event.billingMode || '余额',
+        client: event.client || clientLabelFromEvent(event),
         tokens: compactTokenText(event.totalTokens || 0),
         amount: formatUsdFromCnyCents(event.quotaCost || 0),
+        amountCny: formatCny(event.quotaCost || 0),
+        latency: event.latencyMs ? `${Math.round(Number(event.latencyMs || 0))}ms` : '-',
         status: event.status || 'success',
         at: event.at || '',
       };
     });
 }
 
+function buildUsageAnomalies(data, user) {
+  const routedEvents = data.events.filter((item) => item.type === 'gateway_routed' && item.userId === user.id);
+  if (routedEvents.length === 0) {
+    return [];
+  }
+  const now = currentDate();
+  const today = now.toISOString().slice(0, 10);
+  const currentMonth = now.toISOString().slice(0, 7);
+  const todayEvents = routedEvents.filter((item) => String(item.at || '').startsWith(today));
+  const monthEvents = routedEvents.filter((item) => String(item.at || '').startsWith(currentMonth));
+  const todayCost = sumEventField(todayEvents, 'quotaCost');
+  const monthCost = sumEventField(monthEvents, 'quotaCost');
+  const largestEvent = [...todayEvents].sort((left, right) => Number(right.quotaCost || 0) - Number(left.quotaCost || 0))[0];
+  const rows = [];
+  const remaining = availableQuotaCents(user);
+
+  if (todayCost > 0 && remaining > 0 && todayCost >= remaining * 0.5) {
+    rows.push({
+      id: 'today-spend-balance-ratio',
+      severity: todayCost >= remaining ? 'critical' : 'warning',
+      title: '今日消耗偏高',
+      detail: `今日已用 ${formatUsdFromCnyCents(todayCost)}，接近当前剩余额度 ${formatUsdFromCnyCents(remaining)}。`,
+      action: '建议检查记录页和 Key 使用方',
+      at: largestEvent?.at || now.toISOString(),
+    });
+  }
+
+  if (largestEvent && Number(largestEvent.quotaCost || 0) >= Math.max(50, monthCost * 0.6)) {
+    rows.push({
+      id: 'single-call-cost-spike',
+      severity: Number(largestEvent.quotaCost || 0) >= Math.max(200, monthCost * 0.8) ? 'critical' : 'warning',
+      title: '单次调用费用突增',
+      detail: `${largestEvent.model || '模型'} 单次消耗 ${formatUsdFromCnyCents(largestEvent.quotaCost)}。`,
+      action: '建议核对上下文长度、图片请求和调用客户端',
+      at: largestEvent.at || now.toISOString(),
+    });
+  }
+
+  const slowEvents = todayEvents.filter((item) => Number(item.latencyMs || 0) >= 5000);
+  if (slowEvents.length >= 2) {
+    rows.push({
+      id: 'latency-spike',
+      severity: 'warning',
+      title: '延迟异常',
+      detail: `今日 ${slowEvents.length} 次请求超过 5 秒。`,
+      action: '建议查看通道页是否有降级渠道',
+      at: slowEvents.at(-1)?.at || now.toISOString(),
+    });
+  }
+
+  return rows.slice(0, 4);
+}
+
+function sumEventField(events, field) {
+  return events.reduce((sum, item) => sum + Number(item[field] || 0), 0);
+}
+
 function buildRecentLogs(data, user) {
+  const allowedTypes = new Set([
+    'gateway_routed',
+    'redeemed',
+    'payment_order_created',
+    'manual_recharged',
+    'recharged',
+    'balance_alert_sent',
+    'key_created',
+    'key_enabled',
+    'key_disabled',
+    'profile_updated',
+  ]);
   return data.events
-    .filter((event) => !event.userId || event.userId === user.id)
-    .slice(-10)
+    .filter((event) => event.userId === user.id && allowedTypes.has(event.type))
+    .slice(-5)
     .reverse()
     .map((event) => ({
       type: event.type || 'event',
       at: event.at || '',
-      detail: adminEventDetail(event),
+      detail: userEventDetail(event),
     }));
+}
+
+function userEventDetail(event) {
+  if (event.type === 'gateway_routed') {
+    return `${event.model || '模型'} · ${formatUsdFromCnyCents(event.quotaCost)} · ${clientLabelFromEvent(event)}`;
+  }
+  if (event.type === 'redeemed') return `兑换到账 ${event.credit ? event.credit : ''}`.trim();
+  if (event.type === 'payment_order_created') return `充值单 ${formatUsdFromCnyCents(event.creditCents || event.amountCents)}`;
+  if (event.type === 'manual_recharged' || event.type === 'recharged') return `余额到账 ${formatUsdFromCnyCents(event.creditCents || event.amountCents)}`;
+  if (event.type === 'balance_alert_sent') return '余额预警已发送';
+  if (event.type === 'key_created') return '新 Key 已创建';
+  if (event.type === 'key_enabled') return 'Key 已开启';
+  if (event.type === 'key_disabled') return 'Key 已暂停';
+  if (event.type === 'profile_updated') return event.emailChanged ? '资料已更新，邮箱待验证' : '资料已更新';
+  return '系统事件';
+}
+
+function clientLabelFromEvent(event) {
+  return event.client || clientLabelFromSessionId(event.sessionId || event.fristSessionId || event.metadata?.frist_session_id) || 'API';
+}
+
+function clientLabelFromRequest(request, body = {}) {
+  const explicit = headerValue(request, 'x-frist-client') || body.metadata?.frist_client || body.metadata?.client;
+  const normalizedExplicit = normalizeClientLabel(explicit);
+  if (normalizedExplicit) return normalizedExplicit;
+  const sessionLabel = clientLabelFromSessionId(body.metadata?.frist_session_id);
+  if (sessionLabel) return sessionLabel;
+  const userAgent = headerValue(request, 'user-agent').toLowerCase();
+  if (/macintosh|mac os|darwin/.test(userAgent)) return 'MacBook';
+  if (/windows|win64|win32/.test(userAgent)) return 'PC';
+  if (/iphone|android|mobile/.test(userAgent)) return '移动端';
+  return 'API';
+}
+
+function clientLabelFromSessionId(value) {
+  const text = String(value || '').toLowerCase();
+  if (!text) return '';
+  if (text.includes('playground') || text.includes('connectivity') || text.includes('square')) return '广场';
+  if (text.includes('mac') || text.includes('darwin')) return 'MacBook';
+  if (text.includes('pc') || text.includes('windows')) return 'PC';
+  if (text.includes('codex')) return 'Codex';
+  if (text.includes('claude')) return 'Claude';
+  return '';
+}
+
+function normalizeClientLabel(value) {
+  const text = String(value || '').trim().toLowerCase();
+  if (!text) return '';
+  if (['square', 'playground', 'web'].includes(text)) return '广场';
+  if (['mac', 'macbook', 'darwin'].includes(text)) return 'MacBook';
+  if (['pc', 'windows'].includes(text)) return 'PC';
+  if (text.includes('codex')) return 'Codex';
+  if (text.includes('claude')) return 'Claude';
+  return String(value || '').trim().slice(0, 24);
 }
 
 function buildChannelChecks(data) {
@@ -4931,43 +6258,178 @@ function buildChannelChecks(data) {
         provider: providerFromModel(model),
         total: 0,
         healthy: 0,
+        down: 0,
+        slow: 0,
         latencyMs: 0,
+        latencyTotal: 0,
+        latencySamples: 0,
         checkedAt: '',
         status: credential.status,
-        endpoint: credential.baseUrl || '',
+        endpoint: '/v1',
         history: [],
       };
       const isHealthy = credential.enabled && credential.status === 'healthy' && isCredentialRouteApproved(credential);
+      const latency = Number(credential.latencyMs || 0);
+      const bucket = isHealthy ? (latency > 1600 ? 'slow' : 'ok') : 'down';
       current.total += 1;
       current.healthy += isHealthy ? 1 : 0;
+      current.down += isHealthy ? 0 : 1;
+      current.slow += bucket === 'slow' ? 1 : 0;
       if (isHealthy) {
-        const latency = Number(credential.latencyMs || 999999);
-        current.latencyMs = current.latencyMs ? Math.min(current.latencyMs, latency) : latency;
+        const safeLatency = latency || 999999;
+        current.latencyMs = current.latencyMs ? Math.min(current.latencyMs, safeLatency) : safeLatency;
+        current.latencyTotal += safeLatency;
+        current.latencySamples += 1;
         current.status = 'healthy';
       } else if (!current.healthy) {
         current.status = credential.status || current.status || 'failed';
       }
       current.checkedAt = [current.checkedAt, credential.updatedAt].filter(Boolean).sort().at(-1) || '';
-      current.endpoint = current.endpoint || credential.baseUrl || '';
-      current.history.push(isHealthy ? 'ok' : 'down');
+      current.endpoint = '/v1';
+      current.history.push(bucket);
       grouped.set(key, current);
     }
   }
 
   return [...grouped.values()]
     .sort((left, right) => `${left.provider}:${left.model}`.localeCompare(`${right.provider}:${right.model}`))
-    .map((item) => ({
-      model: normalizeOfficialModelName(item.model),
-      provider: item.provider,
-      channel: `${item.provider} 可用线路 ${item.healthy}/${item.total}`,
-      endpoint: item.endpoint || '/v1',
-      ok: item.healthy > 0,
-      status: item.healthy > 0 ? 'healthy' : item.status,
-      latencyMs: item.healthy > 0 ? item.latencyMs : 0,
-      checkedAt: item.checkedAt,
-      availability: item.total ? `${Math.round((item.healthy / item.total) * 1000) / 10}%` : '0%',
-      history: item.history.slice(-12),
-    }));
+    .map((item) => {
+      const availabilityPercent = item.total ? Math.round((item.healthy / item.total) * 1000) / 10 : 0;
+      const averageLatencyMs = item.latencySamples ? Math.round(item.latencyTotal / item.latencySamples) : 0;
+      const monitorStatus =
+        item.healthy === 0
+          ? '异常'
+          : item.down > 0 || item.slow > 0
+            ? '降级'
+            : '正常';
+      const status = item.healthy > 0 ? (item.slow > 0 ? 'slow' : 'healthy') : item.status;
+      return {
+        model: normalizeOfficialModelName(item.model),
+        provider: item.provider,
+        channel: `${item.provider} 可用线路 ${item.healthy}/${item.total}`,
+        endpoint: item.endpoint || '/v1',
+        ok: item.healthy > 0,
+        status,
+        latencyMs: item.healthy > 0 ? item.latencyMs : 0,
+        averageLatencyMs,
+        checkedAt: item.checkedAt,
+        availability: `${availabilityPercent}%`,
+        availability7d: availabilityPercent,
+        availability_7d: availabilityPercent,
+        availability15d: availabilityPercent,
+        availability30d: availabilityPercent,
+        availability_15d: availabilityPercent,
+        availability_30d: availabilityPercent,
+        availabilityWindow: '当前库存快照',
+        healthyCount: item.healthy,
+        totalCount: item.total,
+        downCount: item.down,
+        slowCount: item.slow,
+        successLabel: `${item.healthy}/${item.total} 可用`,
+        latencyLabel: item.healthy > 0 ? `最低 ${item.latencyMs}ms / 平均 ${averageLatencyMs}ms` : '未检测到可用线路',
+        monitorIntervalSeconds: 0,
+        monitorStatus,
+        officialStatus: monitorStatus,
+        history: item.history.slice(-60),
+        sla: buildChannelSlaSummary(data, item.model, {
+          availabilityPercent,
+          history: item.history,
+          checkedAt: item.checkedAt,
+        }),
+      };
+    });
+}
+
+function recordChannelProbeEvent(data, credential, status, reason, serverOptions, extra = {}) {
+  if (!credential) {
+    return;
+  }
+  const now = currentDate(serverOptions).toISOString();
+  const models = normalizeOfficialModelList(credential.models?.length ? credential.models : [DEFAULT_MODEL]);
+  const bucket = status === 'ok' || status === 'slow'
+    ? status
+    : status === 'exhausted'
+      ? 'down'
+      : 'down';
+  for (const model of models) {
+    data.channelProbeEvents.push({
+      id: createId('sla'),
+      model,
+      provider: providerFromModel(model),
+      credentialId: credential.id,
+      status: bucket,
+      reason: String(reason || '').slice(0, 120),
+      latencyMs: Math.max(0, Number(extra.latencyMs ?? credential.latencyMs ?? 0) || 0),
+      pool: credential.pool || '',
+      at: now,
+    });
+  }
+  pruneChannelProbeEvents(data, serverOptions);
+}
+
+function pruneChannelProbeEvents(data, serverOptions) {
+  const retentionDays = Number(serverOptions.slaRetentionDays || DEFAULT_SLA_RETENTION_DAYS);
+  const cutoff = currentDate(serverOptions).getTime() - Math.max(1, retentionDays) * 86_400_000;
+  data.channelProbeEvents = (data.channelProbeEvents || [])
+    .filter((event) => {
+      const time = Date.parse(event.at || '');
+      return Number.isFinite(time) && time >= cutoff;
+    })
+    .slice(-20_000);
+}
+
+function buildChannelSlaSummary(data, model, fallback = {}) {
+  const normalizedModel = normalizeOfficialModelName(model);
+  const events = (data.channelProbeEvents || [])
+    .filter((event) => normalizeOfficialModelName(event.model) === normalizedModel)
+    .sort((left, right) => String(left.at || '').localeCompare(String(right.at || '')));
+  if (!events.length) {
+    return {
+      window: '当前库存快照',
+      availability7d: fallback.availabilityPercent || 0,
+      availability15d: fallback.availabilityPercent || 0,
+      availability30d: fallback.availabilityPercent || 0,
+      samples7d: 0,
+      samples15d: 0,
+      samples30d: 0,
+      lastIncidentAt: '',
+      lastIncidentReason: '',
+      history: (fallback.history || []).slice(-60),
+      checkedAt: fallback.checkedAt || '',
+    };
+  }
+  const now = Date.now();
+  const summary7d = summarizeSlaWindow(events, now - 7 * 86_400_000);
+  const summary15d = summarizeSlaWindow(events, now - 15 * 86_400_000);
+  const summary30d = summarizeSlaWindow(events, now - 30 * 86_400_000);
+  const incidents = events.filter((event) => event.status === 'down');
+  const lastIncident = incidents.at(-1);
+  return {
+    window: '真实探测事件',
+    availability7d: summary7d.availability,
+    availability15d: summary15d.availability,
+    availability30d: summary30d.availability,
+    samples7d: summary7d.samples,
+    samples15d: summary15d.samples,
+    samples30d: summary30d.samples,
+    lastIncidentAt: lastIncident?.at || '',
+    lastIncidentReason: lastIncident?.reason || '',
+    history: events.slice(-60).map((event) => event.status),
+    checkedAt: events.at(-1)?.at || '',
+  };
+}
+
+function summarizeSlaWindow(events, cutoffMs) {
+  const windowEvents = events.filter((event) => Date.parse(event.at || '') >= cutoffMs);
+  const samples = windowEvents.length;
+  if (!samples) {
+    return { availability: 0, samples: 0 };
+  }
+  const healthy = windowEvents.filter((event) => event.status === 'ok' || event.status === 'slow').length;
+  return {
+    availability: Math.round((healthy / samples) * 1000) / 10,
+    samples,
+  };
 }
 
 function buildModelCatalog(data) {
@@ -4981,7 +6443,7 @@ function buildModelCatalog(data) {
         {
           ...item,
           model,
-          price: price ? priceLabel(price) : item.price || '按后台价格',
+          price: price ? priceLabel(price) : item.price || '官方价格待同步',
         },
       ];
     }),
@@ -4995,7 +6457,7 @@ function buildModelCatalog(data) {
       family: live?.provider || providerFromModel(model),
       tagline: taglineForModel(model),
       context: contextForModel(model),
-      price: price ? priceLabel(price) : rowsByModel.get(model)?.price || '按后台价格',
+      price: price ? priceLabel(price) : rowsByModel.get(model)?.price || '官方价格待同步',
       available: live ? Boolean(live.ok) : true,
     });
   }
@@ -5030,10 +6492,13 @@ function contextForModel(model = '') {
 }
 
 function priceLabel(price) {
+  if (price.displayPrice) {
+    return price.displayPrice;
+  }
   const input = Number(price.inputSaleCnyPerMillion || 0);
   const output = Number(price.outputSaleCnyPerMillion || 0);
   if (input <= 0 && output <= 0) {
-    return '按后台价格';
+    return '官方价格待同步';
   }
   return `${formatUsdPriceFromCny(input)}/${formatUsdPriceFromCny(output)} 每 1M`;
 }
@@ -5079,6 +6544,158 @@ function buildInventorySummary(data) {
     }));
 }
 
+async function buildProductionReadiness(data, serverOptions) {
+  const backup = buildBackupReadiness(data, serverOptions);
+  const payment = buildPaymentClosureStatus(serverOptions);
+  const checks = [
+    {
+      id: 'brand_domain',
+      label: '固定品牌域名',
+      ok: isPublicHttpsGateway(serverOptions.publicGatewayBaseUrl) && !isTemporaryHost(serverOptions.canonicalHost),
+      detail: serverOptions.canonicalHost || '未配置',
+    },
+    {
+      id: 'database',
+      label: '数据库替代 JSON runtime',
+      ok: Boolean(serverOptions.newApiEnabled && serverOptions.requireNewApiDatabase),
+      detail: serverOptions.newApiEnabled ? 'New-API 桥接已启用' : '仍在 JSON runtime 模式',
+    },
+    {
+      id: 'backup_monitoring',
+      label: '备份监控',
+      ok: backup.ready,
+      detail: backup.message,
+    },
+    {
+      id: 'admin_2fa',
+      label: '管理员 2FA',
+      ok: Boolean(serverOptions.requireAdmin2fa && serverOptions.adminTotpSecrets.length > 0),
+      detail: serverOptions.requireAdmin2fa ? '已要求 TOTP 二次验证' : '未启用',
+    },
+    {
+      id: 'merchant_payment',
+      label: '真实支付商户闭环',
+      ok: payment.ready,
+      detail: payment.ready ? '至少一个商户回调可用' : '未接通真实商户',
+    },
+    {
+      id: 'channel_sla',
+      label: '长期渠道 SLA 记录',
+      ok: (data.channelProbeEvents || []).length > 0,
+      detail: `${(data.channelProbeEvents || []).length} 条探测事件`,
+    },
+  ];
+  return {
+    enforceProductionReadiness: Boolean(serverOptions.enforceProductionReadiness),
+    ready: checks.every((check) => check.ok),
+    checks,
+    payment,
+    backup,
+    sla: {
+      retentionDays: Number(serverOptions.slaRetentionDays || DEFAULT_SLA_RETENTION_DAYS),
+      eventCount: (data.channelProbeEvents || []).length,
+      models: uniqueStrings((data.channelProbeEvents || []).map((event) => event.model)).length,
+    },
+  };
+}
+
+function buildBackupReadiness(data, serverOptions) {
+  const backup = normalizeBackupStatusRecord(data.backupStatus);
+  const maxAgeHours = Number(serverOptions.backupStatusMaxAgeHours || 26);
+  const lastBackupMs = Date.parse(backup.lastBackupAt || '');
+  const lastRestoreMs = Date.parse(backup.lastRestoreTestAt || '');
+  const nowMs = currentDate(serverOptions).getTime();
+  const fresh = Number.isFinite(lastBackupMs) && nowMs - lastBackupMs <= maxAgeHours * 3_600_000;
+  const restoreTested = Number.isFinite(lastRestoreMs) && nowMs - lastRestoreMs <= 30 * 86_400_000;
+  const ready = backup.status === 'ok' && fresh && restoreTested;
+  return {
+    ...backup,
+    ready,
+    maxAgeHours,
+    fresh,
+    restoreTested,
+    message: ready
+      ? `最近备份 ${backup.lastBackupAt}，恢复演练 ${backup.lastRestoreTestAt}`
+      : backup.message || '未看到新鲜备份和恢复演练记录',
+  };
+}
+
+function recordBackupStatus(data, body, serverOptions) {
+  const now = currentDate(serverOptions).toISOString();
+  const next = normalizeBackupStatusRecord({
+    provider: body.provider,
+    target: body.target,
+    lastBackupAt: body.lastBackupAt || now,
+    lastRestoreTestAt: body.lastRestoreTestAt,
+    status: body.status || 'ok',
+    artifact: body.artifact,
+    sizeBytes: body.sizeBytes,
+    checksum: body.checksum,
+    message: body.message,
+    updatedAt: now,
+  });
+  data.backupStatus = next;
+  data.events.push({
+    type: 'backup_status_recorded',
+    status: next.status,
+    target: next.target,
+    at: now,
+  });
+  return {
+    backup: buildBackupReadiness(data, serverOptions),
+    productionReadiness: null,
+    events: sanitizeAdminEvents(data.events),
+  };
+}
+
+function buildPlusAccountSummary(accounts, serverOptions = {}) {
+  const now = currentDate(serverOptions);
+  const active = accounts.filter((account) => account.status === 'active').length;
+  const dueSoon = accounts.filter((account) => {
+    const daysLeft = plusAccountRenewalDaysLeft(account.plusRenewalAt, now);
+    return daysLeft !== null && daysLeft >= 0 && daysLeft <= 5;
+  }).length;
+  const blocked = accounts.filter((account) =>
+    account.status === 'risk_hold' ||
+    account.status === 'retired' ||
+    account.complianceStatus === 'blocked',
+  ).length;
+  const totalTry = accounts.reduce((sum, account) => sum + Number(account.appleBalanceTry || 0), 0);
+  return {
+    total: accounts.length,
+    active,
+    dueSoon,
+    blocked,
+    totalAppleBalanceTry: round2(totalTry),
+    reminderText: accounts.length
+      ? `${dueSoon} 个账号 5 天内需处理，${blocked} 个处于风险/停用状态`
+      : '暂无 Plus 账号资产',
+  };
+}
+
+function buildRtAccountSummary(accounts) {
+  const active = accounts.filter((account) => account.status === 'active').length;
+  const ready = accounts.filter((account) => account.status === 'ready_for_refresh').length;
+  const needsRefresh = accounts.filter((account) => account.status === 'needs_refresh').length;
+  const blocked = accounts.filter((account) => account.status === 'blocked' || account.status === 'retired').length;
+  const byPlatform = accounts.reduce((summary, account) => {
+    const platform = account.platform || 'codex';
+    summary[platform] = (summary[platform] || 0) + 1;
+    return summary;
+  }, {});
+  return {
+    total: accounts.length,
+    active,
+    ready,
+    needsRefresh,
+    blocked,
+    byPlatform,
+    reminderText: accounts.length
+      ? `${ready} 个待刷新，${needsRefresh} 个需要重新授权，${blocked} 个已停用`
+      : '暂无 RT 账号',
+  };
+}
+
 function effectiveCredentialGroup(credential) {
   const explicit = normalizeModelGroup(credential.modelGroup || '');
   if (explicit !== 'All') {
@@ -5107,22 +6724,38 @@ function estimateCredentialWaste(credential) {
 }
 
 function sanitizeUser(user) {
+  const displayName = String(user.displayName || user.nickname || '').trim();
   return {
     id: user.id,
     email: user.email,
+    emailMasked: maskEmail(user.email),
+    displayName: displayName || String(user.email || '').split('@')[0] || 'Frist',
+    avatarUrl: sanitizeAvatarUrl(user.avatarUrl || ''),
     emailVerified: Boolean(user.emailVerified),
     isAdmin: Boolean(user.isAdmin),
     plan: user.plan,
     renewalDate: user.renewalDate,
-    userInitials: initialsFromEmail(user.email),
+    userInitials: initialsFromDisplayName(displayName || user.email),
   };
+}
+
+function sanitizeAvatarUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const url = new URL(raw);
+    if (!/^https?:$/i.test(url.protocol)) return '';
+    return url.href.slice(0, 500);
+  } catch {
+    return '';
+  }
 }
 
 function sanitizeUserKey(key, options = {}) {
   return {
     id: key.id,
     name: key.name,
-    preview: key.preview || maskKey(key.secret),
+    preview: publicUserKeyPreview(key.preview || key.secret),
     ...(options.revealSecret ? { secret: key.secret } : {}),
     enabled: Boolean(key.enabled),
     modelGroup: key.modelGroup || 'All',
@@ -5132,6 +6765,10 @@ function sanitizeUserKey(key, options = {}) {
     lastUsed: key.lastUsed || '-',
     expiresAt: key.expiresAt || '-',
   };
+}
+
+function publicUserKeyPreview(value) {
+  return maskKey(String(value || ''));
 }
 
 function sanitizeCredential(credential) {
@@ -5209,6 +6846,158 @@ function sanitizeRedemptionCard(card) {
   };
 }
 
+function sanitizePlusAccount(account, serverOptions = {}) {
+  const renewalDaysLeft = plusAccountRenewalDaysLeft(account.plusRenewalAt, currentDate(serverOptions));
+  return {
+    id: account.id,
+    label: sanitizeLedgerLabel(account.label, {
+      fallback: 'ChatGPT Plus 账号',
+      email: account.openaiEmail || account.appleEmail || '',
+      accountId: '',
+      refreshToken: '',
+    }),
+    openaiEmail: maskEmail(account.openaiEmail || ''),
+    appleEmail: maskEmail(account.appleEmail || ''),
+    openaiEmailHint: emailDomain(account.openaiEmail || ''),
+    appleEmailHint: emailDomain(account.appleEmail || ''),
+    region: account.region || 'Other',
+    status: account.status || 'warming',
+    complianceStatus: account.complianceStatus || 'needs_review',
+    billingMethod: account.billingMethod || 'apple_iap',
+    appleBalanceTry: Number(account.appleBalanceTry || 0),
+    monthlyCostTry: Number(account.monthlyCostTry || 0),
+    plusRenewalAt: account.plusRenewalAt || '',
+    renewalDaysLeft,
+    renewalText: formatRenewalText(renewalDaysLeft, account.plusRenewalAt),
+    lastCheckedAt: account.lastCheckedAt || '',
+    deviceProfile: account.deviceProfile || '',
+    browserProfile: account.browserProfile || '',
+    riskNote: account.riskNote || '',
+    operatorNote: account.operatorNote || '',
+    secretPreview: account.secrets ? '已保存，管理端脱敏' : '未保存',
+    routingEnabled: false,
+    createdAt: account.createdAt || '',
+    updatedAt: account.updatedAt || '',
+  };
+}
+
+function sanitizeRtAccount(account) {
+  return {
+    id: account.id,
+    label: sanitizeLedgerLabel(account.label, {
+      fallback: 'RT 账号',
+      email: account.email || '',
+      accountId: account.accountId || '',
+      refreshToken: account.refreshToken || '',
+    }),
+    platform: account.platform || 'codex',
+    status: account.status || 'ready_for_refresh',
+    email: maskEmail(account.email || ''),
+    emailHint: emailDomain(account.email || ''),
+    accountId: maskAccountId(account.accountId || ''),
+    accountIdHint: tailHint(account.accountId || ''),
+    refreshTokenPreview: maskRefreshToken(account.refreshToken || ''),
+    refreshTokenFingerprint: account.refreshTokenFingerprint || tokenFingerprint(account.refreshToken || ''),
+    sourceLabel: account.sourceLabel || '',
+    accountType: account.accountType || '',
+    note: account.note || '',
+    lastRefreshAt: account.lastRefreshAt || '',
+    expiresAt: account.expiresAt || '',
+    importedAt: account.importedAt || account.createdAt || '',
+    routingEnabled: false,
+    createdAt: account.createdAt || '',
+    updatedAt: account.updatedAt || '',
+  };
+}
+
+function emailDomain(email) {
+  const [, domain = ''] = String(email || '').split('@');
+  return domain ? `@${domain}` : '';
+}
+
+function sanitizeLedgerLabel(value, { fallback, email, accountId, refreshToken }) {
+  let label = String(value || '').trim();
+  if (!label) return fallback;
+  if (email) {
+    label = label.replaceAll(email, maskEmail(email));
+  }
+  if (accountId) {
+    label = label.replaceAll(accountId, maskAccountId(accountId));
+  }
+  if (refreshToken) {
+    label = label.replaceAll(refreshToken, maskRefreshToken(refreshToken));
+  }
+  return label.slice(0, 80) || fallback;
+}
+
+function plusAccountRenewalDaysLeft(value, nowValue = new Date()) {
+  if (!value) return null;
+  const renewal = Date.parse(value);
+  if (!Number.isFinite(renewal)) return null;
+  const now = nowValue instanceof Date ? nowValue.getTime() : Date.parse(nowValue);
+  if (!Number.isFinite(now)) return null;
+  return Math.ceil((renewal - now) / 86_400_000);
+}
+
+function formatRenewalText(daysLeft, value) {
+  if (!value) return '未登记续费日';
+  if (daysLeft === null) return '续费日期无效';
+  if (daysLeft < 0) return `已过期 ${Math.abs(daysLeft)} 天`;
+  if (daysLeft === 0) return '今天到期';
+  return `${daysLeft} 天后到期`;
+}
+
+function parseRtImportText(input) {
+  if (Array.isArray(input)) {
+    return input.flatMap((item) => parseRtImportItem(item));
+  }
+  if (input && typeof input === 'object') {
+    return parseRtImportItem(input);
+  }
+  const raw = String(input || '').trim();
+  if (!raw) return [];
+  if (raw.startsWith('[') || raw.startsWith('{')) {
+    const parsed = JSON.parse(raw);
+    return parseRtImportText(parsed);
+  }
+  return raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [refreshToken, email = '', accountId = ''] = line.split(/[,\t|]/).map((part) => part.trim());
+      return {
+        refreshToken,
+        email,
+        accountId,
+      };
+    });
+}
+
+function parseRtImportItem(item) {
+  if (typeof item === 'string') {
+    return parseRtImportText(item);
+  }
+  if (!item || typeof item !== 'object') {
+    return [];
+  }
+  return [
+    {
+      label: item.label,
+      platform: item.platform || item.provider,
+      status: item.status,
+      email: item.email,
+      accountId: item.accountId ?? item.account_id,
+      refreshToken: item.refreshToken ?? item.refresh_token ?? item.rt ?? item.token,
+      sourceLabel: item.sourceLabel || item.source || item.file,
+      accountType: item.accountType || item.type,
+      note: item.note || item.riskNote,
+      lastRefreshAt: item.lastRefreshAt || item.last_refresh,
+      expiresAt: item.expiresAt || item.expired,
+    },
+  ];
+}
+
 function sanitizeParsedOrder(parsed) {
   return {
     baseUrl: parsed.baseUrl,
@@ -5269,6 +7058,9 @@ function adminEventDetail(event) {
   if (event.type === 'logged_in') return '用户登录';
   if (event.type === 'redeemed') return `兑换码 ${event.code || ''} 已生效`;
   if (event.type === 'redemption_cards_created') return `生成兑换卡 ${event.count || 0} 张`;
+  if (event.type === 'plus_account_upserted') return `Plus 账号台账已更新: ${event.status || 'warming'}`;
+  if (event.type === 'rt_accounts_imported') return `RT 账号导入 ${event.count || 0} 个，跳过 ${event.skipped || 0} 个`;
+  if (event.type === 'admin_auth_failed') return `管理认证失败: ${event.path || '/api/admin/*'} · ${event.ipHash || 'unknown'}`;
   if (event.type === 'plan_expired') return `${event.plan || '套餐'} 已到期，套餐额度已清零`;
   if (event.type === 'payment_order_created') return `用户发起充值 ${formatCny(event.amountCents)}`;
   if (event.type === 'manual_recharged') return `人工入账 ${formatCny(event.amountCents)}`;
@@ -5357,6 +7149,66 @@ function safeEqual(left, right) {
   return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
+function normalizeTotpSecrets(value) {
+  const items = Array.isArray(value) ? value : String(value || '').split(/[,\s]+/);
+  return items
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .map((item) => {
+      const decoded = decodeBase32Secret(item);
+      return decoded.length >= 10 ? decoded : null;
+    })
+    .filter(Boolean);
+}
+
+function verifyTotpCode(secretBuffers, code, nowValue = new Date()) {
+  const normalizedCode = String(code || '').replace(/\D/g, '');
+  if (!/^\d{6}$/.test(normalizedCode) || !Array.isArray(secretBuffers) || secretBuffers.length === 0) {
+    return false;
+  }
+  const nowMs = nowValue instanceof Date ? nowValue.getTime() : Date.parse(nowValue);
+  const counter = Math.floor((Number.isFinite(nowMs) ? nowMs : Date.now()) / 1000 / TOTP_STEP_SECONDS);
+  for (const secret of secretBuffers) {
+    for (const offset of [-1, 0, 1]) {
+      if (safeEqual(generateTotpCode(secret, counter + offset), normalizedCode)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function generateTotpCode(secret, counter) {
+  const buffer = Buffer.alloc(8);
+  const safeCounter = Math.max(0, Number(counter || 0));
+  buffer.writeUInt32BE(Math.floor(safeCounter / 0x100000000), 0);
+  buffer.writeUInt32BE(safeCounter >>> 0, 4);
+  const digest = createHmac('sha1', secret).update(buffer).digest();
+  const offset = digest[digest.length - 1] & 0x0f;
+  const binary =
+    ((digest[offset] & 0x7f) << 24) |
+    ((digest[offset + 1] & 0xff) << 16) |
+    ((digest[offset + 2] & 0xff) << 8) |
+    (digest[offset + 3] & 0xff);
+  return String(binary % 10 ** TOTP_DIGITS).padStart(TOTP_DIGITS, '0');
+}
+
+function decodeBase32Secret(value) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const clean = String(value || '').toUpperCase().replace(/[^A-Z2-7]/g, '');
+  let bits = '';
+  for (const char of clean) {
+    const index = alphabet.indexOf(char);
+    if (index === -1) continue;
+    bits += index.toString(2).padStart(5, '0');
+  }
+  const bytes = [];
+  for (let index = 0; index + 8 <= bits.length; index += 8) {
+    bytes.push(Number.parseInt(bits.slice(index, index + 8), 2));
+  }
+  return Buffer.from(bytes);
+}
+
 function hashId(value) {
   return createHash('sha1').update(String(value)).digest('hex').slice(0, 12);
 }
@@ -5379,16 +7231,54 @@ function generateVerificationCode() {
   return String(randomBytes(4).readUInt32BE(0) % 1000000).padStart(6, '0');
 }
 
+function generateCustomerApiKey() {
+  return `fk-live-${randomBytes(32).toString('base64url')}`;
+}
+
 function maskKey(value) {
   const key = String(value || '');
   if (!key) return 'sk-******';
-  const prefix = /^fk-live-/i.test(key) ? 'fk-live' : key.slice(0, Math.min(6, key.length)).replace(/-$/, '');
+  const prefix = /^sk-/i.test(key)
+    ? 'sk'
+    : /^fk-live-/i.test(key)
+      ? 'fk-live'
+      : key.slice(0, Math.min(6, key.length)).replace(/-$/, '');
   return `${prefix}-••••••${key.slice(-4)}`;
+}
+
+function maskRefreshToken(value) {
+  const token = String(value || '');
+  if (!token) return 'rt-******';
+  const prefix = token.includes('_') ? token.split('_')[0] : token.slice(0, Math.min(6, token.length));
+  return `${prefix}-••••••${token.slice(-6)}`;
+}
+
+function maskAccountId(value) {
+  const text = String(value || '');
+  if (!text) return '';
+  return `${text.slice(0, Math.min(6, text.length))}••••${text.slice(-4)}`;
+}
+
+function tailHint(value) {
+  const text = String(value || '');
+  return text ? `尾号 ${text.slice(-4)}` : '';
+}
+
+function tokenFingerprint(value) {
+  const text = String(value || '').trim();
+  return text ? createHash('sha256').update(text).digest('hex').slice(0, 16) : '';
 }
 
 function initialsFromEmail(email) {
   const name = String(email || 'fa').split('@')[0];
   return name.slice(0, 2).toUpperCase();
+}
+
+function initialsFromDisplayName(value) {
+  const cleaned = String(value || 'fa').replace(/@.*$/, '').replace(/[_-]+/g, ' ').trim();
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  return String(parts[0] || 'fa').slice(0, 2).toUpperCase();
 }
 
 function addDays(date, days) {
@@ -5410,6 +7300,15 @@ function formatUsdFromCnyCents(cents, rate = DISPLAY_USD_TO_CNY) {
   return `$${(Number(cents || 0) / 100 / safeRate).toFixed(2)}`;
 }
 
+function usdNumberFromCnyCents(cents, rate = DISPLAY_USD_TO_CNY) {
+  const safeRate = Number(rate || DISPLAY_USD_TO_CNY) || DISPLAY_USD_TO_CNY;
+  return round2Finite(Number(cents || 0) / 100 / safeRate);
+}
+
+function cnyNumberFromCents(cents) {
+  return round2Finite(Number(cents || 0) / 100);
+}
+
 function formatUsdPriceFromCny(value, rate = DISPLAY_USD_TO_CNY) {
   const safeRate = Number(rate || DISPLAY_USD_TO_CNY) || DISPLAY_USD_TO_CNY;
   return `$${(Number(value || 0) / safeRate).toFixed(3)}`;
@@ -5427,6 +7326,12 @@ function round2(value) {
   return Math.round(Number(value || 0) * 100) / 100;
 }
 
+function round2Finite(value) {
+  const number = Number(value || 0);
+  if (!Number.isFinite(number)) return 0;
+  return round2(number);
+}
+
 const isCli = process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1]);
 if (isCli) {
   const port = Number(process.env.FRIST_API_PORT || process.env.PORT || 3180);
@@ -5437,4 +7342,24 @@ if (isCli) {
   server.listen(port, host, () => {
     console.log(`Frist-API server listening on http://${host}:${port}`);
   });
+  let closing = false;
+  const closeGracefully = (signal) => {
+    if (closing) return;
+    closing = true;
+    console.log(`Frist-API server received ${signal}, closing...`);
+    const forceTimer = setTimeout(() => {
+      console.error('Frist-API server close timeout, exiting.');
+      process.exit(1);
+    }, 8_000);
+    forceTimer.unref();
+    server.close((error) => {
+      if (error) {
+        console.error(`Frist-API server close failed: ${error.message}`);
+        process.exit(1);
+      }
+      process.exit(0);
+    });
+  };
+  process.once('SIGTERM', () => closeGracefully('SIGTERM'));
+  process.once('SIGINT', () => closeGracefully('SIGINT'));
 }

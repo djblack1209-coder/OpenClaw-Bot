@@ -25,7 +25,7 @@ const previousDashboard = {
     todayCalls: '186 次',
     renewalDate: '2026-05-28',
   },
-  apiKeys: [{ id: 'previous-key', name: '历史 Key', preview: 'fk-live-••••••prev', enabled: true }],
+  apiKeys: [{ id: 'previous-key', name: '历史 Key', preview: 'sk-••••••prev', enabled: true }],
   channelChecks: [{ provider: 'Claude', channel: '历史线路', ok: true, latencyMs: 300 }],
   modelUsage: [{ model: 'Claude', amount: '$2.56', percent: 100, calls: '18 次', tokens: '1.00M' }],
 };
@@ -49,6 +49,8 @@ describe('Frist-API New-API adapter', () => {
     assert.equal(dashboard.accountSummary.monthCost, '$0.00');
     assert.equal(dashboard.accountSummary.usageTotal, '$0.00');
     assert.equal(dashboard.accountSummary.todayCalls, '0 次');
+    assert.deepEqual(dashboard.channelChecks, []);
+    assert.deepEqual(dashboard.usageAnomalies, []);
     assert.deepEqual(dashboard.modelUsage, [
       { model: 'Claude', amount: '$0.00', percent: 0, calls: '0 次', tokens: '0.00M' },
     ]);
@@ -211,6 +213,80 @@ describe('Frist-API New-API adapter', () => {
     assert.equal(JSON.stringify(channels).includes('88'), false);
     assert.equal(JSON.stringify(channels).includes('upstream-secret'), false);
     assert.equal(JSON.stringify(channels).includes('supplier.example.com'), false);
+  });
+
+  it('normalizes Frist channel monitor fields for the customer dashboard', () => {
+    const dashboard = normalizeFristDashboard({
+      authenticated: false,
+      account: {},
+      user: {},
+      apiKeys: [],
+      modelUsage: [],
+      channelChecks: [
+        {
+          provider: 'OpenAI',
+          model: 'gpt-5.5',
+          endpoint: '/v1',
+          ok: true,
+          latencyMs: 90,
+          averageLatencyMs: 995,
+          healthyCount: 2,
+          totalCount: 3,
+          downCount: 1,
+          slowCount: 1,
+          monitorStatus: '降级',
+          availability: '66.7%',
+          availability7d: 66.7,
+          availabilityWindow: '当前库存快照',
+          successLabel: '2/3 可用',
+          latencyLabel: '最低 90ms / 平均 995ms',
+          monitorIntervalSeconds: 60,
+          history: ['ok', 'slow', 'down'],
+        },
+      ],
+    });
+
+    assert.equal(dashboard.channelChecks[0].endpoint, '/v1');
+    assert.equal(dashboard.channelChecks[0].monitorStatus, '降级');
+    assert.equal(dashboard.channelChecks[0].officialStatus, '降级');
+    assert.equal(dashboard.channelChecks[0].successLabel, '2/3 可用');
+    assert.equal(dashboard.channelChecks[0].latencyLabel, '最低 90ms / 平均 995ms');
+    assert.equal(dashboard.channelChecks[0].monitorIntervalSeconds, 60);
+    assert.equal(dashboard.channelChecks[0].availabilityWindow, '当前库存快照');
+    assert.deepEqual(dashboard.channelChecks[0].history, ['ok', 'slow', 'down']);
+  });
+
+  it('normalizes Frist usage anomaly alerts without leaking raw usage internals', () => {
+    const dashboard = normalizeFristDashboard({
+      authenticated: true,
+      account: { plan: '日卡' },
+      user: { userInitials: 'UA' },
+      apiKeys: [],
+      modelUsage: [],
+      channelChecks: [],
+      usageAnomalies: [
+        {
+          id: 'spike',
+          severity: 'critical',
+          title: '今日消耗偏高',
+          detail: '今日已用 $0.69',
+          action: '建议检查记录页和 Key 使用方',
+          rawKey: 'sk-upstream-secret',
+        },
+      ],
+    });
+
+    assert.deepEqual(dashboard.usageAnomalies, [
+      {
+        id: 'spike',
+        severity: 'critical',
+        title: '今日消耗偏高',
+        detail: '今日已用 $0.69',
+        action: '建议检查记录页和 Key 使用方',
+        at: '',
+      },
+    ]);
+    assert.equal(JSON.stringify(dashboard.usageAnomalies).includes('upstream-secret'), false);
   });
 
   it('creates a session-based New-API client without sending user API keys from the browser', async () => {

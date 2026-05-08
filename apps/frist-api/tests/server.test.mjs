@@ -1,11 +1,40 @@
 import assert from 'node:assert/strict';
-import { createCipheriv, createHash, createSign, generateKeyPairSync, randomBytes } from 'node:crypto';
+import { createCipheriv, createHash, createHmac, createSign, generateKeyPairSync, randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
 import { createFristApiServer, resolveSmtpSocketTargets } from '../server/server.js';
+import { normalizeClientAvailableModels } from '../src/core.js';
+
+function decodeUrlSafeBase64(value) {
+  const raw = String(value || '').replace(/-/g, '+').replace(/_/g, '/');
+  const padded = raw.padEnd(Math.ceil(raw.length / 4) * 4, '=');
+  return Buffer.from(padded, 'base64').toString('utf8');
+}
+
+function totpCode(secret, date = new Date()) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const clean = String(secret || '').toUpperCase().replace(/[^A-Z2-7]/g, '');
+  let bits = '';
+  for (const char of clean) bits += alphabet.indexOf(char).toString(2).padStart(5, '0');
+  const bytes = [];
+  for (let index = 0; index + 8 <= bits.length; index += 8) bytes.push(Number.parseInt(bits.slice(index, index + 8), 2));
+  const counter = Math.floor(date.getTime() / 1000 / 30);
+  const counterBuffer = Buffer.alloc(8);
+  counterBuffer.writeUInt32BE(Math.floor(counter / 0x100000000), 0);
+  counterBuffer.writeUInt32BE(counter >>> 0, 4);
+  const digest = createHmac('sha1', Buffer.from(bytes)).update(counterBuffer).digest();
+  const offset = digest[digest.length - 1] & 0x0f;
+  const binary =
+    ((digest[offset] & 0x7f) << 24) |
+    ((digest[offset + 1] & 0xff) << 16) |
+    ((digest[offset + 2] & 0xff) << 8) |
+    (digest[offset + 3] & 0xff);
+  return String(binary % 1_000_000).padStart(6, '0');
+}
 
 describe('Frist-API public server chain', () => {
   it('resolves SMTP targets in DNS order so IPv6 can bypass blocked IPv4 exits', async () => {
@@ -51,6 +80,35 @@ describe('Frist-API public server chain', () => {
     }
   });
 
+  it('redirects the bare nip host to the single Frist-API branded host', async () => {
+    const fixture = await createServerFixture();
+
+    try {
+      const redirected = await fixture.request('/api/frist/dashboard?from=bare-host', {
+        headers: {
+          'x-forwarded-host': '101-43-41-96.nip.io',
+        },
+        redirect: 'manual',
+      });
+      assert.equal(redirected.status, 301);
+      assert.equal(
+        redirected.location,
+        'http://frist-api.101-43-41-96.nip.io/api/frist/dashboard?from=bare-host',
+      );
+      assert.equal(redirected.text, '');
+
+      const canonical = await fixture.request('/', {
+        headers: {
+          'x-forwarded-host': 'frist-api.101-43-41-96.nip.io',
+        },
+      });
+      assert.equal(canonical.status, 200);
+      assert.match(canonical.text, /Frist-API/);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it('returns a quiet guest dashboard before login', async () => {
     const fixture = await createServerFixture();
 
@@ -62,6 +120,7 @@ describe('Frist-API public server chain', () => {
       assert.equal(dashboard.json.account.monthCost, '$0.00');
       assert.equal(dashboard.json.account.usageTotal, '$0.00');
       assert.deepEqual(dashboard.json.modelUsage, []);
+      assert.deepEqual(dashboard.json.channelChecks, []);
       assert.deepEqual(
         dashboard.json.rechargeOptions.map((item) => ({
           id: item.id,
@@ -100,7 +159,7 @@ describe('Frist-API public server chain', () => {
     }
   });
 
-  it('lets admins update recharge packages and official model prices without changing code', async () => {
+  it('lets admins update recharge packages and custom model prices without changing code', async () => {
     const fixture = await createServerFixture();
 
     try {
@@ -130,7 +189,7 @@ describe('Frist-API public server chain', () => {
               outputCostCnyPerMillion: 49,
               inputSaleCnyPerMillion: 9,
               outputSaleCnyPerMillion: 49,
-              source: 'official',
+              source: 'custom',
             },
           ],
         },
@@ -142,6 +201,47 @@ describe('Frist-API public server chain', () => {
       assert.equal(dashboard.json.rechargeOptions[0].priceCny, 6.66);
       assert.equal(dashboard.json.rechargeOptions[0].cny, '¥6.66');
       assert.equal(dashboard.json.modelCatalog.find((item) => item.model === 'gpt-5.5').price, '$1.250/$6.806 每 1M');
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('migrates stale official model prices to full official pricing labels', async () => {
+    const fixture = await createServerFixture();
+
+    try {
+      await fixture.writeData({
+        pricing: {
+          modelPrices: [
+            {
+              model: 'gpt-5.5',
+              currency: 'CNY',
+              inputCostCnyPerMillion: 8,
+              outputCostCnyPerMillion: 48,
+              inputSaleCnyPerMillion: 8,
+              outputSaleCnyPerMillion: 48,
+              source: 'official',
+              displayPrice: '',
+              status: 'confirmed',
+            },
+          ],
+        },
+        priceDrafts: [],
+      });
+
+      const pricing = await fixture.request('/api/admin/pricing', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+      const officialGpt = pricing.json.modelPrices.find((item) => item.model === 'gpt-5.5');
+      assert.equal(officialGpt.inputSaleCnyPerMillion, 36);
+      assert.equal(officialGpt.outputSaleCnyPerMillion, 216);
+      assert.equal(officialGpt.displayPrice, '官方 输入 $5.00 / 缓存 $0.50 / 输出 $30.00 每 1M');
+
+      const dashboard = await fixture.request('/api/frist/dashboard');
+      assert.equal(
+        dashboard.json.modelCatalog.find((item) => item.model === 'gpt-5.5').price,
+        '官方 输入 $5.00 / 缓存 $0.50 / 输出 $30.00 每 1M',
+      );
     } finally {
       await fixture.close();
     }
@@ -187,8 +287,21 @@ describe('Frist-API public server chain', () => {
         cookie,
       });
       assert.equal(imported.status, 200);
-      assert.match(decodeURIComponent(imported.json.url), /target=claude/);
       assert.match(decodeURIComponent(imported.json.url), new RegExp(token.json.key.secret));
+      const importUrl = new URL(imported.json.url);
+      assert.equal(importUrl.searchParams.get('app'), 'claude');
+      assert.equal(importUrl.searchParams.get('usageEnabled'), 'true');
+      assert.equal(importUrl.searchParams.get('usageApiKey'), token.json.key.secret);
+      assert.equal(importUrl.searchParams.get('usageBaseUrl'), fixture.baseUrl);
+      assert.match(decodeUrlSafeBase64(importUrl.searchParams.get('usageScript')), /\/api\/frist\/key-usage/);
+      assert.equal(imported.json.config.targetSlug, 'claude');
+      assert.equal(imported.json.config.authField, 'ANTHROPIC_AUTH_TOKEN');
+      assert.equal(JSON.parse(imported.json.config.authJson).env.ANTHROPIC_AUTH_TOKEN, token.json.key.secret);
+      assert.equal(imported.json.config.usageBaseUrl, fixture.baseUrl);
+      assert.match(imported.json.config.usageScript, /\/api\/frist\/key-usage/);
+      assert.match(imported.json.setup.test, /claude --bare --no-session-persistence/);
+      assert.match(imported.json.setup.test, /--settings "\$tmp_settings"/);
+      assert.doesNotMatch(JSON.stringify(imported.json), /supplier-codex\.example\.com|cr_fake_supplier_secret/);
 
       const disabled = await fixture.request(`/api/frist/token/${token.json.key.id}`, {
         method: 'PATCH',
@@ -292,6 +405,7 @@ describe('Frist-API public server chain', () => {
         cookie: registered.cookie,
         body: { name: '临时 Key' },
       });
+      assert.match(token.json.key.secret, /^fk-live-/);
 
       const renamed = await fixture.request(`/api/frist/token/${token.json.key.id}`, {
         method: 'PATCH',
@@ -304,6 +418,7 @@ describe('Frist-API public server chain', () => {
 
       const dashboardAfterRename = await fixture.request('/api/frist/dashboard', { cookie: registered.cookie });
       assert.equal(dashboardAfterRename.json.apiKeys[0].name, 'OpenCode 主力 Key');
+      assert.equal(Object.prototype.hasOwnProperty.call(dashboardAfterRename.json.apiKeys[0], 'secret'), false);
 
       const deleted = await fixture.request(`/api/frist/token/${token.json.key.id}`, {
         method: 'DELETE',
@@ -404,6 +519,7 @@ describe('Frist-API public server chain', () => {
           out_trade_no: created.json.paymentOrder.id,
           transaction_id: 'wx-transaction-1',
           trade_state: 'SUCCESS',
+          amount: { total: 888, payer_total: 888 },
         },
       });
       const notify = await fixture.rawRequest('/api/frist/payments/wechat/notify', {
@@ -433,6 +549,65 @@ describe('Frist-API public server chain', () => {
       const data = await fixture.readData();
       assert.equal(data.paymentOrders[0].status, 'paid');
       assert.equal(data.events.filter((event) => event.type === 'provider_payment_confirmed').length, 1);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('rejects provider payment callbacks when the paid amount is lower than the order amount', async () => {
+    const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const alipayPrivateKey = privateKey.export({ type: 'pkcs8', format: 'pem' });
+    const alipayPublicKey = publicKey.export({ type: 'spki', format: 'pem' });
+    const fixture = await createServerFixture({
+      paymentEnabled: true,
+      alipayEnabled: true,
+      alipayAppId: '2021000000000000',
+      alipayPrivateKey,
+      alipayPublicKey,
+      fetchImpl: async () =>
+        jsonResponse(200, {
+          alipay_trade_precreate_response: {
+            code: '10000',
+            msg: 'Success',
+            out_trade_no: 'server-generated',
+            qr_code: 'https://qr.alipay.com/test',
+          },
+        }),
+    });
+
+    try {
+      const cookie = await fixture.createVerifiedCustomer('alipay-underpaid@example.com');
+      const created = await fixture.request('/api/frist/recharge', {
+        method: 'POST',
+        cookie,
+        body: { planId: 'codex-30-unlimited', method: 'alipay_precreate' },
+      });
+      assert.equal(created.status, 202);
+      assert.equal(created.json.paymentOrder.amount, '¥8.88');
+
+      const notifyBody = signAlipayNotifyBody(
+        {
+          app_id: '2021000000000000',
+          out_trade_no: created.json.paymentOrder.id,
+          trade_no: 'ali-underpaid-1',
+          trade_status: 'TRADE_SUCCESS',
+          total_amount: '5.88',
+        },
+        alipayPrivateKey,
+      );
+      const notify = await fixture.rawRequest('/api/frist/payments/alipay/notify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        bodyText: notifyBody,
+      });
+      assert.equal(notify.status, 400);
+      assert.match(notify.text, /支付金额与订单金额不一致/);
+
+      const dashboard = await fixture.request('/api/frist/dashboard', { cookie });
+      assert.equal(dashboard.json.account.balance, '$0.00');
+      const data = await fixture.readData();
+      assert.equal(data.paymentOrders[0].status, 'pending_provider_payment');
+      assert.equal(data.events.filter((event) => event.type === 'provider_payment_confirmed').length, 0);
     } finally {
       await fixture.close();
     }
@@ -726,6 +901,38 @@ describe('Frist-API public server chain', () => {
     }
   });
 
+  it('requires CSRF tokens for cookie-authenticated mutations when enabled', async () => {
+    const fixture = await createServerFixture({ requireCsrf: true, requireEmailVerification: false });
+
+    try {
+      const registered = await fixture.request('/api/frist/register', {
+        method: 'POST',
+        body: { email: 'csrf@example.com', password: 'TestPass123!' },
+      });
+      assert.equal(registered.status, 200);
+      assert.match(registered.setCookie, /frist_csrf=/);
+      const csrfToken = registered.json.csrfToken;
+
+      const blocked = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie: registered.cookie,
+        body: { name: 'Blocked Key' },
+      });
+      assert.equal(blocked.status, 403);
+
+      const created = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie: registered.cookie,
+        headers: { 'x-csrf-token': csrfToken },
+        body: { name: 'Allowed Key' },
+      });
+      assert.equal(created.status, 200);
+      assert.match(created.json.key.secret, /^fk-live-/);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it('lets logged-in customers change password before using the same account again', async () => {
     const fixture = await createServerFixture();
 
@@ -835,7 +1042,7 @@ describe('Frist-API public server chain', () => {
         });
         return jsonResponse(200, {
           id: 'chatcmpl-charged',
-          model: 'claude-haiku',
+          model: 'claude-sonnet-4-5-c',
           choices: [{ message: { role: 'assistant', content: 'charged' } }],
         });
       },
@@ -864,7 +1071,7 @@ describe('Frist-API public server chain', () => {
         body: {
           baseUrl: 'https://supplier.example.com/v1',
           pool: 'day',
-          models: ['claude-haiku'],
+          models: ['claude-sonnet-4-5-c'],
           keys: [{ value: 'sk-billable', quotaRemaining: 1000, latencyMs: 80 }],
         },
       });
@@ -872,7 +1079,7 @@ describe('Frist-API public server chain', () => {
       const first = await fixture.request('/v1/chat/completions', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token.json.key.secret}` },
-        body: { model: 'claude-haiku', messages: [{ role: 'user', content: 'first' }] },
+        body: { model: 'claude-sonnet-4-5-c', messages: [{ role: 'user', content: 'first' }] },
       });
       assert.equal(first.status, 200);
 
@@ -883,10 +1090,29 @@ describe('Frist-API public server chain', () => {
       assert.equal(afterFirst.json.account.todayCost, '$0.69');
       assert.equal(afterFirst.json.account.todayCalls, '1 次');
 
+      const ccSwitchUsage = await fixture.request('/api/frist/key-usage', {
+        headers: { Authorization: `Bearer ${token.json.key.secret}` },
+      });
+      assert.equal(ccSwitchUsage.status, 200);
+      assert.equal(ccSwitchUsage.json.ok, true);
+      assert.equal(ccSwitchUsage.json.valid, true);
+      assert.equal(ccSwitchUsage.json.plan, '日卡');
+      assert.equal(ccSwitchUsage.json.remainingUsd, 0.56);
+      assert.equal(ccSwitchUsage.json.usedUsd, 0.69);
+      assert.equal(ccSwitchUsage.json.totalUsd, 1.25);
+      assert.equal(ccSwitchUsage.json.todayCalls, '1 次');
+      assert.equal(JSON.stringify(ccSwitchUsage.json).includes(token.json.key.secret), false);
+      assert.equal(JSON.stringify(ccSwitchUsage.json).includes('sk-billable'), false);
+
+      const blockedUsage = await fixture.request('/api/frist/key-usage', {
+        headers: { Authorization: 'Bearer fk-live-wrong-key' },
+      });
+      assert.equal(blockedUsage.status, 401);
+
       const blocked = await fixture.request('/v1/chat/completions', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token.json.key.secret}` },
-        body: { model: 'claude-haiku', messages: [{ role: 'user', content: 'second' }] },
+        body: { model: 'claude-sonnet-4-5-c', messages: [{ role: 'user', content: 'second' }] },
       });
       assert.equal(blocked.status, 402);
       assert.match(blocked.text, /余额不足/);
@@ -1125,12 +1351,92 @@ describe('Frist-API public server chain', () => {
       assert.equal(response.json.role, 'assistant');
       assert.equal(response.json.model, 'gpt-5.5');
       assert.equal(response.json.content[0].text, 'openai through claude code');
-      assert.equal(upstreamCalls.length, 1);
-      assert.equal(upstreamCalls[0].url, 'https://supplier.example.com/openai/chat/completions');
-      assert.equal(upstreamCalls[0].authorization, 'Bearer sk-claude-code-openai');
-      assert.deepEqual(upstreamCalls[0].body.messages, [
+      assert.deepEqual(
+        upstreamCalls.map((call) => call.url),
+        [
+          'https://supplier.example.com/openai/messages',
+          'https://supplier.example.com/openai/chat/completions',
+        ],
+      );
+      assert.equal(upstreamCalls[1].authorization, 'Bearer sk-claude-code-openai');
+      assert.deepEqual(upstreamCalls[1].body.messages, [
         { role: 'system', content: 'keep claude code system prompt' },
         { role: 'user', content: 'route this as chatgpt' },
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('routes Claude Code Anthropic Messages calls to native Claude-compatible upstreams first', async () => {
+    const upstreamCalls = [];
+    const fixture = await createServerFixture({
+      fetchImpl: async (url, options = {}) => {
+        upstreamCalls.push({
+          url: String(url),
+          authorization: options.headers?.Authorization || options.headers?.authorization,
+          body: JSON.parse(options.body),
+        });
+        if (String(url).endsWith('/messages')) {
+          return jsonResponse(200, {
+            id: 'msg-native-claude',
+            type: 'message',
+            role: 'assistant',
+            model: 'claude-sonnet-4-5-c',
+            content: [{ type: 'text', text: 'native claude upstream' }],
+            usage: { input_tokens: 12, output_tokens: 4 },
+          });
+        }
+        return jsonResponse(500, { error: { message: 'chat fallback should not run' } });
+      },
+    });
+
+    try {
+      const cookie = await fixture.createVerifiedCustomer('claude-native-upstream@example.com');
+      await fixture.request('/api/frist/redeem', {
+        method: 'POST',
+        cookie,
+        body: { code: 'FRIST-DAY-001' },
+      });
+      const token = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie,
+        body: { name: 'Claude Native Key', modelGroup: 'Claude' },
+      });
+      await fixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'https://supplier.example.com/v1',
+          pool: 'day',
+          models: ['claude-sonnet-4-5-c'],
+          keys: [{ value: 'sk-native-claude', quotaRemaining: 900, latencyMs: 80 }],
+          probeMode: 'trusted',
+        },
+      });
+
+      const response = await fixture.request('/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': token.json.key.secret,
+          'x-frist-session-id': 'claude-native-session',
+        },
+        body: {
+          model: 'claude-sonnet-4-5-c',
+          messages: [{ role: 'user', content: [{ type: 'text', text: 'route natively' }] }],
+          max_tokens: 64,
+        },
+      });
+
+      assert.equal(response.status, 200);
+      assert.equal(response.json.type, 'message');
+      assert.equal(response.json.content[0].text, 'native claude upstream');
+      assert.equal(upstreamCalls.length, 1);
+      assert.equal(upstreamCalls[0].url, 'https://supplier.example.com/v1/messages');
+      assert.equal(upstreamCalls[0].authorization, 'Bearer sk-native-claude');
+      assert.equal(upstreamCalls[0].body.model, 'claude-sonnet-4-5-c');
+      assert.deepEqual(upstreamCalls[0].body.messages, [
+        { role: 'user', content: [{ type: 'text', text: 'route natively' }] },
       ]);
     } finally {
       await fixture.close();
@@ -1572,25 +1878,104 @@ describe('Frist-API public server chain', () => {
           cookie: registered.cookie,
         });
         const importUrl = new URL(imported.json.url);
-        const providerConfig = JSON.parse(Buffer.from(importUrl.searchParams.get('config'), 'base64').toString('utf8'));
-        const expectedModels = ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-image-2', 'gpt-5.3-codex'];
+        const expectedModels = [
+          'gpt-5.5',
+          'gpt-5.4',
+          'gpt-5.4-mini',
+          'gpt-image-2',
+        ];
 
         assert.equal(imported.status, 200);
-        assert.equal(importUrl.searchParams.get('defaultModel'), 'gpt-5.5');
-        assert.deepEqual(JSON.parse(importUrl.searchParams.get('availableModels')), expectedModels);
-        assert.deepEqual(JSON.parse(importUrl.searchParams.get('available_models')), expectedModels);
-        if (target === 'OpenCode') {
-          assert.equal(providerConfig.npm, '@ai-sdk/openai-compatible');
-          assert.equal(providerConfig.options.baseURL, importUrl.searchParams.get('baseUrl'));
-          assert.deepEqual(Object.keys(providerConfig.models), expectedModels);
-          assert.deepEqual(providerConfig.models['gpt-5.3-codex'], { name: 'gpt-5.3-codex' });
-        } else {
-          assert.deepEqual(providerConfig.provider.models, expectedModels);
-          assert.deepEqual(providerConfig.provider.availableModels, expectedModels);
-          assert.equal(providerConfig.provider.defaultModel, 'gpt-5.5');
-          assert.deepEqual(providerConfig.codex.availableModels, expectedModels);
-        }
+        assert.ok(imported.json.url.length < 3500);
+        assert.equal(importUrl.searchParams.get('model'), 'gpt-5.4');
+        assert.equal(imported.json.defaultModel, 'gpt-5.4');
+        assert.deepEqual(imported.json.availableModels, expectedModels);
+        assert.deepEqual(imported.json.config.availableModels, expectedModels);
+        assert.match(imported.json.config.configToml, /available_models = \["gpt-5\.5", "gpt-5\.4", "gpt-5\.4-mini", "gpt-image-2"\]/);
+        assert.equal(importUrl.searchParams.get('config'), null);
+        assert.equal(importUrl.searchParams.get('availableModels'), null);
       }
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('keeps the OpenAI model family complete when the New-API bridge only reports partial limits', async () => {
+    const fixture = await createServerFixture({
+      requireEmailVerification: false,
+      newApiEnabled: true,
+      newApiBaseUrl: 'https://new-api.internal',
+      newApiAccessToken: 'newapi-access-token',
+      newApiUserId: '42',
+      newApiGatewayEnabled: false,
+      fetchImpl: async (url, init = {}) => {
+        const requestUrl = new URL(String(url));
+        const path = requestUrl.pathname;
+        if (path === '/api/token/' && (!init.method || init.method === 'GET')) {
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              items: [
+                {
+                  id: 9,
+                  name: 'OpenAI Partial Key',
+                  key: 'sk-openai-partial-secret',
+                  status: 1,
+                  remain_quota: 7100,
+                  model_limits_enabled: true,
+                  model_limits: 'gpt-*',
+                },
+              ],
+            },
+          });
+        }
+        if (path === '/api/token/9/key') {
+          return jsonResponse(200, { success: true, data: { key: 'sk-openai-partial-secret' } });
+        }
+        if (path === '/api/user/self' || path === '/api/log/self' || path === '/api/log/self/stat' || path === '/api/data/self' || path === '/api/subscription/self' || path === '/api/user/topup/info' || path === '/api/user/aff') {
+          return jsonResponse(200, { success: true, data: {} });
+        }
+        return jsonResponse(404, { success: false, message: `unexpected ${path}` });
+      },
+    });
+
+    try {
+      const registered = await fixture.request('/api/frist/register', {
+        method: 'POST',
+        body: { email: 'partial-openai@example.com', password: 'TestPass123!' },
+      });
+      await fixture.request('/api/frist/redeem', {
+        method: 'POST',
+        cookie: registered.cookie,
+        body: { code: 'FRIST-DAY-001' },
+      });
+      await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie: registered.cookie,
+        body: { name: 'OpenAI Partial Key', modelGroup: 'OpenAI' },
+      });
+
+      const imported = await fixture.request('/api/frist/import-url?target=Codex&model=gpt-5.4', {
+        cookie: registered.cookie,
+      });
+      const importUrl = new URL(imported.json.url);
+      const expectedModels = [
+        'gpt-5.5',
+        'gpt-5.4',
+        'gpt-5.4-mini',
+        'gpt-image-2',
+        'gpt-image-1.5',
+        'gpt-5.3-codex',
+        'gpt-4o',
+        'gpt-5-codex',
+      ];
+
+      assert.deepEqual(imported.json.availableModels, expectedModels);
+      assert.equal(importUrl.searchParams.get('availableModels'), null);
+      assert.deepEqual(
+        normalizeClientAvailableModels(['gpt-*'], { modelGroup: 'OpenAI' }),
+        expectedModels,
+      );
     } finally {
       await fixture.close();
     }
@@ -1613,14 +1998,15 @@ describe('Frist-API public server chain', () => {
         },
       });
 
-      const dashboard = await fixture.request('/api/frist/dashboard');
+      const cookie = await fixture.createVerifiedCustomer();
+      const dashboard = await fixture.request('/api/frist/dashboard', { cookie });
       assert.equal(dashboard.status, 200);
       assert.equal(Array.isArray(dashboard.json.modelCatalog), true);
       const gpt = dashboard.json.modelCatalog.find((item) => item.model === 'gpt-5.5');
       const image = dashboard.json.modelCatalog.find((item) => item.model === 'gpt-image-2');
       assert.equal(gpt.family, 'OpenAI');
       assert.equal(gpt.available, true);
-      assert.equal(gpt.price, '$1.111/$6.667 每 1M');
+      assert.equal(gpt.price, '官方 输入 $5.00 / 缓存 $0.50 / 输出 $30.00 每 1M');
       assert.equal(image.tagline, '图片生成');
       assert.equal(JSON.stringify(dashboard.json.modelCatalog).includes('sk-catalog-secret'), false);
       assert.equal(JSON.stringify(dashboard.json.modelCatalog).includes('supplier.example.com'), false);
@@ -1995,7 +2381,7 @@ describe('Frist-API public server chain', () => {
         upstreamCalls.push(options.headers?.Authorization || options.headers?.authorization);
         return jsonResponse(200, {
           id: 'chatcmpl-expired',
-          model: 'claude-haiku',
+          model: 'claude-sonnet-4-5-c',
           choices: [{ message: { role: 'assistant', content: 'expired' } }],
         });
       },
@@ -2019,7 +2405,7 @@ describe('Frist-API public server chain', () => {
         body: {
           baseUrl: 'https://supplier.example.com/v1',
           pool: 'day',
-          models: ['claude-haiku'],
+          models: ['claude-sonnet-4-5-c'],
           keys: [{ value: 'sk-day', quotaRemaining: 900, latencyMs: 80 }],
         },
       });
@@ -2053,7 +2439,7 @@ describe('Frist-API public server chain', () => {
             return jsonResponse(401, { error: { message: 'invalid api key' } });
           }
           return jsonResponse(200, {
-            data: [{ id: 'claude-haiku' }, { id: 'gpt-5.5' }],
+            data: [{ id: 'claude-sonnet-4-5-c' }, { id: 'gpt-5.5' }],
           });
         }
         if (String(url).endsWith('/chat/completions')) {
@@ -2215,6 +2601,314 @@ describe('Frist-API public server chain', () => {
     }
   });
 
+  it('probes native Claude Messages supplier stock and routes Claude Code through the same path', async () => {
+    const probeUrls = [];
+    const gatewayUrls = [];
+    const fixture = await createServerFixture({
+      fetchImpl: async (url, options = {}) => {
+        const targetUrl = String(url);
+        const body = options.body ? JSON.parse(options.body) : {};
+        probeUrls.push(targetUrl);
+        if (targetUrl === 'https://supplier.example.com/v1/messages') {
+          if (body.messages?.[0]?.content === 'customer request') {
+            gatewayUrls.push(targetUrl);
+          }
+          return jsonResponse(200, {
+            id: 'msg-claude-native',
+            type: 'message',
+            role: 'assistant',
+            model: body.model || 'claude-sonnet-4-5-c',
+            content: [{ type: 'text', text: 'ok' }],
+            usage: { input_tokens: 2, output_tokens: 1 },
+          });
+        }
+        return jsonResponse(404, { error: { message: 'not found' } });
+      },
+    });
+
+    try {
+      const replenished = await fixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'https://supplier.example.com',
+          pool: 'day',
+          modelGroup: 'Claude',
+          models: ['claude-sonnet-4-5-c'],
+          keys: [{ value: 'sk-claude-native-probe', quotaRemaining: 900, latencyMs: 80 }],
+          probeMode: 'strict',
+        },
+      });
+      assert.equal(replenished.status, 200);
+      assert.equal(replenished.json.credentials[0].status, 'healthy');
+      assert.equal(replenished.json.credentials[0].lastProbeStatus, 'anthropic_messages_probe_ok');
+      assert.deepEqual(probeUrls.slice(0, 2), [
+        'https://supplier.example.com/messages',
+        'https://supplier.example.com/v1/messages',
+      ]);
+
+      const cookie = await fixture.createVerifiedCustomer('native-claude-probe@example.com');
+      await fixture.request('/api/frist/redeem', {
+        method: 'POST',
+        cookie,
+        body: { code: 'FRIST-DAY-001' },
+      });
+      const token = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie,
+        body: { name: '原生 Claude Key', modelGroup: 'Claude' },
+      });
+
+      const response = await fixture.request('/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': token.json.key.secret },
+        body: {
+          model: 'claude-sonnet-4-5-c',
+          messages: [{ role: 'user', content: 'customer request' }],
+          max_tokens: 32,
+        },
+      });
+
+      assert.equal(response.status, 200);
+      assert.equal(response.json.content[0].text, 'ok');
+      assert.deepEqual(gatewayUrls, ['https://supplier.example.com/v1/messages']);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('keeps the replenishment model group when object-form keys omit per-key groups', async () => {
+    const fixture = await createServerFixture({
+      fetchImpl: async () =>
+        jsonResponse(200, {
+          id: 'chatcmpl-group',
+          model: 'gpt-5.4-mini',
+          choices: [{ message: { role: 'assistant', content: 'ok' } }],
+          usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 },
+        }),
+    });
+
+    try {
+      const replenished = await fixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'https://supplier.example.com/v1',
+          pool: 'day',
+          modelGroup: 'OpenAI',
+          models: ['gpt-5.4-mini'],
+          keys: [{ value: 'sk-openai-no-key-group', quotaRemaining: 900, latencyMs: 80 }],
+          probeMode: 'strict',
+        },
+      });
+
+      assert.equal(replenished.status, 200);
+      assert.equal(replenished.json.credentials[0].modelGroup, 'OpenAI');
+      assert.equal(replenished.json.supplierProfile.modelGroup, 'OpenAI');
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('keeps separate inventory records when one upstream key serves Claude and OpenAI groups', async () => {
+    const upstreamCalls = [];
+    const fixture = await createServerFixture({
+      fetchImpl: async (url, options = {}) => {
+        const targetUrl = String(url);
+        const body = options.body ? JSON.parse(options.body) : {};
+        if (body.messages?.[0]?.content === 'claude customer') {
+          upstreamCalls.push({ url: targetUrl, model: body.model });
+        }
+        if (body.messages?.[0]?.content === 'openai customer') {
+          upstreamCalls.push({ url: targetUrl, model: body.model });
+        }
+        if (targetUrl.endsWith('/messages')) {
+          return jsonResponse(200, {
+            id: 'msg-shared-key',
+            type: 'message',
+            role: 'assistant',
+            model: body.model || 'claude-sonnet-4-5-c',
+            content: [{ type: 'text', text: 'claude ok' }],
+            usage: { input_tokens: 2, output_tokens: 1 },
+          });
+        }
+        return jsonResponse(200, {
+          id: 'chatcmpl-shared-key',
+          model: body.model || 'gpt-5.4-mini',
+          choices: [{ message: { role: 'assistant', content: 'openai ok' } }],
+          usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 },
+        });
+      },
+    });
+
+    try {
+      for (const body of [
+        {
+          baseUrl: 'https://supplier.example.com/v1',
+          pool: 'day',
+          modelGroup: 'Claude',
+          models: ['claude-sonnet-4-5-c'],
+          keys: [{ value: 'sk-shared-upstream', quotaRemaining: 900, latencyMs: 80 }],
+          probeMode: 'strict',
+        },
+        {
+          baseUrl: 'https://supplier.example.com/v1',
+          pool: 'day',
+          modelGroup: 'OpenAI',
+          models: ['gpt-5.4-mini'],
+          keys: [{ value: 'sk-shared-upstream', quotaRemaining: 900, latencyMs: 80 }],
+          probeMode: 'strict',
+        },
+      ]) {
+        const replenished = await fixture.request('/api/admin/replenishments', {
+          method: 'POST',
+          headers: { 'x-admin-token': 'admin-test-token' },
+          body,
+        });
+        assert.equal(replenished.status, 200);
+        assert.equal(replenished.json.credentials.length, 1);
+      }
+
+      const inventory = await fixture.request('/api/admin/replenishments', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+      assert.deepEqual(
+        inventory.json.credentials.map((credential) => credential.modelGroup).sort(),
+        ['Claude', 'OpenAI'],
+      );
+
+      const cookie = await fixture.createVerifiedCustomer('shared-key-groups@example.com');
+      await fixture.request('/api/frist/redeem', {
+        method: 'POST',
+        cookie,
+        body: { code: 'FRIST-DAY-001' },
+      });
+      const claudeToken = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie,
+        body: { name: 'Claude shared upstream', modelGroup: 'Claude' },
+      });
+      const openAiToken = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie,
+        body: { name: 'OpenAI shared upstream', modelGroup: 'OpenAI' },
+      });
+
+      const claude = await fixture.request('/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': claudeToken.json.key.secret },
+        body: {
+          model: 'claude-sonnet-4-5-c',
+          messages: [{ role: 'user', content: 'claude customer' }],
+          max_tokens: 32,
+        },
+      });
+      const openai = await fixture.request('/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${openAiToken.json.key.secret}` },
+        body: {
+          model: 'gpt-5.4-mini',
+          messages: [{ role: 'user', content: 'openai customer' }],
+        },
+      });
+
+      assert.equal(claude.status, 200);
+      assert.equal(openai.status, 200);
+      assert.deepEqual(upstreamCalls, [
+        { url: 'https://supplier.example.com/v1/messages', model: 'claude-sonnet-4-5-c' },
+        { url: 'https://supplier.example.com/v1/chat/completions', model: 'gpt-5.4-mini' },
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('selects the matching customer key when exporting CC Switch links for a model group', async () => {
+    const fixture = await createServerFixture({
+      fetchImpl: async (url, options = {}) => {
+        const targetUrl = String(url);
+        const body = options.body ? JSON.parse(options.body) : {};
+        if (targetUrl.endsWith('/messages')) {
+          return jsonResponse(200, {
+            id: 'msg-export-group',
+            type: 'message',
+            role: 'assistant',
+            model: body.model || 'claude-sonnet-4-5-c',
+            content: [{ type: 'text', text: 'ok' }],
+          });
+        }
+        return jsonResponse(200, {
+          id: 'chatcmpl-export-group',
+          model: body.model || 'gpt-5.4-mini',
+          choices: [{ message: { role: 'assistant', content: 'ok' } }],
+        });
+      },
+    });
+
+    try {
+      const cookie = await fixture.createVerifiedCustomer('export-groups@example.com');
+      await fixture.request('/api/frist/redeem', {
+        method: 'POST',
+        cookie,
+        body: { code: 'FRIST-DAY-001' },
+      });
+      await fixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'https://supplier.example.com/v1',
+          pool: 'day',
+          modelGroup: 'Claude',
+          models: ['claude-sonnet-4-5-c'],
+          keys: [{ value: 'sk-export-claude', quotaRemaining: 900, latencyMs: 80 }],
+          probeMode: 'strict',
+        },
+      });
+      await fixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'https://supplier.example.com/v1',
+          pool: 'day',
+          modelGroup: 'OpenAI',
+          models: ['gpt-5.4-mini'],
+          keys: [{ value: 'sk-export-openai', quotaRemaining: 900, latencyMs: 80 }],
+          probeMode: 'strict',
+        },
+      });
+      const claudeToken = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie,
+        body: { name: '导出 Claude Key', modelGroup: 'Claude' },
+      });
+      const openAiToken = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie,
+        body: { name: '导出 OpenAI Key', modelGroup: 'OpenAI' },
+      });
+
+      const claudeImport = await fixture.request(
+        '/api/frist/import-url?target=Claude&modelGroup=Claude&model=claude-sonnet-4-5-c',
+        { cookie },
+      );
+      const codexImport = await fixture.request(
+        '/api/frist/import-url?target=Codex&modelGroup=OpenAI&model=gpt-5.4-mini',
+        { cookie },
+      );
+      const claudeUrl = new URL(claudeImport.json.url);
+      const codexUrl = new URL(codexImport.json.url);
+
+      assert.equal(claudeUrl.searchParams.get('apiKey'), claudeToken.json.key.secret);
+      assert.equal(claudeUrl.searchParams.get('model'), 'claude-sonnet-4-5-c');
+      assert.deepEqual(claudeImport.json.availableModels, ['claude-sonnet-4-5-c']);
+      assert.equal(codexUrl.searchParams.get('apiKey'), openAiToken.json.key.secret);
+      assert.equal(codexUrl.searchParams.get('model'), 'gpt-5.4-mini');
+      assert.deepEqual(codexImport.json.availableModels, ['gpt-5.4-mini']);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it('aggregates customer channel checks by model instead of exposing one card per upstream key', async () => {
     const fixture = await createServerFixture();
 
@@ -2233,12 +2927,91 @@ describe('Frist-API public server chain', () => {
         },
       });
 
-      const dashboard = await fixture.request('/api/frist/dashboard');
+      const cookie = await fixture.createVerifiedCustomer();
+      const dashboard = await fixture.request('/api/frist/dashboard', { cookie });
       assert.equal(dashboard.status, 200);
       assert.equal(dashboard.json.channelChecks.length, 1);
       assert.equal(dashboard.json.channelChecks[0].model, 'claude-sonnet-4-5-c');
       assert.equal(dashboard.json.channelChecks[0].ok, true);
       assert.match(dashboard.json.channelChecks[0].channel, /可用线路 2\/2/);
+      assert.equal(dashboard.json.channelChecks[0].healthyCount, 2);
+      assert.equal(dashboard.json.channelChecks[0].totalCount, 2);
+      assert.equal(dashboard.json.channelChecks[0].downCount, 0);
+      assert.equal(dashboard.json.channelChecks[0].monitorStatus, '正常');
+      assert.equal(dashboard.json.channelChecks[0].successLabel, '2/2 可用');
+      assert.equal(dashboard.json.channelChecks[0].availability7d, 100);
+      assert.equal(dashboard.json.channelChecks[0].availabilityWindow, '当前库存快照');
+      assert.equal(dashboard.json.channelChecks[0].monitorIntervalSeconds, 0);
+      assert.match(dashboard.json.channelChecks[0].latencyLabel, /最低 80ms \/ 平均 100ms/);
+      assert.deepEqual(dashboard.json.channelChecks[0].history, ['ok', 'ok']);
+      assert.equal(JSON.stringify(dashboard.json.channelChecks).includes('supplier.example.com'), false);
+      assert.equal(JSON.stringify(dashboard.json.channelChecks).includes('sk-model-a'), false);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('marks channel checks as degraded when some approved inventory is slow or down', async () => {
+    const fixture = await createServerFixture();
+
+    try {
+      await fixture.writeData({
+        credentials: [
+          {
+            id: 'fast',
+            sourceId: 'source-fast',
+            models: ['gpt-5.5'],
+            sourceType: 'authorized',
+            riskStatus: 'approved',
+            backupRiskAccepted: false,
+            enabled: true,
+            status: 'healthy',
+            latencyMs: 90,
+            updatedAt: '2026-05-06T10:00:00.000Z',
+          },
+          {
+            id: 'slow',
+            sourceId: 'source-slow',
+            models: ['gpt-5.5'],
+            sourceType: 'authorized',
+            riskStatus: 'approved',
+            backupRiskAccepted: false,
+            enabled: true,
+            status: 'healthy',
+            latencyMs: 1900,
+            updatedAt: '2026-05-06T10:01:00.000Z',
+          },
+          {
+            id: 'down',
+            sourceId: 'source-down',
+            models: ['gpt-5.5'],
+            sourceType: 'authorized',
+            riskStatus: 'approved',
+            backupRiskAccepted: false,
+            enabled: false,
+            status: 'failed',
+            latencyMs: 0,
+            updatedAt: '2026-05-06T10:02:00.000Z',
+          },
+        ],
+      });
+
+      const cookie = await fixture.createVerifiedCustomer();
+      const dashboard = await fixture.request('/api/frist/dashboard', { cookie });
+      const [check] = dashboard.json.channelChecks;
+      assert.equal(check.model, 'gpt-5.5');
+      assert.equal(check.healthyCount, 2);
+      assert.equal(check.totalCount, 3);
+      assert.equal(check.downCount, 1);
+      assert.equal(check.slowCount, 1);
+      assert.equal(check.monitorStatus, '降级');
+      assert.equal(check.officialStatus, '降级');
+      assert.equal(check.availability, '66.7%');
+      assert.equal(check.availability7d, 66.7);
+      assert.equal(check.latencyMs, 90);
+      assert.equal(check.averageLatencyMs, 995);
+      assert.equal(check.successLabel, '2/3 可用');
+      assert.deepEqual(check.history, ['ok', 'slow', 'down']);
     } finally {
       await fixture.close();
     }
@@ -2284,7 +3057,7 @@ describe('Frist-API public server chain', () => {
             { value: 'sk-empty', quotaRemaining: 1, latencyMs: 90 },
             { value: 'sk-healthy', quotaRemaining: 900, latencyMs: 120 },
           ],
-          priceText: 'claude-haiku input $0.8/1M output $4/1M',
+          priceText: 'claude-sonnet-4-5-c input $3/1M output $15/1M',
         },
       });
       assert.equal(replenished.status, 200);
@@ -2295,7 +3068,7 @@ describe('Frist-API public server chain', () => {
         method: 'POST',
         headers: { Authorization: `Bearer ${token.json.key.secret}` },
         body: {
-          model: 'claude-haiku',
+          model: 'claude-sonnet-4-5-c',
           messages: [{ role: 'user', content: 'ping' }],
           max_tokens: 8,
         },
@@ -2560,7 +3333,7 @@ describe('Frist-API public server chain', () => {
         }
         return jsonResponse(200, {
           id: 'chatcmpl-after-switch',
-          model: 'claude-haiku',
+          model: 'claude-sonnet-4-5-c',
           choices: [{ message: { role: 'assistant', content: 'switched' } }],
         });
       },
@@ -2585,7 +3358,7 @@ describe('Frist-API public server chain', () => {
         body: {
           baseUrl: 'https://supplier.example.com/v1',
           pool: 'day',
-          models: ['claude-haiku'],
+          models: ['claude-sonnet-4-5-c'],
           keys: [
             { value: 'sk-first', quotaRemaining: 900, latencyMs: 80 },
             { value: 'sk-second', quotaRemaining: 900, latencyMs: 120 },
@@ -2597,7 +3370,7 @@ describe('Frist-API public server chain', () => {
         method: 'POST',
         headers: { Authorization: `Bearer ${token.json.key.secret}` },
         body: {
-          model: 'claude-haiku',
+          model: 'claude-sonnet-4-5-c',
           messages: [{ role: 'user', content: 'ping' }],
         },
       });
@@ -2610,7 +3383,7 @@ describe('Frist-API public server chain', () => {
         body: {
           baseUrl: 'https://supplier.example.com/v1',
           pool: 'day',
-          models: ['claude-haiku'],
+          models: ['claude-sonnet-4-5-c'],
           keys: [{ value: 'sk-third', quotaRemaining: 500, latencyMs: 70 }],
         },
       });
@@ -2632,7 +3405,7 @@ describe('Frist-API public server chain', () => {
         }
         return jsonResponse(200, {
           id: 'chatcmpl-failover',
-          model: 'claude-haiku',
+          model: 'claude-sonnet-4-5-c',
           choices: [{ message: { role: 'assistant', content: 'failover' } }],
         });
       },
@@ -2657,7 +3430,7 @@ describe('Frist-API public server chain', () => {
         body: {
           baseUrl: 'https://supplier.example.com/v1',
           pool: 'day',
-          models: ['claude-haiku'],
+          models: ['claude-sonnet-4-5-c'],
           keys: [
             { value: 'sk-unstable', quotaRemaining: 900, latencyMs: 50 },
             { value: 'sk-backup', quotaRemaining: 900, latencyMs: 120 },
@@ -2669,7 +3442,7 @@ describe('Frist-API public server chain', () => {
         method: 'POST',
         headers: { Authorization: `Bearer ${token.json.key.secret}` },
         body: {
-          model: 'claude-haiku',
+          model: 'claude-sonnet-4-5-c',
           messages: [{ role: 'user', content: 'ping' }],
         },
       });
@@ -2697,7 +3470,7 @@ describe('Frist-API public server chain', () => {
         });
         return jsonResponse(200, {
           id: 'chatcmpl-sticky',
-          model: 'claude-haiku',
+          model: 'claude-sonnet-4-5-c',
           choices: [{ message: { role: 'assistant', content: 'sticky' } }],
         });
       },
@@ -2722,7 +3495,7 @@ describe('Frist-API public server chain', () => {
         body: {
           baseUrl: 'https://supplier.example.com/v1',
           pool: 'day',
-          models: ['claude-haiku'],
+          models: ['claude-sonnet-4-5-c'],
           keys: [{ value: 'sk-stable', quotaRemaining: 900, latencyMs: 120 }],
         },
       });
@@ -2733,7 +3506,7 @@ describe('Frist-API public server chain', () => {
           Authorization: `Bearer ${token.json.key.secret}`,
           'x-frist-session-id': 'conversation-alpha',
         },
-        body: { model: 'claude-haiku', messages: [{ role: 'user', content: 'first turn' }] },
+        body: { model: 'claude-sonnet-4-5-c', messages: [{ role: 'user', content: 'first turn' }] },
       });
       assert.equal(first.status, 200);
 
@@ -2743,7 +3516,7 @@ describe('Frist-API public server chain', () => {
         body: {
           baseUrl: 'https://supplier.example.com/v1',
           pool: 'day',
-          models: ['claude-haiku'],
+          models: ['claude-sonnet-4-5-c'],
           keys: [{ value: 'sk-faster', quotaRemaining: 900, latencyMs: 20 }],
         },
       });
@@ -2754,7 +3527,7 @@ describe('Frist-API public server chain', () => {
           Authorization: `Bearer ${token.json.key.secret}`,
           'x-frist-session-id': 'conversation-alpha',
         },
-        body: { model: 'claude-haiku', messages: [{ role: 'user', content: 'second turn' }] },
+        body: { model: 'claude-sonnet-4-5-c', messages: [{ role: 'user', content: 'second turn' }] },
       });
       assert.equal(secondSameConversation.status, 200);
 
@@ -2764,7 +3537,7 @@ describe('Frist-API public server chain', () => {
           Authorization: `Bearer ${token.json.key.secret}`,
           'x-frist-session-id': 'conversation-beta',
         },
-        body: { model: 'claude-haiku', messages: [{ role: 'user', content: 'new conversation' }] },
+        body: { model: 'claude-sonnet-4-5-c', messages: [{ role: 'user', content: 'new conversation' }] },
       });
       assert.equal(otherConversation.status, 200);
 
@@ -2792,7 +3565,7 @@ describe('Frist-API public server chain', () => {
         }
         return jsonResponse(200, {
           id: 'chatcmpl-context-failover',
-          model: 'claude-haiku',
+          model: 'claude-sonnet-4-5-c',
           choices: [{ message: { role: 'assistant', content: 'context kept' } }],
         });
       },
@@ -2817,7 +3590,7 @@ describe('Frist-API public server chain', () => {
         body: {
           baseUrl: 'https://supplier.example.com/v1',
           pool: 'day',
-          models: ['claude-haiku'],
+          models: ['claude-sonnet-4-5-c'],
           keys: [
             { value: 'sk-context-bad', quotaRemaining: 900, latencyMs: 30 },
             { value: 'sk-context-good', quotaRemaining: 900, latencyMs: 90 },
@@ -2890,7 +3663,7 @@ describe('Frist-API public server chain', () => {
         body: {
           baseUrl: 'https://supplier.example.com/v1',
           pool: 'day',
-          models: ['claude-haiku'],
+          models: ['claude-sonnet-4-5-c'],
           keys: [{ value: 'sk-stream', quotaRemaining: 900, latencyMs: 50 }],
         },
       });
@@ -2955,14 +3728,14 @@ describe('Frist-API public server chain', () => {
         body: {
           baseUrl: 'https://supplier.example.com/v1',
           pool: 'day',
-          models: ['claude-haiku'],
+          models: ['claude-sonnet-4-5-c'],
           keys: [{ value: 'sk-restore', quotaRemaining: 10, latencyMs: 90 }],
         },
       });
       const first = await fixture.request('/v1/chat/completions', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token.json.key.secret}` },
-        body: { model: 'claude-haiku', messages: [{ role: 'user', content: 'first' }] },
+        body: { model: 'claude-sonnet-4-5-c', messages: [{ role: 'user', content: 'first' }] },
       });
       assert.equal(first.status, 200);
 
@@ -2978,7 +3751,7 @@ describe('Frist-API public server chain', () => {
         body: {
           baseUrl: 'https://supplier.example.com/v1',
           pool: 'day',
-          models: ['claude-haiku'],
+          models: ['claude-sonnet-4-5-c'],
           keys: [{ value: 'sk-restore', quotaRemaining: 500, latencyMs: 70 }],
         },
       });
@@ -3129,6 +3902,65 @@ describe('Frist-API public server chain', () => {
     }
   });
 
+  it('returns lightweight usage anomaly alerts for customer dashboards', async () => {
+    const fixture = await createServerFixture({
+      quotaCost: 500,
+      fetchImpl: async () =>
+        jsonResponse(200, {
+          id: 'chatcmpl-anomaly',
+          model: 'gpt-5.5',
+          usage: {
+            prompt_tokens: 90000,
+            completion_tokens: 250000,
+            total_tokens: 340000,
+          },
+          choices: [{ message: { role: 'assistant', content: 'anomaly ok' } }],
+        }),
+    });
+
+    try {
+      const cookie = await fixture.createVerifiedCustomer('usage-anomaly@example.com');
+      await fixture.request('/api/admin/customers/recharge', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: { email: 'usage-anomaly@example.com', amountCny: 80, method: 'manual_confirmed' },
+      });
+      const token = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie,
+        body: { name: '异常 Key', modelGroup: 'OpenAI' },
+      });
+      await fixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'https://supplier.example.com/v1',
+          pool: 'default',
+          models: ['gpt-5.5'],
+          keys: [{ value: 'sk-anomaly', quotaRemaining: 900, latencyMs: 80 }],
+        },
+      });
+
+      const response = await fixture.request('/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token.json.key.secret}` },
+        body: {
+          model: 'gpt-5.5',
+          messages: [{ role: 'user', content: 'anomaly' }],
+        },
+      });
+      assert.equal(response.status, 200);
+
+      const dashboard = await fixture.request('/api/frist/dashboard', { cookie });
+      assert.equal(dashboard.json.usageAnomalies.length >= 1, true);
+      assert.ok(dashboard.json.usageAnomalies.some((item) => item.title === '今日消耗偏高'));
+      assert.ok(dashboard.json.usageAnomalies.some((item) => /今日已用|单次消耗/.test(item.detail)));
+      assert.equal(JSON.stringify(dashboard.json.usageAnomalies).includes('sk-anomaly'), false);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it('uses New-API business endpoints for dashboard, token management, import and gateway when enabled', async () => {
     const newApiCalls = [];
     const fixture = await createServerFixture({
@@ -3199,6 +4031,7 @@ describe('Frist-API public server chain', () => {
                   key: 'sk-newapi-full-secret',
                   status: 1,
                   remain_quota: 7100,
+                  used_quota: 100,
                   model_limits: 'deepseek-v4-flash,deepseek-v4-pro,deepseek-chat,deepseek-reasoner',
                 },
               ],
@@ -3280,7 +4113,7 @@ describe('Frist-API public server chain', () => {
       assert.equal(dashboard.status, 200);
       assert.equal(dashboard.json.account.balance, '$10.00');
       assert.equal(dashboard.json.account.monthCost, '$20.00');
-      assert.equal(dashboard.json.apiKeys[0].preview, 'sk-new••••••cret');
+      assert.equal(dashboard.json.apiKeys[0].preview, 'sk-••••••cret');
       assert.equal(dashboard.json.modelUsage[0].model, 'DeepSeek');
 
       const imported = await fixture.request('/api/frist/import-url?target=Codex', {
@@ -3288,9 +4121,30 @@ describe('Frist-API public server chain', () => {
       });
       assert.equal(imported.status, 200);
       const importUrl = new URL(imported.json.url);
-      const providerConfig = JSON.parse(Buffer.from(importUrl.searchParams.get('config'), 'base64').toString('utf8'));
       assert.equal(importUrl.searchParams.get('endpoint'), 'https://api.deepseek.com/v1');
-      assert.equal(providerConfig.env.OPENAI_BASE_URL, 'https://api.deepseek.com/v1');
+      assert.equal(importUrl.searchParams.get('usageEnabled'), 'true');
+      assert.equal(importUrl.searchParams.get('usageApiKey'), 'sk-newapi-full-secret');
+      assert.equal(importUrl.searchParams.get('usageBaseUrl'), fixture.baseUrl);
+      assert.match(decodeUrlSafeBase64(importUrl.searchParams.get('usageScript')), /\/api\/frist\/key-usage/);
+      assert.equal(importUrl.searchParams.get('config'), null);
+      assert.equal(imported.json.config.targetSlug, 'codex');
+      assert.equal(JSON.parse(imported.json.config.authJson).OPENAI_API_KEY, 'sk-newapi-full-secret');
+      assert.equal(imported.json.config.apiRequestUrl, 'https://api.deepseek.com/v1');
+      assert.equal(imported.json.config.usageBaseUrl, fixture.baseUrl);
+      assert.match(imported.json.config.ccSwitchMcpUrl, /resource=mcp/);
+      assert.match(imported.json.setup.test, /CODEX_HOME="\$tmp_home" codex exec/);
+      assert.match(imported.json.setup.test, /\[mcp_servers\.playwright\]/);
+
+      const usage = await fixture.request('/api/frist/key-usage', {
+        headers: { Authorization: 'Bearer sk-newapi-full-secret' },
+      });
+      assert.equal(usage.status, 200);
+      assert.equal(usage.json.ok, true);
+      assert.equal(usage.json.keyPreview, 'sk-••••••cret');
+      assert.equal(usage.json.plan, 'pro');
+      assert.equal(usage.json.remainingUsd, 9.86);
+      assert.equal(usage.json.usedUsd, 0.14);
+      assert.equal(JSON.stringify(usage.json).includes('sk-newapi-full-secret'), false);
 
       const disabled = await fixture.request('/api/frist/token/9', {
         method: 'PATCH',
@@ -3327,7 +4181,7 @@ describe('Frist-API public server chain', () => {
         }
         return jsonResponse(200, {
           id: 'chatcmpl-proxy',
-          model: body.model || 'claude-haiku',
+          model: body.model || 'claude-sonnet-4-5-c',
           choices: [{ message: { role: 'assistant', content: 'proxy' } }],
         });
       },
@@ -3341,7 +4195,7 @@ describe('Frist-API public server chain', () => {
           baseUrl: 'https://supplier.example.com/v1',
           proxyBaseUrl: 'https://proxy.example.com/v1',
           pool: 'day',
-          models: ['claude-haiku'],
+          models: ['claude-sonnet-4-5-c'],
           keys: [{ value: 'sk-proxy', quotaRemaining: 1000, latencyMs: 999 }],
           probeMode: 'strict',
         },
@@ -3365,7 +4219,7 @@ describe('Frist-API public server chain', () => {
         method: 'POST',
         headers: { Authorization: `Bearer ${token.json.key.secret}` },
         body: {
-          model: 'claude-haiku',
+          model: 'claude-sonnet-4-5-c',
           messages: [{ role: 'user', content: 'customer request' }],
         },
       });
@@ -3413,6 +4267,45 @@ describe('Frist-API public server chain', () => {
     }
   });
 
+  it('blocks upstream replenishment URLs that resolve to loopback or private addresses', async () => {
+    const fixture = await createServerFixture({
+      resolveUpstreamAddresses: async (hostname) => {
+        if (hostname === 'metadata.example.com') return [{ address: '169.254.169.254', family: 4 }];
+        return [{ address: '203.0.113.10', family: 4 }];
+      },
+    });
+
+    try {
+      const loopback = await fixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'http://127.0.0.1:8080/v1',
+          pool: 'day',
+          models: ['gpt-5.5'],
+          keys: ['sk-loopback'],
+        },
+      });
+      assert.equal(loopback.status, 400);
+      assert.match(loopback.json.error, /内网|本机/);
+
+      const rebinding = await fixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'https://metadata.example.com/v1',
+          pool: 'day',
+          models: ['gpt-5.5'],
+          keys: ['sk-rebinding'],
+        },
+      });
+      assert.equal(rebinding.status, 400);
+      assert.match(rebinding.json.error, /解析到内网|本机/);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it('refuses to start in public mode with unsafe defaults enabled', () => {
     assert.throws(
       () =>
@@ -3432,6 +4325,8 @@ describe('Frist-API public server chain', () => {
       adminToken: 'admin-token-with-enough-randomness-2026',
       sessionSecret: 'session-secret-with-enough-randomness-2026',
       dataEncryptionKey: 'runtime-encryption-key-with-enough-randomness-2026',
+      adminPageCode: 'hidden-admin-entry-2026',
+      requireCsrf: true,
       publicGatewayBaseUrl: 'https://gateway.frist-api.dev/v1',
     });
     server.close();
@@ -3442,9 +4337,246 @@ describe('Frist-API public server chain', () => {
       adminToken: 'admin-token-with-enough-randomness-2026',
       sessionSecret: 'session-secret-with-enough-randomness-2026',
       dataEncryptionKey: 'runtime-encryption-key-with-enough-randomness-2026',
+      adminPageCode: 'hidden-admin-entry-2026',
+      requireCsrf: true,
       publicGatewayBaseUrl: 'http://101.43.41.96:5566/v1',
     });
     temporaryIpServer.close();
+  });
+
+  it('enforces production boundaries for brand domain, New-API database, 2FA and merchant payment', () => {
+    assert.throws(
+      () =>
+        createFristApiServer({
+          publicMode: true,
+          enforceProductionReadiness: true,
+          adminToken: 'admin-token-with-enough-randomness-2026',
+          sessionSecret: 'session-secret-with-enough-randomness-2026',
+          dataEncryptionKey: 'runtime-encryption-key-with-enough-randomness-2026',
+          adminPageCode: 'hidden-admin-entry-2026',
+          publicGatewayBaseUrl: 'https://frist-api.101-43-41-96.nip.io/v1',
+          canonicalHost: 'frist-api.101-43-41-96.nip.io',
+        }),
+      /固定 HTTPS 品牌域名|New-API 数据库|管理员 2FA|真实支付商户/,
+    );
+
+    const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const productionServer = createFristApiServer({
+      publicMode: true,
+      enforceProductionReadiness: true,
+      requireNewApiDatabase: true,
+      newApiEnabled: true,
+      newApiBaseUrl: 'http://openclaw-newapi:3000',
+      newApiAccessToken: 'new-api-access-token-with-enough-randomness',
+      newApiUserId: '1',
+      requireAdmin2fa: true,
+      adminTotpSecrets: ['JBSWY3DPEHPK3PXP'],
+      requireCsrf: true,
+      paymentEnabled: true,
+      alipayEnabled: true,
+      alipayAppId: '2021000000000000',
+      alipayPrivateKey: privateKey.export({ type: 'pkcs8', format: 'pem' }),
+      alipayPublicKey: publicKey.export({ type: 'spki', format: 'pem' }),
+      adminToken: 'admin-token-with-enough-randomness-2026',
+      sessionSecret: 'session-secret-with-enough-randomness-2026',
+      dataEncryptionKey: 'runtime-encryption-key-with-enough-randomness-2026',
+      adminPageCode: 'hidden-admin-entry-2026',
+      publicGatewayBaseUrl: 'https://api.frist.example/v1',
+      canonicalHost: 'api.frist.example',
+    });
+    productionServer.close();
+  });
+
+  it('requires administrator TOTP before admin APIs when 2FA is enabled', async () => {
+    const fixedNow = new Date('2026-05-07T12:00:00.000Z');
+    const secret = 'JBSWY3DPEHPK3PXP';
+    const fixture = await createServerFixture({
+      requireAdmin2fa: true,
+      adminTotpSecrets: [secret],
+      nowFactory: () => fixedNow,
+    });
+
+    try {
+      const blocked = await fixture.request('/api/admin/replenishments', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+      assert.equal(blocked.status, 401);
+      assert.match(blocked.json.error, /2FA/);
+
+      const invalid = await fixture.request('/api/admin/2fa/verify', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: { code: '000000' },
+      });
+      assert.equal(invalid.status, 401);
+
+      const verified = await fixture.request('/api/admin/2fa/verify', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: { code: totpCode(secret, fixedNow) },
+      });
+      assert.equal(verified.status, 200);
+      assert.match(verified.setCookie, /frist_admin_2fa=/);
+
+      const inventory = await fixture.request('/api/admin/replenishments', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+        cookie: verified.cookie,
+      });
+      assert.equal(inventory.status, 200);
+      assert.equal(Array.isArray(inventory.json.credentials), true);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('records backup status and real channel SLA events for production readiness checks', async () => {
+    const fixture = await createServerFixture({
+      nowFactory: () => new Date('2026-05-07T12:00:00.000Z'),
+      backupStatusMaxAgeHours: 26,
+    });
+
+    try {
+      const initial = await fixture.request('/api/admin/production-readiness', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+      assert.equal(initial.status, 200);
+      assert.equal(initial.json.ready, false);
+      assert.equal(initial.json.backup.ready, false);
+      assert.equal(initial.json.sla.eventCount, 0);
+
+      const backup = await fixture.request('/api/admin/backups/status', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          provider: 'rclone',
+          target: 's3://frist-api-prod/runtime',
+          lastBackupAt: '2026-05-07T11:30:00.000Z',
+          lastRestoreTestAt: '2026-05-07T11:40:00.000Z',
+          status: 'ok',
+          artifact: 'runtime-20260507.tgz',
+          checksum: 'sha256:test-checksum',
+        },
+      });
+      assert.equal(backup.status, 200);
+      assert.equal(backup.json.backup.ready, true);
+      assert.equal(JSON.stringify(backup.json).includes('runtime-20260507.tgz'), true);
+
+      await fixture.writeData({
+        ...(await fixture.readData()),
+        users: [
+          {
+            id: 'user-sla',
+            email: 'sla@example.com',
+            emailVerified: true,
+            passwordHash: 'pbkdf2-sha256$210000$salt$digest',
+            plan: '默认套餐',
+            renewalDate: '-',
+            balanceCents: 10_000,
+            packageQuotaCents: 0,
+            boosterQuotaCents: 10_000,
+          },
+        ],
+        userKeys: [
+          {
+            id: 'key-sla',
+            userId: 'user-sla',
+            name: 'SLA Key',
+            secret: 'fk-live-sla-test-key',
+            preview: 'fk-live-••••••-test',
+            enabled: true,
+            modelGroup: 'OpenAI',
+            costCents: 0,
+          },
+        ],
+        credentials: [
+          {
+            id: 'cred-sla',
+            sourceId: 'source-sla',
+            baseUrl: 'https://supplier.example.com/v1',
+            routeBaseUrl: 'https://supplier.example.com/v1',
+            rawKey: 'sk-sla-upstream',
+            keyPreview: 'sk-••••••ream',
+            pool: 'default',
+            modelGroup: 'OpenAI',
+            models: ['gpt-5.5'],
+            enabled: true,
+            status: 'healthy',
+            quotaRemaining: 1000,
+            quotaTotal: 1000,
+            latencyMs: 80,
+            sourceType: 'authorized',
+            riskStatus: 'approved',
+            updatedAt: '2026-05-07T11:50:00.000Z',
+          },
+        ],
+      });
+
+      const gateway = await fixture.request('/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer fk-live-sla-test-key',
+        },
+        body: {
+          model: 'gpt-5.5',
+          messages: [{ role: 'user', content: 'pong' }],
+        },
+      });
+      assert.equal(gateway.status, 200);
+
+      const viewerCookie = await fixture.createVerifiedCustomer('sla-viewer@example.com');
+      const current = await fixture.readData();
+      current.userKeys.find((item) => item.id === 'key-sla').userId = current.sessions[viewerCookie.split('=')[1]];
+      await fixture.writeData(current);
+      const dashboard = await fixture.request('/api/frist/dashboard', { cookie: viewerCookie });
+      const check = dashboard.json.channelChecks.find((item) => item.model === 'gpt-5.5');
+      assert.equal(check.sla.window, '真实探测事件');
+      assert.equal(check.sla.samples7d, 1);
+      assert.equal(check.sla.availability7d, 100);
+
+      const readiness = await fixture.request('/api/admin/production-readiness', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+      assert.equal(readiness.json.backup.ready, true);
+      assert.equal(readiness.json.sla.eventCount, 1);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('records failed admin authentication without storing submitted tokens', async () => {
+    const fixture = await createServerFixture();
+
+    try {
+      const blocked = await fixture.request('/api/admin/replenishments', {
+        headers: {
+          'x-admin-token': 'wrong-admin-token-should-not-be-stored',
+          'x-forwarded-for': '203.0.113.9',
+        },
+      });
+      assert.equal(blocked.status, 401);
+
+      const inventory = await fixture.request('/api/admin/replenishments', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+      assert.equal(inventory.status, 200);
+      const authEvent = inventory.json.events.find((event) => event.type === 'admin_auth_failed');
+      assert.ok(authEvent);
+      assert.match(authEvent.detail, /管理认证失败: \/api\/admin\/replenishments/);
+      assert.equal(JSON.stringify(inventory.json).includes('wrong-admin-token-should-not-be-stored'), false);
+      assert.equal((await fixture.readRawData()).includes('wrong-admin-token-should-not-be-stored'), false);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('ships runtime write failure warnings and CLI graceful shutdown hooks', () => {
+    const serverSource = readFileSync(new URL('../server/server.js', import.meta.url), 'utf8');
+
+    assert.match(serverSource, /FRIST_API_RUNTIME_WRITE_FAILED/);
+    assert.match(serverSource, /FRIST_API_ADMIN_AUDIT_WRITE_FAILED/);
+    assert.match(serverSource, /process\.once\('SIGTERM'/);
+    assert.match(serverSource, /process\.once\('SIGINT'/);
+    assert.match(serverSource, /server\.close\(\(error\) =>/);
   });
 
   it('hides the static admin page behind a separate public gate code', async () => {
@@ -3457,6 +4589,7 @@ describe('Frist-API public server chain', () => {
       dataEncryptionKey: 'runtime-encryption-key-with-enough-randomness-2026',
       exposeVerificationCode: false,
       adminPageCode: 'hidden-admin-entry-2026',
+      requireCsrf: true,
     });
 
     try {
@@ -3465,7 +4598,7 @@ describe('Frist-API public server chain', () => {
 
       const allowed = await fixture.request('/admin.html?code=hidden-admin-entry-2026');
       assert.equal(allowed.status, 200);
-      assert.match(allowed.text, /Frist-API Admin/);
+      assert.match(allowed.text, /Frist-API 管理端|>Admin</);
     } finally {
       await fixture.close();
     }
@@ -3516,6 +4649,160 @@ describe('Frist-API public server chain', () => {
       await fixture.close();
     }
   });
+
+  it('manages ChatGPT Plus account ledger without exposing credentials or routing it as API stock', async () => {
+    const fixture = await createServerFixture({
+      nowFactory: () => new Date('2026-05-04T12:00:00.000Z'),
+      dataEncryptionKey: 'runtime-encryption-key-with-enough-randomness-2026',
+    });
+
+    try {
+      const saved = await fixture.request('/api/admin/plus-accounts', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          label: 'Plus 工作号 A',
+          openaiEmail: 'plus-work@example.com',
+          appleEmail: 'apple-tr@example.com',
+          region: 'Turkey',
+          status: 'active',
+          complianceStatus: 'self_use_only',
+          plusRenewalAt: '2026-05-07',
+          appleBalanceTry: 620,
+          monthlyCostTry: 499.99,
+          deviceProfile: 'Chrome Profile Plus-A',
+          riskNote: '仅本人使用，不转售不共享',
+          secrets: 'apple-password-and-recovery-note',
+        },
+      });
+      assert.equal(saved.status, 200);
+      assert.equal(saved.json.account.region, 'Türkiye');
+      assert.equal(saved.json.account.label, 'Plus 工作号 A');
+      assert.equal(saved.json.account.openaiEmail, 'pl***@example.com');
+      assert.equal(saved.json.account.secretPreview, '已保存，管理端脱敏');
+      assert.equal(saved.json.account.routingEnabled, false);
+      assert.equal(JSON.stringify(saved.json).includes('apple-password-and-recovery-note'), false);
+      assert.equal(saved.json.summary.dueSoon, 1);
+
+      const ledger = await fixture.request('/api/admin/plus-accounts', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+      assert.equal(ledger.status, 200);
+      assert.equal(ledger.json.accounts.length, 1);
+      assert.equal(ledger.json.accounts[0].renewalText, '3 天后到期');
+      assert.equal(JSON.stringify(ledger.json).includes('plus-work@example.com'), false);
+      assert.equal(JSON.stringify(ledger.json).includes('apple-password-and-recovery-note'), false);
+
+      const updated = await fixture.request('/api/admin/plus-accounts', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          id: ledger.json.accounts[0].id,
+          status: 'renewal_due',
+          plusRenewalAt: '2026-05-05',
+          appleBalanceTry: '余额异常',
+          monthlyCostTry: '月费异常',
+        },
+      });
+      assert.equal(updated.status, 200);
+      assert.equal(updated.json.account.openaiEmail, 'pl***@example.com');
+      assert.equal(updated.json.account.status, 'renewal_due');
+      assert.equal(updated.json.account.appleBalanceTry, 0);
+      assert.equal(updated.json.account.monthlyCostTry, 0);
+      assert.equal(JSON.stringify(updated.json).includes('apple-password-and-recovery-note'), false);
+
+      const inventory = await fixture.request('/api/admin/replenishments', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+      assert.equal(inventory.json.plusAccounts.length, 1);
+      assert.equal(inventory.json.credentials.length, 0);
+      assert.deepEqual(inventory.json.inventorySummary, []);
+
+      const rawRuntime = await readFile(fixture.dataFile, 'utf8');
+      assert.equal(rawRuntime.includes('apple-password-and-recovery-note'), false);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('imports RT JSON and TXT credentials as a separate masked management ledger', async () => {
+    const fixture = await createServerFixture({
+      nowFactory: () => new Date('2026-05-04T12:00:00.000Z'),
+      dataEncryptionKey: 'runtime-encryption-key-with-enough-randomness-2026',
+    });
+
+    try {
+      const imported = await fixture.request('/api/admin/rt-accounts/import', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          platform: 'codex',
+          sourceLabel: 'New-API Codex OAuth',
+          accountType: 'Plus',
+          rtText: JSON.stringify([
+            {
+              refresh_token: 'rt_codex_alpha_abcdefghijklmnopqrstuvwxyz',
+              email: 'codex-alpha@example.com',
+              account_id: 'acct_codex_alpha_001',
+            },
+            {
+              refresh_token: 'rt_codex_beta_abcdefghijklmnopqrstuvwxyz',
+              email: 'codex-beta@example.com',
+            },
+          ]),
+          note: '只做刷新台账，不进入用户路由',
+        },
+      });
+      assert.equal(imported.status, 200);
+      assert.equal(imported.json.imported.length, 2);
+      assert.equal(imported.json.summary.total, 2);
+      assert.equal(imported.json.summary.ready, 2);
+      assert.equal(imported.json.accounts[0].label, 'co***@example.com');
+      assert.equal(imported.json.accounts[0].email, 'co***@example.com');
+      assert.match(imported.json.accounts[0].refreshTokenPreview, /^rt-••••••/);
+      assert.equal(JSON.stringify(imported.json).includes('codex-beta@example.com'), false);
+      assert.equal(JSON.stringify(imported.json).includes('rt_codex_alpha'), false);
+      assert.equal(JSON.stringify(imported.json).includes('acct_codex_alpha_001'), false);
+
+      const updated = await fixture.request('/api/admin/rt-accounts/import', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          platform: 'openai',
+          rtText: [
+            'rt_chatgpt_txt_abcdefghijklmnopqrstuvwxyz,chatgpt@example.com,acct_chatgpt_001',
+            'rt_codex_alpha_abcdefghijklmnopqrstuvwxyz,codex-alpha@example.com,acct_codex_alpha_001',
+          ].join('\n'),
+        },
+      });
+      assert.equal(updated.status, 200);
+      assert.equal(updated.json.summary.total, 3);
+      assert.equal(updated.json.imported.length, 2);
+
+      const ledger = await fixture.request('/api/admin/rt-accounts', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+      assert.equal(ledger.status, 200);
+      assert.equal(ledger.json.accounts.length, 3);
+      assert.equal(ledger.json.accounts.some((account) => account.label === 'chatgpt@example.com'), false);
+      assert.equal(JSON.stringify(ledger.json).includes('rt_chatgpt_txt'), false);
+      assert.equal(JSON.stringify(ledger.json).includes('acct_chatgpt_001'), false);
+
+      const inventory = await fixture.request('/api/admin/replenishments', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+      assert.equal(inventory.json.rtAccounts.length, 3);
+      assert.equal(inventory.json.credentials.length, 0);
+      assert.deepEqual(inventory.json.inventorySummary, []);
+
+      const rawRuntime = await readFile(fixture.dataFile, 'utf8');
+      assert.equal(rawRuntime.includes('rt_codex_alpha_abcdefghijklmnopqrstuvwxyz'), false);
+      assert.equal(rawRuntime.includes('rt_chatgpt_txt_abcdefghijklmnopqrstuvwxyz'), false);
+      assert.match(rawRuntime, /enc:v1:/);
+    } finally {
+      await fixture.close();
+    }
+  });
 });
 
 async function createServerFixture(options = {}) {
@@ -3529,9 +4816,14 @@ async function createServerFixture(options = {}) {
     exposeVerificationCode: options.exposeVerificationCode ?? true,
     allowDemoRecharge: options.allowDemoRecharge,
     requireEmailVerification: options.requireEmailVerification ?? true,
-    fetchImpl: options.fetchImpl,
     nowFactory: options.nowFactory,
     quotaCost: options.quotaCost,
+    fetchImpl: options.fetchImpl || (async () =>
+      jsonResponse(200, {
+        id: 'chatcmpl-fixture',
+        choices: [{ message: { role: 'assistant', content: 'pong' } }],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      })),
     lowInventoryThresholdRatio: options.lowInventoryThresholdRatio,
     notifyLowInventory: options.notifyLowInventory,
     balanceAlertEmailSender: options.balanceAlertEmailSender,
@@ -3553,6 +4845,22 @@ async function createServerFixture(options = {}) {
     accountEmailSender: options.accountEmailSender,
     passwordResetTtlMs: options.passwordResetTtlMs,
     paymentEnabled: options.paymentEnabled,
+    enforceProductionReadiness: options.enforceProductionReadiness,
+    requireNewApiDatabase: options.requireNewApiDatabase,
+    requireAdmin2fa: options.requireAdmin2fa,
+    adminTotpSecrets: options.adminTotpSecrets,
+    admin2faSessionTtlMs: options.admin2faSessionTtlMs,
+    backupStatusMaxAgeHours: options.backupStatusMaxAgeHours,
+    slaRetentionDays: options.slaRetentionDays,
+    requireCsrf: options.requireCsrf,
+    allowPrivateUpstreamUrls: options.allowPrivateUpstreamUrls,
+    resolveUpstreamAddresses:
+      options.resolveUpstreamAddresses ||
+      (async (hostname) => {
+        if (hostname === 'metadata.example.com') return [{ address: '169.254.169.254', family: 4 }];
+        if (hostname === 'localhost') return [{ address: '127.0.0.1', family: 4 }];
+        return [{ address: '203.0.113.10', family: 4 }];
+      }),
     wechatPayEnabled: options.wechatPayEnabled,
     wechatPayAppId: options.wechatPayAppId,
     wechatPayMchId: options.wechatPayMchId,
@@ -3561,11 +4869,13 @@ async function createServerFixture(options = {}) {
     wechatPayPublicKey: options.wechatPayPublicKey,
     wechatPayApiV3Key: options.wechatPayApiV3Key,
     wechatPayGateway: options.wechatPayGateway,
+    wechatPayNotifyUrl: options.wechatPayNotifyUrl,
     alipayEnabled: options.alipayEnabled,
     alipayAppId: options.alipayAppId,
     alipayPrivateKey: options.alipayPrivateKey,
     alipayPublicKey: options.alipayPublicKey,
     alipayGateway: options.alipayGateway,
+    alipayNotifyUrl: options.alipayNotifyUrl,
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;
@@ -3573,9 +4883,11 @@ async function createServerFixture(options = {}) {
 
   return {
     baseUrl,
+    dataFile,
     async request(path, options = {}) {
       const response = await fetch(`${baseUrl}${path}`, {
         method: options.method || 'GET',
+        redirect: options.redirect || 'follow',
         headers: {
           ...(options.body ? { 'content-type': 'application/json' } : {}),
           ...(options.cookie ? { cookie: options.cookie } : {}),
@@ -3588,6 +4900,7 @@ async function createServerFixture(options = {}) {
         status: response.status,
         setCookie: response.headers.get('set-cookie') || '',
         cookie: response.headers.get('set-cookie')?.split(';')[0] || options.cookie || '',
+        location: response.headers.get('location') || '',
         json: parseJsonOrEmpty(text),
         text,
       };

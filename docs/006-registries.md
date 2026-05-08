@@ -35,25 +35,27 @@
 | 16 | Zhipu 智谱 | 付费 | 1 | OCR专用 | `ZHIPU_API_KEY` |
 | 17 | Sambanova | 免费 | 1 | ~10RPM (DeepSeek-R1) | `SAMBANOVA_API_KEY` |
 | 18 | GitHub Models | 免费 | 1 | ~15RPM | `GITHUB_MODELS_TOKEN` |
+| 19 | inroi 授权上游 | 付费授权余额站 | 1 | 请求地址为 `https://www.inroi.shop/v1`；已验证 `/v1/models` 21 个模型和 `gpt-5.4-mini` Chat Completions；真实 Key 仅在服务器 runtime 加密号池保存 | Frist-API 管理端号池 |
+| 20 | 86GameStore 授权上游 | 付费授权余额站 | 1 | 请求地址为 `https://api.86gamestore.com`；本地 Frist-API runtime 已按 Claude/OpenAI 两个模型组分开保存并探测 healthy，Claude 组覆盖 `claude-sonnet-4-5-c`、`claude-opus-4-6-c`，OpenAI 组覆盖 `gpt-5.4-mini`、`gpt-5.3-codex`、`gpt-5.4`、`gpt-5.5`；真实 Key 仅在 ignored runtime 中以 `enc:v1:` 保存 | Frist-API 管理端号池 |
 
 ## 非 LLM API
 
 | # | 提供商 | 用途 | 限制 | 环境变量 |
 |---|--------|------|------|----------|
-| 19 | fal.ai | 图像/视频生成 | 按额度 | `FAL_KEY` |
-| 20 | Deepgram | 语音转文字 | 按额度 | `DEEPGRAM_API_KEY` |
-| 21 | Mem0 Cloud | 云端记忆 | 按额度 | `MEM0_API_KEY` |
-| 22 | Kling AI | 视频生成 | 按额度 | `KLING_ACCESS_KEY` + `KLING_SECRET_KEY` |
-| 23 | Manus AI | 联网搜索+编程 | 按额度 | `MANUS_API_KEY` |
-| 24 | Vercel AI Gateway | AI网关 | 按额度 | `VERCEL_AI_KEY` |
-| 25 | HuggingFace | 模型部署 | 免费额度 | `HUGGINGFACE_TOKEN` |
-| 26 | SerpApi | 搜索引擎 | 250次/月, 50次/小时 | `SERPAPI_KEY` |
-| 27 | Brave Search | 网页搜索 | 50QPS | `BRAVE_SEARCH_API_KEY` |
-| 28 | CloudConvert | 文件格式转换 | 按额度 | `CLOUDCONVERT_API_KEY`（当前仅登记，主代码尚未接入） |
-| 29 | Tavily | AI搜索 | 免费1000次/月 | `TAVILY_API_KEY` |
-| 30 | 闲鱼 AI 客服 | 闲鱼专用LLM | 按额度 | `XIANYU_LLM_API_KEY` + `XIANYU_LLM_BASE_URL` + `XIANYU_LLM_MODEL` |
-| 31 | Langfuse | LLM观测/追踪 | 免费额度 | `LANGFUSE_SECRET_KEY` + `LANGFUSE_PUBLIC_KEY` + `LANGFUSE_HOST` |
-| 32 | 微信通知 | 微信消息推送 | 无 | `WECHAT_NOTIFY_ENABLED` |
+| 21 | fal.ai | 图像/视频生成 | 按额度 | `FAL_KEY` |
+| 22 | Deepgram | 语音转文字 | 按额度 | `DEEPGRAM_API_KEY` |
+| 23 | Mem0 Cloud | 云端记忆 | 按额度 | `MEM0_API_KEY` |
+| 24 | Kling AI | 视频生成 | 按额度 | `KLING_ACCESS_KEY` + `KLING_SECRET_KEY` |
+| 25 | Manus AI | 联网搜索+编程 | 按额度 | `MANUS_API_KEY` |
+| 26 | Vercel AI Gateway | AI网关 | 按额度 | `VERCEL_AI_KEY` |
+| 27 | HuggingFace | 模型部署 | 免费额度 | `HUGGINGFACE_TOKEN` |
+| 28 | SerpApi | 搜索引擎 | 250次/月, 50次/小时 | `SERPAPI_KEY` |
+| 29 | Brave Search | 网页搜索 | 50QPS | `BRAVE_SEARCH_API_KEY` |
+| 30 | CloudConvert | 文件格式转换 | 按额度 | `CLOUDCONVERT_API_KEY`（当前仅登记，主代码尚未接入） |
+| 31 | Tavily | AI搜索 | 免费1000次/月 | `TAVILY_API_KEY` |
+| 32 | 闲鱼 AI 客服 | 闲鱼专用LLM | 按额度 | `XIANYU_LLM_API_KEY` + `XIANYU_LLM_BASE_URL` + `XIANYU_LLM_MODEL` |
+| 33 | Langfuse | LLM观测/追踪 | 免费额度 | `LANGFUSE_SECRET_KEY` + `LANGFUSE_PUBLIC_KEY` + `LANGFUSE_HOST` |
+| 34 | 微信通知 | 微信消息推送 | 无 | `WECHAT_NOTIFY_ENABLED` |
 
 ---
 
@@ -147,7 +149,7 @@
 ## 二、命令注册表
 
 
-> 最后更新: 2026-05-03 (同步 Frist-API Workbench 外壳与新用户页) | Bot 命令总数 104
+> 最后更新: 2026-05-08 (同步 Frist-API 用户端视觉 QA 批注修复) | Bot 命令总数 104
 
 ---
 
@@ -156,14 +158,15 @@
 | 入口 | 选择器 / 路径 | 说明 |
 |------|---------------|------|
 | 账户菜单 | `data-auth-toggle` / `data-auth-panel` | Frist-API 用户端右上角注册和登录入口 |
+| 中英文切换 | `data-language-toggle` | 用户端顶栏中/英文切换入口，先保留 UI 控制钩子 |
 | 用户注册 | `data-register-account` / `/api/frist/challenge` | Frist-API 用户端注册入口，注册专用验证码挑战，公开页不回显答案 |
 | 用户登录 | `data-login-account` | Frist-API 用户端邮箱密码登录入口，不再要求每次登录填写验证码 |
 | 忘记密码 | `data-password-reset-request` / `/api/frist/password-reset/request` | 登录前按邮箱发送重置验证码，SMTP 未配置时返回明确反馈 |
 | 重置密码 | `data-password-reset-confirm` / `/api/frist/password-reset/confirm` | 用户输入重置验证码和新密码后完成 PBKDF2 密码更新 |
 | 管理员身份码 | `data-owner-claim-code` / `data-owner-claim` | 登录后用一次性身份码把当前账号升级为管理员 |
 | 运营入口 | `data-owner-entry` | 仅管理员账号可见，进入独立管理页 |
-| 返回首页 | `data-back-home` / `data-route="dashboard"` | 子页面统一返回用户首页，避免导入、广场、教程等页面迷路 |
-| 创建 Key | `data-create-key` | 创建用户 `fk-live-*` API Key |
+| 返回首页 | `data-back-home` / `data-route="dashboard"` | 子页面用“首页”短按钮返回用户首页，避免导入、测试、配置等页面迷路 |
+| 创建 Key | `data-create-key` | 创建用户 `fk-live-*` API Key，兼容旧 `sk-*` |
 | Key 改名 | `data-key-name` / `data-rename-key` | 修改单个用户 API Key 的显示名称 |
 | Key 删除 | `data-delete-key` | 删除单个用户 API Key |
 | Key 开关 | `data-toggle-key` | 开启或关闭单个用户 API Key |
@@ -174,43 +177,56 @@
 | 余额预警设置 | `data-balance-alert-card` / `data-balance-alert-enabled` / `data-balance-alert-threshold` / `data-balance-alert-email` | 用户在账单页自定义低余额提醒阈值和收件邮箱 |
 | 余额预警保存 | `data-balance-alert-save` | 保存当前用户的余额预警配置 |
 | 余额预警测试邮件 | `data-balance-alert-test` / `data-balance-alert-feedback` | 发送一封品牌化余额预警测试邮件，验证 SMTP 配置 |
-| Refero 风格系统 | `data-design-system="refero-hyperstudio"` | Frist-API 用户端和管理端统一深色控制台视觉，复用按钮、卡片、表格、图表、空态和骨架屏样式 |
-| 工作台导航 | `data-workspace-layout` / `data-workspace-rail` / `data-console-board` / `aria-current="page"` | 用户首页控制台布局，侧栏不再重复展示 Frist-API 品牌 Logo，并向辅助技术标记当前页面 |
-| 首页核心指标 | `data-focus-metrics` / `data-today-calls` / `data-today-cost` / `data-today-tokens` / `data-total-tokens` / `data-average-latency` / `data-success-rate` | 展示今日请求、今日消费、今日 Token、累计 Token、平均响应和性能指标 |
+| Tabcode Console 风格系统 | `data-design-system="tabcode-console"` / `.brand-mark` | Frist-API 用户端和管理端吸收 Tabcode 控制台视觉；用户端 Logo 改为 Apple 风格的简洁 `F` 标识 |
+| 工作台导航 | `data-workspace-layout` / `data-workspace-rail` / `data-console-board` / `aria-current="page"` | 用户首页控制台布局，侧栏标准化选中态和间距；导航暂时隐藏充值、邀请和独立教程入口 |
+| 首页核心指标 | `data-focus-metrics` / `data-today-calls` / `data-today-cost` / `data-average-latency` / `data-success-rate` | 首屏只展示余额、Key、今日请求/消费和成功率，减少解释性文字 |
 | 加载与空态 | `aria-busy` / `skeleton-row` / `empty-row--stack` / `table-empty` | 用户端加载、无数据和表格空状态统一反馈 |
-| 后端恢复提示 | `data-server-recovery` / `data-retry-dashboard` | 后端不可用时显示空数据模式和一键重新连接入口，避免用户不知道如何恢复 |
-| Token 趋势 | `data-token-trend` | 用户首页展示 Token 使用趋势图，趋势条带可访问描述 |
-| 最近日志 | `data-recent-logs` | 用户首页展示最近使用日志，支持跳转完整使用记录，无数据时显示生产空态 |
+| 后端恢复提示 | `data-server-recovery` / `data-retry-dashboard` | 后端不可用时显示“离线”和一键重连入口，避免用户不知道如何恢复 |
+| Token 趋势 | `data-token-trend` | 用户首页展示 SVG 折线/面积趋势图，替代难读的日期堆叠空图 |
+| 最近日志 | `data-usage-records` | 首页不再展示最近日志板块；完整日志统一进入左侧“记录/使用记录”查看 |
 | API 搜索 | `data-api-search` | 在 API 管理页按名称或 Key 搜索用户 API Key |
 | API 端点展示 | `data-base-url` | 在 API 管理页展示用户侧 OpenAI 兼容端点 |
-| 使用记录 | `data-route="records"` / `data-usage-records` | 展示 API 密钥、模型、推理强度、端点、类型、计费模式和 Token |
+| 使用记录 | `data-route="records"` / `data-usage-records` | 展示 API 密钥、模型、客户端、推理强度、端点、类型、计费模式、费用、延迟和 Token |
 | 我的订阅 | `data-route="subscription"` / `subscription-surface` | 为未来时限套餐展示周期、到期和续费状态预留页面 |
 | 独立兑换码页 | `data-route="redeem"` / `data-exchange-code` / `data-redeem-code` | 兑换卡密，并预留微信/支付宝异常时的人工代收付说明 |
-| 邀请返利 | `data-route="invite"` / `invite-surface` | 为后续邀请链接、首充/续费返利和人工结算预留页面 |
-| 个人资料 | `data-route="profile"` / `profile-surface` | 展示邮箱、套餐、API Key 数量和余额 |
-| 导入目标选择 | `data-import-targets` / `data-target` | 选择 Claude、Codex、Gemini、OpenCode、OpenClaw、Hermes、Harmes |
-| CC Switch 导入 | `data-open-import` / `data-copy-link` | 打开或复制五客户端导入链接 |
+| 充值入口 | `data-route="billing"` | 充值页面和后端能力保留，左侧导航暂时隐藏，等微信/支付宝正式接口稳定后再恢复入口 |
+| 邀请返利 | `data-route="invite"` / `invite-surface` | 页面保留但左侧导航暂时隐藏；后续有真实拉新运营需要时再展示 |
+| 个人资料 | `data-route="profile"` / `profile-surface` / `data-profile-avatar-input` | 行业通用账户布局，支持修改头像 URL、昵称和邮箱，并展示套餐、API Key 数量和余额 |
+| 导入目标选择 | `data-import-targets` / `data-target` | 用户端选择 Claude、Codex、Gemini、OpenCode、OpenClaw、Hermes；`Harmes` 仅保留底层兼容，不再展示为重复目标 |
+| CC Switch 导入 | `data-open-import` / `data-copy-link` / `data-import-fallback` | 打开或复制 Claude、Codex、Gemini、OpenCode、OpenClaw、Hermes 供应商导入链接；顶部前置一键导入按钮；深链只携带 CC Switch 当前官方 provider parser 消费字段和 `usageScript` / `usageEnabled` / `usageApiKey` / `usageBaseUrl` / `usageAutoInterval`，不再塞旧 `config` 或 `availableModels` 大块字段；服务端确认用户选择模型时，返回字段、深链 `model` 和 Codex TOML 默认模型保持一致；协议无弹窗时显示已复制降级反馈 |
+| CC Switch 用量查询 | `/api/frist/key-usage` / `.usage-import-guide` | 用户 Key Bearer 或 `x-api-key` 只读鉴权，返回余额、已用、总额、今日/本月消费、请求量、Token、延迟和成功率；用量说明下移为教程/说明，不再占据页面前置主操作 |
+| CC Switch 导入后检测 | `data-import-verification` / `data-refresh-health` / `data-playground-model` | 用户导入后按供应商卡片、用量脚本、真实调用、`gpt-image-2` 流程图和记录页消费逐项验收 |
+| 异常消耗检测 | `data-usage-anomalies` / `data-usage-anomaly-status` / `usageAnomalies` | Dashboard 返回今日消耗偏高、单次调用费用突增和高延迟提醒；前端只展示用户可读摘要，不展示上游 Key、供应商原始地址或 raw usage |
 | 导出模型清单 | `data-export-default-model` / `data-export-model-count` / `data-export-models` | 在 CC Switch 页展示默认模型、可用模型数量和完整模型列表 |
-| 手动配置复制 | `data-copy-auth-json` / `data-copy-config-toml` | 复制 Codex/OpenCode 等客户端配置 |
+| CC Switch MCP 增强 | `data-open-ccswitch-mcp` / `data-copy-ccswitch-mcp` / `data-ccswitch-mcp-link` | 生成单独的 `resource=mcp` deep link，默认 apps 为 `claude,codex,gemini,opencode,hermes`，载入 Playwright、Superpowers 和 open-computer-use；OpenClaw 供应商可导入，但当前 CC Switch 会忽略 OpenClaw MCP |
+| 手动配置复制 | `copy-code-box` / `data-copy-auth-json` / `data-copy-config-toml` / `data-copy-usage-script` / `data-copy-test-command` | 复制 Claude/Codex/OpenCode 等客户端 JSON/TOML、CC Switch 用量脚本和不污染用户本机配置的临时 CLI 连通测试命令；复制按钮已改为代码框内图标按钮 |
 | 连通性刷新 | `data-refresh-health` | 用户侧模型连通性刷新 |
-| 广场模型选择 | `data-playground-model` | 用户选择要直接测试的文本或图片模型 |
+| 广场模型选择 | `data-playground-model` / `data-playground-model-grid` / `data-playground-selected-model` | 参考 OpenAI Web 端布局，用户在左侧模型列表选择文本或图片模型，右侧对话区测试 |
 | 广场连通实测 | `data-playground-test` / `data-playground-status` | 一键实测当前模型，展示成功/失败、耗时和返回摘要 |
 | 广场发送 | `data-playground-send` | 调用聊天网关或图片生成网关进行模型实测 |
 | 广场消息删除 | `data-delete-message` | 删除单条广场测试消息 |
 | 广场清空 | `data-clear-playground` | 清空广场测试消息并恢复欢迎提示 |
 | 图片输出 | `data-image-output` | 展示 `gpt-image-2` 等图片模型生成结果 |
 | 消耗分布图 | `data-usage-donut` | 用户侧模型消耗分布图 |
-| 服务可用性 | `data-service-health` | 用户侧 Claude/OpenAI/其他模型可用状态 |
+| 服务可用性 | `data-service-health` / `data-channel-monitor-metrics` / `data-channel-monitor-history` | 登录用户侧展示 Claude/OpenAI/其他模型当前库存快照、可用率、最低/平均延迟、60 秒刷新口径和最近状态条；游客 Dashboard 返回空 `channelChecks`，避免误认为 mock 数据 |
+| 首页通道监控 | `data-channel-monitor-summary` / `data-channel-monitor-history` | 首页通道摘要按 provider 聚合 healthy/down/slow 状态，不暴露上游地址、上游 Key 或号商信息 |
 | 模型广场 | `data-model-catalog` | 展示可用模型、家族、上下文和计价 |
-| 教程目标选择 | `data-guide-targets` / `data-guide-target` | 选择 Codex、Claude、OpenCode、OpenClaw、Hermes、Harmes 的配置教程 |
+| 教程目标选择 | `data-guide-targets` / `data-guide-target` | 独立教程入口从左侧导航隐藏，缺失配置说明合并回 CC Switch 页面；教程目标不再展示重复 `Harmes` |
 | 教程 macOS 命令 | `data-mac-command` / `data-copy-mac-command` | 生成并复制 macOS 一键配置命令 |
 | 教程 Windows 命令 | `data-win-command` / `data-copy-win-command` | 生成并复制 Windows 一键配置命令 |
 | 教程配置复制 | `data-copy-guide-json` / `data-copy-guide-toml` | 复制教程页 JSON/TOML 配置 |
 | 管理端人工入账 | `/admin.html` + `data-admin-credit` | 管理员按用户邮箱确认人工充值入账 |
 | 管理端卡密生成 | `/admin.html` + `data-admin-redemption-cards` / `data-admin-card-create` / `/api/admin/redemption-cards` | 按套餐批量生成一次性兑换码，导出给闲鱼自动发货或客服系统 |
+| 管理端 Plus 账号台账 | `/admin.html` + `data-admin-plus-accounts` / `data-admin-plus-save` / `data-admin-plus-edit` / `/api/admin/plus-accounts` | 登记和更新自用 ChatGPT Plus 账号、Apple ID、到期、TRY 余额、设备/Profile 和合规状态；不进入用户 `/v1` 路由 |
+| 管理端 RT JSON 导入 | `/admin.html` + `data-admin-rt-accounts` / `data-admin-rt-import` / `/api/admin/rt-accounts/import` | 支持 JSON 数组、单个对象和 TXT 行导入 `refresh_token`、邮箱和账号 ID；只做脱敏台账和刷新准备，不减少 New-API 原有管理能力且不进入用户 `/v1` 路由 |
+| 管理员 2FA | `/api/admin/2fa/verify` + `data-admin-2fa-code` | 管理端 TOTP 二次验证；启用 `FRIST_API_REQUIRE_ADMIN_2FA=1` 后，管理 API 除 2FA 验证入口外都必须带有效二次验证会话 |
+| 生产边界检查 | `/api/admin/production-readiness` + `data-admin-readiness` | 汇总固定品牌域名、New-API 数据库、备份监控、管理员 2FA、真实支付商户和长期渠道 SLA 状态 |
+| 备份状态登记 | `/api/admin/backups/status` | 记录最近备份、恢复演练、备份目标、校验值和状态，供生产强制检查使用 |
 | 管理端补号 | `/admin.html` + `data-admin-replenish` | 独立管理端写入号源库存，不出现在用户端 |
 | 管理端代理地址 | `/admin.html` + `data-admin-proxy-url` | 可选填写代理请求地址，补号时自动与直连路径择优 |
 | 管理端探测模式 | `/admin.html` + `data-admin-probe-mode` | 自动探测、严格探测和信任写入模式选择 |
+| 管理端号池首次使用流程 | `/admin.html` + `admin-onboarding-flow` | 首次管理员按填端点、粘 Key、一键获取模型、写入可用库存、自动切换五步完成号池接入 |
+| 管理端渠道诊断 | `/admin.html` + `data-admin-channel-diagnostics` | 按端点和模型组汇总健康/断开/降级、最快延迟、失败原因和模型清单，帮助判断哪个渠道断了 |
 | 管理端备用渠道类型 | `/admin.html` + `data-admin-source-type` | 区分授权/自有、CPA JSON、chong 和其他备用渠道 |
 | 管理端风险状态 | `/admin.html` + `data-admin-risk-status` / `data-admin-backup-risk-accepted` | 备用渠道默认隔离，人工核验并确认后才进入路由 |
 | 管理端风险备注 | `/admin.html` + `data-admin-risk-note` | 记录备用渠道来源责任人、放行依据和复核说明 |
@@ -235,6 +251,18 @@
 | `FRIST_API_CAPTCHA_MAX_ATTEMPTS` | 单个验证码最大错误次数 | 默认 `3`，超过后需刷新挑战 |
 | `FRIST_API_PASSWORD_RESET_TTL_MS` | 忘记密码验证码有效期 | 默认 `900000`，即 15 分钟 |
 | `FRIST_API_DATA_ENCRYPTION_KEY` | runtime 敏感字段加密密钥 | 公开模式必填；用于加密用户 Key 和上游 rawKey |
+| `FRIST_API_PUBLIC_GATEWAY_BASE_URL` | 用户导出和邮件使用的公网 `/v1` 网关地址 | 生产必须使用 HTTPS 品牌域名；`https://www.inroi.shop/v1` 是授权上游请求地址，不是用户导出入口 |
+| `FRIST_API_REQUIRE_CSRF` | Cookie 登录态非幂等接口 CSRF 校验开关 | 生产建议 `1`；公开模式和 `NODE_ENV=production` 会自动启用 |
+| `FRIST_API_REQUIRE_ADMIN_2FA` | 是否强制管理端 TOTP 二次验证 | 生产强制模式必须为 `1` |
+| `FRIST_API_ADMIN_TOTP_SECRETS` | 管理员 TOTP Base32 Secret 列表 | 逗号分隔；只放服务器环境变量或安全注入，不写文档正文 |
+| `FRIST_API_ADMIN_2FA_SESSION_TTL_MS` | 管理员 2FA 会话有效期 | 默认 `3600000`，即 1 小时 |
+| `FRIST_API_ALLOW_PRIVATE_UPSTREAM_URLS` | 是否允许管理端补号 URL 指向私网/本机地址 | 生产必须保持 `0`，只用于本地私网测试 |
+| `FRIST_API_CANONICAL_HOST` | Frist-API 唯一内容入口域名 | 当前为 `frist-api.101-43-41-96.nip.io`；Docker Compose 已透传 |
+| `FRIST_API_REDIRECT_HOSTS` | 需要跳转到唯一入口的旧/裸域名 | 当前为 `101-43-41-96.nip.io`，只做 301，不直接服务页面；Docker Compose 已透传 |
+| `FRIST_API_ENFORCE_PRODUCTION_READINESS` | 是否强制生产边界检查 | `1` 时缺固定 HTTPS 品牌域名、New-API 数据库、2FA 或真实支付商户会启动失败 |
+| `FRIST_API_ALLOW_INSECURE_PUBLIC_HTTP` | 是否允许临时公网 HTTP 网关 | 免费 HTTP 过渡期才设 `1`；正式 HTTPS 域名应为 `0` |
+| `FRIST_API_BACKUP_STATUS_MAX_AGE_HOURS` | 备份新鲜度上限 | 默认 `26` 小时，超过视为备份监控未闭环 |
+| `FRIST_API_SLA_RETENTION_DAYS` | 渠道 SLA 探测事件保留天数 | 默认 `30` 天 |
 | `FRIST_API_PAYMENT_ENABLED` | 是否启用真实支付接口 | 总开关；未启用时仍可人工确认 |
 | `FRIST_API_WECHAT_PAY_ENABLED` | 是否启用微信 Native 支付 | 需要商户平台、AppID、商户号和 APIv3 配置 |
 | `FRIST_API_WECHAT_PAY_APPID` | 微信支付 AppID | 由微信支付商户平台绑定的应用提供 |
@@ -250,6 +278,7 @@
 | `FRIST_API_ALIPAY_PUBLIC_KEY` | 支付宝平台公钥 PEM | 用于异步通知验签 |
 | `FRIST_API_ALIPAY_NOTIFY_URL` | 支付宝回调 URL | 默认可由公开入口推导为 `/api/frist/payments/alipay/notify` |
 | `FRIST_API_NEWAPI_ENABLED` | 是否启用 Frist-API 服务端 New-API 业务桥接 | `1` 启用；未启用时继续走本地 JSON 自研逻辑 |
+| `FRIST_API_REQUIRE_NEWAPI_DATABASE` | 是否把 New-API 数据库作为生产必备持久化层 | 生产强制模式必须为 `1`，用于防止继续把 JSON runtime 当生产数据库 |
 | `FRIST_API_NEWAPI_BASE_URL` | New-API 内网 API 地址 | 例如 `http://openclaw-newapi:3000`，不要暴露公网管理口 |
 | `FRIST_API_NEWAPI_ACCESS_TOKEN` | New-API 用户 access token | 只放服务器环境变量，禁止写入仓库 |
 | `FRIST_API_NEWAPI_USER_ID` | access token 所属 New-API 用户 ID | v1 会校验 `New-Api-User` 头 |

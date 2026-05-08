@@ -37,7 +37,7 @@ const dashboardSeed = {
     {
       id: 'key-main',
       name: '主力 Key',
-      preview: 'fk-live-••••••9x2a',
+      preview: 'sk-••••••9x2a',
       enabled: true,
       cost: '$59.57',
       tokens: '25.58M',
@@ -107,7 +107,7 @@ describe('Frist-API customer business chain', () => {
     const created = createCustomerKey(state, { name: 'Claude 主力 Key', modelGroup: 'Claude' });
     state = created.state;
 
-    assert.equal(created.key.secret, 'fk-live-user-1-key-1');
+    assert.equal(created.key.secret, 'fk-live-user-1key-1');
     assert.equal(state.apiKeys[0].enabled, true);
     assert.equal(state.apiKeys[0].modelGroup, 'Claude');
     assert.equal(deriveDashboardData(state, dashboardSeed).accountSummary.balance, '$2.68');
@@ -123,8 +123,8 @@ describe('Frist-API customer business chain', () => {
     });
 
     assert.match(importUrl, /^ccswitch:\/\/v1\/import\?/);
-    assert.match(decodeURIComponent(importUrl), /target=claude/);
-    assert.match(decodeURIComponent(importUrl), /fk-live-user-1-key-1/);
+    assert.equal(new URL(importUrl).searchParams.get('app'), 'claude');
+    assert.match(decodeURIComponent(importUrl), /fk-live-user-1key-1/);
 
     const codexConfig = buildBusinessClientConfig(state, {
       target: 'Codex',
@@ -259,7 +259,7 @@ describe('Frist-API management replenishment chain', () => {
       baseUrl: 'https://supplier.example.com/v1',
       keys: ['sk-nearly-empty', 'sk-healthy'],
       pool: 'day',
-      modelProbe: { supported: true, models: ['claude-haiku'] },
+      modelProbe: { supported: true, models: ['claude-sonnet-4-5-c'] },
       keyProbes: {
         'sk-nearly-empty': { ok: true, quotaRemaining: 5, latencyMs: 100 },
         'sk-healthy': { ok: true, quotaRemaining: 900, latencyMs: 180 },
@@ -272,7 +272,7 @@ describe('Frist-API management replenishment chain', () => {
 
     state = applyReplenishmentReport(state, report);
     const routed = routeModelRequest(state, {
-      model: 'claude-haiku',
+      model: 'claude-sonnet-4-5-c',
       pool: 'day',
       quotaCost: 10,
     });
@@ -405,19 +405,19 @@ describe('Frist-API page business wiring', () => {
     const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
 
     for (const required of [
-      "setActionMessage('登录中",
-      "setActionMessage('登录成功",
-      "setActionMessage(serverError.message",
-      "setScopedFeedback('[data-auth-feedback]'",
-      "setScopedFeedback('[data-key-feedback]'",
+      'const label = message || feedbackLabel(type)',
+      'element.textContent = label',
+      "element.setAttribute('aria-label'",
+      "signalScoped('[data-auth-feedback]'",
+      "signalScoped('[data-key-feedback]'",
       'setButtonBusy(createKey',
       'setButtonBusy(login',
       'handleRefreshHealth(event)',
       'handleRetryDashboard',
       'event?.preventDefault()',
-      "setActionMessage('连通性刷新中",
-      "setActionMessage('正在重新连接",
-      "setActionMessage('连通性已刷新",
+      "signalAction('info')",
+      "signalAction('success')",
+      "signalAction('error')",
     ]) {
       assert.equal(appScript.includes(required), true, `${required} 应该让关键动作有明确反馈`);
     }
@@ -429,6 +429,9 @@ describe('Frist-API page business wiring', () => {
       '.field-feedback',
       '.field-feedback--error',
       '.field-feedback--success',
+      '.field-feedback::before',
+      '.is-busy::after',
+      '.is-copied::after',
       '.provider-models',
       '.provider-meta',
       '.server-recovery',
@@ -461,15 +464,17 @@ describe('Frist-API page business wiring', () => {
       'Codex',
       'Gemini',
       'OpenCode',
-      'OpenCode 完整配置',
+      '<span class="eyebrow">OpenCode</span>',
       'OpenClaw',
       'Hermes',
-      'Harmes',
       'data-import-family-option="DeepSeek"',
       'data-import-family-option="Gemini"',
+      'data-copy-prompt-skill',
+      'copy-code-box',
     ]) {
       assert.equal(switchPanel.includes(required), true, `${required} 应该出现在导入页面`);
     }
+    assert.equal(switchPanel.includes('Harmes'), false, '用户端导入目标不应再展示重复的 Harmes');
 
     for (const required of [
       'renderExportModelSummary',
@@ -501,33 +506,48 @@ describe('Frist-API page business wiring', () => {
 
     for (const view of ['records', 'subscription', 'redeem', 'invite', 'profile']) {
       assert.equal(userHtml.includes(`data-view="${view}"`), true, `${view} 页面应该存在`);
+    }
+    for (const view of ['records', 'subscription', 'redeem', 'profile']) {
       assert.equal(userHtml.includes(`data-route="${view}"`), true, `${view} 应该能从工作台进入`);
     }
+    const actionDock = userHtml.match(/<nav class="action-dock workspace-nav"[\s\S]*?<\/nav>/)?.[0] || '';
+    assert.equal(actionDock.includes('data-route="invite"'), false, '邀请入口按当前运营策略隐藏');
+    assert.equal(actionDock.includes('data-route="billing"'), false, '充值入口按当前运营策略隐藏');
+    assert.equal(actionDock.includes('data-route="docs"'), false, '重复教程入口应合并到 CC Switch');
 
     for (const required of [
       'data-api-search',
       '搜索名称或 key',
+      '可用模型',
+      'GPT / Image',
       'key-endpoint',
       'icon-button',
       'data-token-trend',
-      'data-recent-logs',
       'data-usage-records',
       'data-usage-records-empty',
-      'API 密钥',
-      '推理强度',
-      '计费模式',
+      'data-usage-anomalies',
+      'data-usage-anomaly-status',
+      'renderUsageAnomalies',
+      'usageAnomalies',
+      'Key',
+      '客户端',
+      '费用',
+      '延迟',
       'renderTrendChart',
-      'renderRecentLogs',
       'renderUsageRecords',
       'usageRecords',
-      'recentLogs',
       'manual-collection-panel',
       'profile-surface',
+      'data-profile-avatar-input',
+      'renderProfileAvatar',
+      'safeAvatarUrl',
       'subscription-surface',
       'records-table',
+      'data-language-toggle',
     ]) {
       assert.equal(combined.includes(required), true, `${required} 应该接入新版用户壳`);
     }
+    assert.equal(userHtml.includes('data-recent-logs'), false, '首页不再重复展示最近日志，完整记录放到使用记录页');
   });
 
   it('guides customers through cross-family CC Switch imports and Claude developer mode', () => {
@@ -543,7 +563,6 @@ describe('Frist-API page business wiring', () => {
       'data-import-family-option="OpenAI"',
       'data-import-family-option="Claude"',
       'data-import-primary-row',
-      'danger-text',
       'data-cross-import-title',
       'data-cross-import-copy',
       'data-claude-developer-guide',
@@ -556,16 +575,42 @@ describe('Frist-API page business wiring', () => {
       'Gateway base URL',
       'Gateway API key',
       'Gateway auth scheme',
+      '用量查询',
+      '测试脚本',
+      '自动查询间隔',
+      'data-ccswitch-workflow',
+      'data-ccswitch-workflow-target',
+      'data-ccswitch-workflow-model',
+      'data-ccswitch-workflow-base',
+      'data-ccswitch-workflow-usage',
+      'data-ccswitch-workflow-test',
+      'data-import-verification',
+      'data-ccswitch-capability-one-click',
+      'data-ccswitch-capability-manual',
+      'data-ccswitch-checklist',
+      'data-ccswitch-mcp-link',
+      'data-open-ccswitch-mcp',
+      'data-copy-ccswitch-mcp',
+      'Prompt / Skill',
+      '单独资源导入',
+      'resource=prompt',
+      'resource=skill',
+      'data-usage-script',
+      'data-copy-usage-script',
+      'data-test-command',
+      'data-copy-test-command',
       'Skip login-mode chooser',
       'API 请求地址',
       'wire_api = "responses"',
       '[mcp_servers.playwright]',
-      '开发者模式',
-      '第三方 API',
+      'Developer',
+      'Third-Party Inference',
       '一键导入',
+      'OpenAI 模型导入 Claude Code',
     ]) {
       assert.equal(switchPanel.includes(required), true, `${required} 应该解释跨模型家族导入`);
     }
+    assert.equal(switchPanel.includes('ChatGPT / OpenAI'), false, '用户侧模型家族应该统一显示为 OpenAI');
     assert.ok(
       switchPanel.indexOf('data-import-primary-row') < switchPanel.indexOf('data-walkthrough="openai-to-claude"'),
       '一键导入主操作应该在长教程流程图之前，避免用户先被教程淹没',
@@ -580,8 +625,24 @@ describe('Frist-API page business wiring', () => {
       '@playwright/mcp@latest',
       'superpowers-mcp@latest',
       'open-computer-use@latest',
+      'Claude/Codex/Gemini/OpenCode/Hermes',
+      'CC Switch 当前会忽略 OpenClaw MCP',
       'data-copy-flow-codex-toml',
       'syncWalkthroughFields',
+      'renderCcSwitchUsageGuide',
+      'renderCcSwitchWorkflow',
+      'renderCcSwitchManualEnhancements',
+      'configMatchesCurrentSelection',
+      'buildCcSwitchMcpImportUrl',
+      'data-copy-value',
+      'result.config',
+      'result.setup',
+      'state.importServerConfig',
+      'resetImportServerConfig',
+      'ccswitch-workflow',
+      'workflow-steps',
+      'ccswitch-capability-panel',
+      'ccswitch-enhancement-panel',
       'setActiveWalkthrough',
       'data-flow-claude-base',
       'data-flow-codex-base',
@@ -615,8 +676,11 @@ describe('Frist-API page business wiring', () => {
 
     for (const view of ['playground', 'analytics', 'models', 'docs']) {
       assert.equal(userHtml.includes(`data-view="${view}"`), true, `${view} 应该作为用户侧独立页面存在`);
+    }
+    for (const view of ['playground', 'analytics', 'models']) {
       assert.equal(userHtml.includes(`data-route="${view}"`), true, `${view} 应该能从首页动作入口进入`);
     }
+    assert.equal(userHtml.includes('data-route="docs"'), false, '重复教程入口已合并到 CC Switch 页面');
 
     for (const required of [
       'data-playground-model',
@@ -642,6 +706,12 @@ describe('Frist-API page business wiring', () => {
       "output_format: 'png'",
       'data-usage-donut',
       'data-service-health',
+      'data-channel-monitor-summary',
+      'data-channel-monitor-history',
+      'data-channel-monitor-metrics',
+      'monitorIntervalSeconds',
+      'availabilityWindow',
+      '当前库存快照',
       'data-model-catalog',
       'data-mac-command',
       'data-win-command',
@@ -716,9 +786,10 @@ describe('Frist-API page business wiring', () => {
       userHtml.match(/<section class="view-panel" data-view="docs"[\s\S]*?<section class="view-panel" data-view="api"/)?.[0] ||
       '';
 
-    for (const required of ['Codex', 'Claude', 'Gemini', 'OpenCode', 'OpenClaw', 'Hermes', 'Harmes']) {
-      assert.equal(docsPanel.includes(required), true, `${required} 应该出现在使用教程里`);
+    for (const required of ['Codex', 'Claude', 'Gemini', 'OpenCode', 'OpenClaw', 'Hermes']) {
+      assert.equal(userHtml.includes(required), true, `${required} 应该在 CC Switch 教程中保留`);
     }
+    assert.equal(userHtml.includes('Harmes'), false, '重复的 Harmes 不应再出现在用户教程中');
   });
 
   it('keeps the replenishment workspace on a separate admin page wired to server APIs', () => {
@@ -746,6 +817,10 @@ describe('Frist-API page business wiring', () => {
       'data-admin-probe-mode',
       'data-admin-audit',
       'data-admin-replenish',
+      'data-admin-channel-diagnostics',
+      'admin-onboarding-flow',
+      'renderChannelDiagnostics',
+      'probeStatusText',
       'data-admin-pricing',
       'data-admin-pricing-save',
       'data-admin-plans',
@@ -758,14 +833,41 @@ describe('Frist-API page business wiring', () => {
       'data-admin-card-copy',
       'data-admin-card-export',
       'data-admin-card-list',
+      'data-admin-plus-accounts',
+      'data-admin-plus-save',
+      'data-admin-plus-clear',
+      'data-admin-plus-openai-email',
+      'data-admin-plus-apple-email',
+      'data-admin-plus-compliance',
+      'data-admin-plus-edit',
+      'data-admin-plus-list',
+      'data-admin-rt-accounts',
+      'data-admin-rt-import',
+      'data-admin-rt-platform',
+      'data-admin-rt-source-label',
+      'data-admin-rt-account-type',
+      'data-admin-rt-text',
+      'data-admin-rt-note',
+      'data-admin-rt-list',
       '/api/admin/redemption-cards',
+      '/api/admin/plus-accounts',
+      '/api/admin/rt-accounts/import',
       '/api/admin/replenishments/parse-order',
       '/api/admin/replenishments',
       '/api/admin/customers/recharge',
       '/api/admin/pricing',
     ]) {
       assert.equal(adminPage.includes(required), true, `${required} 应该只存在于管理端`);
-      assert.equal(page.includes(required), false, `${required} 不应该出现在用户端`);
+      if (required.startsWith('data-admin') || required.startsWith('/api/admin')) {
+        assert.equal(page.includes(required), false, `${required} 不应该出现在用户端`);
+      }
+    }
+    for (const forbidden of [
+      'data-admin-channel-diagnostics',
+      'data-admin-replenish',
+      '/api/admin/replenishments',
+    ]) {
+      assert.equal(page.includes(forbidden), false, `${forbidden} 不应该出现在用户端`);
     }
   });
 
@@ -786,7 +888,7 @@ describe('Frist-API page business wiring', () => {
       'safePercent(item.percent)',
       'escapeHtml(key.id)',
       'escapeHtml(key.preview)',
-      'escapeHtml(option.label',
+      'escapeHtml(shortRechargeLabel(option.label',
       'escapeHtml(target)',
     ]) {
       assert.equal(appScript.includes(required), true, `${required} 应该保护用户端动态 HTML`);

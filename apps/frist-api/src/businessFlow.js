@@ -142,7 +142,7 @@ export function createCustomerKey(state, { name, modelGroup }) {
   const next = cloneState(state);
   const customerId = next.idFactory();
   const keyId = next.idFactory();
-  const secret = `fk-live-${customerId}-${keyId}`;
+  const secret = `fk-live-${customerId}${keyId}`;
   const key = {
     id: keyId,
     name: String(name || `API Key ${next.apiKeys.length + 1}`),
@@ -212,6 +212,7 @@ export function buildBusinessImportUrl(state, { target, baseUrl, model = DEFAULT
     defaultModel,
     availableModels,
     modelGroup: key.modelGroup,
+    planExpiresAt: state.customer?.renewalDate && state.customer.renewalDate !== '-' ? state.customer.renewalDate : '',
   });
 }
 
@@ -229,6 +230,7 @@ export function buildBusinessClientConfig(state, { target, baseUrl, model = DEFA
     defaultModel,
     availableModels,
     modelGroup: key.modelGroup,
+    planExpiresAt: state.customer?.renewalDate && state.customer.renewalDate !== '-' ? state.customer.renewalDate : '',
   });
 }
 
@@ -539,8 +541,12 @@ function formatUsdFromCnyCents(cents) {
 
 function maskKey(value) {
   const key = String(value || '');
-  if (!key) return 'fk-live-••••••';
-  const prefix = /^fk-live-/i.test(key) ? 'fk-live' : key.slice(0, Math.min(6, key.length)).replace(/-$/, '');
+  if (!key) return 'sk-••••••';
+  const prefix = /^sk-/i.test(key)
+    ? 'sk'
+    : /^fk-live-/i.test(key)
+      ? 'fk-live'
+      : key.slice(0, Math.min(6, key.length)).replace(/-$/, '');
   return `${prefix}-••••••${key.slice(-4)}`;
 }
 
