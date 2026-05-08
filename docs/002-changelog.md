@@ -5,6 +5,24 @@
 
 ## 最近更新（2026-05）
 
+## [2026-05-08] 全量测试审计和 Store 路由恢复
+> 领域: `backend` | `frontend` | `ai-pool` | `infra` | `docs`
+> 影响模块: `APIServer`, `Store Router`, `Frist-API`, `New-API`, `docs`
+> 关联问题: HI-885, HI-886, HI-887, HI-888
+
+### 变更内容
+- 先按用户要求提交工作区 checkpoint：`60709ea chore: checkpoint frist api recovery state`，再进行全量测试和审计。
+- 后端全量测试发现 `src.api.routers.store` 缺失导致 APIServer 初始化失败；恢复 `/api/v1/store/catalog` 和 `/api/v1/store/categories` 最小兼容路由后，`pytest packages/clawbot/tests/ --tb=short -x` 通过 `1491 passed, 2 skipped`。
+- 为 Frist-API 生成 `package-lock.json`，补齐 `npm audit` 可审计基线；`npm test` 通过 `153/153`，`npm audit --audit-level=moderate` 为 0 漏洞，JS 语法检查通过。
+- 桌面端 `npx tsc --noEmit` 通过；公网冒烟确认 Frist-API 首页 200、Dashboard 200、未授权 `/v1/models` 401。
+- 生产审计登记：New-API 本地 `v1.0.0-rc.2` 落后于上游 `v1.0.0-rc.4`；86GameStore 面板显示余额 `$35.70`、今日实际消费 `$38.1537`、平均响应 `16.11s`，不属于完美生产态。
+- 调整运维文档环境变量示例写法，消除 `gitleaks` 对当前 HEAD 的 `generic-api-key` 误报。
+
+### 文件变更
+- `packages/clawbot/src/api/routers/store.py` — 恢复统一插件商店 API 路由。
+- `apps/frist-api/package-lock.json` — 固定 Frist-API npm 审计基线。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步测试证据、问题清单、注册表和安全扫描记录。
+
 ## [2026-05-08] Frist-API 登录恢复和公网配置修复
 > 领域: `backend` | `frontend` | `deploy` | `docs`
 > 影响模块: `Frist-API`, `User Console`, `Admin`, `Tencent Cloud`, `docs`
