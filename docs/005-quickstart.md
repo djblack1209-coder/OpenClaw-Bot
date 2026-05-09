@@ -419,9 +419,9 @@ tail -f logs/multi_bot.log
 ### 运行测试
 
 ```bash
-python3 -m pytest          # 全部 408 个测试
-python3 -m pytest -v       # 详细输出
-python3 -m pytest tests/test_ta_engine.py  # 单个文件
+make test                  # 推荐：自动使用 packages/clawbot/.venv312/bin/python
+cd packages/clawbot && .venv312/bin/python -m pytest -v
+cd packages/clawbot && .venv312/bin/python -m pytest tests/test_ta_engine.py  # 单个文件
 ```
 
 ---
@@ -647,11 +647,11 @@ tail -f logs/multi_bot.log               # 日志
 ## 九、测试
 
 ```bash
-python3 -m pytest                        # 全部 408 个测试
-python3 -m pytest -v                     # 详细输出
-python3 -m pytest --tb=short             # 简洁错误信息
-python3 -m pytest tests/test_xxx.py      # 单个文件
-python3 -m pytest -k "test_name"         # 按名称过滤
+make test                                # 推荐：自动使用项目 Python 3.12 虚拟环境
+cd packages/clawbot && .venv312/bin/python -m pytest -v
+cd packages/clawbot && .venv312/bin/python -m pytest --tb=short
+cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xxx.py
+cd packages/clawbot && .venv312/bin/python -m pytest -k "test_name"
 ```
 
 测试覆盖的核心模块：

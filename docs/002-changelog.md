@@ -5,6 +5,21 @@
 
 ## 最近更新（2026-05）
 
+## [2026-05-08] 审计入口复核与测试命令收口
+> 领域: `docs` | `infra`
+> 影响模块: `AGENTS`, `docs`, `pytest`
+> 关联问题: HI-894, HI-895
+
+### 变更内容
+- 本轮继续审计时发现直接运行 `pytest packages/clawbot/tests/ ...` 会命中本机 Python 3.9 的用户级 `pytest`，而项目代码和 CI 要求 Python 3.12；这会产生 `str | None` 类型语法错误，属于审计入口误用，不是业务代码回归。
+- 已将 AGENTS/SOP 和快速导航里的后端测试命令收口为 `make test` 或 `.venv312/bin/python -m pytest`，确保本地审计与 GitHub Actions 的 Python 3.12 基线一致。
+- 复验实际证据：`make test` 使用 `packages/clawbot/.venv312/bin/python` 执行并通过；GitHub `OpenClaw CI` run `25590993947` 两个 job 均成功；`New-API Scheduled Sync` run `25589650518` 成功；`make new-api-check` 显示本地源码和 Compose 镜像均为 `v1.0.0-rc.4`。
+- 远端复核发现腾讯云 `/opt/frist-api/docker-compose.newapi.yml` 仍停留在 `calciumion/new-api:v1.0.0-rc.2`，已先备份 `data/newapi` 和旧 compose 到 `backups/newapi-runtime-20260508223247-before-rc4.tgz`，再同步 compose 到 `v1.0.0-rc.4` 并通过 `docker compose config` 校验；实际启动受 Docker Hub 访问超时阻塞，New-API 容器未启动，现有 `frist-api-server` 仍 healthy 且公网首页/看板 200。
+
+### 文件变更
+- `AGENTS.md` / `docs/001-project-map.md` / `docs/005-quickstart.md` — 统一后端测试入口，避免系统 Python 误用旧测试工具。
+- `docs/002-changelog.md` / `docs/009-health.md` — 登记本轮审计入口修复和剩余环境风险。
+
 ## [2026-05-08] 浏览器审计收尾与 CI 运行时升级
 > 领域: `frontend` | `infra` | `ai-pool` | `docs`
 > 影响模块: `Frist-API`, `OpenClaw CI`, `New-API`, `docs`

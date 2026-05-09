@@ -711,7 +711,7 @@ CREW          # CrewAI 多智能体
 | 修改 LLM 路由 | `src/litellm_router.py` |
 | 调整风控规则 | `src/risk_manager.py` + `src/trading/protections.py` |
 | 修改通知格式 | `src/notify_style.py` + `src/notifications.py` |
-| 运行测试 | `cd packages/clawbot && pytest` |
+| 运行测试 | `make test` |
 | 启动 Bot | `cd packages/clawbot && python multi_main.py` |
 | 启动 Manager | `cd apps/openclaw-manager-src && npm run tauri:dev` |
 | Docker 部署 | `docker-compose up -d` |
