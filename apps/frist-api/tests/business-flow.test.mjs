@@ -441,6 +441,8 @@ describe('Frist-API page business wiring', () => {
       "signalAction('info')",
       "signalAction('success')",
       "signalAction('error')",
+      'signalAction(message, \'error\')',
+      'setActionMessage(',
     ]) {
       assert.equal(appScript.includes(required), true, `${required} 应该让关键动作有明确反馈`);
     }
@@ -457,6 +459,8 @@ describe('Frist-API page business wiring', () => {
       '.is-copied::after',
       '.provider-meta',
       '.rail-toggle',
+      '.language-status',
+      '.panel-caption',
       '.server-recovery',
     ]) {
       assert.equal(styles.includes(required), true, `${required} 应该支撑明显反馈和升级后的连通性展示`);
@@ -565,6 +569,9 @@ describe('Frist-API page business wiring', () => {
       'data-usage-records-empty',
       'data-usage-anomalies',
       'data-usage-anomaly-status',
+      '监控余额突增、失败率、慢请求和异常模型消耗。',
+      '点击“检测”或等待后台 60 秒巡检',
+      '按真实请求统计',
       'renderUsageAnomalies',
       'usageAnomalies',
       'Key',
@@ -583,6 +590,7 @@ describe('Frist-API page business wiring', () => {
       'subscription-surface',
       'records-table',
       'data-language-toggle',
+      'data-language-status',
     ]) {
       assert.equal(combined.includes(required), true, `${required} 应该接入新版用户壳`);
     }
@@ -685,6 +693,10 @@ describe('Frist-API page business wiring', () => {
       'setActiveWalkthrough',
       'data-flow-claude-base',
       'data-flow-codex-base',
+      'body[data-design-system="tabcode-console"] .switch-surface *',
+      'body[data-design-system="tabcode-console"] .usage-import-guide',
+      'body[data-design-system="tabcode-console"] .cross-import-guide',
+      'overflow-wrap: anywhere',
     ]) {
       assert.equal(`${switchPanel}\n${appScript}\n${styles}`.includes(required), true, `${required} 应该接入导入页状态和样式`);
     }

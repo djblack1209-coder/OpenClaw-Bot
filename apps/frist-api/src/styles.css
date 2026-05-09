@@ -34,7 +34,7 @@ html {
 }
 
 body {
-  min-width: 320px;
+  min-width: 0;
   margin: 0;
   overflow-x: hidden;
   background: var(--canvas);
@@ -3898,6 +3898,16 @@ body[data-design-system="tabcode-console"] .topbar-actions {
   gap: 8px;
 }
 
+body[data-design-system="tabcode-console"] .language-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
 body[data-design-system="tabcode-console"] .action-message,
 body[data-design-system="tabcode-console"] .admin-topbar .action-message {
   position: relative;
@@ -5790,6 +5800,19 @@ body[data-design-system="tabcode-console"] .profile-form .primary-action {
   min-width: 96px;
 }
 
+/* 319px mobile review guard: 顶栏、工作台折叠和 CC Switch 都必须在极窄屏内完成排版。 */
+body[data-design-system="tabcode-console"] .switch-surface,
+body[data-design-system="tabcode-console"] .switch-surface *,
+body[data-design-system="tabcode-console"] .workspace-layout,
+body[data-design-system="tabcode-console"] .workspace-content,
+body[data-design-system="tabcode-console"] .console-board,
+body[data-design-system="tabcode-console"] .usage-import-guide,
+body[data-design-system="tabcode-console"] .cross-import-guide,
+body[data-design-system="tabcode-console"] .ccswitch-workflow,
+body[data-design-system="tabcode-console"] .export-summary {
+  min-width: 0;
+}
+
 body[data-design-system="tabcode-console"] .usage-import-guide {
   border-style: dashed;
   background: rgba(143, 181, 255, 0.06);
@@ -5805,4 +5828,260 @@ body[data-design-system="tabcode-console"] .cross-import-actions {
   flex-wrap: wrap;
   gap: 10px;
   margin-top: 14px;
+}
+
+body[data-design-system="tabcode-console"] .panel-caption {
+  align-self: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--paper-raised);
+  color: var(--muted);
+  padding: 4px 9px;
+  font-size: 12px;
+  font-weight: 620;
+  white-space: nowrap;
+}
+
+body[data-design-system="tabcode-console"] .section-head p {
+  margin-top: 6px;
+  max-width: 46ch;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+body[data-design-system="tabcode-console"] .mini-donut,
+body[data-design-system="tabcode-console"] .usage-donut {
+  position: relative;
+}
+
+body[data-design-system="tabcode-console"] .mini-donut.is-empty,
+body[data-design-system="tabcode-console"] .usage-donut.is-empty {
+  background:
+    conic-gradient(
+      rgba(143, 181, 255, 0.72) 0 24%,
+      rgba(84, 224, 141, 0.52) 24% 48%,
+      rgba(255, 79, 64, 0.36) 48% 66%,
+      rgba(245, 240, 232, 0.14) 66% 100%
+    ) !important;
+}
+
+body[data-design-system="tabcode-console"] .mini-donut.is-empty::after,
+body[data-design-system="tabcode-console"] .usage-donut.is-empty::after {
+  position: absolute;
+  inset: 34%;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 620;
+  content: "0";
+}
+
+body[data-design-system="tabcode-console"] .empty-row--stack {
+  border-style: dashed;
+}
+
+body[data-design-system="tabcode-console"] .empty-row--stack span {
+  max-width: 42ch;
+}
+
+body[data-design-system="tabcode-console"] .cross-import-guide,
+body[data-design-system="tabcode-console"] .usage-import-guide,
+body[data-design-system="tabcode-console"] .workflow-steps,
+body[data-design-system="tabcode-console"] .verification-steps,
+body[data-design-system="tabcode-console"] .export-summary {
+  overflow: hidden;
+}
+
+body[data-design-system="tabcode-console"] .switch-surface code,
+body[data-design-system="tabcode-console"] .switch-surface pre,
+body[data-design-system="tabcode-console"] .switch-surface input,
+body[data-design-system="tabcode-console"] .switch-surface .export-model-chip,
+body[data-design-system="tabcode-console"] .switch-surface .workflow-steps span,
+body[data-design-system="tabcode-console"] .switch-surface .verification-steps span {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+@media (max-width: 360px) {
+  body[data-design-system="tabcode-console"] .topbar,
+  body[data-design-system="tabcode-console"][data-current-view="dashboard"] .topbar {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-items: stretch;
+    height: auto;
+    min-height: 88px;
+    gap: 7px;
+    padding: 8px 10px;
+  }
+
+  body[data-design-system="tabcode-console"] .brand {
+    justify-self: start;
+    min-height: 34px;
+  }
+
+  body[data-design-system="tabcode-console"] .brand-mark {
+    width: 32px;
+    height: 32px;
+  }
+
+  body[data-design-system="tabcode-console"] .brand-copy strong {
+    max-width: 120px;
+    font-size: 14px;
+  }
+
+  body[data-design-system="tabcode-console"] .topbar-actions {
+    grid-column: 1;
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: minmax(44px, auto) 14px minmax(44px, auto) minmax(0, 1fr);
+    align-items: center;
+    justify-content: stretch;
+    gap: 6px;
+    width: 100%;
+  }
+
+  body[data-design-system="tabcode-console"] .language-toggle {
+    min-width: 44px;
+    min-height: 32px;
+    padding-inline: 6px;
+    font-size: 11px;
+  }
+
+  body[data-design-system="tabcode-console"] .action-message {
+    width: 14px;
+    min-width: 14px;
+    min-height: 32px;
+  }
+
+  body[data-design-system="tabcode-console"] .owner-shortcut {
+    min-width: 44px;
+    min-height: 32px;
+    padding-inline: 6px;
+    font-size: 11px;
+  }
+
+  body[data-design-system="tabcode-console"] .auth-shell {
+    grid-column: 4;
+    grid-row: 1;
+    min-width: 0;
+  }
+
+  body[data-design-system="tabcode-console"] .account-chip {
+    justify-content: end;
+    width: 100%;
+    max-width: none;
+    min-height: 34px;
+    gap: 5px;
+    padding: 3px 4px 3px 8px;
+  }
+
+  body[data-design-system="tabcode-console"] .account-chip span {
+    display: none;
+  }
+
+  body[data-design-system="tabcode-console"] .account-chip strong {
+    min-width: 0;
+    max-width: 74px;
+    overflow: hidden;
+    padding: 6px 8px;
+    text-overflow: ellipsis;
+  }
+
+  body[data-design-system="tabcode-console"] .account-chip b {
+    width: 27px;
+    height: 27px;
+    font-size: 11px;
+  }
+
+  body[data-design-system="tabcode-console"] .main {
+    width: min(100vw - 16px, 760px);
+    padding-top: 8px;
+  }
+
+  body[data-design-system="tabcode-console"] .workspace-content,
+  body[data-design-system="tabcode-console"] .workspace-rail,
+  body[data-design-system="tabcode-console"] .console-board {
+    padding: 10px;
+  }
+
+  body[data-design-system="tabcode-console"] .rail-toggle {
+    position: relative;
+    grid-template-columns: 1fr;
+    overflow: hidden;
+    min-height: 48px;
+    padding: 7px 34px 7px 10px;
+  }
+
+  body[data-design-system="tabcode-console"] .rail-toggle::after {
+    position: absolute;
+    top: 50%;
+    right: 14px;
+    transform: translateY(-50%) rotate(45deg);
+  }
+
+  body[data-design-system="tabcode-console"] .workspace-rail.is-open .rail-toggle::after {
+    transform: translateY(-50%) rotate(225deg);
+  }
+
+  body[data-design-system="tabcode-console"] .target-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body[data-design-system="tabcode-console"] .target-button {
+    min-height: 40px;
+    padding: 8px 6px;
+    font-size: 12px;
+  }
+
+  body[data-design-system="tabcode-console"] .import-family {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  body[data-design-system="tabcode-console"] .import-family button {
+    min-height: 36px;
+    padding-inline: 8px;
+    white-space: normal;
+  }
+
+  body[data-design-system="tabcode-console"] .cross-import-guide,
+  body[data-design-system="tabcode-console"] .usage-import-guide,
+  body[data-design-system="tabcode-console"] .export-summary,
+  body[data-design-system="tabcode-console"] .workflow-steps,
+  body[data-design-system="tabcode-console"] .verification-steps,
+  body[data-design-system="tabcode-console"] .ccswitch-capability-panel,
+  body[data-design-system="tabcode-console"] .ccswitch-enhancement-panel {
+    grid-template-columns: 1fr;
+  }
+
+  body[data-design-system="tabcode-console"] .cross-import-guide,
+  body[data-design-system="tabcode-console"] .usage-import-guide,
+  body[data-design-system="tabcode-console"] .ccswitch-workflow,
+  body[data-design-system="tabcode-console"] .import-verification-panel,
+  body[data-design-system="tabcode-console"] .export-summary-card,
+  body[data-design-system="tabcode-console"] .export-models {
+    padding: 12px;
+  }
+
+  body[data-design-system="tabcode-console"] .export-models {
+    min-height: 0;
+  }
+
+  body[data-design-system="tabcode-console"] .usage-split {
+    grid-template-columns: 92px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  body[data-design-system="tabcode-console"] .mini-donut {
+    width: 86px;
+  }
+
+  body[data-design-system="tabcode-console"] .section-head {
+    gap: 8px;
+  }
 }

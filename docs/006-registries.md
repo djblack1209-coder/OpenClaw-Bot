@@ -149,7 +149,7 @@
 ## 二、命令注册表
 
 
-> 最后更新: 2026-05-08 (同步 Frist-API 用户端视觉 QA 批注修复) | Bot 命令总数 104
+> 最后更新: 2026-05-09 (同步 Frist-API 319px 移动端批注修复) | Bot 命令总数 104
 
 ---
 
@@ -158,7 +158,7 @@
 | 入口 | 选择器 / 路径 | 说明 |
 |------|---------------|------|
 | 账户菜单 | `data-auth-toggle` / `data-auth-panel` | Frist-API 用户端右上角注册和登录入口 |
-| 中英文切换 | `data-language-toggle` | 用户端顶栏中/英文切换入口，先保留 UI 控制钩子 |
+| 中英文切换 | `data-language-toggle` / `data-language-status` | 用户端顶栏语言偏好入口；当前只切换 `html.lang` 和偏好提示，完整英文界面未接入时会明确提示“仅切换语言偏好” |
 | 用户注册 | `data-register-account` / `/api/frist/challenge` | Frist-API 用户端注册入口，注册专用验证码挑战，公开页不回显答案 |
 | 用户登录 | `data-login-account` | Frist-API 用户端邮箱密码登录入口，不再要求每次登录填写验证码 |
 | 忘记密码 | `data-password-reset-request` / `/api/frist/password-reset/request` | 登录前按邮箱发送重置验证码，SMTP 未配置时返回明确反馈 |
@@ -178,9 +178,9 @@
 | 余额预警保存 | `data-balance-alert-save` | 保存当前用户的余额预警配置 |
 | 余额预警测试邮件 | `data-balance-alert-test` / `data-balance-alert-feedback` | 发送一封品牌化余额预警测试邮件，验证 SMTP 配置 |
 | Tabcode Console 风格系统 | `data-design-system="tabcode-console"` / `.brand-mark` | Frist-API 用户端和管理端吸收 Tabcode 控制台视觉；用户端 Logo 保留红白斜切抽象品牌标，不再退回单字母占位 |
-| 工作台导航 | `data-workspace-layout` / `data-workspace-rail` / `data-workspace-content` / `data-console-board` / `aria-current="page"` | 用户端固定左侧工作台导航，所有 hash 页面在右侧内容区切换；当前项只用细线和文字提示，不再显示大块背景 |
+| 工作台导航 | `data-workspace-layout` / `data-workspace-rail` / `data-workspace-content` / `data-console-board` / `aria-current="page"` | 用户端固定左侧工作台导航，所有 hash 页面在右侧内容区切换；当前项只用细线和文字提示；移动端折叠菜单箭头固定在按钮内部，319px 视口不溢出 |
 | 首页核心指标 | `data-focus-metrics` / `data-today-calls` / `data-today-cost` / `data-average-latency` / `data-success-rate` | 首屏只展示余额、Key、今日请求/消费和成功率，减少解释性文字 |
-| 加载与空态 | `aria-busy` / `skeleton-row` / `empty-row--stack` / `table-empty` | 用户端加载、无数据和表格空状态统一反馈 |
+| 加载与空态 | `aria-busy` / `skeleton-row` / `empty-row--stack` / `table-empty` / `panel-caption` | 用户端加载、无数据和表格空状态统一反馈；Dashboard 消耗、异常、通道卡在无真实数据时说明统计口径、异常含义和下一步动作 |
 | 后端恢复提示 | `data-server-recovery` / `data-retry-dashboard` | 后端不可用时显示“离线”和一键重连入口，避免用户不知道如何恢复 |
 | Token 趋势 | `data-token-trend` / `data-trend-tooltip` / `data-trend-point` | 用户首页展示 SVG 折线/面积趋势图；鼠标移入整块图表或键盘聚焦点位时显示日期和 Token 数据 |
 | 最近日志 | `data-usage-records` | 首页不再展示最近日志板块；完整日志统一进入左侧“记录/使用记录”查看 |
@@ -193,10 +193,10 @@
 | 邀请返利 | `data-route="invite"` / `invite-surface` | 页面保留但左侧导航暂时隐藏；后续有真实拉新运营需要时再展示 |
 | 个人资料 | `data-route="profile"` / `profile-surface` / `data-profile-avatar-input` | 行业通用账户布局，支持修改头像 URL、昵称和邮箱，并展示套餐、API Key 数量和余额 |
 | 导入目标选择 | `data-import-targets` / `data-target` | 用户端选择 Claude、Codex、Gemini、OpenCode、OpenClaw、Hermes；`Harmes` 仅保留底层兼容，不再展示为重复目标 |
-| CC Switch 导入 | `data-open-import` / `data-copy-link` / `data-import-fallback` | 打开或复制 Claude、Codex、Gemini、OpenCode、OpenClaw、Hermes 供应商导入链接；顶部前置一键导入按钮；深链只携带 CC Switch 当前官方 provider parser 消费字段和 `usageScript` / `usageEnabled` / `usageApiKey` / `usageBaseUrl` / `usageAutoInterval`，不再塞旧 `config` 或 `availableModels` 大块字段；服务端确认用户选择模型时，返回字段、深链 `model` 和 Codex TOML 默认模型保持一致；协议无弹窗时显示已复制降级反馈 |
-| CC Switch 用量查询 | `/api/frist/key-usage` / `.usage-import-guide` | 用户 Key Bearer 或 `x-api-key` 只读鉴权，返回余额、已用、总额、今日/本月消费、请求量、Token、延迟和成功率；用量说明下移为教程/说明，不再占据页面前置主操作 |
+| CC Switch 导入 | `data-open-import` / `data-copy-link` / `data-import-fallback` | 打开或复制 Claude、Codex、Gemini、OpenCode、OpenClaw、Hermes 供应商导入链接；顶部前置一键导入按钮；深链只携带 CC Switch 当前官方 provider parser 消费字段和 `usageScript` / `usageEnabled` / `usageApiKey` / `usageBaseUrl` / `usageAutoInterval`，不再塞旧 `config` 或 `availableModels` 大块字段；服务端确认用户选择模型时，返回字段、深链 `model` 和 Codex TOML 默认模型保持一致；协议无弹窗时显示已复制降级反馈；319px 视口目标按钮两列显示，导入说明不横向裁切 |
+| CC Switch 用量查询 | `/api/frist/key-usage` / `.usage-import-guide` | 用户 Key Bearer 或 `x-api-key` 只读鉴权，返回余额、已用、总额、今日/本月消费、请求量、Token、延迟和成功率；用量说明下移为教程/说明，不再占据页面前置主操作；移动端单列显示并允许长链接/脚本自动换行 |
 | CC Switch 导入后检测 | `data-import-verification` / `data-refresh-health` / `data-playground-model` | 用户导入后按供应商卡片、用量脚本、真实调用、`gpt-image-2` 流程图和记录页消费逐项验收 |
-| 异常消耗检测 | `data-usage-anomalies` / `data-usage-anomaly-status` / `usageAnomalies` | Dashboard 返回今日消耗偏高、单次调用费用突增和高延迟提醒；前端只展示用户可读摘要，不展示上游 Key、供应商原始地址或 raw usage |
+| 异常消耗检测 | `data-usage-anomalies` / `data-usage-anomaly-status` / `usageAnomalies` | Dashboard 返回今日消耗偏高、单次调用费用突增和高延迟提醒；前端说明监控余额突增、失败率、慢请求和异常模型消耗，只展示用户可读摘要，不展示上游 Key、供应商原始地址或 raw usage |
 | 导出模型清单 | `data-export-default-model` / `data-export-model-count` / `data-export-models` | 在 CC Switch 页展示默认模型、可用模型数量和完整模型列表 |
 | CC Switch MCP 增强 | `data-open-ccswitch-mcp` / `data-copy-ccswitch-mcp` / `data-ccswitch-mcp-link` | 生成单独的 `resource=mcp` deep link，默认 apps 为 `claude,codex,gemini,opencode,hermes`，载入 Playwright、Superpowers 和 open-computer-use；OpenClaw 供应商可导入，但当前 CC Switch 会忽略 OpenClaw MCP |
 | 手动配置复制 | `copy-code-box` / `data-copy-auth-json` / `data-copy-config-toml` / `data-copy-usage-script` / `data-copy-test-command` | 复制 Claude/Codex/OpenCode 等客户端 JSON/TOML、CC Switch 用量脚本和不污染用户本机配置的临时 CLI 连通测试命令；复制按钮已改为代码框内图标按钮 |
@@ -207,7 +207,7 @@
 | 广场消息删除 | `data-delete-message` | 删除单条广场测试消息 |
 | 广场清空 | `data-clear-playground` | 清空广场测试消息并恢复欢迎提示 |
 | 图片输出 | `data-image-output` | 展示 `gpt-image-2` 等图片模型生成结果 |
-| 消耗分布图 | `data-usage-donut` | 用户侧模型消耗分布图 |
+| 消耗分布图 | `data-usage-donut` | 用户侧模型消耗分布图；无真实请求时显示分段空态环和“暂无真实请求”说明，不再只展示单调灰色圆环 |
 | 服务可用性 | `data-service-health` / `data-channel-monitor-metrics` / `data-channel-monitor-history` | 登录用户侧展示 `卡商1`、`卡商2` 等号池渠道当前库存快照、可用率、真实最低/平均延迟、60 秒刷新口径和最近状态条；无真实延迟样本时显示“等待真实请求更新”，游客 Dashboard 返回空 `channelChecks`，避免误认为 mock 数据 |
 | 顶栏管理员快捷入口 | `data-owner-shortcut` | 右上角常驻“登录/身份码/管理”快捷入口；游客可一键打开登录弹窗，登录后未激活管理员可直接输入身份码，已激活时直达管理页，解决移动端入口不易发现问题 |
 | 首页通道监控 | `data-channel-monitor-summary` / `data-channel-monitor-history` | 首页通道摘要按公开卡商号池聚合 healthy/down/slow 状态，支持慢线/断线自动降级，不暴露上游地址、上游 Key 或具体号商信息 |

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Frist-API</title>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-    <link rel="stylesheet" href="./src/styles.css?v=20260509-workbench-comments" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260509-mobile-review-2" />
   </head>
   <body data-design-system="tabcode-console">
     <a class="skip-link" href="#main-content">跳到主要内容</a>
@@ -23,7 +23,8 @@
         </a>
 
         <div class="topbar-actions">
-          <button class="language-toggle" data-language-toggle type="button" aria-label="切换语言">中 / EN</button>
+          <button class="language-toggle" data-language-toggle type="button" aria-label="切换语言" aria-describedby="language-status">中 / EN</button>
+          <span id="language-status" class="language-status" data-language-status aria-live="polite">中文界面</span>
           <span class="action-message action-message--info is-visible" data-action-message aria-live="polite" aria-label="连接中">连接中</span>
           <button class="owner-shortcut" data-owner-shortcut type="button" hidden>身份码</button>
           <div class="auth-shell">
@@ -194,6 +195,7 @@
                 <section class="glass-panel usage-focus" data-usage-focus aria-label="模型消耗">
                   <div class="section-head">
                     <h2>消耗</h2>
+                    <span class="panel-caption">按真实请求统计</span>
                   </div>
                   <div class="usage-split">
                     <div class="mini-donut" data-usage-donut aria-label="模型消耗占比"></div>
@@ -203,7 +205,10 @@
 
                 <section class="glass-panel anomaly-focus" data-anomaly-focus aria-label="异常消耗检测">
                   <div class="section-head">
-                    <h2>异常</h2>
+                    <div>
+                      <h2>异常</h2>
+                      <p>监控余额突增、失败率、慢请求和异常模型消耗。</p>
+                    </div>
                     <span class="status-pill status-pill--healthy" data-usage-anomaly-status>正常</span>
                   </div>
                   <div class="usage-anomaly-list" data-usage-anomalies></div>
@@ -218,7 +223,10 @@
 
                 <section class="glass-panel provider-summary" data-provider-summary aria-label="连通性">
                   <div class="section-head">
-                    <h2>通道</h2>
+                    <div>
+                      <h2>通道</h2>
+                      <p>展示卡商号池连通性；无数据时请先检测或登录创建 Key。</p>
+                    </div>
                     <button class="text-action" data-refresh-health type="button">检测</button>
                   </div>
                   <div class="provider-list" data-channel-compact></div>
@@ -1033,6 +1041,6 @@ args = ["-y", "-p", "open-computer-use@latest", "open-codex-computer-use-mcp"]</
       </main>
     </div>
 
-    <script type="module" src="./src/app.js?v=20260509-workbench-comments"></script>
+    <script type="module" src="./src/app.js?v=20260509-mobile-review-2"></script>
   </body>
 </html>

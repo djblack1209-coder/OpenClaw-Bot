@@ -404,9 +404,20 @@ function renderUsage() {
     .join('');
 
   if (compact) {
+    const hasRealUsage = modelUsage.length > 0;
     compact.innerHTML = state.dashboardLoading
       ? renderSkeletonRows(2, '消耗')
-      : renderRows(modelUsage.slice(0, 2), { compact: true }) || renderEmptyState('无请求');
+      : renderRows(modelUsage.slice(0, 2), { compact: true }) || renderEmptyState(
+          '暂无真实请求',
+          '创建 Key 并完成一次调用后，这里会按模型显示占比和费用。',
+        );
+    for (const donut of document.querySelectorAll('[data-usage-donut]')) {
+      donut.classList.toggle('is-empty', !hasRealUsage && !state.dashboardLoading);
+      donut.setAttribute(
+        'aria-label',
+        hasRealUsage ? '模型消耗占比' : '暂无真实请求，等待模型消耗数据',
+      );
+    }
   }
 }
 
@@ -437,7 +448,10 @@ function renderUsageAnomalies() {
             `,
           )
           .join('')
-      : renderEmptyState('无异常');
+      : renderEmptyState(
+          '未发现异常',
+          '当前没有余额突增、失败率升高、慢请求或异常模型消耗。',
+        );
   }
 }
 
@@ -610,7 +624,10 @@ function renderChannelHealth() {
   if (compact) {
     compact.innerHTML = state.dashboardLoading
       ? renderSkeletonRows(2, '通道')
-      : compactItems || renderEmptyState('未检测');
+      : compactItems || renderEmptyState(
+          '等待检测',
+          '点击“检测”或等待后台 60 秒巡检；登录并创建 Key 后会显示号池可用数、延迟和最近状态。',
+        );
   }
 }
 
@@ -1817,9 +1834,17 @@ function bindStaticActions() {
     button.addEventListener('click', () => {
       state.language = state.language === 'zh' ? 'en' : 'zh';
       document.documentElement.lang = state.language === 'en' ? 'en' : 'zh-CN';
+      document.body.dataset.languageMode = state.language;
       button.textContent = state.language === 'en' ? 'EN / 中' : '中 / EN';
       button.setAttribute('aria-label', state.language === 'en' ? 'Switch language' : '切换语言');
-      signalAction('info');
+      setText(
+        '[data-language-status]',
+        state.language === 'en' ? 'English mode pending full copy translation' : '中文界面',
+      );
+      setActionMessage(
+        state.language === 'en' ? '仅切换语言偏好' : '已切回中文',
+        'info',
+      );
     });
   }
 
@@ -3157,8 +3182,11 @@ function setScopedFeedback(selector, message, type = 'info') {
   }
 }
 
-function signalAction(type = 'success') {
-  setActionMessage(feedbackLabel(type), type);
+function signalAction(messageOrType = 'success', type = messageOrType) {
+  const knownTypes = new Set(['success', 'error', 'info']);
+  const isTypeOnly = knownTypes.has(messageOrType) && type === messageOrType;
+  const tone = knownTypes.has(type) ? type : (knownTypes.has(messageOrType) ? messageOrType : 'success');
+  setActionMessage(isTypeOnly ? feedbackLabel(messageOrType) : messageOrType, tone);
 }
 
 function signalScoped(selector, type = 'success') {
