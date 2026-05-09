@@ -15,6 +15,7 @@
 - 在工作流的 compose 配置校验步骤注入 CI 专用占位 `NEWAPI_INITIAL_TOKEN`，只用于解析配置，不触碰生产 `.env` 或真实 root token。
 - 调整 New-API 检查脚本语义：退出码 `0` 表示已同步，`2` 表示需要同步，其他非零才表示真实错误；工作流据此避免把网络、GitHub API、submodule 等真失败误判成“需要同步”。
 - 同步处理 GitHub 不更新的本地侧原因：本地 `main` 比 `origin/main` 多 3 个提交，本轮提交后需一并推送到 GitHub 触发工作流复验。
+- 推送后复验：仓库级 Actions 权限从只读改为 write 并允许创建 PR；`New-API Scheduled Sync` run `25588894721` 已通过全部步骤，并创建 `codex/new-api-scheduled-sync` 到 `main` 的 PR #1。
 
 ### 文件变更
 - `.github/workflows/new-api-sync.yml` — 为 compose 校验注入 CI 占位 token，并只把退出码 2 当作需要同步。
