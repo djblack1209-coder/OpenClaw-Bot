@@ -5,6 +5,27 @@
 
 ## 最近更新（2026-05）
 
+## [2026-05-09] Frist-API 319px 移动端批注修复
+> 领域: `frontend` | `deploy` | `docs`
+> 影响模块: `Frist-API`, `User Console`, `CC Switch`, `Tencent Cloud`, `docs`
+> 关联问题: HI-901
+
+### 变更内容
+- 修复 319px 极窄屏顶栏遮挡：顶栏拆成品牌行和操作行，语言、连接状态点、登录余额按钮在第二行网格内排布，去掉 `body min-width: 320px` 造成的 319px 横向溢出。
+- 修复工作台折叠菜单箭头溢出：移动端 `.rail-toggle` 改为相对定位并把箭头固定在按钮右侧安全区内，展开/收起旋转不再跑出容器。
+- 优化 Dashboard 空状态：模型消耗空饼图改为带分段提示的空态环，并明确“暂无真实请求”；异常卡说明检测余额突增、失败率、慢请求和异常模型消耗；通道卡说明 60 秒巡检和登录创建 Key 后展示号池状态。
+- 收口语言切换行为：按钮继续切换 `html.lang` 和偏好状态，但明确提示“仅切换语言偏好”，不再让用户误以为已完成全站中英文翻译。
+- 修复 CC Switch 319px 比例和裁切：目标按钮改为两列，导入说明、用量查询、模型导出和代码片段统一 `min-width: 0` / `overflow-wrap: anywhere`，避免教程和模型列表横向撑破屏幕。
+- 已用 319×718 浏览器回测 Dashboard 与 CC Switch：本地 `scrollWidth=319`，顶栏账户按钮宽度 173px，CC Switch 主内容宽 281px、用量说明宽 235px，无横向溢出。
+- 已同步部署到腾讯云 `/opt/frist-api`，部署前备份为 `/opt/frist-api/backups/frist-api-mobile-319-20260509-045253-before-f2d6eda.tgz`；远端 `node --check` 和批注聚焦测试 57/57 通过，`frist-api-server` 重启后 healthy，公网首页 200、Dashboard 200、未授权 `/v1/models` 401，公网 319×718 Dashboard/CC Switch 复验 `scrollWidth=319`。
+
+### 文件变更
+- `apps/frist-api/index.html` — 增加语言状态辅助文本、Dashboard 卡片说明文案，并更新资源版本。
+- `apps/frist-api/src/app.js` — 丰富消耗、异常、通道空状态，语言切换改为诚实提示偏好状态。
+- `apps/frist-api/src/styles.css` — 增加 319px 移动端护栏，修复顶栏、折叠菜单箭头、空饼图和 CC Switch 横向裁切。
+- `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/business-flow.test.mjs` — 增加 319px 顶栏、箭头、空态、语言状态和 CC Switch 宽度回归断言。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/009-health.md` — 同步本轮移动端批注修复和登记 HI-901。
+
 ## [2026-05-09] Frist-API 工作台批注修复
 > 领域: `frontend` | `deploy` | `docs`
 > 影响模块: `Frist-API`, `User Console`, `Tencent Cloud`, `docs`

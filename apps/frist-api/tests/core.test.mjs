@@ -1038,7 +1038,16 @@ describe('Frist-API user dashboard boundaries', () => {
       'content-visibility: auto',
       '@media (prefers-reduced-motion: reduce)',
       'Tabcode contrast guard',
-      '20260509-mobile-channel',
+      '20260509-mobile-review-2',
+      '319px mobile review guard',
+      '@media (max-width: 360px)',
+      'grid-template-rows: auto auto',
+      '暂无真实请求',
+      '未发现异常',
+      '等待检测',
+      'data-language-status',
+      '仅切换语言偏好',
+      'overflow-wrap: anywhere',
       'body[data-design-system="tabcode-console"] .back-home',
       'body[data-design-system="tabcode-console"] .terminal-head .text-action',
       'body[data-design-system="tabcode-console"] .chat-delete',
@@ -1062,8 +1071,24 @@ describe('Frist-API user dashboard boundaries', () => {
 
     assert.equal(scriptsAndStyles.includes('transition: all'), false, '用户端动画不能使用 transition: all');
     assert.equal(scriptsAndStyles.includes('appleStatusPulse'), false, '旧 Apple 状态动效不应再存在');
+    assert.equal(scriptsAndStyles.includes('min-width: 320px'), false, '319px 视口不能被 body 最小宽度撑出横向溢出');
     assert.match(scriptsAndStyles, /body\[data-design-system="tabcode-console"\] \.primary-action,[\s\S]*?color: #07080a;/);
     assert.match(scriptsAndStyles, /body\[data-design-system="tabcode-console"\] \.back-home,[\s\S]*?color: var\(--ink\);/);
+    assert.match(
+      scriptsAndStyles,
+      /body\[data-design-system="tabcode-console"\] \.rail-toggle \{[\s\S]*?overflow: hidden;[\s\S]*?padding: 7px 34px 7px 10px;/,
+      '319px 折叠导航箭头必须固定在按钮内部',
+    );
+    assert.match(
+      scriptsAndStyles,
+      /body\[data-design-system="tabcode-console"\] \.auth-shell \{[\s\S]*?grid-column: 4;[\s\S]*?grid-row: 1;/,
+      '319px 顶栏账户按钮必须留在第二行操作网格内，不能被旧移动端规则压缩遮挡',
+    );
+    assert.match(
+      scriptsAndStyles,
+      /body\[data-design-system="tabcode-console"\] \.target-list \{[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/,
+      '319px CC Switch 目标按钮应压成两列而不是横向裁切',
+    );
     assert.doesNotMatch(
       scriptsAndStyles,
       /body\[data-design-system="tabcode-console"\] \.brand-mark \{[^}]*?background: var\(--paper\);/,
