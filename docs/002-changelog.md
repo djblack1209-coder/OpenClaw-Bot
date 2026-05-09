@@ -13,11 +13,13 @@
 ### 变更内容
 - 使用内置浏览器审计公网 `http://frist-api.101-43-41-96.nip.io/`：首页 200、标题为 `Frist-API`、控制台无 error/warn；窄屏用户端可正常进入首页和 CC Switch，CC Switch 会切成带“首页”返回按钮的详情页。
 - 发现无障碍噪音：隐藏视图中的多个 `.back-home::before` 文本箭头会在浏览器快照里聚合为 `← ← ←`；已改为纯 CSS 边框箭头，保留视觉箭头但不再暴露额外文本。
+- 复审发现账户弹窗密码输入框缺少真实 `form` 语义，浏览器会给出密码管理器结构提示；已按登录/注册、改密码、重置密码、身份码激活拆成独立表单，补齐 `autocomplete`，并让回车提交走原处理逻辑。
 - 清理 GitHub Actions Node 20 运行时预警：`OpenClaw CI` 升级 `actions/checkout@v6`、`actions/setup-node@v6`，前端 typecheck 改用 Node.js 24。
 - 合并 New-API 自动同步 PR #1：submodule 和 Compose 镜像已同步到 `v1.0.0-rc.4`；本地复验 `docker compose -f docker-compose.newapi.yml config` 通过。正式生产部署仍需先备份 `data/newapi` 并保留回滚窗口。
 
 ### 文件变更
-- `apps/frist-api/src/styles.css` — 返回首页按钮箭头改为非文本 CSS 图形，消除隐藏视图可访问性噪音。
+- `apps/frist-api/index.html` / `apps/frist-api/src/app.js` / `apps/frist-api/src/styles.css` — 返回首页按钮箭头改为非文本 CSS 图形；账户弹窗改为按动作拆分的真实表单并保留原视觉布局，消除隐藏视图可访问性噪音和密码管理器结构提示。
+- `apps/frist-api/tests/business-flow.test.mjs` — 增加账户表单语义、自动填充和回车提交回归断言。
 - `.github/workflows/ci.yml` — 升级 checkout/setup-node action 和 Node.js 版本，消除 Node 20 Actions 预警。
 - `docker-compose.newapi.yml` / `packages/new-api-upstream` — 经 PR #1 合并同步 New-API 到 `v1.0.0-rc.4`。
 - `docs/002-changelog.md` / `docs/009-health.md` — 记录浏览器审计、CI 清理和 New-API 合并状态。

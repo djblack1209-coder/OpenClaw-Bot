@@ -424,6 +424,11 @@ body[data-current-view="dashboard"] .topbar {
   margin-top: 4px;
 }
 
+.auth-form {
+  display: grid;
+  gap: 12px;
+}
+
 .auth-mode {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -474,8 +479,7 @@ body[data-current-view="dashboard"] .topbar {
 }
 
 .auth-panel__actions [hidden],
-.auth-panel__row[hidden],
-.owner-row[hidden],
+.auth-form[hidden],
 .owner-entry[hidden] {
   display: none;
 }
@@ -4880,6 +4884,10 @@ body[data-design-system="tabcode-console"] .empty-row--stack span {
     gap: 16px;
   }
 
+  body[data-design-system="tabcode-console"] .auth-form {
+    display: contents;
+  }
+
   body[data-design-system="tabcode-console"] .auth-dialog__head {
     grid-row: 1 / span 8;
     align-content: start;
@@ -4889,6 +4897,7 @@ body[data-design-system="tabcode-console"] .empty-row--stack span {
   }
 
   body[data-design-system="tabcode-console"] .auth-mode,
+  body[data-design-system="tabcode-console"] .auth-form,
   body[data-design-system="tabcode-console"] .auth-panel__row,
   body[data-design-system="tabcode-console"] .auth-panel__actions,
   body[data-design-system="tabcode-console"] .owner-entry,
