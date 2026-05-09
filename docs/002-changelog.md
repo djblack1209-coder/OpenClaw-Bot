@@ -5,6 +5,25 @@
 
 ## 最近更新（2026-05）
 
+## [2026-05-09] Frist-API 移动端管理员入口补齐与上游 Key 自动巡检
+> 领域: `frontend` | `backend` | `ai-pool` | `infra` | `docs`
+> 影响模块: `Frist-API`, `User Console`, `Gateway Monitor`, `Alerting`, `docs`
+> 关联问题: HI-896, HI-899, TD-013
+
+### 变更内容
+- 补齐移动端管理员操作入口：顶栏常驻 `登录/身份码/管理` 快捷按钮，游客可直接打开登录弹窗，登录未激活管理员时一键打开身份码输入框，已激活后直达管理页，避免入口仅藏在账户弹窗底部。
+- 新增后台通道巡检队列：支持按 60 秒间隔自动探测健康库存，即使无人请求也会刷新通道状态并回写连通性数据。
+- 用户端首页新增 60 秒静默刷新，看板连通性与后台巡检保持同频更新，无需手动点“检测”才看到降级结果。
+- 新增上游 Key 自动降级与一次性补号提醒：巡检或网关请求发现认证失败/额度耗尽时自动禁用对应 Key，支持 Telegram Bot 或 Webhook 告警，单 Key 同类问题只提醒一次，避免重复通知。
+- 巡检过程会保留可用通道并更新路由字段与延迟数据，用户侧继续按健康库存自动切换，不暴露上游密钥和号商细节。
+
+### 文件变更
+- `apps/frist-api/index.html` / `apps/frist-api/src/app.js` / `apps/frist-api/src/styles.css` — 新增移动端管理员快捷入口与交互样式。
+- `apps/frist-api/server/server.js` — 新增后台 60 秒巡检、Key 异常一次性告警、运行时告警去重存储和 Telegram/Webhook 通知。
+- `apps/frist-api/tests/server.test.mjs` / `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/business-flow.test.mjs` — 新增巡检降级回归与移动端快捷入口断言。
+- `apps/frist-api/deploy/production.env.example` / `docker-compose.frist-api.yml` — 新增通道巡检与 Key 告警环境变量透传。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步本轮功能、运维配置和风险状态。
+
 ## [2026-05-09] Frist-API 移动端导航和卡商通道展示修复
 > 领域: `frontend` | `backend` | `ai-pool` | `docs`
 > 影响模块: `Frist-API`, `User Console`, `Channel Monitor`, `docs`

@@ -332,6 +332,21 @@ function renderAuthPanel() {
   if (ownerEntry) {
     ownerEntry.hidden = !isAdmin;
   }
+  const ownerShortcut = document.querySelector('[data-owner-shortcut]');
+  if (ownerShortcut) {
+    const ownerShortcutMode = isAdmin ? 'admin' : state.hasServerSession ? 'claim' : 'auth';
+    ownerShortcut.hidden = false;
+    ownerShortcut.textContent = ownerShortcutMode === 'admin' ? '管理' : ownerShortcutMode === 'claim' ? '身份码' : '登录';
+    ownerShortcut.setAttribute(
+      'aria-label',
+      ownerShortcutMode === 'admin'
+        ? '进入管理页'
+        : ownerShortcutMode === 'claim'
+          ? '输入管理员身份码'
+          : '登录后输入管理员身份码',
+    );
+    ownerShortcut.dataset.ownerShortcutMode = ownerShortcutMode;
+  }
   const passwordRow = document.querySelector('[data-password-row]');
   if (passwordRow) {
     passwordRow.hidden = !showAccountTools;
@@ -1880,6 +1895,20 @@ function bindStaticActions() {
       return;
     }
 
+    const ownerShortcut = event.target.closest('[data-owner-shortcut]');
+    if (ownerShortcut) {
+      if (ownerShortcut.dataset.ownerShortcutMode === 'admin') {
+        window.location.assign('./admin.html');
+        return;
+      }
+      if (ownerShortcut.dataset.ownerShortcutMode === 'claim') {
+        openOwnerClaimPanel();
+        return;
+      }
+      openAuthLoginPanel();
+      return;
+    }
+
     const amount = event.target.closest('[data-recharge-option]');
     if (amount) {
       state.selectedRechargePlanId = amount.dataset.rechargePlanId || '';
@@ -2333,6 +2362,13 @@ function startPlaygroundAutoTest() {
   }, 180_000);
 }
 
+function startDashboardAutoRefresh() {
+  window.setInterval(() => {
+    if (state.dashboardLoading || state.playgroundBusy) return;
+    void refreshDashboardSilently();
+  }, 60_000);
+}
+
 function setActiveView(view) {
   state.view = view;
   document.body.dataset.currentView = view;
@@ -2363,6 +2399,24 @@ function closeWorkspaceRail() {
   const toggle = document.querySelector('[data-rail-toggle]');
   rail?.classList.remove('is-open');
   toggle?.setAttribute('aria-expanded', 'false');
+}
+
+function openOwnerClaimPanel() {
+  state.authMode = 'login';
+  renderAuthPanel();
+  toggleAuthPanel(true);
+  window.setTimeout(() => {
+    document.querySelector('[data-owner-claim-code]')?.focus();
+  }, 0);
+}
+
+function openAuthLoginPanel() {
+  state.authMode = 'login';
+  renderAuthPanel();
+  toggleAuthPanel(true);
+  window.setTimeout(() => {
+    document.querySelector('[data-register-email]')?.focus();
+  }, 0);
 }
 
 function normalizePlaygroundMessages() {
@@ -3149,6 +3203,7 @@ bindStaticActions();
 render();
 startCarouselTimer();
 startPlaygroundAutoTest();
+startDashboardAutoRefresh();
 loadDashboardData().catch(() => {
   state.dashboardLoading = false;
   render();

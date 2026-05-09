@@ -112,12 +112,16 @@ const ROOT_GATEWAY_PATHS = new Set([
 ]);
 const DEFAULT_CANONICAL_HOST = 'frist-api.101-43-41-96.nip.io';
 const DEFAULT_REDIRECT_HOSTS = Object.freeze(['101-43-41-96.nip.io']);
+const DEFAULT_CHANNEL_MONITOR_INTERVAL_MS = 60_000;
+const DEFAULT_CHANNEL_MONITOR_BATCH_SIZE = 4;
+const DEFAULT_CHANNEL_MONITOR_COOLDOWN_MS = 55_000;
 
 export function createFristApiServer(options = {}) {
   const serverOptions = normalizeServerOptions(options);
   const newApiBridge = createNewApiBridge(serverOptions);
   const store = createRuntimeStore(serverOptions.dataFile, serverOptions.dataEncryptionKey);
   const securityState = createSecurityState();
+  let stopChannelMonitor = null;
 
   const server = createServer(async (request, response) => {
     try {
@@ -155,6 +159,20 @@ export function createFristApiServer(options = {}) {
   });
   if (Number.isFinite(serverOptions.keepAliveTimeoutMs)) {
     server.keepAliveTimeout = Number(serverOptions.keepAliveTimeoutMs);
+  }
+  if (serverOptions.channelMonitorEnabled) {
+    server.on('listening', () => {
+      if (stopChannelMonitor) {
+        stopChannelMonitor();
+      }
+      stopChannelMonitor = startChannelMonitor({ store, serverOptions });
+    });
+    server.on('close', () => {
+      if (stopChannelMonitor) {
+        stopChannelMonitor();
+        stopChannelMonitor = null;
+      }
+    });
   }
   return server;
 }
@@ -2954,6 +2972,7 @@ async function routeChatCompletion(data, request, body, serverOptions, options =
   for (const credential of candidates) {
     if (Number(credential.quotaRemaining || 0) < estimatedQuotaCost) {
       exhaustCredential(data, credential, 'quota_too_low_before_request');
+      await maybeNotifyCredentialIssue(data, credential, 'quota_too_low_before_request', serverOptions);
       clearRouteAffinity(data, sessionKey, credential.id);
       continue;
     }
@@ -2963,16 +2982,19 @@ async function routeChatCompletion(data, request, body, serverOptions, options =
       upstream = await callGatewayAttempts(credential, routedBody, serverOptions, options);
     } catch {
       failCredential(data, credential, 'upstream_network_failed');
+      await maybeNotifyCredentialIssue(data, credential, 'upstream_network_failed', serverOptions);
       clearRouteAffinity(data, sessionKey, credential.id);
       continue;
     }
     if (isQuotaExhaustedResponse(upstream)) {
       exhaustCredential(data, credential, 'quota_exhausted_by_upstream');
+      await maybeNotifyCredentialIssue(data, credential, 'quota_exhausted_by_upstream', serverOptions);
       clearRouteAffinity(data, sessionKey, credential.id);
       continue;
     }
     if (shouldFailoverUpstream(upstream)) {
       failCredential(data, credential, `upstream_http_${upstream.status}`);
+      await maybeNotifyCredentialIssue(data, credential, `upstream_http_${upstream.status}`, serverOptions);
       clearRouteAffinity(data, sessionKey, credential.id);
       continue;
     }
@@ -3530,6 +3552,191 @@ async function maybeNotifyLowInventory(data, credential, serverOptions) {
       wasteText: summary.wasteText,
     });
   }
+}
+
+function credentialIssueTypeFromReason(reason = '') {
+  const text = String(reason || '').toLowerCase();
+  if (text.includes('quota') || text.includes('402') || text.includes('429')) {
+    return 'quota';
+  }
+  if (text.includes('auth') || text.includes('401') || text.includes('403') || text.includes('forbidden')) {
+    return 'auth';
+  }
+  return '';
+}
+
+function upstreamHostFromCredential(credential) {
+  const target = credential?.routeBaseUrl || credential?.baseUrl || '';
+  try {
+    return new URL(normalizeBaseUrl(target)).host;
+  } catch {
+    return '';
+  }
+}
+
+async function maybeNotifyCredentialIssue(data, credential, reason, serverOptions) {
+  const issueType = credentialIssueTypeFromReason(reason);
+  if (!credential || !issueType) {
+    return;
+  }
+  if (!data.upstreamKeyAlerts || typeof data.upstreamKeyAlerts !== 'object') {
+    data.upstreamKeyAlerts = {};
+  }
+  const alertKey = `${credential.id}:${issueType}`;
+  if (data.upstreamKeyAlerts?.[alertKey]) {
+    return;
+  }
+  const at = currentDate(serverOptions).toISOString();
+  data.upstreamKeyAlerts[alertKey] = {
+    at,
+    issueType,
+    reason: String(reason || '').slice(0, 120),
+    status: String(credential.status || ''),
+  };
+
+  const notifier = serverOptions.notifyCredentialIssue;
+  if (typeof notifier !== 'function') {
+    return;
+  }
+
+  await notifier({
+    type: 'upstream_key_issue',
+    issueType,
+    reason: String(reason || '').slice(0, 120),
+    keyPreview: credential.keyPreview || maskKey(credential.rawKey),
+    pool: credential.pool || 'default',
+    providerGroup: effectiveCredentialGroup(credential),
+    modelGroup: credential.modelGroup || 'All',
+    status: credential.status || '',
+    quotaRemaining: Number(credential.quotaRemaining || 0),
+    quotaTotal: Number(credential.quotaTotal || credential.quotaRemaining || 0),
+    sourceHost: upstreamHostFromCredential(credential),
+    connectionPath: credential.connectionPath || 'direct',
+    at,
+  });
+}
+
+function monitorCandidateCredentials(data, serverOptions) {
+  const batchSize = Math.max(1, Number(serverOptions.channelMonitorBatchSize || DEFAULT_CHANNEL_MONITOR_BATCH_SIZE));
+  const cooldownMs = Math.max(0, Number(serverOptions.channelMonitorCooldownMs ?? DEFAULT_CHANNEL_MONITOR_COOLDOWN_MS));
+  const nowMs = currentDate(serverOptions).getTime();
+  const candidates = data.credentials
+    .filter((credential) => credential.enabled && credential.status === 'healthy')
+    .filter(isCredentialRouteApproved)
+    .filter((credential) => String(credential.rawKey || '').trim())
+    .filter((credential) => String(credential.baseUrl || '').trim())
+    .filter((credential) => {
+      const lastProbeAt = Date.parse(credential.lastAutoProbeAt || '');
+      if (!Number.isFinite(lastProbeAt)) return true;
+      return nowMs - lastProbeAt >= cooldownMs;
+    })
+    .sort((left, right) => {
+      const leftTime = Date.parse(left.lastAutoProbeAt || '') || 0;
+      const rightTime = Date.parse(right.lastAutoProbeAt || '') || 0;
+      return leftTime - rightTime;
+    });
+  return candidates.slice(0, batchSize);
+}
+
+export async function runChannelMonitorSweep(data, serverOptions) {
+  const credentials = monitorCandidateCredentials(data, serverOptions);
+  for (const credential of credentials) {
+    const probe = await probeCredentialRoutes({
+      baseUrl: credential.baseUrl,
+      proxyBaseUrl: credential.proxyBaseUrl || '',
+      rawKey: credential.rawKey,
+      authConfig: {
+        authHeaderName: credential.authHeaderName || 'authorization',
+        authHeaderValuePrefix:
+          credential.authHeaderValuePrefix === ''
+            ? ''
+            : credential.authHeaderValuePrefix ?? 'Bearer',
+        extraHeaders: credential.extraHeaders || {},
+      },
+      models: normalizeOfficialModelList(
+        Array.isArray(credential.models) && credential.models.length > 0
+          ? credential.models
+          : [DEFAULT_MODEL],
+      ),
+      serverOptions,
+      collectAllModels: false,
+      preferAnthropicMessages: effectiveCredentialGroup(credential) === 'Claude',
+    });
+    const now = currentDate(serverOptions).toISOString();
+    credential.lastAutoProbeAt = now;
+    credential.lastProbeStatus = probe.status || '';
+    credential.lastProbeReason = probe.reason || '';
+    if (probe.ok) {
+      credential.status = 'healthy';
+      credential.enabled = isCredentialRouteApproved(credential);
+      credential.routeBaseUrl = probe.routeBaseUrl || credential.routeBaseUrl || credential.baseUrl;
+      credential.connectionPath = probe.connectionPath || credential.connectionPath || 'direct';
+      if (Array.isArray(probe.models) && probe.models.length > 0) {
+        credential.models = normalizeOfficialModelList(probe.models);
+      }
+      const latencyMs = Math.max(0, Number(probe.latencyMs || credential.latencyMs || 0) || 0);
+      credential.latencyMs = latencyMs;
+      credential.updatedAt = now;
+      recordChannelProbeEvent(
+        data,
+        credential,
+        latencyMs > 1600 ? 'slow' : 'ok',
+        probe.status || 'auto_probe_ok',
+        serverOptions,
+        { latencyMs },
+      );
+      continue;
+    }
+
+    if (probe.status === 'quota_failed') {
+      exhaustCredential(data, credential, 'auto_probe_quota_failed');
+      credential.lastProbeReason = probe.reason || '上游额度不足或限速';
+      await maybeNotifyCredentialIssue(data, credential, 'auto_probe_quota_failed', serverOptions);
+      continue;
+    }
+
+    if (probe.status === 'auth_failed') {
+      failCredential(data, credential, 'auto_probe_auth_failed');
+      credential.lastProbeReason = probe.reason || '认证失败或 Key 无效';
+      await maybeNotifyCredentialIssue(data, credential, 'auto_probe_auth_failed', serverOptions);
+      continue;
+    }
+
+    failCredential(data, credential, `auto_probe_${probe.status || 'failed'}`);
+    credential.lastProbeReason = probe.reason || '通道探测失败';
+  }
+}
+
+function startChannelMonitor({ store, serverOptions }) {
+  const intervalMs = Math.max(100, Number(serverOptions.channelMonitorIntervalMs || DEFAULT_CHANNEL_MONITOR_INTERVAL_MS));
+  let stopped = false;
+  let running = false;
+  const runOnce = async () => {
+    if (stopped || running) {
+      return;
+    }
+    running = true;
+    try {
+      await store.mutate(async (data) => {
+        await runChannelMonitorSweep(data, serverOptions);
+      });
+    } catch {
+      // 巡检失败不会阻断用户请求，下一轮继续执行。
+    } finally {
+      running = false;
+    }
+  };
+  const timer = setInterval(() => {
+    void runOnce();
+  }, intervalMs);
+  if (typeof timer.unref === 'function') {
+    timer.unref();
+  }
+  void runOnce();
+  return () => {
+    stopped = true;
+    clearInterval(timer);
+  };
 }
 
 async function maybeNotifyCustomerLowBalance(data, user, serverOptions, context = {}) {
@@ -4570,6 +4777,7 @@ function normalizeRuntimeData(data) {
     rtAccounts: Array.isArray(data.rtAccounts) ? data.rtAccounts.map(normalizeRtAccountRecord) : [],
     routeAffinities: data.routeAffinities && typeof data.routeAffinities === 'object' ? data.routeAffinities : {},
     lowInventoryAlerts: data.lowInventoryAlerts && typeof data.lowInventoryAlerts === 'object' ? data.lowInventoryAlerts : {},
+    upstreamKeyAlerts: data.upstreamKeyAlerts && typeof data.upstreamKeyAlerts === 'object' ? data.upstreamKeyAlerts : {},
     backupStatus: normalizeBackupStatusRecord(data.backupStatus),
     channelProbeEvents: Array.isArray(data.channelProbeEvents) ? data.channelProbeEvents.map(normalizeChannelProbeEvent).filter(Boolean) : [],
     usedAdminClaimCodeHashes: Array.isArray(data.usedAdminClaimCodeHashes) ? data.usedAdminClaimCodeHashes : [],
@@ -5041,6 +5249,23 @@ function normalizeServerOptions(options) {
       typeof options.notifyLowInventory === 'function'
         ? options.notifyLowInventory
         : createLowInventoryWebhookNotifier(options.fetchImpl || globalThis.fetch),
+    channelMonitorEnabled:
+      typeof options.channelMonitorEnabled === 'boolean'
+        ? options.channelMonitorEnabled
+        : process.env.FRIST_API_CHANNEL_MONITOR_ENABLED === '1',
+    channelMonitorIntervalMs: Number(
+      options.channelMonitorIntervalMs ?? process.env.FRIST_API_CHANNEL_MONITOR_INTERVAL_MS ?? DEFAULT_CHANNEL_MONITOR_INTERVAL_MS,
+    ),
+    channelMonitorBatchSize: Number(
+      options.channelMonitorBatchSize ?? process.env.FRIST_API_CHANNEL_MONITOR_BATCH_SIZE ?? DEFAULT_CHANNEL_MONITOR_BATCH_SIZE,
+    ),
+    channelMonitorCooldownMs: Number(
+      options.channelMonitorCooldownMs ?? process.env.FRIST_API_CHANNEL_MONITOR_COOLDOWN_MS ?? DEFAULT_CHANNEL_MONITOR_COOLDOWN_MS,
+    ),
+    notifyCredentialIssue:
+      typeof options.notifyCredentialIssue === 'function'
+        ? options.notifyCredentialIssue
+        : createCredentialIssueNotifier(options.fetchImpl || globalThis.fetch),
     balanceAlertEmailSender:
       typeof options.balanceAlertEmailSender === 'function'
         ? options.balanceAlertEmailSender
@@ -5146,6 +5371,59 @@ function createLowInventoryWebhookNotifier(fetchImpl) {
       });
     } catch {
       // 低库存通知不能阻断用户请求，失败会留给下一轮健康检查处理。
+    }
+  };
+}
+
+function createCredentialIssueNotifier(fetchImpl) {
+  if (typeof fetchImpl !== 'function') {
+    return null;
+  }
+  const telegramToken = String(process.env.FRIST_API_TELEGRAM_BOT_TOKEN || '').trim();
+  const telegramChatId = String(process.env.FRIST_API_TELEGRAM_CHAT_ID || '').trim();
+  const webhookUrl = String(process.env.FRIST_API_KEY_ALERT_WEBHOOK || process.env.FRIST_API_LOW_INVENTORY_WEBHOOK || '').trim();
+  if (!telegramToken && !webhookUrl) {
+    return null;
+  }
+
+  return async (payload) => {
+    const message = [
+      `[Frist-API] ${payload.issueType === 'quota' ? 'Key 额度异常' : 'Key 认证异常'}`,
+      `渠道: ${payload.pool || 'default'} / ${payload.providerGroup || 'Unknown'}`,
+      `Key: ${payload.keyPreview || 'unknown'}`,
+      `状态: ${payload.status || 'unknown'}`,
+      `原因: ${payload.reason || 'unknown'}`,
+      `剩余额度: ${Number(payload.quotaRemaining || 0)} / ${Number(payload.quotaTotal || 0)}`,
+      `入口: ${payload.sourceHost || '-'}`,
+      `时间: ${payload.at || ''}`,
+      '动作: 请补号或轮换上游 Key',
+    ].join('\n');
+    try {
+      if (telegramToken && telegramChatId) {
+        await fetchImpl(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: telegramChatId,
+            text: message,
+            disable_web_page_preview: true,
+          }),
+        });
+      }
+      if (webhookUrl) {
+        await fetchImpl(webhookUrl, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            source: 'Frist-API',
+            type: 'upstream_key_issue',
+            message,
+            payload,
+          }),
+        });
+      }
+    } catch {
+      // 告警失败不阻断主流程，等待下一次巡检或请求重试。
     }
   };
 }
