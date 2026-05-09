@@ -5,6 +5,22 @@
 
 ## 最近更新（2026-05）
 
+## [2026-05-08] New-API 定时同步工作流修复
+> 领域: `infra` | `ai-pool` | `docs`
+> 影响模块: `GitHub Actions`, `New-API Sync`, `docker-compose.newapi.yml`, `docs`
+> 关联问题: HI-886, HI-891
+
+### 变更内容
+- 定位 `New-API Scheduled Sync` 最近失败 run `25576027773`：检查和同步步骤均成功，失败点为 `docker compose -f docker-compose.newapi.yml config` 在 GitHub Actions 中缺少 `NEWAPI_INITIAL_TOKEN`，导致同步 PR 步骤被跳过。
+- 在工作流的 compose 配置校验步骤注入 CI 专用占位 `NEWAPI_INITIAL_TOKEN`，只用于解析配置，不触碰生产 `.env` 或真实 root token。
+- 调整 New-API 检查脚本语义：退出码 `0` 表示已同步，`2` 表示需要同步，其他非零才表示真实错误；工作流据此避免把网络、GitHub API、submodule 等真失败误判成“需要同步”。
+- 同步处理 GitHub 不更新的本地侧原因：本地 `main` 比 `origin/main` 多 3 个提交，本轮提交后需一并推送到 GitHub 触发工作流复验。
+
+### 文件变更
+- `.github/workflows/new-api-sync.yml` — 为 compose 校验注入 CI 占位 token，并只把退出码 2 当作需要同步。
+- `scripts/sync_new_api_upstream.sh` — `check` 模式用退出码 2 表达版本漂移。
+- `docs/002-changelog.md` / `docs/009-health.md` — 登记 GitHub Actions 根因、修复和剩余 New-API 生产升级风险。
+
 ## [2026-05-08] 严格审计复核与闲鱼管理页安全部署
 > 领域: `backend` | `frontend` | `xianyu` | `deploy` | `docs`
 > 影响模块: `OpenClaw Manager`, `WorldMonitor`, `NewsFeed`, `Xianyu Admin`, `APIServer`, `Tencent Cloud`

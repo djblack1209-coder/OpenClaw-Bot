@@ -75,7 +75,7 @@ if [[ "$MODE" == "check" ]]; then
     exit 0
   else
     echo "状态: 需要同步。执行 make new-api-sync 更新源码指针和镜像 tag。"
-    exit 1
+    exit 2
   fi
 fi
 
