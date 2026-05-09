@@ -136,7 +136,7 @@ npx tsc --noEmit                         # 前端
 
 ### 测试门
 ```bash
-cd packages/clawbot && pytest tests/ -x --tb=short
+make test  # 自动使用 packages/clawbot/.venv312/bin/python，避免系统 pytest 误用旧 Python
 ```
 
 ### 完整性门
@@ -297,7 +297,7 @@ OpenClaw Bot/
 | 文档拉取规范 | `docs/008-sop.md` |
 | 错误翻译参考 | `docs/008-sop.md` |
 | 上次交接 | `docs/012-handoff.md` |
-| 运行测试 | `cd packages/clawbot && pytest` |
+| 运行测试 | `make test` |
 
 ---
 
@@ -317,7 +317,7 @@ LiteLLM / PTB / FastAPI / Tauri v2 / CrewAI / browser-use / crawl4ai / Redis / m
 
 ### 改代码前：拍基线快照
 ```bash
-cd packages/clawbot && pytest tests/ --tb=no -q 2>&1 | tail -5
+cd packages/clawbot && .venv312/bin/python -m pytest tests/ --tb=no -q 2>&1 | tail -5
 ```
 记录通过数、失败数。纯文档/配置变更可跳过。
 
