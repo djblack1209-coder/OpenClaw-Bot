@@ -618,8 +618,12 @@ textarea:focus {
 }
 
 .back-home::before {
-  content: "←";
-  font-size: 17px;
+  width: 9px;
+  height: 9px;
+  border-left: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  content: "";
+  transform: rotate(45deg);
 }
 
 .segmented-control {
