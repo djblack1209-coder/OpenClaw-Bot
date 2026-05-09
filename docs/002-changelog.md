@@ -5,6 +5,26 @@
 
 ## 最近更新（2026-05）
 
+## [2026-05-09] New-API 生产启动与 CC Switch 连通复核
+> 领域: `infra` | `ai-pool` | `deploy` | `docs`
+> 影响模块: `New-API`, `Frist-API`, `CC Switch`, `Tencent Cloud`, `docs`
+> 关联问题: HI-895, HI-896
+
+### 变更内容
+- 继续处理腾讯云 New-API 升级遗留项：本轮重新备份 `/opt/frist-api/data/newapi`、`.env` 和 compose 后，成功拉取 `calciumion/new-api:v1.0.0-rc.4`，解除上一轮 Docker Hub 超时阻塞。
+- 定位启动失败根因并修复部署方式：共享服务器已有 `/opt/ccgame/server/src/app.js` 长期监听 `127.0.0.1:3000`，因此将 `docker-compose.newapi.yml` 的宿主机端口改为 `NEWAPI_HOST_PORT` 可配置；腾讯云设置 `NEWAPI_HOST_PORT=13000`，容器内部仍为 `3000`，不停止无关项目。
+- 定位第二个启动失败根因并修复远端数据权限：`data/newapi` 来自旧 UID 501，New-API 在安全加固 `cap_drop: ALL` 下无法创建 `/data/logs`；已把远端 `data/newapi` 调整为 `root:root`、目录 `750`、数据库文件 `640`，保留安全加固而非放宽容器权限。
+- 复验 New-API 运行态：`openclaw-newapi` 运行 `v1.0.0-rc.4`，`127.0.0.1:13000->3000/tcp`，健康状态 `healthy`；`/api/status` 返回 `success=true`、`version=v1.0.0-rc.4`、`setup=true`。
+- 使用浏览器复核公网 `#switch`：页面标题 `Frist-API`，控制台 0 error/0 warning，Dashboard 请求 200；未登录状态下页面不生成带 Key 的 provider 导入链接，保留 21 个模型展示和独立 MCP deep link，符合“登录并创建 Key 后生成用量脚本”的边界。
+- 用运行数据生成脱敏 CC Switch provider 链接样本，确认 `resource=provider`、`app=codex`、`endpoint=http://frist-api.101-43-41-96.nip.io/v1`、默认模型 `gpt-5.5`、`usageScript` 指向 `/api/frist/key-usage` 且包含 Authorization；未出现旧的大块 `config/settings_config/availableModels` 参数。
+- 受控临时 Key 连通性复核：`/v1/models` 返回 200 且 21 个模型，用量接口返回 200 且 `ok=true/valid=true`；真实 `chat/completions` 返回 503，追踪到唯一 healthy 上游在测试请求后返回 401 并触发 `credential_failed upstream_http_401`，说明当前上游库存 Key 无法形成完整聊天闭环。已从测试前备份恢复 runtime，临时测试用户/Key 清零，唯一 healthy 通道状态恢复。
+- 公网冒烟最终结果：首页 200、Dashboard 200、未授权 `/v1/models` 401、裸域名 301；本地 Frist-API 3180 为 200，New-API 13000 为 200。
+
+### 文件变更
+- `docker-compose.newapi.yml` — New-API 宿主机端口改为 `NEWAPI_HOST_PORT` 可配置，默认仍为 `3000`。
+- `docs/006-registries.md` / `docs/007-operations.md` — 更新 New-API 固定版本、端口变量和腾讯云实际运行状态。
+- `docs/002-changelog.md` / `docs/009-health.md` — 登记本轮生产启动、CC Switch 复核证据和真实聊天连通遗留风险。
+
 ## [2026-05-08] 审计入口复核与测试命令收口
 > 领域: `docs` | `infra`
 > 影响模块: `AGENTS`, `docs`, `pytest`

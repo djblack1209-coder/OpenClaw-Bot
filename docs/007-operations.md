@@ -671,17 +671,18 @@ tar -czf "data/backups/newapi-$(date +%Y%m%d-%H%M%S).tgz" data/newapi
 
 注意事项:
 
-- 当前固定版本为 `v1.0.0-rc.2`，镜像为 `calciumion/new-api:v1.0.0-rc.2`。
+- 当前固定版本为 `v1.0.0-rc.4`，镜像为 `calciumion/new-api:v1.0.0-rc.4`。
 - `make new-api-check` 发现版本落后会返回非 0；`.github/workflows/new-api-sync.yml` 已每天自动检查并在落后时创建同步 PR。
 - Docker Desktop 或服务器 Docker daemon 必须运行，才能执行镜像 pull、容器启动和健康检查。
 - 本地已有 `data/newapi/new-api.db` 和 `data/newapi/one-api.db`，不要在未备份时直接启动新版容器，避免自动迁移后无法回退。
 - New-API v1 后台/用户接口需要 `Authorization` 和 `New-Api-User` 一致；ClawBot 代理环境变量为 `NEWAPI_ADMIN_TOKEN` / `NEWAPI_ADMIN_USER_ID`，Frist-API 桥接环境变量为 `FRIST_API_NEWAPI_ACCESS_TOKEN` / `FRIST_API_NEWAPI_USER_ID`。
+- `docker-compose.newapi.yml` 默认把容器 `3000` 端口绑定到宿主机 `127.0.0.1:${NEWAPI_HOST_PORT:-3000}`；共享服务器已有其他项目占用 3000 时，只设置 `NEWAPI_HOST_PORT=13000`，不要停止无关服务。
 - 公开商业化时，AGPL-3.0 合规要求必须准备源码公开入口或公开 fork。
 
 当前腾讯云状态:
 
-- 共享服务器上目前只部署了 Frist-API Workbench，未发现独立 New-API 容器或 `/opt/*/data/newapi` 运行数据。
-- 因此本轮 New-API “升级”是本地工程源码指针、compose 镜像和代理层升级；正式迁移到服务器前还需要数据库备份、初始化 root token、内网端口和反代策略。
+- 共享服务器 `/opt/frist-api` 已保留 `data/newapi` 运行数据并启动独立 New-API 容器；因 `/opt/ccgame` 已长期占用宿主机 `127.0.0.1:3000`，腾讯云使用 `NEWAPI_HOST_PORT=13000` 只在本机回环暴露 New-API。
+- Frist-API Workbench 仍使用独立 `127.0.0.1:3180` 入口；切换到 New-API 数据库前还需要生成 New-API 用户 access token、配置 `FRIST_API_NEWAPI_*` 并做历史 JSON 迁移演练。
 
 ## 下一步
 

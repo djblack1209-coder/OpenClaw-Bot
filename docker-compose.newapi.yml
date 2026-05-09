@@ -4,7 +4,7 @@
 # 检查更新: make new-api-check
 # 同步最新版: make new-api-sync
 # 启动: docker compose -f docker-compose.newapi.yml up -d
-# 管理界面: http://localhost:3000
+# 管理界面: http://localhost:${NEWAPI_HOST_PORT:-3000}
 
 services:
   new-api:
@@ -18,7 +18,7 @@ services:
     security_opt:
       - no-new-privileges:true
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${NEWAPI_HOST_PORT:-3000}:3000"
     volumes:
       - ./data/newapi:/data
     environment:
