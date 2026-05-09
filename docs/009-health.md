@@ -49,6 +49,7 @@
 | HI-886 | INFRA | `make new-api-check` 显示 New-API 本地源码和 Compose 镜像仍为 `v1.0.0-rc.2`，GitHub 最新为 `v1.0.0-rc.4`；升级会影响网关/数据库/部署，需单独排期执行 `make new-api-sync` 并做回滚演练 | 2026-05-08 | 🟠 待评估 |
 | HI-887 | AI_POOL/PERF | 86GameStore 实际面板显示余额 `$35.70`，今日实际消费 `$38.1537`，今日请求 `2464`，今日 Token `377.4M`，平均响应 `16.11s`；今日消耗已高于当前余额且响应偏慢，需补余额预警、限额和慢线切换策略 | 2026-05-08 | 🟠 待处理 |
 | HI-890 | SECURITY | 服务器 root 密码已在对话中明文出现，视同泄露；本轮未把密码写入命令或文件，但必须尽快轮换 root 密码、审计登录记录并优先改为密钥登录/禁用密码登录 | 2026-05-08 | 🟠 待轮换 |
+| HI-891 | INFRA | `New-API Scheduled Sync` 最近失败 run `25576027773` 卡在 `docker compose -f docker-compose.newapi.yml config`：CI 缺少 `NEWAPI_INITIAL_TOKEN`，导致已完成的 New-API 同步无法进入创建 PR；已给 compose 校验注入 CI 占位 token，并让检查脚本用退出码 `2` 明确表示“需要同步”、其他非零表示真实错误 | 2026-05-08 | ✅ 已处理，待推送后复验 Actions |
 
 ### 🟡 一般
 

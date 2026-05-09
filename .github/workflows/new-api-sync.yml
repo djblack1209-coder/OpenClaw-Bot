@@ -28,14 +28,16 @@ jobs:
         shell: bash
         run: |
           set +e
-          make new-api-check >new-api-check.log 2>&1
+          scripts/sync_new_api_upstream.sh check >new-api-check.log 2>&1
           status=$?
           set -e
           cat new-api-check.log
           if [ "$status" -eq 0 ]; then
             echo "needs_sync=false" >> "$GITHUB_OUTPUT"
-          else
+          elif [ "$status" -eq 2 ]; then
             echo "needs_sync=true" >> "$GITHUB_OUTPUT"
+          else
+            exit "$status"
           fi
 
       - name: Sync submodule pointer and compose image
@@ -44,6 +46,8 @@ jobs:
 
       - name: Validate compose config
         if: steps.check.outputs.needs_sync == 'true'
+        env:
+          NEWAPI_INITIAL_TOKEN: ci-compose-validation-only
         run: docker compose -f docker-compose.newapi.yml config >/tmp/new-api-compose.yml
 
       - name: Create pull request
@@ -57,7 +61,7 @@ jobs:
             自动定时同步 `QuantumNous/new-api` 最新非草稿 release。
 
             已执行：
-            - `make new-api-check`
+            - `scripts/sync_new_api_upstream.sh check`
             - `make new-api-sync`
             - `docker compose -f docker-compose.newapi.yml config`
 
