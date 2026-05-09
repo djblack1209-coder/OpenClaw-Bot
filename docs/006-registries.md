@@ -296,8 +296,8 @@
 
 | 类型 | 名称 | 路径 / 命令 | 说明 |
 |------|------|-------------|------|
-| 上游源码 | `QuantumNous/new-api` | `packages/new-api-upstream` | Git submodule，当前固定 `v1.0.0-rc.2` |
-| Compose 镜像 | `calciumion/new-api` | `docker-compose.newapi.yml` | 当前镜像 `calciumion/new-api:v1.0.0-rc.2`，不使用 `latest` |
+| 上游源码 | `QuantumNous/new-api` | `packages/new-api-upstream` | Git submodule，当前固定 `v1.0.0-rc.4` |
+| Compose 镜像 | `calciumion/new-api` | `docker-compose.newapi.yml` | 当前镜像 `calciumion/new-api:v1.0.0-rc.4`，不使用 `latest` |
 | 同步检查 | `new-api-check` | `make new-api-check` | 检查 GitHub 最新非草稿 release、submodule 指针和 compose 镜像 tag 是否一致 |
 | 同步升级 | `new-api-sync` | `make new-api-sync` | 更新 submodule 到最新 release，并同步 compose 镜像 tag |
 | 同步脚本 | `sync_new_api_upstream.sh` | `scripts/sync_new_api_upstream.sh` | 支持 `check` / `update`；`check` 发现落后返回非 0，适合 CI/定时任务 |
@@ -308,6 +308,7 @@
 | 环境变量 | 用途 | 备注 |
 |----------|------|------|
 | `NEWAPI_BASE_URL` | New-API 内网服务地址 | 默认 `http://localhost:3000` |
+| `NEWAPI_HOST_PORT` | New-API 宿主机回环监听端口 | 默认 `3000`；共享服务器如端口冲突可改为 `13000`，容器内部仍为 `3000` |
 | `NEWAPI_ADMIN_TOKEN` | New-API 用户 access token | 通过 New-API 用户资料页或 `/api/user/token` 生成，禁止写入仓库 |
 | `NEWAPI_ADMIN_USER_ID` | New-API 当前用户 ID | New-API v1 后台/用户 API 会校验 `New-Api-User` 头，需与 access token 所属用户一致 |
 | `NEWAPI_INITIAL_TOKEN` | New-API 容器初始 root token | 只放本机或服务器环境文件，用于首次初始化 |
