@@ -5,6 +5,23 @@
 
 ## 最近更新（2026-05）
 
+## [2026-05-09] 本地冗余清理与文档状态收口
+> 领域: `infra` | `docs`
+> 影响模块: `Workspace`, `Frist-API`, `ClawBot`, `docs`
+> 关联问题: HI-897
+
+### 变更内容
+- 清理本地可重建冗余：移除源码树中的 `.DS_Store`、`.playwright-mcp`、`.pytest_cache`、`__pycache__`、`.ruff_cache`、Playwright/Expect 调试产物、Frist-API 历史审计截图、根目录临时截图和 ClawBot 本地旧日志。
+- 明确保留边界：未删除 `.env`、`.openclaw/` 运行身份与会话、Frist-API runtime 数据、ClawBot `data/`、桌面端 `node_modules`、Python `.venv312`、腾讯云生产备份和共享服务器其他项目，避免清理动作造成运行状态丢失。
+- 复核 `.gitignore` 已覆盖 `.DS_Store`、`__pycache__/`、`.pytest_cache`、`.playwright-mcp/`、`.playwright-cli/`、根目录截图、日志和密钥扫描报告；本轮不需要新增忽略规则。
+- 同步文档状态：健康页新增 `HI-897`，登记本轮冗余清理范围、保留原因和验证口径；项目全景图更新时间，避免入口文档继续停留在 2026-04 的旧审计状态。
+- 清理后复验：`git diff --check` 通过；`make new-api-check` 显示 GitHub 最新、本地源码和 Compose 镜像均为 `v1.0.0-rc.4`；公网首页 200、Dashboard 200、未授权 `/v1/models` 401、裸域名最终跳转到唯一 Frist-API 入口；浏览器只读复核页面标题 `Frist-API`，控制台 0 error/0 warning；复核产生的 `.playwright-mcp` 临时快照已二次清理。
+
+### 文件变更
+- `docs/002-changelog.md` — 新增本轮冗余清理和文档状态收口记录。
+- `docs/009-health.md` — 更新本地日志/冗余清理状态，并登记 `HI-897`。
+- `docs/001-project-map.md` — 更新时间提示，说明当前状态以健康页和变更日志为准。
+
 ## [2026-05-09] New-API 生产启动与 CC Switch 连通复核
 > 领域: `infra` | `ai-pool` | `deploy` | `docs`
 > 影响模块: `New-API`, `Frist-API`, `CC Switch`, `Tencent Cloud`, `docs`
