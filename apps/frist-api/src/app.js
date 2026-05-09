@@ -316,6 +316,9 @@ function renderAuthPanel() {
   if (emailInput && document.activeElement !== emailInput) {
     emailInput.value = businessState.customer.email;
   }
+  for (const hiddenEmail of document.querySelectorAll('[data-auth-form-email]')) {
+    hiddenEmail.value = emailInput?.value || businessState.customer.email || '';
+  }
   const captchaRow = document.querySelector('[data-captcha-row]');
   if (captchaRow) {
     captchaRow.hidden = state.authMode !== 'register' || !state.captcha.question;
@@ -1812,6 +1815,35 @@ function bindStaticActions() {
   }
 
   window.addEventListener('hashchange', routeFromHash);
+  for (const authForm of document.querySelectorAll('[data-auth-form]')) {
+    authForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const formKind = authForm.dataset.authFormKind || 'primary';
+      if (formKind === 'password') {
+        handleChangePassword(authForm.querySelector('[data-change-password]'));
+        return;
+      }
+      if (formKind === 'reset-request') {
+        handlePasswordResetRequest(authForm.querySelector('[data-password-reset-request]'));
+        return;
+      }
+      if (formKind === 'reset-confirm') {
+        handlePasswordResetConfirm(authForm.querySelector('[data-password-reset-confirm]'));
+        return;
+      }
+      if (formKind === 'owner') {
+        handleOwnerClaim(authForm.querySelector('[data-owner-claim]'));
+        return;
+      }
+      const submitButton =
+        state.authMode === 'register'
+          ? authForm.querySelector('[data-register-account]')
+          : authForm.querySelector('[data-login-account]');
+      if (state.authMode === 'register') handleRegisterAccount(submitButton);
+      else handleLoginAccount(submitButton);
+    });
+  }
+
   document.addEventListener('click', (event) => {
     const link = event.target.closest('[data-route]');
     if (link) {

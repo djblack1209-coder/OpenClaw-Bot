@@ -46,35 +46,48 @@
                   <button class="is-active" data-auth-mode="login" type="button" role="tab" aria-selected="true">登录</button>
                   <button data-auth-mode="register" type="button" role="tab" aria-selected="false">注册</button>
                 </div>
-                <div class="auth-panel__row">
-                  <input type="email" data-register-email placeholder="邮箱" aria-label="邮箱" />
-                  <input type="password" data-register-password placeholder="密码" aria-label="密码" />
-                </div>
-                <div class="auth-panel__row" data-password-row hidden>
-                  <input type="password" data-new-password placeholder="新密码" aria-label="新密码" />
-                  <button class="ghost-action" data-change-password type="button">改密码</button>
-                </div>
-                <div class="auth-panel__row" data-reset-request-row hidden>
-                  <button class="text-action" data-password-reset-request type="button">忘记密码？发送重置验证码</button>
-                </div>
-                <div class="auth-panel__row" data-reset-confirm-row hidden>
-                  <input type="text" inputmode="numeric" data-reset-code placeholder="重置验证码" aria-label="重置验证码" />
-                  <input type="password" data-reset-password placeholder="新密码" aria-label="重置新密码" />
-                  <button class="ghost-action" data-password-reset-confirm type="button">重置</button>
-                </div>
-                <div class="auth-panel__row captcha-row" data-captcha-row hidden>
-                  <span data-captcha-question>安全验证</span>
-                  <input type="text" autocomplete="off" data-captcha-answer placeholder="答案" aria-label="安全验证答案" />
-                </div>
-                <div class="auth-panel__row owner-row" data-owner-claim-row hidden>
-                  <input type="password" data-owner-claim-code placeholder="身份码" aria-label="一次性身份码" />
-                  <button class="ghost-action" data-owner-claim type="button">激活</button>
-                </div>
+                <form class="auth-form" data-auth-form data-auth-form-kind="primary">
+                  <div class="auth-panel__row">
+                    <input type="email" data-register-email placeholder="邮箱" aria-label="邮箱" autocomplete="email" />
+                    <input type="password" data-register-password placeholder="密码" aria-label="密码" autocomplete="current-password" />
+                  </div>
+                  <div class="auth-panel__row captcha-row" data-captcha-row hidden>
+                    <span data-captcha-question>安全验证</span>
+                    <input type="text" autocomplete="off" data-captcha-answer placeholder="答案" aria-label="安全验证答案" />
+                  </div>
+                  <div class="auth-panel__actions">
+                    <button class="secondary-action" data-auth-submit="login" data-login-account type="submit">登录</button>
+                    <button class="ghost-action" data-auth-submit="register" data-register-account type="submit" hidden>注册</button>
+                  </div>
+                </form>
+                <form class="auth-form" data-auth-form data-auth-form-kind="password" data-password-row hidden>
+                  <input class="sr-only" type="email" data-auth-form-email autocomplete="username" aria-label="当前邮箱" tabindex="-1" />
+                  <div class="auth-panel__row">
+                    <input type="password" data-new-password placeholder="新密码" aria-label="新密码" autocomplete="new-password" />
+                    <button class="ghost-action" data-change-password type="submit">改密码</button>
+                  </div>
+                </form>
+                <form class="auth-form" data-auth-form data-auth-form-kind="reset-request" data-reset-request-row hidden>
+                  <div class="auth-panel__row">
+                    <button class="text-action" data-password-reset-request type="submit">忘记密码？发送重置验证码</button>
+                  </div>
+                </form>
+                <form class="auth-form" data-auth-form data-auth-form-kind="reset-confirm" data-reset-confirm-row hidden>
+                  <input class="sr-only" type="email" data-auth-form-email autocomplete="username" aria-label="当前邮箱" tabindex="-1" />
+                  <div class="auth-panel__row">
+                    <input type="text" inputmode="numeric" data-reset-code placeholder="重置验证码" aria-label="重置验证码" autocomplete="one-time-code" />
+                    <input type="password" data-reset-password placeholder="新密码" aria-label="重置新密码" autocomplete="new-password" />
+                    <button class="ghost-action" data-password-reset-confirm type="submit">重置</button>
+                  </div>
+                </form>
+                <form class="auth-form" data-auth-form data-auth-form-kind="owner" data-owner-claim-row hidden>
+                  <input class="sr-only" type="email" data-auth-form-email autocomplete="username" aria-label="当前邮箱" tabindex="-1" />
+                  <div class="auth-panel__row owner-row">
+                    <input type="password" data-owner-claim-code placeholder="身份码" aria-label="一次性身份码" autocomplete="one-time-code" />
+                    <button class="ghost-action" data-owner-claim type="submit">激活</button>
+                  </div>
+                </form>
                 <a class="owner-entry" data-owner-entry href="./admin.html" hidden>运营入口</a>
-                <div class="auth-panel__actions">
-                  <button class="secondary-action" data-auth-submit="login" data-login-account type="button">登录</button>
-                  <button class="ghost-action" data-auth-submit="register" data-register-account type="button" hidden>注册</button>
-                </div>
                 <p class="field-feedback" data-auth-feedback aria-live="polite"></p>
                 <p class="verification-hint" data-verification-hint>登录后创建 Key</p>
               </div>
