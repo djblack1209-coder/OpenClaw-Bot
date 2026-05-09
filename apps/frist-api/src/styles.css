@@ -1738,21 +1738,6 @@ textarea:focus {
   font-size: 12px;
 }
 
-.provider-models {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-
-.provider-models span {
-  border-radius: var(--radius-pill);
-  background: rgba(245, 240, 232, 0.06);
-  color: var(--ink-soft);
-  padding: 4px 7px;
-  font-size: 11px;
-  font-weight: 760;
-}
-
 .health-dot {
   display: inline-block;
   width: 9px;
@@ -3485,6 +3470,10 @@ textarea:focus {
   padding: 14px;
 }
 
+.rail-toggle {
+  display: none;
+}
+
 .rail-head {
   display: grid;
   grid-template-columns: 40px minmax(0, 1fr);
@@ -4129,6 +4118,10 @@ body[data-design-system="tabcode-console"] .workspace-rail {
   box-shadow: none;
 }
 
+body[data-design-system="tabcode-console"] .rail-toggle {
+  display: none;
+}
+
 body[data-design-system="tabcode-console"] .action-dock.workspace-nav {
   gap: 7px;
   border-radius: 0;
@@ -4538,8 +4531,7 @@ body[data-design-system="tabcode-console"] .health-dot--maintenance {
 
 body[data-design-system="tabcode-console"] .channel-monitor-metrics span,
 body[data-design-system="tabcode-console"] .service-card code,
-body[data-design-system="tabcode-console"] .key-endpoint,
-body[data-design-system="tabcode-console"] .provider-models span {
+body[data-design-system="tabcode-console"] .key-endpoint {
   background: rgba(0, 0, 0, 0.04);
 }
 
@@ -4960,9 +4952,35 @@ body[data-design-system="tabcode-console"] .empty-row--stack span {
 @media (max-width: 720px) {
   body[data-design-system="tabcode-console"] .topbar,
   body[data-design-system="tabcode-console"][data-current-view="dashboard"] .topbar {
+    grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+    gap: 8px;
     height: auto;
-    min-height: 54px;
-    padding: 8px 14px;
+    min-height: 58px;
+    padding: 8px 12px;
+  }
+
+  body[data-design-system="tabcode-console"] .brand {
+    gap: 8px;
+    min-width: 0;
+  }
+
+  body[data-design-system="tabcode-console"] .brand-mark {
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    font-size: 18px;
+  }
+
+  body[data-design-system="tabcode-console"] .brand-copy {
+    min-width: 0;
+  }
+
+  body[data-design-system="tabcode-console"] .brand-copy strong {
+    display: block;
+    max-width: 112px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   body[data-design-system="tabcode-console"] .action-message {
@@ -4978,8 +4996,58 @@ body[data-design-system="tabcode-console"] .empty-row--stack span {
     padding: 12px;
   }
 
+  body[data-design-system="tabcode-console"] .workspace-rail {
+    gap: 10px;
+  }
+
+  body[data-design-system="tabcode-console"] .rail-toggle {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    min-height: 46px;
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--paper-raised);
+    color: var(--ink);
+    padding: 0 12px;
+    text-align: left;
+  }
+
+  body[data-design-system="tabcode-console"] .rail-toggle span {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 680;
+  }
+
+  body[data-design-system="tabcode-console"] .rail-toggle strong {
+    color: var(--ink);
+    font-size: 14px;
+    font-weight: 760;
+  }
+
+  body[data-design-system="tabcode-console"] .rail-toggle::after {
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    content: "";
+    transform: rotate(45deg);
+    transition: transform 160ms var(--ease-out);
+  }
+
+  body[data-design-system="tabcode-console"] .workspace-rail.is-open .rail-toggle::after {
+    transform: rotate(225deg);
+  }
+
   body[data-design-system="tabcode-console"] .action-dock.workspace-nav {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body[data-design-system="tabcode-console"] .workspace-rail:not(.is-open) .action-dock.workspace-nav,
+  body[data-design-system="tabcode-console"] .workspace-rail:not(.is-open) .rail-foot {
+    display: none;
   }
 
   body[data-design-system="tabcode-console"] .console-metrics,
@@ -5028,6 +5096,7 @@ body[data-design-system="tabcode-console"] .empty-row--stack span {
     display: flex;
     flex-wrap: nowrap;
     justify-content: end;
+    gap: 7px;
     min-width: 0;
   }
 
@@ -5039,14 +5108,40 @@ body[data-design-system="tabcode-console"] .empty-row--stack span {
   }
 
   body[data-design-system="tabcode-console"] .action-message {
-    min-width: 32px;
-    width: 32px;
+    min-width: 18px;
+    width: 18px;
+    min-height: 34px;
+    border: 0;
+    background: transparent;
     padding: 0;
     color: transparent;
+    box-shadow: none;
   }
 
   body[data-design-system="tabcode-console"] .action-message::before {
+    width: 9px;
+    height: 9px;
     color: var(--primary);
+  }
+
+  body[data-design-system="tabcode-console"] .account-chip {
+    min-height: 38px;
+    gap: 6px;
+    max-width: 160px;
+    padding: 4px 5px 4px 10px;
+  }
+
+  body[data-design-system="tabcode-console"] .account-chip strong {
+    max-width: 92px;
+    overflow: hidden;
+    padding: 7px 9px;
+    text-overflow: ellipsis;
+  }
+
+  body[data-design-system="tabcode-console"] .account-chip b {
+    width: 30px;
+    height: 30px;
+    flex: 0 0 auto;
   }
 
   body[data-design-system="tabcode-console"] .auth-dialog {

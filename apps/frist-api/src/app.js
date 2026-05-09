@@ -6,13 +6,13 @@ import {
   normalizeOfficialModelList,
   normalizeOfficialModelName,
   summarizeModelHealth,
-} from './core.js?v=20260508-visual-qa2';
+} from './core.js?v=20260509-mobile-channel';
 import {
   buildBusinessClientConfig,
   buildBusinessImportUrl,
   createBusinessStateFromDashboard,
-} from './businessFlow.js?v=20260508-visual-qa2';
-import { createFristApiBrowserClient, normalizeFristDashboard } from './serverClient.js?v=20260508-visual-qa2';
+} from './businessFlow.js?v=20260509-mobile-channel';
+import { createFristApiBrowserClient, normalizeFristDashboard } from './serverClient.js?v=20260509-mobile-channel';
 
 const emptyDashboard = {
   accountSummary: {
@@ -598,15 +598,12 @@ function renderProviderSummary(item) {
       <span class="health-dot health-dot--${item.status}" aria-hidden="true"></span>
       <div class="provider-main">
         <div class="provider-title">
-          <strong>${escapeHtml(item.provider)}</strong>
+          <strong>${escapeHtml(item.channel)}</strong>
           <span class="monitor-chip monitor-chip--${item.status}">${escapeHtml(item.statusText)}</span>
         </div>
-        <small class="provider-meta">${escapeHtml([item.okText, `可用率 ${item.availabilityText}`, item.latencyText, item.checkedText].filter(Boolean).join(' · '))}</small>
+        <small class="provider-meta">${escapeHtml([item.okText, item.latencyText, item.checkedText, item.intervalText || '60 秒自动检测'].filter(Boolean).join(' · '))}</small>
         <div class="monitor-history monitor-history--compact" data-channel-monitor-history>
           ${item.history.map((status) => `<i class="${monitorHistoryClass(status)}"></i>`).join('')}
-        </div>
-        <div class="provider-models">
-          ${item.models.map((model) => `<span title="${escapeHtml(model)}">${escapeHtml(publicModelLabel(model))}</span>`).join('')}
         </div>
       </div>
     </article>
@@ -617,8 +614,9 @@ function providerSummaries(channelChecks) {
   const grouped = new Map();
   for (const snapshot of channelChecks) {
     const summary = summarizeModelHealth(snapshot);
-    const current = grouped.get(snapshot.provider) || {
-      provider: snapshot.provider,
+    const channelName = snapshot.channel || snapshot.poolLabel || '号池渠道';
+    const current = grouped.get(channelName) || {
+      channel: channelName,
       total: 0,
       healthy: 0,
       slow: 0,
@@ -626,11 +624,10 @@ function providerSummaries(channelChecks) {
       latencyTotal: 0,
       latencySamples: 0,
       bestLatency: 0,
-      models: [],
       checkedAt: '',
       lastReason: '',
       history: [],
-      monitorIntervalSeconds: 0,
+      monitorIntervalSeconds: 60,
     };
     const totalCount = Number(snapshot.totalCount || 1);
     const healthyCount = Number(snapshot.healthyCount ?? (snapshot.ok && !snapshot.maintenance ? 1 : 0));
@@ -640,38 +637,34 @@ function providerSummaries(channelChecks) {
     current.healthy += healthyCount;
     current.down += downCount;
     current.slow += slowCount;
-    if (snapshot.ok) {
+    if (snapshot.ok && Number(snapshot.latencyMs || 0) > 0) {
       const latency = Number(snapshot.latencyMs || 0);
       const averageLatency = Number(snapshot.averageLatencyMs || latency || 0);
       current.bestLatency = current.bestLatency ? Math.min(current.bestLatency, latency) : latency;
       current.latencyTotal += averageLatency || latency;
       current.latencySamples += 1;
     }
-    current.models.push(snapshot.model);
     current.checkedAt = [current.checkedAt, snapshot.checkedAt].filter(Boolean).sort().at(-1) || '';
     current.lastReason = snapshot.officialStatus || snapshot.status || current.lastReason;
     current.status = current.healthy > 0 ? summary.status : 'down';
-    const interval = Number(snapshot.monitorIntervalSeconds || current.monitorIntervalSeconds || 0);
-    current.monitorIntervalSeconds = Number.isFinite(interval) ? interval : 0;
+    const interval = Number(snapshot.monitorIntervalSeconds || current.monitorIntervalSeconds || 60);
+    current.monitorIntervalSeconds = Number.isFinite(interval) && interval > 0 ? interval : 60;
     current.history.push(...(Array.isArray(snapshot.history) ? snapshot.history : []));
-    grouped.set(snapshot.provider, current);
+    grouped.set(channelName, current);
   }
 
   return [...grouped.values()].map((item) => {
-    const availability = item.total ? Math.round((item.healthy / item.total) * 1000) / 10 : 0;
     const averageLatency = item.latencySamples ? Math.round(item.latencyTotal / item.latencySamples) : 0;
     const status = item.healthy === 0 ? 'down' : item.down > 0 || item.slow > 0 || item.bestLatency > 1600 ? 'slow' : 'healthy';
     return {
-      provider: item.provider,
+      channel: item.channel,
       status,
       statusText: status === 'healthy' ? '正常' : status === 'slow' ? '降级' : '异常',
       okText: item.healthy > 0 ? `可用 ${item.healthy}/${item.total}` : '离线',
-      availabilityText: `${availability}%`,
-      latencyText: item.bestLatency ? `最低 ${item.bestLatency}ms / 平均 ${averageLatency}ms` : '',
+      latencyText: item.bestLatency ? `最低 ${item.bestLatency}ms / 平均 ${averageLatency}ms` : '等待真实请求更新',
       checkedText: item.checkedAt ? `最近 ${formatCheckedAt(item.checkedAt)}` : item.lastReason || '未检测',
-      intervalText: item.monitorIntervalSeconds ? `${item.monitorIntervalSeconds} 秒刷新` : '',
+      intervalText: `${item.monitorIntervalSeconds} 秒自动检测`,
       history: item.history.slice(-12),
-      models: normalizeOfficialModelList([...new Set(item.models)]).slice(0, 4),
     };
   });
 }
@@ -1848,6 +1841,15 @@ function bindStaticActions() {
     const link = event.target.closest('[data-route]');
     if (link) {
       setActiveView(link.dataset.route);
+      closeWorkspaceRail();
+      return;
+    }
+
+    const railToggle = event.target.closest('[data-rail-toggle]');
+    if (railToggle) {
+      const rail = railToggle.closest('[data-workspace-rail]');
+      const expanded = rail?.classList.toggle('is-open') || false;
+      railToggle.setAttribute('aria-expanded', String(expanded));
       return;
     }
 
@@ -2353,6 +2355,14 @@ function setActiveView(view) {
       item.removeAttribute('aria-current');
     }
   }
+  setText('[data-rail-current]', meta.title || '首页');
+}
+
+function closeWorkspaceRail() {
+  const rail = document.querySelector('[data-workspace-rail]');
+  const toggle = document.querySelector('[data-rail-toggle]');
+  rail?.classList.remove('is-open');
+  toggle?.setAttribute('aria-expanded', 'false');
 }
 
 function normalizePlaygroundMessages() {

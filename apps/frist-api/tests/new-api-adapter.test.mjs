@@ -206,10 +206,12 @@ describe('Frist-API New-API adapter', () => {
     });
 
     assert.equal(channels[0].provider, 'OpenAI');
-    assert.equal(channels[0].channel, 'Codex Pro');
+    assert.equal(channels[0].channel, '卡商1');
+    assert.equal(channels[0].poolLabel, 'Codex Pro');
     assert.equal(channels[0].endpoint, 'https://api.frist.example.com/openai/pro');
     assert.equal(channels[0].availability, '99.24%');
     assert.equal(channels[0].successLabel, '9994/10071 成功');
+    assert.equal(channels[0].monitorIntervalSeconds, 60);
     assert.equal(JSON.stringify(channels).includes('88'), false);
     assert.equal(JSON.stringify(channels).includes('upstream-secret'), false);
     assert.equal(JSON.stringify(channels).includes('supplier.example.com'), false);
@@ -225,6 +227,9 @@ describe('Frist-API New-API adapter', () => {
       channelChecks: [
         {
           provider: 'OpenAI',
+          channel: '卡商1',
+          pool: 'day',
+          poolLabel: '日卡号池',
           model: 'gpt-5.5',
           endpoint: '/v1',
           ok: true,
@@ -247,6 +252,8 @@ describe('Frist-API New-API adapter', () => {
     });
 
     assert.equal(dashboard.channelChecks[0].endpoint, '/v1');
+    assert.equal(dashboard.channelChecks[0].channel, '卡商1');
+    assert.equal(dashboard.channelChecks[0].poolLabel, '日卡号池');
     assert.equal(dashboard.channelChecks[0].monitorStatus, '降级');
     assert.equal(dashboard.channelChecks[0].officialStatus, '降级');
     assert.equal(dashboard.channelChecks[0].successLabel, '2/3 可用');

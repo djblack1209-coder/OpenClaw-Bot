@@ -354,7 +354,7 @@ export function createReplenishmentReportFromOrderText({
   const keyValues = parsed.keys.map((key) => key.value);
   const probes = {};
   for (const key of parsed.keys) {
-    const provided = keyProbes[key.value] || { ok: true, latencyMs: key.latencyMs || 999 };
+    const provided = keyProbes[key.value] || { ok: true, latencyMs: key.latencyMs || 0 };
     probes[key.value] = {
       ...provided,
       quotaRemaining: Number(provided.quotaRemaining || key.quotaRemaining),

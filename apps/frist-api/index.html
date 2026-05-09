@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Frist-API</title>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-    <link rel="stylesheet" href="./src/styles.css?v=20260508-visual-qa2" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260509-mobile-channel" />
   </head>
   <body data-design-system="tabcode-console">
     <a class="skip-link" href="#main-content">跳到主要内容</a>
@@ -101,7 +101,11 @@
         <section class="view-panel" data-view="dashboard">
           <div class="workspace-layout" data-workspace-layout>
             <aside class="workspace-rail" data-workspace-rail aria-label="工作台导航">
-              <nav class="action-dock workspace-nav" data-action-dock aria-label="快捷操作">
+              <button class="rail-toggle" data-rail-toggle type="button" aria-expanded="false" aria-controls="workspace-nav">
+                <span>工作台导航</span>
+                <strong data-rail-current>首页</strong>
+              </button>
+              <nav id="workspace-nav" class="action-dock workspace-nav" data-action-dock aria-label="快捷操作">
                 <a href="#dashboard" data-route="dashboard">
                   <strong>首页</strong>
                 </a>
@@ -1023,6 +1027,6 @@ args = ["-y", "-p", "open-computer-use@latest", "open-codex-computer-use-mcp"]</
       </main>
     </div>
 
-    <script type="module" src="./src/app.js?v=20260508-visual-qa2"></script>
+    <script type="module" src="./src/app.js?v=20260509-mobile-channel"></script>
   </body>
 </html>

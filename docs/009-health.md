@@ -22,9 +22,10 @@
 | API 池 | ✅ 139/142 活跃源 |
 | 闲鱼客服 | ✅ 自动回复活跃 |
 | 社媒自动驾驶 | ✅ 运行中 |
-| 测试 | ✅ 后端全量 pytest 退出码 0，当前 pytest nodeids 1495；`test_api_routes_regression.py` 12/12 通过；Frist-API 153/153 通过；桌面端 `npx tsc --noEmit` 通过；OpenClaw CI run `25592516119` 通过；2026-05-08 复审确认本地必须走 `make test` 或 `.venv312/bin/python -m pytest`，不能直接用系统 `pytest` |
+| 测试 | ✅ 后端全量 pytest 退出码 0，当前 pytest nodeids 1495；`test_api_routes_regression.py` 12/12 通过；Frist-API 156/156 通过；桌面端 `npx tsc --noEmit` 通过；OpenClaw CI run `25592516119` 通过；2026-05-08 复审确认本地必须走 `make test` 或 `.venv312/bin/python -m pytest`，不能直接用系统 `pytest` |
 | Frist-API 入口 | ✅ 唯一内容入口为 `frist-api.101-43-41-96.nip.io`；`101-43-41-96.nip.io` 只做 301 跳转，不再作为第二个网站直接展示 |
 | Frist-API | ✅ HTTPS Quick Tunnel 和裸 IP 测试端口均已恢复；本地链路测试和公网冒烟通过，用户端已补齐弹窗登录注册、失败/成功反馈、API Key 创建反馈、连通性刷新不跳教程、渠道连通性聚合展示、价格管理、官方模型命名清洗、Claude Code/Codex 跨模型家族一键导入、Claude 第三方推理真实菜单流程图、Codex 导入 Claude 模型流程图、Codex 默认 Playwright/Superpowers/open-computer-use MCP、无网页 mock 数据兜底、默认最强模型导出、数据看板、模型广场、一次性管理员身份码、图片生成网关、OpenCode `/openai/chat/completions` 兼容路由、Chat Completions 到 Responses 降级、上游信息清洗、五客户端导入、日卡/小时卡轮转、会话粘滞、流式透传、公开模式硬门槛和自定义余额邮件预警；2026-05-08 复验 `npm test` 为 153/153 通过，`npm audit --audit-level=moderate` 为 0 漏洞，公网首页 200、看板 200、未授权 `/v1/models` 401；2026-05-08 内置浏览器审计公网首页标题 `Frist-API`、控制台无 error/warn，并修复返回按钮箭头无障碍噪音；2026-05-08 已部署 CSS 修复到 `/opt/frist-api/apps/frist-api/src/styles.css`，备份 `/opt/frist-api/backups/styles_20260509110117_before_browser_audit.css`，`frist-api-server` healthy，公网首页 200、Dashboard 200、未授权 `/v1/models` 401；2026-05-08 复审发现账户弹窗密码字段缺少真实 form 语义，已按动作拆分表单、自动填充和回车提交回归；已部署表单修复到腾讯云，备份 `/opt/frist-api/backups/browser_form_20260508215051`，远端 `node --check src/app.js` 通过，公网内置浏览器复验 0 error/0 warning、箭头文本 0、账户表单 5 个；2026-05-09 New-API 已在腾讯云以 `calciumion/new-api:v1.0.0-rc.4` 启动并 healthy，因共享服务器 3000 端口被 `/opt/ccgame` 占用，实际绑定 `127.0.0.1:13000->3000`；公网 CC Switch 页面复验 0 error/0 warning、Dashboard 200、未登录不生成带 Key provider 链接、展示 21 个模型和独立 MCP deep link；临时 Key 验证 `/v1/models` 200 和用量接口 200，但真实聊天调用返回 503，根因是唯一 healthy 上游 Key 返回 401，需补充/轮换上游库存后才能形成完整用户调用闭环；商业化自动运营仍需外部绑定真实品牌域名、商户平台开户、部署备份任务和执行历史数据迁移 |
+| Frist-API 移动端批注 | ✅ 2026-05-09 已处理 Logo、状态灯、工作台折叠菜单和通道展示批注；423×718 浏览器复验无横向溢出，Logo 105px，状态灯 18px，导航默认折叠且切页后自动收起，`.provider-models` 为 0，控制台 0 error/0 warning |
 | Frist-API 腾讯云部署 | ✅ HI-875 用户端深色体验和官方计价修复已同步到 `/opt/frist-api`；部署前应用备份 `backups/frist-api-app-20260505-211636-before-ux-deploy.tgz`、运行数据备份 `backups/frist-api-runtime-20260505-211636-before-ux-deploy.tgz`；2026-05-08 复验 `frist-api-server` 容器 healthy，公网首页 200、看板 200、裸域名 301、未授权 `/v1/models` 401 |
 | ClawBot 腾讯云部署 | ✅ 2026-05-08 已单文件部署闲鱼管理页转义修复到 `/home/clawbot/clawbot/src/xianyu/xianyu_admin.py`；远端备份 `/home/clawbot/clawbot/backups/xianyu_admin_20260508155652_before_escape.py`；远端 `py_compile` 通过，`clawbot.service` 重启后 active |
 | 微信命令 | ✅ 27/27 可用 (25✅ 2⚠️数据空) |
@@ -57,6 +58,7 @@
 | HI-895 | INFRA | 腾讯云 New-API 远端 compose 曾仍为 `v1.0.0-rc.2`；2026-05-09 已重新备份运行数据，成功拉取 `calciumion/new-api:v1.0.0-rc.4`，并处理共享服务器 `127.0.0.1:3000` 端口冲突和 `data/newapi` UID 501 权限问题；当前 `openclaw-newapi` healthy，`/api/status` 返回 `version=v1.0.0-rc.4` | 2026-05-08 | ✅ 已处理 |
 | HI-896 | AI_POOL/BUG | CC Switch 导入结构与接口边界复核通过：未登录 `#switch` 不暴露带 Key provider 链接，MCP deep link 独立展示，脱敏样本 provider 链接符合 `resource=provider/app=codex/usageScript` 契约；但受控临时 Key 实测真实聊天调用返回 503，唯一 healthy 上游返回 401 并触发 `credential_failed upstream_http_401`，说明当前上游库存 Key 需补充或轮换后才能完成端到端调用闭环 | 2026-05-09 | 🟠 待轮换上游库存 |
 | HI-897 | INFRA/DOCS | 本地工作区遗留可重建缓存、调试日志和审计截图容易干扰后续审计基线；已清理 `.DS_Store`、`.playwright-mcp`、`.pytest_cache`、`__pycache__`、`.ruff_cache`、Playwright/Expect 临时产物、历史审计截图和本地旧日志，并保留运行配置、runtime 数据、依赖环境与生产备份 | 2026-05-09 | ✅ 已处理 |
+| HI-898 | UX/AI_POOL | 移动端批注发现 Frist-API 顶栏状态灯和 Logo 挤压、工作台导航占屏、连通性卡按 Claude/OpenAI 模型分类且存在默认延迟疑似 mock；已改为小状态点、紧凑 Logo、默认折叠导航、卡商号池渠道展示、60 秒刷新口径和无真实延迟空态，并用 423×718 浏览器复验 | 2026-05-09 | ✅ 已处理 |
 
 ### 🟡 一般
 

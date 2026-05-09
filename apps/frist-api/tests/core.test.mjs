@@ -793,6 +793,23 @@ describe('Frist-API core flows', () => {
     assert.equal(Object.hasOwn(summary, 'endpoint'), false);
     assert.equal(Object.hasOwn(summary, 'rawKey'), false);
   });
+
+  it('summarizes unknown real latency as pending instead of a fake millisecond value', () => {
+    const summary = summarizeModelHealth({
+      model: 'gpt-5.5',
+      ok: true,
+      latencyMs: 0,
+      averageLatencyMs: 0,
+      healthyCount: 1,
+      totalCount: 1,
+      monitorIntervalSeconds: 60,
+      channel: '日卡号池',
+    });
+
+    assert.equal(summary.latencyText, '-');
+    assert.equal(summary.averageLatencyText, '-');
+    assert.equal(summary.monitorIntervalSeconds, 60);
+  });
 });
 
 describe('Frist-API user dashboard boundaries', () => {
@@ -920,9 +937,13 @@ describe('Frist-API user dashboard boundaries', () => {
 
   it('uses a compact customer rail for the main workbench routes', () => {
     const userHtml = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-    const actionDock = userHtml.match(/<nav class="action-dock workspace-nav"[\s\S]*?<\/nav>/)?.[0] || '';
+    const actionDock = userHtml.match(/<nav[^>]*class="action-dock workspace-nav"[\s\S]*?<\/nav>/)?.[0] || '';
 
     assert.equal(userHtml.includes('data-workspace-rail'), true, '用户端应该保留紧凑工作台导航');
+    assert.equal(userHtml.includes('data-rail-toggle'), true, '移动端工作台导航应该有折叠按钮');
+    assert.equal(userHtml.includes('data-rail-current'), true, '移动端折叠按钮应该展示当前页面');
+    assert.equal(userHtml.includes('aria-controls="workspace-nav"'), true, '折叠按钮应该绑定导航区域');
+    assert.equal(actionDock.includes('id="workspace-nav"'), true, '导航区域应该提供稳定 id 供折叠按钮引用');
     for (const required of ['首页', 'API Key', 'CC Switch', '测试', '资料']) {
       assert.equal(actionDock.includes(required), true, `${required} 应该保留为工作台直接入口`);
     }
@@ -942,8 +963,11 @@ describe('Frist-API user dashboard boundaries', () => {
 
     assert.equal(userHtml.includes('nav-group'), false, '用户端不再使用不可点击分组标题');
     assert.equal(userHtml.includes('nav-divider'), false, '用户端不再用文字分组隔断堆密度');
-    assert.equal(readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8').includes('rgba(19, 35, 30, 0.95)'), false);
-    assert.equal(readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8').includes('position: sticky'), true);
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    assert.equal(styles.includes('rgba(19, 35, 30, 0.95)'), false);
+    assert.equal(styles.includes('position: sticky'), true);
+    assert.equal(styles.includes('.workspace-rail:not(.is-open) .action-dock.workspace-nav'), true);
+    assert.equal(styles.includes('.provider-models'), false, '通道面板不应再保留模型分类标签样式');
   });
 
   it('keeps internal Claude route ids out of visible playground labels', () => {
@@ -1013,8 +1037,7 @@ describe('Frist-API user dashboard boundaries', () => {
       'content-visibility: auto',
       '@media (prefers-reduced-motion: reduce)',
       'Tabcode contrast guard',
-      'styles.css?v=20260508-visual-qa2',
-      './serverClient.js?v=20260508-visual-qa2',
+      '20260509-mobile-channel',
       'body[data-design-system="tabcode-console"] .back-home',
       'body[data-design-system="tabcode-console"] .terminal-head .text-action',
       'body[data-design-system="tabcode-console"] .chat-delete',

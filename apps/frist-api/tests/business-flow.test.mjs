@@ -48,7 +48,8 @@ const dashboardSeed = {
   channelChecks: [
     {
       provider: 'Claude',
-      channel: '官渠主线',
+      channel: '卡商1',
+      poolLabel: '日卡号池',
       model: 'claude-opus-4-6-thinking-c',
       endpoint: 'https://api.frist.example.com/claude/office',
       ok: true,
@@ -63,7 +64,8 @@ const dashboardSeed = {
     },
     {
       provider: 'OpenAI',
-      channel: 'Codex Pro',
+      channel: '卡商2',
+      poolLabel: '月卡号池',
       model: 'gpt-5.5',
       endpoint: 'https://api.frist.example.com/openai/pro',
       ok: true,
@@ -448,12 +450,13 @@ describe('Frist-API page business wiring', () => {
       '.field-feedback::before',
       '.is-busy::after',
       '.is-copied::after',
-      '.provider-models',
       '.provider-meta',
+      '.rail-toggle',
       '.server-recovery',
     ]) {
       assert.equal(styles.includes(required), true, `${required} 应该支撑明显反馈和升级后的连通性展示`);
     }
+    assert.equal(styles.includes('.provider-models'), false, '用户端通道卡不应再保留按模型标签展示的冗余样式');
 
     assert.equal(
       appScript.includes("signalScoped('[data-auth-feedback]', 'error');\n    await refreshCaptchaAfterAuthError(serverError);"),

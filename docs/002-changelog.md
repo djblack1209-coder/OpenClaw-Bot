@@ -5,6 +5,25 @@
 
 ## 最近更新（2026-05）
 
+## [2026-05-09] Frist-API 移动端导航和卡商通道展示修复
+> 领域: `frontend` | `backend` | `ai-pool` | `docs`
+> 影响模块: `Frist-API`, `User Console`, `Channel Monitor`, `docs`
+> 关联问题: HI-898
+
+### 变更内容
+- 修复移动端顶栏批注：423px 窄屏下 Logo 收敛为紧凑品牌区，连接状态改为小状态点，不再挤占余额按钮或产生横向溢出。
+- 将移动端工作台左侧导航改为默认折叠菜单：点击“工作台导航”展开，进入任一页面后自动收起，并同步当前页标题。
+- 通道连通性从模型分类展示改为客户可理解的号池渠道展示：公开卡片显示 `卡商1`、`卡商2` 等渠道名和号池标签，不再展示 `.provider-models` 模型标签。
+- 清理延迟 mock 口径：补号导入未显式填写或探测不到真实延迟时落为 `0`，前端展示“等待真实请求更新”，不再用 `999ms/1000ms` 伪造最低/平均延迟。
+- 固定监控刷新口径为 60 秒，并在通道聚合里保留 healthy/down/slow 统计，支持同一卡商下快线、慢线、断线的自动降级状态。
+
+### 文件变更
+- `apps/frist-api/index.html` / `apps/frist-api/src/styles.css` / `apps/frist-api/src/app.js` — 移动端 Logo、状态灯、折叠菜单和通道卡 UI 修复。
+- `apps/frist-api/server/server.js` / `apps/frist-api/server/catalog.js` / `apps/frist-api/src/serverClient.js` / `apps/frist-api/src/newApiClient.js` / `apps/frist-api/src/core.js` — 卡商号池聚合、60 秒刷新、无真实延迟空态和模型目录可用性保护。
+- `apps/frist-api/src/admin.js` / `apps/frist-api/src/businessFlow.js` — 未提供真实延迟时不再写入默认假延迟。
+- `apps/frist-api/tests/*.test.mjs` — 增加移动端折叠导航、卡商通道、无假延迟、模型目录和自动降级回归。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/009-health.md` — 同步本轮批注修复、验证证据和剩余生产风险。
+
 ## [2026-05-09] 本地冗余清理与文档状态收口
 > 领域: `infra` | `docs`
 > 影响模块: `Workspace`, `Frist-API`, `ClawBot`, `docs`
