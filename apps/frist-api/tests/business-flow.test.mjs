@@ -544,6 +544,11 @@ describe('Frist-API page business wiring', () => {
     assert.equal(actionDock.includes('data-route="invite"'), false, '邀请入口按当前运营策略隐藏');
     assert.equal(actionDock.includes('data-route="billing"'), false, '充值入口按当前运营策略隐藏');
     assert.equal(actionDock.includes('data-route="docs"'), false, '重复教程入口应合并到 CC Switch');
+    assert.match(
+      userHtml,
+      /data-workspace-rail[\s\S]*data-workspace-content[\s\S]*data-view="api"/,
+      '工作台导航应该固定在左侧，API 等内容应该在右侧内容区切换',
+    );
 
     for (const required of [
       'data-api-search',
@@ -553,6 +558,9 @@ describe('Frist-API page business wiring', () => {
       'key-endpoint',
       'icon-button',
       'data-token-trend',
+      'data-trend-tooltip',
+      'data-trend-point',
+      'trend-chart__hit',
       'data-usage-records',
       'data-usage-records-empty',
       'data-usage-anomalies',
@@ -564,6 +572,7 @@ describe('Frist-API page business wiring', () => {
       '费用',
       '延迟',
       'renderTrendChart',
+      'updateActiveTrendPoint',
       'renderUsageRecords',
       'usageRecords',
       'manual-collection-panel',

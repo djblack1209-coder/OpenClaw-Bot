@@ -178,6 +178,7 @@ const state = {
   hasServerSession: false,
   importRequestId: 0,
   importFallbackTimer: 0,
+  activeTrendPoint: null,
   playgroundBusy: false,
   playgroundConnectivity: {
     status: 'idle',
@@ -462,6 +463,7 @@ function renderTrendChart() {
   const baseline = height - padding.bottom;
   const area = `${path} L ${points.at(-1).x.toFixed(1)} ${baseline} L ${points[0].x.toFixed(1)} ${baseline} Z`;
   const total = rows.reduce((sum, item) => sum + item.tokens, 0);
+  const activePoint = points[state.activeTrendPoint ?? Math.max(points.length - 1, 0)] || points[0];
   chart.classList.toggle('is-empty', !hasTokens && !state.dashboardLoading);
   chart.innerHTML = `
     <div class="trend-chart__summary">
@@ -474,10 +476,15 @@ function renderTrendChart() {
       <line x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${baseline}"></line>
       <path class="trend-chart__area" d="${area}"></path>
       <path class="trend-chart__line" d="${path}"></path>
-      ${points.map((point) => `<circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="${point.tokens > 0 ? 4.5 : 3}" aria-label="${escapeHtml(point.label)} ${escapeHtml(compactNumber(point.tokens))} Token"></circle>`).join('')}
+      ${points.map((point, index) => `<g class="trend-chart__point ${index === state.activeTrendPoint ? 'is-active' : ''}" data-trend-point="${index}" tabindex="0" role="button" aria-label="${escapeHtml(point.label)} ${escapeHtml(compactNumber(point.tokens))} Token"><circle class="trend-chart__hit" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="17"></circle><circle class="trend-chart__dot" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="${point.tokens > 0 ? 4.5 : 3}"></circle></g>`).join('')}
     </svg>
+    <div class="trend-chart__tooltip" data-trend-tooltip role="status" aria-live="polite">
+      <span>${escapeHtml(activePoint?.label || '-')}</span>
+      <strong>${escapeHtml(compactNumber(activePoint?.tokens || 0))} Token</strong>
+      <small>${hasTokens ? '真实调用数据' : '暂无真实调用'}</small>
+    </div>
     <div class="trend-chart__labels">
-      ${points.map((point) => `<span><b>${escapeHtml(point.label)}</b><em>${escapeHtml(compactNumber(point.tokens))}</em></span>`).join('')}
+      ${points.map((point, index) => `<span class="${index === state.activeTrendPoint ? 'is-active' : ''}" data-trend-label="${index}"><b>${escapeHtml(point.label)}</b><em>${escapeHtml(compactNumber(point.tokens))}</em></span>`).join('')}
     </div>
   `;
 }
@@ -2213,6 +2220,18 @@ function bindStaticActions() {
     }
   });
 
+  document.addEventListener('pointermove', (event) => {
+    const chart = event.target.closest?.('[data-token-trend]');
+    if (!chart) return;
+    updateActiveTrendPoint(event.clientX, chart);
+  });
+
+  document.addEventListener('focusin', (event) => {
+    const point = event.target.closest?.('[data-trend-point]');
+    if (!point) return;
+    setActiveTrendPoint(Number(point.dataset.trendPoint));
+  });
+
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
       toggleAuthPanel(false);
@@ -2392,6 +2411,23 @@ function setActiveView(view) {
     }
   }
   setText('[data-rail-current]', meta.title || '首页');
+}
+
+function updateActiveTrendPoint(clientX, chart) {
+  const labels = [...chart.querySelectorAll('[data-trend-label]')];
+  if (!labels.length) return;
+  const bounds = chart.getBoundingClientRect();
+  const ratio = Math.min(1, Math.max(0, (clientX - bounds.left) / Math.max(bounds.width, 1)));
+  setActiveTrendPoint(Math.round(ratio * (labels.length - 1)));
+}
+
+function setActiveTrendPoint(index) {
+  const points = document.querySelectorAll('[data-trend-point]');
+  if (!points.length || !Number.isInteger(index)) return;
+  const nextIndex = Math.min(points.length - 1, Math.max(0, index));
+  if (state.activeTrendPoint === nextIndex) return;
+  state.activeTrendPoint = nextIndex;
+  renderTrendChart();
 }
 
 function closeWorkspaceRail() {

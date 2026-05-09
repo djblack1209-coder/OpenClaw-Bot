@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Frist-API</title>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-    <link rel="stylesheet" href="./src/styles.css?v=20260509-mobile-channel" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260509-workbench-comments" />
   </head>
   <body data-design-system="tabcode-console">
     <a class="skip-link" href="#main-content">跳到主要内容</a>
@@ -13,7 +13,10 @@
     <div class="app-shell">
       <header class="topbar">
         <a class="brand" href="#dashboard" data-route="dashboard" aria-label="Frist-API">
-          <span class="brand-mark" aria-hidden="true">F</span>
+          <span class="brand-mark" aria-hidden="true">
+            <i></i>
+            <b></b>
+          </span>
           <span class="brand-copy">
             <strong>Frist-API</strong>
           </span>
@@ -99,8 +102,7 @@
 
       <main class="main" id="main-content" aria-busy="true">
 
-        <section class="view-panel" data-view="dashboard">
-          <div class="workspace-layout" data-workspace-layout>
+        <div class="workspace-layout" data-workspace-layout>
             <aside class="workspace-rail" data-workspace-rail aria-label="工作台导航">
               <button class="rail-toggle" data-rail-toggle type="button" aria-expanded="false" aria-controls="workspace-nav">
                 <span>工作台导航</span>
@@ -144,7 +146,9 @@
               </div>
             </aside>
 
-            <section class="console-board" data-console-board>
+            <div class="workspace-content" data-workspace-content>
+              <section class="view-panel" data-view="dashboard">
+                <section class="console-board" data-console-board>
               <div class="console-head" data-hero-flow>
                 <div>
                   <span class="hero-kicker">Frist Gateway</span>
@@ -221,11 +225,10 @@
                 </section>
 
               </div>
-            </section>
-          </div>
-        </section>
+                </section>
+              </section>
 
-        <section class="view-panel" data-view="playground" hidden>
+              <section class="view-panel" data-view="playground" hidden>
           <button class="back-home" data-back-home data-route="dashboard" type="button">首页</button>
           <section class="plain-section playground-surface">
             <div class="section-head">
@@ -276,7 +279,7 @@
           </section>
         </section>
 
-        <section class="view-panel" data-view="analytics" hidden>
+              <section class="view-panel" data-view="analytics" hidden>
           <button class="back-home" data-back-home data-route="dashboard" type="button">首页</button>
           <section class="plain-section analytics-surface">
             <div class="section-head">
@@ -301,7 +304,7 @@
           </section>
         </section>
 
-        <section class="view-panel" data-view="records" hidden>
+              <section class="view-panel" data-view="records" hidden>
           <button class="back-home" data-back-home data-route="dashboard" type="button">首页</button>
           <section class="plain-section records-surface">
             <div class="section-head">
@@ -329,7 +332,7 @@
           </section>
         </section>
 
-        <section class="view-panel" data-view="models" hidden>
+              <section class="view-panel" data-view="models" hidden>
           <button class="back-home" data-back-home data-route="dashboard" type="button">首页</button>
           <section class="plain-section model-market-surface">
             <div class="section-head">
@@ -345,7 +348,7 @@
           </section>
         </section>
 
-        <section class="view-panel" data-view="docs" hidden>
+              <section class="view-panel" data-view="docs" hidden>
           <button class="back-home" data-back-home data-route="dashboard" type="button">首页</button>
           <section class="plain-section docs-surface">
             <div class="section-head">
@@ -398,7 +401,7 @@
           </section>
         </section>
 
-        <section class="view-panel" data-view="api" hidden>
+              <section class="view-panel" data-view="api" hidden>
           <button class="back-home" data-back-home data-route="dashboard" type="button">首页</button>
           <section class="plain-section api-surface">
             <div class="section-head">
@@ -430,7 +433,7 @@
           </section>
         </section>
 
-        <section class="view-panel" data-view="billing" hidden>
+              <section class="view-panel" data-view="billing" hidden>
           <button class="back-home" data-back-home data-route="dashboard" type="button">首页</button>
           <section class="plain-section billing-surface">
             <div class="section-head">
@@ -487,7 +490,7 @@
 
         </section>
 
-        <section class="view-panel" data-view="subscription" hidden>
+              <section class="view-panel" data-view="subscription" hidden>
           <button class="back-home" data-back-home data-route="dashboard" type="button">首页</button>
           <section class="plain-section subscription-surface">
             <div class="section-head">
@@ -509,7 +512,7 @@
           </section>
         </section>
 
-        <section class="view-panel" data-view="redeem" hidden>
+              <section class="view-panel" data-view="redeem" hidden>
           <button class="back-home" data-back-home data-route="dashboard" type="button">首页</button>
           <section class="plain-section redeem-surface">
             <div class="section-head">
@@ -541,7 +544,7 @@
           </section>
         </section>
 
-        <section class="view-panel" data-view="invite" hidden>
+              <section class="view-panel" data-view="invite" hidden>
           <button class="back-home" data-back-home data-route="dashboard" type="button">首页</button>
           <section class="plain-section invite-surface">
             <div class="section-head">
@@ -568,7 +571,7 @@
           </section>
         </section>
 
-        <section class="view-panel" data-view="profile" hidden>
+              <section class="view-panel" data-view="profile" hidden>
           <button class="back-home" data-back-home data-route="dashboard" type="button">首页</button>
           <section class="plain-section profile-surface">
             <div class="section-head">
@@ -619,7 +622,7 @@
           </section>
         </section>
 
-        <section class="view-panel" data-view="switch" hidden>
+              <section class="view-panel" data-view="switch" hidden>
           <button class="back-home" data-back-home data-route="dashboard" type="button">首页</button>
           <section class="plain-section switch-surface">
             <div class="section-head">
@@ -1024,10 +1027,12 @@ args = ["-y", "-p", "open-computer-use@latest", "open-codex-computer-use-mcp"]</
               </div>
             </details>
           </section>
-        </section>
+              </section>
+            </div>
+          </div>
       </main>
     </div>
 
-    <script type="module" src="./src/app.js?v=20260509-mobile-channel"></script>
+    <script type="module" src="./src/app.js?v=20260509-workbench-comments"></script>
   </body>
 </html>

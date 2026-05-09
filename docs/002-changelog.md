@@ -5,6 +5,26 @@
 
 ## 最近更新（2026-05）
 
+## [2026-05-09] Frist-API 工作台批注修复
+> 领域: `frontend` | `deploy` | `docs`
+> 影响模块: `Frist-API`, `User Console`, `Tencent Cloud`, `docs`
+> 关联问题: HI-900
+
+### 变更内容
+- 恢复用户端原抽象品牌 Logo：顶部不再显示单字母 `F` 占位，改回红白斜切品牌标，防止 Tabcode 皮肤覆盖 Frist-API 识别。
+- 修复 Token 趋势图交互：折线图增加透明热区、键盘聚焦点位和 `data-trend-tooltip` 数据浮层，鼠标移入图表即可看到日期与 Token 数值。
+- 收口工作台布局：左侧导航固定为同一个工作台栏，`API Key`、趋势、记录、模型、资料和 CC Switch 等页面都在右侧 `workspace-content` 内切换，不再像单独页面脱离导航。
+- 降低当前导航项视觉噪音：首页选中态从蓝色大背景改为细线和文字提示，保留 `aria-current="page"` 给辅助技术识别。
+- 补充回归护栏：测试锁定 Logo 不可退回 `F` 字母、工作台内容必须在右侧区域切换、趋势图必须具备 hover 数据钩子。
+- 已同步部署到腾讯云 `/opt/frist-api`，部署前备份为 `/opt/frist-api/backups/frist-api-workbench-comments-20260509-035316-before-385bfce.tgz`；远端容器 `frist-api-server` 重启后 healthy，公网首页 200、Dashboard 200、未授权 `/v1/models` 401。
+
+### 文件变更
+- `apps/frist-api/index.html` — 恢复品牌标结构，新增 `workspace-content` 右侧内容容器，并更新资源版本。
+- `apps/frist-api/src/app.js` — 新增趋势图 hover/键盘聚焦数据点和浮层渲染。
+- `apps/frist-api/src/styles.css` — 固定工作台左侧导航、恢复红白斜切 Logo、移除当前项大块背景、补趋势图热区与浮层样式。
+- `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/business-flow.test.mjs` — 增加批注回归断言。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/009-health.md` — 同步本轮批注修复和登记 HI-900。
+
 ## [2026-05-09] Frist-API 移动端管理员入口补齐与上游 Key 自动巡检
 > 领域: `frontend` | `backend` | `ai-pool` | `infra` | `docs`
 > 影响模块: `Frist-API`, `User Console`, `Gateway Monitor`, `Alerting`, `docs`
