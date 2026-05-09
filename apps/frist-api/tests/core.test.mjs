@@ -1006,6 +1006,7 @@ describe('Frist-API user dashboard boundaries', () => {
       'data-copy-config-toml',
       'workspace-layout',
       'workspace-rail',
+      'workspace-content',
       'console-metrics',
       'data-design-system="tabcode-console"',
       'renderLoadingState',
@@ -1046,7 +1047,14 @@ describe('Frist-API user dashboard boundaries', () => {
       'gpt-image-2',
       'gpt-5.3-codex',
       'normalizeClientAvailableModels(config?.availableModels',
-      'linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 52%)',
+      'data-trend-tooltip',
+      'trend-chart__hit',
+      'activeTrendPoint',
+      'updateActiveTrendPoint',
+      'transform: rotate(34deg)',
+      'background: #101114',
+      'position: sticky',
+      'top: 68px',
       'background: var(--primary)',
     ]) {
       assert.equal(`${userHtml}\n${scriptsAndStyles}`.includes(required), true, `${required} 应该支撑用户端 Tabcode 控制台、状态和动效`);
@@ -1060,6 +1068,17 @@ describe('Frist-API user dashboard boundaries', () => {
       scriptsAndStyles,
       /body\[data-design-system="tabcode-console"\] \.brand-mark \{[^}]*?background: var\(--paper\);/,
       'Tabcode 皮肤不能替换 Frist-API 原品牌 Logo',
+    );
+    assert.match(
+      userHtml,
+      /<span class="brand-mark" aria-hidden="true">[\s\S]*?<i><\/i>[\s\S]*?<b><\/b>[\s\S]*?<\/span>/,
+      '用户端 Logo 应该保留红白斜切品牌图形，不应退回单字母占位',
+    );
+    assert.doesNotMatch(userHtml, /<span class="brand-mark" aria-hidden="true">F<\/span>/, '用户端 Logo 不应显示 F 字母占位');
+    assert.match(
+      scriptsAndStyles,
+      /body\[data-design-system="tabcode-console"\] \.action-dock\.workspace-nav a\.is-active \{[\s\S]*?background: transparent;/,
+      '导航当前项应使用细线和文字提示，不应再出现大块背景',
     );
     assert.match(
       scriptsAndStyles,

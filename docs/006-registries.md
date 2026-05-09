@@ -177,12 +177,12 @@
 | 余额预警设置 | `data-balance-alert-card` / `data-balance-alert-enabled` / `data-balance-alert-threshold` / `data-balance-alert-email` | 用户在账单页自定义低余额提醒阈值和收件邮箱 |
 | 余额预警保存 | `data-balance-alert-save` | 保存当前用户的余额预警配置 |
 | 余额预警测试邮件 | `data-balance-alert-test` / `data-balance-alert-feedback` | 发送一封品牌化余额预警测试邮件，验证 SMTP 配置 |
-| Tabcode Console 风格系统 | `data-design-system="tabcode-console"` / `.brand-mark` | Frist-API 用户端和管理端吸收 Tabcode 控制台视觉；用户端 Logo 改为 Apple 风格的简洁 `F` 标识 |
-| 工作台导航 | `data-workspace-layout` / `data-workspace-rail` / `data-console-board` / `aria-current="page"` | 用户首页控制台布局，侧栏标准化选中态和间距；导航暂时隐藏充值、邀请和独立教程入口 |
+| Tabcode Console 风格系统 | `data-design-system="tabcode-console"` / `.brand-mark` | Frist-API 用户端和管理端吸收 Tabcode 控制台视觉；用户端 Logo 保留红白斜切抽象品牌标，不再退回单字母占位 |
+| 工作台导航 | `data-workspace-layout` / `data-workspace-rail` / `data-workspace-content` / `data-console-board` / `aria-current="page"` | 用户端固定左侧工作台导航，所有 hash 页面在右侧内容区切换；当前项只用细线和文字提示，不再显示大块背景 |
 | 首页核心指标 | `data-focus-metrics` / `data-today-calls` / `data-today-cost` / `data-average-latency` / `data-success-rate` | 首屏只展示余额、Key、今日请求/消费和成功率，减少解释性文字 |
 | 加载与空态 | `aria-busy` / `skeleton-row` / `empty-row--stack` / `table-empty` | 用户端加载、无数据和表格空状态统一反馈 |
 | 后端恢复提示 | `data-server-recovery` / `data-retry-dashboard` | 后端不可用时显示“离线”和一键重连入口，避免用户不知道如何恢复 |
-| Token 趋势 | `data-token-trend` | 用户首页展示 SVG 折线/面积趋势图，替代难读的日期堆叠空图 |
+| Token 趋势 | `data-token-trend` / `data-trend-tooltip` / `data-trend-point` | 用户首页展示 SVG 折线/面积趋势图；鼠标移入整块图表或键盘聚焦点位时显示日期和 Token 数据 |
 | 最近日志 | `data-usage-records` | 首页不再展示最近日志板块；完整日志统一进入左侧“记录/使用记录”查看 |
 | API 搜索 | `data-api-search` | 在 API 管理页按名称或 Key 搜索用户 API Key |
 | API 端点展示 | `data-base-url` | 在 API 管理页展示用户侧 OpenAI 兼容端点 |

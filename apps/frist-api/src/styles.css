@@ -1347,6 +1347,7 @@ textarea:focus {
 }
 
 .token-trend {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   align-items: end;
@@ -3552,9 +3553,20 @@ textarea:focus {
 
 .action-dock.workspace-nav a.is-active,
 .action-dock.workspace-nav a.is-priority-path {
-  background: rgba(226, 248, 242, 0.92);
-  color: #54e08d;
-  box-shadow: inset 0 0 0 1px rgba(7, 135, 95, 0.13);
+  position: relative;
+  background: transparent;
+  color: var(--ink);
+  box-shadow: none;
+}
+
+.action-dock.workspace-nav a.is-active::before {
+  position: absolute;
+  left: 0;
+  width: 3px;
+  height: 18px;
+  border-radius: var(--radius-pill);
+  background: var(--primary);
+  content: "";
 }
 
 .action-dock.workspace-nav a.is-priority-path::before {
@@ -3837,36 +3849,42 @@ body[data-design-system="tabcode-console"] .brand {
 }
 
 body[data-design-system="tabcode-console"] .brand-mark {
-  color: var(--ink);
-  font-size: 19px;
-  font-weight: 720;
-  letter-spacing: 0;
   width: 36px;
   height: 36px;
   border: 0;
   border-radius: 10px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 52%),
-    #101114;
+  background: #101114;
   box-shadow: 0 10px 24px rgba(16, 17, 20, 0.18), inset 0 0 0 1px rgba(255, 255, 255, 0.10);
 }
 
 body[data-design-system="tabcode-console"] .brand-mark::before {
-  inset: auto 7px 6px;
-  width: auto;
-  height: 2px;
-  border-radius: var(--radius-pill);
-  background: var(--primary);
-  opacity: 0.88;
-  transform: none;
+  top: 5px;
+  left: 9px;
+  width: 8px;
+  height: 32px;
+  border-radius: 2px;
+  background: var(--red);
+  transform: rotate(34deg);
 }
 
 body[data-design-system="tabcode-console"] .brand-mark i {
-  display: none;
+  top: 5px;
+  left: 19px;
+  width: 6px;
+  height: 32px;
+  border-radius: 2px;
+  background: #ffffff;
+  transform: rotate(34deg);
 }
 
 body[data-design-system="tabcode-console"] .brand-mark b {
-  display: none;
+  right: 7px;
+  bottom: 5px;
+  width: 6px;
+  height: 20px;
+  border-radius: 2px;
+  background: #ffffff;
+  transform: rotate(34deg);
 }
 
 body[data-design-system="tabcode-console"] .brand-copy strong,
@@ -4114,20 +4132,33 @@ body[data-design-system="tabcode-console"] .model-filter-tabs button.is-active {
 body[data-design-system="tabcode-console"] .workspace-layout {
   grid-template-columns: 160px minmax(0, 1fr);
   gap: 0;
-  overflow: hidden;
+  align-items: start;
+  min-height: calc(100vh - 84px);
+  overflow: visible;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--workspace);
 }
 
 body[data-design-system="tabcode-console"] .workspace-rail,
+body[data-design-system="tabcode-console"] .workspace-content,
 body[data-design-system="tabcode-console"] .console-board,
 body[data-design-system="tabcode-console"] .focus-metric {
   animation: none;
 }
 
+body[data-design-system="tabcode-console"] .workspace-content {
+  min-width: 0;
+  padding: 16px;
+}
+
 body[data-design-system="tabcode-console"] .workspace-rail {
+  position: sticky;
+  top: 68px;
+  align-self: start;
+  height: calc(100vh - 84px);
   min-height: calc(100vh - 84px);
+  overflow-y: auto;
   border: 0;
   border-right: 1px solid var(--line);
   border-radius: 0;
@@ -4148,6 +4179,7 @@ body[data-design-system="tabcode-console"] .action-dock.workspace-nav {
 }
 
 body[data-design-system="tabcode-console"] .action-dock.workspace-nav a {
+  position: relative;
   min-height: 40px;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
@@ -4163,10 +4195,20 @@ body[data-design-system="tabcode-console"] .action-dock.workspace-nav strong {
 }
 
 body[data-design-system="tabcode-console"] .action-dock.workspace-nav a.is-active {
-  border-color: rgba(143, 181, 255, 0.18);
-  background: rgba(143, 181, 255, 0.12);
+  border-color: transparent;
+  background: transparent;
   color: var(--ink);
   box-shadow: none;
+}
+
+body[data-design-system="tabcode-console"] .action-dock.workspace-nav a.is-active::before {
+  position: absolute;
+  left: 0;
+  width: 3px;
+  height: 18px;
+  border-radius: var(--radius-pill);
+  background: var(--primary);
+  content: "";
 }
 
 body[data-design-system="tabcode-console"] .action-dock.workspace-nav a.is-priority-path::before {
@@ -4191,7 +4233,7 @@ body[data-design-system="tabcode-console"] .console-board {
   border: 0;
   border-radius: 0;
   background: transparent;
-  padding: 16px;
+  padding: 0;
   box-shadow: none;
 }
 
@@ -4625,10 +4667,61 @@ body[data-design-system="tabcode-console"] .trend-chart__line {
   stroke-width: 4;
 }
 
-body[data-design-system="tabcode-console"] .trend-chart__svg circle {
+body[data-design-system="tabcode-console"] .trend-chart__dot {
   fill: #0a0c10;
   stroke: var(--primary);
   stroke-width: 3;
+}
+
+body[data-design-system="tabcode-console"] .trend-chart__point {
+  outline: none;
+  cursor: crosshair;
+}
+
+body[data-design-system="tabcode-console"] .trend-chart__hit {
+  fill: transparent;
+  stroke: transparent;
+  pointer-events: all;
+}
+
+body[data-design-system="tabcode-console"] .trend-chart__point.is-active .trend-chart__dot,
+body[data-design-system="tabcode-console"] .trend-chart__point:focus-visible .trend-chart__dot {
+  fill: var(--primary);
+  stroke: #ffffff;
+}
+
+body[data-design-system="tabcode-console"] .trend-chart__tooltip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper-raised);
+  color: var(--ink);
+  padding: 8px 10px;
+  box-shadow: none;
+}
+
+body[data-design-system="tabcode-console"] .trend-chart__tooltip span,
+body[data-design-system="tabcode-console"] .trend-chart__tooltip small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 620;
+}
+
+body[data-design-system="tabcode-console"] .trend-chart__tooltip strong {
+  overflow: hidden;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body[data-design-system="tabcode-console"] .trend-chart__labels span.is-active b,
+body[data-design-system="tabcode-console"] .trend-chart__labels span.is-active em {
+  color: var(--primary);
 }
 
 body[data-design-system="tabcode-console"] .trend-chart__labels {
@@ -4939,7 +5032,11 @@ body[data-design-system="tabcode-console"] .empty-row--stack span {
   }
 
   body[data-design-system="tabcode-console"] .workspace-rail {
+    position: relative;
+    top: auto;
+    height: auto;
     min-height: 0;
+    overflow: visible;
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
@@ -5011,6 +5108,10 @@ body[data-design-system="tabcode-console"] .empty-row--stack span {
 
   body[data-design-system="tabcode-console"] .workspace-rail,
   body[data-design-system="tabcode-console"] .console-board {
+    padding: 12px;
+  }
+
+  body[data-design-system="tabcode-console"] .workspace-content {
     padding: 12px;
   }
 
