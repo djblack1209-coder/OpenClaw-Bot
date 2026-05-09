@@ -22,15 +22,16 @@
 | API 池 | ✅ 139/142 活跃源 |
 | 闲鱼客服 | ✅ 自动回复活跃 |
 | 社媒自动驾驶 | ✅ 运行中 |
-| 测试 | ✅ 后端全量 pytest 退出码 0，当前 pytest nodeids 1495；`test_api_routes_regression.py` 12/12 通过；Frist-API 153/153 通过；桌面端 `npx tsc --noEmit` 通过；OpenClaw CI run `25590993947` 通过；2026-05-08 复审确认本地必须走 `make test` 或 `.venv312/bin/python -m pytest`，不能直接用系统 `pytest` |
+| 测试 | ✅ 后端全量 pytest 退出码 0，当前 pytest nodeids 1495；`test_api_routes_regression.py` 12/12 通过；Frist-API 153/153 通过；桌面端 `npx tsc --noEmit` 通过；OpenClaw CI run `25592516119` 通过；2026-05-08 复审确认本地必须走 `make test` 或 `.venv312/bin/python -m pytest`，不能直接用系统 `pytest` |
 | Frist-API 入口 | ✅ 唯一内容入口为 `frist-api.101-43-41-96.nip.io`；`101-43-41-96.nip.io` 只做 301 跳转，不再作为第二个网站直接展示 |
 | Frist-API | ✅ HTTPS Quick Tunnel 和裸 IP 测试端口均已恢复；本地链路测试和公网冒烟通过，用户端已补齐弹窗登录注册、失败/成功反馈、API Key 创建反馈、连通性刷新不跳教程、渠道连通性聚合展示、价格管理、官方模型命名清洗、Claude Code/Codex 跨模型家族一键导入、Claude 第三方推理真实菜单流程图、Codex 导入 Claude 模型流程图、Codex 默认 Playwright/Superpowers/open-computer-use MCP、无网页 mock 数据兜底、默认最强模型导出、数据看板、模型广场、一次性管理员身份码、图片生成网关、OpenCode `/openai/chat/completions` 兼容路由、Chat Completions 到 Responses 降级、上游信息清洗、五客户端导入、日卡/小时卡轮转、会话粘滞、流式透传、公开模式硬门槛和自定义余额邮件预警；2026-05-08 复验 `npm test` 为 153/153 通过，`npm audit --audit-level=moderate` 为 0 漏洞，公网首页 200、看板 200、未授权 `/v1/models` 401；2026-05-08 内置浏览器审计公网首页标题 `Frist-API`、控制台无 error/warn，并修复返回按钮箭头无障碍噪音；2026-05-08 已部署 CSS 修复到 `/opt/frist-api/apps/frist-api/src/styles.css`，备份 `/opt/frist-api/backups/styles_20260509110117_before_browser_audit.css`，`frist-api-server` healthy，公网首页 200、Dashboard 200、未授权 `/v1/models` 401；2026-05-08 复审发现账户弹窗密码字段缺少真实 form 语义，已按动作拆分表单、自动填充和回车提交回归；已部署表单修复到腾讯云，备份 `/opt/frist-api/backups/browser_form_20260508215051`，远端 `node --check src/app.js` 通过，公网内置浏览器复验 0 error/0 warning、箭头文本 0、账户表单 5 个；2026-05-09 New-API 已在腾讯云以 `calciumion/new-api:v1.0.0-rc.4` 启动并 healthy，因共享服务器 3000 端口被 `/opt/ccgame` 占用，实际绑定 `127.0.0.1:13000->3000`；公网 CC Switch 页面复验 0 error/0 warning、Dashboard 200、未登录不生成带 Key provider 链接、展示 21 个模型和独立 MCP deep link；临时 Key 验证 `/v1/models` 200 和用量接口 200，但真实聊天调用返回 503，根因是唯一 healthy 上游 Key 返回 401，需补充/轮换上游库存后才能形成完整用户调用闭环；商业化自动运营仍需外部绑定真实品牌域名、商户平台开户、部署备份任务和执行历史数据迁移 |
 | Frist-API 腾讯云部署 | ✅ HI-875 用户端深色体验和官方计价修复已同步到 `/opt/frist-api`；部署前应用备份 `backups/frist-api-app-20260505-211636-before-ux-deploy.tgz`、运行数据备份 `backups/frist-api-runtime-20260505-211636-before-ux-deploy.tgz`；2026-05-08 复验 `frist-api-server` 容器 healthy，公网首页 200、看板 200、裸域名 301、未授权 `/v1/models` 401 |
 | ClawBot 腾讯云部署 | ✅ 2026-05-08 已单文件部署闲鱼管理页转义修复到 `/home/clawbot/clawbot/src/xianyu/xianyu_admin.py`；远端备份 `/home/clawbot/clawbot/backups/xianyu_admin_20260508155652_before_escape.py`；远端 `py_compile` 通过，`clawbot.service` 重启后 active |
 | 微信命令 | ✅ 27/27 可用 (25✅ 2⚠️数据空) |
 | Ollama 内存 | ✅ 151MB (原9.3GB) |
-| 日志目录 | ✅ 784KB (已清理本地日志) |
-| 文档治理 | ✅ 主项目 docs 从散落状态统一归集到 43 个编号 Markdown，扁平化无子目录，历史截图/旧审计/散落设计报告/冗余打包文档已清理 |
+| 日志目录 | ✅ 2026-05-09 已清理本地 `packages/clawbot/logs/` 旧运行日志；生产日志和远端备份未清理 |
+| 本地冗余 | ✅ 2026-05-09 已清理 `.DS_Store`、源码/测试 `__pycache__`、`.pytest_cache`、`.ruff_cache`、`.playwright-mcp`、Playwright/Expect 调试产物、Frist-API 历史审计截图和根目录临时截图；`.env`、`.openclaw/`、runtime 数据、`node_modules`、`.venv312` 保留 |
+| 文档治理 | ✅ 主项目 docs 从散落状态统一归集到 43 个编号 Markdown，扁平化无子目录，历史截图/旧审计/散落设计报告/冗余打包文档已清理；2026-05-09 已补本轮清理日志 |
 | 公开仓库安全 | 🟡 Git 历史已重写并通过本地扫描, 仍需轮换曾暴露过的外部密钥 |
 
 ---
@@ -55,6 +56,7 @@
 | HI-894 | INFRA | 审计入口复核发现直接运行系统 `pytest` 会命中本机 Python 3.9 用户级脚本，导致 Python 3.12 项目代码被旧解释器误判；已将 AGENTS 和快速导航命令收口为 `make test` / `.venv312/bin/python -m pytest`，并用 `make test` 复验 | 2026-05-08 | ✅ 已处理 |
 | HI-895 | INFRA | 腾讯云 New-API 远端 compose 曾仍为 `v1.0.0-rc.2`；2026-05-09 已重新备份运行数据，成功拉取 `calciumion/new-api:v1.0.0-rc.4`，并处理共享服务器 `127.0.0.1:3000` 端口冲突和 `data/newapi` UID 501 权限问题；当前 `openclaw-newapi` healthy，`/api/status` 返回 `version=v1.0.0-rc.4` | 2026-05-08 | ✅ 已处理 |
 | HI-896 | AI_POOL/BUG | CC Switch 导入结构与接口边界复核通过：未登录 `#switch` 不暴露带 Key provider 链接，MCP deep link 独立展示，脱敏样本 provider 链接符合 `resource=provider/app=codex/usageScript` 契约；但受控临时 Key 实测真实聊天调用返回 503，唯一 healthy 上游返回 401 并触发 `credential_failed upstream_http_401`，说明当前上游库存 Key 需补充或轮换后才能完成端到端调用闭环 | 2026-05-09 | 🟠 待轮换上游库存 |
+| HI-897 | INFRA/DOCS | 本地工作区遗留可重建缓存、调试日志和审计截图容易干扰后续审计基线；已清理 `.DS_Store`、`.playwright-mcp`、`.pytest_cache`、`__pycache__`、`.ruff_cache`、Playwright/Expect 临时产物、历史审计截图和本地旧日志，并保留运行配置、runtime 数据、依赖环境与生产备份 | 2026-05-09 | ✅ 已处理 |
 
 ### 🟡 一般
 
@@ -166,7 +168,7 @@
 | TD-012 | ARCH_LIMIT | Frist-API 文件写入失败被 `catch(() => {})` 静默吞掉，store 破损后无告警；已改为 `FRIST_API_RUNTIME_WRITE_FAILED` warning | ✅ 已处理 |
 | TD-013 | ARCH_LIMIT | Frist-API 已将网关成功、慢线、失败和额度耗尽写入 `channelProbeEvents` 并返回 7/15/30 天 SLA 摘要；后续仍需独立后台探测队列覆盖无人调用时段 | 🟡 |
 | TD-014 | TECH_DEBT | Python 测试环境存在依赖告警：`requests` 与 `urllib3/chardet/charset_normalizer` 版本组合不匹配，`jieba` 依赖 deprecated `pkg_resources`，`js2py` 使用 deprecated `co_lnotab`，部分调度测试路径有未 await coroutine warning；本轮未影响测试通过，但需后续清理 | 🟡 |
-| TD-015 | INFRA | GitHub Actions Node 20 运行时即将废弃；OpenClaw CI 已升级 `checkout@v6`、`setup-node@v6` 和 Node.js 24，run `25589842516` 通过且前端 typecheck 使用 Node 24；仍有 `actions/cache@v4`、`actions/setup-python@v5`、`astral-sh/setup-uv@v5` 的平台级 Node 20 预警，需等上游 action 发布兼容版本或后续单独替换 | 🟡 部分处理 |
+| TD-015 | INFRA | GitHub Actions Node 20 运行时即将废弃；OpenClaw CI 已升级 `checkout@v6`、`setup-node@v6` 和 Node.js 24，run `25592516119` 通过且前端 typecheck 使用 Node 24；仍有 `actions/cache@v4`、`actions/setup-python@v5`、`astral-sh/setup-uv@v5` 的平台级 Node 20 预警，需等上游 action 发布兼容版本或后续单独替换 | 🟡 部分处理 |
 
 ---
 
