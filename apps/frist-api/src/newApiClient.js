@@ -116,10 +116,11 @@ export function normalizeNewApiUsage(raw, options = {}) {
 }
 
 export function normalizeNewApiChannels(raw) {
-  return unwrapArray(raw).map((channel) => {
+  return unwrapArray(raw).map((channel, index) => {
     const status = channel.status || (channel.ok ? 'healthy' : 'down');
     const ok = ['healthy', 'ok', 'enabled', 'normal', true, 1].includes(status);
     const latencyMs = numberFromAny(channel.response_time_ms ?? channel.latency_ms ?? channel.latencyMs);
+    const averageLatencyMs = numberFromAny(channel.averageLatencyMs ?? channel.average_latency_ms) || latencyMs;
     const pingMs = numberFromAny(channel.ping_ms ?? channel.pingMs);
     const successRate = readSuccessRate(channel);
     const successCount = numberFromAny(channel.success_count ?? channel.successCount);
@@ -128,17 +129,22 @@ export function normalizeNewApiChannels(raw) {
 
     return {
       provider: providerLabel(channel.provider || channel.type || channel.model),
-      channel: String(channel.name || channel.channel || channel.provider || '模型通道'),
+      channel: String(channel.channel || channel.poolChannel || `卡商${index + 1}`),
+      pool: String(channel.pool || ''),
+      poolLabel: String(channel.poolLabel || channel.name || ''),
       model: String(channel.model || channel.default_model || channel.model_name || '-'),
       endpoint: String(channel.endpoint || channel.public_endpoint || '/v1'),
       ok,
       latencyMs,
       pingMs,
+      averageLatencyMs,
       checkedAt: formatTime(channel.checked_at || channel.updated_at),
       officialStatus: ok ? (state === 'slow' ? '降级' : '正常') : '异常',
       availability: `${(successRate * 100).toFixed(2)}%`,
       successLabel: `${successCount}/${totalCount} 成功`,
-      history: Array.isArray(channel.history) ? channel.history.slice(0, DEFAULT_HISTORY_SIZE) : Array(DEFAULT_HISTORY_SIZE).fill(state),
+      latencyLabel: latencyMs > 0 ? `最低 ${latencyMs}ms / 平均 ${averageLatencyMs}ms` : '等待真实请求更新',
+      monitorIntervalSeconds: 60,
+      history: Array.isArray(channel.history) ? channel.history.slice(0, DEFAULT_HISTORY_SIZE) : [],
       replacement: String(channel.replacement || ''),
     };
   });

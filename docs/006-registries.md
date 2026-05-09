@@ -208,8 +208,8 @@
 | 广场清空 | `data-clear-playground` | 清空广场测试消息并恢复欢迎提示 |
 | 图片输出 | `data-image-output` | 展示 `gpt-image-2` 等图片模型生成结果 |
 | 消耗分布图 | `data-usage-donut` | 用户侧模型消耗分布图 |
-| 服务可用性 | `data-service-health` / `data-channel-monitor-metrics` / `data-channel-monitor-history` | 登录用户侧展示 Claude/OpenAI/其他模型当前库存快照、可用率、最低/平均延迟、60 秒刷新口径和最近状态条；游客 Dashboard 返回空 `channelChecks`，避免误认为 mock 数据 |
-| 首页通道监控 | `data-channel-monitor-summary` / `data-channel-monitor-history` | 首页通道摘要按 provider 聚合 healthy/down/slow 状态，不暴露上游地址、上游 Key 或号商信息 |
+| 服务可用性 | `data-service-health` / `data-channel-monitor-metrics` / `data-channel-monitor-history` | 登录用户侧展示 `卡商1`、`卡商2` 等号池渠道当前库存快照、可用率、真实最低/平均延迟、60 秒刷新口径和最近状态条；无真实延迟样本时显示“等待真实请求更新”，游客 Dashboard 返回空 `channelChecks`，避免误认为 mock 数据 |
+| 首页通道监控 | `data-channel-monitor-summary` / `data-channel-monitor-history` | 首页通道摘要按公开卡商号池聚合 healthy/down/slow 状态，支持慢线/断线自动降级，不暴露上游地址、上游 Key 或具体号商信息 |
 | 模型广场 | `data-model-catalog` | 展示可用模型、家族、上下文和计价 |
 | 教程目标选择 | `data-guide-targets` / `data-guide-target` | 独立教程入口从左侧导航隐藏，缺失配置说明合并回 CC Switch 页面；教程目标不再展示重复 `Harmes` |
 | 教程 macOS 命令 | `data-mac-command` / `data-copy-mac-command` | 生成并复制 macOS 一键配置命令 |

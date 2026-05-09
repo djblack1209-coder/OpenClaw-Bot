@@ -780,7 +780,7 @@ export function summarizeModelHealth(snapshot) {
     model: snapshot.model,
     label: HEALTH_LABELS[status],
     status,
-    latencyText: snapshot.ok ? `${latencyMs}ms` : '-',
+    latencyText: snapshot.ok && latencyMs > 0 ? `${latencyMs}ms` : '-',
     averageLatencyText: snapshot.ok && averageLatencyMs ? `${averageLatencyMs}ms` : '-',
     successLabel: snapshot.successLabel || `${healthyCount}/${totalCount} 可用`,
     availabilityText: snapshot.availability || `${Number(snapshot.availability7d ?? snapshot.availability_7d ?? 0)}%`,

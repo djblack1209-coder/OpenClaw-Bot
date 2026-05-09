@@ -8,7 +8,7 @@ import {
   sortModelsByStrength, strongestModel, sanitizeRiskNote, PRIMARY_SOURCE_TYPE,
   providerFromModel, taglineForModel, contextForModel,
   isSourceRouteApproved, isCredentialRouteApproved,
-  effectiveCredentialGroup, estimateCredentialWaste,
+  effectiveCredentialGroup, estimateCredentialWaste, normalizePool,
 } from './shared.js';
 
 const DEFAULT_MODEL_PRICE_BY_MODEL = new Map(
@@ -220,7 +220,7 @@ export function buildGatewayModels(data, request) {
 }
 
 export function buildModelCatalog(data) {
-  const liveByModel = new Map(buildChannelChecks(data).map((item) => [normalizeOfficialModelName(item.model), item]));
+  const liveByModel = buildLiveModelMap(data);
   const rowsByModel = new Map(
     DEFAULT_MODEL_CATALOG.map((item) => {
       const model = normalizeOfficialModelName(item.model);
@@ -249,64 +249,137 @@ export function buildChannelChecks(data) {
   const grouped = new Map();
   for (const credential of data.credentials) {
     const models = normalizeOfficialModelList(credential.models?.length ? credential.models : [DEFAULT_MODEL]);
+    const source = data.supplierProfiles.find((item) => item.id === credential.sourceId) || {};
+    const pool = normalizePool(credential.pool || source.pool || 'default') || 'default';
+    const provider = effectiveCredentialGroup(credential);
+    const key = `${pool}:${credential.sourceId || provider}`;
+    const current = grouped.get(key) || {
+      model: models[0] || DEFAULT_MODEL,
+      provider,
+      channel: '',
+      pool,
+      poolLabel: poolTypeLabel(pool),
+      total: 0,
+      healthy: 0,
+      down: 0,
+      slow: 0,
+      latencyMs: 0,
+      latencyTotal: 0,
+      latencySamples: 0,
+      checkedAt: '',
+      status: credential.status,
+      endpoint: '/v1',
+      history: [],
+      models: new Set(),
+    };
     for (const model of models) {
-      const key = model;
-      const current = grouped.get(key) || {
-        model, provider: providerFromModel(model), total: 0, healthy: 0, down: 0, slow: 0,
-        latencyMs: 0, latencyTotal: 0, latencySamples: 0, checkedAt: '', status: credential.status, history: [],
-      };
-      const isHealthy = credential.enabled && credential.status === 'healthy' && isCredentialRouteApproved(credential);
-      const latency = Number(credential.latencyMs || 0);
-      const bucket = isHealthy ? (latency > 1600 ? 'slow' : 'ok') : 'down';
-      current.total += 1;
-      current.healthy += isHealthy ? 1 : 0;
-      current.down += isHealthy ? 0 : 1;
-      current.slow += bucket === 'slow' ? 1 : 0;
-      if (isHealthy) {
-        const safeLatency = latency || 999999;
-        current.latencyMs = current.latencyMs ? Math.min(current.latencyMs, safeLatency) : safeLatency;
-        current.latencyTotal += safeLatency;
-        current.latencySamples += 1;
-        current.status = 'healthy';
-      } else if (!current.healthy) {
-        current.status = credential.status || current.status || 'failed';
-      }
-      current.checkedAt = [current.checkedAt, credential.updatedAt].filter(Boolean).sort().at(-1) || '';
-      current.history.push(bucket);
-      grouped.set(key, current);
+      current.models.add(normalizeOfficialModelName(model));
     }
+    const isHealthy = credential.enabled && credential.status === 'healthy' && isCredentialRouteApproved(credential);
+    const latency = Number(credential.latencyMs || 0);
+    const hasRealLatency = isHealthy && Number.isFinite(latency) && latency > 0 && latency < 999999;
+    const bucket = isHealthy ? (hasRealLatency && latency > 1600 ? 'slow' : 'ok') : 'down';
+    current.total += 1;
+    current.healthy += isHealthy ? 1 : 0;
+    current.down += isHealthy ? 0 : 1;
+    current.slow += bucket === 'slow' ? 1 : 0;
+    if (isHealthy) {
+      if (hasRealLatency) {
+        current.latencyMs = current.latencyMs ? Math.min(current.latencyMs, latency) : latency;
+        current.latencyTotal += latency;
+        current.latencySamples += 1;
+      }
+      current.status = 'healthy';
+    } else if (!current.healthy) {
+      current.status = credential.status || current.status || 'failed';
+    }
+    current.checkedAt = [current.checkedAt, credential.updatedAt].filter(Boolean).sort().at(-1) || '';
+    current.history.push(bucket);
+    grouped.set(key, current);
   }
   return [...grouped.values()]
-    .sort((left, right) => `${left.provider}:${left.model}`.localeCompare(`${right.provider}:${right.model}`))
-    .map((item) => {
+    .sort((left, right) => poolPriority(left.pool) - poolPriority(right.pool) || left.channel.localeCompare(right.channel))
+    .map((item, index) => {
+      const channel = publicPoolChannelLabel(index + 1);
       const availabilityPercent = item.total ? Math.round((item.healthy / item.total) * 1000) / 10 : 0;
       const averageLatencyMs = item.latencySamples ? Math.round(item.latencyTotal / item.latencySamples) : 0;
-      const monitorStatus = item.healthy === 0 ? '异常' : item.down > 0 || item.slow > 0 ? '降级' : '正常';
+      const monitorStatus =
+        item.healthy === 0
+          ? '异常'
+          : item.down > 0 || item.slow > 0
+            ? '降级'
+            : '正常';
+      const status = item.healthy > 0 ? (item.slow > 0 ? 'slow' : 'healthy') : item.status;
+      const primaryModel = normalizeOfficialModelName([...item.models][0] || item.model);
       return {
-        model: normalizeOfficialModelName(item.model), provider: item.provider,
-        channel: `${item.provider} 可用线路 ${item.healthy}/${item.total}`,
-        endpoint: '/v1',
+        model: primaryModel,
+        provider: item.provider,
+        channel,
+        pool: item.pool,
+        poolLabel: item.poolLabel,
+        endpoint: item.endpoint || '/v1',
         ok: item.healthy > 0,
-        status: item.healthy > 0 ? (item.slow > 0 ? 'slow' : 'healthy') : item.status,
-        latencyMs: item.healthy > 0 ? item.latencyMs : 0,
+        status,
+        latencyMs: item.latencySamples ? item.latencyMs : 0,
         averageLatencyMs,
         checkedAt: item.checkedAt,
         availability: `${availabilityPercent}%`,
         availability7d: availabilityPercent,
         availability_7d: availabilityPercent,
+        availability15d: availabilityPercent,
+        availability30d: availabilityPercent,
+        availability_15d: availabilityPercent,
+        availability_30d: availabilityPercent,
         availabilityWindow: '当前库存快照',
         healthyCount: item.healthy,
         totalCount: item.total,
         downCount: item.down,
         slowCount: item.slow,
         successLabel: `${item.healthy}/${item.total} 可用`,
-        latencyLabel: item.healthy > 0 ? `最低 ${item.latencyMs}ms / 平均 ${averageLatencyMs}ms` : '未检测到可用线路',
+        latencyLabel: item.latencySamples ? `最低 ${item.latencyMs}ms / 平均 ${averageLatencyMs}ms` : '等待真实请求更新',
         monitorIntervalSeconds: 60,
         monitorStatus,
         officialStatus: monitorStatus,
         history: item.history.slice(-60),
       };
     });
+}
+
+function buildLiveModelMap(data) {
+  const rows = new Map();
+  for (const credential of data.credentials || []) {
+    const provider = effectiveCredentialGroup(credential);
+    const isLive =
+      credential.enabled &&
+      credential.status === 'healthy' &&
+      isCredentialRouteApproved(credential) &&
+      Number(credential.quotaRemaining || 0) > 0;
+    for (const model of normalizeOfficialModelList(credential.models || [])) {
+      const current = rows.get(model);
+      rows.set(model, {
+        provider: current?.provider || provider || providerFromModel(model),
+        ok: Boolean(current?.ok || isLive),
+      });
+    }
+  }
+  return rows;
+}
+
+function publicPoolChannelLabel(index) {
+  const safeIndex = Math.max(1, Number(index || 1));
+  return `卡商${safeIndex}`;
+}
+
+function poolTypeLabel(pool) {
+  const normalized = normalizePool(pool || 'default') || 'default';
+  const labels = {
+    hour: '小时卡号池',
+    day: '日卡号池',
+    month: '月卡号池',
+    unlimited: '不限时号池',
+    default: '默认号池',
+  };
+  return labels[normalized] || '号池渠道';
 }
 
 export function buildModelUsage(data, user) {

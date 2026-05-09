@@ -2993,7 +2993,7 @@ describe('Frist-API public server chain', () => {
     }
   });
 
-  it('aggregates customer channel checks by model instead of exposing one card per upstream key', async () => {
+  it('aggregates customer channel checks by card merchant channel instead of exposing one card per upstream key', async () => {
     const fixture = await createServerFixture();
 
     try {
@@ -3017,7 +3017,9 @@ describe('Frist-API public server chain', () => {
       assert.equal(dashboard.json.channelChecks.length, 1);
       assert.equal(dashboard.json.channelChecks[0].model, 'claude-sonnet-4-5-c');
       assert.equal(dashboard.json.channelChecks[0].ok, true);
-      assert.match(dashboard.json.channelChecks[0].channel, /可用线路 2\/2/);
+      assert.equal(dashboard.json.channelChecks[0].channel, '卡商1');
+      assert.equal(dashboard.json.channelChecks[0].poolLabel, '日卡号池');
+      assert.equal(dashboard.json.channelChecks[0].pool, 'day');
       assert.equal(dashboard.json.channelChecks[0].healthyCount, 2);
       assert.equal(dashboard.json.channelChecks[0].totalCount, 2);
       assert.equal(dashboard.json.channelChecks[0].downCount, 0);
@@ -3025,7 +3027,7 @@ describe('Frist-API public server chain', () => {
       assert.equal(dashboard.json.channelChecks[0].successLabel, '2/2 可用');
       assert.equal(dashboard.json.channelChecks[0].availability7d, 100);
       assert.equal(dashboard.json.channelChecks[0].availabilityWindow, '当前库存快照');
-      assert.equal(dashboard.json.channelChecks[0].monitorIntervalSeconds, 0);
+      assert.equal(dashboard.json.channelChecks[0].monitorIntervalSeconds, 60);
       assert.match(dashboard.json.channelChecks[0].latencyLabel, /最低 80ms \/ 平均 100ms/);
       assert.deepEqual(dashboard.json.channelChecks[0].history, ['ok', 'ok']);
       assert.equal(JSON.stringify(dashboard.json.channelChecks).includes('supplier.example.com'), false);
@@ -3039,11 +3041,23 @@ describe('Frist-API public server chain', () => {
     const fixture = await createServerFixture();
 
     try {
+      const sourceId = 'source-degraded';
       await fixture.writeData({
+        supplierProfiles: [
+          {
+            id: sourceId,
+            pool: 'day',
+            models: ['gpt-5.5'],
+            modelGroup: 'OpenAI',
+            sourceType: 'authorized',
+            riskStatus: 'approved',
+          },
+        ],
         credentials: [
           {
             id: 'fast',
-            sourceId: 'source-fast',
+            sourceId,
+            pool: 'day',
             models: ['gpt-5.5'],
             sourceType: 'authorized',
             riskStatus: 'approved',
@@ -3055,7 +3069,8 @@ describe('Frist-API public server chain', () => {
           },
           {
             id: 'slow',
-            sourceId: 'source-slow',
+            sourceId,
+            pool: 'day',
             models: ['gpt-5.5'],
             sourceType: 'authorized',
             riskStatus: 'approved',
@@ -3067,7 +3082,8 @@ describe('Frist-API public server chain', () => {
           },
           {
             id: 'down',
-            sourceId: 'source-down',
+            sourceId,
+            pool: 'day',
             models: ['gpt-5.5'],
             sourceType: 'authorized',
             riskStatus: 'approved',
@@ -3084,6 +3100,8 @@ describe('Frist-API public server chain', () => {
       const dashboard = await fixture.request('/api/frist/dashboard', { cookie });
       const [check] = dashboard.json.channelChecks;
       assert.equal(check.model, 'gpt-5.5');
+      assert.equal(check.channel, '卡商1');
+      assert.equal(check.poolLabel, '日卡号池');
       assert.equal(check.healthyCount, 2);
       assert.equal(check.totalCount, 3);
       assert.equal(check.downCount, 1);
@@ -3095,7 +3113,68 @@ describe('Frist-API public server chain', () => {
       assert.equal(check.latencyMs, 90);
       assert.equal(check.averageLatencyMs, 995);
       assert.equal(check.successLabel, '2/3 可用');
+      assert.equal(check.monitorIntervalSeconds, 60);
       assert.deepEqual(check.history, ['ok', 'slow', 'down']);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('keeps channel cards grouped by pool while model catalog availability stays per model', async () => {
+    const fixture = await createServerFixture();
+
+    try {
+      await fixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'https://supplier.example.com/v1',
+          pool: 'day',
+          models: ['gpt-5.5', 'gpt-image-2'],
+          keys: [{ value: 'sk-pool-models', quotaRemaining: 900, latencyMs: 120 }],
+        },
+      });
+
+      const cookie = await fixture.createVerifiedCustomer('pool-catalog@example.com');
+      const dashboard = await fixture.request('/api/frist/dashboard', { cookie });
+      const channelNames = dashboard.json.channelChecks.map((item) => item.channel);
+      const catalogByModel = new Map(dashboard.json.modelCatalog.map((item) => [item.model, item]));
+
+      assert.deepEqual(channelNames, ['卡商1']);
+      assert.equal(catalogByModel.get('gpt-5.5')?.available, true);
+      assert.equal(catalogByModel.get('gpt-image-2')?.available, true);
+      assert.equal(JSON.stringify(dashboard.json.channelChecks).includes('可用线路'), false);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('does not invent latency for trusted inventory before a real probe or gateway call', async () => {
+    const fixture = await createServerFixture();
+
+    try {
+      await fixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'https://trusted.example.com/v1',
+          pool: 'day',
+          probeMode: 'trusted',
+          models: ['gpt-5.5'],
+          keys: [{ value: 'sk-trusted-no-latency', quotaRemaining: 900 }],
+        },
+      });
+
+      const cookie = await fixture.createVerifiedCustomer('trusted-latency@example.com');
+      const dashboard = await fixture.request('/api/frist/dashboard', { cookie });
+      const [check] = dashboard.json.channelChecks;
+
+      assert.equal(check.channel, '卡商1');
+      assert.equal(check.poolLabel, '日卡号池');
+      assert.equal(check.latencyMs, 0);
+      assert.equal(check.averageLatencyMs, 0);
+      assert.equal(check.latencyLabel, '等待真实请求更新');
+      assert.equal(check.monitorIntervalSeconds, 60);
     } finally {
       await fixture.close();
     }

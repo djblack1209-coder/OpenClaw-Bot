@@ -243,7 +243,9 @@ function normalizeChannelChecks(rows, fallbackRows = []) {
     const monitorStatus = row.monitorStatus || row.officialStatus || fallback.monitorStatus || fallback.officialStatus || (ok ? '正常' : '不可用');
     return {
       provider: row.provider || fallback.provider || 'Claude',
-      channel: row.channel || `${row.provider || 'Claude'} 线路`,
+      channel: row.channel || row.poolLabel || fallback.channel || fallback.poolLabel || '号池渠道',
+      pool: row.pool || fallback.pool || '',
+      poolLabel: row.poolLabel || fallback.poolLabel || '',
       model: model || 'unknown',
       endpoint: row.endpoint || fallback.endpoint || '/v1',
       ok,
@@ -251,25 +253,21 @@ function normalizeChannelChecks(rows, fallbackRows = []) {
       latencyMs: Number(row.latencyMs || fallback.latencyMs || 0),
       pingMs: Number(row.pingMs || fallback.pingMs || 0),
       averageLatencyMs: Number(row.averageLatencyMs || fallback.averageLatencyMs || row.latencyMs || fallback.latencyMs || 0),
-      checkedAt: row.checkedAt || new Date().toISOString(),
+      checkedAt: row.checkedAt || fallback.checkedAt || '',
       officialStatus: monitorStatus,
       monitorStatus,
-      availability: row.availability || (ok ? '99.9%' : '0%'),
-      availability7d: Number(row.availability7d ?? row.availability_7d ?? fallback.availability7d ?? fallback.availability_7d ?? (ok ? 99.9 : 0)),
-      availability_7d: Number(row.availability_7d ?? row.availability7d ?? fallback.availability_7d ?? fallback.availability7d ?? (ok ? 99.9 : 0)),
+      availability: row.availability || fallback.availability || (totalCount ? `${Math.round((healthyCount / totalCount) * 1000) / 10}%` : '0%'),
+      availability7d: Number(row.availability7d ?? row.availability_7d ?? fallback.availability7d ?? fallback.availability_7d ?? (totalCount ? Math.round((healthyCount / totalCount) * 1000) / 10 : 0)),
+      availability_7d: Number(row.availability_7d ?? row.availability7d ?? fallback.availability_7d ?? fallback.availability7d ?? (totalCount ? Math.round((healthyCount / totalCount) * 1000) / 10 : 0)),
       availabilityWindow: row.availabilityWindow || fallback.availabilityWindow || '当前库存快照',
       healthyCount,
       totalCount,
       downCount,
       slowCount,
       successLabel: row.successLabel || fallback.successLabel || `${healthyCount}/${totalCount} 可用`,
-      latencyLabel: row.latencyLabel || fallback.latencyLabel || (ok ? `${Number(row.latencyMs || fallback.latencyMs || 0)}ms` : '未检测到可用线路'),
-      monitorIntervalSeconds: Number(row.monitorIntervalSeconds || fallback.monitorIntervalSeconds || 0),
-      history: Array.isArray(row.history) && row.history.length
-        ? row.history
-        : ok
-          ? ['ok', 'ok', 'ok', 'ok', 'ok', 'ok']
-          : ['down', 'down', 'down', 'down'],
+      latencyLabel: row.latencyLabel || fallback.latencyLabel || (ok ? '等待真实请求更新' : '未检测到可用线路'),
+      monitorIntervalSeconds: Number(row.monitorIntervalSeconds || fallback.monitorIntervalSeconds || 60),
+      history: Array.isArray(row.history) && row.history.length ? row.history : [],
     };
   });
 }

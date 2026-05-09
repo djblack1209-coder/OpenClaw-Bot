@@ -704,7 +704,7 @@ function parseKeyLines(value) {
       return {
         value,
         quotaRemaining: quotaRemaining ? Number(quotaRemaining) : 1000,
-        latencyMs: latencyMs ? Number(latencyMs) : 999,
+        latencyMs: latencyMs ? Number(latencyMs) : 0,
       };
     });
 }
