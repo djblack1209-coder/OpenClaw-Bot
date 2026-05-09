@@ -463,11 +463,11 @@ Frist-API 是独立公开网站，放在 `apps/frist-api/`，不改 OpenClaw APP
 - CC Switch 页面让用户选择 Claude、Codex、OpenCode、OpenClaw、Hermes，并生成一键导入链接。
 - 手动配置里提供 `auth.json` 和 `config.toml`，适配 Codex、OpenCode 等兼容 OpenAI Responses 格式的客户端。
 - 导入配置统一写入 Frist-API 供应商标识、官网入口、公开网关地址、用户 `fk-live-*` Key、Responses/Anthropic 兼容入口、`xhigh` 推理强度、上下文窗口、自动压缩、`setCacheKey` 和工具搜索配置，不暴露上游号商信息；历史 `sk-*` Key 仅作为兼容读取。
-- 用户端不展示补号助手、上游号商、价格解析、渠道、倍率、模型映射和库存。运营入口只会在当前账号完成一次性管理员身份码激活后出现。
+- 用户端不展示补号助手、上游号商、价格解析、渠道、倍率、模型映射和库存。右上角常驻“登录/身份码/管理”快捷入口：游客点击先登录，登录后可直接输身份码激活管理员，激活后同位置直达管理页，移动端可直接操作。
 
 ## 管理端能做什么
 
-管理端独立在隐藏入口后。推荐方式是用一次性管理员身份码把你的账号升级为管理员，然后通过账户区域的运营入口进入；管理员令牌只作为后备方式保留在服务器环境变量里，不写入仓库和公开文档。
+管理端独立在隐藏入口后。推荐方式是用一次性管理员身份码把你的账号升级为管理员，然后通过右上角“管理”快捷入口进入；管理员令牌只作为后备方式保留在服务器环境变量里，不写入仓库和公开文档。
 
 - 人工入账: 按用户邮箱确认日卡、月卡或余额充值。
 - 补号助手: 可直接粘贴订单详情，也可手动输入请求地址、可选代理地址、池子、模型、价格文本和一批上游 Key。
@@ -480,6 +480,7 @@ Frist-API 是独立公开网站，放在 `apps/frist-api/`，不改 OpenClaw APP
 - 价格草稿: 粘贴美元或人民币价格文本后，自动换算销售价并参与网关扣费。
 - 库存审计: 展示脱敏库存、补号、切换、耗尽、失败、浪费估算和路由事件。
 - 低库存告警: 库存低于阈值时触发 `FRIST_API_LOW_INVENTORY_WEBHOOK`，后续可桥接 OpenClaw 的 Telegram/微信通知。
+- Key 异常巡检: 后台每 60 秒巡检健康库存；若通道可达但 Key 认证失败或额度耗尽，会自动降级该 Key，并通过 Telegram/Webhook 只提醒一次补号，避免重复刷屏。用户端首页也会每 60 秒静默刷新，看板状态无需手动点“检测”。
 
 管理端不会把原始上游 Key、管理员令牌或号商细节带到用户端。
 
@@ -586,6 +587,12 @@ docker compose -f docker-compose.frist-api.yml up -d
 - `FRIST_API_BACKUP_STATUS_MAX_AGE_HOURS=26`: 备份超过 26 小时未登记则生产检查不通过
 - `FRIST_API_SLA_RETENTION_DAYS=30`: 渠道 SLA 探测事件保留 30 天
 - `FRIST_API_LOW_INVENTORY_WEBHOOK`: 可选，低库存通知 Webhook
+- `FRIST_API_CHANNEL_MONITOR_ENABLED=1`: 启用后台通道巡检
+- `FRIST_API_CHANNEL_MONITOR_INTERVAL_MS=60000`: 60 秒巡检一次
+- `FRIST_API_CHANNEL_MONITOR_BATCH_SIZE=4`: 每轮最多巡检 4 个 Key
+- `FRIST_API_CHANNEL_MONITOR_COOLDOWN_MS=55000`: 单 Key 最短巡检间隔
+- `FRIST_API_KEY_ALERT_WEBHOOK`: 可选，Key 异常告警 Webhook
+- `FRIST_API_TELEGRAM_BOT_TOKEN` / `FRIST_API_TELEGRAM_CHAT_ID`: 可选，Key 异常一次性补号提醒 Telegram 通知
 - `FRIST_API_SMTP_HOST` / `FRIST_API_SMTP_PORT` / `FRIST_API_SMTP_SECURE` / `FRIST_API_SMTP_FAMILY`: 可选，余额预警邮件 SMTP 连接配置
 - `FRIST_API_SMTP_USER` / `FRIST_API_SMTP_PASSWORD` / `FRIST_API_SMTP_FROM`: 可选，余额预警邮件登录和发件配置
 - `FRIST_API_BALANCE_ALERT_FROM_NAME`: 可选，余额预警邮件发件人名称

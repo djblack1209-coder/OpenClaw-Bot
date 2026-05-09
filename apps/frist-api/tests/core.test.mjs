@@ -862,7 +862,7 @@ describe('Frist-API user dashboard boundaries', () => {
     const topbar = userHtml.match(/<header class="topbar">[\s\S]*?<\/header>/)?.[0] || '';
     const apiPanel = userHtml.match(/<section class="view-panel" data-view="api"[\s\S]*?<section class="view-panel" data-view="usage"/)?.[0] || '';
 
-    for (const required of ['data-auth-toggle', 'data-auth-panel', 'data-register-email', 'data-login-account']) {
+    for (const required of ['data-auth-toggle', 'data-auth-panel', 'data-register-email', 'data-login-account', 'data-owner-shortcut']) {
       assert.equal(topbar.includes(required), true, `${required} 应该位于右上角账户区`);
     }
     for (const required of ['data-password-reset-request', 'data-password-reset-confirm']) {

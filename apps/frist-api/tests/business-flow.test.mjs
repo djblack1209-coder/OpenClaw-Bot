@@ -359,6 +359,7 @@ describe('Frist-API page business wiring', () => {
       'data-owner-claim-code',
       'data-owner-claim',
       'data-owner-entry',
+      'data-owner-shortcut',
       'data-auth-dialog',
       'data-auth-mode',
       'data-auth-close',
@@ -395,6 +396,10 @@ describe('Frist-API page business wiring', () => {
     assert.equal(userHtml.includes('autocomplete="new-password"'), true, '新密码字段应该声明自动填充类型');
     assert.equal(userHtml.includes('data-auth-form-email'), true, '独立密码动作表单应该带隐藏用户名字段');
     assert.equal(page.includes("querySelectorAll('[data-auth-form-email]')"), true, '隐藏用户名字段应该同步当前邮箱，方便浏览器密码管理器关联账号');
+    assert.equal(page.includes('openOwnerClaimPanel'), true, '移动端顶部应支持直接打开身份码激活入口');
+    assert.equal(page.includes('openAuthLoginPanel'), true, '游客点击移动端顶部入口时应先进入登录流程');
+    assert.equal(page.includes("ownerShortcutMode = isAdmin ? 'admin' : state.hasServerSession ? 'claim' : 'auth'"), true, '移动端顶部入口应在游客/登录/管理员三种状态下自动切换');
+    assert.equal(page.includes('startDashboardAutoRefresh'), true, '首页应每 60 秒静默刷新一次，跟上后台通道巡检结果');
     assert.equal(userHtml.includes('aria-modal="true"'), true, '账户弹窗应该向辅助技术声明模态语义');
     assert.equal(userHtml.includes('role="tab"'), true, '登录/注册切换应该使用明确的 tab 语义');
     assert.equal(userHtml.includes('data-auth-submit="login"'), true, '登录模式只应该显示登录提交按钮');

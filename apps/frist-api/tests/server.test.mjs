@@ -3485,6 +3485,89 @@ describe('Frist-API public server chain', () => {
     }
   });
 
+  it('runs background channel monitoring every interval, downgrades invalid keys and only notifies once', async () => {
+    const keyAlerts = [];
+    const upstreamCalls = [];
+    const fetchImpl = async (url, options = {}) => {
+      const authorization = options.headers?.Authorization || options.headers?.authorization || '';
+      upstreamCalls.push(authorization);
+      if (authorization === 'Bearer sk-bad') {
+        return jsonResponse(401, { error: { message: 'invalid api key' } });
+      }
+      return jsonResponse(200, {
+        id: 'chatcmpl-monitor-ok',
+        model: 'gpt-5.5',
+        choices: [{ message: { role: 'assistant', content: 'ok' } }],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      });
+    };
+    const fixture = await createServerFixture({
+      fetchImpl,
+      channelMonitorEnabled: true,
+      channelMonitorIntervalMs: 25,
+      channelMonitorBatchSize: 2,
+      channelMonitorCooldownMs: 0,
+      notifyCredentialIssue: (payload) => keyAlerts.push(payload),
+    });
+
+    try {
+      const cookie = await fixture.createVerifiedCustomer('monitor@example.com');
+      await fixture.request('/api/frist/redeem', {
+        method: 'POST',
+        cookie,
+        body: { code: 'FRIST-DAY-001' },
+      });
+      const token = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie,
+        body: { name: '巡检降级 Key', modelGroup: 'OpenAI' },
+      });
+      await fixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'https://supplier.example.com/v1',
+          pool: 'day',
+          probeMode: 'trusted',
+          models: ['gpt-5.5'],
+          keys: [
+            { value: 'sk-bad', quotaRemaining: 800, quotaTotal: 800 },
+            { value: 'sk-good', quotaRemaining: 900, quotaTotal: 900 },
+          ],
+        },
+      });
+
+      let degradedCredential = null;
+      for (let index = 0; index < 40; index += 1) {
+        const runtime = await fixture.readData();
+        degradedCredential = runtime.credentials.find((item) => item.rawKey === 'sk-bad') || null;
+        if (degradedCredential && degradedCredential.status === 'failed' && degradedCredential.enabled === false) {
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      assert.equal(Boolean(degradedCredential), true);
+      assert.equal(degradedCredential.status, 'failed');
+      assert.equal(degradedCredential.enabled, false);
+      assert.equal(keyAlerts.length, 1);
+      assert.equal(keyAlerts[0].issueType, 'auth');
+      assert.equal(keyAlerts[0].keyPreview.endsWith('bad'), true);
+
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      assert.equal(keyAlerts.length, 1, '同一个失效 Key 应该只提醒一次补号');
+
+      const response = await fixture.request('/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token.json.key.secret}`, 'x-frist-session-id': 'monitor-fallback' },
+        body: { model: 'gpt-5.5', messages: [{ role: 'user', content: 'still works' }] },
+      });
+      assert.equal(response.status, 200);
+      assert.equal(upstreamCalls.some((value) => value === 'Bearer sk-good'), true);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it('retries the next day-card key when an upstream reports quota exhaustion, then accepts replenishment', async () => {
     const upstreamCalls = [];
     const fixture = await createServerFixture({
@@ -4989,6 +5072,11 @@ async function createServerFixture(options = {}) {
       })),
     lowInventoryThresholdRatio: options.lowInventoryThresholdRatio,
     notifyLowInventory: options.notifyLowInventory,
+    channelMonitorEnabled: options.channelMonitorEnabled,
+    channelMonitorIntervalMs: options.channelMonitorIntervalMs,
+    channelMonitorBatchSize: options.channelMonitorBatchSize,
+    channelMonitorCooldownMs: options.channelMonitorCooldownMs,
+    notifyCredentialIssue: options.notifyCredentialIssue,
     balanceAlertEmailSender: options.balanceAlertEmailSender,
     requireCaptcha: options.requireCaptcha,
     authRateLimitMax: options.authRateLimitMax,

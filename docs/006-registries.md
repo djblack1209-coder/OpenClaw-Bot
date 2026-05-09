@@ -209,6 +209,7 @@
 | 图片输出 | `data-image-output` | 展示 `gpt-image-2` 等图片模型生成结果 |
 | 消耗分布图 | `data-usage-donut` | 用户侧模型消耗分布图 |
 | 服务可用性 | `data-service-health` / `data-channel-monitor-metrics` / `data-channel-monitor-history` | 登录用户侧展示 `卡商1`、`卡商2` 等号池渠道当前库存快照、可用率、真实最低/平均延迟、60 秒刷新口径和最近状态条；无真实延迟样本时显示“等待真实请求更新”，游客 Dashboard 返回空 `channelChecks`，避免误认为 mock 数据 |
+| 顶栏管理员快捷入口 | `data-owner-shortcut` | 右上角常驻“登录/身份码/管理”快捷入口；游客可一键打开登录弹窗，登录后未激活管理员可直接输入身份码，已激活时直达管理页，解决移动端入口不易发现问题 |
 | 首页通道监控 | `data-channel-monitor-summary` / `data-channel-monitor-history` | 首页通道摘要按公开卡商号池聚合 healthy/down/slow 状态，支持慢线/断线自动降级，不暴露上游地址、上游 Key 或具体号商信息 |
 | 模型广场 | `data-model-catalog` | 展示可用模型、家族、上下文和计价 |
 | 教程目标选择 | `data-guide-targets` / `data-guide-target` | 独立教程入口从左侧导航隐藏，缺失配置说明合并回 CC Switch 页面；教程目标不再展示重复 `Harmes` |
@@ -266,6 +267,13 @@
 | `FRIST_API_ALLOW_INSECURE_PUBLIC_HTTP` | 是否允许临时公网 HTTP 网关 | 免费 HTTP 过渡期才设 `1`；正式 HTTPS 域名应为 `0` |
 | `FRIST_API_BACKUP_STATUS_MAX_AGE_HOURS` | 备份新鲜度上限 | 默认 `26` 小时，超过视为备份监控未闭环 |
 | `FRIST_API_SLA_RETENTION_DAYS` | 渠道 SLA 探测事件保留天数 | 默认 `30` 天 |
+| `FRIST_API_CHANNEL_MONITOR_ENABLED` | 是否启用后台 60 秒通道巡检 | `1` 启用；无人调用时也会巡检健康库存 |
+| `FRIST_API_CHANNEL_MONITOR_INTERVAL_MS` | 后台通道巡检间隔毫秒 | 默认 `60000` |
+| `FRIST_API_CHANNEL_MONITOR_BATCH_SIZE` | 每轮巡检最多探测的 Key 数量 | 默认 `4`，防止一次性压测所有库存 |
+| `FRIST_API_CHANNEL_MONITOR_COOLDOWN_MS` | 同一 Key 自动巡检最小间隔毫秒 | 默认 `55000`，避免短时间重复探测 |
+| `FRIST_API_KEY_ALERT_WEBHOOK` | Key 认证/额度异常告警 Webhook | 可选；未配置 Telegram 时可走通用告警 Webhook |
+| `FRIST_API_TELEGRAM_BOT_TOKEN` | Telegram Bot Token | 可选；配置后自动发送一次性补号提醒 |
+| `FRIST_API_TELEGRAM_CHAT_ID` | Telegram 接收群/用户 ID | 与 Bot Token 搭配，用于接收 Key 异常提醒 |
 | `FRIST_API_PAYMENT_ENABLED` | 是否启用真实支付接口 | 总开关；未启用时仍可人工确认 |
 | `FRIST_API_WECHAT_PAY_ENABLED` | 是否启用微信 Native 支付 | 需要商户平台、AppID、商户号和 APIv3 配置 |
 | `FRIST_API_WECHAT_PAY_APPID` | 微信支付 AppID | 由微信支付商户平台绑定的应用提供 |

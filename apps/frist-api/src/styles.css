@@ -368,6 +368,22 @@ body[data-current-view="dashboard"] .topbar {
   font-size: 12px;
 }
 
+.owner-shortcut[hidden] {
+  display: none;
+}
+
+.owner-shortcut {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(27, 27, 27, 0.92);
+  color: var(--ink-soft);
+  padding: 0 11px;
+  font-size: 12px;
+  font-weight: 760;
+  white-space: nowrap;
+}
+
 .auth-panel {
   position: fixed;
   inset: 0;
@@ -3926,6 +3942,7 @@ body[data-design-system="tabcode-console"] .action-message--info::before {
 }
 
 body[data-design-system="tabcode-console"] .account-chip,
+body[data-design-system="tabcode-console"] .owner-shortcut,
 body[data-design-system="tabcode-console"] .primary-action,
 body[data-design-system="tabcode-console"] .secondary-action,
 body[data-design-system="tabcode-console"] .ghost-action,
@@ -3947,6 +3964,7 @@ body[data-design-system="tabcode-console"] .primary-action {
 
 body[data-design-system="tabcode-console"] .secondary-action,
 body[data-design-system="tabcode-console"] .account-chip,
+body[data-design-system="tabcode-console"] .owner-shortcut,
 body[data-design-system="tabcode-console"] .icon-button {
   border: 1px solid var(--line);
   background: var(--paper-raised);
@@ -5129,6 +5147,12 @@ body[data-design-system="tabcode-console"] .empty-row--stack span {
     gap: 6px;
     max-width: 160px;
     padding: 4px 5px 4px 10px;
+  }
+
+  body[data-design-system="tabcode-console"] .owner-shortcut {
+    min-height: 34px;
+    padding: 0 8px;
+    font-size: 11px;
   }
 
   body[data-design-system="tabcode-console"] .account-chip strong {
