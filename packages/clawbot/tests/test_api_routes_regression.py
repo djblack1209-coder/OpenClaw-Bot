@@ -19,6 +19,16 @@ except TypeError:
 pytestmark = pytest.mark.skipif(_skip, reason="starlette/httpx 版本与 Python 3.9 不兼容")
 
 
+@pytest.fixture(autouse=True)
+def api_dev_auth_mode(monkeypatch):
+    """固定 API 回归测试为无 Token 开发模式，避免本机 .env 污染鉴权状态。"""
+    monkeypatch.delenv("OPENCLAW_API_TOKEN", raising=False)
+    monkeypatch.setenv("ENV", "development")
+    monkeypatch.setenv("API_HOST", "127.0.0.1")
+    monkeypatch.setattr("src.api.auth._API_TOKEN", "")
+    monkeypatch.setattr("src.api.auth._warned_no_token", False)
+
+
 def test_memory_search_accepts_q_alias(monkeypatch):
     server = APIServer()
     client = TestClient(server.app)

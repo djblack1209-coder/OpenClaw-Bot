@@ -1,12 +1,10 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
-import {
-  ComposableMap,
-  Geographies,
-  Geography,
-  ZoomableGroup,
-} from 'react-simple-maps';
+import { geoEqualEarth, geoPath } from 'd3-geo';
+import { feature as topojsonFeature } from 'topojson-client';
+import type { Feature, FeatureCollection, Geometry } from 'geojson';
+import type { GeometryCollection, Topology } from 'topojson-specification';
 import {
   Shield,
   AlertTriangle,
@@ -108,6 +106,21 @@ interface TooltipInfo {
   x: number;
   y: number;
 }
+
+/** TopoJSON 国家集合最小结构（只取本组件需要的字段） */
+interface CountriesTopology {
+  objects: {
+    countries: GeometryCollection<CountryFeatureProperties>;
+  };
+}
+
+/** 地图国家 Feature 属性 */
+interface CountryFeatureProperties {
+  name?: string;
+}
+
+/** 地图国家 Feature 类型 */
+type CountryFeature = Feature<Geometry, CountryFeatureProperties>;
 
 /* ====== 严重度 key 映射 ====== */
 const SEVERITY_I18N_KEY: Record<string, string> = {
@@ -335,6 +348,8 @@ function MapTooltip({ info }: { info: TooltipInfo | null }) {
 /* ====== SVG 世界地图热力图组件 ====== */
 function WorldHeatmap({ riskScores }: { riskScores: Record<string, number> }) {
   const [tooltip, setTooltip] = useState<TooltipInfo | null>(null);
+  const [features, setFeatures] = useState<CountryFeature[]>([]);
+  const [mapError, setMapError] = useState<string | null>(null);
 
   /** ISO 数字 ID → ISO alpha-3 映射表 */
   const numericToIso3: Record<string, string> = useMemo(() => ({
@@ -369,26 +384,69 @@ function WorldHeatmap({ riskScores }: { riskScores: Record<string, number> }) {
     '862': 'VEN', '704': 'VNM', '887': 'YEM', '894': 'ZMB', '716': 'ZWE',
   }), []);
 
+  /** 地图投影与路径生成器 — 替代 react-simple-maps，减少旧 d3 依赖漏洞链 */
+  const projection = useMemo(
+    () => geoEqualEarth().scale(160).translate([400, 210]).center([0, 0]),
+    []
+  );
+  const pathGenerator = useMemo(() => geoPath(projection), [projection]);
+
+  /** 加载本地 TopoJSON 并转成 GeoJSON FeatureCollection */
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadMap() {
+      try {
+        const resp = await fetch(GEO_URL);
+        if (!resp.ok) {
+          throw new Error(`地图数据加载失败: ${resp.status}`);
+        }
+
+        const topology = (await resp.json()) as Topology<CountriesTopology['objects']>;
+        const geo = topojsonFeature(
+          topology,
+          topology.objects.countries
+        ) as FeatureCollection<Geometry, CountryFeatureProperties>;
+
+        if (!cancelled) {
+          setFeatures(geo.features);
+          setMapError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setFeatures([]);
+          setMapError(err instanceof Error ? err.message : '地图数据加载失败');
+        }
+      }
+    }
+
+    void loadMap();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   /** 鼠标进入国家区域 — 显示提示 */
   const handleMouseEnter = useCallback(
-    (geo: { properties: { name: string }; id: string }, evt: React.MouseEvent) => {
-      const iso3 = numericToIso3[geo.id] || '';
+    (geo: CountryFeature, point: { clientX: number; clientY: number }) => {
+      const iso3 = numericToIso3[String(geo.id)] || '';
       const score = riskScores[iso3];
+      const countryName = geo.properties?.name ?? 'Unknown';
       if (score !== undefined) {
         setTooltip({
-          name: geo.properties.name,
+          name: countryName,
           score,
           level: riskScoreToLevel(score),
-          x: evt.clientX,
-          y: evt.clientY,
+          x: point.clientX,
+          y: point.clientY,
         });
       } else {
         setTooltip({
-          name: geo.properties.name,
+          name: countryName,
           score: 0,
           level: 'worldMonitor.noData',
-          x: evt.clientX,
-          y: evt.clientY,
+          x: point.clientX,
+          y: point.clientY,
         });
       }
     },
@@ -422,77 +480,90 @@ function WorldHeatmap({ riskScores }: { riskScores: Record<string, number> }) {
       onWheel={(e) => e.stopPropagation()}
     >
       <MapTooltip info={tooltip} />
-      <ComposableMap
-        projection="geoEqualEarth"
-        projectionConfig={{ scale: 160, center: [0, 0] }}
+      {mapError && (
+        <div
+          className="absolute inset-x-4 top-4 z-10 rounded-lg px-3 py-2 text-xs"
+          style={{
+            background: 'rgba(255, 107, 53, 0.12)',
+            border: '1px solid rgba(255, 107, 53, 0.24)',
+            color: 'var(--accent-amber)',
+          }}
+        >
+          {mapError}
+        </div>
+      )}
+      <svg
+        viewBox="0 0 800 400"
         width={800}
         height={400}
+        role="img"
+        aria-label="World risk heatmap"
         style={{
           width: '100%',
           height: 'auto',
           background: 'transparent',
         }}
       >
-        {/* 禁用鼠标滚轮缩放: translateExtent 限制平移范围, 不设 onMoveEnd 回调 */}
-        <ZoomableGroup
-          center={[10, 20]}
-          zoom={1}
-          minZoom={1}
-          maxZoom={1}
-          translateExtent={[[-100, -100], [900, 500]]}
-        >
-          <Geographies geography={GEO_URL}>
-            {({ geographies }: { geographies: Array<{ rsmKey: string; id: string; properties: { name: string } }> }) =>
-              geographies.map((geo) => {
-                const iso3 = numericToIso3[geo.id] || '';
-                const score = riskScores[iso3];
-                const fill = score !== undefined
-                  ? riskScoreToFill(score)
-                  : 'rgba(255,255,255,0.04)';
+        <g>
+          {features.map((geo) => {
+            const iso3 = numericToIso3[String(geo.id)] || '';
+            const score = riskScores[iso3];
+            const fill = score !== undefined
+              ? riskScoreToFill(score)
+              : 'rgba(255,255,255,0.04)';
+            const path = pathGenerator(geo);
+            if (!path) return null;
 
-                return (
-                  <Geography
-                    key={geo.rsmKey}
-                    geography={geo}
-                    onMouseEnter={(evt: React.MouseEvent) => handleMouseEnter(geo, evt)}
-                    onMouseMove={handleMouseMove}
-                    onMouseLeave={handleMouseLeave}
-                    onClick={handleClick}
-                    style={{
-                      default: {
-                        fill,
-                        stroke: 'rgba(255,255,255,0.15)',
-                        strokeWidth: 0.4,
-                        outline: 'none',
-                        cursor: score !== undefined ? 'pointer' : 'default',
-                        transition: 'fill 0.2s ease',
-                      },
-                      hover: {
-                        fill: score !== undefined
-                          ? riskScoreToFill(score)
-                          : 'rgba(255,255,255,0.1)',
-                        stroke: 'rgba(255,255,255,0.4)',
-                        strokeWidth: 0.8,
-                        outline: 'none',
-                        cursor: 'pointer',
-                        filter: score !== undefined ? 'brightness(1.3)' : 'none',
-                      },
-                      pressed: {
-                        fill: score !== undefined
-                          ? riskScoreToFill(score)
-                          : 'rgba(255,255,255,0.06)',
-                        stroke: 'rgba(255,255,255,0.3)',
-                        strokeWidth: 0.6,
-                        outline: 'none',
-                      },
-                    }}
-                  />
-                );
-              })
-            }
-          </Geographies>
-        </ZoomableGroup>
-      </ComposableMap>
+            return (
+              <path
+                key={String(geo.id ?? geo.properties?.name ?? path)}
+                d={path}
+                fill={fill}
+                stroke="rgba(255,255,255,0.15)"
+                strokeWidth={0.4}
+                role="button"
+                tabIndex={0}
+                aria-label={geo.properties?.name ?? 'Unknown country'}
+                style={{
+                  cursor: score !== undefined ? 'pointer' : 'default',
+                  outline: 'none',
+                  transition: 'fill 0.2s ease, stroke 0.2s ease, filter 0.2s ease',
+                }}
+                onMouseEnter={(evt) => handleMouseEnter(geo, evt)}
+                onMouseMove={handleMouseMove}
+                onMouseLeave={handleMouseLeave}
+                onClick={handleClick}
+                onFocus={(evt) => {
+                  const rect = evt.currentTarget.getBoundingClientRect();
+                  handleMouseEnter(geo, {
+                    clientX: rect.left + rect.width / 2,
+                    clientY: rect.top + rect.height / 2,
+                  });
+                }}
+                onBlur={handleMouseLeave}
+                onKeyDown={(evt) => {
+                  if (evt.key === 'Enter' || evt.key === ' ') {
+                    evt.preventDefault();
+                    handleClick();
+                  }
+                }}
+                onMouseOver={(evt) => {
+                  evt.currentTarget.setAttribute('stroke', 'rgba(255,255,255,0.4)');
+                  evt.currentTarget.setAttribute('stroke-width', '0.8');
+                  if (score !== undefined) {
+                    evt.currentTarget.style.filter = 'brightness(1.3)';
+                  }
+                }}
+                onMouseOut={(evt) => {
+                  evt.currentTarget.setAttribute('stroke', 'rgba(255,255,255,0.15)');
+                  evt.currentTarget.setAttribute('stroke-width', '0.4');
+                  evt.currentTarget.style.filter = 'none';
+                }}
+              />
+            );
+          })}
+        </g>
+      </svg>
     </div>
   );
 }
