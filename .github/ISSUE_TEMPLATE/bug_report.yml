@@ -1,0 +1,72 @@
+name: Bug report
+description: Report a reproducible problem in OpenClaw Bot
+title: "bug: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve OpenClaw Bot. Please remove secrets, tokens, cookies, QR codes, chat IDs, account numbers, and private logs before submitting.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What went wrong?
+      placeholder: Describe the issue in one or two sentences.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest steps that reproduce the issue.
+      placeholder: |
+        1. Run ...
+        2. Send ...
+        3. See ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Paste only redacted logs or screenshots.
+      render: shell
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Backend / FastAPI
+        - Telegram Bot
+        - Desktop / Tauri
+        - LLM routing
+        - Trading / analysis
+        - Browser automation
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety checklist
+      options:
+        - label: I removed API keys, tokens, cookies, QR codes, account identifiers, and personal data.
+          required: true
+        - label: This report does not request bypassing platform rules, login protections, paywalls, or rate limits.
+          required: true

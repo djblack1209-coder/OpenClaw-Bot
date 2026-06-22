@@ -3,7 +3,36 @@
 > 格式规范: 每条变更必须包含 `领域` + `影响模块` + `关联问题`。文档更新触发规则以 `AGENTS.md` 和 `docs/003-docs-index.md` 为准。
 > 领域标签: `backend` | `frontend` | `ai-pool` | `deploy` | `docs` | `infra` | `trading` | `social` | `xianyu`
 
-## 最近更新（2026-05）
+## 最近更新（2026-06 / 2026-05)
+
+## [2026-06-22] 补齐开源项目审核材料
+> 领域: `docs` | `infra`
+> 影响模块: `OSS Governance`, `README`, `Security Policy`
+> 关联问题: Codex for OSS application readiness
+
+### 变更内容
+- 根目录新增 Apache-2.0 `LICENSE`，把项目从 README 中的私有/专有表述改为公开开源项目，提升 OpenAI Codex for OSS 等开源项目审核的一致性。
+- 重写根 `README.md`：补充项目定位、可复用开源价值、技术栈、启动方式、文档入口、贡献入口和安全/合规边界。
+- 新增 `docs/013-contributing.md` 和 `docs/014-security.md`：提供贡献流程、PR 验证清单、漏洞报告方式、密钥保护规则，以及赞助 API credits 只能用于 PR review、测试、文档、安全分析和重构维护的边界。
+- 新增 GitHub issue/PR 模板，并用 GitHub CLI 更新仓库公开描述、topics、Discussions、secret scanning 和 push protection，提升社区资料完整度和密钥误提交防护。
+- 同步 `docs/003-docs-index.md`，登记新增文档编号，继续遵守 `docs/` 扁平编号规则。
+
+### 文件变更
+- `LICENSE` — 新增 Apache License 2.0 根许可证。
+- `README.md` — 改为开源友好的项目说明和安全边界。
+- `docs/013-contributing.md` — 新增贡献指南。
+- `docs/014-security.md` — 新增安全政策。
+- `.github/ISSUE_TEMPLATE/bug_report.yml` / `.github/ISSUE_TEMPLATE/feature_request.yml` / `.github/ISSUE_TEMPLATE/config.yml` — 新增 GitHub issue 模板和安全报告入口。
+- `.github/pull_request_template.md` — 新增 PR 验证与安全检查模板。
+- `docs/003-docs-index.md` — 登记新增文档。
+- `docs/009-health.md` — 记录 OSS 审核准备状态。
+
+### 验证
+- `find docs -maxdepth 1 -type f -name '*.md' -exec basename {} \\; | sort` → 确认新增文档均在 `docs/` 根目录且编号命名。
+- `grep -n "Private / Proprietary" README.md LICENSE docs/013-contributing.md docs/014-security.md docs/003-docs-index.md docs/009-health.md` → 无旧私有许可证表述残留。
+- `git diff --check -- LICENSE README.md docs/013-contributing.md docs/014-security.md docs/003-docs-index.md docs/002-changelog.md docs/009-health.md .github/ISSUE_TEMPLATE/bug_report.yml .github/ISSUE_TEMPLATE/feature_request.yml .github/ISSUE_TEMPLATE/config.yml .github/pull_request_template.md` → 退出码 0。
+- `gh repo view djblack1209-coder/OpenClaw-Bot --json nameWithOwner,description,isPrivate,repositoryTopics,hasIssuesEnabled,hasDiscussionsEnabled` → 仓库公开、Issues/Discussions 已开启，topics 已包含 `ai-agents`、`telegram-bot`、`fastapi`、`tauri`、`react`、`llm-routing`、`open-source`、`automation`。
+- `gh api repos/djblack1209-coder/OpenClaw-Bot --jq '{security_and_analysis:.security_and_analysis}'` → `secret_scanning=enabled`、`secret_scanning_push_protection=enabled`。
 
 ## [2026-05-09] Frist-API 319px 移动端批注修复
 > 领域: `frontend` | `deploy` | `docs`
