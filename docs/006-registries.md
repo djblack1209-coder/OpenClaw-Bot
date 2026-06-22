@@ -56,6 +56,7 @@
 | 32 | 闲鱼 AI 客服 | 闲鱼专用LLM | 按额度 | `XIANYU_LLM_API_KEY` + `XIANYU_LLM_BASE_URL` + `XIANYU_LLM_MODEL` |
 | 33 | Langfuse | LLM观测/追踪 | 免费额度 | `LANGFUSE_SECRET_KEY` + `LANGFUSE_PUBLIC_KEY` + `LANGFUSE_HOST` |
 | 34 | 微信通知 | 微信消息推送 | 无 | `WECHAT_NOTIFY_ENABLED` |
+| 35 | 微信笔笔省小程序 | 微信领券入口 App ID | 公开仓库不硬编码真实值 | `WECHAT_COUPON_APP_ID` |
 
 ---
 
