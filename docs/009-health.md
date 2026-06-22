@@ -7,6 +7,10 @@
 
 ## 一、当前状态与已知问题
 
+### 公开仓库敏感告警清理 — 已处理当前可达内容
+
+2026-06-22 已开启 GitHub secret scanning / push protection 后，继续清理审核视角下的敏感告警：本地未推送历史、stash 和 Codex turn-diff 快照中残留的 Google OAuth Client ID/Secret 已删除并 GC；当前 `main` 与 `origin/main` 同步，工作区干净；当前追踪树、可达 Git refs 和工作区均不包含被 GitHub Push Protection 拦截的 OAuth 值。微信笔笔省小程序 App ID 已从源码硬编码改为 `WECHAT_COUPON_APP_ID` 环境变量，公开仓库只保留占位符。GitHub 历史 secret alerts 已核对来源，涉及早期误提交的 `.openclaw` 运行配置、`node_modules`、`.venv312`、Telegram/OpenRouter/Slack/Discord/Google/微信等历史值；后续仍建议在对应平台轮换/废弃这些旧凭证。
+
 ### 开源项目审核准备 — 已补齐基础治理材料
 
 2026-06-22 为提高 OpenAI Codex for OSS 等开源项目审核通过率，根目录新增 Apache-2.0 `LICENSE`，`README.md` 已移除旧的私有/专有许可证表述并补充项目定位、可复用开源价值、安全/合规边界和贡献入口；新增 `docs/013-contributing.md`、`docs/014-security.md`、GitHub issue/PR 模板，明确贡献流程、验证清单、漏洞报告、密钥保护和 API credits 只用于 PR review、测试、文档、安全分析、重构维护，不用于真实交易、刷量、绕过平台风控、未授权抓取、商业客户工作负载或转售。已通过 GitHub CLI 更新仓库公开描述、topics、Discussions、secret scanning 和 push protection。

@@ -59,7 +59,8 @@ _REDEEM_GIFT_API = f"{_API_BASE}/gift/redeemgift"
 # 查询提现免费额度 API
 _BALANCE_API = f"{_API_BASE}/cashoutfree/getbalance"
 # 小程序 App ID
-_APP_ID = "wxdb3c0e388702f785"
+# 通过环境变量配置，避免把第三方平台标识硬编码进公开仓库。
+_APP_ID = os.getenv("WECHAT_COUPON_APP_ID", "wx0000000000000000")
 # 微信 URL Scheme（打开小程序）
 _MINI_PROGRAM_URL = f"weixin://launchapplet/?app_id={_APP_ID}"
 # token 临时文件路径（与 mitm_token_addon.py 约定）

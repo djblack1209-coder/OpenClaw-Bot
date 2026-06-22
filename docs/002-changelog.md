@@ -5,6 +5,31 @@
 
 ## 最近更新（2026-06 / 2026-05)
 
+## [2026-06-22] 清理公开仓库历史敏感告警
+> 领域: `backend` | `docs` | `infra`
+> 影响模块: `Secret Scanning`, `WeChat Coupon`, `GitHub Repository`
+> 关联问题: OSS secret scanning cleanup
+
+### 变更内容
+- 将微信笔笔省小程序 App ID 从源码硬编码改为 `WECHAT_COUPON_APP_ID` 环境变量，公开仓库只保留占位符，降低 GitHub Secret Scanning 告警和第三方平台标识外泄风险。
+- 同步 `.env.example` 和 `docs/006-registries.md`，登记新的低敏配置入口。
+- 清理本地含旧 Google OAuth Client ID/Secret 的未推送历史、stash 和 Codex turn-diff 快照 refs；重置本地 `main` 到远端 `origin/main`，并删除未跟踪运行目录/缓存目录。
+- GitHub 远端开启 secret scanning / push protection 后遗留的历史 alerts 已逐项核对；当前工作树和可达 Git refs 不再包含被拦截的 Google OAuth 值。
+
+### 文件变更
+- `packages/clawbot/src/execution/wechat_coupon.py` — 微信小程序 App ID 改读 `WECHAT_COUPON_APP_ID`，默认占位符。
+- `packages/clawbot/config/.env.example` — 新增 `WECHAT_COUPON_APP_ID` 示例配置。
+- `docs/006-registries.md` — 登记微信笔笔省小程序 App ID 配置。
+- `docs/002-changelog.md` / `docs/009-health.md` — 记录本轮安全清理范围和验证。
+
+### 验证
+- `git grep -n -E "<被拦截 OAuth 值集合>" -- .` → 当前追踪树无匹配。
+- `git grep -n -E "<被拦截 OAuth 值集合>" $(git for-each-ref --format='%(refname)' refs/heads refs/remotes/origin refs/codex)` → 所有可达 refs 无匹配。
+- `grep -RInE "<被拦截 OAuth 值集合>" --exclude-dir=.git ... .` → 当前工作区无匹配。
+- `git fsck --full --unreachable --no-reflogs` → 无残留不可达对象输出。
+- `python3 -m py_compile packages/clawbot/src/execution/wechat_coupon.py` → 退出码 0。
+- `git diff --check -- packages/clawbot/src/execution/wechat_coupon.py packages/clawbot/config/.env.example docs/006-registries.md docs/002-changelog.md docs/009-health.md` → 退出码 0。
+
 ## [2026-06-22] 补齐开源项目审核材料
 > 领域: `docs` | `infra`
 > 影响模块: `OSS Governance`, `README`, `Security Policy`
