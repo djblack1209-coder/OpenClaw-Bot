@@ -102,6 +102,7 @@ OpenClaw Bot/
 
 - `docs/013-contributing.md`
 - `docs/014-security.md`
+- `docs/015-code-of-conduct.md`
 - `AGENTS.md`
 
 ## License

@@ -5,6 +5,28 @@
 
 ## 最近更新（2026-06 / 2026-05)
 
+
+## [2026-06-22] 补齐开源社区行为准则
+> 领域: `docs` | `infra`
+> 影响模块: `OSS Governance`, `README`, `Docs Index`
+> 关联问题: OSS review hardening
+
+### 变更内容
+- 新增 `docs/015-code-of-conduct.md`，明确 issue、PR、Discussions 和安全报告中的友善协作、脱敏、禁止绕过平台规则和执行方式。
+- 在 `README.md` 贡献入口加入行为准则链接，让外部贡献者在提交 issue / PR 前能看到社区规则。
+- 更新 `docs/003-docs-index.md`，登记新增编号文档并保持 `docs/` 根目录扁平编号治理。
+
+### 文件变更
+- `docs/015-code-of-conduct.md` — 新增社区行为准则。
+- `README.md` — 贡献入口增加行为准则链接。
+- `docs/003-docs-index.md` — 登记新增文档。
+- `docs/002-changelog.md` / `docs/009-health.md` — 记录本轮 OSS 治理补齐。
+
+### 验证
+- `find docs -maxdepth 2 -type d -print` → `docs` 下无子目录。
+- `find docs -maxdepth 1 -type f -name '*.md' -exec basename {} \; | sort` → 新增文档为编号英文名。
+- `git diff --check -- README.md docs/003-docs-index.md docs/015-code-of-conduct.md docs/002-changelog.md docs/009-health.md` → 退出码 0。
+
 ## [2026-06-22] 收口 OSS 审核前安全设置
 > 领域: `docs` | `infra`
 > 影响模块: `GitHub Repository`, `Security Settings`, `Local Git Refs`
