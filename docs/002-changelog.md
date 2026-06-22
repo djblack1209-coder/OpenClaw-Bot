@@ -5,6 +5,29 @@
 
 ## 最近更新（2026-06 / 2026-05)
 
+## [2026-06-22] 收口 OSS 审核前安全设置
+> 领域: `docs` | `infra`
+> 影响模块: `GitHub Repository`, `Security Settings`, `Local Git Refs`
+> 关联问题: OSS review hardening
+
+### 变更内容
+- 开启 GitHub Dependabot security updates，让公开依赖告警后续可以自动生成安全修复 PR。
+- 开启 GitHub private vulnerability reporting，让外部研究者可以通过私密入口报告漏洞，避免把敏感复现细节发到公开 issue。
+- 清理本地仅存在的旧分支和 Codex 快照 ref，避免后续误推历史实验分支造成重复审核噪音。
+- 二次清理本地可重建缓存、根目录临时截图和 Playwright 临时目录；运行配置、依赖环境、runtime 数据和生产备份继续保留。
+
+### 文件变更
+- `docs/002-changelog.md` — 记录本轮 OSS 审核前安全设置收口。
+- `docs/009-health.md` — 更新公开仓库安全状态。
+
+### 验证
+- `gh api repos/djblack1209-coder/OpenClaw-Bot --jq '.security_and_analysis'` → `dependabot_security_updates=enabled`、`secret_scanning=enabled`、`secret_scanning_push_protection=enabled`。
+- `gh api repos/djblack1209-coder/OpenClaw-Bot/private-vulnerability-reporting --jq '.'` → `{"enabled":true}`。
+- `gh api repos/djblack1209-coder/OpenClaw-Bot/secret-scanning/alerts --paginate --jq '[.[] | select(.state=="open")] | length'` → `0`。
+- `gh api repos/djblack1209-coder/OpenClaw-Bot/dependabot/alerts --paginate --jq '[.[] | select(.state=="open")] | length'` → `0`。
+- `git for-each-ref --format='%(refname)' refs/heads refs/remotes refs/tags refs/stash refs/codex` → 仅剩 `main` 和 `origin/main` 相关 refs。
+- `git fsck --full --unreachable --no-reflogs` → 无残留不可达对象输出。
+
 ## [2026-06-22] 清理公开仓库历史敏感告警
 > 领域: `backend` | `docs` | `infra`
 > 影响模块: `Secret Scanning`, `WeChat Coupon`, `GitHub Repository`
