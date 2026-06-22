@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/djblack1209-coder/OpenClaw-Bot/security/advisories/new
+    about: Please report security issues privately. Do not open a public issue with secrets or exploit details.
+  - name: Documentation index
+    url: https://github.com/djblack1209-coder/OpenClaw-Bot/blob/main/docs/003-docs-index.md
+    about: Start here for project documentation and operating notes.
