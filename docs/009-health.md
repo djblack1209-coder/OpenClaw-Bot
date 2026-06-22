@@ -4,7 +4,14 @@
 
 ---
 
+
 ## 一、当前状态与已知问题
+
+### 开源项目审核准备 — 已补齐基础治理材料
+
+2026-06-22 为提高 OpenAI Codex for OSS 等开源项目审核通过率，根目录新增 Apache-2.0 `LICENSE`，`README.md` 已移除旧的私有/专有许可证表述并补充项目定位、可复用开源价值、安全/合规边界和贡献入口；新增 `docs/013-contributing.md`、`docs/014-security.md`、GitHub issue/PR 模板，明确贡献流程、验证清单、漏洞报告、密钥保护和 API credits 只用于 PR review、测试、文档、安全分析、重构维护，不用于真实交易、刷量、绕过平台风控、未授权抓取、商业客户工作负载或转售。已通过 GitHub CLI 更新仓库公开描述、topics、Discussions、secret scanning 和 push protection。
+
+
 
 # HEALTH — 系统健康状态
 

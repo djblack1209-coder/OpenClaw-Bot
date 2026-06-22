@@ -1,0 +1,51 @@
+name: Feature request
+description: Suggest a small, maintainable improvement
+title: "feat: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user or maintainer problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Keep the scope small and explain the user-visible behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Backend / FastAPI
+        - Telegram Bot
+        - Desktop / Tauri
+        - LLM routing
+        - Trading / analysis
+        - Browser automation
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: boundaries
+    attributes:
+      label: Safety boundaries
+      options:
+        - label: This feature can be implemented without secrets in the repository.
+          required: true
+        - label: This feature does not automate high-risk actions without human confirmation.
+          required: true
+        - label: This feature does not request spam, scraping bypass, login bypass, or policy evasion.
+          required: true
