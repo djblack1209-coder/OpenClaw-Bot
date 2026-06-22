@@ -17,6 +17,11 @@
 
 
 
+### Dependabot 依赖安全收口 — 大部分可修项已处理
+
+2026-06-22 打开 Dependabot security updates 后，GitHub 首次暴露 78 个历史依赖告警。本轮已升级 `.openclaw/extensions/openclaw-weixin`、`apps/openclaw-manager-src`、`packages/clawbot/requirements-dev.txt`、`packages/openclaw-npm` 及其扩展包中的可修安全版本；桌面端 `WorldMonitor` 已移除 `react-simple-maps`，改用 `d3-geo` + `topojson-client` 直接渲染本地地图，从根上去掉旧 d3 漏洞链。`@mariozechner/pi-coding-agent` 上游暂无 patched version，且当前源码未直接 import，本轮已从 `packages/openclaw-npm` 直接依赖移除。最终远端 Dependabot 告警数以推送后 GitHub 重新分析为准；本地 `.openclaw/extensions/openclaw-weixin` 和 `apps/openclaw-manager-src` 的 `npm audit --audit-level=moderate` 均为 0。全量测试中发现 `test_api_routes_regression.py` 会被本机 `OPENCLAW_API_TOKEN` 污染成 401，已在测试层固定无 Token 开发模式并用带 token 环境复验 12/12 通过。
+
+
 # HEALTH — 系统健康状态
 
 > 最后更新: 2026-05-09
@@ -44,7 +49,7 @@
 | 日志目录 | ✅ 2026-05-09 已清理本地 `packages/clawbot/logs/` 旧运行日志；生产日志和远端备份未清理 |
 | 本地冗余 | ✅ 2026-05-09 已清理 `.DS_Store`、源码/测试 `__pycache__`、`.pytest_cache`、`.ruff_cache`、`.playwright-mcp`、Playwright/Expect 调试产物、Frist-API 历史审计截图和根目录临时截图；`.env`、`.openclaw/`、runtime 数据、`node_modules`、`.venv312` 保留 |
 | 文档治理 | ✅ 主项目 docs 从散落状态统一归集到 43 个编号 Markdown，扁平化无子目录，历史截图/旧审计/散落设计报告/冗余打包文档已清理；2026-05-09 已补本轮清理日志 |
-| 公开仓库安全 | 🟡 Git 历史已重写并通过本地扫描, 仍需轮换曾暴露过的外部密钥 |
+| 公开仓库安全 | 🟡 Git 历史已重写并通过本地扫描；secret alerts 当前为 0；Dependabot 可修依赖已收口，仍需等待 GitHub 重算并轮换曾暴露过的外部密钥 |
 
 ---
 

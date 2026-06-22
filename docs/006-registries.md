@@ -753,7 +753,21 @@
 ## 三、依赖清单
 
 
-> 最后更新: 2026-05-01 | 补齐开发依赖 ruff，修复 Makefile lint 工具链缺口
+> 最后更新: 2026-06-22 | Dependabot 安全升级：前端地图依赖替换、测试/Node 依赖补丁收口
+
+
+## OSS 安全依赖收口 (2026-06-22)
+
+| 包/区域 | 版本/动作 | 用途 | 说明 |
+|---|---|---|---|
+| `pytest` | `>=9.0.3,<10.0` | Python 测试框架 | 修复 Dependabot 报告的 tmpdir 处理漏洞 |
+| `pytest-asyncio` | `>=1.4.0,<2.0` | Python 异步测试插件 | 配套支持 pytest 9，避免依赖解析冲突 |
+| `react-simple-maps` | 已移除 | 桌面端世界地图 | 替换为 `d3-geo` + `topojson-client`，清理旧 d3 漏洞链 |
+| `d3-geo` | `^3.1.1` | 地理投影和 SVG path 生成 | `WorldMonitor` 直接渲染本地 TopoJSON |
+| `topojson-client` | `^3.1.0` | TopoJSON → GeoJSON | `WorldMonitor` 读取 `countries-110m.json` |
+| `vite` / `postcss` / `vitest` | 安全补丁版本 | 前端构建/测试 | 更新 lockfile 并加必要 overrides |
+| `hono` / `undici` / `markdown-it` / `tar` / `@opentelemetry/sdk-node` | 安全补丁版本 | `packages/openclaw-npm` 上游包 | 修复 Hono、Undici、Markdown、tar、OTel 相关 Dependabot 告警 |
+| `@mariozechner/pi-coding-agent` | 已从 `packages/openclaw-npm` 直接依赖移除 | 历史上游 Agent 包 | 源码未直接 import；上游暂无 patched version，移除可降低公开告警面 |
 
 ## 搬运的高星项目 (38 个, 累计 ~473k Stars)
 

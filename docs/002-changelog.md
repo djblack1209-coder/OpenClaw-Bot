@@ -5,6 +5,36 @@
 
 ## 最近更新（2026-06 / 2026-05)
 
+## [2026-06-22] 收口 Dependabot 依赖安全告警
+> 领域: `frontend` | `backend` | `docs` | `infra`
+> 影响模块: `OpenClaw Manager`, `WorldMonitor`, `Dependabot`, `openclaw-npm`, `Weixin Extension`, `ClawBot Dev Requirements`
+> 关联问题: OSS review hardening
+
+### 变更内容
+- 处理打开 Dependabot 后暴露的依赖安全告警：升级 `.openclaw/extensions/openclaw-weixin` 的 Vitest 相关 lockfile，并用 overrides 固定 `glob`、`brace-expansion`、`esbuild` 安全版本。
+- 桌面端 `apps/openclaw-manager-src` 移除 `react-simple-maps`，改用 `d3-geo` + `topojson-client` 直接渲染本地 `countries-110m.json`，清理旧 d3 漏洞链；同步升级 `vite`、`postcss` 和多项传递依赖 overrides。
+- 升级 `packages/clawbot/requirements-dev.txt` 中 `pytest` 到 `>=9.0.3,<10.0`，并配套升级 `pytest-asyncio` 到 `>=1.4.0,<2.0`。
+- 收口 `packages/openclaw-npm` 及扩展包中的 `hono`、`undici`、`markdown-it`、`tar`、`@opentelemetry/sdk-node` 等安全补丁版本，并移除源码未直接使用且上游暂无 patched version 的 `@mariozechner/pi-coding-agent` 直接依赖。
+- 同步 `docs/006-registries.md` 和 `docs/009-health.md`，登记本轮依赖安全处理范围与验证结果。
+- 修复 `test_api_routes_regression.py` 在全量测试中被本机 `OPENCLAW_API_TOKEN` / `.env` 污染后返回 401 的测试隔离问题，确保 API route 回归测试固定运行在无 Token 开发模式。
+
+### 文件变更
+- `.openclaw/extensions/openclaw-weixin/package.json` / `package-lock.json` — 升级测试相关依赖并收口传递漏洞。
+- `apps/openclaw-manager-src/package.json` / `package-lock.json` — 替换地图依赖，升级构建依赖并添加安全 overrides。
+- `apps/openclaw-manager-src/src/components/WorldMonitor/index.tsx` — 地图改为 `d3-geo` + `topojson-client` 渲染。
+- `packages/clawbot/requirements-dev.txt` — 升级 `pytest` / `pytest-asyncio`。
+- `packages/openclaw-npm/package.json`、`packages/openclaw-npm/extensions/*/package.json` — 收口 Node 安全依赖。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 增加 API 鉴权环境隔离 fixture，避免本机密钥污染回归测试。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/009-health.md` — 记录依赖安全收口。
+
+### 验证
+- `cd .openclaw/extensions/openclaw-weixin && npm audit --audit-level=moderate` → `found 0 vulnerabilities`。
+- `cd apps/openclaw-manager-src && npm audit --audit-level=moderate` → `found 0 vulnerabilities`。
+- `cd apps/openclaw-manager-src && npx tsc --noEmit` → 退出码 0。
+- `cd apps/openclaw-manager-src && npm run build` → 退出码 0，Vite build 成功。
+- `cd packages/clawbot && .venv312/bin/python -m pip check` → `No broken requirements found`。
+- `cd packages/clawbot && OPENCLAW_API_TOKEN=demo .venv312/bin/python -m pytest tests/test_api_routes_regression.py -q --tb=short` → `12 passed`。
+- `git diff --check` → 退出码 0。
 
 ## [2026-06-22] 补齐开源社区行为准则
 > 领域: `docs` | `infra`
