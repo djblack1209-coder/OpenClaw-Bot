@@ -9,7 +9,7 @@
 services:
   new-api:
     # 固定版本号，避免 latest 导致不可预期的升级；升级前先备份 data/newapi。
-    image: calciumion/new-api:v1.0.0-rc.4
+    image: calciumion/new-api:v1.0.0-rc.15
     container_name: openclaw-newapi
     restart: unless-stopped
     # 安全加固: 丢弃所有 Linux 能力，禁止提权
