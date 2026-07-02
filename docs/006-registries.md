@@ -56,7 +56,6 @@
 | 32 | 闲鱼 AI 客服 | 闲鱼专用LLM | 按额度 | `XIANYU_LLM_API_KEY` + `XIANYU_LLM_BASE_URL` + `XIANYU_LLM_MODEL` |
 | 33 | Langfuse | LLM观测/追踪 | 免费额度 | `LANGFUSE_SECRET_KEY` + `LANGFUSE_PUBLIC_KEY` + `LANGFUSE_HOST` |
 | 34 | 微信通知 | 微信消息推送 | 无 | `WECHAT_NOTIFY_ENABLED` |
-| 35 | 微信笔笔省小程序 | 微信领券入口 App ID | 公开仓库不硬编码真实值 | `WECHAT_COUPON_APP_ID` |
 
 ---
 
@@ -298,6 +297,7 @@
 | `FRIST_API_NEWAPI_DEFAULT_TOKEN_QUOTA` | New-API 新建 Token 默认额度 | `0` 配合 `unlimited_quota=true` |
 | `FRIST_API_NEWAPI_GATEWAY_ENABLED` | 是否让 Frist-API `/v1` 直接代理 New-API 网关 | `1` 启用；默认关闭以保留自研路由兜底 |
 | `FRIST_API_NEWAPI_GATEWAY_BASE_URL` | New-API 网关地址 | 通常为 `http://openclaw-newapi:3000/v1` |
+| `MITMDUMP_BIN` | mitmdump 可执行文件 | 可指向 `~/.openclaw/tools/mitmproxy-local-venv/bin/mitmdump` 这类独立工具 venv，避免污染项目虚拟环境 |
 
 ---
 
@@ -326,7 +326,7 @@
 
 ## 1. 注册命令一览（101 个）
 
-命令在 `multi_bot.py:289-387` 统一注册。
+命令在 `multi_bot.py:288-397` 统一注册。
 
 ### 1.1 基础命令 — `BasicCommandsMixin` (cmd_basic_mixin.py, 1038 行) + `ToolsMixin` (cmd_basic/tools_mixin.py)
 
@@ -451,6 +451,14 @@
 | 85 | `/xianyu` | `cmd_xianyu` | 闲鱼 AI 客服控制 (start/stop/status/reload/floor) | N |
 | 86 | `/social_calendar` | `cmd_social_calendar` | 内容日历(DB优先+AI生成)，支持 `done N` 标记完成 | N |
 | 87 | `/social_report` | `cmd_social_report` | 社媒效果报告 + A/B 测试 | N |
+| 87a | `/social_growth_feedback [x|xhs]` | `cmd_social_growth_feedback` | 社媒增长复盘，只读展示插件高信号内容、标签、指标和下一步建议；不触发发布/评论/推广 | N |
+| 87b | `/social_growth_drafts [x|xhs]` | `cmd_social_growth_drafts` | 基于增长复盘生成下一批待审热点草稿；只入审核队列，不触发发布/评论/推广 | N |
+| 87c | `/social_review_drafts` | `cmd_social_review_drafts` | Telegram 中控查看统一待审草稿队列；只读展示序号/ID/预览 | Y |
+| 87d | `/social_review_approve <序号或ID>` | `cmd_social_review_approve` | Telegram 中控确认待审草稿；只改审核状态，不触发发布 | Y |
+| 87e | `/social_review_reject <序号或ID>` | `cmd_social_review_reject` | Telegram 中控打回待审草稿；只改审核状态，不删除、不发布 | Y |
+| 87f | `/social_review_schedule <序号或ID> [时间]` | `cmd_social_review_schedule` | Telegram 中控把已确认插件草稿加入待发布排程；到点仍需最终确认，不自动外发 | Y |
+| 87g | `/social_review_schedule_queue` | `cmd_social_review_schedule_queue` | Telegram 中控查看待发布排程队列；到点只提示最终确认 | Y |
+| 87h | `/social_review_final_confirm <序号或ID>` | `cmd_social_review_final_confirm` | Telegram 中控对到点排程做最终确认；只标记可手动发布，不点击平台发布按钮 | Y |
 | 88 | `/agent` | `cmd_agent` | 智能 Agent — 自然语言驱动多工具链 (smolagents) | N |
 | 89 | `/novel` | `cmd_novel` | AI 小说工坊 — 网文大纲/续写/导出/TTS (inkos+MuMuAINovel) | N |
 | 90 | `/ship` | `cmd_ship` | 闲鱼卡券管理 — add/stock/rule/stats/test (auto_shipper) | N |
@@ -460,16 +468,13 @@
 | 94 | `/pricewatch` | `cmd_pricewatch` | 降价监控 — 商品降价提醒 + 每6小时自动检查 + 目标价触发通知 (add/list/remove + 中文NLP) | Y |
 | 95 | `/deals` | `cmd_deals` | 折扣搜索/比价查询 (cmd_life_mixin.py) | N |
 | 96 | `/intel` | `cmd_intel` | 全球情报速递 — 7大行业+5大地区交互式菜单 + 关键词搜索 (Worldmonitor API) | Y |
-| 97 | `/coupon` | `cmd_coupon` | 微信笔笔省领券 — mitmproxy抓包+API直调自动领取提现免费券 | N |
-| 98 | `/test_token` | `cmd_test_token` | 测试已保存的领券token有效性 — 纯API调用,不走mitmproxy,返回token年龄和有效状态 | N |
-| 99 | `/set_coupon_token` | `cmd_set_coupon_token` | 手动设置领券token — 通过手机抓包获取token后直接设置,免mitmproxy流程 | N |
 | 100 | `/evolution` | `cmd_evolution` | 进化引擎状态 — 查看自动进化提案/能力缺口/审批统计 (cmd_ops_mixin.py) | N |
 
 ---
 
 ## 2. Callback Button 模式一览
 
-在 `multi_bot.py:388-406` 注册。
+在 `multi_bot.py:398-416` 注册。
 
 | # | Pattern | Handler | Source | 说明 |
 |---|---------|---------|--------|------|
@@ -490,7 +495,7 @@
 | 15 | `^suggest:` | `handle_suggest_callback` | callback_mixin | 模糊输入建议按钮 |
 | 16 | `^noop$` | lambda (answer) | multi_bot | 空操作（已收到反馈占位） |
 
-### 非 Command 消息处理器 (multi_bot.py:408-434)
+### 非 Command 消息处理器 (multi_bot.py:418-436)
 
 | Handler | Filter | 说明 |
 |---------|--------|------|
@@ -563,6 +568,14 @@
 | 发X到x/推特/推文 | `social_x` | `/xpost` |
 | 发X双平台/同时发/发到两个平台 | `social_post` | `/post` |
 | 一键发文/热点发文/蹭热点发文/自动发文 | `social_hotpost` | `/hotpost` |
+| 社媒增长复盘/运营复盘/看看X运营复盘/小红书运营复盘 | `social_growth_feedback` | `/social_growth_feedback` |
+| 根据增长复盘生成下一批草稿/生成X下一批待审热点草稿/反哺草稿 | `social_growth_drafts` | `/social_growth_drafts` |
+| 查看待审草稿/待审草稿列表/社媒草稿队列/审核草稿列表 | `social_review_drafts` | `/social_review_drafts` |
+| 确认草稿 xxx/通过草稿 xxx/审核通过草稿 xxx | `social_review_approve` | `/social_review_approve` |
+| 打回草稿 xxx/拒绝草稿 xxx/驳回草稿 xxx | `social_review_reject` | `/social_review_reject` |
+| 排程草稿 xxx 明天8点/定时草稿 xxx 今天20:30 | `social_review_schedule` | `/social_review_schedule` |
+| 查看社媒排程/待发布排程/排程队列/社媒排程列表 | `social_review_schedule_queue` | `/social_review_schedule_queue` |
+| 最终确认草稿 xxx/最后确认草稿 xxx/确认外发草稿 xxx | `social_review_final_confirm` | `/social_review_final_confirm` |
 | 添加资讯监控/新增资讯监控/监控关键词 + kw | `ops_monitor_add` | `/ops monitor add` |
 | 资讯监控列表/新闻监控列表 | `ops_monitor_list` | `/ops monitor list` |
 | 运行资讯监控/扫描资讯监控 | `ops_monitor_run` | `/ops monitor run` |
@@ -636,15 +649,6 @@
 | `intel_reg:<key>` | `handle_intel_callback` | 地区情报查询 |
 | `intel_brief` | `handle_intel_callback` | 生成每日综合情报简报 |
 
-### 3.8 微信领券 — `IntelCommandMixin` (cmd_intel_mixin.py, 共用)
-
-| # | 命令 | Handler | 说明 | BotFather |
-|---|------|---------|------|:-:|
-| 97 | `/coupon` | `cmd_coupon` | 微信全平台自动领券 | N |
-| 98 | `/test_token` | `cmd_test_token` | 测试领券 Token 有效性 | N |
-| 99 | `/set_coupon_token` | `cmd_set_coupon_token` | 设置微信领券 Token | N |
-
----
 
 ## 微信端编号命令映射
 
@@ -724,7 +728,6 @@
 | 403 | `/ship` | 卡券管理 |
 | 404 | `/pricewatch` | 降价监控 |
 | 405 | `/deals` | 折扣搜索/比价 |
-| 406 | `/coupon` | 微信领券 |
 | 407 | `/intel` | 全球情报 |
 
 ### 500-503: 生活
@@ -768,6 +771,20 @@
 | `vite` / `postcss` / `vitest` | 安全补丁版本 | 前端构建/测试 | 更新 lockfile 并加必要 overrides |
 | `hono` / `undici` / `markdown-it` / `tar` / `@opentelemetry/sdk-node` | 安全补丁版本 | `packages/openclaw-npm` 上游包 | 修复 Hono、Undici、Markdown、tar、OTel 相关 Dependabot 告警 |
 | `@mariozechner/pi-coding-agent` | 已从 `packages/openclaw-npm` 直接依赖移除 | 历史上游 Agent 包 | 源码未直接 import；上游暂无 patched version，移除可降低公开告警面 |
+
+## Chrome 插件资产 (2026-06-24)
+
+| 资产 | 路径 | 用途 | 说明 |
+|---|---|---|---|
+| Social Pilot Manifest | `packages/openclaw-npm/assets/chrome-extension/manifest.json` | Chrome MV3 插件入口 | 工具栏默认打开 `popup.html`，保留 Browser Relay 权限，新增 X / 小红书 / 闲鱼 host permissions，并加入 `scripting` 用于当前标签页只读上下文采集 |
+| Social Core | `packages/openclaw-npm/assets/chrome-extension/social-core.js` | 插件社媒运营核心配置 | 平台识别、安全默认设置、人设/模型/热点选项、no-code 打法选项、从后端 `strategy_summary` 安全同步合法 `strategyPreset`、自动化/互动等级、API URL 拼接、当前页上下文归一化、MCN 热点选题卡规整、草稿创建 payload、热点草稿 payload、互动信号规整、互动回复草稿 payload、表现快照规整、增长反馈 payload、增长反馈热点加权字段、草稿内容/素材计划规整、网页登录额度 copy-only 提示词任务、填入选择器计划（覆盖 X 嵌套 contenteditable/DraftEditor、小红书 Quill/aria-placeholder、闲鱼 placeholder 聊天编辑器）、页面探测 payload、页面校准上报 payload、安全填入 payload、待发布排程 payload、排程提醒卡片规整、人设审核包规整和任务预览 |
+| Popup 驾驶舱 | `packages/openclaw-npm/assets/chrome-extension/popup.html` / `popup.js` | 浏览器主执行入口 | 自动识别当前标签页平台，打开时回拉 OpenEverything 中控 `strategyPreset` 并回写本地安全设置，支持启动/暂停、同步中控、紧急停止、看人设/样稿确认、抓热点并展示 MCN 选题卡、扫当前页并把趋势/标题/正文摘要变成可点击上下文卡片、扫互动并把评论/聊天信号转成待审回复草稿、采表现并把已发布内容指标写入增长反馈池、展示历史高信号选题加权原因、看增长复盘摘要、基于增长复盘生成下一批待审热点草稿、根据当前页或热点生成待审草稿、展示内容结构/封面提示词/图片素材提示词/安全清单的“素材计划”、网页登录额度卡片（复制提示词/打开 Gemini、Grok、ChatGPT 网页）、插件内编辑/确认/打回、加入排程、看排程/到点提醒、最终确认、检测填入点并提示校准是否同步中控、安全填入页面、高级设置和 Relay 兼容连接 |
+| Options 高级设置 | `packages/openclaw-npm/assets/chrome-extension/options.html` / `options.js` | no-code 运营设置 | 人设标签、主内容模型、生图模型、热点来源、自动化强度、互动强度、本地 API Base URL 和 Relay 兼容配置；打开时读取后端当前打法并提示“已从 OpenEverything 中控同步当前运营打法”；设置区已纳入真实 `<form id="social-settings-form">`，Gateway token 密码框位于 form 内，保存按钮走 `submit` + `preventDefault()`，真实 Chrome 复验无密码字段表单警告，兼容浏览器密码管理器和回车提交体验 |
+| Background 桥接 | `packages/openclaw-npm/assets/chrome-extension/background.js` | 后台消息桥 | 保留原 Browser Relay attach/detach，同时处理 `toggleRelayForActiveTab`、`socialStatusFetch`、`socialStatusUpdate`、`socialTrendsFetch`、`socialDraftCreate`、`socialPageContextScan`、`socialTrendDraftCreate`、`socialDraftUpdate`、`socialDraftReview`、`socialReviewPackFetch`、`socialPersonaReview`、`socialDraftSchedule`、`socialScheduleFetch`、`socialDraftFinalConfirm`、`socialDraftAutofill`、`socialPageProbe`、`socialWebModelOpen`、`socialInteractionScan`、`socialPerformanceScan`、`socialPerformanceRecord`、`socialGrowthFeedbackFetch`、`socialGrowthDraftsCreate`，读取/同步插件状态、回写中控 no-code 打法到 Chrome 本地设置、读取热点池、写入待审草稿、加入待发布排程、执行到点最终确认桥接、只打开白名单模型网页，并调用可测试页面执行器完成当前页上下文/热点采集、只读检测、互动扫描、表现采集和只填入不发布；生成当前页待审草稿时通过 `runSocialPageContextScanInPage()` 读取 X 趋势/推文、小红书笔记/评论、闲鱼商品/聊天上下文；页面探测后会把校准摘要上报 `social/extension/page-probe`；不提供 `socialInteractionSubmit` 自动评论路径，也不提供 `socialPerformanceBoost` 推广/刷量路径 |
+| Social Page Runner | `packages/openclaw-npm/assets/chrome-extension/social-page-runner.js` | 页面上下文采集、输入框检测、安全填入、只读互动扫描与表现采集执行器 | 从 `background.js` 抽出的可复用注入函数；`runSocialPageContextScanInPage()` 采集当前页 `selection`、`headings`、`trends`、`bodyText`，覆盖 X trend/tweet、小红书 note/title/content/comment、闲鱼 item/message/chat/desc 等热点与上下文信号；支持 X contenteditable/DraftEditor、小红书标题/正文/Quill 编辑器、闲鱼回复/描述/placeholder 聊天编辑器，检测模式和上下文采集均只读，填入模式不点击任何发布/发送/评论按钮；互动扫描只读取可见评论/聊天文本并返回候选信号；表现采集只读取已发布内容可见指标，不点击页面控件 |
+| 真实浏览器烟测 | `packages/openclaw-npm/assets/chrome-extension/test/social-browser-smoke.mjs` | Chrome 插件端到端 QA | 使用本机 Google Chrome 模拟 X / 小红书 / 闲鱼三类页面，加载 `social-core.js` 与 `social-page-runner.js` 的真实模块，验证平台识别、当前页上下文采集、输入框探测、安全填入和截图取证；页面内监听 Post / 发布 / 发送按钮点击，任一按钮点击会失败，当前三平台验收均 `ready=true`、`contextReady=true`、`contextSignals>0`、`filled=true`、`buttonClicks=0`，并额外验证 Popup 预览页点击“扫当前页”后 `page-context-panel` 展开、待审草稿编辑器出现，截图 `social-pilot-popup-context-20260624.png` |
+| Social App 静态测试 | `apps/openclaw-manager-src/src/components/Social/social-growth-feedback.static.test.mjs` | 桌面中控回归 | 覆盖 Social 页增长复盘卡片、复盘反哺待审草稿按钮、Tauri IPC/API/Rust 命令代理，防止 App 中控与 Chrome 插件复盘断链 |
+| 插件单测 | `packages/openclaw-npm/assets/chrome-extension/test/social-core.test.mjs` / `test/social-page-runner.test.mjs` | 行为回归 | 覆盖平台识别、安全默认值、后端 `strategy_summary` 同步到本地合法 no-code 打法且不打开自动化权限、外部动作闸口、平台任务预览、API URL 拼接、当前页上下文规整、MCN 热点选题卡字段、热点草稿 payload、互动信号规整、互动回复草稿 payload、表现快照规整、增长反馈 payload、增长反馈热点加权字段、草稿内容/素材计划规整、网页登录额度 copy-only 提示词、填入选择器计划、真实页面编辑器变体、页面探测 payload、页面校准上报 payload、安全填入 payload、待发布排程 payload、排程提醒卡片规整并保留素材计划、人设审核包规整，以及页面执行器的当前页热点/上下文采集、只读检测、小红书拆分填入/Quill 检测、X compose/DraftEditor 检测且不发布、闲鱼 placeholder 聊天编辑器检测、互动扫描不点击按钮、表现采集不点击按钮；`popup-static.test.mjs` 静态防止按钮绑定函数、消息桥、共享页面上下文采集器、Popup 当前页上下文扫描面板、MCN 热点展示、互动扫描、表现复盘、增长复盘反哺待审草稿、素材计划/网页登录额度展示、中控打法同步缺失、Options 设置页真实表单/密码字段 form 归属/submit 保存逻辑回退，以及三平台真实浏览器烟测脚本缺失 |
 
 ## 搬运的高星项目 (38 个, 累计 ~473k Stars)
 
@@ -1388,26 +1405,9 @@
 
 ## 新增模块 (2026-04-06)
 
-### wechat_coupon.py — 微信笔笔省自动领券
 
-| 属性 | 值 |
-|------|-----|
-| 路径 | `packages/clawbot/src/execution/wechat_coupon.py` |
-| 行数 | ~300 |
-| 导入方 | `cmd_intel_mixin.py`, `scheduler.py` |
-| 依赖 | `httpx`, `subprocess`, `asyncio` |
 
-**Public API:**
-- `auto_claim_coupon()` — 自动领券完整流程（设代理→抓token→POST领券→恢复代理）
 
-### mitm_token_addon.py — mitmproxy token 截取 addon
-
-| 属性 | 值 |
-|------|-----|
-| 路径 | `packages/clawbot/scripts/mitm_token_addon.py` |
-| 行数 | ~80 |
-| 导入方 | 由 mitmdump -s 加载 |
-| 依赖 | `mitmproxy` |
 
 ### worldmonitor_client.py — Worldmonitor 全球情报 API 客户端
 
@@ -1964,14 +1964,15 @@
 | 模块 | 路径 | 行数 | 核心用途 |
 |------|------|------|----------|
 | auth.py | `src/api/auth.py` | 75 | API 共享密钥认证 (X-API-Token header + WS query param) |
-| multi_bot.py | `src/bot/multi_bot.py` | 420 | MultiBot 核心类，组合 11 个 Mixin |
+| multi_bot.py | `src/bot/multi_bot.py` | 468 | MultiBot 核心类，组合 11 个 Mixin；已注册社媒增长复盘、待审草稿审核、排程查看与最终确认命令 |
 | globals.py | `src/bot/globals.py` | 200 | 全局共享对象实例 + 辅助函数 + UserPreferences (纯配置已提取到 config.py) |
 | config.py | `src/bot/config.py` | 107 | 纯配置层: 环境变量 + API Key管理 + SF Key轮转 (HI-359: 打破循环依赖) |
 | api_mixin.py | `src/bot/api_mixin.py` | 371 | LLM API 调用 (流式/非流式) |
 | rate_limiter.py | `src/bot/rate_limiter.py` | 243 | 消息频率限制 + Token 预算 |
 | sau_bridge.py | `src/sau_bridge.py` | 175 | 社媒发布桥接层 — CLI 调用 social-auto-upload (抖音/B站/小红书/快手) |
+| x_auto_morning_post.py | `scripts/x_auto_morning_post.py` | 161 | X 自动运营全天入口 — 构建热点草稿、列出待审核内容、审核通过后才调用 twikit/browser worker 发布，并可写入 6 时段 launchd 任务 |
 | message_mixin.py | `src/bot/message_mixin.py` | 1128 | 消息处理 + 流式输出 + 链式工作流 (从1914行拆分) |
-| chinese_nlp_mixin.py | `src/bot/chinese_nlp_mixin.py` | 565 | 中文NLP命令匹配(模糊容错) + ticker映射 + 噪音清洗 + "你是不是想说"建议 |
+| chinese_nlp_mixin.py | `src/bot/chinese_nlp_mixin.py` | 790 | 中文NLP命令匹配(模糊容错) + ticker映射 + 噪音清洗 + "你是不是想说"建议；含社媒待审草稿查看/确认/打回/排程/排程队列/最终确认自然语言路由 |
 | ocr_mixin.py | `src/bot/ocr_mixin.py` | 325 | 图片/文档OCR处理 (从message_mixin提取) |
 | **路由包 (src/routing/)** | | **~1563 (8文件)** | **从 chat_router.py 拆分的群聊智能路由包** |
 | \_\_init\_\_.py | `src/routing/__init__.py` | 72 | routing 包入口 — 群聊智能路由 + 协作编排 |
@@ -1993,7 +1994,7 @@
 | monitoring/ | `src/monitoring/` | 1394 (7文件) | Prometheus 监控包 — metrics.py(采集) + health.py(健康检查) + alerts.py(告警) + anomaly_detector.py(异常检测) + cost_analyzer.py(成本分析) + logger.py(日志) |
 | message_format.py | `src/message_format.py` | 528 | OMEGA 结构化响应 + 格式化 |
 | message_sender.py | `src/message_sender.py` | 135 | Telegram 消息清洗 + 分割 |
-| social_scheduler.py | `src/social_scheduler.py` | 542 | APScheduler 社交自动驾驶 |
+| social_scheduler.py | `src/social_scheduler.py` | 542+ | APScheduler 社交自动驾驶；当前默认审核模式，X/小红书草稿只进入 `needs_review/pending`，自动回复/蹭评/晚间自动发布外部动作均锁住，最终发布需桌面端确认 |
 | quote_cache.py | `src/quote_cache.py` | 220 | 行情缓存 |
 | llm_cache.py | `src/llm_cache.py` | 273 | LLM 响应缓存 |
 | structured_llm.py | `src/structured_llm.py` | 273 | instructor 结构化 LLM 输出 |
@@ -2029,6 +2030,8 @@
 | content_pipeline.py | `src/execution/social/content_pipeline.py` | 638 | 社媒内容管道 (自动发布/话题研究/创意生成/人设组合/日历持久化+查询+标记完成) |
 | drafts.py | `src/execution/social/drafts.py` | 293 | 社媒草稿管理 (保存/去重检测/状态更新/发布) |
 | worker_bridge.py | `src/execution/social/worker_bridge.py` | 187 | 社媒浏览器 Worker 桥接 (独立于 ExecutionHub 调用) |
+| persona_review.py | `src/execution/social/persona_review.py` | 124 | 社媒人设确认 — 热点抽象号提案、样稿、确认/打回状态持久化；确认人设不触发发布 |
+| x_auto_ops.py | `src/execution/social/x_auto_ops.py` | 1891 | X / 小红书热点运营闭环 — 中英文热点聚合（微博/百度/知乎/B站/Google News/HN）、热点评分、抽象短推、小红书笔记草稿、语言配额、旧队列替换、安全过滤、审核闸口、失败重试和 6 时段排程配置 |
 | **工具 (src/tools/)** | | | |
 | docling_service.py | `src/tools/docling_service.py` | 217 | 文档理解 (PDF/DOCX/PPTX→Markdown, Docling 56.3k⭐ 搬运) |
 | tavily_search.py | `src/tools/tavily_search.py` | 206 | 智能搜索 (Tavily SDK — QnA/RAG 上下文/深度研究) |
@@ -2060,7 +2063,7 @@
 | store.py | `src/api/routers/store.py` | 358 | 统一插件商店端点，扫描本地 NPM Skills、NPM Extensions 和 Bot Skills |
 | system.py | `src/api/routers/system.py` | 16 | 系统状态端点 (ping/version/status) |
 | memory.py | `src/api/routers/memory.py` | 23 | 记忆搜索端点 (keyword/semantic/hybrid 模式) |
-| rpc.py | `src/api/rpc.py` | 923 | ✅ RPC 远程调用接口: _safe_error 脱敏(隐藏路径+截断) + Tauri 桌面端通信 + freqtrade RPC 模式(System/Trading/Social/Memory/Pool/Shopping) |
+| rpc.py | `src/api/rpc.py` | 3798 | ✅ RPC 远程调用接口: _safe_error 脱敏(隐藏路径+截断) + Tauri 桌面端通信 + freqtrade RPC 模式(System/Trading/Social/Memory/Pool/Shopping)；含 `social/ops-workspace` 聚合 X / 小红书 / 闲鱼统一浏览器运营工作台并同步增长复盘摘要，并接入 `social/persona-review` 人设确认流、`social/review-pack` 人设与内容审核包、`social/browser-control` 安全浏览器控制、`social/extension/status` Chrome 插件状态同步、`social/extension/page-probe` 页面校准摘要、`social/extension/trends` MCN 热点选题卡、`social/extension/drafts` 当前页生成待审草稿与平台化内容/图片素材计划、插件草稿排程队列、`POST /social/extension/performance` 表现复盘记录、增长反馈反哺 `GET /social/extension/trends` 热点排序、`GET /social/extension/growth-feedback` 增长复盘摘要、`POST /social/extension/growth-drafts` 批量生成待审热点草稿；`growth_draft_action` 支持有高信号时复用增长反馈、无样本时冷启动热点池，`GET /social/extension/schedule` 排程提醒读取并保留素材计划、真实样稿、平台下一步、增长复盘、复盘反哺待审草稿动作和审核锁状态 |
 
 ### 2.1 本次迭代增强的模块 (2026-03-23)
 
@@ -2110,7 +2113,7 @@
 | cmd_invest_mixin.py | `src/bot/cmd_invest_mixin.py` | 877 | 投资命令 (行情/持仓/回测/再平衡) |
 | cmd_trading_mixin.py | `src/bot/cmd_trading_mixin.py` | 516 | 交易命令 (买卖/止损/账单) |
 | cmd_ibkr_mixin.py | `src/bot/cmd_ibkr_mixin.py` | 171 | IBKR 专项命令 (连接/状态/订单) |
-| cmd_social_mixin.py | `src/bot/cmd_social_mixin.py` | 802 | 社媒命令 (发帖/日历/草稿) |
+| cmd_social_mixin.py | `src/bot/cmd_social_mixin.py` | 1651 | 社媒命令 (发帖/日历/草稿)；含 `/social_strategy` no-code 运营打法查询/切换、增长复盘、增长反哺待审草稿、Telegram 待审草稿查看/确认/打回/排程/排程队列/最终确认中控，默认不自动外发 |
 | cmd_collab_mixin.py | `src/bot/cmd_collab_mixin.py` | 812 | 协作命令 (研究/深度分析/辩论) |
 | cmd_xianyu_mixin.py | `src/bot/cmd_xianyu_mixin.py` | 545 | 闲鱼命令 (上架/客服/订单) |
 | cmd_novel_mixin.py | `src/bot/cmd_novel_mixin.py` | 198 | 小说命令 (创建/续写/导出) |
@@ -2178,6 +2181,7 @@
 | xhs_platform.py | `src/execution/social/xhs_platform.py` | 81 | 小红书平台 — 笔记发布适配 |
 | media_crawler_bridge.py | `src/execution/social/media_crawler_bridge.py` | 302 | MediaCrawler 桥接 — 社媒数据采集 |
 | content_strategy.py | `src/execution/social/content_strategy.py` | 156 | 内容策略 — 发帖时机/频率/A/B测试 |
+| x_auto_ops.py | `src/execution/social/x_auto_ops.py` | 1891 | X / 小红书自动运营 — 中文/英文热点种子、热点评分、抽象好玩推文、小红书笔记草稿、语言配额、YouTube/B站低优先级补位、旧污染草稿过滤、去重状态、审核状态和 6 时段 launchd 排程 |
 
 #### 工具集 (src/tools/)
 
@@ -2208,7 +2212,7 @@
 |------|------|------|------|
 | server.py | `src/api/server.py` | 122 | FastAPI 服务器 — 应用工厂/中间件/生命周期 |
 | routers/evolution.py | `src/api/routers/evolution.py` | 189 | 进化端点 — 自我进化/指标/报告 |
-| routers/social.py | `src/api/routers/social.py` | 225 | 社媒端点 — 发布/日历/分析 |
+| routers/social.py | `src/api/routers/social.py` | 588 | 社媒端点 — 发布/日历/分析/草稿审核/统一运营工作台/人设确认，`GET /api/v1/social/ops-workspace` 返回 X / 小红书 / 闲鱼 SaaS 插件状态、no-code 运营打法 `strategy_summary`、下一步、真实样稿、增长复盘和审核锁状态，`GET /api/v1/social/review-pack` 返回人设 + X/小红书样稿 + skill 审计的只读审核包，`POST /api/v1/social/persona-review` 支持 JSON body 确认/打回人设且不触发发布，`POST /api/v1/social/browser-control` 只允许打开/登录/状态类安全动作并阻断发布/回复/删除/自动互动，`GET/POST /api/v1/social/persona-review` 用于确认热点抽象号人设方向，`GET/POST /api/v1/social/extension/status` 用于 Chrome Social Pilot 插件状态只读/上报并返回 no-code 运营打法 `strategy_summary`，`POST /api/v1/social/extension/strategy` 用于 App/Telegram 中控保存 no-code 运营打法且不触发发布，`POST /api/v1/social/extension/page-probe` 用于保存真实页面填入点校准摘要且不触发发布，`GET /api/v1/social/extension/trends` 用于 Chrome 插件读取热点池候选选题并按历史高信号表现加权，`GET /api/v1/social/extension/growth-feedback` 用于读取增长复盘摘要，`POST /api/v1/social/extension/growth-drafts` 用于基于高信号复盘或冷启动热点池批量生成待审热点草稿，`POST /api/v1/social/extension/drafts` 用于把当前页、热点或互动扫描信号生成待审草稿并返回平台化内容/素材计划，`PATCH/POST /api/v1/social/extension/drafts/{draft_id}` 用于插件内编辑、确认或打回草稿，`GET /api/v1/social/extension/schedule` 用于插件读取排程提醒队列并回填草稿素材计划，`POST /api/v1/social/extension/drafts/{draft_id}/schedule` 用于把已确认草稿加入待发布排程，`POST /api/v1/social/extension/drafts/{draft_id}/final-confirm` 用于排程到点后的最终确认，`POST /api/v1/social/extension/performance` 用于记录只读表现快照和增长反馈，`POST /api/v1/social/drafts/{index}/review` 用于确认内容后才允许进入最终发布确认 |
 | routers/store.py | `src/api/routers/store.py` | 358 | 统一插件商店端点 — `/store/catalog` 和 `/store/categories` |
 | routers/trading.py | `src/api/routers/trading.py` | 86 | 交易端点 — 下单/持仓/历史 |
 | routers/ws.py | `src/api/routers/ws.py` | 120 | WebSocket 端点 — 实时消息推送 |
@@ -2296,7 +2300,7 @@
 
 | 模块 | 路径 | 行数 | 说明 |
 |------|------|------|------|
-| help_mixin.py | `src/bot/cmd_basic/help_mixin.py` | 248 | 帮助菜单 — /help 命令 + help 回调 + 老用户 /start 欢迎（向导逻辑已移至 onboarding_mixin） |
+| help_mixin.py | `src/bot/cmd_basic/help_mixin.py` | 350 | 帮助菜单 — /help 命令 + help 回调 + 老用户 /start 欢迎（向导逻辑已移至 onboarding_mixin）；社媒分组已补待审草稿审核/排程/最终确认命令 |
 | onboarding_mixin.py | `src/bot/cmd_basic/onboarding_mixin.py` | 258 | 新用户引导向导 — ConversationHandler 3步交互式引导（选兴趣→选风格→个性化推荐） |
 | status_mixin.py | `src/bot/cmd_basic/status_mixin.py` | 237 | 状态查询 — /status, /metrics, /model, /pool, /keyhealth 系统信息 |
 | tools_mixin.py | `src/bot/cmd_basic/tools_mixin.py` | 306 | 工具命令 — /draw, /news, /qr, /tts, /agent + inline query 处理 |

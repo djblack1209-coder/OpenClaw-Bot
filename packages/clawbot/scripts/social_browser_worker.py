@@ -25,6 +25,7 @@ except Exception:  # pragma: no cover
     browser_cookie3 = None
 
 from PIL import Image, ImageDraw, ImageFont
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
 
@@ -35,6 +36,7 @@ LEGACY_COOKIE_FILE = Path(
         "/Users/blackdj/Library/Application Support/Google/Chrome/Profile 1/Cookies",
     )
 )
+TWIKIT_COOKIE_FILE = Path(os.getenv("OPENCLAW_X_TWIKIT_COOKIE_FILE", str(Path.home() / ".openclaw" / "x_cookies.json")))
 SOCIAL_BROWSER_DIR = Path(
     os.getenv(
         "OPENCLAW_SOCIAL_BROWSER_DIR",
@@ -139,10 +141,41 @@ def topic_match_score(topic: str, text: str) -> int:
     return score
 
 
-def load_cookies(*domains: str) -> List[Dict[str, Any]]:
-    if browser_cookie3 is None or not LEGACY_COOKIE_FILE.exists():
+def _load_twikit_x_cookies() -> List[Dict[str, Any]]:
+    """把 twikit 持久化 Cookie 转成 Playwright 可注入格式。"""
+    if not TWIKIT_COOKIE_FILE.exists():
+        return []
+    try:
+        data = json.loads(TWIKIT_COOKIE_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    if not isinstance(data, dict):
         return []
     cookies: List[Dict[str, Any]] = []
+    for name, value in data.items():
+        if not value or str(name).startswith("_") and name not in {"__cuid"}:
+            continue
+        cookies.append(
+            {
+                "name": str(name),
+                "value": str(value),
+                "domain": ".x.com",
+                "path": "/",
+                "expires": int(time.time()) + 60 * 60 * 24 * 30,
+                "httpOnly": name in {"auth_token", "ct0"},
+                "secure": True,
+                "sameSite": "Lax",
+            }
+        )
+    return cookies
+
+
+def load_cookies(*domains: str) -> List[Dict[str, Any]]:
+    cookies: List[Dict[str, Any]] = []
+    if any("x.com" in domain for domain in domains):
+        cookies.extend(_load_twikit_x_cookies())
+    if browser_cookie3 is None or not LEGACY_COOKIE_FILE.exists():
+        return cookies
     for domain in domains:
         try:
             jar = browser_cookie3.chrome(cookie_file=str(LEGACY_COOKIE_FILE), domain_name=domain)
@@ -1342,6 +1375,180 @@ def draw_cards(payload: Dict[str, Any]) -> Dict[str, Any]:
     return {"dir": str(out_dir), "x_cover": str(x_cover), "xhs": [str(cover), str(reasons)]}
 
 
+def _wait_for_x_create_tweet(responses: List[str], page, timeout_ms: int = 15000) -> bool:
+    """等待 X CreateTweet 请求出现，避免按钮重渲染时误判失败。"""
+    deadline = time.time() + max(1, timeout_ms // 1000)
+    while time.time() < deadline:
+        if responses:
+            return True
+        page.wait_for_timeout(500)
+    return bool(responses)
+
+
+def _x_post_button(page):
+    """重新定位当前页面可用的 X 发帖按钮，优先返回已启用按钮。"""
+    selectors = [
+        'button[data-testid="tweetButton"]',
+        'div[role="button"][data-testid="tweetButton"]',
+        'button[data-testid="tweetButtonInline"]',
+        'div[role="button"][data-testid="tweetButtonInline"]',
+    ]
+    first_disabled = None
+    for selector in selectors:
+        locator = page.locator(selector)
+        try:
+            count = min(locator.count(), 4)
+        except Exception:
+            continue
+        for idx in range(count):
+            item = locator.nth(idx)
+            try:
+                if not item.is_visible(timeout=700):
+                    continue
+                try:
+                    disabled = item.is_disabled(timeout=700)
+                except Exception:
+                    disabled = str(item.get_attribute("aria-disabled", timeout=700) or "").lower() == "true"
+                if not disabled:
+                    return item, selector
+                if first_disabled is None:
+                    first_disabled = (item, selector)
+            except Exception:
+                continue
+    if first_disabled is not None:
+        return first_disabled
+    return None, ""
+
+
+def _fill_x_post_text(page, text: str) -> Dict[str, Any]:
+    """把文本写入可见 composer，并确认页面里确实出现正文。"""
+    boxes = page.locator('div[data-testid="tweetTextarea_0"]')
+    try:
+        count = min(boxes.count(), 4)
+    except Exception as exc:
+        return {"success": False, "status": "textbox_count_failed", "error": str(exc)[:180], "url": page.url}
+    if count == 0:
+        return {"success": False, "status": "textbox_not_found", "url": page.url}
+    last_error = ""
+    expected = str(text or "").strip()[:30]
+    for idx in range(count):
+        box = boxes.nth(idx)
+        try:
+            if not box.is_visible(timeout=1000):
+                continue
+            box.click(timeout=10000)
+            page.keyboard.press("Meta+A")
+            page.keyboard.press("Backspace")
+            page.keyboard.insert_text(text)
+            page.wait_for_timeout(1800)
+            current = box.inner_text(timeout=3000).strip()
+            if expected and expected not in current:
+                last_error = f"composer_{idx}_text_not_inserted"
+                continue
+            button, _selector = _x_post_button(page)
+            if button is not None:
+                return {"success": True, "box_index": idx, "text_preview": current[:120]}
+        except Exception as exc:
+            last_error = str(exc)[:180]
+            continue
+    return {"success": False, "status": "textbox_fill_failed", "error": last_error, "url": page.url}
+
+
+def _click_x_post_button(page) -> Dict[str, Any]:
+    """点击 X 发帖按钮，Playwright 常规点击失败时用 DOM click 兜底。"""
+    button, selector = _x_post_button(page)
+    if button is None:
+        return {"success": False, "status": "button_not_found", "url": page.url}
+    try:
+        if button.is_disabled(timeout=1000):
+            return {"success": False, "status": "button_disabled", "selector": selector, "body": body_preview(page, limit=500), "url": page.url}
+    except Exception:
+        pass
+    try:
+        button.click(force=True, timeout=8000)
+        return {"success": True, "selector": selector}
+    except PlaywrightTimeoutError as exc:
+        try:
+            clicked = page.evaluate(
+                """(selectors) => {
+                    for (const selector of selectors) {
+                        const el = document.querySelector(selector);
+                        if (el) { el.click(); return selector; }
+                    }
+                    return '';
+                }""",
+                [
+                    'button[data-testid="tweetButton"]',
+                    'button[data-testid="tweetButtonInline"]',
+                    'div[role="button"][data-testid="tweetButton"]',
+                    'div[role="button"][data-testid="tweetButtonInline"]',
+                ],
+            )
+            if clicked:
+                return {"success": True, "selector": str(clicked), "fallback": "dom_click"}
+        except Exception as dom_exc:
+            return {
+                "success": False,
+                "status": "button_click_timeout",
+                "selector": selector,
+                "error": str(exc)[:180],
+                "dom_error": str(dom_exc)[:180],
+                "url": page.url,
+            }
+        return {"success": False, "status": "button_click_timeout", "selector": selector, "error": str(exc)[:180], "url": page.url}
+    except Exception as exc:
+        return {"success": False, "status": "button_click_failed", "selector": selector, "error": str(exc)[:180], "url": page.url}
+
+
+def _normalize_x_status_url(url: str) -> str:
+    """标准化 X status 链接，去掉 analytics 等子路径。"""
+    value = str(url or "").strip()
+    match = re.search(r"https://x\.com/([^/]+)/status/(\d+)", value)
+    if not match:
+        return ""
+    return f"https://x.com/{match.group(1)}/status/{match.group(2)}"
+
+
+def _extract_matching_x_status_url(rows: List[Dict[str, Any]], expected_text: str = "") -> str:
+    """从个人页 article 数据中找最匹配的刚发布推文链接。"""
+    expected = clean_text(expected_text)[:80]
+    fallback = ""
+    for row in rows:
+        row_text = clean_text(str(row.get("text", "")))
+        links = [_normalize_x_status_url(link) for link in row.get("links", [])]
+        links = [link for link in links if link and "/BonoDJblack/status/" in link]
+        if not links:
+            continue
+        if not fallback:
+            fallback = links[0]
+        if expected and expected in row_text:
+            return links[0]
+    return fallback
+
+
+def _find_recent_x_post_url(context, expected_text: str, timeout_ms: int = 30000) -> str:
+    """发布成功但响应没给 tweet_id 时，从个人页回找最新推文 URL。"""
+    deadline = time.time() + max(3, timeout_ms // 1000)
+    while time.time() < deadline:
+        page = get_or_open_page(context, X_PROFILE_URL)
+        page.goto(X_PROFILE_URL, wait_until="domcontentloaded", timeout=120000)
+        page.wait_for_timeout(5000)
+        try:
+            rows = page.evaluate(
+                """() => Array.from(document.querySelectorAll('article')).slice(0, 8).map(a => ({
+                    text: (a.innerText || '').slice(0, 1400),
+                    links: Array.from(a.querySelectorAll('a[href*="/status/"]')).map(x => x.href)
+                }))"""
+            )
+        except Exception:
+            rows = []
+        url = _extract_matching_x_status_url(rows, expected_text)
+        if url:
+            return url
+        page.wait_for_timeout(1500)
+    return ""
+
+
 def publish_x(text: str, images: List[str]) -> Dict[str, Any]:
     def attempt(use_images: bool) -> Dict[str, Any]:
         with social_browser([X_HOME_URL, X_COMPOSE_URL], seed_platforms=["x"]) as (context, _seed):
@@ -1367,30 +1574,29 @@ def publish_x(text: str, images: List[str]) -> Dict[str, Any]:
                     # 登录成功，重新尝试
                     return {"success": False, "status": "login_completed_retry", "url": page.url}
                 return {"success": False, "status": "login_required", "url": page.url}
-            box = page.locator('div[data-testid="tweetTextarea_0"]').first
-            if box.count() == 0:
-                return {"success": False, "status": "textbox_not_found", "url": page.url}
-            box.click()
-            page.keyboard.press("Meta+A")
-            page.keyboard.press("Backspace")
-            page.keyboard.type(text, delay=8)
+            fill_result = _fill_x_post_text(page, text)
+            if not fill_result.get("success"):
+                return fill_result
             if use_images and images:
                 file_input = page.locator('input[data-testid="fileInput"]').first
                 if file_input.count() == 0:
                     return {"success": False, "status": "file_input_not_found", "url": page.url}
                 file_input.set_input_files(images[:1])
                 page.wait_for_timeout(9000)
-            btn = page.locator('button[data-testid="tweetButton"]').first
-            if btn.count() == 0:
+            button, selector = _x_post_button(page)
+            if button is None:
                 return {"success": False, "status": "button_not_found", "url": page.url}
-            if btn.is_disabled():
-                return {"success": False, "status": "button_disabled", "url": page.url}
+            try:
+                if button.is_disabled(timeout=1000):
+                    return {"success": False, "status": "button_disabled", "selector": selector, "url": page.url}
+            except Exception:
+                pass
             page.keyboard.press("Meta+Enter")
-            page.wait_for_timeout(1500)
-            if not responses:
-                btn.click(force=True)
-            page.wait_for_timeout(12000)
-            if not responses:
+            if not _wait_for_x_create_tweet(responses, page, timeout_ms=12000):
+                click_result = _click_x_post_button(page)
+                if not click_result.get("success"):
+                    return click_result
+            if not _wait_for_x_create_tweet(responses, page, timeout_ms=20000):
                 return {"success": False, "status": "create_tweet_not_observed", "url": page.url}
             tweet_id = ""
             for raw in response_payloads:
@@ -1403,8 +1609,8 @@ def publish_x(text: str, images: List[str]) -> Dict[str, Any]:
                     tweet_id = match.group(1)
                     break
             published = bool(tweet_id or responses)
-            url = f"https://x.com/BonoDJblack/status/{tweet_id}" if tweet_id else page.url
-            return {"success": published, "url": url, "status": "published" if published else "unknown"}
+            url = f"https://x.com/BonoDJblack/status/{tweet_id}" if tweet_id else _find_recent_x_post_url(context, text)
+            return {"success": published, "url": url or page.url, "status": "published" if published else "unknown"}
 
     first = attempt(use_images=bool(images))
     if first.get("success"):

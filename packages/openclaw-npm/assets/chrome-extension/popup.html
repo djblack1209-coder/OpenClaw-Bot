@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenEverything Social Pilot</title>
+    <link rel="icon" href="icons/icon32.png" />
+    <style>
+      :root {
+        color-scheme: light dark;
+        --accent: #ff5a36;
+        --xhs: #ff2442;
+        --ok: #16a34a;
+        --warn: #f59e0b;
+        --danger: #ef4444;
+        --panel: color-mix(in oklab, canvas 93%, canvasText 7%);
+        --panel-2: color-mix(in oklab, canvas 88%, canvasText 12%);
+        --border: color-mix(in oklab, canvasText 16%, transparent);
+        --muted: color-mix(in oklab, canvasText 66%, transparent);
+        font-family: ui-rounded, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Rounded", "Segoe UI", sans-serif;
+      }
+      body {
+        width: 380px;
+        margin: 0;
+        background:
+          radial-gradient(500px 260px at 0% 0%, color-mix(in oklab, var(--accent) 24%, transparent), transparent 72%),
+          canvas;
+        color: canvasText;
+      }
+      .wrap { padding: 14px; }
+      header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+      h1 { font-size: 16px; margin: 0; letter-spacing: -0.02em; }
+      .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+      .pill { border: 1px solid var(--border); border-radius: 999px; padding: 5px 9px; font-size: 12px; background: var(--panel); }
+      .card { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 12px; margin-top: 10px; box-shadow: 0 10px 28px color-mix(in oklab, canvasText 12%, transparent); }
+      .platform { display: flex; align-items: center; gap: 10px; }
+      .logo { width: 42px; height: 42px; border-radius: 14px; display: grid; place-items: center; background: color-mix(in oklab, var(--accent) 18%, transparent); font-weight: 800; }
+      .title { font-weight: 750; font-size: 15px; }
+      .tone { color: var(--muted); font-size: 12px; margin-top: 3px; }
+      .status { margin-top: 10px; padding: 9px 10px; border-radius: 12px; background: var(--panel-2); font-size: 12px; line-height: 1.45; }
+      .status[data-kind="running"] { border-left: 3px solid var(--ok); }
+      .status[data-kind="paused"] { border-left: 3px solid var(--warn); }
+      .status[data-kind="unsupported"] { border-left: 3px solid var(--danger); }
+      .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+      button { border: 1px solid color-mix(in oklab, var(--accent) 45%, transparent); background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 82%, white 18%), var(--accent)); color: white; font-weight: 750; border-radius: 12px; padding: 10px 11px; cursor: pointer; }
+      button.secondary { background: var(--panel-2); color: canvasText; border-color: var(--border); }
+      button.danger { background: color-mix(in oklab, var(--danger) 84%, black 16%); border-color: color-mix(in oklab, var(--danger) 60%, transparent); }
+      button:disabled { opacity: 0.48; cursor: not-allowed; }
+      .primary-action { width: 100%; margin-top: 10px; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .metric { background: var(--panel-2); border-radius: 12px; padding: 9px; }
+      .metric b { display: block; font-size: 12px; }
+      .metric span { color: var(--muted); font-size: 11px; }
+      ul { margin: 8px 0 0 0; padding-left: 18px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+      .footer { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+      a { color: color-mix(in oklab, var(--accent) 80%, canvasText 20%); font-size: 12px; text-decoration: none; }
+      .safe { color: var(--ok); font-size: 12px; }
+      .result { margin-top: 8px; color: var(--muted); font-size: 12px; line-height: 1.45; white-space: pre-wrap; }
+      .section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+      .ghost-button { border-color: var(--border); background: transparent; color: canvasText; padding: 7px 9px; font-size: 12px; }
+      .trend-list, .schedule-list, .sample-list, .interaction-list, .performance-panel, .growth-panel, .page-context-panel { display: none; gap: 8px; margin-top: 10px; }
+      .trend-list[data-visible="true"], .schedule-list[data-visible="true"], .sample-list[data-visible="true"], .interaction-list[data-visible="true"], .performance-panel[data-visible="true"], .growth-panel[data-visible="true"], .page-context-panel[data-visible="true"] { display: grid; }
+      .trend-card, .schedule-card, .sample-card, .interaction-card, .performance-card, .growth-card, .page-context-card { border: 1px solid var(--border); border-radius: 13px; background: var(--panel-2); padding: 9px; cursor: pointer; text-align: left; color: canvasText; }
+      .trend-card:hover, .trend-card:focus-visible, .schedule-card:hover, .schedule-card:focus-visible, .sample-card:hover, .sample-card:focus-visible, .interaction-card:hover, .interaction-card:focus-visible, .page-context-card:hover, .page-context-card:focus-visible { border-color: color-mix(in oklab, var(--accent) 55%, var(--border)); box-shadow: 0 8px 20px color-mix(in oklab, var(--accent) 13%, transparent); }
+      .trend-card strong, .schedule-card strong, .sample-card strong, .interaction-card strong, .performance-card strong, .growth-card strong, .page-context-card strong { display: block; font-size: 12px; line-height: 1.35; }
+      .trend-meta, .schedule-meta, .sample-meta, .interaction-meta, .performance-meta, .growth-meta, .page-context-meta { color: var(--muted); font-size: 11px; margin-top: 4px; line-height: 1.35; }
+      .schedule-card[data-due="true"] { border-color: color-mix(in oklab, var(--warn) 68%, var(--border)); background: color-mix(in oklab, var(--warn) 13%, var(--panel-2)); }
+      .tag-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+      .tag { border: 1px solid var(--border); border-radius: 999px; padding: 2px 6px; color: var(--muted); font-size: 10px; }
+      .draft-editor { display: none; margin-top: 10px; gap: 8px; }
+      .draft-editor[data-visible="true"] { display: grid; }
+      input, textarea { width: 100%; border: 1px solid var(--border); border-radius: 12px; background: var(--panel-2); color: canvasText; padding: 9px 10px; font: inherit; box-sizing: border-box; }
+      textarea { min-height: 120px; resize: vertical; line-height: 1.45; }
+      .editor-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .asset-plan { display: none; border: 1px solid var(--border); border-radius: 14px; padding: 10px; background: color-mix(in oklab, var(--panel-2) 92%, var(--accent) 8%); }
+      .asset-plan[data-visible="true"] { display: grid; gap: 8px; }
+      .asset-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 850; }
+      .asset-copy { color: var(--muted); font-size: 11px; line-height: 1.45; white-space: pre-wrap; }
+      .asset-plan ul { margin-top: 4px; padding-left: 16px; }
+      .asset-plan li { margin: 2px 0; }
+      .web-model-relay { display: none; border: 1px solid var(--border); border-radius: 14px; padding: 10px; background: color-mix(in oklab, var(--panel-2) 88%, var(--ok) 12%); }
+      .web-model-relay[data-visible="true"] { display: grid; gap: 8px; }
+      .web-model-prompt { max-height: 118px; overflow: auto; border: 1px dashed var(--border); border-radius: 12px; padding: 8px; background: color-mix(in oklab, canvas 82%, canvasText 18%); color: var(--muted); font-size: 11px; line-height: 1.45; white-space: pre-wrap; }
+      .persona-panel { display: none; margin-top: 10px; border: 1px solid var(--border); border-radius: 14px; padding: 10px; background: var(--panel-2); }
+      .persona-panel[data-visible="true"] { display: block; }
+      .persona-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 800; }
+      .persona-body { color: var(--muted); font-size: 12px; line-height: 1.45; margin-top: 6px; }
+      .persona-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 9px; }
+      .error { color: var(--danger); font-size: 12px; margin-top: 8px; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <div>
+          <h1>OpenEverything Social Pilot</h1>
+          <div class="sub">插件主执行 · App/Telegram 中控</div>
+        </div>
+        <div class="pill" id="connection">本地同步</div>
+      </header>
+
+      <section class="card">
+        <div class="platform">
+          <div class="logo" id="platform-short">?</div>
+          <div>
+            <div class="title" id="platform-label">检测当前标签页…</div>
+            <div class="tone" id="platform-tone">打开 X / 小红书 / 闲鱼 页面后启动</div>
+          </div>
+        </div>
+        <div class="status" id="status-box" data-kind="paused">读取状态中…</div>
+        <div class="actions">
+          <button id="start">启动运营</button>
+          <button id="pause" class="secondary">暂停</button>
+          <button id="sync" class="secondary">同步中控</button>
+          <button id="probe-page" class="secondary">检测填入点</button>
+          <button id="stop" class="danger">紧急停止</button>
+        </div>
+        <button id="draft" class="primary-action">根据当前页生成待审草稿</button>
+      </section>
+
+      <section class="card">
+        <div class="grid">
+          <div class="metric"><b id="strategy-preset">自动匹配平台涨粉打法</b><span>运营打法</span></div>
+          <div class="metric"><b id="automation-level">只生成草稿</b><span>自动化强度</span></div>
+          <div class="metric"><b id="interaction-level">关闭</b><span>互动强度</span></div>
+          <div class="metric"><b id="persona-tags">科技 / 出海</b><span>人设标签</span></div>
+          <div class="metric"><b id="model-route">网页登录额度</b><span>模型路由</span></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <b style="font-size: 13px">今日执行预览</b>
+          <button id="refresh-trends" class="ghost-button">抓热点</button>
+        </div>
+        <ul id="tasks"></ul>
+        <div class="safe">默认不自动发布、不批量评论、不关注/取关。</div>
+        <div class="section-head" style="margin-top: 10px">
+          <b style="font-size: 13px">人设与样稿确认</b>
+          <button id="refresh-review-pack" class="ghost-button">看人设</button>
+        </div>
+        <div class="persona-panel" id="persona-panel" data-visible="false">
+          <div class="persona-title">
+            <span id="persona-name">待确认人设</span>
+            <span class="tag" id="persona-state">待确认</span>
+          </div>
+          <div class="persona-body" id="persona-summary"></div>
+          <div class="tag-row" id="persona-tone"></div>
+          <div class="persona-actions">
+            <button id="persona-approve">确认人设</button>
+            <button id="persona-reject" class="danger">打回人设</button>
+          </div>
+          <div class="safe">确认人设不等于发布；每条内容仍要逐条审核和最终确认。</div>
+        </div>
+        <div class="sample-list" id="sample-list" data-visible="false"></div>
+        <div class="trend-list" id="trend-list" data-visible="false"></div>
+        <div class="section-head" style="margin-top: 10px">
+          <b style="font-size: 13px">当前页热点/上下文</b>
+          <button id="scan-page-context" class="ghost-button">扫当前页</button>
+        </div>
+        <div class="page-context-panel" id="page-context-panel" data-visible="false"></div>
+        <div class="safe">只读扫描当前页可见趋势、标题、正文和选中文本；点击卡片只生成待审草稿。</div>
+        <div class="section-head" style="margin-top: 10px">
+          <b style="font-size: 13px">互动扫描</b>
+          <button id="scan-interactions" class="ghost-button">扫互动</button>
+        </div>
+        <div class="interaction-list" id="interaction-list" data-visible="false"></div>
+        <div class="safe">互动扫描只读当前页评论/聊天信号；点击卡片只生成待审回复草稿，不会自动评论。</div>
+        <div class="section-head" style="margin-top: 10px">
+          <b style="font-size: 13px">表现复盘</b>
+          <button id="capture-performance" class="ghost-button">采表现</button>
+        </div>
+        <div class="performance-panel" id="performance-panel" data-visible="false"></div>
+        <div class="safe">只读采集已发布页面表现，用于复盘和选题权重；不会推广、刷量或再发布。</div>
+        <div class="section-head" style="margin-top: 10px">
+          <b style="font-size: 13px">增长复盘</b>
+          <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end">
+            <button id="refresh-growth-feedback" class="ghost-button">看复盘</button>
+            <button id="generate-growth-drafts" class="ghost-button">复盘生成草稿</button>
+          </div>
+        </div>
+        <div class="growth-panel" id="growth-panel" data-visible="false"></div>
+        <div class="safe">复盘只解释历史高信号和下一步选题建议；生成也只进入待审草稿，不授权自动发布。</div>
+        <div class="section-head" style="margin-top: 10px">
+          <b style="font-size: 13px">排程提醒</b>
+          <button id="refresh-schedule" class="ghost-button">看排程</button>
+        </div>
+        <div class="schedule-list" id="schedule-list" data-visible="false"></div>
+        <div class="result" id="draft-result"></div>
+        <div class="draft-editor" id="draft-editor" data-visible="false">
+          <input id="draft-title" aria-label="草稿标题" placeholder="草稿标题" />
+          <textarea id="draft-text" aria-label="草稿正文" placeholder="草稿正文"></textarea>
+          <div class="asset-plan" id="draft-asset-plan" data-visible="false">
+            <div class="asset-title">
+              <span>素材计划</span>
+              <span class="tag" id="asset-platform-style"></span>
+            </div>
+            <div class="asset-copy" id="asset-content-format"></div>
+            <ul id="asset-content-structure" aria-label="内容结构"></ul>
+            <div>
+              <div class="asset-title"><span>封面提示词</span><span class="tag">不自动生图</span></div>
+              <div class="asset-copy" id="asset-cover-prompt"></div>
+            </div>
+            <ul id="asset-prompt-list" aria-label="图片素材提示词"></ul>
+            <div>
+              <div class="asset-title"><span>安全清单</span><span class="tag" id="asset-route-hint"></span></div>
+              <ul id="asset-safety-list" aria-label="安全清单"></ul>
+            </div>
+          </div>
+          <div class="web-model-relay" id="draft-web-model" data-visible="false">
+            <div class="asset-title">
+              <span>网页登录额度</span>
+              <span class="tag" id="web-model-provider">只复制提示词</span>
+            </div>
+            <div class="web-model-prompt" id="web-model-prompt">确认草稿后，可复制提示词到 Gemini / Grok / ChatGPT 网页额度中使用。</div>
+            <div class="editor-actions">
+              <button id="web-model-copy" class="secondary">复制提示词</button>
+              <button id="web-model-open" class="secondary">打开模型网页</button>
+            </div>
+            <div class="safe">插件只复制提示词和打开网页；不会自动粘贴、提交、生图或发布。</div>
+          </div>
+          <div class="editor-actions">
+            <button id="draft-save" class="secondary">保存修改</button>
+            <button id="draft-autofill">填入页面</button>
+            <button id="draft-approve">确认内容</button>
+            <button id="draft-schedule" class="secondary">加入排程</button>
+            <button id="draft-final-confirm" class="secondary">最终确认</button>
+            <button id="draft-reject" class="danger">打回</button>
+          </div>
+          <div class="safe">填入/排程都不会点击发布、发送、评论按钮；排程到点仍需最终确认。</div>
+        </div>
+      </section>
+
+      <div class="footer">
+        <a href="#" id="open-options">高级设置</a>
+        <a href="#" id="attach-relay">连接 Browser Relay</a>
+      </div>
+      <div class="error" id="error" role="alert" aria-live="polite"></div>
+    </div>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

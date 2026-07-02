@@ -104,7 +104,7 @@ packages/clawbot/
 │   │   │   ├── __init__.py
 │   │   │   ├── price_aggregator.py  # 全平台价格聚合
 │   │   │   ├── bargainer.py         # 智能砍价机器人
-│   │   │   └── coupon_hunter.py     # 优惠券猎手
+│   │   │   └── deal_hunter.py       # 折扣猎手
 │   │   └── life/
 │   │       ├── __init__.py
 │   │       ├── calendar_agent.py    # 日历与时间管理

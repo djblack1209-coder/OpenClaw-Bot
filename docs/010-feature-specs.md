@@ -1297,3 +1297,157 @@ node tools/task-log.mjs validate task
 node tools/task-log.mjs validate failure
 node tools/task-log.mjs validate retrieval
 ```
+
+---
+
+## 十七、社媒双产品线与 Chrome 插件主力运营
+
+> 2026-06-23 规格确认：采用“方案 A：双端同脑、插件主执行、App/Telegram 做中控”。
+
+### 目标
+
+将社媒运营从单一桌面工作台升级为两条产品线：
+
+1. **OpenEverything App / Telegram 中控端**：负责 Mac 本地/云端双端自动切换、账号矩阵、Cookie/API 配置、内容计划、审核、排程、复盘和远程启动/暂停。
+2. **Chrome 插件主力执行端**：用户打开浏览器并登录 X / 小红书 / 闲鱼后，插件自动识别当前标签页平台，提供启动/暂停、高级设置、人设/模型/网页登录额度、热点、内容生成、审计、排程、互动和可视化执行入口。
+
+### 产品原则
+
+- **双端同脑**：App、Telegram、Chrome 插件共享同一套运营策略、任务状态、人设矩阵和审计规则。
+- **插件主执行**：发布、填表、页面抓取、网页登录免费额度调用优先在 Chrome 插件内完成，减少 Cookie 不稳定问题。
+- **中控管策略**：App/Telegram 负责远程控制、任务计划、数据复盘和云端/本地兜底。
+- **默认安全**：默认只生成草稿或自动填入页面，不自动发布、批量评论、批量关注、刷赞或绕平台风控。
+- **no-code**：用户只通过插件/App/Telegram 点选人设、模型、排程和运营强度，不需要写配置文件。
+
+### App/Telegram 中控端当前能力
+
+- App Social 页聚合 `GET /api/v1/social/ops-workspace`，同时展示 X / 小红书 / 闲鱼平台状态、审核闸口、人设确认、草稿、排程、浏览器控制和增长复盘。
+- `ops-workspace.strategy_summary` 与 `extension_status.strategy_summary` 同步展示当前 no-code 运营打法，包含 `preset`、`effective_preset`、平台风格、目标人群、内容重点、增长闭环和安全锁；App Social 页会把它显示为“当前运营打法”摘要，并提供下拉选择 + 保存打法按钮。
+- `POST /api/v1/social/extension/strategy` 用于 App/Telegram 中控保存 `strategyPreset`；该接口只更新设置摘要和 `strategy_summary`，强制 `auto_publish_enabled=false`、`external_actions_locked=true`，不会发布、评论、关注或私信。
+- 三个平台卡片额外展示 `strategy_preset` / `strategy_label` / `growth_loop`：X 默认财富前沿或抽象热点，小红书默认生活攻略，闲鱼默认成交客服，用户无需手写 Prompt 即可知道当前在跑哪套 MCN 增长打法。
+- `ops-workspace.growth_feedback` 直接复用 Chrome 插件表现复盘池，展示历史高信号内容、点赞/评论/转发、优先标签、复用学习和下一步建议。
+- `ops-workspace.growth_draft_action` 暴露“基于增长复盘生成下一批待审热点草稿”的安全动作；App 点击后调用 `POST /social/extension/growth-drafts`，只新增待审草稿。
+- Tauri 端通过 `clawbot_api_social_growth_feedback` 代理 `GET /social/extension/growth-feedback`，通过 `clawbot_api_social_growth_drafts` 代理 `POST /social/extension/growth-drafts`；浏览器降级模式直接走 HTTP，同一接口服务 App 与插件。
+- Telegram 端新增 `/social_strategy [打法] [平台]` 和“切到X抽象热点打法 / 把社媒运营打法改成小红书生活攻略”等自然语言入口，远程保存同一套 `strategyPreset`；无参数 `/social_strategy` 只读查询当前打法、待审草稿、可发布未最终确认、排程和三平台增长闭环；该动作只查询或改策略，不触发发布、评论、关注、推广或刷量。
+- Telegram 端新增 `/social_growth_feedback [x|xhs]` 和自然语言“社媒增长复盘/看看X运营复盘/小红书运营复盘”，只读展示复盘摘要；新增 `/social_growth_drafts [x|xhs]` 与“根据增长复盘生成下一批草稿”自然语言入口，只生成待审草稿，不触发发布、评论、关注、推广或刷量。
+- Telegram 端新增 `/social_review_drafts`、`/social_review_approve <序号或ID>`、`/social_review_reject <序号或ID>`、`/social_review_schedule <序号或ID> [时间]`、`/social_review_schedule_queue`、`/social_review_final_confirm <序号或ID>` 和对应自然语言入口；可远程查看待审草稿、确认、打回、加入待发布排程、查看到点队列并做最终确认。排程支持“明天8点/今天20:30/2小时后”等口语时间，但最终确认仍只标记为可手动发布，不自动外发。
+
+### Chrome 插件第一阶段能力
+
+- 自动识别平台：
+  - `x.com` / `twitter.com` → X
+  - `xiaohongshu.com` → 小红书
+  - `goofish.com` / `2.taobao.com` / `idlefish` → 闲鱼
+- Popup 显示：
+  - 当前平台、登录态提示、运营状态
+  - 启动 / 暂停 / 同步按钮
+  - 今日任务与待审草稿摘要
+  - 风险闸口和安全提示
+- 高级设置：
+  - 人设标签：生活、金融、科技、学生、健身、女性向、出海、Web3、古风品牌
+  - 运营打法：自动匹配平台涨粉打法、X 财富前沿实操、X 抽象热点涨粉、小红书生活攻略、闲鱼成交客服
+  - 主内容模型：网页登录额度、心流 API、OpenAI、Claude、Gemini、Grok
+  - 生图模型：GPT Image、Gemini Image、本地 ComfyUI、不生图
+  - 热点来源：插件当前页、本地热点池、云端热点池、GitHub/HN/X/B站/小红书
+  - 自动化强度：只生成草稿、自动填入页面、审核后发布、低风险全自动
+  - 互动强度：关闭、只回复评论、轻互动、标准互动
+- 与 OpenEverything 本地 API 同步：
+  - 获取 `social/ops-workspace`、`social/review-pack`、草稿列表
+  - 上报插件当前标签页平台、启动状态、设置摘要
+
+### 内容矩阵
+
+#### 小红书
+
+- 优先方向：女性向生活方式、夏日冷饮/轻食教程、学生党省钱、古风品牌人格化。
+- 写法：轻松口语、步骤化、emoji、收藏导向、封面统一。
+- 图片：GPT Image / Gemini Image 生成统一图文教程或品牌调性封面。
+- 示例人设：`李白天的杂货铺`，东方审美、茶饮、羊皮纸、米白/墨绿/朱砂视觉系统。
+
+#### X
+
+- 目标人群：大学生、年轻创业者、出海/AI/Web3/美股机会关注者。
+- 选题：财富出海、AI 赚钱工具、Claude/Codex Skills、GitHub 异常 Star、Binance 活动、美股宏观解释。
+- 写法：标题抓人，正文是可执行快速说明书，包含背景、步骤、风险和今天能做什么。
+- 禁止：收益承诺、投资建议、刷量、政治/灾难蹭热点。
+
+#### 闲鱼
+
+- 定位：成交效率工具，而不是内容号。
+- 能力：商品标题优化、详情优化、砍价回复、高意向识别、自动发货、售后兜底。
+
+### 热点架构
+
+三层热点系统：
+
+1. **本地/云端热点中心**：复用 `MediaCrawler`、`agent-reach`、`yt-dlp`、B站公开搜索、GitHub/HN/Google News/RSS。
+2. **插件当前页热点**：从用户已登录页面读取 X 趋势、小红书搜索/创作灵感、闲鱼商品/聊天上下文。
+3. **数据反哺**：按阅读、点赞、收藏、评论、关注转化、成交率自动调整人设和选题权重。
+
+### 自动化强度
+
+| 等级 | 名称 | 默认状态 | 允许动作 |
+|---|---|---|---|
+| L0 | 只生成草稿 | 默认 | 生成内容、生成图片、审计 |
+| L1 | 自动填入页面 | 可选 | 自动填表，但用户手动发布 |
+| L2 | 审核后发布 | 可选 | 审计通过 + 用户授权后发布 |
+| L3 | 低风险全自动 | 后续 | 低频发帖、回复自己评论区、复盘 |
+
+### 禁止动作
+
+- 批量关注/取关
+- 批量私信陌生人
+- 刷赞/刷评论/刷收藏
+- 灌水评论区
+- 保证收益或投资建议
+- 利用政治、灾难、伤亡、战争等敏感热点涨粉
+
+### 第一阶段验收
+
+- Chrome 插件不再只是 Browser Relay，而是显示 `OpenEverything Social Pilot` 运营面板。
+- 插件能识别 X / 小红书 / 闲鱼 / 未支持页面。
+- 插件可保存高级设置并显示当前设置摘要。
+- Options 高级设置页必须是商业级浏览器表单体验：敏感 token 输入框位于真实 form 内，保存按钮用 submit，JS 拦截提交后保存，不产生 Chrome 密码字段 form 警告。
+- 插件可启动/暂停本标签页运营状态，并通过本地 API 上报。
+- 后端提供插件状态只读/上报接口，App/Telegram 后续可读取同一状态。
+- 三平台 L1 安全填入必须可重复真实浏览器验收：X / 小红书 / 闲鱼均能探测输入框并填入草稿，同时 Post / 发布 / 发送按钮点击次数必须为 0。
+- 所有发布、评论、删除、关注动作默认锁住，必须走审核闸口。
+
+### 第一阶段落地状态（2026-06-23）
+
+- `packages/openclaw-npm/assets/chrome-extension/manifest.json` 已将插件从 `OpenClaw Browser Relay` 升级为 `OpenEverything Social Pilot`，点击工具栏默认打开 `popup.html`。
+- `social-core.js` 提供平台识别、安全默认设置、人设/模型/热点选项、自动化等级、互动等级、API URL 拼接和任务预览。
+- `popup.html` / `popup.js` 已实现当前标签页自动识别、启动/暂停、同步中控、紧急停止、高级设置入口和 Browser Relay 兼容连接入口。
+- `options.html` / `options.js` 已实现商业 SaaS 风格设置页：人设多选、主内容模型、生图模型、热点来源、自动化强度、互动强度、本地 API Base URL 与 Relay 兼容配置。
+- `background.js` 保留原 Browser Relay 能力，并新增 `toggleRelayForActiveTab` 与 `socialStatusUpdate` 消息；插件状态会 POST 到 `social/extension/status`。
+- 后端 `GET/POST /api/v1/social/extension/status` 已提供安全摘要读写，强制 `auto_publish_enabled=false`、`external_actions_locked=true`，并过滤非白名单字段。
+- 2026-06-23 追加当前页生成待审草稿闭环：Popup 新增“根据当前页生成待审草稿”，后台通过 `chrome.scripting.executeScript` 只读取当前标签页标题、选中文本、可见标题/短文本和少量正文摘要，POST 到 `social/extension/drafts`；后端把内容写入现有统一草稿审核队列，状态固定为 `needs_review/pending`。
+- 2026-06-23 追加插件热点池入口：后端 `GET /social/extension/trends` 把本地/云端热点池压缩为 X / 小红书 / 闲鱼可用候选选题；Popup 新增“抓热点”和热点卡片列表，点击热点会以 `chrome_extension_trend_pool` 来源生成待审草稿。
+- 2026-06-23 热点候选升级为 MCN 选题卡：每个热点除标题/来源外，还带目标人群、内容角度、平台打法、涨粉理由、风险等级、风险提示、执行步骤和 hook 模板；X 默认面向大学生/年轻创业者/出海与 AI 工具人群，小红书默认面向女性生活方式/学生党/收藏型用户，闲鱼默认面向成交与砍价场景。
+- 2026-06-23 追加平台化内容计划与素材计划：`POST /social/extension/drafts` 返回 `content_plan`、`image_plan`、`platform_style`、`format_checklist`、`safety_checklist`、`cost_route`；X 草稿按“反差 hook + 3步可执行 + 风险边界 + 互动问题”组织，小红书按“女性向生活攻略图文 + 封面/步骤图提示词 + 收藏引导”组织，闲鱼按“价格锚点 + 成色证据 + 小让步 + 商品图真实性”组织。
+- 2026-06-23 追加插件内审核闭环：Popup 草稿编辑器支持标题/正文预览、保存修改、确认内容和打回；后端提供 `PATCH /social/extension/drafts/{draft_id}` 与 `POST /social/extension/drafts/{draft_id}/review`，确认内容仍不等于发布。
+- 2026-06-23 Popup 草稿编辑器新增“素材计划”卡片：展示内容结构、封面提示词、图片素材提示词、安全清单和模型路由提示；所有图片计划默认 `auto_generate=false`，只作为人工确认后的生图提示词，不自动消耗 GPT Image / Gemini Image 额度。
+- 2026-06-23 追加网页登录额度安全接力：`buildWebModelRelayTask()` 会把草稿和素材计划整理成 Gemini / Grok / ChatGPT 网页可用提示词；Popup “网页登录额度”卡片支持复制提示词和打开模型网页，Background 只允许打开白名单模型 URL，不自动粘贴、提交、生图或发布。
+- 2026-06-23 追加 L1 安全填入：Popup “填入页面”会把 X / 小红书 / 闲鱼草稿写入当前页面输入框，但强制 `publishIntent=false`、`allowButtonClick=false`；草稿平台与当前标签页平台不一致时阻止误填。
+- 2026-06-23 追加填入点检测：`buildAutofillSelectors()` 统一维护三平台输入框选择器，Popup “检测填入点”先只读扫描 compose/title/body/reply_or_description，不写入内容、不点击任何外发按钮。
+- 2026-06-23 追加真实页面选择器变体：X 覆盖嵌套 contenteditable / DraftEditor，小红书覆盖 Quill `.ql-editor` 与 aria-placeholder 正文编辑器，闲鱼覆盖 placeholder / aria-label 聊天回复编辑器；对应回归确保探测只读、不改写内容、不点击发布/发送/评论。
+- 2026-06-23 追加页面执行器模块化：`social-page-runner.js` 从 `background.js` 抽出真实页面检测/填入逻辑，并新增回归覆盖只读检测、小红书标题/正文拆分填入、X compose 合并标题正文填入且不发布，为后续真实页面校准和商业级稳定性打基础。
+- 2026-06-23 追加待发布排程队列：Popup “加入排程”只接受已确认草稿；后端 `POST /social/extension/drafts/{draft_id}/schedule` 把草稿写入 `extension_schedule`，`ops-workspace` 返回排程摘要和平台 scheduled 数量；队列状态为 `queued_for_owner_publish`，到点仍需最终确认，不自动外发。
+- 2026-06-23 追加到点提醒与最终确认：排程读取会把已到点队列项标记为 `awaiting_final_confirmation` 并同步草稿；Popup “最终确认”调用 `POST /social/extension/drafts/{draft_id}/final-confirm` 后仅转为 `ready_for_manual_publish`，仍不调用发布器。
+- 2026-06-23 追加插件排程提醒面板：新增 `GET /social/extension/schedule`，队列项返回草稿预览并保留内容/素材计划；Popup “看排程”可展示等待/到点/已确认队列，点击卡片回填草稿编辑器，继续只提醒不发布。
+- 2026-06-23 追加插件人设与样稿确认面板：Popup “看人设”读取 `GET /social/review-pack`，展示热点抽象号人设、语气标签、样稿卡片和护栏；确认/打回调用 `POST /social/persona-review`，仅改变人设状态，不授权发布。
+- 2026-06-23 追加真实页面校准状态同步：`buildPageProbeReportPayload()` 只保留平台、URL、ready、字段摘要和原因，丢弃 selector；`background.js` 在 `socialPageProbe` 检测后上报 `POST /social/extension/page-probe`，后端写入 `page_calibration`，Popup 会提示“校准结果已同步”或“本地检测成功但未同步中控”。
+- 2026-06-23 追加只读互动扫描：`social-page-runner.js` 可在当前 X / 小红书 / 闲鱼页面读取可见评论、聊天或可回复文本信号；Popup “扫互动”展示互动候选卡片，点击后通过 `chrome_extension_interaction_scan` 来源生成待审回复草稿。该能力只读页面文本，不点击回复、发送、评论、发布或关注按钮；Background 只提供 `socialInteractionScan`，不提供 `socialInteractionSubmit`。
+- 2026-06-23 追加只读表现复盘：`social-page-runner.js` 可在已发布内容详情页读取可见点赞、评论、转发、曝光、收藏等指标；Popup “采表现”会把结果写入 `POST /social/extension/performance`，后端同步 `extension_performance`、草稿 `performance_snapshots` 和 `growth_feedback`，用于后续热点排序/人设复盘/选题权重，不触发推广、刷量、评论或再发布。
+- 2026-06-23 追加增长反馈加权：`GET /social/extension/trends` 会把历史 `high_signal` 或高赞/高评/高曝光内容抽成标签/标题/学习结论画像，给相似热点增加 `growth_feedback_boost` 和 `growth_feedback_reason`，让后续选题开始“按真实表现学习”，但仍只生成待审草稿。
+- 2026-06-23 追加增长复盘可视化：后端 `GET /social/extension/growth-feedback` 返回历史高信号内容、指标、标签、学习结论和下一步建议；Popup “看复盘”展示这些内容，App Social 页通过 `ops-workspace.growth_feedback` 展示同一套中控复盘卡片，Telegram 通过 `/social_growth_feedback [x|xhs]` 只读查看复盘摘要，帮助用户理解为什么某类热点被推荐，仍不授权自动发布。
+- 2026-06-23 追加增长复盘反哺待审草稿：后端 `POST /social/extension/growth-drafts` 会取增长复盘高信号画像和热点池排序结果，批量生成 `chrome_extension_growth_feedback` 来源的 `needs_review/pending` 草稿；Chrome Popup “复盘生成草稿”、App Social “复盘生成待审草稿”、Telegram `/social_growth_drafts [x|xhs]` 调用同一闭环，生成后仍需逐条编辑/确认，不发布、不评论。
+- 2026-06-23 追加冷启动待审草稿模式：`ops-workspace.growth_draft_action` 在有高信号样本时使用 `fallback_mode=growth_feedback_reuse`，无样本时保持按钮可用并使用 `fallback_mode=cold_start_hotspot_pool` 从热点池生成待审草稿，避免新账号因没有历史表现样本而断链；两种模式都强制 `auto_publish_enabled=false`、`external_actions_locked=true`。
+- 2026-06-24 追加 no-code 运营打法闭环：插件 `strategyPreset` 进入后端状态白名单和草稿 payload，`strategy_summary` 会把当前打法、人群、内容重点和增长闭环同步到 App/Telegram 中控；App Social 页新增当前运营打法摘要条、no-code 下拉保存入口，Telegram 新增 `/social_strategy` 和中文自然语言策略切换入口，平台卡展示策略标签与增长闭环。该能力只影响选题/草稿/素材计划，不自动外发。
+- 2026-06-24 追加三端策略状态同步：Chrome Background 新增 `socialStatusFetch`，Popup / Options 打开时读取 `GET /social/extension/status` 并把中控合法 `strategyPreset` 回写到本地 Chrome 设置；同步时继续保留本地自动化/互动安全设置，不允许远程状态打开自动发布或自动互动。Telegram `/social_strategy` 无参数时改为当前打法只读状态页，方便 App / Telegram / Chrome 对齐。
+- 2026-06-24 追加 Options 商业级表单 UX 验收：`options.html` 用 `<form id="social-settings-form">` 包住设置区和操作区，Gateway token 密码框位于真实 form 内，“保存设置”走 submit；`options.js` 监听 form submit 并 `preventDefault()` 后保存。真实 Google Chrome 复验无 `Password field is not contained in a form` 警告，截图 `output/playwright/social-pilot-options-form-fixed-20260624.png`。
+- 2026-06-24 追加三平台真实浏览器安全填入烟测：`test/social-browser-smoke.mjs` 使用本机 Google Chrome 模拟 `https://x.com/home`、`https://www.xiaohongshu.com/explore`、`https://www.goofish.com/item?id=1`，加载真实 `social-core.js` / `social-page-runner.js`，验证 URL 平台识别、输入框探测和安全填入。页面会监听 Post / 发布 / 发送按钮点击，当前三平台均为 `ready=true`、`filled=true`、`buttonClicks=0`；截图保存在 `output/playwright/social-pilot-browser-smoke-20260624/`。
+- 2026-06-24 追加当前页热点/上下文采集器：`social-page-runner.js` 新增 `runSocialPageContextScanInPage()`，把 X `trend/tweetText`、小红书 note/title/content/comment、闲鱼 item/message/chat/desc 等信号统一整理为 `selection`、`headings`、`trends`、`bodyText`；`background.js` 的 `collectActiveTabPageContext()` 已改为通过共享 runner 执行，生成当前页待审草稿时不再走内联采集；真实 Chrome 烟测三平台均校验 `contextReady=true`、`contextSignals>0`、`buttonClicks=0`，证明“当前页热点/上下文 → 待审草稿”的采集入口可测且仍不点击发布/发送控件。
+- 2026-06-24 追加 Popup 可视化当前页上下文扫描面板：`popup.html` 新增“当前页热点/上下文”区域和 `scan-page-context` 按钮；`popup.js` 新增 `scanPageContext()` / `renderPageContextPanel()` / `createDraftFromPageContext()`，把 `runSocialPageContextScanInPage()` 采集到的趋势、标题、正文摘要和选中文本显示成可点击卡片；点击卡片只生成待审草稿，不发布、不评论。`background.js` 新增 `socialPageContextScan` 桥，真实 Chrome 烟测已覆盖 Popup 预览页 `page-context-panel` 展开和草稿编辑器出现，截图 `output/playwright/social-pilot-browser-smoke-20260624/social-pilot-popup-context-20260624.png`。
+- 2026-06-23 追加 Telegram 审核/排程中控：Telegram 可用序号或草稿 ID 操作统一草稿队列，确认/打回只改 `review_status`，排程只写入 `extension_schedule` 的 `queued_for_owner_publish`；`/social_review_schedule_queue` 可查看 `awaiting_final_confirmation` 到点项，`/social_review_final_confirm` 只标记 `ready_for_manual_publish`，不点击发布器、不自动评论、不绕过最终人工页面操作。
+- 当前已放开“网页登录额度安全接力”的复制提示词/打开网页能力、“只读互动扫描 → 待审回复草稿”能力，以及“只读表现复盘 → 增长反馈池”能力，以及“增长复盘 → 下一批待审草稿”能力；但仍未放开自动调用网页模型、自动粘贴提交、图片生成、热点深采集、自动评论、排程外发和自动发布；必须在用户确认人设和内容后继续分阶段启用。

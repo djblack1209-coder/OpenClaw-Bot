@@ -167,6 +167,25 @@ export const clawbotTradingVote = (symbol: string, period: string) =>
 export const clawbotSocialBrowserStatus = () =>
   invokeWithLog<{ x: string; xhs: string }>('clawbot_api_social_browser_status');
 
+export const clawbotSocialBrowserControl = (action: string, platform = 'all') =>
+  invokeWithLog<Record<string, unknown>>('clawbot_api_social_browser_control', { action, platform });
+
+export const clawbotSocialOpsWorkspace = () =>
+  invokeWithLog<Record<string, unknown>>('clawbot_api_social_ops_workspace');
+
+export const clawbotSocialPersonaReview = () =>
+  invokeWithLog<Record<string, unknown>>('clawbot_api_social_persona_review');
+export const clawbotSocialPersonaReviewUpdate = (approved = true, reviewer = 'owner', notes = '') =>
+  invokeWithLog<Record<string, unknown>>('clawbot_api_social_persona_review_update', { approved, reviewer, notes });
+export const clawbotSocialReviewPack = (limit = 8) =>
+  invokeWithLog<Record<string, unknown>>('clawbot_api_social_review_pack', { limit });
+export const clawbotSocialStrategyUpdate = (strategyPreset: string, platform = 'x') =>
+  invokeWithLog<Record<string, unknown>>('clawbot_api_social_strategy_update', { strategyPreset, platform });
+export const clawbotSocialGrowthFeedback = (platform = 'x', limit = 6) =>
+  invokeWithLog<Record<string, unknown>>('clawbot_api_social_growth_feedback', { platform, limit });
+export const clawbotSocialGrowthDrafts = (platform = 'x', limit = 3) =>
+  invokeWithLog<Record<string, unknown>>('clawbot_api_social_growth_drafts', { platform, limit });
+
 // ── 交易状态 ──
 
 export const clawbotTradingStatus = () =>
@@ -210,6 +229,8 @@ export const clawbotSocialDraftUpdate = (index: number, text: string) =>
   invokeWithLog<Record<string, unknown>>('clawbot_api_social_draft_update', { index, text });
 export const clawbotSocialDraftDelete = (index: number) =>
   invokeWithLog<Record<string, unknown>>('clawbot_api_social_draft_delete', { index });
+export const clawbotSocialDraftReview = (index: number, approved = true, reviewer = 'owner') =>
+  invokeWithLog<Record<string, unknown>>('clawbot_api_social_draft_review', { index, approved, reviewer });
 export const clawbotSocialDraftPublish = (index: number) =>
   invokeWithLog<Record<string, unknown>>('clawbot_api_social_draft_publish', { index });
 

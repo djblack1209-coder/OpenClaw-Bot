@@ -498,7 +498,7 @@ INTENT_PARSER_PROMPT = """\
 ## 任务类型
 - investment: 投资分析、交易、持仓查询、策略回测
 - social: 社媒发帖、热点追踪、内容创作
-- shopping: 购物比价、优惠券、砍价
+- shopping: 购物比价、促销信息、砍价
 - booking: 餐厅/酒店/机票/医院预订
 - life: 快递追踪、日历管理、账单、旅行规划
 - code: 编程、开发、GitHub相关

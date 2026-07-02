@@ -1,4 +1,11 @@
 import { buildRelayWsUrl, isRetryableReconnectError, reconnectDelayMs } from './background-utils.js'
+import { buildDraftCreatePayload, buildPageProbePayload, buildPageProbeReportPayload, buildPerformanceSnapshotPayload, buildSocialApiUrl, buildTrendDraftPayload, detectSocialPlatform, mergeSocialSettings, syncSocialSettingsFromStatus } from './social-core.js'
+import {
+  runSocialFieldPlanInPage,
+  runSocialInteractionScanInPage,
+  runSocialPageContextScanInPage,
+  runSocialPerformanceScanInPage,
+} from './social-page-runner.js'
 
 const DEFAULT_PORT = 18792
 
@@ -61,6 +68,572 @@ async function getGatewayToken() {
   const stored = await chrome.storage.local.get(['gatewayToken'])
   const token = String(stored.gatewayToken || '').trim()
   return token || ''
+}
+
+async function getSocialSettings() {
+  const stored = await chrome.storage.local.get(['socialSettings'])
+  return mergeSocialSettings(stored.socialSettings || {})
+}
+
+async function fetchSocialExtensionStatus(payload = {}) {
+  const storedSettings = await getSocialSettings()
+  const incomingSettings = payload && typeof payload.settings === 'object' ? payload.settings : {}
+  const settings = mergeSocialSettings({ ...storedSettings, ...incomingSettings })
+  const response = await fetch(buildSocialApiUrl(settings, 'social/extension/status'), {
+    method: 'GET',
+    signal: AbortSignal.timeout(3000),
+  })
+  const contentType = String(response.headers.get('content-type') || '')
+  const json = contentType.includes('application/json') ? await response.json().catch(() => null) : null
+  if (!response.ok || json?.success === false) {
+    return { ok: false, status: response.status, error: json?.detail || json?.error || `OpenEverything API returned ${response.status}` }
+  }
+  const syncedSettings = syncSocialSettingsFromStatus(settings, json || {})
+  await chrome.storage.local.set({ socialSettings: syncedSettings })
+  return { ok: true, status: response.status, json, settings: syncedSettings }
+}
+
+async function updateSocialExtensionStatus(payload) {
+  const storedSettings = await getSocialSettings()
+  const incomingSettings = payload && typeof payload.settings === 'object' ? payload.settings : {}
+  const settings = mergeSocialSettings({ ...storedSettings, ...incomingSettings })
+  const response = await fetch(buildSocialApiUrl(settings, 'social/extension/status'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ ...(payload || {}), settings }),
+    signal: AbortSignal.timeout(3000),
+  })
+  const contentType = String(response.headers.get('content-type') || '')
+  const json = contentType.includes('application/json') ? await response.json().catch(() => null) : null
+  if (!response.ok) {
+    return { ok: false, status: response.status, error: json?.detail || `OpenEverything API returned ${response.status}` }
+  }
+  return { ok: true, status: response.status, json }
+}
+
+async function getActiveTabForSocial() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+  return tab || null
+}
+
+async function collectActiveTabPageContext(tabId) {
+  if (!tabId || !chrome.scripting?.executeScript) {
+    return { title: '', selection: '', headings: [], trends: [], bodyText: '' }
+  }
+  try {
+    const [result] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: runSocialPageContextScanInPage,
+      args: [{ action: 'scan_page_context' }],
+    })
+    return result?.result || {}
+  } catch (err) {
+    return {
+      title: '',
+      selection: '',
+      headings: [],
+      trends: [],
+      bodyText: '',
+      error: err instanceof Error ? err.message : String(err),
+    }
+  }
+}
+
+async function createSocialDraftFromActiveTab(payload = {}) {
+  const tab = await getActiveTabForSocial()
+  if (!tab) return { ok: false, status: 0, error: 'No active tab' }
+  const storedSettings = await getSocialSettings()
+  const incomingSettings = payload && typeof payload.settings === 'object' ? payload.settings : {}
+  const settings = mergeSocialSettings({ ...storedSettings, ...incomingSettings })
+  const platform = detectSocialPlatform(tab.url || '')
+  if (!platform.supported) {
+    return { ok: false, status: 0, error: '当前标签页不是 X / 小红书 / 闲鱼，无法生成运营草稿。' }
+  }
+  const pageContext = payload.page_context || await collectActiveTabPageContext(tab.id)
+  const requestPayload = buildDraftCreatePayload({ platform, tab, settings, pageContext })
+  const response = await fetch(buildSocialApiUrl(settings, 'social/extension/drafts'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(requestPayload),
+    signal: AbortSignal.timeout(5000),
+  })
+  const contentType = String(response.headers.get('content-type') || '')
+  const json = contentType.includes('application/json') ? await response.json().catch(() => null) : null
+  if (!response.ok || json?.success === false) {
+    return { ok: false, status: response.status, error: json?.detail || json?.error || `OpenEverything API returned ${response.status}` }
+  }
+  return { ok: true, status: response.status, json }
+}
+
+async function fetchSocialTrends(payload = {}) {
+  const storedSettings = await getSocialSettings()
+  const incomingSettings = payload && typeof payload.settings === 'object' ? payload.settings : {}
+  const settings = mergeSocialSettings({ ...storedSettings, ...incomingSettings })
+  const tab = await getActiveTabForSocial()
+  const platform = payload.platform
+    ? { id: String(payload.platform || 'x') }
+    : detectSocialPlatform(tab?.url || '')
+  const params = new URLSearchParams({
+    platform: platform.id || 'x',
+    limit: String(Math.min(12, Math.max(1, Number(payload.limit || 8)))),
+  })
+  const response = await fetch(buildSocialApiUrl(settings, `social/extension/trends?${params.toString()}`), {
+    method: 'GET',
+    signal: AbortSignal.timeout(7000),
+  })
+  const json = await response.json().catch(() => null)
+  if (!response.ok || json?.success === false) {
+    return { ok: false, status: response.status, error: json?.detail || json?.error || `OpenEverything API returned ${response.status}` }
+  }
+  return { ok: true, status: response.status, json }
+}
+
+
+async function fetchSocialGrowthFeedback(payload = {}) {
+  const storedSettings = await getSocialSettings()
+  const incomingSettings = payload && typeof payload.settings === 'object' ? payload.settings : {}
+  const settings = mergeSocialSettings({ ...storedSettings, ...incomingSettings })
+  const tab = await getActiveTabForSocial()
+  const platform = payload.platform
+    ? { id: String(payload.platform || 'x') }
+    : detectSocialPlatform(tab?.url || '')
+  const params = new URLSearchParams({
+    platform: platform.id || 'x',
+    limit: String(Math.min(12, Math.max(1, Number(payload.limit || 6)))),
+  })
+  const response = await fetch(buildSocialApiUrl(settings, `social/extension/growth-feedback?${params.toString()}`), {
+    method: 'GET',
+    signal: AbortSignal.timeout(5000),
+  })
+  const json = await response.json().catch(() => null)
+  if (!response.ok || json?.success === false) {
+    return { ok: false, status: response.status, error: json?.detail || json?.error || `OpenEverything API returned ${response.status}` }
+  }
+  return { ok: true, status: response.status, json }
+}
+
+async function createSocialGrowthDrafts(payload = {}) {
+  const storedSettings = await getSocialSettings()
+  const incomingSettings = payload && typeof payload.settings === 'object' ? payload.settings : {}
+  const settings = mergeSocialSettings({ ...storedSettings, ...incomingSettings })
+  const tab = await getActiveTabForSocial()
+  const platform = payload.platform
+    ? String(payload.platform || 'x')
+    : detectSocialPlatform(tab?.url || '').id || 'x'
+  const response = await fetch(buildSocialApiUrl(settings, 'social/extension/growth-drafts'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      platform,
+      limit: Math.min(6, Math.max(1, Number(payload.limit || 3))),
+      auto_publish_enabled: false,
+      external_actions_locked: true,
+      publishIntent: false,
+    }),
+    signal: AbortSignal.timeout(7000),
+  })
+  const json = await response.json().catch(() => null)
+  if (!response.ok || json?.success === false) {
+    return { ok: false, status: response.status, error: json?.detail || json?.error || `OpenEverything API returned ${response.status}` }
+  }
+  return { ok: true, status: response.status, json }
+}
+
+
+async function fetchSocialReviewPack(payload = {}) {
+  const storedSettings = await getSocialSettings()
+  const incomingSettings = payload && typeof payload.settings === 'object' ? payload.settings : {}
+  const settings = mergeSocialSettings({ ...storedSettings, ...incomingSettings })
+  const params = new URLSearchParams({
+    limit: String(Math.min(12, Math.max(1, Number(payload.limit || 6)))),
+  })
+  const response = await fetch(buildSocialApiUrl(settings, `social/review-pack?${params.toString()}`), {
+    method: 'GET',
+    signal: AbortSignal.timeout(7000),
+  })
+  const json = await response.json().catch(() => null)
+  if (!response.ok || json?.success === false) {
+    return { ok: false, status: response.status, error: json?.detail || json?.error || `OpenEverything API returned ${response.status}` }
+  }
+  return { ok: true, status: response.status, json }
+}
+
+async function reviewSocialPersona(payload = {}) {
+  const settings = await getSocialSettings()
+  const params = new URLSearchParams({
+    approved: payload.approved ? 'true' : 'false',
+    reviewer: String(payload.reviewer || 'owner'),
+    notes: String(payload.notes || ''),
+  })
+  const response = await fetch(buildSocialApiUrl(settings, `social/persona-review?${params.toString()}`), {
+    method: 'POST',
+    signal: AbortSignal.timeout(5000),
+  })
+  const json = await response.json().catch(() => null)
+  if (!response.ok || json?.success === false) {
+    return { ok: false, status: response.status, error: json?.detail || json?.error || `OpenEverything API returned ${response.status}` }
+  }
+  return { ok: true, status: response.status, json }
+}
+
+
+async function fetchSocialSchedule(payload = {}) {
+  const storedSettings = await getSocialSettings()
+  const incomingSettings = payload && typeof payload.settings === 'object' ? payload.settings : {}
+  const settings = mergeSocialSettings({ ...storedSettings, ...incomingSettings })
+  const params = new URLSearchParams({
+    limit: String(Math.min(100, Math.max(1, Number(payload.limit || 12)))),
+  })
+  const response = await fetch(buildSocialApiUrl(settings, `social/extension/schedule?${params.toString()}`), {
+    method: 'GET',
+    signal: AbortSignal.timeout(5000),
+  })
+  const json = await response.json().catch(() => null)
+  if (!response.ok || json?.success === false) {
+    return { ok: false, status: response.status, error: json?.detail || json?.error || `OpenEverything API returned ${response.status}` }
+  }
+  return { ok: true, status: response.status, json }
+}
+
+
+async function createSocialDraftFromTrend(payload = {}) {
+  const tab = await getActiveTabForSocial()
+  const storedSettings = await getSocialSettings()
+  const incomingSettings = payload && typeof payload.settings === 'object' ? payload.settings : {}
+  const settings = mergeSocialSettings({ ...storedSettings, ...incomingSettings })
+  const platform = payload.detected_platform || detectSocialPlatform(tab?.url || '')
+  const requestPayload = payload.page_context
+    ? { ...payload, settings }
+    : buildTrendDraftPayload({ platform, trend: payload.trend || payload, settings })
+  const response = await fetch(buildSocialApiUrl(settings, 'social/extension/drafts'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(requestPayload),
+    signal: AbortSignal.timeout(5000),
+  })
+  const json = await response.json().catch(() => null)
+  if (!response.ok || json?.success === false) {
+    return { ok: false, status: response.status, error: json?.detail || json?.error || `OpenEverything API returned ${response.status}` }
+  }
+  return { ok: true, status: response.status, json }
+}
+
+async function updateSocialDraft(payload = {}) {
+  const settings = await getSocialSettings()
+  const draftId = String(payload.draft_id || payload.id || '').trim()
+  if (!draftId) return { ok: false, status: 0, error: 'draft_id required' }
+  const response = await fetch(buildSocialApiUrl(settings, `social/extension/drafts/${encodeURIComponent(draftId)}`), {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      title: String(payload.title || ''),
+      text: String(payload.text || ''),
+    }),
+    signal: AbortSignal.timeout(5000),
+  })
+  const json = await response.json().catch(() => null)
+  if (!response.ok || json?.success === false) {
+    return { ok: false, status: response.status, error: json?.detail || json?.error || `OpenEverything API returned ${response.status}` }
+  }
+  return { ok: true, status: response.status, json }
+}
+
+async function reviewSocialDraft(payload = {}) {
+  const settings = await getSocialSettings()
+  const draftId = String(payload.draft_id || payload.id || '').trim()
+  if (!draftId) return { ok: false, status: 0, error: 'draft_id required' }
+  const params = new URLSearchParams({
+    approved: payload.approved === false ? 'false' : 'true',
+    reviewer: String(payload.reviewer || 'owner'),
+  })
+  const response = await fetch(buildSocialApiUrl(settings, `social/extension/drafts/${encodeURIComponent(draftId)}/review?${params.toString()}`), {
+    method: 'POST',
+    signal: AbortSignal.timeout(5000),
+  })
+  const json = await response.json().catch(() => null)
+  if (!response.ok || json?.success === false) {
+    return { ok: false, status: response.status, error: json?.detail || json?.error || `OpenEverything API returned ${response.status}` }
+  }
+  return { ok: true, status: response.status, json }
+}
+
+
+async function scheduleSocialDraft(payload = {}) {
+  const settings = await getSocialSettings()
+  const draftId = String(payload.draft_id || payload.id || '').trim()
+  if (!draftId) return { ok: false, status: 0, error: 'draft_id required' }
+  const response = await fetch(buildSocialApiUrl(settings, `social/extension/drafts/${encodeURIComponent(draftId)}/schedule`), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      scheduled_at: String(payload.scheduled_at || ''),
+      reviewer: String(payload.reviewer || 'owner'),
+    }),
+    signal: AbortSignal.timeout(5000),
+  })
+  const json = await response.json().catch(() => null)
+  if (!response.ok || json?.success === false) {
+    return { ok: false, status: response.status, error: json?.detail || json?.error || `OpenEverything API returned ${response.status}` }
+  }
+  return { ok: true, status: response.status, json }
+}
+
+
+async function finalConfirmSocialDraft(payload = {}) {
+  const settings = await getSocialSettings()
+  const draftId = String(payload.draft_id || payload.id || '').trim()
+  if (!draftId) return { ok: false, status: 0, error: 'draft_id required' }
+  const response = await fetch(buildSocialApiUrl(settings, `social/extension/drafts/${encodeURIComponent(draftId)}/final-confirm`), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ reviewer: String(payload.reviewer || 'owner') }),
+    signal: AbortSignal.timeout(5000),
+  })
+  const json = await response.json().catch(() => null)
+  if (!response.ok || json?.success === false) {
+    return { ok: false, status: response.status, error: json?.detail || json?.error || `OpenEverything API returned ${response.status}` }
+  }
+  return { ok: true, status: response.status, json }
+}
+
+async function autofillSocialDraft(payload = {}) {
+  const tab = await getActiveTabForSocial()
+  if (!tab?.id) return { ok: false, status: 0, error: 'No active tab' }
+  const platform = detectSocialPlatform(tab.url || '')
+  const requestedPlatform = String(payload.platform || '').trim()
+  if (!platform.supported) {
+    return { ok: false, status: 0, error: '当前标签页不是 X / 小红书 / 闲鱼，无法填入。' }
+  }
+  if (requestedPlatform && requestedPlatform !== platform.id) {
+    return { ok: false, status: 0, error: `草稿平台是 ${requestedPlatform}，当前标签页是 ${platform.id}，已阻止误填。` }
+  }
+  if (!chrome.scripting?.executeScript) {
+    return { ok: false, status: 0, error: 'Chrome scripting permission unavailable' }
+  }
+  const safePayload = {
+    platform: platform.id,
+    title: String(payload.title || '').slice(0, 120),
+    text: String(payload.text || payload.bodyText || '').slice(0, 3000),
+    bodyText: String(payload.bodyText || payload.text || '').slice(0, 2800),
+    fields: Array.isArray(payload.fields) ? payload.fields : [],
+    publishIntent: false,
+    allowButtonClick: false,
+  }
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: runSocialFieldPlanInPage,
+    args: [safePayload],
+  })
+  return { ok: true, status: 200, result: result?.result || { filled: false, platform: platform.id } }
+}
+
+async function reportSocialPageProbe(payload = {}) {
+  const settings = await getSocialSettings()
+  const response = await fetch(buildSocialApiUrl(settings, 'social/extension/page-probe'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload || {}),
+    signal: AbortSignal.timeout(3000),
+  })
+  const json = await response.json().catch(() => null)
+  if (!response.ok || json?.success === false) {
+    return { ok: false, status: response.status, error: json?.detail || json?.error || `OpenEverything API returned ${response.status}` }
+  }
+  return { ok: true, status: response.status, json }
+}
+
+async function probeSocialPageFields(payload = {}) {
+  const tab = await getActiveTabForSocial()
+  if (!tab?.id) return { ok: false, status: 0, error: 'No active tab' }
+  const platform = detectSocialPlatform(tab.url || '')
+  if (!platform.supported) {
+    return { ok: false, status: 0, error: '当前标签页不是 X / 小红书 / 闲鱼，无法检测填入点。' }
+  }
+  if (!chrome.scripting?.executeScript) {
+    return { ok: false, status: 0, error: 'Chrome scripting permission unavailable' }
+  }
+  const probePayload = buildPageProbePayload({ platformId: platform.id })
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: runSocialFieldPlanInPage,
+    args: [{ ...probePayload, ...(payload || {}) }],
+  })
+  const probeResult = result?.result || { ready: false, platform: platform.id, reason: 'no_probe_result' }
+  const reportPayload = buildPageProbeReportPayload({ platform, tab, probeResult })
+  const calibration = await reportSocialPageProbe(reportPayload).catch((err) => ({
+    ok: false,
+    status: 0,
+    error: err instanceof Error ? err.message : String(err),
+  }))
+  return {
+    ok: true,
+    status: 200,
+    result: probeResult,
+    calibration,
+    calibrationOk: Boolean(calibration?.ok),
+  }
+}
+
+
+
+async function scanSocialPageContext(payload = {}) {
+  const tab = await getActiveTabForSocial()
+  if (!tab?.id) return { ok: false, status: 0, error: 'No active tab' }
+  const platform = detectSocialPlatform(tab.url || '')
+  if (!platform.supported) {
+    return { ok: false, status: 0, error: '当前标签页不是 X / 小红书 / 闲鱼，无法扫描当前页上下文。' }
+  }
+  if (!chrome.scripting?.executeScript) {
+    return { ok: false, status: 0, error: 'Chrome scripting permission unavailable' }
+  }
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: runSocialPageContextScanInPage,
+    args: [{
+      ...(payload || {}),
+      platform: platform.id,
+      url: tab.url || payload.url || '',
+      title: tab.title || payload.title || '',
+      action: 'scan_page_context',
+      publishIntent: false,
+    }],
+  })
+  return {
+    ok: true,
+    status: 200,
+    result: result?.result || {
+      ready: false,
+      platform: platform.id,
+      action: 'scan_page_context',
+      headings: [],
+      trends: [],
+      bodyText: '',
+      auto_publish_enabled: false,
+      external_actions_locked: true,
+      publishIntent: false,
+      reason: 'no_scan_result',
+    },
+  }
+}
+
+async function scanSocialInteractions(payload = {}) {
+  const tab = await getActiveTabForSocial()
+  if (!tab?.id) return { ok: false, status: 0, error: 'No active tab' }
+  const platform = detectSocialPlatform(tab.url || '')
+  if (!platform.supported) {
+    return { ok: false, status: 0, error: '当前标签页不是 X / 小红书 / 闲鱼，无法扫描互动。' }
+  }
+  if (!chrome.scripting?.executeScript) {
+    return { ok: false, status: 0, error: 'Chrome scripting permission unavailable' }
+  }
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: runSocialInteractionScanInPage,
+    args: [{
+      ...(payload || {}),
+      platform: platform.id,
+      limit: Math.min(12, Math.max(1, Number(payload.limit || 8))),
+    }],
+  })
+  return {
+    ok: true,
+    status: 200,
+    result: result?.result || {
+      ready: false,
+      platform: platform.id,
+      action: 'scan_interactions',
+      signals: [],
+      auto_reply_enabled: false,
+      auto_publish_enabled: false,
+      external_actions_locked: true,
+      reason: 'no_scan_result',
+    },
+  }
+}
+
+
+
+async function scanSocialPerformance(payload = {}) {
+  const tab = await getActiveTabForSocial()
+  if (!tab?.id) return { ok: false, status: 0, error: 'No active tab' }
+  const platform = detectSocialPlatform(tab.url || '')
+  if (!platform.supported) {
+    return { ok: false, status: 0, error: '当前标签页不是 X / 小红书 / 闲鱼，无法采集表现。' }
+  }
+  if (!chrome.scripting?.executeScript) {
+    return { ok: false, status: 0, error: 'Chrome scripting permission unavailable' }
+  }
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: runSocialPerformanceScanInPage,
+    args: [{
+      ...(payload || {}),
+      platform: platform.id,
+      url: tab.url || payload.url || '',
+      title: tab.title || payload.title || '',
+    }],
+  })
+  return {
+    ok: true,
+    status: 200,
+    result: result?.result || {
+      ready: false,
+      platform: platform.id,
+      action: 'scan_performance',
+      metrics: {},
+      auto_publish_enabled: false,
+      external_actions_locked: true,
+      reason: 'no_scan_result',
+    },
+  }
+}
+
+async function recordSocialPerformance(payload = {}) {
+  const storedSettings = await getSocialSettings()
+  const incomingSettings = payload && typeof payload.settings === 'object' ? payload.settings : {}
+  const settings = mergeSocialSettings({ ...storedSettings, ...incomingSettings })
+  const safePayload = payload?.performance
+    ? { ...(payload || {}), auto_publish_enabled: false, external_actions_locked: true, publishIntent: false }
+    : buildPerformanceSnapshotPayload({
+        platform: { id: String(payload.platform || 'x') },
+        draft: { id: String(payload.draft_id || '') },
+        snapshot: payload || {},
+      })
+  const response = await fetch(buildSocialApiUrl(settings, 'social/extension/performance'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(safePayload),
+    signal: AbortSignal.timeout(5000),
+  })
+  const json = await response.json().catch(() => null)
+  if (!response.ok || json?.success === false) {
+    return { ok: false, status: response.status, error: json?.detail || json?.error || `OpenEverything API returned ${response.status}` }
+  }
+  return { ok: true, status: response.status, json }
+}
+
+function openSocialWebModel(payload = {}) {
+  const url = String(payload.open_url || '').trim()
+  const allowed = new Set([
+    'https://gemini.google.com/app',
+    'https://grok.com/',
+    'https://chatgpt.com/',
+  ])
+  if (!allowed.has(url)) {
+    return Promise.resolve({ ok: false, status: 0, error: '不支持的网页模型地址，已阻止打开。' })
+  }
+  if (payload.auto_submit || payload.auto_publish_enabled || payload.external_actions_locked === false) {
+    return Promise.resolve({ ok: false, status: 0, error: '网页模型接力只允许打开网页，不允许自动提交或发布。' })
+  }
+  return chrome.tabs.create({ url, active: true }).then((tab) => ({
+    ok: true,
+    status: 200,
+    tabId: tab?.id || null,
+    opened_url: url,
+    auto_submit: false,
+    auto_publish_enabled: false,
+    external_actions_locked: true,
+  }))
 }
 
 function setBadge(tabId, kind) {
@@ -962,26 +1535,185 @@ async function whenReady(fn) {
   return fn()
 }
 
-// Relay check handler for the options page. The service worker has
-// host_permissions and bypasses CORS preflight, so the options page
-// delegates token-validation requests here.
+// Options/Popup message bridge. The service worker has host_permissions and
+// can talk to the local OpenEverything API without asking users to paste Cookie.
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (msg?.type !== 'relayCheck') return false
-  const { url, token } = msg
-  const headers = token ? { 'x-openclaw-relay-token': token } : {}
-  fetch(url, { method: 'GET', headers, signal: AbortSignal.timeout(2000) })
-    .then(async (res) => {
-      const contentType = String(res.headers.get('content-type') || '')
-      let json = null
-      if (contentType.includes('application/json')) {
-        try {
-          json = await res.json()
-        } catch {
-          json = null
+  if (msg?.type === 'relayCheck') {
+    const { url, token } = msg
+    const headers = token ? { 'x-openclaw-relay-token': token } : {}
+    fetch(url, { method: 'GET', headers, signal: AbortSignal.timeout(2000) })
+      .then(async (res) => {
+        const contentType = String(res.headers.get('content-type') || '')
+        let json = null
+        if (contentType.includes('application/json')) {
+          try {
+            json = await res.json()
+          } catch {
+            json = null
+          }
         }
-      }
-      sendResponse({ status: res.status, ok: res.ok, contentType, json })
-    })
-    .catch((err) => sendResponse({ status: 0, ok: false, error: String(err) }))
-  return true
+        sendResponse({ status: res.status, ok: res.ok, contentType, json })
+      })
+      .catch((err) => sendResponse({ status: 0, ok: false, error: String(err) }))
+    return true
+  }
+
+  if (msg?.type === 'toggleRelayForActiveTab') {
+    whenReady(() => connectOrToggleForActiveTab())
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => sendResponse({ ok: false, error: err instanceof Error ? err.message : String(err) }))
+    return true
+  }
+
+  if (msg?.type === 'socialStatusUpdate') {
+    updateSocialExtensionStatus(msg.payload || {})
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ ok: false, status: 0, error: err instanceof Error ? err.message : String(err) }))
+    return true
+  }
+
+  if (msg?.type === 'socialStatusFetch') {
+    fetchSocialExtensionStatus(msg.payload || {})
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ ok: false, status: 0, error: err instanceof Error ? err.message : String(err) }))
+    return true
+  }
+
+  if (msg?.type === 'socialDraftCreate') {
+    createSocialDraftFromActiveTab(msg.payload || {})
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ ok: false, status: 0, error: err instanceof Error ? err.message : String(err) }))
+    return true
+  }
+
+  if (msg?.type === 'socialTrendsFetch') {
+    fetchSocialTrends(msg.payload || {})
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ ok: false, status: 0, error: err instanceof Error ? err.message : String(err) }))
+    return true
+  }
+
+  if (msg?.type === 'socialTrendDraftCreate') {
+    createSocialDraftFromTrend(msg.payload || {})
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ ok: false, status: 0, error: err instanceof Error ? err.message : String(err) }))
+    return true
+  }
+
+  if (msg?.type === 'socialScheduleFetch') {
+    fetchSocialSchedule(msg.payload || {})
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ ok: false, status: 0, error: err instanceof Error ? err.message : String(err) }))
+    return true
+  }
+
+  if (msg?.type === 'socialReviewPackFetch') {
+    fetchSocialReviewPack(msg.payload || {})
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ ok: false, status: 0, error: err instanceof Error ? err.message : String(err) }))
+    return true
+  }
+
+  if (msg?.type === 'socialPersonaReview') {
+    reviewSocialPersona(msg.payload || {})
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ ok: false, status: 0, error: err instanceof Error ? err.message : String(err) }))
+    return true
+  }
+
+  if (msg?.type === 'socialDraftUpdate') {
+    updateSocialDraft(msg.payload || {})
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ ok: false, status: 0, error: err instanceof Error ? err.message : String(err) }))
+    return true
+  }
+
+  if (msg?.type === 'socialDraftReview') {
+    reviewSocialDraft(msg.payload || {})
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ ok: false, status: 0, error: err instanceof Error ? err.message : String(err) }))
+    return true
+  }
+
+
+  if (msg?.type === 'socialDraftSchedule') {
+    scheduleSocialDraft(msg.payload || {})
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ ok: false, status: 0, error: err instanceof Error ? err.message : String(err) }))
+    return true
+  }
+
+
+  if (msg?.type === 'socialDraftFinalConfirm') {
+    finalConfirmSocialDraft(msg.payload || {})
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ ok: false, status: 0, error: err instanceof Error ? err.message : String(err) }))
+    return true
+  }
+
+  if (msg?.type === 'socialDraftAutofill') {
+    autofillSocialDraft(msg.payload || {})
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ ok: false, status: 0, error: err instanceof Error ? err.message : String(err) }))
+    return true
+  }
+
+  if (msg?.type === 'socialWebModelOpen') {
+    openSocialWebModel(msg.payload || {})
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ ok: false, status: 0, error: err instanceof Error ? err.message : String(err) }))
+    return true
+  }
+
+
+  if (msg?.type === 'socialPageContextScan') {
+    scanSocialPageContext(msg.payload || {})
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ ok: false, status: 0, error: err instanceof Error ? err.message : String(err) }))
+    return true
+  }
+
+  if (msg?.type === 'socialInteractionScan') {
+    scanSocialInteractions(msg.payload || {})
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ ok: false, status: 0, error: err instanceof Error ? err.message : String(err) }))
+    return true
+  }
+
+  if (msg?.type === 'socialPerformanceScan') {
+    scanSocialPerformance(msg.payload || {})
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ ok: false, status: 0, error: err instanceof Error ? err.message : String(err) }))
+    return true
+  }
+
+  if (msg?.type === 'socialPerformanceRecord') {
+    recordSocialPerformance(msg.payload || {})
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ ok: false, status: 0, error: err instanceof Error ? err.message : String(err) }))
+    return true
+  }
+
+  if (msg?.type === 'socialGrowthFeedbackFetch') {
+    fetchSocialGrowthFeedback(msg.payload || {})
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ ok: false, status: 0, error: err instanceof Error ? err.message : String(err) }))
+    return true
+  }
+
+  if (msg?.type === 'socialGrowthDraftsCreate') {
+    createSocialGrowthDrafts(msg.payload || {})
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ ok: false, status: 0, error: err instanceof Error ? err.message : String(err) }))
+    return true
+  }
+
+  if (msg?.type === 'socialPageProbe') {
+    probeSocialPageFields(msg.payload || {})
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ ok: false, status: 0, error: err instanceof Error ? err.message : String(err) }))
+    return true
+  }
+
+  return false
 })

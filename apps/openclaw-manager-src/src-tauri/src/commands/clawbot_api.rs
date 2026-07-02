@@ -187,6 +187,120 @@ pub async fn clawbot_api_social_browser_status() -> AppResult<Value> {
     api_get("/social/browser-status").await
 }
 
+/// 安全控制社媒专用浏览器（打开/登录/状态刷新，不允许发布/回复/删除）
+#[command]
+pub async fn clawbot_api_social_browser_control(
+    action: String,
+    platform: Option<String>,
+) -> AppResult<Value> {
+    let platform = platform.unwrap_or_else(|| "all".to_string());
+    api_post(
+        &format!(
+            "/social/browser-control?action={}&platform={}",
+            urlencoding_encode(&action),
+            urlencoding_encode(&platform),
+        ),
+        serde_json::json!({}),
+    )
+    .await
+}
+
+/// 获取统一浏览器运营工作台（X / 小红书 / 闲鱼）
+#[command]
+pub async fn clawbot_api_social_ops_workspace() -> AppResult<Value> {
+    api_get("/social/ops-workspace").await
+}
+
+/// 获取社媒热点抽象号人设提案与确认状态
+#[command]
+pub async fn clawbot_api_social_persona_review() -> AppResult<Value> {
+    api_get("/social/persona-review").await
+}
+
+/// 确认或打回社媒热点抽象号人设；不会触发发布
+#[command]
+pub async fn clawbot_api_social_persona_review_update(
+    approved: bool,
+    reviewer: Option<String>,
+    notes: Option<String>,
+) -> AppResult<Value> {
+    let reviewer = reviewer.unwrap_or_else(|| "owner".to_string());
+    let notes = notes.unwrap_or_default();
+    api_post(
+        &format!(
+            "/social/persona-review?approved={}&reviewer={}&notes={}",
+            approved,
+            urlencoding_encode(&reviewer),
+            urlencoding_encode(&notes),
+        ),
+        serde_json::json!({}),
+    )
+    .await
+}
+
+/// 获取待确认的人设 + X/小红书样稿包；只读，不会触发发布
+#[command]
+pub async fn clawbot_api_social_review_pack(limit: Option<u32>) -> AppResult<Value> {
+    let limit = limit.unwrap_or(8).clamp(1, 12);
+    api_get(&format!("/social/review-pack?limit={}", limit)).await
+}
+
+
+/// 从 App 中控更新 Chrome 插件 no-code 运营打法；只改设置摘要，不触发发布/评论
+#[command]
+pub async fn clawbot_api_social_strategy_update(
+    strategy_preset: String,
+    platform: Option<String>,
+) -> AppResult<Value> {
+    let platform = platform.unwrap_or_else(|| "x".to_string());
+    api_post(
+        "/social/extension/strategy",
+        serde_json::json!({
+            "strategyPreset": strategy_preset,
+            "platform": platform,
+            "auto_publish_enabled": false,
+            "external_actions_locked": true,
+        }),
+    )
+    .await
+}
+
+/// 获取 Chrome 插件增长复盘摘要；只读，不触发发布/评论/推广
+#[command]
+pub async fn clawbot_api_social_growth_feedback(
+    platform: Option<String>,
+    limit: Option<u32>,
+) -> AppResult<Value> {
+    let platform = platform.unwrap_or_else(|| "x".to_string());
+    let limit = limit.unwrap_or(6).clamp(1, 12);
+    api_get(&format!(
+        "/social/extension/growth-feedback?platform={}&limit={}",
+        urlencoding_encode(&platform),
+        limit,
+    ))
+    .await
+}
+
+/// 基于增长复盘生成下一批待审草稿；只进审核队列，不触发发布/评论
+#[command]
+pub async fn clawbot_api_social_growth_drafts(
+    platform: Option<String>,
+    limit: Option<u32>,
+) -> AppResult<Value> {
+    let platform = platform.unwrap_or_else(|| "x".to_string());
+    let limit = limit.unwrap_or(3).clamp(1, 6);
+    api_post(
+        "/social/extension/growth-drafts",
+        serde_json::json!({
+            "platform": platform,
+            "limit": limit,
+            "auto_publish_enabled": false,
+            "external_actions_locked": true,
+        }),
+    )
+    .await
+}
+
 /// 社媒系统运行状态
 #[command]
 pub async fn clawbot_api_social_status() -> AppResult<Value> {
@@ -315,6 +429,25 @@ pub async fn clawbot_api_social_draft_delete(index: u32) -> AppResult<Value> {
     resp.json::<Value>()
         .await
         .map_err(|e| AppError::serialization(format!("JSON error: {}", e)))
+}
+
+#[command]
+pub async fn clawbot_api_social_draft_review(
+    index: u32,
+    approved: bool,
+    reviewer: Option<String>,
+) -> AppResult<Value> {
+    let reviewer = reviewer.unwrap_or_else(|| "owner".to_string());
+    api_post(
+        &format!(
+            "/social/drafts/{}/review?approved={}&reviewer={}",
+            index,
+            approved,
+            urlencoding_encode(&reviewer),
+        ),
+        serde_json::json!({}),
+    )
+    .await
 }
 
 #[command]

@@ -7,9 +7,18 @@
 
 ## 一、当前状态与已知问题
 
+### 社媒运营插件排程与增长复盘 — 提交前验证通过
+
+2026-07-02 提交前收口验证完成：桌面端 Social 中控、Chrome Social Pilot、Telegram 社媒命令、后端 Social API、排程/最终确认、增长复盘和当前页上下文扫描均保持“只生成待审草稿/只读复盘/人工最终确认”的安全边界；仍不自动发布、不自动评论、不关注/私信、不推广。已清理失效生活自动化/微信优惠券与旧 MITM token 相关冗余路径。验证结果：`git diff --check` exit 0；后端 Python 编译通过；后端全量 pytest exit 0（进度日志统计 `1601 passed / 2 skipped / 0 failed`）；桌面端 `npm run build`、Tauri `cargo check`、Social 静态测试、Chrome 插件 Popup/social-core/page-runner 测试和真实浏览器 smoke 均通过。当前需要注意的边界仍是：真实外发/评论动作必须由用户在已登录页面最终人工确认，不能恢复自动外发。
+
+### Bot 心跳丢失误报 — gptoss 已恢复
+
+2026-07-02 05:49 MDT 已处理 `gptoss` 心跳丢失告警。根因是 `gptoss` 在 03:01:44 启动超时后，`MultiBot.__init__` 已提前把它写入健康检查和群聊路由，但启动失败后没有进入运行注册表，也没有注册自动恢复函数，导致健康检查持续报“Bot 心跳丢失 / 未注册重启函数”。现已把 Bot 健康/路由注册移动到 Telegram polling 启动成功之后，并新增回归测试防止缺 Token 或启动失败的 Bot 残留假心跳。重启 `ai.openclaw.clawbot-agent` 后，`GET /api/v1/status` 显示 qwen235b、gptoss、claude_sonnet、claude_haiku、deepseek_v3、claude_opus、free_llm 均 `alive=true`；新日志中 `gptoss 未注册重启函数=0`、`Bot 心跳丢失=0`。
+
+
 ### 公开仓库敏感告警清理 — 已处理当前可达内容
 
-2026-06-22 已开启 GitHub secret scanning / push protection 后，继续清理审核视角下的敏感告警：本地未推送历史、stash、旧本地实验分支和 Codex turn-diff / snapshot refs 中残留的 Google OAuth Client ID/Secret 已删除并 GC；当前 `main` 与 `origin/main` 同步，工作区干净；当前追踪树、可达 Git refs 和工作区均不包含被 GitHub Push Protection 拦截的 OAuth 值。微信笔笔省小程序 App ID 已从源码硬编码改为 `WECHAT_COUPON_APP_ID` 环境变量，公开仓库只保留占位符。GitHub 历史 secret alerts 已核对来源，涉及早期误提交的 `.openclaw` 运行配置、`node_modules`、`.venv312`、Telegram/OpenRouter/Slack/Discord/Google/微信等历史值；当前 open secret alerts 为 0，历史 alerts 已按 revoked 处理。后续仍建议在对应平台轮换/废弃这些旧凭证。
+2026-06-22 已开启 GitHub secret scanning / push protection 后，继续清理审核视角下的敏感告警：本地未推送历史、stash、旧本地实验分支和 Codex turn-diff / snapshot refs 中残留的 Google OAuth Client ID/Secret 已删除并 GC；当前 `main` 与 `origin/main` 同步，工作区干净；当前追踪树、可达 Git refs 和工作区均不包含被 GitHub Push Protection 拦截的 OAuth 值。已清理历史生活自动化敏感配置痕迹，公开仓库只保留必要占位符。GitHub 历史 secret alerts 已核对来源，涉及早期误提交的 `.openclaw` 运行配置、`node_modules`、`.venv312`、Telegram/OpenRouter/Slack/Discord/Google/微信等历史值；当前 open secret alerts 为 0，历史 alerts 已按 revoked 处理。后续仍建议在对应平台轮换/废弃这些旧凭证。
 
 ### 开源项目审核准备 — 已补齐基础治理材料
 
@@ -28,6 +37,60 @@
 
 ---
 
+### X 全自动运营任务 — 已切换为中英文热点追踪涨粉号
+
+2026-06-22 已按用户新方向把 X 自动运营从 AI/视频蒸馏垂直号切换为“中文/英文热点追踪 + 抽象好玩短推”：默认排程设计为 08:30 / 10:30 / 12:30 / 15:00 / 17:30 / 20:30（America/Denver）各尝试发布 1 条。链路现在优先抓微博/百度/知乎真实热榜、B站热榜、Google News 中文/英文 RSS、Hacker News Algolia front page，并用热度、排名、可吐槽性/抽象程度、中英文覆盖和安全风险评分；YouTube RSS/字幕蒸馏保留为低优先级补位，不再作为默认账号方向。此前 2026-06-22 11:35 MDT 已通过同一 LaunchAgent 真实自动发出 1 条推文，取证链接 `https://x.com/BonoDJblack/status/2069112204343779412`。剩余边界：微博/百度/知乎接口偶发超时会自动降级到 B站/HN/Google News；B站仍以标题/热榜级语义为主，若要更准地追评论梗/小红书/微博实时梗，后续建议接入 MediaCrawler 或平台登录态评论采集；为降低 X 风控，当前不做批量关注/评论/点赞。
+
+2026-06-23 已按用户要求切到“先确认人设/内容，再发布”模式：LaunchAgent 当前未加载，`x_auto_morning_post.py --publish-next` 未审核时只返回 `requires_review=true`，不会外发；桌面端 Social 页已能统一看到 X 自动运营草稿并执行“确认内容 / 打回 / 最终发布确认”。热点过滤已追加官方政治口号、硬新闻、核电/战争/枪击和 AI 垂直模型新闻降权/过滤，最新候选草稿保持 `review_status=pending`，等待用户确认人设与内容后再恢复外发。
+
+2026-06-23 追加统一“浏览器运营插件”工作台：后端新增只读聚合接口 `GET /api/v1/social/ops-workspace`，一次返回 X / 小红书 / 闲鱼三平台 SaaS 卡片、审核计数、人设确认、skills 审计和闲鱼客服状态；桌面端 Social 页优先使用该接口，失败再降级旧接口。当前判断：现有 `social-autopilot` Skill 与 `social-persona.md` 仍偏 AI/程序员/效率工具号，和用户想要的“追热点、抽象好玩、最快涨粉”不完全一致，因此继续保持人工确认闸口，不能恢复自动外发。
+
+2026-06-23 继续补齐“先确认人设内容”的产品闭环：新增 `social/persona-review` 人设确认流和 `persona_review.py` 状态文件，工作台会展示“热点抽象观察员”提案、样稿预览、确认/打回按钮。确认人设只保存方向，不会恢复自动外发；内容草稿仍必须逐条确认后才允许进入最终发布确认。
+
+2026-06-23 人设确认卡进一步接入真实待审草稿样稿：`social/ops-workspace` 会把当前 X/小红书待审核草稿整理为 `persona_check.review_samples`，前端优先展示这些真实样稿，避免用户只看静态模板无法判断内容风格。
+
+2026-06-23 继续收紧旧社媒自动驾驶安全边界：`SocialAutopilot` 现在固定处于审核模式，晚间生产出的 X / 小红书草稿默认是 `needs_review/pending`；午间自动回复/蹭评直接跳过；晚间发布任务即使遇到已确认草稿也不会自动外发，只提示到桌面端执行最终发布确认。统一工作台已暴露 `review_mode=true` 与 `external_actions_locked=true`，并把真实待审样稿上限扩到 6 条，平台卡片新增“下一步/样稿预览”。
+
+2026-06-23 补齐浏览器控制插件的安全操作入口：新增 `social/browser-control` 后端 API、Tauri IPC 和桌面端卡片按钮，允许在统一工作台里执行“打开 X / 打开小红书 / 登录 / 刷新状态”等安全动作；同一入口显式拒绝 publish/reply/delete 等外部变更动作，仍必须走草稿审核和最终发布确认。
+
+2026-06-23 追加只读审核包与开源轮子复查：新增 `GET /api/v1/social/review-pack`，一次返回“热点抽象观察员”人设提案、X/小红书真实待审样稿、guardrails、skill 审计和轮子复用判断；当前样稿 `sample_count=8`、`auto_publish_enabled=false`、`requires_owner_review=true`。已复查 `social-autopilot` Skill 和 `social-persona.md`：旧配置仍偏 AI 工具号与全自动互动，不直接启用；继续复用项目内 `sau_bridge`、`media_crawler_bridge`、`social_browser_worker.py`，并确认 GitHub 上 `NanmiCoder/MediaCrawler`（51,767⭐，覆盖小红书/B站/微博等采集）和 `dreammis/social-auto-upload`（12,811⭐，覆盖小红书/YouTube/Bilibili 等上传）可作为后续深度采集/搬运轮子。
+
+2026-06-23 Chrome 插件第一阶段已从 Browser Relay 壳升级为 `OpenEverything Social Pilot`：`manifest.json` 默认打开 `popup.html`，Popup 能识别 X / 小红书 / 闲鱼、启动/暂停本标签页运营状态、同步到后端 `GET/POST /api/v1/social/extension/status`；`options.html` 已变成 no-code SaaS 高级设置页，支持人设标签、主内容模型、网页登录额度优先、生图模型、热点来源、自动化强度、互动强度、本地 API Base URL 和 Relay 兼容配置。当前健康判断：插件已完成“平台识别 + 设置保存 + 状态同步 + 安全闸口”的骨架闭环，但仍未实现页面自动填入、网页登录免费额度自动调用、热点深采集、生图、排程发布和互动；这些能力继续受人工审核闸口保护。
+
+2026-06-23 Chrome 插件继续向“当前页/热点 → 待审草稿”推进：Popup 新增“根据当前页生成待审草稿”，后台只读采集当前标签页标题、选中文本、可见标题/短文本和少量正文摘要，通过 `POST /api/v1/social/extension/drafts` 写入统一社媒草稿审核队列；生成的草稿固定为 `needs_review/pending`，并继续强制 `auto_publish_enabled=false`、`external_actions_locked=true`。后续又补齐插件内审核、热点池、填入点检测、安全填入、待发布排程、插件人设与样稿确认面板、插件排程提醒面板、到点提醒和最终确认：`social-page-runner.js` 可单测验证小红书标题/正文拆分、X compose 合并填入和不点击发布按钮；`POST /api/v1/social/extension/drafts/{draft_id}/schedule` 只把已确认草稿写入 `extension_schedule`，`ops-workspace` 可见排程摘要；排程到点后转为 `awaiting_final_confirmation`，`GET /api/v1/social/extension/schedule` 会把队列和草稿预览同步到插件“看排程”面板，`final-confirm` 仅标记 `ready_for_manual_publish`，仍不调用发布器。当前仍未启用网页登录免费额度、生图、排程外发和自动互动；人设确认只代表方向确认，不等于发布授权，下一步应在真实已登录页面继续校准选择器。
+
+2026-06-23 继续补齐真实页面校准闭环：插件 `socialPageProbe` 完成当前页只读检测后，会把平台、URL、ready、可用字段名和失败原因通过 `POST /api/v1/social/extension/page-probe` 同步到中控 `page_calibration`，并丢弃 selector 等页面细节；Popup 会明确提示“校准结果已同步”或“本地检测成功但未同步中控”。该能力只用于判断 X / 小红书 / 闲鱼页面是否已打开可填输入框，仍不点击发布、发送、评论或关注按钮。
+
+2026-06-23 继续补强真实页面校准稳定性与冷启动闭环：`buildAutofillSelectors()` 已覆盖 X 嵌套 contenteditable / DraftEditor、小红书 Quill `.ql-editor` / aria-placeholder、闲鱼 placeholder / aria-label 聊天编辑器等常见真实页面变体；新增回归确保探测模式只读、不改写内容。App Social 的 `growth_draft_action` 在暂无增长样本时也保持可用，走 `fallback_mode=cold_start_hotspot_pool` 从热点池生成待审草稿；有高信号样本时继续复用增长反馈画像。Playwright 已用当前源码临时 API `127.0.0.1:18791` 截图验证按钮可点击且文案明确“不自动发布、不自动评论”。
+
+2026-06-23 继续补齐产品线 1 的 Telegram 中控审核闭环：新增 `/social_review_drafts`、`/social_review_approve`、`/social_review_reject`、`/social_review_schedule`、`/social_review_schedule_queue`、`/social_review_final_confirm` 和“查看待审草稿/确认草稿/打回草稿/排程草稿明天8点/查看社媒排程/最终确认草稿”等自然语言路由。Telegram 现在可以远程查看统一草稿队列、确认、打回、加入待发布排程、查看到点排程并做最终确认；序号与插件草稿 ID 均可用，中文口语时间会规整为带时区排程时间。安全边界不变：确认只改审核状态，排程只进入 `queued_for_owner_publish`，最终确认只标记 `ready_for_manual_publish`，不自动发布、不自动评论、不关注/私信、不推广。
+
+2026-06-23 热点池进一步升级为 MCN 选题卡：`GET /api/v1/social/extension/trends` 现在除标题/来源外，还按 X / 小红书 / 闲鱼返回目标人群、内容角度、平台打法、涨粉理由、风险等级、风险提示、执行步骤和 hook 模板；插件“抓热点”卡片会展示这些运营信号，并在生成热点草稿时把内容角度/打法/风险写入上下文。当前状态：更接近“追热点 + 平台打法 + 可执行内容”的运营产品，但仍需要真实账号数据反馈来做排序权重闭环。
+
+2026-06-23 草稿生成继续补齐平台化内容计划与素材计划：`POST /api/v1/social/extension/drafts` 现在为 X / 小红书 / 闲鱼草稿返回 `content_plan`、`image_plan`、`platform_style`、`format_checklist`、`safety_checklist`、`cost_route`；Popup 草稿编辑器新增“素材计划”卡片，可展示内容结构、封面提示词、图片素材提示词、安全清单和模型路由提示。图片计划默认 `auto_generate=false`，只给人工确认后的生图提示词，不自动消耗 GPT Image / Gemini / Grok 等网页或 API 额度；排程提醒回填草稿时也会保留素材计划，避免到点最终确认时丢失封面和安全边界。
+
+2026-06-23 继续补齐网页登录免费额度的安全用法：Chrome 插件新增“网页登录额度”卡片，可基于当前待审草稿生成 Gemini / Grok / ChatGPT 网页提示词，并只做“复制提示词 + 打开模型网页”。Background 白名单限制为 Gemini、Grok、ChatGPT 三个网页，且明确不自动粘贴、不自动提交、不自动生图、不自动发布；用户需要在网页手动提交后，把结果复制回插件继续审核。
+
+2026-06-23 继续补齐运营复盘/增长反馈闭环：Chrome 插件新增“采表现”入口，可在已发布内容页只读采集点赞、评论、转发、曝光、收藏等可见指标，并通过 `POST /api/v1/social/extension/performance` 写入 `extension_performance`、草稿 `performance_snapshots` 和 `growth_feedback`。该数据只用于后续热点排序、人设复盘和 MCN 选题权重，不提供推广/boost/刷量路径，也不会触发自动发布、评论或再发布。热点池已开始读取这些增长反馈画像：历史 `high_signal` 或高赞/高评/高曝光内容会给相似标题/标签候选增加 `growth_feedback_boost`，并在插件卡片展示“历史高信号”原因。新增 `GET /api/v1/social/extension/growth-feedback` 和插件“看复盘”面板，可直接查看历史高信号内容、关键指标、标签和下一步选题建议。
+
+
+
+2026-06-24 继续补齐产品线 1 的 Telegram 中控策略入口：新增 `/social_strategy [打法] [平台]`，并支持“切到X抽象热点打法 / 把社媒运营打法改成小红书生活攻略”等中文自然语言路由。Telegram 现在可以和 App/Chrome 共用同一个 `strategyPreset` / `strategy_summary`，远程切换财富前沿、抽象热点、小红书生活攻略、闲鱼成交客服等打法；该动作仍只改策略，不发布、不评论、不关注/私信、不推广。
+
+2026-06-24 继续补齐 no-code 运营打法闭环：Chrome 插件高级设置新增的 `strategyPreset` 已贯通到后端 `strategy_summary` 与 App Social 中控，当前支持自动匹配、X 财富前沿、X 抽象热点、小红书生活攻略、闲鱼成交客服五种打法；App 会展示当前运营打法、目标人群、内容重点和增长闭环，平台卡也能看到对应 `strategy_preset`；App 还可通过 no-code 下拉保存打法到 `POST /api/v1/social/extension/strategy`。这解决了“插件里选了打法，但 App/Telegram 中控看不到/改不了策略”的断点；安全边界不变，打法只影响待审草稿、内容计划、素材计划和热点排序，不授权自动发布或自动评论。
+
+2026-06-24 继续补齐三端状态一致性：Chrome Popup / Options 打开时会通过 Background 的 `socialStatusFetch` 读取 `GET /api/v1/social/extension/status`，把 App/Telegram 中控保存的合法 `strategyPreset` 自动回写到 Chrome 本地设置；同步过程继续保留本地 `automationLevel` / `interactionLevel` 安全默认值，避免任何远程状态打开自动发布或自动互动。Telegram `/social_strategy` 无参数时现在可只读查询当前打法、平台增长闭环、待审草稿、可发布未最终确认和排程数；带参数时才切换打法。
+
+2026-06-24 真实浏览器 QA 发现并修复 Chrome 插件 Options 高级设置页的表单语义细节：Gateway token 密码框此前不在真实 form 内，Chrome 会提示 `Password field is not contained in a form`。现已用 `<form id="social-settings-form">` 包住 no-code 设置区与底部操作区，保存按钮改为 `type="submit"`，`options.js` 监听 submit 并阻止默认跳转后保存；真实 Google Chrome 复验 `hasForm=true`、`tokenInsideForm=true`、`saveType=submit`、控制台无 warning/error，截图已保存到 `output/playwright/social-pilot-options-form-fixed-20260624.png`。该修复只改善设置页浏览器 UX，不改变发布/评论安全闸口。
+
+2026-06-24 继续把当前页热点/上下文采集收敛进共享页面执行器：`social-page-runner.js` 新增 `runSocialPageContextScanInPage()`，可只读采集 X 趋势/推文、小红书笔记标题/正文/评论、闲鱼商品/聊天/描述等信号，并返回 `selection`、`headings`、`trends`、`bodyText`。`background.js` 的当前页生成待审草稿链路已改为通过 `chrome.scripting.executeScript` 调用同一个 runner，真实 Chrome 烟测已覆盖三平台 `contextReady=true`、`contextSignals>0`、`buttonClicks=0`。这让“我打开平台页面 → 插件读当前热点/上下文 → 生成待审草稿”的入口更稳定，但仍只读采集，不点击发布/发送/评论按钮。
+
+2026-06-24 继续把“当前页热点/上下文采集”从后台能力做成插件内可见 no-code 面板：Popup 新增“当前页热点/上下文”区域和“扫当前页”按钮，扫描结果会以卡片展示趋势、标题、正文摘要和选中文本，点击卡片才会生成待审草稿。Background 新增 `socialPageContextScan` 桥接，仍复用共享 runner 且强制 `publishIntent=false` / `auto_publish_enabled=false`。真实 Chrome 烟测已额外打开 Popup 预览页，确认 `page-context-panel` 展开、草稿编辑器出现，并保存截图 `output/playwright/social-pilot-browser-smoke-20260624/social-pilot-popup-context-20260624.png`。
+
+2026-06-24 继续把 Chrome 插件主执行链路从单测推进到真实浏览器可重复验收：新增 `test/social-browser-smoke.mjs`，用本机 Google Chrome 模拟 X / 小红书 / 闲鱼页面，加载真实 `social-core.js` 和 `social-page-runner.js`，验证三平台都能识别 URL、探测输入框并把待审/已确认草稿安全填入页面。页面内已监听 Post / 发布 / 发送按钮点击，任何按钮点击都会让烟测失败；当前三平台结果均为 `ready=true`、`filled=true`、`buttonClicks=0`，截图位于 `output/playwright/social-pilot-browser-smoke-20260624/`。这证明 L1“自动填入页面但用户手动发布”已具备可重复 QA 证据，但仍不代表真实平台最终发布已放开。
+
+2026-06-23 继续补齐安全互动闭环：Chrome 插件新增“扫互动”入口，能在当前 X / 小红书 / 闲鱼页面只读扫描评论、聊天或可回复信号，并点击候选卡片生成 `chrome_extension_interaction_scan` 来源的待审回复草稿。该链路只读页面文本，不点击回复/发送/评论/发布按钮；Background 只提供 `socialInteractionScan`，不提供自动评论提交路径；后端仍把草稿固定为 `needs_review/pending`，确认前不会评论或外发。
+
 ## 当前系统状态: 🟠 可运行但未达到完美生产态, 待外部密钥轮换和生产边界收口
 
 | 指标 | 值 |
@@ -37,7 +100,7 @@
 | IBKR | ✅ 已连接 (DUP113460) |
 | API 池 | ✅ 139/142 活跃源 |
 | 闲鱼客服 | ✅ 自动回复活跃 |
-| 社媒自动驾驶 | ✅ 运行中 |
+| 社媒自动驾驶 | 🟡 草稿生成、素材计划、网页登录额度接力、只读互动扫描、增长复盘和 Telegram 审核/排程中控可运行；旧自动互动/自动发布已锁住，外部发布/评论必须走人工最终确认 |
 | 测试 | ✅ 后端全量 pytest 退出码 0，当前 pytest nodeids 1495；`test_api_routes_regression.py` 12/12 通过；Frist-API 157/157 通过；2026-05-09 319px 移动端批注修复后 `node --check src/app.js`、批注聚焦测试 57/57、`npm test` 157/157 通过；桌面端 `npx tsc --noEmit` 通过；OpenClaw CI run `25592516119` 通过；2026-05-08 复审确认本地必须走 `make test` 或 `.venv312/bin/python -m pytest`，不能直接用系统 `pytest` |
 | Frist-API 入口 | ✅ 唯一内容入口为 `frist-api.101-43-41-96.nip.io`；`101-43-41-96.nip.io` 只做 301 跳转，不再作为第二个网站直接展示 |
 | Frist-API | ✅ HTTPS Quick Tunnel 和裸 IP 测试端口均已恢复；本地链路测试和公网冒烟通过，用户端已补齐弹窗登录注册、失败/成功反馈、API Key 创建反馈、连通性刷新不跳教程、渠道连通性聚合展示、价格管理、官方模型命名清洗、Claude Code/Codex 跨模型家族一键导入、Claude 第三方推理真实菜单流程图、Codex 导入 Claude 模型流程图、Codex 默认 Playwright/Superpowers/open-computer-use MCP、无网页 mock 数据兜底、默认最强模型导出、数据看板、模型广场、一次性管理员身份码、图片生成网关、OpenCode `/openai/chat/completions` 兼容路由、Chat Completions 到 Responses 降级、上游信息清洗、五客户端导入、日卡/小时卡轮转、会话粘滞、流式透传、公开模式硬门槛和自定义余额邮件预警；2026-05-08 复验 `npm test` 为 153/153 通过，`npm audit --audit-level=moderate` 为 0 漏洞，公网首页 200、看板 200、未授权 `/v1/models` 401；2026-05-08 内置浏览器审计公网首页标题 `Frist-API`、控制台无 error/warn，并修复返回按钮箭头无障碍噪音；2026-05-08 已部署 CSS 修复到 `/opt/frist-api/apps/frist-api/src/styles.css`，备份 `/opt/frist-api/backups/styles_20260509110117_before_browser_audit.css`，`frist-api-server` healthy，公网首页 200、Dashboard 200、未授权 `/v1/models` 401；2026-05-08 复审发现账户弹窗密码字段缺少真实 form 语义，已按动作拆分表单、自动填充和回车提交回归；已部署表单修复到腾讯云，备份 `/opt/frist-api/backups/browser_form_20260508215051`，远端 `node --check src/app.js` 通过，公网内置浏览器复验 0 error/0 warning、箭头文本 0、账户表单 5 个；2026-05-09 New-API 已在腾讯云以 `calciumion/new-api:v1.0.0-rc.4` 启动并 healthy，因共享服务器 3000 端口被 `/opt/ccgame` 占用，实际绑定 `127.0.0.1:13000->3000`；公网 CC Switch 页面复验 0 error/0 warning、Dashboard 200、未登录不生成带 Key provider 链接、展示 21 个模型和独立 MCP deep link；临时 Key 验证 `/v1/models` 200 和用量接口 200，但真实聊天调用返回 503，根因是唯一 healthy 上游 Key 返回 401，需补充/轮换上游库存后才能形成完整用户调用闭环；已补后台 60 秒通道巡检和 Key 异常一次性补号提醒（Telegram/Webhook）；商业化自动运营仍需外部绑定真实品牌域名、商户平台开户、部署备份任务和执行历史数据迁移 |
@@ -190,6 +253,8 @@
 | TD-013 | ARCH_LIMIT | Frist-API 已将网关成功、慢线、失败和额度耗尽写入 `channelProbeEvents` 并返回 7/15/30 天 SLA 摘要；2026-05-09 已补独立 60 秒后台探测队列覆盖无人调用时段，并支持 Key 异常一次性补号提醒 | ✅ 已处理 |
 | TD-014 | TECH_DEBT | Python 测试环境存在依赖告警：`requests` 与 `urllib3/chardet/charset_normalizer` 版本组合不匹配，`jieba` 依赖 deprecated `pkg_resources`，`js2py` 使用 deprecated `co_lnotab`，部分调度测试路径有未 await coroutine warning；本轮未影响测试通过，但需后续清理 | 🟡 |
 | TD-015 | INFRA | GitHub Actions Node 20 运行时即将废弃；OpenClaw CI 已升级 `checkout@v6`、`setup-node@v6` 和 Node.js 24，run `25592516119` 通过且前端 typecheck 使用 Node 24；仍有 `actions/cache@v4`、`actions/setup-python@v5`、`astral-sh/setup-uv@v5` 的平台级 Node 20 预警，需等上游 action 发布兼容版本或后续单独替换 | 🟡 部分处理 |
+| TD-016 | ARCH_LIMIT | X 自动运营已从 AI/视频蒸馏垂直号切换为中英文热点追踪涨粉号，并进一步切到“草稿生成 + 人工确认后发布”：微博/百度/知乎/B站/Google News/HN 聚合、热点评分、语言配额、抽象短推模板、审核闸口、Social SaaS 驾驶舱、Chrome Social Pilot 第一阶段、当前页生成待审草稿、插件热点池选题、MCN 选题卡字段、插件草稿内容/素材计划、插件内编辑/确认/打回、已确认草稿加入待发布排程、插件人设与样稿确认面板、插件排程提醒面板、排程到点提醒与最终确认、安全填入页面但不发布、填入点检测计划、页面执行器模块化单测、真实页面选择器变体校准、页面校准结果同步中控、只读互动扫描生成待审回复草稿、只读表现复盘写入增长反馈池、增长反馈反哺热点排序、增长复盘可视化面板、App Social 中控增长复盘卡片、App/Chrome/Telegram 增长复盘反哺下一批待审热点草稿、无增长样本时冷启动热点池生成待审草稿、Telegram `/social_growth_feedback` 只读复盘命令与 `/social_growth_drafts` 待审草稿命令、Telegram `/social_review_drafts`/`approve`/`reject`/`schedule`/`schedule_queue`/`final_confirm` 审核排程中控、Chrome/App/后端 `strategyPreset` no-code 运营打法与 `strategy_summary` 已贯通，App 与 Telegram 均可保存策略但不授权外发，Chrome Popup/Options 已能从后端回拉打法避免三端长期不一致，Telegram `/social_strategy` 无参数可查询当前打法与审核状态，当前页热点/上下文采集器 `runSocialPageContextScanInPage` 已接入 Background，并升级为 Popup 可视化“扫当前页”面板且由单测/真实 Chrome 烟测覆盖，定时脚本防绕过已落地；LaunchAgent 当前未加载，需用户确认人设/内容并在真实页面校准后再恢复最终外发或评论动作 | 🟡 部分处理 |
+| TD-017 | TECH_DEBT | YouTube/Bilibili 蒸馏已保留为低优先级补位；当前热点号更需要评论梗/小红书/微博实时语义，已确认 agent-reach 的 X/YouTube/B站通道可用，小红书 OpenCLI 需安装 Chrome 扩展后才能完整使用；后续可继续接入 MediaCrawler、yt-dlp、youtube_transcript_api、bilibili_api 与 sau CLI 做深度蒸馏和多平台搬运 | 🟡 部分处理 |
 
 ---
 
