@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 _PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 _STATE_FILE = _PACKAGE_ROOT / "data" / "social_autopilot_state.json"
 _TIMEZONE = "Asia/Shanghai"
+_REVIEW_MODE = True
 
 
 def _alert_admin(message: str) -> None:
@@ -242,6 +243,10 @@ def job_noon_engage() -> None:
     """12:30 — 评论互动 + 蹭评"""
     logger.info("[Autopilot] === 午间互动 ===")
 
+    if _REVIEW_MODE:
+        _notify("跳过午间互动: 审核模式已开启，外部回复/蹭评需人工确认")
+        return
+
     try:
         from src.execution.social.worker_bridge import run_social_worker
 
@@ -331,7 +336,9 @@ def job_evening_produce() -> None:
                             "topic": title,
                             "text": result["text"],
                             "strategy": strategy,
-                            "status": "ready",
+                            "status": "needs_review",
+                            "review_status": "pending",
+                            "review_required_reason": "发布前请先确认人设和内容",
                             "created_at": now_et().isoformat(),
                         }
                         drafts.append(draft)
@@ -380,7 +387,29 @@ def job_night_publish() -> None:
         state = _load_state()
         drafts = state.get("drafts", [])
 
-        ready_drafts = [d for d in drafts if d.get("status") == "ready"]
+        ready_drafts = [
+            d
+            for d in drafts
+            if d.get("status") == "ready" and d.get("review_status") == "approved"
+        ]
+        if _REVIEW_MODE:
+            for draft in drafts:
+                if draft.get("status") == "ready" and draft.get("review_status") != "approved":
+                    draft["status"] = "needs_review"
+                    draft["review_status"] = draft.get("review_status") or "pending"
+                    draft["review_required_at"] = now_et().isoformat()
+                    draft["review_required_reason"] = "发布前请先确认人设和内容"
+            _save_state(state)
+            _notify("跳过发布: 审核模式已开启，请在桌面端点击最终发布确认")
+            return
+        for draft in drafts:
+            if draft.get("status") == "ready" and draft.get("review_status") != "approved":
+                draft["status"] = "needs_review"
+                draft["review_status"] = draft.get("review_status") or "pending"
+                draft["review_required_at"] = now_et().isoformat()
+                draft["review_required_reason"] = "发布前请先确认人设和内容"
+        if any(d.get("status") == "needs_review" for d in drafts):
+            _save_state(state)
         if not ready_drafts:
             _notify("跳过发布: 无待发草稿")
             return
@@ -901,6 +930,8 @@ class SocialAutopilot:
         return {
             "running": running,
             "enabled": state.get("enabled", False),
+            "review_mode": _REVIEW_MODE,
+            "external_actions_locked": _REVIEW_MODE,
             "jobs": jobs,
             "next_action": next_action,
             "next_time": next_time,

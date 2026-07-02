@@ -160,7 +160,7 @@ async def _search_via_tavily(keyword: str) -> list[dict]:
             return []
 
         # 构造搜索查询：关键词 + 黑五/折扣上下文
-        query = f"{keyword} Black Friday deals 2026 discount coupon"
+        query = f"{keyword} Black Friday deals 2026 discount promo"
         result = await _run_sync(
             client.search,
             query=query,

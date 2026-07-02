@@ -31,7 +31,6 @@ class ExecutionScheduler:
         self._last_stock_check_ts = 0.0
         self._stock_alert_cooldown: dict[str, float] = {}  # 库存预警冷却(每item 24h)
         self._last_price_watch_ts = 0.0  # 降价监控上次检查时间
-        self._last_coupon_date = ""  # 每日领券去重
         self._last_deal_scan_ts = 0.0  # 折扣搜集上次扫描时间
         # 外部依赖（注入）
         self.monitor_manager = None
@@ -79,7 +78,6 @@ class ExecutionScheduler:
 
             await self._run_daily_brief(now, brief_time)
             await self._run_morning_news(now)  # 每早自动推送科技早报
-            await self._run_daily_coupon(now)  # 每日自动领券
             await self._run_monitors(ts, monitor_interval)
             await self._run_social_operator(ts, social_op_interval)
             await self._run_bounty_scan(ts, bounty_interval)
@@ -181,41 +179,6 @@ class ExecutionScheduler:
                 logger.info("[Scheduler] 科技早报已自动推送")
         except Exception as e:
             logger.warning("[Scheduler] 科技早报推送失败: %s", e)
-
-    async def _run_daily_coupon(self, _now):
-        """每天自动领取微信笔笔省提现券
-
-        注意：此函数使用北京时间(Asia/Shanghai)判断触发时机，
-        而非调度器主循环的美东时间。因为领券场景在国内，
-        中午需要用外卖优惠券，必须在北京时间早上就完成领取。
-        """
-        from datetime import datetime
-        from zoneinfo import ZoneInfo
-
-        # 用北京时间判断，而不是主循环传入的美东时间
-        now_cn = datetime.now(ZoneInfo("Asia/Shanghai"))
-
-        coupon_hour = safe_int(os.getenv("COUPON_HOUR"), 7)  # 默认北京时间 07:00 领券
-        coupon_minute = safe_int(os.getenv("COUPON_MINUTE"), 0)
-        coupon_enabled = os.getenv("COUPON_ENABLED", "0").lower() in ("1", "true", "yes", "on")
-        if not coupon_enabled:
-            return
-        today = now_cn.strftime("%Y-%m-%d")
-        # 防重复：每天只领一次
-        if self._last_coupon_date == today:
-            return
-        if now_cn.hour != coupon_hour or abs(now_cn.minute - coupon_minute) > 1:
-            return
-        self._last_coupon_date = today
-        try:
-            from src.execution.wechat_coupon import auto_claim_coupon
-
-            result = await auto_claim_coupon()
-            if self._private_notify_func and result:
-                await self._private_notify_func(f"🎫 每日领券\n\n{result}")
-                logger.info("[Scheduler] 每日领券已执行: %s", result[:50])
-        except Exception as e:
-            logger.warning("[Scheduler] 每日领券失败: %s", e)
 
     async def _run_daily_brief(self, now, brief_time):
         if os.getenv("OPS_BRIEF_ENABLED", "").lower() not in ("1", "true", "yes", "on"):

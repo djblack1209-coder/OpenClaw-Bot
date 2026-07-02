@@ -46,8 +46,6 @@ class SystemStatus(BaseModel):
     memory_entries: int = 0
     # 闲鱼客服运行状态
     xianyu: dict = {}
-    # 微信领券功能状态
-    wechat: dict = {}
 
 
 # ============================================================

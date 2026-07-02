@@ -160,7 +160,7 @@ class ResilientHTTPClient:
             limits=httpx.Limits(max_connections=1, max_keepalive_connections=0),
             follow_redirects=follow_redirects,
             verify=verify,
-            # 显式禁用代理：防止领券等场景被 mitmproxy 系统代理干扰
+            # 显式禁用代理：防止本机临时代理干扰服务端直连请求
             proxy=None,
         )
 

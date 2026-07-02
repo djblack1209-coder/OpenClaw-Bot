@@ -319,8 +319,6 @@ def _match_chinese_command(text=None):
         cleaned,
     ):
         return ("intel", "")
-    if re.search(_PRE + r"(?:领券|笔笔省|领优惠券|提现券|领提现券|每日领券)" + _SUF, cleaned):
-        return ("coupon", "")
     if re.search(_PRE + r"(?:指标|运行指标|监控指标|运行数据)" + _SUF, cleaned):
         return ("metrics", "")
     if re.search(_PRE + r"(?:分流|分流规则|路由规则|话题分流|多bot分流|多机器人分流)" + _SUF, cleaned):
@@ -401,6 +399,48 @@ def _match_chinese_command(text=None):
     m_hotpost = re.search(r"(?:一键发文|热点发文|蹭热点发文|自动发文)\s+(.+)", cleaned)
     if m_hotpost:
         return ("social_hotpost", m_hotpost.group(1).strip())
+    # 社媒 no-code 运营打法 NL 触发：只切换策略，不自动发布/评论
+    if re.search("(?:切到|切换到|改成|换成|设置|保存).*(?:运营打法|打法|策略)", cleaned) or re.search("(?:抽象热点打法|财富前沿打法|小红书生活攻略|闲鱼成交客服)", cleaned):
+        return ("social_strategy", cleaned)
+
+    # 社媒待审草稿 Telegram 中控 NL 触发：只审核/排程，不自动外发
+    if re.search("查看待审草稿|待审草稿列表|社媒草稿队列|审核草稿列表", cleaned):
+        return ("social_review_drafts", "")
+    if re.search("查看社媒排程|待发布排程|排程队列|社媒排程列表", cleaned):
+        return ("social_review_schedule_queue", "")
+    m_final_confirm = re.search(r"(?:最终确认|最后确认|确认外发)(?:社媒)?草稿\s+([^\s]+)", cleaned)
+    if m_final_confirm:
+        return ("social_review_final_confirm", m_final_confirm.group(1).strip())
+    m_review_schedule = re.search(r"(?:排程|定时|预约)(?:社媒)?草稿\s+([^\s]+)(?:\s+(.+))?", cleaned)
+    if m_review_schedule:
+        draft_id = (m_review_schedule.group(1) or "").strip()
+        time_text = (m_review_schedule.group(2) or "").strip()
+        return ("social_review_schedule", f"{draft_id} {time_text}".strip())
+    m_review_approve = re.search(r"(?:确认|通过|批准|审核通过)(?:社媒)?草稿\s+([^\s]+)", cleaned)
+    if m_review_approve:
+        return ("social_review_approve", m_review_approve.group(1).strip())
+    m_review_reject = re.search(r"(?:打回|拒绝|驳回|不通过)(?:社媒)?草稿\s+([^\s]+)", cleaned)
+    if m_review_reject:
+        return ("social_review_reject", m_review_reject.group(1).strip())
+    # 社媒增长复盘反哺待审草稿 NL 触发
+    if re.search("增长复盘生成.*草稿|生成.*下一批.*草稿|下一批待审热点草稿|反哺草稿", cleaned):
+        if re.search("小红书", cleaned):
+            platform = "xhs"
+        elif re.search(r"(?:X|x|推特)", cleaned):
+            platform = "x"
+        else:
+            platform = ""
+        return ("social_growth_drafts", platform)
+
+    # 社媒增长复盘 NL 触发
+    if re.search("社媒增长复盘|增长复盘|运营复盘|X运营复盘|x运营复盘|小红书运营复盘", cleaned):
+        if re.search("小红书", cleaned):
+            platform = "xhs"
+        elif re.search(r"(?:X|x|推特)", cleaned):
+            platform = "x"
+        else:
+            platform = ""
+        return ("social_growth_feedback", platform)
     # v2.0: 社媒报告 NL 触发
     if re.search("社媒报告|社交报告|发文报告|运营报告|社媒数据", cleaned):
         return ("social_report", "")
@@ -652,7 +692,6 @@ class ChineseNLPMixin:
             "compact": self.cmd_compact,
             "news": self.cmd_news,
             "intel": self.cmd_intel,
-            "coupon": self.cmd_coupon,
             "metrics": self.cmd_metrics,
             "lanes": self.cmd_lane,
             "memory": self.cmd_memory,
@@ -664,6 +703,15 @@ class ChineseNLPMixin:
             "hot": self.cmd_hotpost,
             "post": self.cmd_post,
             "social_report": self.cmd_social_report,
+            "social_strategy": self.cmd_social_strategy,
+            "social_growth_feedback": self.cmd_social_growth_feedback,
+            "social_growth_drafts": self.cmd_social_growth_drafts,
+            "social_review_drafts": self.cmd_social_review_drafts,
+            "social_review_approve": self.cmd_social_review_approve,
+            "social_review_reject": self.cmd_social_review_reject,
+            "social_review_schedule": self.cmd_social_review_schedule,
+            "social_review_schedule_queue": self.cmd_social_review_schedule_queue,
+            "social_review_final_confirm": self.cmd_social_review_final_confirm,
             "xianyu_report": self.cmd_xianyu_report,
             "weekly": self.cmd_weekly,
             # ── 投资 & 交易 ──

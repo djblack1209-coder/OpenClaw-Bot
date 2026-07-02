@@ -72,7 +72,42 @@ export const api = {
   clawbotTradingVote: ipc.clawbotTradingVote,
 
   // ── 社媒浏览器状态 ──
-  clawbotSocialBrowserStatus: ipc.clawbotSocialBrowserStatus,
+  clawbotSocialBrowserStatus: () =>
+    isTauri() ? ipc.clawbotSocialBrowserStatus() : clawbotFetchJson('/api/v1/social/browser-status'),
+  clawbotSocialBrowserControl: (action: string, platform = 'all') =>
+    isTauri()
+      ? ipc.clawbotSocialBrowserControl(action, platform)
+      : clawbotFetchJson(`/api/v1/social/browser-control?action=${encodeURIComponent(action)}&platform=${encodeURIComponent(platform)}`, { method: 'POST' }),
+  clawbotSocialOpsWorkspace: () =>
+    isTauri() ? ipc.clawbotSocialOpsWorkspace() : clawbotFetchJson('/api/v1/social/ops-workspace'),
+  clawbotSocialPersonaReview: () =>
+    isTauri() ? ipc.clawbotSocialPersonaReview() : clawbotFetchJson('/api/v1/social/persona-review'),
+  clawbotSocialPersonaReviewUpdate: (approved = true, reviewer = 'owner', notes = '') =>
+    isTauri()
+      ? ipc.clawbotSocialPersonaReviewUpdate(approved, reviewer, notes)
+      : clawbotFetchJson(`/api/v1/social/persona-review?approved=${approved}&reviewer=${encodeURIComponent(reviewer)}&notes=${encodeURIComponent(notes)}`, { method: 'POST' }),
+  clawbotSocialReviewPack: (limit = 8) =>
+    isTauri() ? ipc.clawbotSocialReviewPack(limit) : clawbotFetchJson(`/api/v1/social/review-pack?limit=${limit}`),
+  clawbotSocialStrategyUpdate: (strategyPreset: string, platform = 'x') =>
+    isTauri()
+      ? ipc.clawbotSocialStrategyUpdate(strategyPreset, platform)
+      : clawbotFetchJson('/api/v1/social/extension/strategy', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ strategyPreset, platform }),
+        }),
+  clawbotSocialGrowthFeedback: (platform = 'x', limit = 6) =>
+    isTauri()
+      ? ipc.clawbotSocialGrowthFeedback(platform, limit)
+      : clawbotFetchJson(`/api/v1/social/extension/growth-feedback?platform=${encodeURIComponent(platform)}&limit=${limit}`),
+  clawbotSocialGrowthDrafts: (platform = 'x', limit = 3) =>
+    isTauri()
+      ? ipc.clawbotSocialGrowthDrafts(platform, limit)
+      : clawbotFetchJson('/api/v1/social/extension/growth-drafts', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ platform, limit }),
+        }),
 
   // ── 交易状态 ──
   clawbotTradingStatus: ipc.clawbotTradingStatus,
@@ -88,7 +123,8 @@ export const api = {
   clawbotSocialPublish: ipc.clawbotSocialPublish,
   clawbotSocialResearch: ipc.clawbotSocialResearch,
   clawbotSocialMetrics: ipc.clawbotSocialMetrics,
-  clawbotSocialPersonas: ipc.clawbotSocialPersonas,
+  clawbotSocialPersonas: () =>
+    isTauri() ? ipc.clawbotSocialPersonas() : clawbotFetchJson('/api/v1/social/personas'),
 
   // ── 社媒自动驾驶 ──
   clawbotAutopilotStatus: () =>
@@ -102,9 +138,14 @@ export const api = {
   // ── 社媒草稿管理 ──
   clawbotSocialDrafts: () =>
     isTauri() ? ipc.clawbotSocialDrafts() : clawbotFetchJson('/api/v1/social/drafts'),
-  clawbotSocialDraftUpdate: ipc.clawbotSocialDraftUpdate,
-  clawbotSocialDraftDelete: ipc.clawbotSocialDraftDelete,
-  clawbotSocialDraftPublish: ipc.clawbotSocialDraftPublish,
+  clawbotSocialDraftUpdate: (index: number, text: string) =>
+    isTauri() ? ipc.clawbotSocialDraftUpdate(index, text) : clawbotFetchJson(`/api/v1/social/drafts/${index}?text=${encodeURIComponent(text)}`, { method: 'PATCH' }),
+  clawbotSocialDraftDelete: (index: number) =>
+    isTauri() ? ipc.clawbotSocialDraftDelete(index) : clawbotFetchJson(`/api/v1/social/drafts/${index}`, { method: 'DELETE' }),
+  clawbotSocialDraftReview: (index: number, approved = true, reviewer = 'owner') =>
+    isTauri() ? ipc.clawbotSocialDraftReview(index, approved, reviewer) : clawbotFetchJson(`/api/v1/social/drafts/${index}/review?approved=${approved}&reviewer=${encodeURIComponent(reviewer)}`, { method: 'POST' }),
+  clawbotSocialDraftPublish: (index: number) =>
+    isTauri() ? ipc.clawbotSocialDraftPublish(index) : clawbotFetchJson(`/api/v1/social/drafts/${index}/publish`, { method: 'POST' }),
 
   // ── 图像生成 ──
   clawbotGenerateImage: ipc.clawbotGenerateImage,
@@ -299,6 +340,10 @@ export const api = {
   /** 查询闲鱼二维码扫码状态 */
   xianyuQRStatus: () =>
     clawbotFetchJson('/api/v1/xianyu/qr/status'),
+
+  /** 获取闲鱼综合状态 */
+  xianyuStatus: () =>
+    clawbotFetchJson('/api/v1/xianyu/status'),
 
   /** 获取闲鱼最近对话列表 */
   xianyuConversations: (limit: number = 20) =>

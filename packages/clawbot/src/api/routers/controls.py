@@ -159,7 +159,6 @@ def get_scheduler_status():
     static_tasks = [
         {"id": "daily_brief", "name": "每日运营简报", "cron": "08:00 ET", "enabled": True},
         {"id": "morning_news", "name": "科技早报推送", "cron": "08:00 ET", "enabled": True},
-        {"id": "daily_coupon", "name": "全平台领券", "cron": "07:00 北京", "enabled": True},
         {"id": "monitors", "name": "监控巡检", "cron": "每15分钟", "enabled": True},
         {"id": "social_operator", "name": "社媒自动驾驶", "cron": "可配间隔", "enabled": True},
         {"id": "bounty_scan", "name": "赏金猎人扫描", "cron": "每45分钟", "enabled": True},
@@ -186,7 +185,6 @@ def get_scheduler_status():
     _date_field_map: dict[str, str] = {
         "daily_brief": "_last_brief_date",
         "morning_news": "_last_news_date",
-        "daily_coupon": "_last_coupon_date",
     }
 
     tasks: list[dict[str, Any]] = []

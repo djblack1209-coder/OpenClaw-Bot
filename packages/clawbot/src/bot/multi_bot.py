@@ -159,6 +159,7 @@ class MultiBot(
         self.emoji = profile.get("emoji", "\U0001f916")
         self.role = profile.get("personality", "AI助手")
         self._base_system_prompt = profile.get("system_prompt", SOUL_CORE)
+        self._domains = profile.get("domains", [])
 
         self.max_messages = 30
         self.app = None
@@ -176,19 +177,25 @@ class MultiBot(
             name=self.bot_id,
         )
 
-        # 注册到路由器
+        # 注意：运行时注册必须等 Telegram polling 启动成功后再做。
+        # 否则启动超时/缺 Token 的 Bot 会残留成“假在线”路由和健康心跳。
+
+    def _register_runtime_services(self):
+        """启动成功后注册路由能力和健康检查，避免失败 Bot 残留。"""
         chat_router.register_bot(
             BotCapability(
                 bot_id=self.bot_id,
                 name=self.name,
                 username=self.username,
-                keywords=config.get("keywords", []),
-                domains=profile.get("domains", []),
+                keywords=self.config.get("keywords", []),
+                domains=self._domains,
             )
         )
 
-        # 注册到健康检查
-        health_checker.register_bot(self.bot_id)
+        if self.bot_id not in health_checker.get_status():
+            health_checker.register_bot(self.bot_id)
+        else:
+            health_checker.heartbeat(self.bot_id)
 
     @property
     def system_prompt(self) -> str:
@@ -362,6 +369,15 @@ class MultiBot(
         self.app.add_handler(CommandHandler("xianyu_style", self.cmd_xianyu_style))
         self.app.add_handler(CommandHandler("social_calendar", self.cmd_social_calendar))
         self.app.add_handler(CommandHandler("social_report", self.cmd_social_report))
+        self.app.add_handler(CommandHandler("social_strategy", self.cmd_social_strategy))
+        self.app.add_handler(CommandHandler("social_growth_feedback", self.cmd_social_growth_feedback))
+        self.app.add_handler(CommandHandler("social_growth_drafts", self.cmd_social_growth_drafts))
+        self.app.add_handler(CommandHandler("social_review_drafts", self.cmd_social_review_drafts))
+        self.app.add_handler(CommandHandler("social_review_approve", self.cmd_social_review_approve))
+        self.app.add_handler(CommandHandler("social_review_reject", self.cmd_social_review_reject))
+        self.app.add_handler(CommandHandler("social_review_schedule", self.cmd_social_review_schedule))
+        self.app.add_handler(CommandHandler("social_review_schedule_queue", self.cmd_social_review_schedule_queue))
+        self.app.add_handler(CommandHandler("social_review_final_confirm", self.cmd_social_review_final_confirm))
         self.app.add_handler(CommandHandler("model", self.cmd_model))
         self.app.add_handler(CommandHandler("pool", self.cmd_pool))
         self.app.add_handler(CommandHandler("keyhealth", self.cmd_keyhealth))
@@ -382,9 +398,6 @@ class MultiBot(
         self.app.add_handler(CommandHandler("deals", self.cmd_deals))
         self.app.add_handler(CommandHandler("pricewatch", self.cmd_pricewatch))
         self.app.add_handler(CommandHandler("intel", self.cmd_intel))
-        self.app.add_handler(CommandHandler("coupon", self.cmd_coupon))
-        self.app.add_handler(CommandHandler("test_token", self.cmd_test_token))
-        self.app.add_handler(CommandHandler("set_coupon_token", self.cmd_set_coupon_token))
         # Claude Code CLI 桥接 — /claude code <消息>（仅 Free LLM Bot 有效）
         self.app.add_handler(CommandHandler("claude", self.cmd_claude_code))
         self.app.add_handler(CallbackQueryHandler(self.handle_trade_callback, pattern=r"^itrade"))
@@ -447,6 +460,7 @@ class MultiBot(
             drop_pending_updates=True,
         )
 
+        self._register_runtime_services()
         logger.info(f"[{self.name}] 启动成功 - {self.role} ({self.model.split('/')[-1]})")
         return self
 

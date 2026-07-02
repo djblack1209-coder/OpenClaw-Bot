@@ -75,7 +75,7 @@ class ProductPrice:
     url: str = ""
     shop: str = ""
     original_price: float = 0.0
-    coupon: str = ""
+    promo: str = ""
     sales: str = ""
     source: str = ""  # 抽取来源标记: "css" / "llm" / "jina"
 

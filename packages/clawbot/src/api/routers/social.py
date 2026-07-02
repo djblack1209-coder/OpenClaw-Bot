@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Path, Query
+from fastapi import APIRouter, Body, HTTPException, Path, Query
 
 from ..error_utils import safe_error as _safe_error
 from ..rpc import ClawBotRPC
@@ -31,6 +31,253 @@ def get_social_browser_status():
         return ClawBotRPC._rpc_social_browser_status()
     except Exception as e:
         logger.exception("获取社媒浏览器状态失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
+
+
+@router.post("/social/browser-control", response_model=dict[str, Any])
+def control_social_browser(
+    action: str,
+    platform: str = "all",
+):
+    """执行安全浏览器控制动作：打开/登录/刷新状态，不允许发布或回复。"""
+    try:
+        return ClawBotRPC._rpc_social_browser_control(action=action, platform=platform)
+    except Exception as e:
+        logger.exception("社媒浏览器控制失败 (action=%s, platform=%s)", action, platform)
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
+
+
+@router.get("/social/ops-workspace", response_model=dict[str, Any])
+def get_social_ops_workspace():
+    """获取 X / 小红书 / 闲鱼统一浏览器运营工作台。"""
+    try:
+        return ClawBotRPC._rpc_social_ops_workspace()
+    except Exception as e:
+        logger.exception("获取社媒运营工作台失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
+
+
+@router.get("/social/persona-review", response_model=dict[str, Any])
+def get_social_persona_review():
+    """获取热点抽象号人设提案与确认状态。"""
+    try:
+        return ClawBotRPC._rpc_social_persona_review()
+    except Exception as e:
+        logger.exception("获取社媒人设确认状态失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
+
+
+@router.post("/social/persona-review", response_model=dict[str, Any])
+def review_social_persona(
+    payload: dict[str, Any] | None = Body(default=None),
+    approved: bool = True,
+    reviewer: str = "owner",
+    notes: str = "",
+):
+    """确认或打回热点抽象号人设；优先读取 JSON body，不触发任何发布。"""
+    try:
+        body = payload if isinstance(payload, dict) else {}
+        return ClawBotRPC._rpc_social_persona_review_update(
+            approved=bool(body.get("approved", approved)),
+            reviewer=str(body.get("reviewer", reviewer) or "owner"),
+            notes=str(body.get("notes", notes) or ""),
+        )
+    except Exception as e:
+        logger.exception("更新社媒人设确认状态失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
+
+
+@router.get("/social/review-pack", response_model=dict[str, Any])
+def get_social_review_pack(limit: int = Query(default=8, ge=1, le=12)):
+    """获取待确认的人设 + X/小红书样稿包；只读，不发布。"""
+    try:
+        return ClawBotRPC._rpc_social_review_pack(limit=limit)
+    except Exception as e:
+        logger.exception("获取社媒审核包失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
+
+
+@router.get("/social/extension/status", response_model=dict[str, Any])
+def get_social_extension_status():
+    """获取 Chrome 社媒运营插件状态，供 App/Telegram 中控展示。"""
+    try:
+        return ClawBotRPC._rpc_social_extension_status()
+    except Exception as e:
+        logger.exception("获取 Chrome 社媒插件状态失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
+
+
+@router.post("/social/extension/status", response_model=dict[str, Any])
+def update_social_extension_status(payload: dict[str, Any]):
+    """接收 Chrome 社媒运营插件状态上报；只保存安全摘要，不触发发布。"""
+    try:
+        return ClawBotRPC._rpc_social_extension_status_update(payload)
+    except Exception as e:
+        logger.exception("更新 Chrome 社媒插件状态失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
+
+
+
+@router.post("/social/extension/strategy", response_model=dict[str, Any])
+def update_social_extension_strategy(payload: dict[str, Any] | None = Body(default=None)):
+    """从 App/Telegram 中控更新 no-code 运营打法；只改设置摘要，不触发发布。"""
+    try:
+        return ClawBotRPC._rpc_social_extension_strategy_update(payload or {})
+    except Exception as e:
+        logger.exception("更新 Chrome 插件 no-code 运营打法失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
+
+@router.post("/social/extension/page-probe", response_model=dict[str, Any])
+def update_social_extension_page_probe(payload: dict[str, Any]):
+    """保存 Chrome 插件页面填入点探测结果；只登记校准状态，不触发发布。"""
+    try:
+        return ClawBotRPC._rpc_social_extension_page_probe_update(payload)
+    except Exception as e:
+        logger.exception("更新 Chrome 插件页面填入点探测失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
+
+
+@router.get("/social/extension/trends", response_model=dict[str, Any])
+def get_social_extension_trends(
+    platform: str = Query(default="x"),
+    limit: int = Query(default=8, ge=1, le=12),
+):
+    """获取 Chrome 插件热点池；只读候选选题，不触发发布或互动。"""
+    try:
+        return ClawBotRPC._rpc_social_extension_trends(platform=platform, limit=limit)
+    except Exception as e:
+        logger.exception("获取 Chrome 插件热点池失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
+
+
+@router.post("/social/extension/drafts", response_model=dict[str, Any])
+def create_social_extension_draft(payload: dict[str, Any]):
+    """把 Chrome 插件当前页信号生成待审草稿；只进审核队列，不触发发布。"""
+    try:
+        return ClawBotRPC._rpc_social_extension_draft_create(payload)
+    except Exception as e:
+        logger.exception("创建 Chrome 插件待审草稿失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
+
+
+@router.patch("/social/extension/drafts/{draft_id}", response_model=dict[str, Any])
+def update_social_extension_draft(
+    draft_id: str,
+    payload: dict[str, Any] | None = Body(default=None),
+    text: str = "",
+    title: str = "",
+):
+    """插件内编辑待审草稿；优先读取 JSON body，兼容旧 query 参数，不触发发布。"""
+    try:
+        body = payload if isinstance(payload, dict) else {}
+        return ClawBotRPC._rpc_social_extension_draft_update(
+            draft_id,
+            text=str(body.get("text", text) or ""),
+            title=str(body.get("title", title) or ""),
+        )
+    except Exception as e:
+        logger.exception("更新 Chrome 插件待审草稿失败 (draft_id=%s)", draft_id)
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
+
+
+@router.post("/social/extension/drafts/{draft_id}/review", response_model=dict[str, Any])
+def review_social_extension_draft(
+    draft_id: str,
+    approved: bool = True,
+    reviewer: str = "owner",
+):
+    """插件内确认/打回待审草稿；确认不等于发布。"""
+    try:
+        return ClawBotRPC._rpc_social_extension_draft_review(draft_id, approved=approved, reviewer=reviewer)
+    except Exception as e:
+        logger.exception("审核 Chrome 插件待审草稿失败 (draft_id=%s)", draft_id)
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
+
+
+@router.get("/social/extension/schedule", response_model=dict[str, Any])
+def get_social_extension_schedule(limit: int = Query(default=12, ge=1, le=100)):
+    """读取 Chrome 插件排程队列；只用于提醒和最终确认，不触发外发。"""
+    try:
+        return ClawBotRPC._rpc_social_extension_schedule_queue(limit=limit)
+    except Exception as e:
+        logger.exception("获取 Chrome 插件排程队列失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
+
+
+@router.post("/social/extension/drafts/{draft_id}/schedule", response_model=dict[str, Any])
+def schedule_social_extension_draft(
+    draft_id: str,
+    payload: dict[str, Any] | None = Body(default=None),
+    scheduled_at: str = "",
+    reviewer: str = "owner",
+):
+    """插件内把已确认草稿加入待发布排程；只排队，不触发外发。"""
+    try:
+        body = payload if isinstance(payload, dict) else {}
+        return ClawBotRPC._rpc_social_extension_draft_schedule(
+            draft_id,
+            scheduled_at=str(body.get("scheduled_at", scheduled_at) or ""),
+            reviewer=str(body.get("reviewer", reviewer) or "owner"),
+        )
+    except Exception as e:
+        logger.exception("排程 Chrome 插件草稿失败 (draft_id=%s)", draft_id)
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
+
+
+@router.post("/social/extension/drafts/{draft_id}/final-confirm", response_model=dict[str, Any])
+def final_confirm_social_extension_draft(
+    draft_id: str,
+    payload: dict[str, Any] | None = Body(default=None),
+    reviewer: str = "owner",
+):
+    """排程到点后的最终发布确认；只标记可手动发布，不触发外发。"""
+    try:
+        body = payload if isinstance(payload, dict) else {}
+        return ClawBotRPC._rpc_social_extension_schedule_final_confirm(
+            draft_id,
+            reviewer=str(body.get("reviewer", reviewer) or "owner"),
+        )
+    except Exception as e:
+        logger.exception("最终确认 Chrome 插件排程草稿失败 (draft_id=%s)", draft_id)
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
+
+
+
+
+@router.get("/social/extension/growth-feedback", response_model=dict[str, Any])
+def get_social_extension_growth_feedback(
+    platform: str = Query(default="x"),
+    limit: int = Query(default=6, ge=1, le=12),
+):
+    """读取 Chrome 插件增长复盘摘要；只读展示，不触发发布/评论/推广。"""
+    try:
+        return ClawBotRPC._rpc_social_extension_growth_feedback(platform=platform, limit=limit)
+    except Exception as e:
+        logger.exception("获取 Chrome 插件增长复盘摘要失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
+
+
+@router.post("/social/extension/growth-drafts", response_model=dict[str, Any])
+def create_social_extension_growth_drafts(payload: dict[str, Any] | None = Body(default=None)):
+    """基于增长复盘生成下一批待审草稿；只进入审核队列，不触发发布/评论。"""
+    try:
+        body = payload if isinstance(payload, dict) else {}
+        return ClawBotRPC._rpc_social_extension_growth_draft_batch(
+            platform=str(body.get("platform") or "x"),
+            limit=int(body.get("limit") or 3),
+        )
+    except Exception as e:
+        logger.exception("基于增长复盘生成 Chrome 插件待审草稿失败")
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
+
+
+@router.post("/social/extension/performance", response_model=dict[str, Any])
+def record_social_extension_performance(payload: dict[str, Any] | None = Body(default=None)):
+    """记录 Chrome 插件只读表现快照；只做复盘，不触发推广/刷量/发布。"""
+    try:
+        return ClawBotRPC._rpc_social_extension_performance_record(payload or {})
+    except Exception as e:
+        logger.exception("记录 Chrome 插件表现快照失败")
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
@@ -286,6 +533,20 @@ def delete_draft(index: int = Path(ge=0, description="草稿索引")):
         return ClawBotRPC._rpc_social_draft_delete(index)
     except Exception as e:
         logger.exception("删除草稿失败 (index=%d)", index)
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
+
+
+@router.post("/social/drafts/{index}/review", response_model=dict[str, Any])
+def review_draft(
+    index: int = Path(ge=0, description="草稿索引"),
+    approved: bool = True,
+    reviewer: str = "owner",
+):
+    """审核草稿：确认人设/内容后才允许发布。"""
+    try:
+        return ClawBotRPC._rpc_social_draft_review(index, approved=approved, reviewer=reviewer)
+    except Exception as e:
+        logger.exception("审核草稿失败 (index=%d)", index)
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 

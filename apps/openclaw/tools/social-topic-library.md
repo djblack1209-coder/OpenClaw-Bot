@@ -13,7 +13,7 @@
 |---|------|-------------------|--------------|
 | 1 | OpenClaw Skills安装指南 | "装了OpenClaw只会聊天？装上这几个Skills体验直接起飞" | "Most people use OpenClaw like a chatbot. Install these Skills and it becomes your OS." |
 | 2 | AI对比网购价格 | "让AI帮我对比了pdd和淘宝的价格，省了80块我都惊了" | "Built a price comparison agent with OpenClaw. Saved ¥80 in 10 minutes." |
-| 3 | AI自动领优惠券 | "别再手动翻优惠券了，教你让AI一键扫全网最低价" | "Coupon hunting is dead. Let AI do it." |
+| 3 | AI自动找折扣 | "别再手动翻活动页了，教你让AI一键扫全网好价" | "Deal hunting is dead. Let AI do it." |
 | 4 | AI整理文件/笔记 | "电脑里3000个文件乱成一锅粥？AI 10分钟帮我全部归类" | "3000 files organized in 10 min. Here's how." |
 | 5 | AI写周报/日报 | "周五下午5点还在憋周报？我现在30秒搞定" | "Friday 5pm weekly report panic? 30 seconds now." |
 | 6 | AI做PPT | "老板让我1小时出PPT，AI帮我20分钟交了稿" | "1-hour PPT deadline. Done in 20 min with AI." |
