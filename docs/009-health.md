@@ -91,7 +91,7 @@
 
 2026-06-23 继续补齐安全互动闭环：Chrome 插件新增“扫互动”入口，能在当前 X / 小红书 / 闲鱼页面只读扫描评论、聊天或可回复信号，并点击候选卡片生成 `chrome_extension_interaction_scan` 来源的待审回复草稿。该链路只读页面文本，不点击回复/发送/评论/发布按钮；Background 只提供 `socialInteractionScan`，不提供自动评论提交路径；后端仍把草稿固定为 `needs_review/pending`，确认前不会评论或外发。
 
-## 当前系统状态: 🟡 可运行且生产已切到 Oracle, 剩余为 SMTP 无回显输入和外部账号判断
+## 当前系统状态: 🟡 可运行且生产已切到 Oracle, 剩余为旧 Key 补录和外部账号判断
 
 | 指标 | 值 |
 |------|------|
@@ -103,7 +103,7 @@
 | 社媒自动驾驶 | 🟡 草稿生成、素材计划、网页登录额度接力、只读互动扫描、增长复盘和 Telegram 审核/排程中控可运行；旧自动互动/自动发布已锁住，外部发布/评论必须走人工最终确认 |
 | 测试 | ✅ 2026-07-03 收口验证已完成：后端 pytest `1606 passed / 2 skipped / 0 failed`；Frist-API Node 全量 `162 passed / 0 failed`；`make lint` 0 遗留；桌面端 typecheck/lint/build 通过；桌面端与 Frist-API `npm audit --audit-level=high --omit=dev` 均 0 高危；Python 3.12 环境 `pip check` 无破损依赖，`.venv312/bin/python -m pip_audit` 无已知漏洞；可提交文件 gitleaks 0 泄露；可达 Git 历史 gitleaks 0 泄露；`git diff --check` 0 问题。历史基线：后端 pytest 1601 passed / 2 skipped / 0 failed，Frist-API 157/157，桌面端 typecheck/build 通过；本地必须走 `make test` 或 `.venv312/bin/python -m pytest`，不能直接用系统 `pytest`。 |
 | Frist-API 入口 | ✅ 正式入口 `https://frist-api.245334.xyz` 已切到 Oracle ARM `150.136.73.15`，通过 Cloudflare proxied A + Apache/Origin CA 闭环，外网 Dashboard 200；旧腾讯云/nip.io 入口只保留为冷回滚，不再对用户宣称为可用兜底 |
-| Frist-API | ✅ AI_POOL 自动熔断、真实调用失败降级、客户可见模型真实上游优先和 AGPL 源码入口已处理。New-API 生产迁移已按授权执行：用户 19、token 1、充值/订单 4、兑换码 2、日志 162 已迁入，回滚目录为 `/opt/frist-api/backups/newapi-migration-20260703T005433Z`；Oracle 当前以 `frist-api.service` + `openclaw-newapi.service` 承接生产，R2 定时备份在 Oracle 启用。16 个历史 `enc:v1:` 用户 Key 因旧加密密钥缺失未迁移，必须重新生成/补录。SMTP 密码尚未安全落地，需 Carven 在终端无回显输入。 |
+| Frist-API | ✅ AI_POOL 自动熔断、真实调用失败降级、客户可见模型真实上游优先和 AGPL 源码入口已处理。New-API 生产迁移已按授权执行：用户 19、token 1、充值/订单 4、兑换码 2、日志 162 已迁入，回滚目录为 `/opt/frist-api/backups/newapi-migration-20260703T005433Z`；Oracle 当前以 `frist-api.service` + `openclaw-newapi.service` 承接生产，R2 定时备份在 Oracle 启用。16 个历史 `enc:v1:` 用户 Key 因旧加密密钥缺失未迁移，必须重新生成/补录。SMTP 密码已通过隐藏输入方式写入 Oracle root-only 环境文件，并用 Gmail 465/TLS 发出生产测试邮件。 |
 | Frist-API 批注修复 | ✅ 2026-05-09 已处理 Logo、状态灯、工作台折叠菜单、通道展示批注、管理员快捷入口、固定工作台导航、趋势图 hover 数据和首页当前项背景；423×718 浏览器复验无横向溢出，Logo 105px，状态灯 18px，导航默认折叠且切页后自动收起，顶栏“登录/身份码/管理”可操作，`.provider-models` 为 0，控制台 0 error/0 warning；同日追加 319×718 极窄屏修复，Dashboard 与 CC Switch 本地浏览器复验 `scrollWidth=319`，顶栏账户按钮 173px，CC Switch 用量说明宽 235px 且无横向裁切 |
 | Frist-API Oracle 生产 / 腾讯冷回滚 | ✅ 2026-07-03 已从国内腾讯云切到 Oracle ARM `150.136.73.15`：Oracle `/opt/frist-api` 运行 `frist-api.service`、`openclaw-newapi.service`、`apache2` 和 `frist-api-r2-backup.timer`；Cloudflare `frist-api.245334.xyz` 代理到 Oracle；公网 Dashboard 3/3 HTTP 200，未授权 `/v1/models` 3/3 HTTP 401；最新外网压测 Dashboard 100/100 HTTP 200（p95 0.792s），models 50/50 HTTP 401（p95 0.758s）。腾讯云 `/opt/frist-api` 仅保留冷回滚数据和备份，旧 `frist-api-server` / `openclaw-newapi` 容器已停止，旧 R2 timer 已禁用，避免双源探测和备份漂移。 |
 | ClawBot 腾讯云部署 | ✅ 2026-05-08 已单文件部署闲鱼管理页转义修复到 `/home/clawbot/clawbot/src/xianyu/xianyu_admin.py`；远端备份 `/home/clawbot/clawbot/backups/xianyu_admin_20260508155652_before_escape.py`；远端 `py_compile` 通过，`clawbot.service` 重启后 active |
@@ -244,7 +244,7 @@
 | TD-004 | TECH_DEBT | 历史 `pass` 已从 63 降到 49；剩余均为可选依赖降级、任务取消、幂等辅助或异常兜底路径，并补中文注释说明保留原因，不再静默误导主流程 | ✅ 已处理 |
 | TD-005 | TECH_DEBT | 历史 lint 问题已机械清理到 `make lint` 可通过；2026-07-02 fresh `make lint` 输出 `All checks passed!` | ✅ 已处理 |
 | TD-006 | ARCH_LIMIT | Frist-API JSON runtime → New-API 生产迁移已按授权执行：用户 19、token 1、充值/订单 4、兑换码 2、日志 162 已迁入，New-API adapter 已启用，回滚目录为 `/opt/frist-api/backups/newapi-migration-20260703T005433Z`；16 个历史 `enc:v1:` 用户 Key 因旧加密密钥缺失未迁移，需重新生成/补录 | ✅ 代码/迁移已处理，旧 Key 为人工补录 |
-| TD-007 | INFRA | 域名/Cloudflare/R2 不新购，已复用 `/Users/blackdj/Documents/VPS-Config` 既有资产并完成 Oracle 切流：`frist-api.245334.xyz` 为 Cloudflare proxied A → Oracle ARM `150.136.73.15` → Apache/Origin CA → `127.0.0.1:3180`；R2 备份 timer 在 Oracle enabled/active，腾讯旧 timer disabled/inactive。SMTP 密码仍需 Carven 终端无回显输入，不能由 Codex 写进命令历史 | ✅ 域名/R2/Oracle 生产已处理，SMTP 密码为人工安全输入 |
+| TD-007 | INFRA | 域名/Cloudflare/R2 不新购，已复用 `/Users/blackdj/Documents/VPS-Config` 既有资产并完成 Oracle 切流：`frist-api.245334.xyz` 为 Cloudflare proxied A → Oracle ARM `150.136.73.15` → Apache/Origin CA → `127.0.0.1:3180`；R2 备份 timer 在 Oracle enabled/active，腾讯旧 timer disabled/inactive。SMTP 密码已通过隐藏输入方式写入 Oracle `/etc/frist-api/frist-api.env` 和兼容 `.env`，生产测试邮件返回 `smtp_test=sent`；密码未写入命令历史/Git/文档正文 | ✅ 域名/R2/Oracle/SMTP 已处理，旧 Key 为人工补录 |
 | TD-008 | ARCH_LIMIT | 客户可见模型目录已改为健康上游 `/v1/models` / 真实探测优先；硬编码模型目录只用于后台审计排序，不再兜底展示不存在模型 | ✅ 已处理 |
 | TD-009 | TECH_DEBT | Frist-API `ccswitch://` 导入链接依赖用户已安装 CC Switch，浏览器无协议处理器时降级体验为空；已改为点击导入自动复制链接并显示短降级反馈 | ✅ 已处理 |
 | TD-010 | SECURITY | Frist-API 管理 API 失败认证不生成审计事件，暴力破解无法检测；已补脱敏审计事件且不记录提交的 token | ✅ 已处理 |
