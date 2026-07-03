@@ -44,28 +44,28 @@ except ImportError:
     HAS_DOCLING = False
 
 __all__ = [
+    "HAS_DOCLING",
+    "HAS_OPENPYXL",
+    "HAS_QRCODE",
     "BashTool",
-    "FileTool",
-    "WebTool",
-    "ImageTool",
     "CodeTool",
-    "MemoryTool",
     "ComfyUIClient",
+    "FileTool",
+    "ImageTool",
+    "MemoryTool",
+    "WebTool",
+    # Vision + Tavily
+    "analyze_image",
+    # Docling 文档理解
+    "convert_document",
+    "deep_research",
+    "export_portfolio",
     # 小工具模块
     "export_trades",
     "export_watchlist",
-    "export_portfolio",
-    "HAS_OPENPYXL",
-    "generate_qr",
     "generate_bot_invite",
-    "HAS_QRCODE",
-    # Vision + Tavily
-    "analyze_image",
+    "generate_qr",
     "quick_answer",
     "search_context",
-    "deep_research",
-    # Docling 文档理解
-    "convert_document",
     "summarize_document",
-    "HAS_DOCLING",
 ]

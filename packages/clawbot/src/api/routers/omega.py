@@ -90,7 +90,7 @@ async def omega_cost():
         return cc.get_weekly_report()
     except Exception as e:
         logger.exception("获取成本周报失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.get("/events", response_model=dict[str, Any])
@@ -103,7 +103,7 @@ async def omega_events(event_type: str = "", limit: int = Query(default=50, ge=1
         return {"events": bus.get_recent_events(event_type, limit)}
     except Exception as e:
         logger.exception("获取事件历史失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.get("/audit", response_model=dict[str, Any])
@@ -116,7 +116,7 @@ async def omega_audit(limit: int = Query(default=50, ge=1, le=500)):
         return {"operations": gate.get_recent_operations(limit)}
     except Exception as e:
         logger.exception("获取审计日志失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.get("/tasks", response_model=dict[str, Any])
@@ -129,7 +129,7 @@ async def omega_tasks():
         return {"tasks": brain.get_active_tasks()}
     except Exception as e:
         logger.exception("获取活跃任务失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.post("/process", response_model=dict[str, Any])
@@ -146,7 +146,7 @@ async def omega_process(
         return result.to_dict()
     except Exception as e:
         logger.exception("Brain API 消息处理失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.get("/investment/team", response_model=dict[str, Any])
@@ -163,7 +163,7 @@ async def omega_investment_team():
         }
     except Exception as e:
         logger.exception("获取投资团队状态失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.post("/investment/analyze", response_model=dict[str, Any])
@@ -191,7 +191,7 @@ async def omega_investment_analyze(symbol: str, market: str = "cn"):
         return analysis.to_dict()
     except Exception as e:
         logger.exception("投资分析失败 (symbol=%s, market=%s)", symbol, market)
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.get("/investment/backtest", response_model=dict[str, Any])
@@ -252,7 +252,7 @@ async def omega_investment_backtest(
         return result.to_dict()
     except Exception as e:
         logger.exception("策略回测失败 (symbol=%s, strategy=%s)", symbol, strategy)
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.get("/tools/jina-read", response_model=dict[str, Any])
@@ -285,13 +285,13 @@ async def omega_jina_read(url: str = Query(max_length=2048, description="要读�
             # 域名而非 IP — 做 DNS 解析后检查实际 IP（防 DNS 重绑定攻击）
             try:
                 resolved_ips = socket.getaddrinfo(parsed.hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
-                for family, _type, _proto, _canonname, sockaddr in resolved_ips:
+                for _family, _type, _proto, _canonname, sockaddr in resolved_ips:
                     resolved_ip = ipaddress.ip_address(sockaddr[0])
                     if resolved_ip.is_private or resolved_ip.is_loopback or resolved_ip.is_link_local:
                         logger.warning("[SSRF] 域名 %s 解析到内网 IP %s，已拦截", parsed.hostname, resolved_ip)
                         raise HTTPException(status_code=400, detail="Access to internal networks is not allowed")
             except socket.gaierror:
-                raise HTTPException(status_code=400, detail=f"无法解析域名: {parsed.hostname}")
+                raise HTTPException(status_code=400, detail=f"无法解析域名: {parsed.hostname}") from None
     try:
         from src.tools.jina_reader import jina_read
 
@@ -299,7 +299,7 @@ async def omega_jina_read(url: str = Query(max_length=2048, description="要读�
         return {"url": url, "content": content or "无法获取内容"}
     except Exception as e:
         logger.exception("Jina Reader 读取URL失败: %s", url)
-        raise HTTPException(status_code=502, detail=_safe_error(e))
+        raise HTTPException(status_code=502, detail=_safe_error(e)) from e
 
 
 @router.get("/tools/jina-search", response_model=dict[str, Any])
@@ -312,7 +312,7 @@ async def omega_jina_search(query: str = Query(max_length=500, description="搜�
         return {"query": query, "results": content or "无搜索结果"}
     except Exception as e:
         logger.exception("Jina Search 搜索失败: %s", query)
-        raise HTTPException(status_code=502, detail=_safe_error(e))
+        raise HTTPException(status_code=502, detail=_safe_error(e)) from e
 
 
 @router.post("/tools/generate-image", response_model=dict[str, Any])
@@ -327,7 +327,7 @@ async def omega_generate_image(
         return {"prompt": prompt, "image_url": url, "model": model}
     except Exception as e:
         logger.exception("AI 图像生成失败")
-        raise HTTPException(status_code=502, detail=_safe_error(e))
+        raise HTTPException(status_code=502, detail=_safe_error(e)) from e
 
 
 @router.post("/tools/generate-video", response_model=dict[str, Any])
@@ -343,7 +343,7 @@ async def omega_generate_video(
         return {"prompt": prompt, "video_url": url, "model": model}
     except Exception as e:
         logger.exception("AI 视频生成失败")
-        raise HTTPException(status_code=502, detail=_safe_error(e))
+        raise HTTPException(status_code=502, detail=_safe_error(e)) from e
 
 
 @router.get("/tools/media-models", response_model=dict[str, Any])
@@ -355,4 +355,4 @@ async def omega_media_models():
         return {"models": get_available_models()}
     except Exception as e:
         logger.exception("获取媒体模型列表失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e

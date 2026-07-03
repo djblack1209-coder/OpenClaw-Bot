@@ -5,6 +5,7 @@ export const DEFAULT_MODEL = 'claude-opus-4-6-thinking-c';
 export const DEFAULT_PUBLIC_MODEL = 'gpt-5.5';
 export const DEFAULT_USD_TO_CNY = 7.2;
 export const DISPLAY_USD_TO_CNY = DEFAULT_USD_TO_CNY;
+// 参考 OpenAI Models API list（2026-07-02 复核）：探测候选只用于补号探活，不作为客户可见模型目录兜底。
 export const DEFAULT_PROBE_MODELS = [
   'claude-opus-4-6-thinking-c',
   'claude-opus-4-6-c',
@@ -335,26 +336,60 @@ export function isCredentialRouteApproved(credential) {
   });
 }
 
+
+
 export function sortModelsByStrength(models = []) {
-  const order = [
-    'gpt-5.5-pro', 'gpt-5.5-c', 'gpt-5.5',
-    'gpt-5.4-pro', 'gpt-5.4-c', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano',
-    'gpt-image-2', 'gpt-image-1.5', 'gpt-image-1',
-    'gpt-5.3-codex',
-    'deepseek-v4-flash', 'deepseek-v4-pro',
-    'deepseek-chat', 'deepseek-reasoner',
-    'claude-opus-4-6-thinking-c', 'claude-opus-4-6-c', 'claude-sonnet-4-5-c',
-    'gemini-2.5-flash',
-  ];
-  return normalizeOfficialModelList(models).sort((left, right) => {
-    const leftRank = order.indexOf(left);
-    const rightRank = order.indexOf(right);
-    const normalizedLeft = leftRank === -1 ? Number.MAX_SAFE_INTEGER : leftRank;
-    const normalizedRight = rightRank === -1 ? Number.MAX_SAFE_INTEGER : rightRank;
-    if (normalizedLeft !== normalizedRight) return normalizedLeft - normalizedRight;
-    return left.localeCompare(right);
-  });
+  return normalizeOfficialModelList(models).sort(compareModelsByAuditableRules);
 }
+
+function compareModelsByAuditableRules(left, right) {
+  const leftScore = modelSortScore(left);
+  const rightScore = modelSortScore(right);
+  for (let index = 0; index < Math.max(leftScore.length, rightScore.length); index += 1) {
+    const delta = (leftScore[index] ?? 0) - (rightScore[index] ?? 0);
+    if (delta !== 0) return delta;
+  }
+  return left.localeCompare(right);
+}
+
+function modelSortScore(model) {
+  const value = String(model || '').toLowerCase();
+  const family = value.includes('gpt') || value.includes('image') || value.includes('dall')
+    ? 0
+    : value.includes('claude')
+      ? 1
+      : value.includes('deepseek')
+        ? 2
+        : value.includes('gemini')
+          ? 3
+          : 9;
+  const numbers = [...value.matchAll(/\d+(?:\.\d+)?/g)].map((match) => Number(match[0]));
+  const primary = numbers[0] || 0;
+  const secondary = numbers[1] || 0;
+  return [
+    family,
+    -primary,
+    -secondary,
+    modelCapabilityRank(value),
+    value.includes('image') || value.includes('dall') ? 2 : 0,
+    value.includes('codex') ? 3 : 0,
+  ];
+}
+
+function modelCapabilityRank(value) {
+  if (value.includes('pro') && !value.includes('deepseek')) return 0;
+  if (value.includes('opus')) return 0;
+  if (value.includes('thinking')) return 1;
+  if (value.includes('sonnet')) return 2;
+  if (value.includes('flash')) return 3;
+  if (value.includes('mini')) return 4;
+  if (value.includes('nano')) return 5;
+  if (value.includes('chat')) return 6;
+  if (value.includes('reasoner')) return 7;
+  if (value.includes('pro')) return 8;
+  return 2;
+}
+
 
 export function uniqueStrings(values) {
   return [...new Set(values.map((value) => normalizeOfficialModelName(value)).filter(Boolean))];
@@ -743,7 +778,7 @@ export function estimateCredentialWaste(credential) {
 }
 
 export function strongestModel(models = []) {
-  return sortModelsByStrength(models)[0] || DEFAULT_PUBLIC_MODEL;
+  return sortModelsByStrength(models)[0] || '';
 }
 
 export function isModelUnsupportedResponse(status, bodyText) {

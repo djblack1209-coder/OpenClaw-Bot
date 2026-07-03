@@ -200,7 +200,7 @@ def set_monthly_budget(user_id, budget: float, db_path=None) -> dict:
         return {"success": False, "error": str(e)}
 
 
-def get_monthly_summary(user_id: int, year_month: str = None, db_path=None) -> dict:
+def get_monthly_summary(user_id: int, year_month: str | None = None, db_path=None) -> dict:
     """月度财务汇总 — 收入/支出/结余/预算使用率/分类明细
 
     Args:

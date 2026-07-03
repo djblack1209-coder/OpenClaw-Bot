@@ -8,25 +8,25 @@
 
 # Frist-API 运营操作清单
 
-> 日期: 2026-05-03
-> 范围: 管理员首登、人工入账、支付接口、固定域名、邮箱和验证码
+> 日期: 2026-07-03
+> 范围: 管理员首登、人工入账、支付接口、固定域名、邮箱、验证码、New-API 迁移和 R2 备份
 
 ## 当前可运营边界
 
 Frist-API 现在不是只会展示页面的 MVP，已经能跑小范围真实验收: 用户注册登录、闲鱼/平台购买兑换码、用户兑换自动到账、管理员批量生成卡密、创建用户 Key、导出 Codex/OpenCode/Claude/OpenClaw/Hermes 配置，并通过 `/v1` 网关转发请求。
 
-但正式商业化投放前还有外部依赖必须由你开通。没有这些依赖时，主路径按“第三方平台售卖兑换码 + Frist-API 核销”运营，不能对外宣称官方商户自动支付、正式域名或完整生产化。
+当前商业化主路径按“闲鱼等第三方平台 C2C 售卖兑换码 + Frist-API 站内核销”运营；自动支付只作为未来备用能力，不是当前上线必需项。域名、Cloudflare、R2/备份目标不新购，统一复用 `/Users/blackdj/Documents/VPS-Config` 中已治理的公共资产与配置模块，避免两套文档各说各话。
 
 | 模块 | 当前状态 | 生产要求 |
 |------|------|------|
-| 访问入口 | 唯一公网入口收口到 `frist-api.101-43-41-96.nip.io`；裸域名只做 301 跳转，HTTPS 仍需自有域名或 Tunnel | 固定品牌域名 + HTTPS |
-| 充值 | 主路径改为管理端生成兑换码、闲鱼等平台售卖、用户端核销自动到账；商户支付代码保留为未来备用 | 平台售卖链接、自动发货规则、兑换码对账和库存告警 |
-| 价格 | 管理端可直接编辑套餐和模型价格 JSON | 接支付回调后增加价格版本审计和生效审批 |
+| 访问入口 | 过渡入口 `http://frist-api.101-43-41-96.nip.io` 已可外网访问；正式入口 `https://frist-api.245334.xyz` 已通过 Cloudflare proxied A + 源站 Origin CA 证书闭环，外网 Dashboard 冒烟返回 HTTP 200 | 固定 HTTPS 入口 + nip.io 兜底入口均已冒烟 |
+| 充值 | 主路径为管理端生成兑换码、闲鱼等平台售卖、用户端核销自动到账；商户支付代码保留但当前不要求开通 | 平台售卖链接、自动发货规则、兑换码对账和库存告警 |
+| 价格 | 管理端可直接编辑套餐和模型价格 JSON | 兑换码售卖前人工确认价格；若未来恢复自动支付，再增加价格版本审计和生效审批 |
 | 邮箱 | 已支持余额预警、注册验证码和找回密码 SMTP 邮件 | 企业邮箱或稳定邮件服务商 + 发信监控 |
-| 防刷 | 轻量验证码 + 登录限流 | Cloudflare Turnstile + Redis 限流 |
-| 数据 | JSON 运行数据文件，用户 Key 和上游 rawKey 已做字段加密 | SQLite WAL 或 PostgreSQL + 备份 |
+| 防刷 | 轻量验证码 + 登录限流；单实例下内存态可接受 | 若水平扩展再接 Turnstile + Redis/SQLite 限流 |
+| 数据 | 生产 New-API 迁移已按授权执行：用户/余额/订单/兑换码/日志已迁入 New-API，历史 `enc:v1:` 用户 Key 因旧加密密钥缺失未伪造迁移；R2 定时备份已启用 | New-API 数据库 + VPS-Config 既有 R2/备份体系 |
 | 管理员 | 一次性身份码 + 管理登录态 | 管理员 2FA + 审计 |
-| 模型列表 | 上游探测 + 内置兜底 | 上游 `/v1/models` + 官方目录校验 + 后台排序 |
+| 模型列表 | 客户可见模型只来自健康上游 `/v1/models` / 真实探测；内置目录仅做后台审计排序参考 | 定期审计上游真实模型和价格 |
 | 上游来源 | 授权供应商余额站/自有额度为主；CPA JSON、chong 只作为人工审核备用渠道登记 | 禁止把批量 OAuth Session、来路不明 JSON 号源或规避风控的账号池默认当作生产库存 |
 
 ## 腾讯云部署摘要
@@ -39,7 +39,7 @@ Frist-API 在共享腾讯云服务器上按“小服务独立端口 + 反向代�
 | 容器 | `frist-api-server` |
 | 本地服务 | `http://127.0.0.1:3180` |
 | 公网入口 | `frist-api.101-43-41-96.nip.io` 反代到 `127.0.0.1:3180`；`101-43-41-96.nip.io` 不直接服务页面 |
-| HTTPS 测试入口 | Cloudflare Quick Tunnel |
+| HTTPS 正式入口 | `https://frist-api.245334.xyz` 通过 Cloudflare proxied A 指向腾讯云 Nginx，源站使用 Cloudflare Origin CA 证书，Dashboard 外网冒烟 HTTP 200 |
 | 运行数据 | `data/frist-api/runtime/runtime.json`，含用户 Key 和上游 Key，禁止提交 Git |
 | 环境变量 | 只放服务器本机环境文件，禁止写入仓库 |
 
@@ -51,21 +51,21 @@ Frist-API 在共享腾讯云服务器上按“小服务独立端口 + 反向代�
 4. 普通 `/admin.html` 应返回 404；只有登录账号完成一次性管理员身份码激活后才显示运营入口。
 5. 跑 `apps/frist-api/deploy/smoke-test.sh http://127.0.0.1:3180 "$FRIST_API_ADMIN_PAGE_CODE"`，再用公网入口跑一次冒烟。
 
-正式开放陌生付费用户前，必须补齐固定品牌域名、HTTPS、SMTP 注册验证/找回密码、Turnstile、真实支付回调、管理员 2FA、数据库备份和监控告警。Quick Tunnel 只适合外部实测，不是长期入口。
+正式开放陌生付费用户前，仍需确认 SMTP 密码已通过无回显方式写入服务器环境变量并跑通测试邮件；New-API 数据库、R2 备份和 Cloudflare DNS 代码侧已落地。支付当前走闲鱼兑换码，不把微信/支付宝/Stripe 商户自动支付作为上线必备。
 
 ## 你需要人工开通的服务
 
 | 优先级 | 服务 | 你要准备的字段 | 我接入后的接口 |
 |------|------|------|------|
-| P0 | 域名和 Cloudflare / 免费 DNS | 自有域名优先；无域名时先用 `sslip.io`/`nip.io` 指向服务器 IP | `https://你的域名/` 和 `https://你的域名/v1` |
-| P0 | 支付平台 | API Key、商户号、AppID、签名密钥、公钥、回调域名 | `/api/frist/payments/wechat/notify`、`/api/frist/payments/alipay/notify` |
-| P0 | 备份目标 | 对象存储 Bucket、访问密钥或独立备份机路径 | 每日备份和恢复演练脚本 |
-| P1 | SMTP 邮箱 | 主机、端口、用户名、应用密码、发件邮箱 | 余额预警、注册验证、找回密码已接入 |
-| P1 | Turnstile | Site Key、Secret Key、允许域名 | 注册登录真实人机校验 |
+| P0 | 域名和 Cloudflare / 免费 DNS | 已复用 `/Users/blackdj/Documents/VPS-Config` 的 `config/domain-routing.public.json`、`config/cloudflare-assets.public.json`，不新购域名；正式主机名为 `frist-api.245334.xyz` | `https://frist-api.245334.xyz/` 和 `https://frist-api.245334.xyz/v1`；nip.io 继续保留为兜底 |
+| P0 | 兑换码售卖平台 | 闲鱼商品/SKU、自动发货规则、兑换码库存和对账表 | Frist-API `#redeem` 核销；不需要自动支付商户资质 |
+| P0 | 备份目标 | 已复用 VPS-Config 既有 R2/对象存储备份资产；密钥只在服务器环境文件和私有凭据仓，未写入仓库 | 每日 R2 timer 已启用，最近一次手动上传返回 HTTP 200 |
+| P1 | SMTP 邮箱 | 主机、端口、用户名、应用密码、发件邮箱；Gmail 只作为短期测试，密码只能写服务器环境变量 | 余额预警、注册验证、找回密码已接入 |
+| P1 | Turnstile | 复用 VPS-Config / Cloudflare 账号申请的 Site Key、Secret Key、允许域名；Secret 只进服务器环境变量 | 注册登录真实人机校验 |
 | P1 | 告警 Webhook | Telegram、企业微信、飞书或 OpenClaw 通知地址 | 低库存、5xx、支付失败、异常扣费告警 |
 | P2 | 合规文档 | 服务条款、退款规则、隐私政策、AGPL 源码入口 | 页面页脚和订单确认页展示 |
 
-不要把 API Key、Webhook Secret、商户密钥、SMTP 密码或服务器密码发到聊天里。拿到后写进服务器本机环境文件，或让我通过 SSH 在服务器上创建只读权限的生产环境文件。
+不要把 API Key、Webhook Secret、商户密钥、SMTP 密码或服务器密码发到聊天里。SMTP 密码即使用户在聊天里给过，也不能由 Codex 写进命令历史或最终报告；正确做法是在服务器终端用无回显 `read -rsp` 输入一次，再写入 `/opt/frist-api/.env`。
 
 ## 备用渠道人工风控
 
@@ -210,15 +210,11 @@ Frist-API 管理端现在可以登记自用 ChatGPT Plus 账号资产，但它�
 
 如果历史测试账号已经有一部分日卡额度，只补差额即可。例如已有 `¥48.00`，本次补到 60 刀只需要再入账 `¥384.00`，补完后总额度是 `¥432.00`。
 
-## 自动支付需要你人工准备的东西
+## 自动支付备用说明（当前不推进）
 
-国内自动支付建议按这个顺序推进:
+当前正式收款主路径是闲鱼等第三方平台 C2C 售卖兑换码，再由 Frist-API `#redeem` 页面自动核销。微信支付、支付宝、Stripe 或聚合支付只作为未来备用能力；本阶段不要求开户注册、不要求支付回调上线，也不要为了“看起来完整”伪造支付成功。
 
-1. 短期: 个人收款二维码 + 充值单 + 人工确认入账，先完成真实用户验收。
-2. 中期: 开通支付宝当面付 或 微信支付 Native，打通扫码支付、异步通知、验签和自动入账。
-3. 备选: 国内聚合支付或 Stripe。聚合支付上线快但签名规则差异大；Stripe 适合海外卡和订阅。
-
-不论选哪种自动支付，都需要你人工准备这些字段: 主体实名、商户号、应用 AppID、API Key、签名密钥、回调域名、异步通知 URL、同步跳转 URL、订单号规则、金额单位和退款规则。不要把密钥发到聊天里，写入服务器环境文件后再让我接代码。
+如果以后决定恢复自动支付，仍必须先由账号所有者在对应平台完成主体实名、商户号、应用 AppID、签名密钥、公钥、回调域名、订单号规则和退款规则配置。不要把密钥发到聊天里，写入服务器环境文件后再接代码。
 
 ### 支付宝当面付
 
@@ -314,7 +310,7 @@ Stripe 的 API Secret Key、Webhook Signing Secret 和账号实名审核只能�
 
 ## 固定域名和证书
 
-当前 Quick Tunnel 适合今晚测试，不适合长期品牌入口。长期方案建议用 Cloudflare 的命名 Tunnel 或 DNS 路由到服务器。
+长期方案不新购域名，复用 `/Users/blackdj/Documents/VPS-Config` 已有域名、Cloudflare DNS 和 R2/备份资产；OpenClaw 只记录变量名和验证步骤，不复制该项目的私有凭据。2026-07-03 生产采用 Cloudflare proxied A 指向腾讯云 Nginx；专用 Tunnel 曾短暂验证但因 systemd 日志会暴露 token 已停用并删除。
 
 无自有域名时的免费方案: 先用 `nip.io` 这种 wildcard DNS。它会把主机名里的 IP 自动解析到服务器，例如 `frist-api.101-43-41-96.nip.io` 会解析到 `101.43.41.96`。2026-05-04 公网实测中，`sslip.io` 在腾讯 DNSPod 侧被拦截到封禁页，当前可用免费入口切到 `frist-api.101-43-41-96.nip.io`。`101-43-41-96.nip.io` 只作为兼容跳转入口，不直接服务页面。这不是正式品牌域名，只是带 Frist-API 前缀的免费固定 HTTP 过渡入口。
 
@@ -323,28 +319,27 @@ Stripe 的 API Secret Key、Webhook Signing Secret 和账号实名审核只能�
 1. 在服务器检查 80/443 是否已被其他项目占用，避免影响共享项目。
 2. 新增 Nginx server block: `server_name frist-api.101-43-41-96.nip.io` 反代到 `http://127.0.0.1:3180`；`server_name 101-43-41-96.nip.io` 只返回 301 到品牌域名。
 3. 使用 certbot 给 `frist-api.101-43-41-96.nip.io` 申请证书；本轮证书机构访问 80 端口 ACME challenge 返回 connection reset，免费域名 HTTPS 未签发成功。
-4. 当前 HTTP 过渡入口需要配置这些服务器环境变量：公开网关地址取 `http://frist-api.101-43-41-96.nip.io/v1`，规范主机取 `frist-api.101-43-41-96.nip.io`，跳转主机取 `101-43-41-96.nip.io`，并临时允许不安全 HTTP；拿到 HTTPS 后再改为 `https://你的域名/v1`。
+4. 当前 HTTP 过渡入口需要配置服务器环境变量（只写变量名，不把任何真实密钥写进文档）：`FRIST_API_PUBLIC_GATEWAY_BASE_URL` 使用公开 `/v1` 入口，`FRIST_API_CANONICAL_HOST` 使用规范主机，`FRIST_API_REDIRECT_HOSTS` 使用旧主机列表，并临时打开 `FRIST_API_ALLOW_INSECURE_PUBLIC_HTTP`；拿到 HTTPS 后再切回正式 HTTPS 域名。
 5. 重启容器后跑首页、看板、`/v1/models` 未授权 401、管理员入口隐藏和支付回调 URL 冒烟。
 
-免费域名只适合过渡。正式投放建议仍购买自有域名，便于品牌识别、支付审核、风控和客服。
+免费域名只适合兜底。正式投放时复用 VPS-Config 里已存在的域名/Cloudflare 资产，不在本项目另买新域名。
 
-你需要人工完成:
+2026-07-03 当前入口状态：
 
-1. 购买或准备域名，例如 `api.yourdomain.com`。
-2. 把域名接入 Cloudflare。
-3. 在 Cloudflare 后台进入 Tunnel，给 Frist-API 增加公开主机名。
-4. 主机名指向服务器本地服务 `http://127.0.0.1:3180`。
-5. 生效后把服务器 `FRIST_API_PUBLIC_GATEWAY_BASE_URL` 改成 `https://你的域名/v1`。
-6. 重启容器并跑冒烟检查。
+1. `http://frist-api.101-43-41-96.nip.io/`：Nginx 兜底入口，外网看板冒烟返回 HTTP 200。
+2. `https://frist-api.245334.xyz/`：Cloudflare DNS 已写入 proxied A，源站安装 Cloudflare Origin CA 证书并新增 Nginx 443 反代；外网 Dashboard 冒烟返回 HTTP 200。
+3. 生产服务器环境已启用 New-API adapter；`FRIST_API_NEWAPI_ENABLED=1` 与 `FRIST_API_REQUIRE_NEWAPI_DATABASE=1` 已生效。
+4. R2 定时备份已启用；最近一次手动上传 HTTP 200。
+5. SMTP 密码尚未通过无回显方式落地，测试邮件需要先完成下方“邮箱和防刷”的密码写入步骤。
 
-Cloudflare 官方文档说明，Tunnel 会把 Cloudflare 网络流量转到运行 `cloudflared` 的源站服务；在 Dashboard 添加路由时，会自动创建指向 Tunnel 子域的 DNS 记录。
+当前采用 Cloudflare DNS 代理，不依赖长期 `cloudflared` 服务。2026-07-03 源站已安装 Cloudflare Origin CA 证书并让 Nginx 监听 `frist-api.245334.xyz:443`，解决 Cloudflare 526。若未来重新启用 Tunnel，必须把 Tunnel token 放在 root-only 环境文件，且禁止通过 `systemctl status` / 服务日志输出 token。
 
-参考官方文档:
+参考官方文档：
 
-- Cloudflare Tunnel: https://developers.cloudflare.com/tunnel/
-- Cloudflare Tunnel Routing: https://developers.cloudflare.com/tunnel/routing/
+- Cloudflare DNS: https://developers.cloudflare.com/dns/manage-dns-records/how-to/create-dns-records/
+- Cloudflare Proxy status: https://developers.cloudflare.com/dns/proxy-status/
 
-域名切换后需要同步修改服务器环境变量 `FRIST_API_PUBLIC_GATEWAY_BASE_URL=https://你的域名/v1`。否则用户导出的 Codex/OpenCode 配置仍可能指向旧测试入口。
+域名切换后需要同步修改服务器环境变量 `FRIST_API_PUBLIC_GATEWAY_BASE_URL=https://frist-api.245334.xyz/v1`。否则用户导出的 Codex/OpenCode 配置仍可能指向旧测试入口。
 
 ## 邮箱和防刷
 
@@ -356,7 +351,7 @@ Cloudflare 官方文档说明，Tunnel 会把 Cloudflare 网络流量转到运�
 - Cloudflare Turnstile Site Key 和 Secret Key。
 - 一个客服邮箱，用于账单、找回密码和异常申诉。
 
-建议先用企业邮箱或域名邮箱，不建议用个人邮箱长期发验证码。Gmail 这类个人邮箱只能作为短期测试，应用专用密码只允许写入服务器环境变量，不能写入仓库、文档或运行数据。拿到字段后写入服务器环境文件，再继续接 Turnstile 校验。
+建议先用企业邮箱或域名邮箱，不建议用个人邮箱长期发验证码。Gmail 这类个人邮箱只能作为短期测试，应用专用密码只允许写入服务器环境变量，不能写入仓库、文档、命令历史或运行数据。当前服务器尚未发现 `FRIST_API_SMTP_PASSWORD`，需要 Carven 在 SSH 终端按最终报告提供的无回显命令输入一次密码，再重启 Frist-API 容器。
 
 余额预警测试方式:
 
@@ -444,7 +439,7 @@ Frist-API 是独立公开网站，放在 `apps/frist-api/`，不改 OpenClaw APP
 
 人工收款、固定域名、SMTP、Turnstile 和正式支付接口的操作清单见本文件上方的 Frist-API 运营操作清单。
 
-无域名阶段这是临时 HTTP 验收地址。正式开放陌生付费用户前，必须绑定域名、HTTPS、SMTP 注册验证/找回密码、Turnstile、真实支付回调、管理员 2FA 和数据库备份。
+无域名阶段这是临时 HTTP 验收地址。正式开放陌生付费用户前，必须绑定固定 HTTPS 入口、SMTP 注册验证/找回密码、Turnstile、管理员 2FA、New-API 数据库和备份恢复；收款主路径继续走闲鱼兑换码，不把真实支付回调作为本阶段上线门槛。
 
 ## 用户端能看到什么
 
@@ -575,7 +570,7 @@ docker compose -f docker-compose.frist-api.yml up -d
 - `FRIST_API_LEGACY_PASSWORD_HASH_SECRETS`: 历史密码哈希密钥列表。上线修复旧环境时先填旧 `FRIST_API_SESSION_SECRET`，用户登录成功后会迁移到新 `FRIST_API_PASSWORD_HASH_SECRET`。
 - `FRIST_API_PUBLIC_MODE=1`
 - `NODE_ENV=production`
-- `FRIST_API_ENFORCE_PRODUCTION_READINESS=1`: 正式开放陌生付费用户时打开；缺固定 HTTPS 品牌域名、New-API 数据库、管理员 2FA 或真实支付商户会直接启动失败
+- `FRIST_API_ENFORCE_PRODUCTION_READINESS=1`: 正式开放陌生付费用户时打开；缺固定 HTTPS 品牌域名、New-API 数据库、管理员 2FA 或兑换码/备份等运营闭环会直接启动失败；自动支付商户不再作为当前上线必备项
 - `FRIST_API_ALLOW_DEMO_RECHARGE=0`
 - `FRIST_API_EXPOSE_VERIFICATION_CODE=0`
 - `FRIST_API_REQUIRE_CSRF=1`
@@ -645,11 +640,31 @@ apps/frist-api/deploy/smoke-test.sh http://127.0.0.1:3180 "$FRIST_API_ADMIN_PAGE
 
 ## 当前限制
 
-- JSON runtime 仍作为兜底和本地小范围验收可用；生产强制模式要求 `FRIST_API_NEWAPI_ENABLED=1` 和 `FRIST_API_REQUIRE_NEWAPI_DATABASE=1`，历史 JSON 数据迁移仍需单独演练。
-- 已有轻量验证码、认证限流、一次性管理员身份码、管理员 TOTP 2FA、余额预警 SMTP 邮件和真实支付回调代码；商户开户注册、正式域名、正式备份任务和恢复演练需要在外部平台完成。
+- JSON runtime 仍作为兜底和本地小范围验收可用；生产已启用 `FRIST_API_NEWAPI_ENABLED=1` 和 `FRIST_API_REQUIRE_NEWAPI_DATABASE=1`。2026-07-03 已按授权执行 New-API 迁移：用户、余额、订单、兑换码和日志已迁入 New-API；16 个历史 `enc:v1:` 用户 Key 因旧加密密钥缺失未迁移，避免把密文伪造成可用 Key。
+- 已有轻量验证码、认证限流、一次性管理员身份码、管理员 TOTP 2FA、余额预警 SMTP 邮件、兑换码核销和备用真实支付回调代码；当前收款走闲鱼兑换码，商户自动支付不是必需项。正式域名/Cloudflare/R2 已复用 VPS-Config 既有资产落地，SMTP 密码仍需用无回显终端输入。
 - 补号探测已做低成本可用性判断、Responses fallback、直连/代理择优和认证字段清洗，但未做完整上下文上限、工具调用、流式能力和模型质量评分。
 - CPA JSON/chong 入口只做人工登记和放行，不包含 OAuth Session 提取、Refresh Token 刷新、账号池规避风控或自动化批量获取逻辑。
-- `QuantumNous/new-api` 是 AGPL-3.0，公开二开运营时必须准备源码公开入口或公开 fork。
+- `QuantumNous/new-api` 是 AGPL-3.0；Frist-API 页面页脚已提供现有 OpenClaw-Bot 源码入口。若后续二开 New-API 本体并公开运营，仍需确保复用的 GitHub 仓库/fork 可公开访问。
+
+## New-API JSON runtime 迁移演练
+
+本仓库提供只读迁移演练脚本，先生成可审计材料，不直接写生产库：
+
+```bash
+node scripts/frist_api_newapi_migration_dry_run.mjs \
+  --file apps/frist-api/data/runtime.json \
+  --package \
+  --output-dir apps/frist-api/data/migration-plans
+```
+
+输出内容包括：
+
+- 当前 runtime 用户、用户 Key、订单、兑换码、网关日志和上游库存统计。
+- 带时间戳的 runtime 备份。
+- 幂等迁移计划 JSON（只含脱敏 Key 预览，不写原始 Key）。
+- 回滚脚本，用于把 runtime 恢复到迁移前备份。
+
+2026-07-03 已在生产执行 `--apply`：迁移用户 19 个、New-API token 1 个、充值/订单 4 条、兑换码 2 条、日志 162 条；回滚目录为服务器 `/opt/frist-api/backups/newapi-migration-20260703T005433Z`。因旧 `FRIST_API_DATA_ENCRYPTION_KEY` 未能在本地、VPS-Config 或服务器常规备份中找到，16 个历史 `enc:v1:` 用户 Key 未迁移到 New-API token；用户需要重新生成/补录可用 Key。
 
 ## New-API 上游同步 SOP
 
@@ -693,13 +708,12 @@ tar -czf "data/backups/newapi-$(date +%Y%m%d-%H%M%S).tgz" data/newapi
 
 ## 下一步
 
-1. 绑定真实品牌域名和 HTTPS，关闭临时公网 HTTP 开关。
-2. 在微信/支付宝或 Stripe 等商户平台开户并把正式回调域名填入商户后台。
-3. 把 Frist-API JSON 运行数据迁移到 New-API 数据库，优先迁移用户、余额、API Key、渠道、日志和订单。
+1. 复用 VPS-Config 既有域名/Cloudflare/R2 资产，为 Frist-API 配正式 HTTPS 入口并关闭临时公网 HTTP 开关。
+2. 维护闲鱼兑换码商品、自动发货规则和卡密库存告警；自动支付商户平台开户当前不推进。
+3. 用 `scripts/frist_api_newapi_migration_dry_run.mjs --package` 生成备份、幂等迁移计划和回滚脚本，再在具备 `FRIST_API_NEWAPI_*` 与解密环境变量的生产窗口执行迁移。
 4. 给 Frist-API UI 接 New-API 用户会话或服务端代理，避免重复维护账号、Key、计费和日志逻辑。
-5. 给补号探测加并发上限、预算上限和后台队列。
-6. 做价格草稿确认、版本回滚和亏损预警。
-7. 准备 AGPL-3.0 合规源码公开入口。
+5. 持续审计上游真实 `/v1/models`、余额站日限额、慢线降级和价格版本。
+6. 保持页面源码入口可见，确保 AGPL-3.0 上游合规。
 
 ---
 

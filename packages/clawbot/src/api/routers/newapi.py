@@ -100,12 +100,12 @@ async def _proxy_json(
             "message": body.get("message", "") if isinstance(body, dict) else "",
         }
     except httpx.ConnectError:
-        raise HTTPException(status_code=503, detail="无法连接到 New-API 服务")
+        raise HTTPException(status_code=503, detail="无法连接到 New-API 服务") from None
     except HTTPException:
         raise
     except Exception as e:
         logger.exception("代理 New-API 接口失败: %s %s", method, path)
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.get("/newapi/status")
@@ -118,13 +118,13 @@ async def newapi_status() -> dict[str, Any]:
         raise HTTPException(status_code=502, detail=f"HTTP {resp.status_code}")
     except httpx.ConnectError:
         # New-API 服务未启动或无法连接
-        raise HTTPException(status_code=503, detail="无法连接到 New-API 服务")
+        raise HTTPException(status_code=503, detail="无法连接到 New-API 服务") from None
     except HTTPException:
         # 让 FastAPI 原样处理 HTTPException（如 502/503），不要被下面的通用异常吞掉
         raise
     except Exception as e:
         logger.exception("检查 New-API 状态失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.get("/newapi/channels")
@@ -142,13 +142,13 @@ async def list_channels() -> dict[str, Any]:
         inner_data = _extract_data(body)
         return {"success": True, "data": inner_data}
     except httpx.ConnectError:
-        raise HTTPException(status_code=503, detail="无法连接到 New-API 服务")
+        raise HTTPException(status_code=503, detail="无法连接到 New-API 服务") from None
     except HTTPException:
         # 让 _headers() 抛出的 503 等 HTTPException 原样透传
         raise
     except Exception as e:
         logger.exception("获取 New-API 通道列表失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.get("/newapi/tokens")
@@ -166,13 +166,13 @@ async def list_tokens() -> dict[str, Any]:
         inner_data = _extract_data(body)
         return {"success": True, "data": inner_data}
     except httpx.ConnectError:
-        raise HTTPException(status_code=503, detail="无法连接到 New-API 服务")
+        raise HTTPException(status_code=503, detail="无法连接到 New-API 服务") from None
     except HTTPException:
         # 让 _headers() 抛出的 503 等 HTTPException 原样透传
         raise
     except Exception as e:
         logger.exception("获取 New-API 令牌列表失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.post("/newapi/channels")
@@ -190,13 +190,13 @@ async def create_channel(payload: ChannelCreate) -> dict[str, Any]:
         inner_data = _extract_data(body)
         return {"success": True, "data": inner_data}
     except httpx.ConnectError:
-        raise HTTPException(status_code=503, detail="无法连接到 New-API 服务")
+        raise HTTPException(status_code=503, detail="无法连接到 New-API 服务") from None
     except HTTPException:
         # 让 _headers() 抛出的 503 等 HTTPException 原样透传
         raise
     except Exception as e:
         logger.exception("创建 New-API 通道失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.put("/newapi/channels/{channel_id}")
@@ -216,13 +216,13 @@ async def update_channel(payload: ChannelCreate, channel_id: int = Path(ge=1, de
         inner_data = _extract_data(body)
         return {"success": True, "data": inner_data}
     except httpx.ConnectError:
-        raise HTTPException(status_code=503, detail="无法连接到 New-API 服务")
+        raise HTTPException(status_code=503, detail="无法连接到 New-API 服务") from None
     except HTTPException:
         # 让 _headers() 抛出的 503 等 HTTPException 原样透传
         raise
     except Exception as e:
         logger.exception("更新 New-API 通道失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.delete("/newapi/channels/{channel_id}")
@@ -238,13 +238,13 @@ async def delete_channel(channel_id: int = Path(ge=1, description="通道ID")) -
         body = resp.json()
         return {"success": body.get("success", True)}
     except httpx.ConnectError:
-        raise HTTPException(status_code=503, detail="无法连接到 New-API 服务")
+        raise HTTPException(status_code=503, detail="无法连接到 New-API 服务") from None
     except HTTPException:
         # 让 _headers() 抛出的 503 等 HTTPException 原样透传
         raise
     except Exception as e:
         logger.exception("删除 New-API 通道失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.post("/newapi/channels/{channel_id}/status")
@@ -273,13 +273,13 @@ async def toggle_channel_status(channel_id: int = Path(ge=1, description="通道
         resp2.raise_for_status()
         return {"success": True, "status": new_status}
     except httpx.ConnectError:
-        raise HTTPException(status_code=503, detail="无法连接到 New-API 服务")
+        raise HTTPException(status_code=503, detail="无法连接到 New-API 服务") from None
     except HTTPException:
         # 让 _headers() 抛出的 503 等 HTTPException 原样透传
         raise
     except Exception as e:
         logger.exception("切换 New-API 通道状态失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.delete("/newapi/tokens/{token_id}")
@@ -295,13 +295,13 @@ async def delete_token(token_id: int = Path(ge=1, description="令牌ID")) -> di
         body = resp.json()
         return {"success": body.get("success", True)}
     except httpx.ConnectError:
-        raise HTTPException(status_code=503, detail="无法连接到 New-API 服务")
+        raise HTTPException(status_code=503, detail="无法连接到 New-API 服务") from None
     except HTTPException:
         # 让 _headers() 抛出的 503 等 HTTPException 原样透传
         raise
     except Exception as e:
         logger.exception("删除 New-API 令牌失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.get("/newapi/tokens/search")

@@ -16,7 +16,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 import httpx
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # 1. RSS 新闻聚合
 # ============================================================
 
-class NewsCategory(str, Enum):
+class NewsCategory(StrEnum):
     """新闻分类 — 参考 worldmonitor 15 大分类"""
     GEOPOLITICS = "geopolitics"
     FINANCE = "finance"
@@ -259,9 +259,7 @@ class NewsFetcher:
                     idx, task_type, result_text = result
                     if not result_text:
                         continue
-                    if task_type == "summary":
-                        items[idx].summary = result_text
-                    elif task_type == "translate_summary":
+                    if task_type == "summary" or task_type == "translate_summary":
                         items[idx].summary = result_text
                     elif task_type == "translate_title":
                         items[idx].title = result_text
@@ -370,7 +368,7 @@ class NewsFetcher:
 # 2. 国家风险指数 (Country Intelligence Index)
 # ============================================================
 
-class RiskSeverity(str, Enum):
+class RiskSeverity(StrEnum):
     """风险等级"""
     LOW = "low"           # 0-29
     MODERATE = "moderate"  # 30-49

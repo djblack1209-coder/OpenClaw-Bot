@@ -137,7 +137,7 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin, VaRMixin):
         stop_loss: float = 0,
         take_profit: float = 0,
         signal_score: int = 0,
-        current_positions: list[dict] = None,
+        current_positions: list[dict] | None = None,
     ) -> RiskCheckResult:
         """
         交易前风控审核 - 所有交易必须通过此检查
@@ -379,7 +379,7 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin, VaRMixin):
         self,
         entry_price: float,
         stop_loss: float,
-        capital: float = None,
+        capital: float | None = None,
     ) -> dict:
         """
         基于风控规则计算安全仓位大小
@@ -596,7 +596,7 @@ class RiskManager(ExtremeMarketMixin, KellyMixin, SectorMixin, VaRMixin):
         stop_loss: float,
         take_profit: float,
         signal_score: int,
-        current_positions: list[dict] = None,
+        current_positions: list[dict] | None = None,
     ) -> int:
         """
         计算综合风险评分 0-100（越高越危险）

@@ -48,7 +48,7 @@ def _perlin_grad(hash_val: int, x: float) -> float:
 
 def perlin_noise_1d(x: float, seed_offset: int = 0) -> float:
     """1D Perlin 噪声，返回 [-1, 1] 的值"""
-    xi = int(math.floor(x)) & 255
+    xi = math.floor(x) & 255
     xf = x - math.floor(x)
     u = _perlin_fade(xf)
     a = _PERM[(xi + seed_offset) & 511]
@@ -286,7 +286,7 @@ class SliderSolver:
             任一为 None 表示未找到
         """
         # 先在主页面找
-        targets = [page] + list(page.frames)
+        targets = [page, *list(page.frames)]
 
         for target in targets:
             try:
@@ -461,7 +461,7 @@ class SliderSolver:
                 return True  # 没有滑块就是成功
 
             # 查找滑块元素
-            slider_btn, slider_track, target = await self._find_slider_elements(page)
+            slider_btn, slider_track, _target = await self._find_slider_elements(page)
             if not slider_btn:
                 logger.warning("第 %s 次: 检测到滑块但无法定位按钮", attempt + 1)
                 await _async_sleep(2)
@@ -554,7 +554,7 @@ class SliderSolverSync:
 
     def _find_slider_elements(self, page) -> tuple:
         """查找滑块按钮和轨道（同步版）"""
-        targets = [page] + list(page.frames)
+        targets = [page, *list(page.frames)]
         for target in targets:
             try:
                 slider_btn = None
@@ -671,7 +671,7 @@ class SliderSolverSync:
                     logger.info("滑块已消失，验证可能已通过")
                 return True
 
-            slider_btn, slider_track, target = self._find_slider_elements(page)
+            slider_btn, slider_track, _target = self._find_slider_elements(page)
             if not slider_btn:
                 logger.warning("第 %s 次: 检测到滑块但无法定位按钮", attempt + 1)
                 time.sleep(2)

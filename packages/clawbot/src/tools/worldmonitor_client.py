@@ -360,7 +360,7 @@ async def fetch_region_news(
             "Worldmonitor 地区 %s 无数据，降级到 Google News RSS",
             region,
         )
-        fallback_query = reg_info["name"] + " news"
+        fallback_query = f"{reg_info['name']} news"
         all_items = await _fallback_rss_news(fallback_query, max_items)
 
     _set_cached(cache_key, all_items)

@@ -156,7 +156,7 @@ def update_proposal(proposal_id: str, req: StatusUpdateRequest):
         raise
     except Exception as e:
         logger.exception("更新提案状态失败 (proposal_id=%s)", proposal_id)
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.get("/gaps", response_model=list[GapOut])
@@ -191,4 +191,4 @@ def scan_history(limit: int = Query(20, ge=1, le=100)):
         return engine.get_scan_history(limit=limit)
     except Exception as e:
         logger.exception("获取扫描历史失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e

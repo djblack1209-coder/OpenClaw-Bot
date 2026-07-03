@@ -160,7 +160,7 @@ async def handle_budget_check(mixin, update, context, action_arg):
     """查看预算剩余情况"""
     user = update.effective_user
     from src.execution.life_automation import check_budget_alert
-    is_over, msg = check_budget_alert(user.id)
+    _is_over, msg = check_budget_alert(user.id)
     await update.message.reply_text(msg)
 
 
@@ -200,7 +200,7 @@ async def handle_bill_update_nlp(mixin, update, context, action_arg):
 
                     from src.core.event_bus import EventType, get_event_bus
                     bus = get_event_bus()
-                    asyncio.ensure_future(bus.publish(
+                    asyncio.ensure_future(bus.publish(  # noqa: RUF006
                         EventType.BILL_DUE,
                         {
                             "user_id": str(user.id), "chat_id": str(chat_id),
@@ -488,7 +488,7 @@ async def handle_pricewatch_add(mixin, update, context, action_arg):
     parts = action_arg.split("|||", 1)
     if len(parts) == 2:
         keyword, price = parts[0].strip(), parts[1].strip()
-        context.args = ["add"] + keyword.split() + [price]
+        context.args = ["add", *keyword.split(), price]
         await mixin.cmd_pricewatch(update, context)
     else:
         await update.message.reply_text(
@@ -554,6 +554,4 @@ async def dispatch_special(mixin, update, context, action_type: str, action_arg:
         await handler(mixin, update, context, action_arg)
         return True
     # 再查 ops 路由
-    if await handle_ops_route(mixin, update, context, action_type, action_arg):
-        return True
-    return False
+    return bool(await handle_ops_route(mixin, update, context, action_type, action_arg))

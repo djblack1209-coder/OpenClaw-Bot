@@ -38,7 +38,7 @@ class VaRMixin:
         self._rolling_pnl    — 滚动窗口 PnL deque
     """
 
-    def calc_var(self, confidence: float = None) -> float:
+    def calc_var(self, confidence: float | None = None) -> float:
         """
         计算历史模拟法 VaR (Value at Risk)
 
@@ -64,7 +64,7 @@ class VaRMixin:
 
         return round(var_value, 2)
 
-    def calc_cvar(self, confidence: float = None) -> float:
+    def calc_cvar(self, confidence: float | None = None) -> float:
         """
         计算 CVaR / Expected Shortfall (条件风险价值)
 

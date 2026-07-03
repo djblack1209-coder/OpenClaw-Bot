@@ -89,7 +89,7 @@ def _try_compile_restricted(code: str) -> str:
     except ImportError:
         # 安全沙箱缺失时禁止执行，不再静默降级
         _RESTRICTEDPYTHON_AVAILABLE = False
-        raise RuntimeError("安全沙箱组件 RestrictedPython 未安装，代码执行已禁用")
+        raise RuntimeError("安全沙箱组件 RestrictedPython 未安装，代码执行已禁用") from None
 
 
 # ── Python 子进程沙箱前导代码 ──
@@ -140,7 +140,7 @@ for _fn in ("exec", "eval", "compile", "__build_class__", "globals",
         try:
             delattr(_b, _fn)
         except (AttributeError, TypeError):
-            pass
+            pass  # 合理保留：该分支只用于显式跳过并继续后续降级/清理流程
 
 # 5. 限制输出长度
 class _LimitedPrint:
@@ -293,7 +293,7 @@ class CodeTool:
             # 写入带沙箱前导代码的临时文件
             with open(filepath, "w") as f:
                 if lang == "python":
-                    f.write(_PYTHON_SANDBOX_PREFIX + "\n" + code)
+                    f.write(f"{_PYTHON_SANDBOX_PREFIX}\n{code}")
                 else:
                     f.write(NODE_SANDBOX_PREFIX + code)
 

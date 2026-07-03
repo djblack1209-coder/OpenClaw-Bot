@@ -28,7 +28,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-from src.constants import DEFAULT_USER_AGENT
+from src.constants import DEFAULT_USER_AGENT  # noqa: E402
 
 _HEADERS = {
     "User-Agent": DEFAULT_USER_AGENT,

@@ -12,8 +12,8 @@ import html
 import http.client
 import json
 import re
-import threading
 import textwrap
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -1261,7 +1261,7 @@ def compose_x_post(seed: ContentSeed, now: datetime | None = None, angle: str = 
             tags,
         ],
         "contrarian": [
-            f"反常识：做 X 运营，最不该自动化的是“写作”。",
+            "反常识：做 X 运营，最不该自动化的是“写作”。",
             "",
             f"今天看 {channel} 的素材：{title}",
             f"提炼后我更关心：{summary}",
@@ -1552,9 +1552,9 @@ def compose_xhs_note(seed: ContentSeed, angle: str = "internet_mood") -> dict[st
         "internet_mood": f"今天的互联网精神状态：{topic}",
         "abstract_roast": f"{topic}，越看越抽象",
         "contrast_meme": f"热搜里最有反差感的一条：{topic}",
-        "three_line_take": f"三句话看懂今天这个热梗",
-        "cn_en_mirror": f"中英网友对这事的反应太同步了",
-        "reply_bait": f"这个热点到底算进化还是整活？",
+        "three_line_take": "三句话看懂今天这个热梗",
+        "cn_en_mirror": "中英网友对这事的反应太同步了",
+        "reply_bait": "这个热点到底算进化还是整活？",
     }
     title = title_templates.get(angle, f"今天这个热点有点东西：{topic}")[:28]
     body_templates = {
@@ -1802,7 +1802,7 @@ def _calendar_interval_xml(times: list[tuple[int, int]], target: datetime, repea
             f"        <key>Minute</key><integer>{minute}</integer>\n"
             "      </dict>"
         )
-    return "<array>\n" + "\n".join(blocks) + "\n      </array>"
+    return f"<array>\n{'\n'.join(blocks)}\n      </array>"
 
 
 def write_launchd_plist(
@@ -1853,39 +1853,39 @@ def write_launchd_plist(
 
 
 __all__ = [
-    "ContentSeed",
-    "VideoSeed",
-    "TrendSeed",
     "DEFAULT_CHANNELS",
     "DEFAULT_DAILY_TIMES",
     "POST_ANGLES",
-    "extract_youtube_caption_urls",
-    "fetch_youtube_transcript",
-    "fetch_youtube_rss_seeds",
-    "fetch_bilibili_trending_seeds",
-    "fetch_real_trending_seeds",
-    "fetch_free_api_trending_seeds",
-    "fetch_google_news_trending_seeds",
-    "fetch_hacker_news_trending_seeds",
-    "fetch_all_content_seeds",
-    "fetch_all_video_seeds",
-    "distill_seed",
-    "infer_tags",
-    "summarize_transcript",
-    "x_weighted_length",
-    "score_content_seed",
+    "ContentSeed",
+    "TrendSeed",
+    "VideoSeed",
+    "build_daily_drafts",
+    "build_next_draft",
+    "build_xhs_review_drafts",
     "choose_seed",
     "choose_seeds",
     "compose_x_post",
     "compose_xhs_note",
-    "build_next_draft",
-    "build_daily_drafts",
-    "build_xhs_review_drafts",
+    "distill_seed",
+    "extract_youtube_caption_urls",
+    "fetch_all_content_seeds",
+    "fetch_all_video_seeds",
+    "fetch_bilibili_trending_seeds",
+    "fetch_free_api_trending_seeds",
+    "fetch_google_news_trending_seeds",
+    "fetch_hacker_news_trending_seeds",
+    "fetch_real_trending_seeds",
+    "fetch_youtube_rss_seeds",
+    "fetch_youtube_transcript",
     "get_or_build_next_ready_draft",
-    "mark_published",
+    "infer_tags",
     "mark_failed",
-    "parse_daily_times",
+    "mark_published",
     "next_morning_at",
     "next_scheduled_at",
+    "parse_daily_times",
+    "score_content_seed",
+    "summarize_transcript",
     "write_launchd_plist",
+    "x_weighted_length",
 ]

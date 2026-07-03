@@ -105,7 +105,7 @@ class SynergyEngine:
 
         tickers: set = set()
         for t in topics:
-            text = (t.get("title", "") + " " + t.get("summary", "")).lower()
+            text = f"{t.get('title', '')} {t.get('summary', '')}".lower()
             for name, ticker in _NAME_TO_TICKER.items():
                 if name in text:
                     tickers.add(ticker)

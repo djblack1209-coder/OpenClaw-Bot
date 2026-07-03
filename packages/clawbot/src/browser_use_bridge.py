@@ -15,6 +15,7 @@ browser-use 升级适配层 — 搬运自 browser-use (81k⭐)
 集成方式：browser-use 不可用时自动降级回原有 Playwright 逻辑。
 """
 import asyncio
+import contextlib
 import logging
 from typing import Any
 
@@ -71,7 +72,7 @@ class BrowserUseBridge:
                 )
                 return self._llm
         except ImportError:
-            pass
+            pass  # 合理保留：可选依赖缺失时继续走后续降级链
         logger.warning("[BrowserUseBridge] 无可用 LLM，browser-use 功能受限")
         return None
 
@@ -173,10 +174,8 @@ class BrowserUseBridge:
             return {"success": False, "error": str(e)}
         finally:
             if browser:
-                try:
+                with contextlib.suppress(Exception):
                     await browser.close()
-                except Exception:
-                    pass
 
     async def fill_form(self, url: str, form_data: dict[str, str]) -> dict[str, Any]:
         """自动填写表单"""

@@ -182,7 +182,7 @@ class StructuredLogger:
         try:
             self._rotate_jsonl(self._jsonl_path, self._max_jsonl_bytes, self._max_jsonl_backups)
             with open(self._jsonl_path, "a") as f:
-                f.write(json.dumps(data, ensure_ascii=False) + "\n")
+                f.write(f"{json.dumps(data, ensure_ascii=False)}\n")
         except Exception as e:
             logger.warning(f"[Metrics] JSONL 写入失败 ({self._jsonl_path}): {scrub_secrets(str(e))}")
 
@@ -355,7 +355,7 @@ class TaskObserver:
         try:
             StructuredLogger._rotate_jsonl(self._task_log_path, 50 * 1024 * 1024, 3)
             with open(self._task_log_path, "a") as f:
-                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+                f.write(f"{json.dumps(record, ensure_ascii=False)}\n")
         except Exception as e:
             logger.warning(f"[TaskObserver] JSONL 写入失败: {scrub_secrets(str(e))}")
 
@@ -407,7 +407,7 @@ class TaskObserver:
             logger.debug("Silenced exception", exc_info=True)
 
         # 计算平均值
-        for tt, entry in by_type.items():
+        for _tt, entry in by_type.items():
             entry["avg_latency"] = round(entry["total_latency"] / max(entry["count"], 1), 1)
             entry["avg_quality"] = (
                 round(sum(entry["quality_scores"]) / len(entry["quality_scores"]), 2)

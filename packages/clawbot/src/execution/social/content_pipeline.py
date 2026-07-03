@@ -236,7 +236,7 @@ async def research_social_topic(
 # ── 内容包创建 ──────────────────────────────────────────────
 
 async def create_topic_social_package(
-    platform: str = None,
+    platform: str | None = None,
     topic: str = "OpenClaw 实战",
     news_fetcher=None,
     curate_fn=None,
@@ -287,7 +287,7 @@ async def create_topic_social_package(
 # ── 自动发布 ────────────────────────────────────────────────
 
 async def autopost_topic_content(
-    platform: str = None,
+    platform: str | None = None,
     topic: str = "OpenClaw 实战",
     news_fetcher=None,
     curate_fn=None,
@@ -340,8 +340,8 @@ async def autopost_topic_content(
 
 
 async def autopost_hot_content(
-    platform: str = None,
-    topic: str = None,
+    platform: str | None = None,
+    topic: str | None = None,
     discover_fn=None,
     save_draft_fn=None,
     worker_fn=None,
@@ -419,7 +419,7 @@ async def autopost_hot_content(
 # ── 社交计划 ────────────────────────────────────────────────
 
 async def build_social_plan(
-    topic: str = None,
+    topic: str | None = None,
     limit: int = 3,
     discover_fn=None,
 ) -> dict:

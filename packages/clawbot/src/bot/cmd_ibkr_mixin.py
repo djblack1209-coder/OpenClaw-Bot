@@ -54,9 +54,9 @@ class IBKRCommandsMixin:
                 await update.message.reply_text(ERR_LIMIT_PRICE_INVALID.format(price=args[2]))
                 logger.warning("[IBKR] BUY限价解析失败: '%s'，回退为市价单", args[2])
         await update.message.reply_text(
-            "%s IBKR下单中: BUY %s x%.0f %s..." % (
+            "{} IBKR下单中: BUY {} x{:.0f} {}...".format(
                 self.emoji, symbol, qty,
-                ("限价$%.2f" % limit_price) if order_type == 'LMT' else "市价"))
+                (f"限价${limit_price:.2f}") if order_type == 'LMT' else "市价"))
         rm = get_risk_manager()
         if rm:
             quote = await get_stock_quote(symbol)
@@ -66,7 +66,7 @@ class IBKRCommandsMixin:
                 check = rm.check_trade(symbol=symbol, side="BUY", quantity=qty,
                                        entry_price=ep, stop_loss=sl)
                 if not check.approved:
-                    await update.message.reply_text("风控拒绝: %s" % check.reason)
+                    await update.message.reply_text(f"风控拒绝: {check.reason}")
                     return
                 if check.adjusted_quantity is not None:
                     qty = check.adjusted_quantity
@@ -75,12 +75,12 @@ class IBKRCommandsMixin:
         if "error" in result:
             await update.message.reply_text(error_service_failed("IBKR买入"))
         else:
-            price_info = "$%.2f" % result["avg_price"] if result["avg_price"] > 0 else "待成交"
+            price_info = f"${result['avg_price']:.2f}" if result["avg_price"] > 0 else "待成交"
             text = (
                 "IBKR 买入订单\n\n"
-                "标的: %s\n数量: %.0f\n类型: %s\n状态: %s\n成交: %s @ %s\n订单号: #%s\n\n%s"
-            ) % (result["symbol"], result["quantity"],
-                 "市价" if order_type == 'MKT' else "限价$%.2f" % limit_price,
+                "标的: {}\n数量: {:.0f}\n类型: {}\n状态: {}\n成交: {} @ {}\n订单号: #{}\n\n{}"
+            ).format(result["symbol"], result["quantity"],
+                 "市价" if order_type == 'MKT' else f"限价${limit_price:.2f}",
                  result["status"], result["filled_qty"], price_info,
                  result["order_id"], ibkr.get_budget_status())
             await send_long_message(update.effective_chat.id, text, context,
@@ -129,17 +129,17 @@ class IBKRCommandsMixin:
                 await update.message.reply_text(ERR_LIMIT_PRICE_INVALID.format(price=args[2]))
                 logger.warning("[IBKR] SELL限价解析失败: '%s'，回退为市价单", args[2])
         await update.message.reply_text(
-            "%s IBKR下单中: SELL %s x%.0f..." % (self.emoji, symbol, qty))
+            f"{self.emoji} IBKR下单中: SELL {symbol} x{qty:.0f}...")
         result = await ibkr.sell(symbol, qty, order_type, limit_price,
                                  decided_by=self.name, reason="Telegram手动下单")
         if "error" in result:
             await update.message.reply_text(error_service_failed("IBKR卖出"))
         else:
-            price_info = "$%.2f" % result["avg_price"] if result["avg_price"] > 0 else "待成交"
+            price_info = f"${result['avg_price']:.2f}" if result["avg_price"] > 0 else "待成交"
             text = (
                 "IBKR 卖出订单\n\n"
-                "标的: %s\n数量: %.0f\n状态: %s\n成交: %s @ %s\n订单号: #%s"
-            ) % (result["symbol"], result["quantity"],
+                "标的: {}\n数量: {:.0f}\n状态: {}\n成交: {} @ {}\n订单号: #{}"
+            ).format(result["symbol"], result["quantity"],
                  result["status"], result["filled_qty"], price_info,
                  result["order_id"])
             await send_long_message(update.effective_chat.id, text, context,
@@ -164,7 +164,7 @@ class IBKRCommandsMixin:
     async def cmd_ipositions(self, update, context):
         """IBKR持仓"""
         try:
-            await update.message.reply_text("%s 查询IBKR持仓..." % self.emoji)
+            await update.message.reply_text(f"{self.emoji} 查询IBKR持仓...")
             text = await ibkr.get_positions_text()
             await send_long_message(update.effective_chat.id, text, context,
                                     reply_to_message_id=update.message.message_id)
@@ -195,9 +195,9 @@ class IBKRCommandsMixin:
     async def cmd_iaccount(self, update, context):
         """IBKR账户"""
         try:
-            await update.message.reply_text("%s 查询IBKR账户..." % self.emoji)
+            await update.message.reply_text(f"{self.emoji} 查询IBKR账户...")
             text = await ibkr.get_account_value()
-            text += "\n\n" + ibkr.get_budget_status()
+            text += f"\n\n{ibkr.get_budget_status()}"
             await send_long_message(update.effective_chat.id, text, context,
                                     reply_to_message_id=update.message.message_id)
         except Exception as e:

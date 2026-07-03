@@ -11,17 +11,17 @@ import time
 import uuid
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
-from src.utils import emit_flow_event as _emit_flow
-from src.utils import scrub_secrets
+from src.utils import emit_flow_event as _emit_flow  # noqa: E402
+from src.utils import scrub_secrets  # noqa: E402
 
 # ── 节点状态 ──────────────────────────────────────────
 
-class NodeStatus(str, Enum):
+class NodeStatus(StrEnum):
     PENDING = "pending"
     WAITING = "waiting"       # 等待依赖完成
     RUNNING = "running"
@@ -31,7 +31,7 @@ class NodeStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-class ExecutorType(str, Enum):
+class ExecutorType(StrEnum):
     """执行器类型"""
     LLM = "llm"               # LLM 推理
     API = "api"               # HTTP API 直连

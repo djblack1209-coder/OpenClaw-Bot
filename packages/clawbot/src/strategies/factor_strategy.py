@@ -244,7 +244,7 @@ class FactorMLModel:
                 params, train_data,
                 num_boost_round=200,
                 valid_sets=[val_data],
-                callbacks=callbacks + [lgb.early_stopping(stopping_rounds=20)],
+                callbacks=[*callbacks, lgb.early_stopping(stopping_rounds=20)],
             )
 
             self.feature_names = list(X.columns)

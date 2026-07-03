@@ -167,7 +167,7 @@ async def cached_completion(
 
     # ---- Build cache key ----
     # Include system_prompt in messages for key generation (mirrors acompletion behavior)
-    key_messages = [{"role": "system", "content": system_prompt}] + messages if system_prompt else messages
+    key_messages = [{"role": "system", "content": system_prompt}, *messages] if system_prompt else messages
     cache_key = _make_cache_key(key_messages, model_family, temperature)
 
     # ---- Cache lookup ----

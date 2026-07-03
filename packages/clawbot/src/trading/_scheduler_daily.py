@@ -67,24 +67,24 @@ async def _eod_auto_review():
                 logger.warning("[Scheduler] 预测验证失败: %s", e)
 
             lines = ["-- 每日自动复盘 --\n"]
-            lines.append("今日盈亏: $%.2f (%d笔交易)" % (today_pnl.get("pnl", 0), today_pnl.get("trades", 0)))
+            lines.append(f"今日盈亏: ${today_pnl.get('pnl', 0):.2f} ({int(today_pnl.get('trades', 0))}笔交易)")
 
             if closed:
                 lines.append("\n已平仓:")
                 for t in closed:
                     sign = "+" if t.get("pnl", 0) >= 0 else ""
                     lines.append(
-                        "  %s %s %s$%.2f" % (t.get("side", "?"), t.get("symbol", "?"), sign, abs(t.get("pnl", 0)))
+                        f"  {t.get('side', '?')} {t.get('symbol', '?')} {sign}${abs(t.get('pnl', 0)):.2f}"
                     )
 
             if open_trades:
-                lines.append("\n持仓中: %d笔" % len(open_trades))
+                lines.append(f"\n持仓中: {len(open_trades)}笔")
                 for t in open_trades:
                     lines.append(
-                        "  %s x%s 入场$%s" % (t.get("symbol", "?"), t.get("quantity", "?"), t.get("entry_price", "?"))
+                        f"  {t.get('symbol', '?')} x{t.get('quantity', '?')} 入场${t.get('entry_price', '?')}"
                     )
 
-            lines.append("\n" + perf)
+            lines.append(f"\n{perf}")
             lines.append("\n系统将在明日开盘自动继续交易。")
 
             await _ts._auto_trader._safe_notify("\n".join(lines))
@@ -104,7 +104,7 @@ async def _eod_auto_review():
                 logger.debug("静默异常: %s", e)
         except Exception as e:
             logger.error("[Scheduler] 自动复盘失败: %s", e)
-            await _ts._auto_trader._safe_notify("收盘复盘生成失败: %s\n发送 /review 手动复盘" % e)
+            await _ts._auto_trader._safe_notify(f"收盘复盘生成失败: {e}\n发送 /review 手动复盘")
 
 
 async def _refresh_quotes():
@@ -134,7 +134,7 @@ async def _daily_rebalance_check():
             quotes = _ts._quote_cache.get_all() if _ts._quote_cache else {}
             plan = _ts._rebalancer.analyze(positions, quotes, cash)
             if not plan.is_balanced and plan.trades_needed:
-                await _ts._auto_trader._safe_notify("每日再平衡检查\n\n" + plan.format())
+                await _ts._auto_trader._safe_notify(f"每日再平衡检查\n\n{plan.format()}")
         except Exception as e:
             logger.warning("[Scheduler] 再平衡检查失败: %s", e)
 
@@ -270,15 +270,10 @@ async def _weekly_profit_guard():
 
     msg = (
         "!! 周盈利硬规则触发，自动停机 !!\n"
-        "上周区间: %s ~ %s\n"
-        "上周已平仓PnL: $%.2f\n"
-        "最低目标: $%.2f\n"
+        f"上周区间: {last_week_start} ~ {last_week_end}\n"
+        f"上周已平仓PnL: ${week_pnl:.2f}\n"
+        f"最低目标: ${target:.2f}\n"
         "动作: AutoTrader 已强制停止 (state=PAUSED)"
-    ) % (
-        last_week_start,
-        last_week_end,
-        week_pnl,
-        target,
     )
     logger.warning("[Scheduler] %s", msg.replace("\n", " | "))
     if _ts._auto_trader and _ts._auto_trader.notify:

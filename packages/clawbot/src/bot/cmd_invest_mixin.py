@@ -306,8 +306,8 @@ class InvestCommandsMixin:
             try:
                 ibkr_text = await ibkr.get_positions_text()
                 if ibkr_text.strip():
-                    ibkr_msg = "━━━ 实盘持仓 ━━━\n" + ibkr_text
-                    ibkr_msg += "\n" + ibkr.get_budget_status()
+                    ibkr_msg = f"━━━ 实盘持仓 ━━━\n{ibkr_text}"
+                    ibkr_msg += f"\n{ibkr.get_budget_status()}"
                     await update.message.reply_text(ibkr_msg,
                                                     reply_to_message_id=update.message.message_id)
             except Exception as e:
@@ -633,7 +633,7 @@ class InvestCommandsMixin:
             try:
                 limit = int(args[0])
             except ValueError as e:  # noqa: F841
-                await update.message.reply_text("⚠️ 数量参数无效 '%s'，使用默认值10" % args[0])
+                await update.message.reply_text(f"⚠️ 数量参数无效 '{args[0]}'，使用默认值10")
         trades = portfolio.get_trades(limit=limit)
         if not trades:
             await update.message.reply_text("暂无交易记录\n\n使用 /buy 或 /sell 开始交易")
@@ -879,7 +879,7 @@ class InvestCommandsMixin:
                 try:
                     capital = float(args[0])
                 except ValueError as e:  # noqa: F841
-                    await update.message.reply_text("⚠️ 资金参数无效 '%s'，使用默认值$100,000" % args[0])
+                    await update.message.reply_text(f"⚠️ 资金参数无效 '{args[0]}'，使用默认值$100,000")
             result = portfolio.reset_portfolio(initial_capital=capital)
             await update.message.reply_text(
                 f"投资组合已重置\n\n"

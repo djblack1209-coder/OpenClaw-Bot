@@ -250,7 +250,10 @@ async def _self_call_api(path: str, timeout: float = 10.0) -> dict | list | str:
 
 # ── 编号命令到 API 路径的映射 ──
 # 只映射可以通过 GET 请求获取数据的命令
+# 参考 FastAPI APIRouter path operation 文档（2026-07-02 复核）：微信编号入口只调用已存在的只读 GET 路由，写操作必须显式拒绝或转人工确认。
 _CMD_API_MAP: dict[str, tuple[str, str]] = {
+    # AI / 基础工具
+    "cmd_draw": ("/api/v1/omega/tools/generate-image?prompt={arg}", "AI 画图"),
     # 投资类
     "cmd_quote": ("/api/v1/trading/kline?symbol={arg}&interval=1d&limit=1", "行情查询"),
     "cmd_market": ("/api/v1/monitor/finance/indices", "市场概览"),
@@ -264,6 +267,16 @@ _CMD_API_MAP: dict[str, tuple[str, str]] = {
     "cmd_tradingsystem": ("/api/v1/trading/system", "交易系统"),
     "cmd_performance": ("/api/v1/trading/pnl", "投资绩效"),
     "cmd_iorders": ("/api/v1/trading/positions", "实盘挂单"),
+    "cmd_scan": ("/api/v1/monitor/extended", "全市场扫描"),
+    "cmd_chart": ("/api/v1/trading/kline?symbol={arg}&interval=1d&limit=60", "K线图"),
+    "cmd_backtest": ("/api/v1/omega/investment/backtest?symbol={arg}", "回测"),
+    "cmd_invest": ("/api/v1/omega/investment/analyze?symbol={arg}", "AI 投资分析会"),
+    "cmd_equity": ("/api/v1/trading/pnl", "权益曲线"),
+    "cmd_targets": ("/api/v1/trading/pnl", "盈利目标"),
+    "cmd_accuracy": ("/api/v1/trading/signals", "预测准确率"),
+    "cmd_weekly": ("/api/v1/system/daily-brief", "综合周报"),
+    "cmd_review": ("/api/v1/trading/journal?limit=20", "AI 交易复盘"),
+    "cmd_journal": ("/api/v1/trading/journal?limit=20", "交易日志"),
     # 系统类
     "cmd_status": ("/api/v1/system/status", "系统状态"),
     "cmd_news": ("/api/v1/system/daily-brief", "科技早报"),
@@ -271,16 +284,44 @@ _CMD_API_MAP: dict[str, tuple[str, str]] = {
     "cmd_memory": ("/api/v1/memory/stats", "记忆管理"),
     "cmd_cost": ("/api/v1/omega/cost", "成本配额"),
     "cmd_perf": ("/api/v1/system/perf", "性能指标"),
+    "cmd_brief": ("/api/v1/system/daily-brief", "执行简报"),
+    "cmd_model": ("/api/v1/pool/stats", "当前模型"),
+    "cmd_config": ("/api/v1/system/services", "运行配置"),
+    "cmd_settings": ("/api/v1/controls/settings", "偏好设置"),
     # 闲鱼类
     "cmd_xianyu": ("/api/v1/xianyu/conversations", "闲鱼客服"),
     "cmd_xianyu_report": ("/api/v1/xianyu/profit", "闲鱼报表"),
+    "cmd_xianyu_style": ("/api/v1/xianyu/status", "闲鱼话术"),
     # 社媒类
+    "cmd_hot": ("/api/v1/social/extension/trends?platform=x&limit=8", "热点发文选题"),
     "cmd_social_report": ("/api/v1/social/analytics?days=7", "社媒报告"),
     "cmd_social_persona": ("/api/v1/social/personas", "社媒人设"),
+    "cmd_social_plan": ("/api/v1/social/ops-workspace", "发文计划"),
+    "cmd_topic": ("/api/v1/social/topics?count=10", "题材研究"),
+    "cmd_social_calendar": ("/api/v1/social/calendar?days=7", "发文日历"),
+    "cmd_deals": ("/api/v1/store/catalog?query={arg}", "折扣搜索"),
+    "cmd_intel": ("/api/v1/monitor/news", "全球情报"),
     # 风控
     "cmd_risk": ("/api/v1/monitor/risk", "风控状态"),
     # 仪表盘
     "cmd_dashboard": ("/api/v1/trading/dashboard", "交易仪表盘"),
+}
+
+_LOCAL_COMMAND_HANDLERS: set[int] = {100, 101, 203, 207, 408}
+_EXPLICIT_UNAVAILABLE_COMMANDS: dict[int, str] = {
+    105: "文字转语音目前只有 Telegram 文件发送形态，微信转发器没有对应音频回传 API；请在 Telegram 使用 /tts。",
+    106: "二维码生成目前只有 Telegram 图片回传形态，微信转发器没有对应图片回传 API；请在 Telegram 使用 /qr。",
+    230: "实盘买入涉及真实交易，微信编号入口不自动下单；请到交易面板人工确认，系统不会绕过风控。",
+    231: "实盘卖出涉及真实交易，微信编号入口不自动下单；请到交易面板人工确认，系统不会绕过风控。",
+    235: "取消订单会改变真实账户状态，微信编号入口不直接执行；请到交易面板人工确认。",
+    301: "双平台发文只允许生成待审草稿，不会自动发布；请在 Social 中控人工确认。",
+    302: "X 发文只允许生成待审草稿，不会自动发布；请在 Social 中控人工确认。",
+    303: "小红书发文只允许生成待审草稿，不会自动发布；请在 Social 中控人工确认。",
+    403: "闲鱼发货涉及真实卡券/订单状态，微信编号入口不直接执行；请在闲鱼中控人工确认。",
+    404: "降价监控目前没有稳定只读 API；可用 405 折扣搜索查看候选商品。",
+    501: "话费账单历史自动化已下线，当前没有安全可用的账单 API。",
+    502: "数据导出会生成本地文件，微信转发器没有安全附件回传通道；请在桌面端执行导出。",
+    503: "自动化工作台当前只在桌面端提供，微信只保留状态查询，避免误触发本机自动化。",
 }
 
 
@@ -315,6 +356,17 @@ async def _execute_numbered_cmd(num: int, arg: str) -> str:
             data = await _self_call_api(f"/api/v1/trading/kline?symbol={arg}&interval=1d&limit=30", timeout=15.0)
             return _format_dict_result(f"{arg} 技术分析", data)
 
+        if func_name == "cmd_calc":
+            return (
+                "📐 仓位计算器\n\n"
+                "请发送: 207 入场价 止损价 账户资金 风险比例\n"
+                "示例: 207 100 95 2000 0.02\n"
+                "该微信入口只做计算建议，不会下单。"
+            )
+
+        if num in _EXPLICIT_UNAVAILABLE_COMMANDS:
+            return f"⚠️ {desc}\n\n{_EXPLICIT_UNAVAILABLE_COMMANDS[num]}"
+
         # ── 黑五折扣搜索: 直接调用扫描器 ──
         if num == 408:
             try:
@@ -333,7 +385,7 @@ async def _execute_numbered_cmd(num: int, arg: str) -> str:
         if arg:
             prompt += f"，参数: {arg}"
         reply = await _generate_wechat_reply(prompt)
-        return reply or f"已收到指令: {desc}" + (f" ({arg})" if arg else "")
+        return reply or f"已收到指令: {desc}{(f' ({arg})' if arg else '')}"
 
     except Exception as e:
         logger.warning("[微信] 命令 %d 执行失败: %s", num, e)
@@ -499,8 +551,7 @@ async def wechat_incoming(payload: WeChatIncomingRequest) -> WeChatIncomingRespo
             return WeChatIncomingResponse(reply=_build_full_help())
         # 101 = 清空对话记忆
         if num == 101:
-            if from_user in _wechat_memory:
-                del _wechat_memory[from_user]
+            _wechat_memory.pop(from_user, None)
             return WeChatIncomingResponse(reply="✅ 对话记忆已清空")
         reply = await _execute_numbered_cmd(num, arg)
         elapsed = round(time.time() - start, 2)

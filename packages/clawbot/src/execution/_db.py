@@ -94,10 +94,10 @@ def init_db(db_path=None):
             "ALTER TABLE reminders ADD COLUMN recurrence_rule TEXT DEFAULT ''",
             "ALTER TABLE reminders ADD COLUMN user_chat_id INTEGER DEFAULT 0",
         ]:
-            try:
+            try:  # noqa: SIM105
                 conn.execute(col_sql)
             except sqlite3.OperationalError as e:  # noqa: F841
-                pass  # 列已存在
+                pass  # 合理保留：幂等建表迁移，列已存在时跳过
 
         # v2.1: 社媒互动数据表 — 记录帖子的点赞/评论/转发/浏览
         conn.execute("""CREATE TABLE IF NOT EXISTS post_engagement (
@@ -129,10 +129,10 @@ def init_db(db_path=None):
         conn.execute("CREATE INDEX IF NOT EXISTS idx_expenses_user_chat ON expenses(user_id, chat_id)")
 
         # v2.2.1: 给 expenses 表新增 type 列区分收入/支出 (安全 ALTER)
-        try:
+        try:  # noqa: SIM105
             conn.execute("ALTER TABLE expenses ADD COLUMN type TEXT DEFAULT 'expense'")
         except sqlite3.OperationalError as e:  # noqa: F841
-            pass  # 列已存在
+            pass  # 合理保留：幂等建表迁移，列已存在时跳过
 
         # v2.2.2: 月预算表 — 存储用户的月度预算设定
         conn.execute("""CREATE TABLE IF NOT EXISTS budgets (

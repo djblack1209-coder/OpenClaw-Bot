@@ -86,13 +86,13 @@ class APIMixin:
         start = _time.time()
 
         # 频率限制
-        allowed, reason = rate_limiter.check(self.bot_id, chat_type)
+        allowed, _reason = rate_limiter.check(self.bot_id, chat_type)
         if not allowed:
             return ""
 
         # Token 预算
         is_claude = getattr(self, "is_claude", False)
-        budget_ok, budget_reason = token_budget.check(self.bot_id, is_claude)
+        budget_ok, _budget_reason = token_budget.check(self.bot_id, is_claude)
         if not budget_ok:
             return "今日额度已用完，明天再来~"
 
@@ -268,8 +268,8 @@ class APIMixin:
                 system_prompt=getattr(self, "system_prompt", ""),
             )
             return response.choices[0].message.content or "(无响应)"
-        except Exception as e:  # noqa: F841
-            raise Exception("所有免费 API 渠道均不可用，如需使用付费模型请发 /claude")
+        except Exception as e:
+            raise Exception("所有免费 API 渠道均不可用，如需使用付费模型请发 /claude") from e
 
     async def _call_claude_api(self, messages: list, use_tools: bool = True) -> str:
         """付费 Claude API，支持工具调用循环 (保留原实现，LiteLLM 不直接支持多轮工具循环)"""
@@ -340,7 +340,7 @@ class APIMixin:
             working_messages.append({"role": "user", "content": tool_results})
 
         if text_parts:
-            return "\n".join(text_parts) + "\n\n[已达到工具调用上限]"
+            return f"{'\n'.join(text_parts)}\n\n[已达到工具调用上限]"
         return error_tool_abuse()
 
     # ---- 流式调用 ----

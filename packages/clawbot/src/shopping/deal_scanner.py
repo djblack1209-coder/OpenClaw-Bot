@@ -292,7 +292,7 @@ def _extract_price_num(text: str) -> float:
         try:
             return float(match.group())
         except ValueError:
-            pass
+            pass  # 合理保留：解析失败时返回默认值
     return 0.0
 
 
@@ -381,7 +381,7 @@ async def push_deals_telegram(deals: list[DealItem], chat_id: int, bot_token: st
 
     # Telegram 消息长度限制 4096
     if len(message) > 4000:
-        message = message[:3950] + "\n\n... (更多折扣见下次推送)"
+        message = f"{message[:3950]}\n\n... (更多折扣见下次推送)"
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:

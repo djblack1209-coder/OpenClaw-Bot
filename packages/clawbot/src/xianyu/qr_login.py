@@ -261,7 +261,7 @@ class QRLoginManager:
                         return {"success": False, "status": "expired"}
 
                     elif qr_status == "NEW":
-                        pass  # 等待扫码
+                        pass  # 合理保留：二维码仍在等待扫码，继续轮询
 
                     else:
                         logger.info(f"闲鱼 QR 登录: 状态 {qr_status}")

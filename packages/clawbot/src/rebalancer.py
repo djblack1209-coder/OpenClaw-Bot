@@ -85,28 +85,27 @@ class RebalancePlan:
         lines = [
             "组合再平衡分析",
             "",
-            "组合总价值: $%.2f" % self.total_value,
-            "现金: $%.2f (%.1f%%)" % (self.cash, self.cash / self.total_value * 100 if self.total_value > 0 else 0),
-            "最大漂移: %.1f%%" % self.max_drift,
-            "状态: %s" % ("已平衡" if self.is_balanced else "需要调仓"),
+            f"组合总价值: ${self.total_value:.2f}",
+            f"现金: ${self.cash:.2f} ({self.cash / self.total_value * 100 if self.total_value > 0 else 0:.1f}%)",
+            f"最大漂移: {self.max_drift:.1f}%",
+            f"状态: {'已平衡' if self.is_balanced else '需要调仓'}",
             "",
         ]
 
         if self.drifts:
             lines.append("-- 持仓漂移 --")
-            lines.append("%-6s %6s %6s %7s %10s" % ("标的", "目标", "当前", "漂移", "调整"))
+            lines.append(f"{'标的':6} {'目标':>6} {'当前':>6} {'漂移':>7} {'调整':>10}")
             lines.append("-" * 42)
             for d in sorted(self.drifts, key=lambda x: abs(x.drift_pct), reverse=True):
                 action_text = ""
                 if d.action == "BUY":
-                    action_text = "+%d股" % d.shares_delta
+                    action_text = f"+{int(d.shares_delta)}股"
                 elif d.action == "SELL":
-                    action_text = "%d股" % d.shares_delta
+                    action_text = f"{int(d.shares_delta)}股"
                 else:
                     action_text = "持有"
                 lines.append(
-                    "%-6s %5.1f%% %5.1f%% %+6.1f%% %10s"
-                    % (d.symbol, d.target_pct, d.current_pct, d.drift_pct, action_text)
+                    f"{d.symbol:6} {d.target_pct:5.1f}% {d.current_pct:5.1f}% {d.drift_pct:+6.1f}% {action_text:>10}"
                 )
 
         if self.trades_needed:
@@ -115,11 +114,11 @@ class RebalancePlan:
             for t in self.trades_needed:
                 if t.action == "BUY":
                     lines.append(
-                        "  BUY  %s x%d ($%.2f)" % (t.symbol, t.shares_delta, t.value_delta)
+                        f"  BUY  {t.symbol} x{int(t.shares_delta)} (${t.value_delta:.2f})"
                     )
                 elif t.action == "SELL":
                     lines.append(
-                        "  SELL %s x%d ($%.2f)" % (t.symbol, abs(t.shares_delta), abs(t.value_delta))
+                        f"  SELL {t.symbol} x{int(abs(t.shares_delta))} (${abs(t.value_delta):.2f})"
                     )
         elif not self.is_balanced:
             lines.append("")
@@ -334,16 +333,16 @@ class Rebalancer:
         lines = [
             "当前目标配置",
             "",
-            "%-6s %6s" % ("标的", "目标"),
+            f"{'标的':6} {'目标':>6}",
             "-" * 16,
         ]
         total = 0
         for t in self._targets:
-            lines.append("%-6s %5.1f%%" % (t.symbol, t.target_pct))
+            lines.append(f"{t.symbol:6} {t.target_pct:5.1f}%")
             total += t.target_pct
         lines.append("-" * 16)
-        lines.append("%-6s %5.1f%%" % ("合计", total))
-        lines.append("%-6s %5.1f%%" % ("现金", 100 - total))
+        lines.append(f"{'合计':6} {total:5.1f}%")
+        lines.append(f"{'现金':6} {100 - total:5.1f}%")
         return "\n".join(lines)
 
     async def optimize_weights(
@@ -404,7 +403,7 @@ class Rebalancer:
                         prices = raw[["Close"]]
                     prices = prices.dropna()
                 except Exception as e:
-                    raise RuntimeError(f"价格数据获取失败: {e}")
+                    raise RuntimeError(f"价格数据获取失败: {e}") from e
 
                 if prices.empty or len(prices) < 30:
                     raise RuntimeError("历史数据不足 (需至少30个交易日)")

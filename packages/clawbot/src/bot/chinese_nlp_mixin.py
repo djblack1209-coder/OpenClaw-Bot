@@ -8,7 +8,7 @@ import re
 logger = logging.getLogger(__name__)
 
 # 从子模块导入常量和工具函数（HI-358 拆分）
-from src.bot.nlp_ticker_map import (
+from src.bot.nlp_ticker_map import (  # noqa: E402
     _clean_capture,
     _resolve_chinese_ticker,
     _suggest_command,
@@ -144,7 +144,9 @@ def _match_chinese_command(text=None):
         cleaned,
     )
     if m_shop and not re.search(r"股|期权|基金|债券", cleaned):
-        product = m_shop.group(1).strip().rstrip("的价格最便宜便宜")
+        product = m_shop.group(1).strip()
+        for suffix in ("的价格最便宜", "价格最便宜", "最便宜", "便宜"):
+            product = product.removesuffix(suffix).strip()
         if product:
             return ("smart_shop", product)
     m_shop2 = re.search(r"(.{2,20}?)(?:哪里买|在哪买|哪个平台|哪里最便宜|多少钱一个)", cleaned)
@@ -288,40 +290,38 @@ def _match_chinese_command(text=None):
     _PRE = r"(?:帮我|看看|查看|来个|来条|给我|打开|查一下|看一下)?"
     _SUF = r"(?:吧|啊|呢|呀|一下|看看)?$"
     if re.search(
-        _PRE
-        + r"(?:开始|帮助|菜单|命令|指令|使用说明|你好|hi|hello|嗨|在吗|你能做什么|能做什么|怎么用|如何使用|有什么功能|功能列表|你会什么)"
-        + _SUF,
+        f"{_PRE}(?:开始|帮助|菜单|命令|指令|使用说明|你好|hi|hello|嗨|在吗|你能做什么|能做什么|怎么用|如何使用|有什么功能|功能列表|你会什么){_SUF}",
         cleaned,
         re.IGNORECASE,
     ):
         return ("start", "")
     if re.search(
-        _PRE + r"(?:清空|清空对话|重置对话|重置会话|清空聊天|清空记录|清除记录|删掉对话|重新开始)" + _SUF, cleaned
+        f"{_PRE}(?:清空|清空对话|重置对话|重置会话|清空聊天|清空记录|清除记录|删掉对话|重新开始){_SUF}", cleaned
     ):
         return ("clear", "")
     # 自动交易状态（放在基础"状态"之前，防止被泛匹配拦截）
     if re.search("自动交易状态|自动交易情况|自动交易怎么样", cleaned):
         return ("autotrader_status", "")
-    if re.search(_PRE + r"(?:状态|查看状态|机器人状态|系统状态|运行状态|你的状态)" + _SUF, cleaned):
+    if re.search(f"{_PRE}(?:状态|查看状态|机器人状态|系统状态|运行状态|你的状态){_SUF}", cleaned):
         return ("status", "")
-    if re.search(_PRE + r"(?:配置|配置状态|当前配置|运行配置)" + _SUF, cleaned):
+    if re.search(f"{_PRE}(?:配置|配置状态|当前配置|运行配置){_SUF}", cleaned):
         return ("config", "")
-    if re.search(_PRE + r"(?:成本|配额|用量|成本状态|配额状态|花了多少钱|还有多少额度)" + _SUF, cleaned):
+    if re.search(f"{_PRE}(?:成本|配额|用量|成本状态|配额状态|花了多少钱|还有多少额度){_SUF}", cleaned):
         return ("cost", "")
-    if re.search(_PRE + r"(?:上下文|上下文状态|上下文用量)" + _SUF, cleaned):
+    if re.search(f"{_PRE}(?:上下文|上下文状态|上下文用量){_SUF}", cleaned):
         return ("context", "")
-    if re.search(_PRE + r"(?:压缩|压缩上下文|整理上下文)" + _SUF, cleaned):
+    if re.search(f"{_PRE}(?:压缩|压缩上下文|整理上下文){_SUF}", cleaned):
         return ("compact", "")
-    if re.search(_PRE + r"(?:新闻|科技早报|早报|今日新闻|最新消息|今天新闻)" + _SUF, cleaned):
+    if re.search(f"{_PRE}(?:新闻|科技早报|早报|今日新闻|最新消息|今天新闻){_SUF}", cleaned):
         return ("news", "")
     if re.search(
-        _PRE + r"(?:情报|世界新闻|全球新闻|全球情报|行业新闻|地缘政治|军事动态|网络安全新闻|情报速递|每日情报)" + _SUF,
+        f"{_PRE}(?:情报|世界新闻|全球新闻|全球情报|行业新闻|地缘政治|军事动态|网络安全新闻|情报速递|每日情报){_SUF}",
         cleaned,
     ):
         return ("intel", "")
-    if re.search(_PRE + r"(?:指标|运行指标|监控指标|运行数据)" + _SUF, cleaned):
+    if re.search(f"{_PRE}(?:指标|运行指标|监控指标|运行数据){_SUF}", cleaned):
         return ("metrics", "")
-    if re.search(_PRE + r"(?:分流|分流规则|路由规则|话题分流|多bot分流|多机器人分流)" + _SUF, cleaned):
+    if re.search(f"{_PRE}(?:分流|分流规则|路由规则|话题分流|多bot分流|多机器人分流){_SUF}", cleaned):
         return ("lanes", "")
     if re.search(r"(画|绘|画一|画个|画张|生成图片)", cleaned):
         return ("draw", cleaned)
@@ -343,11 +343,11 @@ def _match_chinese_command(text=None):
     if m_bounty_scan:
         kw = (m_bounty_scan.group(1) or "").strip()
         return ("ops_bounty_scan", kw)
-    if re.search(_PRE + r"(?:赏金列表|赏金机会|赏金看板|有什么赏金)" + _SUF, cleaned):
+    if re.search(f"{_PRE}(?:赏金列表|赏金机会|赏金看板|有什么赏金){_SUF}", cleaned):
         return ("ops_bounty_list", "")
-    if re.search(_PRE + r"(?:赏金top|赏金排行|高收益赏金|赏金排行榜)" + _SUF, cleaned):
+    if re.search(f"{_PRE}(?:赏金top|赏金排行|高收益赏金|赏金排行榜){_SUF}", cleaned):
         return ("ops_bounty_top", "")
-    if re.search(_PRE + r"(?:开工赚钱|打开赏金机会|开赏金链接|我要赚钱)" + _SUF, cleaned):
+    if re.search(f"{_PRE}(?:开工赚钱|打开赏金机会|开赏金链接|我要赚钱){_SUF}", cleaned):
         return ("ops_bounty_open", "")
     m_tweet_plan = re.search(r"(?:推文计划|分析推文|推文执行计划)\s+(.+)", cleaned)
     if m_tweet_plan:
@@ -378,9 +378,9 @@ def _match_chinese_command(text=None):
     m_dualpost = re.search(r"(?:双平台发文|一键双发|双平台一键发文)\s*(.*)", cleaned)
     if m_dualpost:
         return ("dualpost", (m_dualpost.group(1) or "").strip())
-    if re.search(_PRE + r"(?:数字生命首发|首发包|社媒首发包|数字生命人设首发|做个首发)" + _SUF, cleaned):
+    if re.search(f"{_PRE}(?:数字生命首发|首发包|社媒首发包|数字生命人设首发|做个首发){_SUF}", cleaned):
         return ("social_launch", "")
-    if re.search(_PRE + r"(?:当前社媒人设|社媒人设|数字生命人设|当前人设|我的人设)" + _SUF, cleaned):
+    if re.search(f"{_PRE}(?:当前社媒人设|社媒人设|数字生命人设|当前人设|我的人设){_SUF}", cleaned):
         return ("social_persona", "")
     m_topic = re.search("(?:研究|分析|看看|学习)(.+?)(?:题材|方向|内容)", cleaned)
     if m_topic:
@@ -394,7 +394,7 @@ def _match_chinese_command(text=None):
     m_dual = re.search("(?:给我|帮我)?发(?:一篇)?(.+?)(?:类)?(?:文章|内容)?(?:双平台|同时发|发到两个平台)", cleaned)
     if m_dual:
         return ("social_post", m_dual.group(1).strip())
-    if re.search(_PRE + r"(?:一键发文|热点发文|热点一键发文|蹭热点发文|自动发文|发个热点)" + _SUF, cleaned):
+    if re.search(f"{_PRE}(?:一键发文|热点发文|热点一键发文|蹭热点发文|自动发文|发个热点){_SUF}", cleaned):
         return ("social_hotpost", "")
     m_hotpost = re.search(r"(?:一键发文|热点发文|蹭热点发文|自动发文)\s+(.+)", cleaned)
     if m_hotpost:
@@ -469,14 +469,14 @@ def _match_chinese_command(text=None):
     if re.search("发货管理|闲鱼发货", cleaned):
         return ("ship", "")
     # v3.0: 综合周报 NL 触发
-    if re.search(_PRE + r"(?:周报|本周总结|每周总结|本周汇总|综合周报|这周怎么样)" + _SUF, cleaned):
+    if re.search(f"{_PRE}(?:周报|本周总结|每周总结|本周汇总|综合周报|这周怎么样){_SUF}", cleaned):
         return ("weekly", "")
     m_monitor_add = re.search(r"(?:添加资讯监控|新增资讯监控|监控关键词)\s+(.+)", cleaned)
     if m_monitor_add:
         return ("ops_monitor_add", m_monitor_add.group(1).strip())
-    if re.search(_PRE + r"(?:资讯监控列表|新闻监控列表|监控了什么)" + _SUF, cleaned):
+    if re.search(f"{_PRE}(?:资讯监控列表|新闻监控列表|监控了什么){_SUF}", cleaned):
         return ("ops_monitor_list", "")
-    if re.search(_PRE + r"(?:运行资讯监控|扫描资讯监控|立即扫描资讯监控|跑一下监控|扫描一下)" + _SUF, cleaned):
+    if re.search(f"{_PRE}(?:运行资讯监控|扫描资讯监控|立即扫描资讯监控|跑一下监控|扫描一下){_SUF}", cleaned):
         return ("ops_monitor_run", "")
     # ── 提醒系统 v2.0: 重复提醒 + 自然语言时间 ──
 
@@ -619,7 +619,7 @@ def _match_chinese_command(text=None):
         if not sym:
             sym = _resolve_chinese_ticker(raw)
         if sym:
-            return ("backtest", "monte %s" % sym)
+            return ("backtest", f"monte {sym}")
     # 参数优化: "参数优化 AAPL" / "优化参数 苹果"
     m_opt = re.search(r"(?:参数优化|优化参数)\s*([A-Za-z\-]{1,10}|\S{1,6})", cleaned)
     if m_opt:
@@ -628,7 +628,7 @@ def _match_chinese_command(text=None):
         if not sym:
             sym = _resolve_chinese_ticker(raw)
         if sym:
-            return ("backtest", "optimize %s" % sym)
+            return ("backtest", f"optimize {sym}")
     # 前进分析: "前进分析 AAPL" / "walk forward 苹果"
     m_wf = re.search(r"(?:前进分析|walk\s*forward)\s*([A-Za-z\-]{1,10}|\S{1,6})", cleaned)
     if m_wf:
@@ -637,7 +637,7 @@ def _match_chinese_command(text=None):
         if not sym:
             sym = _resolve_chinese_ticker(raw)
         if sym:
-            return ("backtest", "walkforward %s" % sym)
+            return ("backtest", f"walkforward {sym}")
 
     m_bt = re.search(r"(?:回测|测试策略|backtest)\s*([A-Za-z\-]{1,10})?", cleaned)
     if m_bt:

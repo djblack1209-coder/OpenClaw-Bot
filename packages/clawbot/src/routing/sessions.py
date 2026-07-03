@@ -150,7 +150,7 @@ class SessionMixin:
         session = self._discuss_sessions.get(chat_id)
         if session:
             # 截取前200字记录
-            short = message[:200] + "..." if len(message) > 200 else message
+            short = f"{message[:200]}..." if len(message) > 200 else message
             session["history"].append(f"[{bot_name}]: {short}")
 
     # ============ 服务工作流 ============
@@ -219,9 +219,7 @@ class SessionMixin:
             return True
         if len(raw) >= 36 and action_hits:
             return True
-        if len(raw) >= 48 and has_process_signal:
-            return True
-        return False
+        return bool(len(raw) >= 48 and has_process_signal)
 
     def get_service_workflow(self, chat_id: int) -> ServiceWorkflowSession | None:
         """获取活跃的服务工作流会话"""

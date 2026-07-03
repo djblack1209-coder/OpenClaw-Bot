@@ -158,7 +158,7 @@ async def safe_edit(msg, text: str, parse_mode: str = "Markdown"):
 
 # ============ Per-User 偏好管理 — 搬运自 father-bot 的 user settings 模式 ============
 
-import json as _json
+import json as _json  # noqa: E402
 
 
 class UserPreferencesManager:

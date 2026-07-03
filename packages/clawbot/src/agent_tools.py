@@ -210,7 +210,7 @@ class NewsSearchTool(Tool):
             items = _run_async_in_sync(fetcher.fetch_topic_news(topic, count=5))
             if items:
                 lines = NewsFetcher.format_news_items(items, max_items=5)
-                return f"=== {topic} 新闻 ===\n" + "\n".join(lines)
+                return f"=== {topic} 新闻 ===\n{'\n'.join(lines)}"
             return f"未找到关于 {topic} 的新闻"
         except Exception as e:
             logger.exception("Agent 新闻搜索失败")

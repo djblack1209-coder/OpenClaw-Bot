@@ -156,7 +156,7 @@ async def run_cli_command(
         }
 
     # 构建命令（自动追加 --json 获取机器可读输出）
-    cmd = [tool_entry["path"]] + list(args) + ["--json"]
+    cmd = [tool_entry["path"], *list(args), "--json"]
 
     start_ms = time.monotonic()
     try:
@@ -175,7 +175,7 @@ async def run_cli_command(
 
         # 合并 stderr 到输出（如果有的话）
         if err_output and proc.returncode != 0:
-            output = output + "\n" + err_output if output else err_output
+            output = f"{output}\n{err_output}" if output else err_output
 
         return {
             "success": proc.returncode == 0,

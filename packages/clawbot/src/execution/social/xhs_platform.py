@@ -229,7 +229,7 @@ async def publish_xhs_article(
     title: str,
     body: str,
     worker_fn=None,
-    image_path: str = None,
+    image_path: str | None = None,
 ) -> dict:
     """发布小红书笔记
 
@@ -290,7 +290,7 @@ async def reply_to_xhs_comment(
 
 
 async def update_xhs_profile(
-    bio: str = None,
+    bio: str | None = None,
     worker_fn=None,
 ) -> dict:
     """更新小红书个人资料"""

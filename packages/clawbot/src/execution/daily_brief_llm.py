@@ -166,7 +166,7 @@ async def _generate_executive_summary(sections_data: dict) -> str:
         parts.append(f"闲鱼成交 {xianyu_orders} 单")
     if not parts:
         parts.append("各项业务运行平稳")
-    summary = "，".join(parts) + "。"
+    summary = f"{'，'.join(parts)}。"
 
     # 第二句: 找最值得关注的指标
     attention = ""

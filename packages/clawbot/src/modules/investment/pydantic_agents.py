@@ -136,7 +136,7 @@ class StructuredAnalysis:
         """渲染为 Telegram 卡片"""
         lines = [f"📊 <b>投资分析: {self.symbol}</b>", "━━━━━━━━━━━━━━━"]
 
-        def stars(s): return "⭐" * max(1, int(s / 2)) + f" {s:.1f}"
+        def stars(s): return f"{'⭐' * max(1, int(s / 2))} {s:.1f}"
 
         if self.research:
             lines.extend(["",
@@ -424,7 +424,7 @@ class PydanticInvestmentEngine:
 # ── Agent Prompts — 从中央注册表导入 ─────────────────
 # 使用 config.prompts 的完整版本（team.py 权威定义），替代原先的简化副本。
 
-from config.prompts import INVESTMENT_ROLES
+from config.prompts import INVESTMENT_ROLES  # noqa: E402
 
 RESEARCHER_PROMPT = INVESTMENT_ROLES["researcher"]
 TA_PROMPT = INVESTMENT_ROLES["ta_analyst"]

@@ -35,7 +35,7 @@ _DB_PATH = _DATA_DIR / "auto_shipper.db"
 class AutoShipper:
     """闲鱼虚拟商品自动发货引擎"""
 
-    def __init__(self, db_path: str = None):
+    def __init__(self, db_path: str | None = None):
         self.db_path = Path(db_path) if db_path else _DB_PATH
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
@@ -110,7 +110,7 @@ class AutoShipper:
         logger.info("[AutoShipper] 添加卡券: item=%s, 成功=%d, 重复=%d", item_id, added, duplicates)
         return {"added": added, "duplicates": duplicates}
 
-    def get_inventory(self, item_id: str = None) -> list[dict]:
+    def get_inventory(self, item_id: str | None = None) -> list[dict]:
         """查看库存状态"""
         with self._conn() as conn:
             if item_id:
@@ -139,7 +139,7 @@ class AutoShipper:
         item_id: str,
         auto_ship: bool = True,
         delay_seconds: int = 30,
-        reply_template: str = None,
+        reply_template: str | None = None,
         max_daily_ship: int = 50,
     ) -> dict:
         """设置商品发货规则"""
@@ -261,7 +261,7 @@ class AutoShipper:
             ).fetchall()
         return [{"item_id": r["item_id"], "available": r["available"]} for r in rows]
 
-    def get_shipping_stats(self, item_id: str = None) -> dict:
+    def get_shipping_stats(self, item_id: str | None = None) -> dict:
         """发货统计"""
         with self._conn() as conn:
             if item_id:

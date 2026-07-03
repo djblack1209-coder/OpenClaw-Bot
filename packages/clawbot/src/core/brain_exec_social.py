@@ -42,7 +42,7 @@ class SocialExecutorMixin:
             try:
                 trending = (
                     await asyncio.to_thread(crawler.get_trending, platform)
-                    if hasattr(crawler.get_trending, "__call__")
+                    if callable(crawler.get_trending)
                     else crawler.get_trending(platform)
                 )
                 results["trending"] = trending[:10] if trending else []

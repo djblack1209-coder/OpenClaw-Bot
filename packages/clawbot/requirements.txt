@@ -6,13 +6,25 @@ beautifulsoup4~=4.14.3
 
 # 代码沙箱安全 — AST 级别限制用户代码执行
 RestrictedPython>=8.0,<9.0  # 安全沙箱，锁定主版本防止API变更
-requests~=2.32.0
+requests>=2.33.0,<3.0.0
+urllib3>=2.7.0,<3.0.0  # 参考 urllib3 CHANGES 2.7.x，收口 2026 高危漏洞
+charset-normalizer>=3.0.0,<4.0.0  # requests 官方字符集检测依赖上限
+chardet>=5.0.0,<6.0.0  # 保留兼容旧库导入，避免 7.x 触发 requests 依赖告警
+
+# 依赖安全下限 — 参考 2026-07-02 PyPI/官方 changelog，避免 pip 回退到已知漏洞版本。
+pillow>=12.2.0,<13.0.0
+lxml>=6.1.0,<7.0.0
+pydantic-settings>=2.14.2,<3.0.0
+pypdf>=6.13.3,<7.0.0
+python-multipart>=0.0.31,<1.0.0
+tornado>=6.5.7,<7.0.0
+curl-cffi>=0.15.0,<1.0.0
 
 # Flask — 部署服务器 (deployer/deploy_server.py, web_installer.py)
 flask>=3.0.0,<4.0.0
 
 # aiohttp — 异步 HTTP (evolution/github_trending.py)
-aiohttp>=3.9.0,<4.0.0
+aiohttp>=3.14.1,<4.0.0
 
 # JSON 容错解析（4.6k⭐）— 替代 json.loads 解析 LLM 输出
 json-repair~=0.30.0
@@ -25,7 +37,7 @@ loguru~=0.7.0
 # 搬运: Pydantic model 强制 LLM 返回类型安全的结构化数据
 # 替换 json_repair + regex 的脆弱 JSON 提取模式
 # [litellm] extra 自动安装 litellm 适配层
-instructor[litellm]>=1.7.0
+instructor>=1.15.4
 
 # Pydantic Settings — 统一配置管理（类型校验 + env + .env）
 # 注意: 未直接 import，由 instructor/pydantic 隐式使用
@@ -36,7 +48,7 @@ websockets~=13.0
 # openai — 由 litellm 自动拉取正确版本，不再显式指定（避免与 litellm>=1.70 的 openai>=2.8.0 要求冲突）
 
 # 交易系统依赖
-yfinance~=1.1.0
+yfinance>=1.3.0,<2.0.0
 pandas>=2.2.0,<3
 numpy>=2.0.2,<3
 ta~=0.11.0                # 技术分析指标库（RSI/MACD/布林带等）
@@ -45,7 +57,7 @@ ta~=0.11.0                # 技术分析指标库（RSI/MACD/布林带等）
 
 # LiteLLM — 统一 LLM 路由 (39k⭐, MIT)
 # 替换自研 free_api_pool.py: 负载均衡、故障转移、速率限制
-litellm>=1.70.0,<2.0.0
+litellm>=1.84.0,<2.0.0
 
 # mem0 — AI 记忆层 (50k⭐, Apache 2.0)
 # 替换 shared_memory.py 的 RAG 部分: 向量嵌入、语义搜索、冲突消解
@@ -53,7 +65,8 @@ mem0ai>=0.1.30
 
 # browser-use — AI 浏览器代理 (81k⭐, MIT)
 # 替换自研 ai_browser.py: DOM 解析、LLM 决策循环、反检测
-browser-use>=0.2.0,<1.0.0
+# browser-use 默认不再安装：0.13.3 固定 aiohttp 3.13.4，与 aiohttp 3.14.1 安全修复冲突；代码会回退 Playwright/DrissionPage。
+# 需要自然语言浏览器代理时，请在隔离环境安装 browser-use>=0.13.3 并单独审计。
 
 # Playwright — 浏览器自动化 (browser-use 底层依赖)
 # 安装后需运行 `playwright install chromium` 安装浏览器二进制
@@ -69,7 +82,8 @@ langfuse>=2.0.0,<3.0.0
 
 # CrewAI — 多 Agent 协作框架 (46.6k⭐, MIT)
 # 升级 ai_team_voter: 动态角色、结构化任务编排、工具调用
-crewai>=0.80.0,<1.0.0
+# CrewAI 默认不再安装：旧 0.x 依赖 chromadb 无修复漏洞；代码已自动降级原生投票。
+# 需要时在隔离环境手动安装 crewai>=1.15.1 并先跑安全扫描。
 
 # Optuna — 超参数优化 (11k⭐, MIT)
 # Phase 3: AI 团队投票权重优化
@@ -83,7 +97,8 @@ ib_async>=2.1.0
 
 # FastAPI — 内控 API 框架 (80k⭐, MIT)
 # 搬运 freqtrade RPC + Open WebUI 模式，暴露 REST API 给 Tauri Manager
-fastapi~=0.115.0
+fastapi>=0.120.4,<0.140.0
+starlette>=1.3.1,<2.0.0
 
 # Uvicorn — ASGI 服务器 (9k⭐, BSD)
 # 搬运 freqtrade 的线程内 uvicorn 模式，与 Telegram bot 共存
@@ -137,7 +152,8 @@ pandas-ta>=0.3.14b1
 # crawl4ai — 结构化网页抽取 (62.4k⭐, Apache 2.0)
 # 替换 httpx+bs4 脆弱爬虫: AsyncWebCrawler + JsonCssExtractionStrategy + LLM 降级
 # 用于购物比价引擎的三级降级链 (CSS → LLM → Jina fallback)
-crawl4ai~=0.6.0
+# crawl4ai 默认不再安装：0.9.0 仍要求 lxml 5.x，与 lxml 6.1 安全修复冲突；购物比价会降级到 Tavily/Jina。
+# 需要结构化抓取时，请在隔离爬虫环境安装 crawl4ai>=0.9.0 并接受该依赖风险。
 
 # Apprise — 多渠道通知 (16.1k⭐, BSD)
 # 替换仅 Telegram 通知: 100+ 渠道 (Discord/Slack/WeChat/Email/Ntfy/Webhook 等)
@@ -223,7 +239,8 @@ smolagents>=1.0.0,<2.0.0
 # 搬运: PDF/DOCX/PPTX/XLSX/图片 → 结构化 Markdown
 # 表格保留结构，公式解析，代码块提取
 # 要求 Python ≥3.10 (项目已使用 3.12)
-docling>=2.0.0,<3.0.0
+# Docling 默认不再安装：会拉取 torch/docling 模型链，当前安全审计残余过重；代码已在缺失时返回清晰提示。
+# 需要文档理解时，请在独立工具环境安装 docling>=2.108.0 并单独审计。
 
 # ── Phase 10 新增: 外部服务集成 ──────────────────────────────
 
@@ -278,7 +295,7 @@ quantstats>=0.0.62,<1.0.0  # 可选
 snownlp>=0.12.3,<1.0.0  # 可选
 
 # textblob — 英文情感分析 (src/social_tools.py)
-textblob>=0.18.0,<1.0.0  # 可选
+# textblob 默认不再安装：会拉取 nltk；当前 nltk 无修复版漏洞。英文情感分析保持可选降级。
 
 # tweepy — Twitter/X API SDK (src/execution/social/x_platform.py)
 tweepy>=4.14.0,<5.0.0  # 可选

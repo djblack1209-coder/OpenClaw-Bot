@@ -48,7 +48,7 @@ def shorten(value: object, max_len: int = 80) -> str:
     text = clean_text(value)
     if max_len <= 0 or len(text) <= max_len:
         return text
-    return text[: max_len - 3].rstrip() + "…"
+    return f"{text[:max_len - 3].rstrip()}…"
 
 
 def bullet(text: object, icon: str = "·") -> str:
@@ -465,8 +465,8 @@ def format_bounty_result(
     daily_cost: float,
     daily_cap: float,
     shortlist: list,
-    watchlist: list = None,
-    decision_stats: dict = None,
+    watchlist: list | None = None,
+    decision_stats: dict | None = None,
     reused: bool = False,
 ) -> str:
     """赏金猎人结果"""
@@ -562,7 +562,7 @@ def _split_by_lines(text: str, max_len: int) -> list[str]:
     current = ""
 
     for line in lines:
-        candidate = current + "\n" + line if current else line
+        candidate = f"{current}\n{line}" if current else line
         if len(candidate) <= max_len:
             current = candidate
         else:

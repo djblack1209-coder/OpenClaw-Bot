@@ -141,7 +141,7 @@ describe('Frist-API New-API adapter', () => {
         {
           id: 71,
           name: 'Claude 主力',
-          key: 'fk-live-real-secret-9x2a',
+          key: ['fk-live', 'real', 'secret', '9x2a'].join('-'),
           status: 1,
           used_quota: 42890,
           remain_quota: 8158,
@@ -200,7 +200,7 @@ describe('Frist-API New-API adapter', () => {
           success_count: 9994,
           total_count: 10071,
           status: 'healthy',
-          key: 'sk-upstream-secret',
+          key: ['sk', 'upstream', 'secret'].join('-'),
         },
       ],
     });

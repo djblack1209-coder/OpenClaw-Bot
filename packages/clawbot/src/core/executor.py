@@ -319,7 +319,7 @@ class MultiPathExecutor:
             try:
                 return await self._execute_via_drission(url, actions)
             except ImportError:
-                raise RuntimeError("Playwright 和 DrissionPage 均未安装")
+                raise RuntimeError("Playwright 和 DrissionPage 均未安装") from None
 
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
@@ -420,9 +420,9 @@ class MultiPathExecutor:
             )
             return {"call_sid": call.sid, "status": "initiated"}
         except ImportError:
-            raise RuntimeError("Retell AI 和 Twilio 均未安装")
+            raise RuntimeError("Retell AI 和 Twilio 均未安装") from None
         except Exception as e:
-            raise RuntimeError(f"电话拨号失败: {e}")
+            raise RuntimeError(f"电话拨号失败: {e}") from e
 
     async def execute_via_composio(
         self,
@@ -438,7 +438,7 @@ class MultiPathExecutor:
         try:
             from src.integrations.composio_bridge import get_composio_bridge
         except ImportError:
-            raise RuntimeError("composio_bridge 模块不可用")
+            raise RuntimeError("composio_bridge 模块不可用") from None
 
         bridge = get_composio_bridge()
         if not bridge.is_available():
@@ -479,7 +479,7 @@ class MultiPathExecutor:
         try:
             from src.integrations.skyvern_bridge import get_skyvern_bridge
         except ImportError:
-            raise RuntimeError("skyvern_bridge 模块不可用")
+            raise RuntimeError("skyvern_bridge 模块不可用") from None
 
         bridge = get_skyvern_bridge()
         if not bridge.is_available():

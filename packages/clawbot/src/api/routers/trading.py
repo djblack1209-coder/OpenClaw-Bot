@@ -45,7 +45,7 @@ async def get_positions():
         return await ClawBotRPC._rpc_trading_positions()
     except Exception as e:
         logger.exception("获取交易持仓失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.get("/trading/pnl", response_model=PnLSummary)
@@ -55,7 +55,7 @@ async def get_pnl():
         return await ClawBotRPC._rpc_trading_pnl()
     except Exception as e:
         logger.exception("获取盈亏摘要失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.get("/trading/signals", response_model=dict[str, Any])
@@ -67,7 +67,7 @@ def get_signals():
         return {"signals": signals if isinstance(signals, list) else []}
     except Exception as e:
         logger.exception("获取交易信号失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.get("/trading/system", response_model=dict[str, Any])
@@ -79,7 +79,7 @@ def get_trading_system():
         return result if isinstance(result, dict) else {"status": "unknown"}
     except Exception as e:
         logger.exception("获取交易系统状态失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.get("/trading/dashboard")
@@ -112,7 +112,7 @@ async def trigger_vote(req: TeamVoteRequest):
         )
     except Exception as e:
         logger.exception("获取 %s 技术分析失败", req.symbol)
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
     if not analysis:
         raise HTTPException(status_code=422, detail=f"无法获取 {req.symbol} 的市场数据")
@@ -139,7 +139,7 @@ async def trigger_vote(req: TeamVoteRequest):
         return result
     except Exception as e:
         logger.exception("AI 团队投票失败 (symbol=%s)", req.symbol)
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.get("/trading/kline")
@@ -345,7 +345,7 @@ async def sell_position(req: SellRequest):
         raise
     except Exception as e:
         logger.exception("卖出持仓失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 # ══════════════════════════════════════════════
@@ -383,7 +383,7 @@ def get_watchlist():
         return _load_watchlist()
     except Exception as e:
         logger.exception("获取自选股列表失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.post("/trading/watchlist")
@@ -414,7 +414,7 @@ async def add_to_watchlist(req: WatchlistAddRequest):
         raise
     except Exception as e:
         logger.exception("添加自选股失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.delete("/trading/watchlist/{symbol}")
@@ -435,7 +435,7 @@ def remove_from_watchlist(symbol: str = Path(..., description="要删除的标�
         raise
     except Exception as e:
         logger.exception("删除自选股失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 # ========== 交易日志 ==========
@@ -461,7 +461,7 @@ def get_trade_journal(
         return result
     except Exception as e:
         logger.exception("获取交易日志失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 # ========== 估值分析 ==========
@@ -551,4 +551,4 @@ def get_valuation(
         raise
     except Exception as e:
         logger.exception("估值分析失败: %s", symbol)
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e

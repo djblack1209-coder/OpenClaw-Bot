@@ -71,10 +71,8 @@ const CLIENT_PROFILES = new Map([
   ],
 ]);
 
-const MODEL_GROUP_FALLBACKS = Object.freeze({
-  DeepSeek: 'deepseek-v4-flash',
-  Gemini: 'gemini-2.5-flash',
-});
+const MODEL_GROUP_FALLBACKS = Object.freeze({});
+// 参考 OpenAI Models API list（2026-07-02 复核）：官方目录仅在显式允许 expandPatterns 时用于后台配置展开，客户可见模型必须来自健康上游。
 const MODEL_GROUP_OFFICIAL_MODELS = Object.freeze({
   OpenAI: Object.freeze([
     'gpt-5.5',
@@ -982,20 +980,18 @@ function buildImportRemark({ profile, modelGroup, planExpiresAt }) {
 
 function normalizeAvailableModels(availableModels = [], options = {}) {
   const providedModels = Array.isArray(availableModels) ? availableModels : [];
-  const fallbackModel = MODEL_GROUP_FALLBACKS[normalizeModelGroup(options.modelGroup)] || DEFAULT_PUBLIC_MODEL;
-  const expandedModels = expandModelPatterns(providedModels, options.modelGroup);
+  const expandedModels = expandModelPatterns(providedModels, options.modelGroup, options);
   const models = [
     ...expandedModels,
     options.defaultModel,
     options.model,
-    ...(providedModels.length === 0 && !options.defaultModel && !options.model ? [fallbackModel] : []),
   ]
     .map(normalizeOfficialModelName)
     .filter(Boolean);
   return sortModelsByStrength([...new Set(models)]);
 }
 
-function expandModelPatterns(models = [], modelGroup) {
+function expandModelPatterns(models = [], modelGroup, options = {}) {
   const group = normalizeModelGroup(modelGroup);
   const officialModels = MODEL_GROUP_OFFICIAL_MODELS[group] || [];
   let shouldAddOfficialModels = false;
@@ -1011,7 +1007,7 @@ function expandModelPatterns(models = [], modelGroup) {
     exactModels.push(model);
   }
 
-  return shouldAddOfficialModels ? [...officialModels, ...exactModels] : exactModels;
+  return shouldAddOfficialModels && options.expandPatterns ? [...officialModels, ...exactModels] : exactModels;
 }
 
 function modelPatternMatchesGroup(pattern, group) {
@@ -1029,18 +1025,61 @@ function chooseDefaultModel({ model, defaultModel, availableModels = [], modelGr
   if (preferExplicitDefaultModel && explicitDefault && models.includes(explicitDefault)) {
     return explicitDefault;
   }
-  return models[0] || MODEL_GROUP_FALLBACKS[normalizeModelGroup(modelGroup)] || DEFAULT_PUBLIC_MODEL;
+  return models[0] || MODEL_GROUP_FALLBACKS[normalizeModelGroup(modelGroup)] || '';
 }
 
+
+
 function sortModelsByStrength(models = []) {
-  return [...new Set(models.map(normalizeOfficialModelName).filter(Boolean))].sort((left, right) => {
-    const leftRank = MODEL_STRENGTH_ORDER.indexOf(left);
-    const rightRank = MODEL_STRENGTH_ORDER.indexOf(right);
-    const normalizedLeft = leftRank === -1 ? Number.MAX_SAFE_INTEGER : leftRank;
-    const normalizedRight = rightRank === -1 ? Number.MAX_SAFE_INTEGER : rightRank;
-    if (normalizedLeft !== normalizedRight) return normalizedLeft - normalizedRight;
-    return left.localeCompare(right);
-  });
+  return normalizeOfficialModelList(models).sort(compareModelsByAuditableRules);
+}
+
+function compareModelsByAuditableRules(left, right) {
+  const leftScore = modelSortScore(left);
+  const rightScore = modelSortScore(right);
+  for (let index = 0; index < Math.max(leftScore.length, rightScore.length); index += 1) {
+    const delta = (leftScore[index] ?? 0) - (rightScore[index] ?? 0);
+    if (delta !== 0) return delta;
+  }
+  return left.localeCompare(right);
+}
+
+function modelSortScore(model) {
+  const value = String(model || '').toLowerCase();
+  const family = value.includes('gpt') || value.includes('image') || value.includes('dall')
+    ? 0
+    : value.includes('claude')
+      ? 1
+      : value.includes('deepseek')
+        ? 2
+        : value.includes('gemini')
+          ? 3
+          : 9;
+  const numbers = [...value.matchAll(/\d+(?:\.\d+)?/g)].map((match) => Number(match[0]));
+  const primary = numbers[0] || 0;
+  const secondary = numbers[1] || 0;
+  return [
+    family,
+    -primary,
+    -secondary,
+    modelCapabilityRank(value),
+    value.includes('image') || value.includes('dall') ? 2 : 0,
+    value.includes('codex') ? 3 : 0,
+  ];
+}
+
+function modelCapabilityRank(value) {
+  if (value.includes('pro') && !value.includes('deepseek')) return 0;
+  if (value.includes('opus')) return 0;
+  if (value.includes('thinking')) return 1;
+  if (value.includes('sonnet')) return 2;
+  if (value.includes('flash')) return 3;
+  if (value.includes('mini')) return 4;
+  if (value.includes('nano')) return 5;
+  if (value.includes('chat')) return 6;
+  if (value.includes('reasoner')) return 7;
+  if (value.includes('pro')) return 8;
+  return 2;
 }
 
 function defaultClientFeatures(models = []) {

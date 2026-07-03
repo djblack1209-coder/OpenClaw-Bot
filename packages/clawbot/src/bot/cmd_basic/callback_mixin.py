@@ -62,7 +62,7 @@ class _CallbackMixin:
 
         cmd_str = data[4:].strip()  # 去掉 "cmd:" 前缀
         if not cmd_str.startswith("/"):
-            cmd_str = "/" + cmd_str  # Normalize: add / prefix if missing
+            cmd_str = f"/{cmd_str}"  # Normalize: add / prefix if missing
 
         # 解析命令和参数
         parts = cmd_str.split()

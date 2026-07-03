@@ -24,7 +24,7 @@ import re
 import time
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 from src.http_client import ResilientHTTPClient
 
@@ -55,7 +55,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-class ErrorCategory(str, Enum):
+class ErrorCategory(StrEnum):
     NETWORK = "network"
     AUTH = "auth"
     RATE_LIMIT = "rate_limit"

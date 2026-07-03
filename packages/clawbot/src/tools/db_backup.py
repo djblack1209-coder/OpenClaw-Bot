@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 import shutil
 from datetime import datetime
@@ -150,10 +151,8 @@ class DatabaseBackupService:
         last_backup = backup_dirs[0].name if backup_dirs else None
         if last_backup:
             # 转换 YYYYMMDD 为可读格式
-            try:
+            with contextlib.suppress(ValueError):
                 last_backup = datetime.strptime(last_backup, "%Y%m%d").strftime("%Y-%m-%d")
-            except ValueError:
-                pass
 
         return {
             "configured": True,

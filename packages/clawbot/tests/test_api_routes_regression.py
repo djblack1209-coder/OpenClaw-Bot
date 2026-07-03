@@ -84,6 +84,21 @@ def test_memory_update_route_exists(monkeypatch):
     assert response.json()["value"] == "updated"
 
 
+def test_cookiecloud_sync_all_treats_unconfigured_service_as_optional(monkeypatch):
+    """CookieCloud 未配置时一键同步不报错，明确提示这是可选增强。"""
+    for name in ("COOKIECLOUD_HOST", "COOKIECLOUD_UUID", "COOKIECLOUD_PASSWORD"):
+        monkeypatch.delenv(name, raising=False)
+    server = APIServer()
+    client = TestClient(server.app)
+
+    response = client.post("/api/v1/cookies/sync-all")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["sync_results"]["cookiecloud"]["success"] is False
+    assert "可选" in body["sync_results"]["cookiecloud"]["message"]
+
+
 def test_social_browser_status_route_exists(monkeypatch):
     server = APIServer()
     client = TestClient(server.app)

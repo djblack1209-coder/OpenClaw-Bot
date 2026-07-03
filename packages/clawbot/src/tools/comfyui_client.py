@@ -36,7 +36,7 @@ class ComfyUIClient:
     Each instance gets a unique client_id for prompt tracking.
     """
 
-    def __init__(self, base_url: str = None):
+    def __init__(self, base_url: str | None = None):
         self.base_url = (base_url or COMFYUI_URL).rstrip("/")
         self.client_id = str(uuid.uuid4())
 
@@ -90,7 +90,7 @@ class ComfyUIClient:
         self,
         filename: str,
         subfolder: str = "",
-        save_path: str = None,
+        save_path: str | None = None,
     ) -> str:
         """Download a generated image from ComfyUI output.
 
@@ -152,7 +152,7 @@ class ComfyUIClient:
 
         # Extract output image filename from result
         outputs = result.get("outputs", {})
-        for node_id, output in outputs.items():
+        for _node_id, output in outputs.items():
             images = output.get("images", [])
             if images:
                 img = images[0]
@@ -190,7 +190,7 @@ class ComfyUIClient:
         result = self.wait_for_result(prompt_id)
 
         outputs = result.get("outputs", {})
-        for node_id, output in outputs.items():
+        for _node_id, output in outputs.items():
             images = output.get("images", [])
             if images:
                 img = images[0]

@@ -95,5 +95,5 @@ class MemoryTool:
                 for key, data in list(items.items())[:5]:
                     parts.append(f"- {key}: {str(data['value'])[:50]}")
         if parts:
-            return "\n长期记忆:" + "".join(parts)
+            return f"\n长期记忆:{''.join(parts)}"
         return ""

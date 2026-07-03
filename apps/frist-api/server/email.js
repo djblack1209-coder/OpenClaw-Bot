@@ -390,6 +390,120 @@ export function buildBalanceAlertEmail({
   return { to, subject, html, text };
 }
 
+
+export async function scheduleEmailDelivery({
+  serverOptions,
+  to,
+  message,
+  data,
+  successType,
+  failureType,
+  eventBase = {},
+}) {
+  const sender = serverOptions.accountEmailSender || serverOptions.balanceAlertEmailSender;
+  if (typeof sender !== 'function') {
+    data.events.push({
+      type: failureType,
+      ...eventBase,
+      reason: 'SMTP 邮件服务未配置',
+      at: new Date().toISOString(),
+    });
+    return;
+  }
+  try {
+    await sender({ ...message, to });
+    data.events.push({ type: successType, ...eventBase, at: new Date().toISOString() });
+  } catch (error) {
+    data.events.push({
+      type: failureType,
+      ...eventBase,
+      reason: String(error?.message || error).slice(0, 300),
+      at: new Date().toISOString(),
+    });
+  }
+}
+
+export function buildVerificationEmail({ user, code, publicGatewayBaseUrl, at }) {
+  const dashboardUrl = publicGatewayBaseUrl
+    ? String(publicGatewayBaseUrl).replace(/\/v1\/?$/i, '').replace(/\/+$/, '')
+    : '';
+  const subject = 'Frist-API 注册验证码';
+  const timeText = formatEmailTime(at);
+  const html = `<!doctype html>
+<html lang="zh-CN">
+  <body style="margin:0;background:#f3f4f6;color:#111827;font-family:Arial,'PingFang SC','Microsoft YaHei',sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:28px 12px;background:#f3f4f6;">
+      <tr><td align="center">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
+          <tr><td style="background:#111827;color:#ffffff;padding:22px 26px;">
+            <div style="font-size:12px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:#fbbf24;">Frist-API</div>
+            <div style="margin-top:8px;font-size:24px;font-weight:900;">完成邮箱验证</div>
+          </td></tr>
+          <tr><td style="padding:26px;color:#111827;">
+            <p style="margin:0 0 14px;font-size:15px;line-height:1.7;">${escapeHtml(user.email)}，你的注册验证码是：</p>
+            <div style="font-size:36px;letter-spacing:8px;font-weight:900;background:#fef3c7;border:1px solid #f59e0b;border-radius:12px;padding:16px;text-align:center;color:#111827;">${escapeHtml(code)}</div>
+            <p style="margin:18px 0 0;color:#6b7280;font-size:13px;line-height:1.7;">验证码用于激活账户，请不要转发给别人。发送时间：${escapeHtml(timeText)}</p>
+            ${dashboardUrl ? `<p style="margin:18px 0 0;"><a href="${escapeAttribute(dashboardUrl)}" style="color:#111827;font-weight:800;">打开 Frist-API</a></p>` : ''}
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>`;
+  const text = [
+    subject,
+    '',
+    `账户: ${user.email}`,
+    `验证码: ${code}`,
+    `发送时间: ${timeText}`,
+    dashboardUrl ? `打开 Frist-API: ${dashboardUrl}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return { subject, html, text };
+}
+
+export function buildPasswordResetEmail({ user, code, publicGatewayBaseUrl, expiresMinutes, at }) {
+  const dashboardUrl = publicGatewayBaseUrl
+    ? String(publicGatewayBaseUrl).replace(/\/v1\/?$/i, '').replace(/\/+$/, '')
+    : '';
+  const subject = 'Frist-API 密码重置验证码';
+  const timeText = formatEmailTime(at);
+  const html = `<!doctype html>
+<html lang="zh-CN">
+  <body style="margin:0;background:#f3f4f6;color:#111827;font-family:Arial,'PingFang SC','Microsoft YaHei',sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:28px 12px;background:#f3f4f6;">
+      <tr><td align="center">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
+          <tr><td style="background:#7f1d1d;color:#ffffff;padding:22px 26px;">
+            <div style="font-size:12px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:#fecaca;">Frist-API Security</div>
+            <div style="margin-top:8px;font-size:24px;font-weight:900;">重置登录密码</div>
+          </td></tr>
+          <tr><td style="padding:26px;color:#111827;">
+            <p style="margin:0 0 14px;font-size:15px;line-height:1.7;">${escapeHtml(user.email)}，你的密码重置验证码是：</p>
+            <div style="font-size:36px;letter-spacing:8px;font-weight:900;background:#fee2e2;border:1px solid #ef4444;border-radius:12px;padding:16px;text-align:center;color:#111827;">${escapeHtml(code)}</div>
+            <p style="margin:18px 0 0;color:#6b7280;font-size:13px;line-height:1.7;">${Number(expiresMinutes)} 分钟内有效。如果不是你本人操作，可以忽略这封邮件。发送时间：${escapeHtml(timeText)}</p>
+            ${dashboardUrl ? `<p style="margin:18px 0 0;"><a href="${escapeAttribute(dashboardUrl)}" style="color:#111827;font-weight:800;">打开 Frist-API</a></p>` : ''}
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>`;
+  const text = [
+    subject,
+    '',
+    `账户: ${user.email}`,
+    `重置验证码: ${code}`,
+    `有效期: ${Number(expiresMinutes)} 分钟`,
+    `发送时间: ${timeText}`,
+    dashboardUrl ? `打开 Frist-API: ${dashboardUrl}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return { subject, html, text };
+}
+
 export function defaultBalanceAlert(email = '') {
   const normalizedEmail = normalizeAlertEmail(email);
   return {

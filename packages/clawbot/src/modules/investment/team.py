@@ -179,7 +179,7 @@ class DailyBrief:
 # config.prompts.INVESTMENT_ROLES 是所有投资角色提示词的唯一定义点。
 # 此处创建模块级别名，保持下游代码（_run_researcher 等）零改动。
 
-from config.prompts import INVESTMENT_ROLES as _ROLES
+from config.prompts import INVESTMENT_ROLES as _ROLES  # noqa: E402
 
 DIRECTOR_PROMPT = _ROLES["director"]
 RESEARCHER_PROMPT = _ROLES["researcher"]
@@ -512,7 +512,7 @@ class InvestmentTeam:
 
             decision = await self._llm_analyze(
                 DIRECTOR_PROMPT,
-                f"标的: {symbol}\n\n各角色分析报告:\n" + "\n\n".join(summary_parts),
+                f"标的: {symbol}\n\n各角色分析报告:\n{'\n\n'.join(summary_parts)}",
             )
             report.recommendation = decision.get("recommendation", "hold")
             report.reasoning = decision.get("reasoning", "")

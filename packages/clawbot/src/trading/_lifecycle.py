@@ -209,8 +209,7 @@ def get_system_status():
         parts.append(_ibkr.get_connection_status())
         if _ibkr.is_connected():
             remaining = _ibkr.budget - _ibkr.total_spent
-            parts.append("预算: $%.2f / $%.2f (剩余$%.2f)" % (
-                _ibkr.total_spent, _ibkr.budget, remaining))
+            parts.append(f"预算: ${_ibkr.total_spent:.2f} / ${_ibkr.budget:.2f} (剩余${remaining:.2f})")
         parts.append("")
     except Exception as e:
         logger.debug("[SystemStatus] IBKR状态获取失败: %s", e)
@@ -225,7 +224,7 @@ def get_system_status():
         parts.append(_ts._auto_trader.format_status())
     if _ts._pending_reentry_queue:
         parts.append("")
-        parts.append("待重挂队列: %d 条" % len(_ts._pending_reentry_queue))
+        parts.append(f"待重挂队列: {len(_ts._pending_reentry_queue)} 条")
     if _ts._quote_cache:
         parts.append("")
         parts.append(_ts._quote_cache.format_status())

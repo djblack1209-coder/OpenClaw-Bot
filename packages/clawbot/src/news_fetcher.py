@@ -22,10 +22,10 @@ try:
 except ImportError:
     feedparser = None  # type: ignore[assignment]
 
-import logging
+import logging  # noqa: E402
 
-from src.http_client import ResilientHTTPClient
-from src.utils import now_et, scrub_secrets
+from src.http_client import ResilientHTTPClient  # noqa: E402
+from src.utils import now_et, scrub_secrets  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -154,13 +154,13 @@ class NewsFetcher:
             news = []
             for item in items_raw[:count]:
                 t = re.search(r"<title>(.*?)</title>", item)
-                l = re.search(r"<link>(.*?)</link>", item)
+                link_match = re.search(r"<link>(.*?)</link>", item)
                 s = re.search(r"<source[^>]*>(.*?)</source>", item)
-                if t and l:
+                if t and link_match:
                     news.append(
                         {
                             "title": t.group(1).strip(),
-                            "url": l.group(1).strip(),
+                            "url": link_match.group(1).strip(),
                             "source": s.group(1) if s else "",
                         }
                     )
@@ -178,7 +178,7 @@ class NewsFetcher:
             url = str(item.get("url", "") or "").strip()
 
             if len(title) > title_max_len:
-                title = title[: title_max_len - 3].rstrip() + "..."
+                title = f"{title[:title_max_len - 3].rstrip()}..."
 
             headline = f"{idx}. {title}"
             if source:
@@ -188,7 +188,7 @@ class NewsFetcher:
             summary = str(item.get("summary", "") or "").strip()
             if summary:
                 if len(summary) > 120:
-                    summary = summary[:117] + "..."
+                    summary = f"{summary[:117]}..."
                 lines.append(f"   📝 {summary}")
             if url:
                 lines.append(f"   详情：{url}")

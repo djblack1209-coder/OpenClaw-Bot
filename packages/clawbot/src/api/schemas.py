@@ -4,7 +4,7 @@ ClawBot Internal API Schemas
 所有请求/响应模型集中定义，供各 router 引用
 """
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -215,7 +215,7 @@ class PoolStats(BaseModel):
 # ============================================================
 
 
-class WSMessageType(str, Enum):
+class WSMessageType(StrEnum):
     STATUS = "status"
     TRADE_SIGNAL = "trade_signal"
     TRADE_EXECUTED = "trade_executed"

@@ -2,12 +2,27 @@ import { createCipheriv, createDecipheriv, createHash, createHmac, pbkdf2Sync, r
 import { lookup as lookupDns } from 'node:dns/promises';
 import { createServer } from 'node:http';
 import { mkdir, open, readFile, rename, rm, stat } from 'node:fs/promises';
-import { connect as connectNet, isIP } from 'node:net';
+import { isIP } from 'node:net';
 import { basename, dirname, extname, join, normalize, relative, resolve } from 'node:path';
-import { connect as connectTls } from 'node:tls';
 import { fileURLToPath } from 'node:url';
 
+export { resolveSmtpSocketTargets } from './email.js';
 import { createNewApiBridge } from './newApiBridge.js';
+import {
+  buildBalanceAlertEmail,
+  buildPasswordResetEmail,
+  buildVerificationEmail,
+  createBalanceAlertEmailSender,
+  defaultBalanceAlert,
+  maskEmail,
+  normalizeAlertEmail,
+  normalizeAlertThresholdCents,
+  normalizeBalanceAlertRecord,
+  normalizeMoneyCents,
+  resolveSmtpSocketTargets,
+  sanitizeBalanceAlert,
+  scheduleEmailDelivery,
+} from './email.js';
 import {
   createProviderPayment,
   parseAlipayNotification,
@@ -35,6 +50,7 @@ const DEFAULT_MODEL = 'claude-opus-4-6-thinking-c';
 const DEFAULT_PUBLIC_MODEL = 'gpt-5.5';
 const DEFAULT_USD_TO_CNY = 7.2;
 const DISPLAY_USD_TO_CNY = DEFAULT_USD_TO_CNY;
+// 参考 OpenAI Models API list（2026-07-02 复核）：探测候选只用于补号探活，不作为客户可见模型目录兜底。
 const DEFAULT_PROBE_MODELS = Object.freeze([
   'claude-opus-4-6-thinking-c', 'claude-opus-4-6-c', 'claude-sonnet-4-5-c',
   'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-image-2', 'gpt-5.3-codex', 'gemini-2.5-flash',
@@ -115,6 +131,7 @@ const DEFAULT_REDIRECT_HOSTS = Object.freeze(['101-43-41-96.nip.io']);
 const DEFAULT_CHANNEL_MONITOR_INTERVAL_MS = 60_000;
 const DEFAULT_CHANNEL_MONITOR_BATCH_SIZE = 4;
 const DEFAULT_CHANNEL_MONITOR_COOLDOWN_MS = 55_000;
+const DEFAULT_GATEWAY_SLOW_LATENCY_MS = 5_000;
 
 export function createFristApiServer(options = {}) {
   const serverOptions = normalizeServerOptions(options);
@@ -1544,6 +1561,14 @@ function buildPaymentClosureStatus(serverOptions) {
   };
 }
 
+function buildRedemptionBillingStatus() {
+  return {
+    ready: true,
+    mode: 'redemption_code',
+    detail: '当前收款主路径为闲鱼等第三方平台售卖兑换码，Frist-API 站内核销到账；自动支付商户仅作为未来备用。',
+  };
+}
+
 function paymentMissingFields(config, fields) {
   return fields
     .filter(([key]) => {
@@ -2075,7 +2100,7 @@ function buildDashboard(data, user, serverOptions) {
     balanceAlert: sanitizeBalanceAlert(user.balanceAlert, user.email),
     apiKeys,
     modelUsage: buildModelUsage(data, user),
-    channelChecks: buildChannelChecks(data),
+    channelChecks: buildChannelChecks(data, serverOptions),
     modelCatalog: buildModelCatalog(data),
     rechargeOptions: buildRechargeOptions(data),
     usageRecords: buildUsageRecords(data, user),
@@ -2220,6 +2245,9 @@ async function replenishCredentials(data, body, serverOptions) {
       status: gatedStatus,
       quotaRemaining: Number.isFinite(key.quotaRemaining) ? key.quotaRemaining : Number(probe.quotaRemaining || 1000),
       latencyMs: resolveProbeLatencyMs(key, probe),
+      dailySpendLimitCents: Number.isFinite(key.dailySpendLimitCents) ? key.dailySpendLimitCents : 0,
+      slowLatencyThresholdMs: Number.isFinite(key.slowLatencyThresholdMs) ? key.slowLatencyThresholdMs : 0,
+      costSensitive: Boolean(key.costSensitive),
       lastProbeStatus: probe.status || probeMode,
       lastProbeReason: routeApproved ? probe.reason || '' : riskNote || '备用渠道待人工风险放行',
       createdAt: now,
@@ -2970,6 +2998,14 @@ async function routeChatCompletion(data, request, body, serverOptions, options =
   );
 
   for (const credential of candidates) {
+    const breakerReason = credentialCircuitBreakerReason(data, credential, estimatedQuotaCost, serverOptions);
+    if (breakerReason) {
+      circuitBreakCredential(data, credential, breakerReason, serverOptions);
+      await maybeNotifyCredentialIssue(data, credential, breakerReason, serverOptions);
+      clearRouteAffinity(data, sessionKey, credential.id);
+      continue;
+    }
+
     if (Number(credential.quotaRemaining || 0) < estimatedQuotaCost) {
       exhaustCredential(data, credential, 'quota_too_low_before_request');
       await maybeNotifyCredentialIssue(data, credential, 'quota_too_low_before_request', serverOptions);
@@ -3511,6 +3547,77 @@ function failCredential(data, credential, reason) {
   });
 }
 
+function circuitBreakCredential(data, credential, reason, serverOptions = {}) {
+  const now = currentDate(serverOptions).toISOString();
+  const quotaReason = /quota|spend|balance|limit/i.test(reason);
+  credential.status = quotaReason ? 'exhausted' : 'failed';
+  credential.enabled = false;
+  credential.updatedAt = now;
+  credential.lastProbeStatus = 'circuit_breaker';
+  credential.lastProbeReason = reason;
+  recordChannelProbeEvent(data, credential, quotaReason ? 'exhausted' : 'down', reason, serverOptions);
+  data.events.push({
+    type: 'credential_circuit_breaker',
+    credentialId: credential.id,
+    reason,
+    at: now,
+  });
+}
+
+function credentialCircuitBreakerReason(data, credential, estimatedQuotaCost, serverOptions = {}) {
+  const dailySpendLimit = Number(credential.dailySpendLimitCents || serverOptions.gatewayDailySpendLimitCents || 0);
+  const todaySpend = credentialDailySpendCents(data, credential, serverOptions);
+  if (dailySpendLimit > 0 && todaySpend + Number(estimatedQuotaCost || 0) > dailySpendLimit) {
+    return 'daily_spend_limit_reached';
+  }
+
+  const quotaRemaining = Number(credential.quotaRemaining || 0);
+  const costSensitiveSupplier = isCostSensitiveSupplierCredential(credential);
+  if (costSensitiveSupplier && quotaRemaining > 0 && todaySpend > quotaRemaining && isSlowGatewayCredential(data, credential, serverOptions)) {
+    return 'daily_spend_exceeds_remaining_balance_slow_channel';
+  }
+
+  return '';
+}
+
+function credentialDailySpendCents(data, credential, serverOptions = {}) {
+  const today = currentDate(serverOptions).toISOString().slice(0, 10);
+  return (data.events || [])
+    .filter((event) => event.type === 'gateway_routed')
+    .filter((event) => event.credentialId === credential.id)
+    .filter((event) => String(event.at || '').startsWith(today))
+    .reduce((sum, event) => sum + Number(event.quotaCost || 0), 0);
+}
+
+function isCostSensitiveSupplierCredential(credential) {
+  const text = [
+    credential.baseUrl,
+    credential.routeBaseUrl,
+    credential.proxyBaseUrl,
+    credential.sourceId,
+    credential.riskNote,
+    credential.supplierName,
+    credential.sourceLabel,
+  ].join(' ').toLowerCase();
+  return Boolean(credential.costSensitive || /86\s*game|86gamestore|inroi/.test(text));
+}
+
+function isSlowGatewayCredential(data, credential, serverOptions = {}) {
+  const threshold = Number(credential.slowLatencyThresholdMs || serverOptions.gatewaySlowLatencyThresholdMs || DEFAULT_GATEWAY_SLOW_LATENCY_MS);
+  if (!Number.isFinite(threshold) || threshold <= 0) {
+    return false;
+  }
+  if (Number(credential.latencyMs || 0) >= threshold) {
+    return true;
+  }
+  const today = currentDate(serverOptions).toISOString().slice(0, 10);
+  return (data.events || [])
+    .filter((event) => event.type === 'gateway_routed')
+    .filter((event) => event.credentialId === credential.id)
+    .filter((event) => String(event.at || '').startsWith(today))
+    .some((event) => Number(event.latencyMs || 0) >= threshold);
+}
+
 async function maybeNotifyLowInventory(data, credential, serverOptions) {
   const threshold = Number(serverOptions.lowInventoryThresholdRatio || 0.05);
   if (!Number.isFinite(threshold) || threshold <= 0) {
@@ -3561,6 +3668,9 @@ function credentialIssueTypeFromReason(reason = '') {
   }
   if (text.includes('auth') || text.includes('401') || text.includes('403') || text.includes('forbidden')) {
     return 'auth';
+  }
+  if (text.includes('upstream') || text.includes('503') || text.includes('502') || text.includes('504') || text.includes('network')) {
+    return 'upstream';
   }
   return '';
 }
@@ -3802,652 +3912,6 @@ async function maybeNotifyCustomerLowBalance(data, user, serverOptions, context 
   }
 }
 
-function buildBalanceAlertEmail({
-  user,
-  to,
-  thresholdCents,
-  balanceCents,
-  previousBalanceCents,
-  model,
-  quotaCost,
-  publicGatewayBaseUrl,
-  at,
-  isTest = false,
-}) {
-  const subject = isTest
-    ? 'Frist-API 余额预警测试'
-    : `Frist-API 余额预警：当前 ${formatUsdFromCnyCents(balanceCents)}`;
-  const accountEmail = user.email || 'Frist-API 用户';
-  const dashboardUrl = publicGatewayBaseUrl
-    ? String(publicGatewayBaseUrl).replace(/\/v1\/?$/i, '').replace(/\/+$/, '')
-    : '';
-  const modelText = model ? String(model) : 'API 调用';
-  const currentBalanceText = formatUsdFromCnyCents(balanceCents);
-  const thresholdText = formatUsdFromCnyCents(thresholdCents);
-  const previousBalanceText = formatUsdFromCnyCents(previousBalanceCents);
-  const quotaCostText = formatUsdFromCnyCents(quotaCost);
-  const alertTimeText = formatEmailTime(at);
-  const preheader = `${accountEmail} 当前余额 ${currentBalanceText}，已低于 ${thresholdText} 安全线。`;
-  const html = `<!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="light dark" />
-    <meta name="supported-color-schemes" content="light dark" />
-    <title>${escapeHtml(subject)}</title>
-    <style>
-      @media (prefers-color-scheme: dark) {
-        .email-bg { background: #111827 !important; }
-        .email-card { background: #172033 !important; border-color: #374151 !important; }
-        .email-text { color: #f8fafc !important; }
-        .email-muted { color: #cbd5e1 !important; }
-        .email-panel { background: #111827 !important; border-color: #334155 !important; }
-        .email-row { border-color: #334155 !important; }
-        .email-soft { background: #1f2937 !important; color: #f8fafc !important; border-color: #475569 !important; }
-      }
-      @media screen and (max-width: 600px) {
-        .email-shell { padding: 18px 10px !important; }
-        .email-card { border-radius: 14px !important; }
-        .email-pad { padding-left: 18px !important; padding-right: 18px !important; }
-        .metric-cell { display: block !important; width: auto !important; }
-        .metric-gap { display: block !important; width: auto !important; height: 10px !important; }
-      }
-    </style>
-  </head>
-  <body class="email-bg" style="margin:0;background:#eef2f5;color:#111827;font-family:Arial,'PingFang SC','Microsoft YaHei',sans-serif;">
-    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${escapeHtml(preheader)}</div>
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" class="email-bg email-shell" style="background:#eef2f5;padding:30px 12px;">
-      <tr>
-        <td align="center">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" class="email-card" style="max-width:680px;background:#ffffff;border:1px solid #d7dee8;border-radius:18px;overflow:hidden;box-shadow:0 18px 45px rgba(15,23,42,.12);">
-            <tr>
-              <td style="padding:0;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#0f172a;">
-                  <tr>
-                    <td class="email-pad" style="padding:22px 28px;">
-                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
-                        <tr>
-                          <td valign="middle">
-                            <div style="font-size:12px;line-height:1.2;letter-spacing:1.6px;text-transform:uppercase;color:#93c5fd;font-weight:800;">Frist-API Balance Guard</div>
-                            <div style="margin-top:8px;color:#ffffff;font-size:25px;font-weight:800;line-height:1.22;">余额进入预警区间</div>
-                          </td>
-                          <td align="right" valign="middle">
-                            <span style="display:inline-block;background:#fee2e2;color:#991b1b;border-radius:999px;padding:7px 11px;font-size:12px;font-weight:800;white-space:nowrap;">${isTest ? '测试预览' : '低余额预警'}</span>
-                          </td>
-                        </tr>
-                      </table>
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-            <tr>
-              <td class="email-pad email-text" style="padding:28px 28px 10px;color:#111827;">
-                <div style="font-size:13px;color:#64748b;font-weight:700;">账户</div>
-                <div class="email-text" style="margin-top:6px;font-size:18px;font-weight:800;color:#111827;line-height:1.35;">${escapeHtml(accountEmail)}</div>
-              </td>
-            </tr>
-            <tr>
-              <td class="email-pad" style="padding:8px 28px 20px;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
-                  <tr>
-                    <td class="metric-cell" width="50%" valign="top" style="width:50%;padding:18px;background:#ef4444;color:#ffffff;border:1px solid #dc2626;border-radius:16px;">
-                      <div style="font-size:12px;line-height:1.2;opacity:.9;font-weight:800;">当前余额</div>
-                      <div style="margin-top:10px;font-size:38px;font-weight:900;line-height:1;">${currentBalanceText}</div>
-                      <div style="margin-top:10px;font-size:13px;line-height:1.45;color:#fee2e2;">低于安全线，需要关注</div>
-                    </td>
-                    <td class="metric-gap" width="12" style="width:12px;font-size:0;line-height:0;">&nbsp;</td>
-                    <td class="metric-cell email-soft" width="50%" valign="top" style="width:50%;padding:18px;background:#f8fafc;color:#0f172a;border:1px solid #dbe3ed;border-radius:16px;">
-                      <div style="font-size:12px;line-height:1.2;color:#64748b;font-weight:800;">预警阈值</div>
-                      <div class="email-text" style="margin-top:10px;font-size:34px;font-weight:900;line-height:1;color:#0f172a;">${thresholdText}</div>
-                      <div class="email-muted" style="margin-top:10px;font-size:13px;line-height:1.45;color:#64748b;">你设置的余额安全线</div>
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-            <tr>
-              <td class="email-pad" style="padding:0 28px 22px;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" class="email-panel" style="background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;">
-                  <tr>
-                    <td colspan="2" class="email-row" style="padding:15px 16px;border-bottom:1px solid #e2e8f0;">
-                      <div style="font-size:12px;line-height:1.2;color:#64748b;font-weight:800;">事件摘要</div>
-                      <div class="email-text" style="margin-top:6px;font-size:16px;line-height:1.45;color:#111827;font-weight:800;">一次 API 消耗让余额跌破预警阈值</div>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td class="email-row email-muted" style="padding:13px 16px;border-bottom:1px solid #e2e8f0;color:#64748b;">触发模型</td>
-                    <td align="right" class="email-row email-text" style="padding:13px 16px;border-bottom:1px solid #e2e8f0;color:#111827;font-weight:800;">${escapeHtml(modelText)}</td>
-                  </tr>
-                  <tr>
-                    <td class="email-row email-muted" style="padding:13px 16px;border-bottom:1px solid #e2e8f0;color:#64748b;">上次余额</td>
-                    <td align="right" class="email-row email-text" style="padding:13px 16px;border-bottom:1px solid #e2e8f0;color:#111827;font-weight:800;">${previousBalanceText}</td>
-                  </tr>
-                  <tr>
-                    <td class="email-row email-muted" style="padding:13px 16px;border-bottom:1px solid #e2e8f0;color:#64748b;">本次扣费</td>
-                    <td align="right" class="email-row email-text" style="padding:13px 16px;border-bottom:1px solid #e2e8f0;color:#111827;font-weight:800;">${quotaCostText}</td>
-                  </tr>
-                  <tr>
-                    <td class="email-muted" style="padding:13px 16px;color:#64748b;">触发时间</td>
-                    <td align="right" class="email-text" style="padding:13px 16px;color:#111827;font-weight:800;">${escapeHtml(alertTimeText)}</td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-            <tr>
-              <td class="email-pad" style="padding:0 28px 30px;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" class="email-soft" style="background:#f8fafc;border:1px solid #dbe3ed;border-radius:14px;">
-                  <tr>
-                    <td style="padding:16px 18px;">
-                      <p class="email-text" style="margin:0;color:#1f2937;font-size:15px;line-height:1.7;">相当于油表已经进入红线区。为了避免 Codex、Claude Code 或 OpenCode 调用中断，建议尽快充值，或者把预警阈值调到更符合你使用节奏的位置。</p>
-                    </td>
-                  </tr>
-                </table>
-                ${
-                  dashboardUrl
-                    ? `<table role="presentation" cellspacing="0" cellpadding="0" style="margin-top:18px;">
-                        <tr>
-                          <td bgcolor="#111827" style="border-radius:999px;">
-                            <a href="${escapeAttribute(dashboardUrl)}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;border-radius:999px;padding:13px 20px;font-size:14px;font-weight:900;">打开 Frist-API</a>
-                          </td>
-                          <td class="email-muted" style="padding-left:14px;color:#64748b;font-size:13px;line-height:1.45;">查看余额、充值或调整预警设置</td>
-                        </tr>
-                      </table>`
-                    : ''
-                }
-              </td>
-            </tr>
-          </table>
-          <div style="max-width:680px;margin-top:18px;color:#64748b;font-size:12px;line-height:1.65;text-align:left;">这是一封 Frist-API 余额预警通知。你可以在仪表盘关闭提醒、调整阈值或更换通知邮箱。</div>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>`;
-  const text = [
-    subject,
-    '',
-    `账户: ${accountEmail}`,
-    `当前余额: ${currentBalanceText}`,
-    `预警阈值: ${thresholdText}`,
-    `触发模型: ${modelText}`,
-    `上次余额: ${previousBalanceText}`,
-    `本次扣费: ${quotaCostText}`,
-    `触发时间: ${alertTimeText}`,
-    dashboardUrl ? `打开 Frist-API: ${dashboardUrl}` : '',
-  ]
-    .filter(Boolean)
-    .join('\n');
-  return { to, subject, html, text };
-}
-
-function defaultBalanceAlert(email = '') {
-  const normalizedEmail = normalizeAlertEmail(email);
-  return {
-    enabled: true,
-    thresholdCents: Math.round(5 * DISPLAY_USD_TO_CNY * 100),
-    email: normalizedEmail,
-    lastAlertAt: '',
-    lastAlertBalanceCents: 0,
-    lastTriggeredThresholdCents: 0,
-    updatedAt: '',
-  };
-}
-
-async function scheduleEmailDelivery({
-  serverOptions,
-  to,
-  message,
-  data,
-  successType,
-  failureType,
-  eventBase = {},
-}) {
-  const sender = serverOptions.accountEmailSender || serverOptions.balanceAlertEmailSender;
-  if (typeof sender !== 'function') {
-    data.events.push({
-      type: failureType,
-      ...eventBase,
-      reason: 'SMTP 邮件服务未配置',
-      at: new Date().toISOString(),
-    });
-    return;
-  }
-  try {
-    await sender({ ...message, to });
-    data.events.push({ type: successType, ...eventBase, at: new Date().toISOString() });
-  } catch (error) {
-    data.events.push({
-      type: failureType,
-      ...eventBase,
-      reason: String(error?.message || error).slice(0, 300),
-      at: new Date().toISOString(),
-    });
-  }
-}
-
-function buildVerificationEmail({ user, code, publicGatewayBaseUrl, at }) {
-  const dashboardUrl = publicGatewayBaseUrl
-    ? String(publicGatewayBaseUrl).replace(/\/v1\/?$/i, '').replace(/\/+$/, '')
-    : '';
-  const subject = 'Frist-API 注册验证码';
-  const timeText = formatEmailTime(at);
-  const html = `<!doctype html>
-<html lang="zh-CN">
-  <body style="margin:0;background:#f3f4f6;color:#111827;font-family:Arial,'PingFang SC','Microsoft YaHei',sans-serif;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:28px 12px;background:#f3f4f6;">
-      <tr><td align="center">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
-          <tr><td style="background:#111827;color:#ffffff;padding:22px 26px;">
-            <div style="font-size:12px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:#fbbf24;">Frist-API</div>
-            <div style="margin-top:8px;font-size:24px;font-weight:900;">完成邮箱验证</div>
-          </td></tr>
-          <tr><td style="padding:26px;color:#111827;">
-            <p style="margin:0 0 14px;font-size:15px;line-height:1.7;">${escapeHtml(user.email)}，你的注册验证码是：</p>
-            <div style="font-size:36px;letter-spacing:8px;font-weight:900;background:#fef3c7;border:1px solid #f59e0b;border-radius:12px;padding:16px;text-align:center;color:#111827;">${escapeHtml(code)}</div>
-            <p style="margin:18px 0 0;color:#6b7280;font-size:13px;line-height:1.7;">验证码用于激活账户，请不要转发给别人。发送时间：${escapeHtml(timeText)}</p>
-            ${dashboardUrl ? `<p style="margin:18px 0 0;"><a href="${escapeAttribute(dashboardUrl)}" style="color:#111827;font-weight:800;">打开 Frist-API</a></p>` : ''}
-          </td></tr>
-        </table>
-      </td></tr>
-    </table>
-  </body>
-</html>`;
-  const text = [
-    subject,
-    '',
-    `账户: ${user.email}`,
-    `验证码: ${code}`,
-    `发送时间: ${timeText}`,
-    dashboardUrl ? `打开 Frist-API: ${dashboardUrl}` : '',
-  ]
-    .filter(Boolean)
-    .join('\n');
-  return { subject, html, text };
-}
-
-function buildPasswordResetEmail({ user, code, publicGatewayBaseUrl, expiresMinutes, at }) {
-  const dashboardUrl = publicGatewayBaseUrl
-    ? String(publicGatewayBaseUrl).replace(/\/v1\/?$/i, '').replace(/\/+$/, '')
-    : '';
-  const subject = 'Frist-API 密码重置验证码';
-  const timeText = formatEmailTime(at);
-  const html = `<!doctype html>
-<html lang="zh-CN">
-  <body style="margin:0;background:#f3f4f6;color:#111827;font-family:Arial,'PingFang SC','Microsoft YaHei',sans-serif;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:28px 12px;background:#f3f4f6;">
-      <tr><td align="center">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
-          <tr><td style="background:#7f1d1d;color:#ffffff;padding:22px 26px;">
-            <div style="font-size:12px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:#fecaca;">Frist-API Security</div>
-            <div style="margin-top:8px;font-size:24px;font-weight:900;">重置登录密码</div>
-          </td></tr>
-          <tr><td style="padding:26px;color:#111827;">
-            <p style="margin:0 0 14px;font-size:15px;line-height:1.7;">${escapeHtml(user.email)}，你的密码重置验证码是：</p>
-            <div style="font-size:36px;letter-spacing:8px;font-weight:900;background:#fee2e2;border:1px solid #ef4444;border-radius:12px;padding:16px;text-align:center;color:#111827;">${escapeHtml(code)}</div>
-            <p style="margin:18px 0 0;color:#6b7280;font-size:13px;line-height:1.7;">${Number(expiresMinutes)} 分钟内有效。如果不是你本人操作，可以忽略这封邮件。发送时间：${escapeHtml(timeText)}</p>
-            ${dashboardUrl ? `<p style="margin:18px 0 0;"><a href="${escapeAttribute(dashboardUrl)}" style="color:#111827;font-weight:800;">打开 Frist-API</a></p>` : ''}
-          </td></tr>
-        </table>
-      </td></tr>
-    </table>
-  </body>
-</html>`;
-  const text = [
-    subject,
-    '',
-    `账户: ${user.email}`,
-    `重置验证码: ${code}`,
-    `有效期: ${Number(expiresMinutes)} 分钟`,
-    `发送时间: ${timeText}`,
-    dashboardUrl ? `打开 Frist-API: ${dashboardUrl}` : '',
-  ]
-    .filter(Boolean)
-    .join('\n');
-  return { subject, html, text };
-}
-
-function normalizeBalanceAlertRecord(record, fallbackEmail = '') {
-  const current = record && typeof record === 'object' ? record : {};
-  const fallback = defaultBalanceAlert(fallbackEmail);
-  const thresholdCents = normalizeAlertThresholdCents(current, fallback.thresholdCents);
-  return {
-    enabled: Object.prototype.hasOwnProperty.call(current, 'enabled') ? Boolean(current.enabled) : fallback.enabled,
-    thresholdCents:
-      Number.isFinite(thresholdCents) && thresholdCents > 0 && thresholdCents <= 1_000_000_00
-        ? thresholdCents
-        : fallback.thresholdCents,
-    email: normalizeAlertEmail(current.email) || fallback.email,
-    lastAlertAt: String(current.lastAlertAt || ''),
-    lastAlertBalanceCents: Math.max(0, normalizeMoneyCents(current.lastAlertBalanceCents || 0)),
-    lastTriggeredThresholdCents: Math.max(0, normalizeMoneyCents(current.lastTriggeredThresholdCents || 0)),
-    updatedAt: String(current.updatedAt || ''),
-  };
-}
-
-function sanitizeBalanceAlert(record, fallbackEmail = '') {
-  const alert = normalizeBalanceAlertRecord(record, fallbackEmail);
-  return {
-    enabled: alert.enabled,
-    threshold: formatUsdFromCnyCents(alert.thresholdCents),
-    thresholdCents: alert.thresholdCents,
-    thresholdCny: Number((alert.thresholdCents / 100).toFixed(2)),
-    thresholdUsd: Number((alert.thresholdCents / 100 / DISPLAY_USD_TO_CNY).toFixed(2)),
-    email: alert.email,
-    lastAlertAt: alert.lastAlertAt,
-  };
-}
-
-function normalizeAlertThresholdCents(record = {}, fallbackCents = Number.NaN) {
-  if (record.thresholdCents !== undefined) return normalizeMoneyCents(record.thresholdCents);
-  if (record.thresholdUsd !== undefined) {
-    return normalizeMoneyCents(Number(record.thresholdUsd || 0) * DISPLAY_USD_TO_CNY * 100);
-  }
-  if (record.thresholdCny !== undefined) return normalizeMoneyCents(Number(record.thresholdCny || 0) * 100);
-  if (record.threshold !== undefined) {
-    const text = String(record.threshold || '').trim();
-    if (/^\$/.test(text)) return normalizeMoneyCents(Number(text.replace(/[^\d.-]/g, '')) * DISPLAY_USD_TO_CNY * 100);
-    return normalizeMoneyCents(Number(text.replace(/[^\d.-]/g, '')) * DISPLAY_USD_TO_CNY * 100);
-  }
-  return normalizeMoneyCents(fallbackCents);
-}
-
-function normalizeMoneyCents(value) {
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed) return Number.NaN;
-    const numeric = Number(trimmed.replace(/[^\d.-]/g, ''));
-    return Number.isFinite(numeric) ? Math.round(numeric) : Number.NaN;
-  }
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? Math.round(numeric) : Number.NaN;
-}
-
-function normalizeAlertEmail(value) {
-  const email = String(value || '').trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return '';
-  }
-  return email.slice(0, 254);
-}
-
-function maskEmail(email) {
-  const [name, domain] = String(email || '').split('@');
-  if (!name || !domain) return '';
-  const head = name.slice(0, Math.min(2, name.length));
-  return `${head}${name.length > 2 ? '***' : '*'}@${domain}`;
-}
-
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-function escapeAttribute(value) {
-  return escapeHtml(value).replace(/`/g, '&#96;');
-}
-
-function formatEmailTime(value) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return String(value || '-');
-  }
-  return new Intl.DateTimeFormat('zh-CN', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'Asia/Shanghai',
-  }).format(date);
-}
-
-function createBalanceAlertEmailSender(options = {}) {
-  const host = String(options.host ?? process.env.FRIST_API_SMTP_HOST ?? '').trim();
-  const user = String(options.user ?? process.env.FRIST_API_SMTP_USER ?? '').trim();
-  const password = String(options.password ?? process.env.FRIST_API_SMTP_PASSWORD ?? '');
-  const from = String(options.from ?? process.env.FRIST_API_SMTP_FROM ?? user).trim();
-  if (!host || !user || !password || !from) {
-    return null;
-  }
-
-  const port = Number(options.port ?? process.env.FRIST_API_SMTP_PORT ?? 465);
-  const secure =
-    typeof options.secure === 'boolean'
-      ? options.secure
-      : String(process.env.FRIST_API_SMTP_SECURE ?? '1') !== '0';
-  const fromName = String(
-    options.fromName ?? process.env.FRIST_API_BALANCE_ALERT_FROM_NAME ?? 'Frist-API Billing',
-  ).trim();
-  const family = normalizeSmtpAddressFamily(options.family ?? process.env.FRIST_API_SMTP_FAMILY ?? 'auto');
-
-  return async (message) =>
-    sendSmtpMail({
-      host,
-      port,
-      secure,
-      family,
-      user,
-      password,
-      from,
-      fromName,
-      to: message.to,
-      subject: message.subject,
-      text: message.text,
-      html: message.html,
-    });
-}
-
-async function sendSmtpMail(options) {
-  const socket = await openSmtpSocket(options);
-  const reader = createSmtpReader(socket);
-  const writer = (line) => socket.write(`${line}\r\n`);
-  try {
-    await readSmtpReply(reader, [220]);
-    writer(`EHLO ${smtpDomain(options.from)}`);
-    await readSmtpReply(reader, [250]);
-    writer('AUTH PLAIN ' + Buffer.from(`\u0000${options.user}\u0000${options.password}`).toString('base64'));
-    await readSmtpReply(reader, [235]);
-    writer(`MAIL FROM:<${options.from}>`);
-    await readSmtpReply(reader, [250]);
-    writer(`RCPT TO:<${options.to}>`);
-    await readSmtpReply(reader, [250, 251]);
-    writer('DATA');
-    await readSmtpReply(reader, [354]);
-    socket.write(`${buildMimeMessage(options)}\r\n.\r\n`);
-    await readSmtpReply(reader, [250]);
-    writer('QUIT');
-    await readSmtpReply(reader, [221]);
-  } finally {
-    socket.end();
-  }
-}
-
-async function openSmtpSocket(options) {
-  const targets = await resolveSmtpSocketTargets(options);
-  const errors = [];
-  for (const target of targets) {
-    try {
-      return await connectSmtpSocketTarget(options, target);
-    } catch (error) {
-      errors.push(`${target.host}: ${error.message}`);
-    }
-  }
-  throw new Error(`SMTP 连接失败: ${errors.join('; ')}`);
-}
-
-export async function resolveSmtpSocketTargets(options) {
-  const family = normalizeSmtpAddressFamily(options.family ?? 'auto');
-  const port = Number(options.port || 465);
-  const ipFamily = isIP(options.host);
-  if (ipFamily) {
-    return [{ host: options.host, port, servername: options.host, family: ipFamily }];
-  }
-
-  const addresses = Array.isArray(options.addresses)
-    ? options.addresses
-    : await lookupDns(options.host, { all: true, verbatim: true });
-  const normalized = addresses
-    .map((address) => ({
-      host: address.address,
-      port,
-      servername: options.host,
-      family: Number(address.family),
-    }))
-    .filter((address) => address.host && (family === 'auto' || String(address.family) === family));
-  if (!normalized.length) {
-    return [{ host: options.host, port, servername: options.host, family: 0 }];
-  }
-  return normalized;
-}
-
-function connectSmtpSocketTarget(options, target) {
-  const socketOptions = {
-    host: target.host,
-    port: target.port,
-    family: target.family || undefined,
-    servername: target.servername,
-  };
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (callback, value) => {
-      if (settled) return;
-      settled = true;
-      callback(value);
-    };
-    const socket = options.secure
-      ? connectTls(socketOptions, () => finish(resolve, socket))
-      : connectNet(socketOptions, () => finish(resolve, socket));
-    socket.setTimeout(Number(options.timeoutMs || 8_000));
-    socket.once('error', (error) => finish(reject, error));
-    socket.once('timeout', () => {
-      socket.destroy();
-      finish(reject, new Error('SMTP 连接超时'));
-    });
-  });
-}
-
-function normalizeSmtpAddressFamily(value) {
-  const family = String(value || 'auto').trim().toLowerCase();
-  if (family === '4' || family === 'ipv4') return '4';
-  if (family === '6' || family === 'ipv6') return '6';
-  return 'auto';
-}
-
-function createSmtpReader(socket) {
-  const state = {
-    buffer: '',
-    waiters: [],
-  };
-  socket.setEncoding('utf8');
-  socket.on('data', (chunk) => {
-    state.buffer += chunk;
-    flushSmtpWaiters(state);
-  });
-  socket.on('error', (error) => {
-    const waiters = state.waiters.splice(0);
-    for (const waiter of waiters) waiter.reject(error);
-  });
-  return state;
-}
-
-function flushSmtpWaiters(state) {
-  while (state.waiters.length > 0) {
-    const reply = takeCompleteSmtpReply(state);
-    if (!reply) return;
-    const waiter = state.waiters.shift();
-    waiter.resolve(reply);
-  }
-}
-
-function takeCompleteSmtpReply(state) {
-  const lines = state.buffer.split(/\r?\n/);
-  if (!state.buffer.match(/\r?\n$/)) {
-    lines.pop();
-  }
-  let consumed = 0;
-  for (const line of lines) {
-    if (!line) {
-      consumed += 1;
-      continue;
-    }
-    consumed += 1;
-    if (/^\d{3}\s/.test(line)) {
-      const replyLines = lines.slice(0, consumed);
-      state.buffer = lines.slice(consumed).join('\n');
-      return replyLines.join('\n');
-    }
-  }
-  return null;
-}
-
-function readSmtpReply(reader, expectedCodes) {
-  return new Promise((resolve, reject) => {
-    const complete = takeCompleteSmtpReply(reader);
-    const handleReply = (reply) => {
-      const code = Number(reply.slice(0, 3));
-      if (!expectedCodes.includes(code)) {
-        reject(new Error(`SMTP 返回异常: ${reply}`));
-        return;
-      }
-      resolve(reply);
-    };
-    if (complete) {
-      handleReply(complete);
-      return;
-    }
-    reader.waiters.push({
-      resolve: handleReply,
-      reject,
-    });
-  });
-}
-
-function buildMimeMessage({ from, fromName, to, subject, text, html }) {
-  const boundary = `frist-api-${randomBytes(12).toString('hex')}`;
-  return [
-    `From: ${encodeMimeHeader(fromName)} <${from}>`,
-    `To: <${to}>`,
-    `Subject: ${encodeMimeHeader(subject)}`,
-    'MIME-Version: 1.0',
-    `Date: ${new Date().toUTCString()}`,
-    `Message-ID: <${randomBytes(12).toString('hex')}@${smtpDomain(from)}>`,
-    `Content-Type: multipart/alternative; boundary="${boundary}"`,
-    '',
-    `--${boundary}`,
-    'Content-Type: text/plain; charset=UTF-8',
-    'Content-Transfer-Encoding: base64',
-    '',
-    wrapBase64(text || ''),
-    `--${boundary}`,
-    'Content-Type: text/html; charset=UTF-8',
-    'Content-Transfer-Encoding: base64',
-    '',
-    wrapBase64(html || ''),
-    `--${boundary}--`,
-  ].join('\r\n');
-}
-
-function encodeMimeHeader(value) {
-  const text = String(value || '');
-  if (/^[\x20-\x7E]*$/.test(text)) {
-    return text;
-  }
-  return `=?UTF-8?B?${Buffer.from(text, 'utf8').toString('base64')}?=`;
-}
-
-function wrapBase64(value) {
-  return Buffer.from(String(value || ''), 'utf8')
-    .toString('base64')
-    .replace(/.{1,76}/g, '$&\r\n')
-    .trim();
-}
-
-function smtpDomain(email) {
-  return String(email || '').split('@')[1] || 'frist-api.local';
-}
 
 function buildGatewayAffinityKey(request, body, userKey, model) {
   const explicitSessionId = [
@@ -5131,6 +4595,7 @@ function mergeModelPrices(existing, configured) {
 
 function normalizeServerOptions(options) {
   const root = dirname(fileURLToPath(import.meta.url));
+  const envPublicMode = parseOptionalEnvFlag(process.env.FRIST_API_PUBLIC_MODE);
   const exposeVerificationCode =
     typeof options.exposeVerificationCode === 'boolean'
       ? options.exposeVerificationCode
@@ -5240,7 +4705,7 @@ function normalizeServerOptions(options) {
     publicMode:
       typeof options.publicMode === 'boolean'
         ? options.publicMode
-        : process.env.FRIST_API_PUBLIC_MODE === '1' || process.env.NODE_ENV === 'production',
+        : envPublicMode ?? process.env.NODE_ENV === 'production',
     nowFactory: typeof options.nowFactory === 'function' ? options.nowFactory : () => new Date(),
     lowInventoryThresholdRatio: Number(
       options.lowInventoryThresholdRatio ?? process.env.FRIST_API_LOW_INVENTORY_THRESHOLD_RATIO ?? 0.05,
@@ -5266,6 +4731,12 @@ function normalizeServerOptions(options) {
       typeof options.notifyCredentialIssue === 'function'
         ? options.notifyCredentialIssue
         : createCredentialIssueNotifier(options.fetchImpl || globalThis.fetch),
+    gatewayDailySpendLimitCents: Number(
+      options.gatewayDailySpendLimitCents ?? process.env.FRIST_API_GATEWAY_DAILY_SPEND_LIMIT_CENTS ?? 0,
+    ),
+    gatewaySlowLatencyThresholdMs: Number(
+      options.gatewaySlowLatencyThresholdMs ?? process.env.FRIST_API_GATEWAY_SLOW_LATENCY_MS ?? DEFAULT_GATEWAY_SLOW_LATENCY_MS,
+    ),
     balanceAlertEmailSender:
       typeof options.balanceAlertEmailSender === 'function'
         ? options.balanceAlertEmailSender
@@ -5341,9 +4812,10 @@ function validatePublicModeOptions(serverOptions) {
     if (!serverOptions.requireAdmin2fa || serverOptions.adminTotpSecrets.length === 0) {
       problems.push('生产强制模式必须启用管理员 2FA');
     }
-    const paymentStatus = buildPaymentClosureStatus(serverOptions);
-    if (!paymentStatus.ready) {
-      problems.push('生产强制模式必须接通至少一个真实支付商户回调');
+    // 参考本项目 Frist-API 运营 SOP（2026-07-02 复核）：当前收款主路径是第三方平台售卖兑换码 + 站内核销，自动支付商户只作为备用能力。
+    const redemptionStatus = buildRedemptionBillingStatus();
+    if (!redemptionStatus.ready) {
+      problems.push('生产强制模式必须保留兑换码售卖与站内核销闭环');
     }
   }
 
@@ -5439,6 +4911,13 @@ function normalizeCanonicalHost(value) {
     return host.replace(/:(80|443)$/, '');
   }
   return host.replace(/:\d+$/, '');
+}
+
+function parseOptionalEnvFlag(value) {
+  if (value === undefined || value === null || String(value).trim() === '') {
+    return null;
+  }
+  return String(value).trim() === '1';
 }
 
 function parseRedirectHosts(value) {
@@ -5599,7 +5078,7 @@ function requireUserKey(data, request) {
   const authorization = request.headers.authorization || '';
   const xApiKey = request.headers['x-api-key'] || request.headers['anthropic-auth-token'] || '';
   const secret = authorization.match(/^Bearer\s+(.+)$/i)?.[1] || String(xApiKey || '').trim();
-  const key = data.userKeys.find((item) => safeEqual(item.secret, secret));
+  const key = data.userKeys.find((item) => !isEncryptedRuntimeSecret(item.secret) && safeEqual(item.secret, secret));
   if (!key || !key.enabled) {
     throw publicError(401, 'API Key 不可用');
   }
@@ -5674,6 +5153,10 @@ function normalizeReplenishmentKeys(keys) {
       quotaTotal: Number(item.quotaTotal ?? item.quotaRemaining ?? 1000),
       latencyMs: Number(item.latencyMs ?? 0),
       latencyProvided: item.latencyMs !== undefined,
+      // 余额站阈值随 Key 入库，避免只靠人工改 runtime 才能启用日消费熔断。
+      dailySpendLimitCents: Number(item.dailySpendLimitCents ?? item.dailySpendLimit ?? 0),
+      slowLatencyThresholdMs: Number(item.slowLatencyThresholdMs ?? 0),
+      costSensitive: Boolean(item.costSensitive),
       authHeaderName: String(item.authHeaderName || 'authorization').trim().toLowerCase(),
       authHeaderValuePrefix:
         item.authHeaderValuePrefix === ''
@@ -6252,54 +5735,64 @@ function customerImportModelSelection(data, user, key, requestedModel = '') {
     };
   }
 
-  const catalogModels = buildModelCatalog(data)
-    .filter((item) => item.available !== false)
-    .map((item) => item.model)
-    .filter((model) => modelMatchesGroup(model, key.modelGroup || 'All'));
-  const fallbackModels = normalizeClientAvailableModels(catalogModels.length ? catalogModels : [DEFAULT_PUBLIC_MODEL], {
-    modelGroup: key.modelGroup,
-  });
-  return {
-    availableModels: fallbackModels,
-    defaultModel: strongestModel(fallbackModels),
-  };
+  throw publicError(409, '暂无健康上游模型，请先补充或修复可用渠道后再导入客户端');
 }
 
 function strongestModel(models = []) {
-  return sortModelsByStrength(models)[0] || DEFAULT_PUBLIC_MODEL;
+  return sortModelsByStrength(models)[0] || '';
 }
 
+
 function sortModelsByStrength(models = []) {
-  const order = [
-    'gpt-5.5-pro',
-    'gpt-5.5-c',
-    'gpt-5.5',
-    'gpt-5.4-pro',
-    'gpt-5.4-c',
-    'gpt-5.4',
-    'gpt-5.4-mini',
-    'gpt-5.4-nano',
-    'gpt-image-2',
-    'gpt-image-1.5',
-    'gpt-image-1',
-    'gpt-5.3-codex',
-    'deepseek-v4-flash',
-    'deepseek-v4-pro',
-    'deepseek-chat',
-    'deepseek-reasoner',
-    'claude-opus-4-6-thinking-c',
-    'claude-opus-4-6-c',
-    'claude-sonnet-4-5-c',
-    'gemini-2.5-flash',
+  return normalizeOfficialModelList(models).sort(compareModelsByAuditableRules);
+}
+
+function compareModelsByAuditableRules(left, right) {
+  const leftScore = modelSortScore(left);
+  const rightScore = modelSortScore(right);
+  for (let index = 0; index < Math.max(leftScore.length, rightScore.length); index += 1) {
+    const delta = (leftScore[index] ?? 0) - (rightScore[index] ?? 0);
+    if (delta !== 0) return delta;
+  }
+  return left.localeCompare(right);
+}
+
+function modelSortScore(model) {
+  const value = String(model || '').toLowerCase();
+  const family = value.includes('gpt') || value.includes('image') || value.includes('dall')
+    ? 0
+    : value.includes('claude')
+      ? 1
+      : value.includes('deepseek')
+        ? 2
+        : value.includes('gemini')
+          ? 3
+          : 9;
+  const numbers = [...value.matchAll(/\d+(?:\.\d+)?/g)].map((match) => Number(match[0]));
+  const primary = numbers[0] || 0;
+  const secondary = numbers[1] || 0;
+  return [
+    family,
+    -primary,
+    -secondary,
+    modelCapabilityRank(value),
+    value.includes('image') || value.includes('dall') ? 2 : 0,
+    value.includes('codex') ? 3 : 0,
   ];
-  return normalizeOfficialModelList(models).sort((left, right) => {
-    const leftRank = order.indexOf(left);
-    const rightRank = order.indexOf(right);
-    const normalizedLeft = leftRank === -1 ? Number.MAX_SAFE_INTEGER : leftRank;
-    const normalizedRight = rightRank === -1 ? Number.MAX_SAFE_INTEGER : rightRank;
-    if (normalizedLeft !== normalizedRight) return normalizedLeft - normalizedRight;
-    return left.localeCompare(right);
-  });
+}
+
+function modelCapabilityRank(value) {
+  if (value.includes('pro') && !value.includes('deepseek')) return 0;
+  if (value.includes('opus')) return 0;
+  if (value.includes('thinking')) return 1;
+  if (value.includes('sonnet')) return 2;
+  if (value.includes('flash')) return 3;
+  if (value.includes('mini')) return 4;
+  if (value.includes('nano')) return 5;
+  if (value.includes('chat')) return 6;
+  if (value.includes('reasoner')) return 7;
+  if (value.includes('pro')) return 8;
+  return 2;
 }
 
 function findModelPrice(data, model) {
@@ -6591,7 +6084,7 @@ function normalizeClientLabel(value) {
   return String(value || '').trim().slice(0, 24);
 }
 
-function buildChannelChecks(data) {
+function buildChannelChecks(data, serverOptions = {}) {
   const grouped = new Map();
   for (const credential of data.credentials) {
     const models = normalizeOfficialModelList(credential.models?.length ? credential.models : [DEFAULT_MODEL]);
@@ -6693,6 +6186,7 @@ function buildChannelChecks(data) {
           availabilityPercent,
           history: item.history,
           checkedAt: item.checkedAt,
+          now: currentDate(serverOptions).getTime(),
         }),
       };
     });
@@ -6773,7 +6267,7 @@ function buildChannelSlaSummary(data, model, fallback = {}) {
       checkedAt: fallback.checkedAt || '',
     };
   }
-  const now = Date.now();
+  const now = Number(fallback.now || Date.now());
   const summary7d = summarizeSlaWindow(events, now - 7 * 86_400_000);
   const summary15d = summarizeSlaWindow(events, now - 15 * 86_400_000);
   const summary30d = summarizeSlaWindow(events, now - 30 * 86_400_000);
@@ -6809,19 +6303,9 @@ function summarizeSlaWindow(events, cutoffMs) {
 
 function buildModelCatalog(data) {
   const liveByModel = buildLiveModelMap(data);
-  const rowsByModel = new Map(
-    DEFAULT_MODEL_CATALOG.map((item) => {
-      const model = normalizeOfficialModelName(item.model);
-      const price = findModelPrice(data, model);
-      return [
-        model,
-        {
-          ...item,
-          model,
-          price: price ? priceLabel(price) : item.price || '官方价格待同步',
-        },
-      ];
-    }),
+  const rowsByModel = new Map();
+  const auditCatalogByModel = new Map(
+    DEFAULT_MODEL_CATALOG.map((item) => [normalizeOfficialModelName(item.model), item]),
   );
 
   for (const model of uniqueStrings(data.credentials.flatMap((credential) => credential.models || []))) {
@@ -6829,11 +6313,11 @@ function buildModelCatalog(data) {
     const price = findModelPrice(data, model);
     rowsByModel.set(model, {
       model,
-      family: live?.provider || providerFromModel(model),
-      tagline: taglineForModel(model),
-      context: contextForModel(model),
-      price: price ? priceLabel(price) : rowsByModel.get(model)?.price || '官方价格待同步',
-      available: live ? Boolean(live.ok) : true,
+      family: live?.provider || auditCatalogByModel.get(model)?.family || providerFromModel(model),
+      tagline: auditCatalogByModel.get(model)?.tagline || taglineForModel(model),
+      context: auditCatalogByModel.get(model)?.context || contextForModel(model),
+      price: price ? priceLabel(price) : auditCatalogByModel.get(model)?.price || '官方价格待同步',
+      available: Boolean(live?.ok),
     });
   }
 
@@ -6942,6 +6426,7 @@ function buildInventorySummary(data) {
 async function buildProductionReadiness(data, serverOptions) {
   const backup = buildBackupReadiness(data, serverOptions);
   const payment = buildPaymentClosureStatus(serverOptions);
+  const redemptionBilling = buildRedemptionBillingStatus();
   const checks = [
     {
       id: 'brand_domain',
@@ -6968,10 +6453,10 @@ async function buildProductionReadiness(data, serverOptions) {
       detail: serverOptions.requireAdmin2fa ? '已要求 TOTP 二次验证' : '未启用',
     },
     {
-      id: 'merchant_payment',
-      label: '真实支付商户闭环',
-      ok: payment.ready,
-      detail: payment.ready ? '至少一个商户回调可用' : '未接通真实商户',
+      id: 'redemption_billing',
+      label: '兑换码收款闭环',
+      ok: redemptionBilling.ready,
+      detail: redemptionBilling.detail,
     },
     {
       id: 'channel_sla',
@@ -6985,6 +6470,7 @@ async function buildProductionReadiness(data, serverOptions) {
     ready: checks.every((check) => check.ok),
     checks,
     payment,
+    redemptionBilling,
     backup,
     sla: {
       retentionDays: Number(serverOptions.slaRetentionDays || DEFAULT_SLA_RETENTION_DAYS),
@@ -7147,12 +6633,14 @@ function sanitizeAvatarUrl(value) {
 }
 
 function sanitizeUserKey(key, options = {}) {
+  const encryptedSecret = isEncryptedRuntimeSecret(key.secret);
   return {
     id: key.id,
     name: key.name,
-    preview: publicUserKeyPreview(key.preview || key.secret),
-    ...(options.revealSecret ? { secret: key.secret } : {}),
-    enabled: Boolean(key.enabled),
+    preview: encryptedSecret ? '需重新生成' : publicUserKeyPreview(key.preview || key.secret),
+    ...(options.revealSecret && !encryptedSecret ? { secret: key.secret } : {}),
+    enabled: Boolean(key.enabled) && !encryptedSecret,
+    requiresRotation: encryptedSecret,
     modelGroup: key.modelGroup || 'All',
     cost: formatUsdFromCnyCents(key.costCents),
     costCny: formatCny(key.costCents),
@@ -7160,6 +6648,10 @@ function sanitizeUserKey(key, options = {}) {
     lastUsed: key.lastUsed || '-',
     expiresAt: key.expiresAt || '-',
   };
+}
+
+function isEncryptedRuntimeSecret(value) {
+  return String(value || '').startsWith('enc:v1:');
 }
 
 function publicUserKeyPreview(value) {

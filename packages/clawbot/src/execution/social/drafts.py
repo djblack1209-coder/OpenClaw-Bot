@@ -184,8 +184,8 @@ def save_social_draft(
 
 
 def list_social_drafts(
-    platform: str = None,
-    status: str = None,
+    platform: str | None = None,
+    status: str | None = None,
     limit: int = 20,
 ) -> list[dict]:
     """列出草稿"""
@@ -235,10 +235,10 @@ def delete_social_draft(draft_id) -> dict:
 
 
 async def create_social_draft(
-    platform: str = None,
-    topic: str = None,
+    platform: str | None = None,
+    topic: str | None = None,
     max_items: int = 3,
-    monitors: list[dict] = None,
+    monitors: list[dict] | None = None,
     fetch_posts_fn=None,
     news_fetcher=None,
     curate_fn=None,
@@ -314,8 +314,8 @@ def _build_x_social_body(items: list[dict], topic: str = "") -> str:
     for i, item in enumerate(items[:3], 1):
         summary = item.get("title", "")
         if len(summary) > 32:
-            summary = summary[:29] + "..."
-        lines.append("{}. @{}：{}".format(i, item.get("handle", ""), summary))
+            summary = f"{summary[:29]}..."
+        lines.append(f"{i}. @{item.get('handle', '')}：{summary}")
     lines.append("想要原文链接和每日精选，来找 OpenClaw。")
     if tags:
         lines.append(" ".join(tags[:3]))
@@ -337,10 +337,10 @@ def _build_xiaohongshu_body(items: list[dict], topic: str = "") -> str:
         f"今天整理了 {len(items)} 条值得追踪的{topic_label}动态，适合做信息流输入：",
         "",
     ]
-    for i, item in enumerate(items[:5], 1):
+    for _i, item in enumerate(items[:5], 1):
         summary = item.get("title", "")
         if len(summary) > 72:
-            summary = summary[:69] + "..."
+            summary = f"{summary[:69]}..."
         lines.append(f"   {summary}")
         if item.get("url"):
             lines.append(f"   原文：{item.get('url', '')}")
@@ -349,7 +349,7 @@ def _build_xiaohongshu_body(items: list[dict], topic: str = "") -> str:
 
 
 def publish_social_draft(
-    platform: str = None,
+    platform: str | None = None,
     draft_id=None,
     worker_fn=None,
 ) -> dict:

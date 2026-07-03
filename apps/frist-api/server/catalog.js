@@ -179,12 +179,9 @@ export function availableModelsForCustomer(data, user, key, requestedModel = '')
     .filter((credential) => credentialMatchesModelGroup(credential, '', key.modelGroup))
     .flatMap((credential) => credential.models || [])
     .filter((model) => modelMatchesGroup(model, key.modelGroup || 'All'));
-  const catalogModels = buildModelCatalog(data)
-    .filter((item) => item.available !== false)
-    .map((item) => item.model)
-    .filter((model) => modelMatchesGroup(model, key.modelGroup || 'All'));
-  const models = uniqueStrings([requestedModel, ...liveModels, ...catalogModels]);
-  return sortModelsByStrength(models.length ? models : [DEFAULT_PUBLIC_MODEL]);
+  const requested = normalizeOfficialModelName(requestedModel);
+  const liveSet = new Set(liveModels);
+  return sortModelsByStrength(uniqueStrings([...(requested && liveSet.has(requested) ? [requested] : []), ...liveModels]));
 }
 
 function credentialMatchesModelGroup(credential, model, keyGroup) {
@@ -221,21 +218,19 @@ export function buildGatewayModels(data, request) {
 
 export function buildModelCatalog(data) {
   const liveByModel = buildLiveModelMap(data);
-  const rowsByModel = new Map(
-    DEFAULT_MODEL_CATALOG.map((item) => {
-      const model = normalizeOfficialModelName(item.model);
-      const price = findModelPrice(data, model);
-      return [model, { ...item, model, price: price ? priceLabel(price) : item.price || '官方价格待同步' }];
-    }),
+  const rowsByModel = new Map();
+  const auditCatalogByModel = new Map(
+    DEFAULT_MODEL_CATALOG.map((item) => [normalizeOfficialModelName(item.model), item]),
   );
   for (const model of uniqueStrings(data.credentials.flatMap((credential) => credential.models || []))) {
     const live = liveByModel.get(model);
     const price = findModelPrice(data, model);
     rowsByModel.set(model, {
-      model, family: live?.provider || providerFromModel(model),
-      tagline: taglineForModel(model), context: contextForModel(model),
-      price: price ? priceLabel(price) : rowsByModel.get(model)?.price || '官方价格待同步',
-      available: live ? Boolean(live.ok) : true,
+      model, family: live?.provider || auditCatalogByModel.get(model)?.family || providerFromModel(model),
+      tagline: auditCatalogByModel.get(model)?.tagline || taglineForModel(model),
+      context: auditCatalogByModel.get(model)?.context || contextForModel(model),
+      price: price ? priceLabel(price) : auditCatalogByModel.get(model)?.price || '官方价格待同步',
+      available: Boolean(live?.ok),
     });
   }
   return [...rowsByModel.values()].sort((left, right) => {

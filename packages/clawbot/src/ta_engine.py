@@ -407,7 +407,7 @@ def _sync_full_analysis(symbol: str, period: str = "3mo", interval: str = "1d") 
             df = get_history_sync(symbol, period=period, interval=interval)
         except ImportError:
             # 回退到 yfinance-only
-            pass
+            pass  # 合理保留：该分支只用于显式跳过并继续后续降级/清理流程
 
         if df is None:
             import yfinance as yf
@@ -493,7 +493,7 @@ def _sync_scan_single(symbol: str) -> dict | None:
             from src.data_providers import get_history_sync
             df = get_history_sync(symbol, period="3mo", interval="1d")
         except ImportError:
-            pass
+            pass  # 合理保留：可选依赖缺失时继续走后续降级链
 
         if df is None:
             import yfinance as yf
@@ -543,7 +543,7 @@ def _sync_scan_single(symbol: str) -> dict | None:
         return None
 
 
-async def scan_market(symbols: list[str] = None) -> list[dict]:
+async def scan_market(symbols: list[str] | None = None) -> list[dict]:
     """并行扫描市场，返回有信号的标的列表（按score排序）"""
     if symbols is None:
         symbols = SCAN_WATCHLIST
@@ -672,7 +672,7 @@ def _score_bar(score: int) -> str:
     """生成评分条"""
     normalized = (score + 100) / 200  # 0~1
     filled = int(normalized * 10)
-    return "[" + "=" * filled + "-" * (10 - filled) + "]"
+    return f"[{'=' * filled}{'-' * (10 - filled)}]"
 
 
 # ============ 仓位计算器 ============

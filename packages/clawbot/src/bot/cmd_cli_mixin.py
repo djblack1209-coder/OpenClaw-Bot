@@ -1,8 +1,7 @@
 """CLI-Anything Telegram 命令 — /cli 系列
 
-⚠️ 注意：此 Mixin 未注册到 MultiBot 中（未继承、未添加 CommandHandler）。
-         属于预备代码，需要在 multi_bot.py 中注册后才能使用。
-         审计日期: 2026-04-23
+当前状态：已注册到 MultiBot，Telegram 可通过 /cli 使用。
+审计日期: 2026-07-02
 
 让用户通过 Telegram 控制桌面软件:
 - /cli list          — 列出可用工具
@@ -82,8 +81,7 @@ class CLICommandsMixin:
 
             else:
                 await update.message.reply_text(
-                    f"❓ 不认识的子命令: {sub_cmd}\n\n"
-                    + self._cli_help_text()
+                    f"❓ 不认识的子命令: {sub_cmd}\n\n{self._cli_help_text()}"
                 )
 
         except Exception:
@@ -133,7 +131,7 @@ class CLICommandsMixin:
             # 截断过长的输出
             output = result["output"]
             if len(output) > 3000:
-                output = output[:3000] + "\n... (输出已截断)"
+                output = f"{output[:3000]}\n... (输出已截断)"
 
             await status_msg.edit_text(
                 f"✅ <code>{tool_name}</code> 执行成功\n"
@@ -171,7 +169,7 @@ class CLICommandsMixin:
         if result["output"]:
             output = result["output"]
             if len(output) > 3000:
-                output = output[:3000] + "\n... (帮助信息已截断)"
+                output = f"{output[:3000]}\n... (帮助信息已截断)"
             await update.message.reply_text(
                 f"<b>📖 {tool_name} 帮助</b>\n\n"
                 f"<pre>{output}</pre>",

@@ -271,7 +271,7 @@ class CallbackMixin:
                         )
                 except Exception as e:
                     results.append(f"❌ {t['symbol']}: {e}")
-            await query.edit_message_text("📋 执行结果:\n\n" + "\n".join(results))
+            await query.edit_message_text(f"📋 执行结果:\n\n{'\n'.join(results)}")
             return
 
         if data.startswith("itrade:"):

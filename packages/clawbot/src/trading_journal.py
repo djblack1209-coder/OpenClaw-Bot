@@ -43,7 +43,7 @@ class TradingJournal(
 ):
     """专业交易日志系统（Mixin 架构）"""
 
-    def __init__(self, db_path: str = None):
+    def __init__(self, db_path: str | None = None):
         self.db_path = db_path or DB_PATH
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         self._init_db()
@@ -523,7 +523,7 @@ class TradingJournal(
             # 分页数据
             rows = conn.execute(
                 f"SELECT * FROM trades WHERE {where_clause} ORDER BY created_at DESC LIMIT ? OFFSET ?",
-                params + [limit, offset],
+                [*params, limit, offset],
             ).fetchall()
         return {
             "items": [dict(r) for r in rows],

@@ -66,7 +66,7 @@ def check_ssrf(url: str) -> bool:
         # DNS 解析后检查 IP（防止 DNS 重绑定攻击）
         try:
             resolved_ips = socket.getaddrinfo(hostname, None)
-            for family, _type, proto, canonname, sockaddr in resolved_ips:
+            for _family, _type, _proto, _canonname, sockaddr in resolved_ips:
                 ip = ipaddress.ip_address(sockaddr[0])
                 if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
                     logger.warning("[SSRF] 拦截: %s 解析到内网地址 %s", url, ip)
@@ -328,17 +328,14 @@ class SecurityGate:
 
         try:
             with open(AUDIT_FILE, "a", encoding="utf-8") as f:
-                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+                f.write(f"{json.dumps(record, ensure_ascii=False)}\n")
         except Exception as e:
             logger.warning(f"审计日志写入失败: {e}")
 
     def contains_sensitive_data(self, text: str) -> bool:
         """检查文本是否包含敏感数据"""
         import re
-        for pattern in SENSITIVE_PATTERNS:
-            if re.search(pattern, text, re.IGNORECASE):
-                return True
-        return False
+        return any(re.search(pattern, text, re.IGNORECASE) for pattern in SENSITIVE_PATTERNS)
 
     def redact_sensitive(self, text: str) -> str:
         """脱敏处理"""

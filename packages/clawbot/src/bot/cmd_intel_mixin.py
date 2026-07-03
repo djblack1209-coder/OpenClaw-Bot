@@ -351,7 +351,7 @@ class IntelCommandMixin:
                 except Exception as e:
                     logger.error("发送情报简报失败: %s", e)
                     # 回退：尝试直接编辑消息
-                    truncated = brief[:4000] + "\n\n(内容过长，已截断)" if len(brief) > 4000 else brief
+                    truncated = f"{brief[:4000]}\n\n(内容过长，已截断)" if len(brief) > 4000 else brief
                     await query.edit_message_text(truncated)
             else:
                 await query.edit_message_text("⚠️ 情报简报生成失败，请稍后再试。")

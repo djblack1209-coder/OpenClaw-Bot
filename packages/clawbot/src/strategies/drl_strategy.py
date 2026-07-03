@@ -355,7 +355,7 @@ class DRLStrategy(BaseStrategy):
             obs, _ = env.reset()
 
             # 模拟到最后一天
-            for i in range(len(df) - 2):
+            for _i in range(len(df) - 2):
                 action, _ = self._model.predict(obs, deterministic=True)
                 obs, _, done, _, _ = env.step(action)
                 if done:

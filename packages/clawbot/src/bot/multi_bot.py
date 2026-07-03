@@ -10,6 +10,7 @@ from src.bot.api_mixin import APIMixin
 from src.bot.chinese_nlp_mixin import ChineseNLPMixin
 from src.bot.cmd_analysis_mixin import AnalysisCommandsMixin
 from src.bot.cmd_basic_mixin import BasicCommandsMixin
+from src.bot.cmd_cli_mixin import CLICommandsMixin
 from src.bot.cmd_collab_mixin import CollabCommandsMixin
 from src.bot.cmd_execution_mixin import ExecutionCommandsMixin
 from src.bot.cmd_ibkr_mixin import IBKRCommandsMixin
@@ -37,8 +38,8 @@ logger = logging.getLogger(__name__)
 # 每次对话自动注入 ~500 token 的用户实时状态到 system prompt
 # 使得 "最近交易做得怎么样" 能得到基于真实 P&L 的回答
 
-import threading as _threading
-import time as _time
+import threading as _threading  # noqa: E402
+import time as _time  # noqa: E402
 
 _live_context_cache = {"text": "", "ts": 0}
 _LIVE_CONTEXT_TTL = 60  # 缓存60秒，避免每条消息都拉取
@@ -76,7 +77,7 @@ def _build_live_context() -> str:
                 if sl > 0:
                     line += f" SL=${sl:.2f}"
                 lines.append(line)
-            sections.append("持仓: " + "; ".join(lines))
+            sections.append(f"持仓: {'; '.join(lines)}")
     except Exception as e:
         logger.debug("静默异常: %s", e)
 
@@ -122,7 +123,7 @@ def _build_live_context() -> str:
             _live_context_cache["ts"] = now
         return ""
 
-    text = "\n\n【实时状态】\n" + "\n".join(f"• {s}" for s in sections) + "\n"
+    text = f"\n\n【实时状态】\n{'\n'.join(f'• {s}' for s in sections)}\n"
     with _live_context_lock:
         _live_context_cache["text"] = text
         _live_context_cache["ts"] = now
@@ -139,6 +140,7 @@ class MultiBot(
     CollabCommandsMixin,
     ExecutionCommandsMixin,
     IntelCommandMixin,
+    CLICommandsMixin,
     ChineseNLPMixin,
     OCRHandlerMixin,
     MessageHandlerMixin,
@@ -398,6 +400,8 @@ class MultiBot(
         self.app.add_handler(CommandHandler("deals", self.cmd_deals))
         self.app.add_handler(CommandHandler("pricewatch", self.cmd_pricewatch))
         self.app.add_handler(CommandHandler("intel", self.cmd_intel))
+        # 参考 python-telegram-bot v22.5 CommandHandler 文档（2026-07-02 复核）：新命令必须显式注册到 Application。
+        self.app.add_handler(CommandHandler("cli", self.cmd_cli))
         # Claude Code CLI 桥接 — /claude code <消息>（仅 Free LLM Bot 有效）
         self.app.add_handler(CommandHandler("claude", self.cmd_claude_code))
         self.app.add_handler(CallbackQueryHandler(self.handle_trade_callback, pattern=r"^itrade"))

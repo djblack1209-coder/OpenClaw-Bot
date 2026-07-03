@@ -29,7 +29,7 @@ def run_monte_carlo(
     base_report: PerformanceReport,
     initial_capital: float = 10000.0,
     simulations: int = 1000,
-    confidence_levels: list[float] = None,
+    confidence_levels: list[float] | None = None,
 ) -> dict[str, Any]:
     """
     蒙特卡洛模拟（对标 freqtrade 的策略稳健性验证）
@@ -141,25 +141,24 @@ def format_monte_carlo(mc_result: dict) -> str:
 
     lines = [
         "=" * 50,
-        "蒙特卡洛模拟结果 (%d次模拟)" % mc_result["simulations"],
+        '蒙特卡洛模拟结果 ({:d}次模拟)'.format(int(mc_result["simulations"])),
         "=" * 50,
         "",
-        "原始回测PnL: $%+.2f" % mc_result["original_pnl"],
-        "模拟中位数PnL: $%+.2f" % mc_result["median_pnl"],
-        "最差5%%情况: $%+.2f" % mc_result["worst_5pct_pnl"],
-        "最好5%%情况: $%+.2f" % mc_result["best_5pct_pnl"],
+        '原始回测PnL: ${:+.2f}'.format(float(mc_result["original_pnl"])),
+        '模拟中位数PnL: ${:+.2f}'.format(float(mc_result["median_pnl"])),
+        '最差5%情况: ${:+.2f}'.format(float(mc_result["worst_5pct_pnl"])),
+        '最好5%情况: ${:+.2f}'.format(float(mc_result["best_5pct_pnl"])),
         "",
-        "破产概率: %.2f%%" % mc_result["ruin_probability"],
-        "中位数最大回撤: %.1f%%" % mc_result["median_max_drawdown"],
-        "最差5%%最大回撤: %.1f%%" % mc_result["worst_5pct_max_drawdown"],
+        '破产概率: {:.2f}%'.format(float(mc_result["ruin_probability"])),
+        '中位数最大回撤: {:.1f}%'.format(float(mc_result["median_max_drawdown"])),
+        '最差5%最大回撤: {:.1f}%'.format(float(mc_result["worst_5pct_max_drawdown"])),
         "",
         "-- 置信区间 --",
     ]
 
     for level, data in mc_result.get("confidence_intervals", {}).items():
         lines.append(
-            "  %s: 权益$%.2f  PnL$%+.2f  回撤%.1f%%"
-            % (level, data["final_equity"], data["pnl"], data["max_drawdown_pct"])
+            '  {}: 权益${:.2f}  PnL${:+.2f}  回撤{:.1f}%'.format(level, float(data["final_equity"]), float(data["pnl"]), float(data["max_drawdown_pct"]))
         )
 
     lines.append("=" * 50)
@@ -272,32 +271,24 @@ def format_optimization_result(opt_result: dict) -> str:
 
     lines = [
         "=" * 60,
-        "参数优化结果 (%s | %d种组合)" % (
-            opt_result.get("symbol", "?"),
-            opt_result.get("total_combinations", 0)
-        ),
+        '参数优化结果 ({} | {:d}种组合)'.format(opt_result.get("symbol", "?"), int(opt_result.get("total_combinations", 0))),
         "=" * 60,
         "",
-        "优化目标: %s" % opt_result.get("optimize_metric", "?"),
+        '优化目标: {}'.format(opt_result.get("optimize_metric", "?")),
         "",
         "-- 最优参数 --",
     ]
 
     for k, v in opt_result.get("best_params", {}).items():
-        lines.append("  %s = %s" % (k, v))
+        lines.append(f'  {k} = {v}')
 
     lines.append("")
     lines.append("-- Top 10 结果 --")
-    lines.append("%-4s %8s %6s %6s %10s %6s" % (
-        "#", "指标", "胜率", "夏普", "PnL", "回撤"
-    ))
+    lines.append('{:<4} {:>8} {:>6} {:>6} {:>10} {:>6}'.format("#", "指标", "胜率", "夏普", "PnL", "回撤"))
     lines.append("-" * 50)
 
     for i, r in enumerate(opt_result.get("all_results", [])[:10]):
-        lines.append("%-4d %8.2f %5.1f%% %6.2f $%+9.2f %5.1f%%" % (
-            i + 1, r["metric"], r["win_rate"], r["sharpe_ratio"],
-            r["total_pnl"], r["max_drawdown_pct"]
-        ))
+        lines.append('{:<4d} {:8.2f} {:5.1f}% {:6.2f} ${:+9.2f} {:5.1f}%'.format(int(i + 1), float(r["metric"]), float(r["win_rate"]), float(r["sharpe_ratio"]), float(r["total_pnl"]), float(r["max_drawdown_pct"])))
 
     lines.append("=" * 60)
     return "\n".join(lines)
@@ -312,7 +303,7 @@ def run_walk_forward(
     initial_capital: float = 10000.0,
     train_ratio: float = 0.7,
     n_splits: int = 3,
-    param_grid: dict[str, list] = None,
+    param_grid: dict[str, list] | None = None,
     optimize_metric: str = "sharpe_ratio",
 ) -> dict[str, Any]:
     """
@@ -424,17 +415,14 @@ def format_walk_forward(wf_result: dict) -> str:
 
     lines = [
         "=" * 60,
-        "Walk-Forward 分析 (%s | %d折)" % (
-            wf_result.get("symbol", "?"),
-            wf_result.get("n_splits", 0)
-        ),
+        'Walk-Forward 分析 ({} | {:d}折)'.format(wf_result.get("symbol", "?"), int(wf_result.get("n_splits", 0))),
         "=" * 60,
         "",
     ]
 
     for r in wf_result.get("walk_results", []):
         lines.append(
-            "第%d折: 训练%d根 测试%d根 | "
+            "第%d折: 训练%d根 测试%d根 | "  # noqa: UP031
             "测试PnL=$%+.2f 胜率%.1f%% 夏普%.2f 回撤%.1f%%"
             % (r["split"], r["train_bars"], r["test_bars"],
                r["test_pnl"], r["test_win_rate"], r["test_sharpe"], r["test_max_dd"])
@@ -443,10 +431,8 @@ def format_walk_forward(wf_result: dict) -> str:
     lines.append("")
     efficiency = wf_result.get("wf_efficiency", 0)
     robust = wf_result.get("is_robust", False)
-    lines.append("Walk-Forward 效率: %.1f%% %s" % (
-        efficiency, "(稳健)" if robust else "(可能过拟合)"
-    ))
-    lines.append("测试集总PnL: $%+.2f" % wf_result.get("total_test_pnl", 0))
+    lines.append('Walk-Forward 效率: {:.1f}% {}'.format(float(efficiency), "(稳健)" if robust else "(可能过拟合)"))
+    lines.append('测试集总PnL: ${:+.2f}'.format(float(wf_result.get("total_test_pnl", 0))))
     lines.append("=" * 60)
     return "\n".join(lines)
 

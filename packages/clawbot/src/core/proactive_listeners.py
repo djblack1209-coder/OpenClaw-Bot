@@ -188,7 +188,7 @@ async def setup_proactive_listeners(engine: ProactiveEngine):
                 if news_title:
                     # 截断过长标题
                     title_display = (
-                        news_title[:60] + "..." if len(news_title) > 60
+                        f"{news_title[:60]}..." if len(news_title) > 60
                         else news_title
                     )
                     lines.append(f"📰 可能原因: {title_display}")
@@ -218,7 +218,7 @@ async def setup_proactive_listeners(engine: ProactiveEngine):
                 # ── 确定通知目标（用第一个管理员 ID）──
                 target_id = ""
                 if ALLOWED_USER_IDS:
-                    target_id = str(list(ALLOWED_USER_IDS)[0])
+                    target_id = str(next(iter(ALLOWED_USER_IDS)))
                 if not target_id:
                     return  # 无接收者，跳过
 

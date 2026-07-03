@@ -162,6 +162,7 @@ class TestJobMorningScan:
 
         def fake_run_async(coro):
             """模拟 _run_async：执行状态重置逻辑"""
+            coro.close()
             st = ss_module._load_state()
             st["last_scan_topics"] = [{"title": "Test Topic", "score": 8}]
             st["drafts"] = []

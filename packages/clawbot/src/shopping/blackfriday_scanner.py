@@ -11,6 +11,7 @@
 > 最后更新: 2026-04-25
 """
 
+import contextlib
 import hashlib
 import logging
 import os
@@ -64,10 +65,8 @@ class BlackFridayDeal:
         # 用标题+URL的域名做 hash，避免同一个优惠不同链接重复
         from urllib.parse import urlparse
         domain = ""
-        try:
+        with contextlib.suppress(Exception):
             domain = urlparse(self.url).netloc
-        except Exception:
-            pass
         raw = f"{self.deal_title.lower().strip()}|{domain}"
         return hashlib.md5(raw.encode()).hexdigest()[:16]
 
@@ -307,7 +306,7 @@ def _fallback_parse(keyword: str, raw_results: list[dict]) -> list[BlackFridayDe
         if not title:
             continue
         # 只保留标题/内容中包含关键词的结果
-        combined = (title + " " + content).lower()
+        combined = f"{title} {content}".lower()
         if keyword.lower() not in combined:
             continue
         deals.append(BlackFridayDeal(

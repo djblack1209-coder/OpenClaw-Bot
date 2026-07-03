@@ -553,11 +553,10 @@ class ToolExecutor:
     def _truncate_result(self, result: dict[str, Any]) -> dict[str, Any]:
         """截断过长的工具结果，防止撑爆上下文"""
         for key in ("content", "stdout", "stderr", "output"):
-            if key in result and isinstance(result[key], str):
-                if len(result[key]) > self.max_result_length:
-                    result[key] = (
-                        result[key][: self.max_result_length] + f"\n\n... [截断，原始长度 {len(result[key])} 字符]"
-                    )
+            if key in result and isinstance(result[key], str) and len(result[key]) > self.max_result_length:
+                result[key] = (
+                    f"{result[key][:self.max_result_length]}\n\n... [截断，原始长度 {len(result[key])} 字符]"
+                )
         return result
 
     def get_tools_schema(self) -> list[dict]:
@@ -792,7 +791,7 @@ class ToolExecutor:
                 f"最大亏损: ${result.get('max_loss', 0):.2f} ({result.get('risk_pct_actual', 0):.1f}%资金)",
                 f"风险收益比: 1:{result.get('rr_ratio', 0):.1f}" if result.get("rr_ratio") else "",
             ]
-            return {"success": True, "content": "\n".join(l for l in lines if l)}
+            return {"success": True, "content": "\n".join(line for line in lines if line)}
         except Exception as e:
             logger.exception("[ToolExecutor] calc_position_size 失败 (symbol=%s)", tool_input.get("symbol"))
             return {"success": False, "error": str(e)}

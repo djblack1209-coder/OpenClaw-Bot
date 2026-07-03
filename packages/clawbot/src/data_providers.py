@@ -87,7 +87,7 @@ def _ensure_akshare():
 
             _ak_module = ak
         except ImportError:
-            raise ImportError("akshare 未安装。请运行: pip install akshare")
+            raise ImportError("akshare 未安装。请运行: pip install akshare") from None
     return _ak_module
 
 
@@ -100,7 +100,7 @@ def _ensure_ccxt():
 
             _ccxt_module = _ccxt
         except ImportError:
-            raise ImportError("ccxt 未安装。请运行: pip install ccxt")
+            raise ImportError("ccxt 未安装。请运行: pip install ccxt") from None
     return _ccxt_module
 
 
@@ -113,7 +113,7 @@ def _ensure_yfinance():
 
             _yf_module = yf
         except ImportError:
-            raise ImportError("yfinance 未安装。请运行: pip install yfinance")
+            raise ImportError("yfinance 未安装。请运行: pip install yfinance") from None
     return _yf_module
 
 

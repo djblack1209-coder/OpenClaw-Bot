@@ -197,6 +197,17 @@ describe('Frist-API public server chain', () => {
       assert.equal(updated.status, 200);
       assert.equal(updated.json.rechargePlans[0].priceCny, 6.66);
 
+      await fixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'https://supplier.example.com/openai',
+          pool: 'day',
+          models: ['gpt-5.5'],
+          keys: [{ value: 'sk-pricing-visible', quotaRemaining: 900, latencyMs: 80 }],
+        },
+      });
+
       const dashboard = await fixture.request('/api/frist/dashboard');
       assert.equal(dashboard.json.rechargeOptions[0].priceCny, 6.66);
       assert.equal(dashboard.json.rechargeOptions[0].cny, '¥6.66');
@@ -236,6 +247,17 @@ describe('Frist-API public server chain', () => {
       assert.equal(officialGpt.inputSaleCnyPerMillion, 36);
       assert.equal(officialGpt.outputSaleCnyPerMillion, 216);
       assert.equal(officialGpt.displayPrice, '官方 输入 $5.00 / 缓存 $0.50 / 输出 $30.00 每 1M');
+
+      await fixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'https://supplier.example.com/openai',
+          pool: 'day',
+          models: ['gpt-5.5'],
+          keys: [{ value: 'sk-official-price-visible', quotaRemaining: 900, latencyMs: 80 }],
+        },
+      });
 
       const dashboard = await fixture.request('/api/frist/dashboard');
       assert.equal(
@@ -278,12 +300,22 @@ describe('Frist-API public server chain', () => {
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
         cookie,
-        body: { name: 'Claude 日常 Key' },
+        body: { name: 'Claude 日常 Key', modelGroup: 'Claude' },
       });
       assert.equal(token.status, 200);
       assert.match(token.json.key.secret, /^fk-live-/);
+      await fixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'https://supplier.example.com/claude',
+          pool: 'default',
+          models: ['claude-sonnet-4-5-c'],
+          keys: [{ value: 'sk-customer-flow-claude', quotaRemaining: 900, latencyMs: 80 }],
+        },
+      });
 
-      const imported = await fixture.request('/api/frist/import-url?target=Claude&model=claude-haiku', {
+      const imported = await fixture.request('/api/frist/import-url?target=Claude&model=claude-sonnet-4-5-c', {
         cookie,
       });
       assert.equal(imported.status, 200);
@@ -1928,6 +1960,186 @@ describe('Frist-API public server chain', () => {
     }
   });
 
+  it('circuit-breaks overspent slow supplier inventory before routing to a healthy fallback', async () => {
+    const upstreamCalls = [];
+    const fixture = await createServerFixture({
+      fetchImpl: async (url, options) => {
+        const auth = options.headers.authorization || '';
+        upstreamCalls.push(auth.includes('overspent-slow') ? 'overspent-slow' : 'fallback-healthy');
+        return jsonResponse(200, {
+          id: 'chatcmpl-fallback',
+          object: 'chat.completion',
+          model: 'gpt-5.5',
+          choices: [{ message: { role: 'assistant', content: 'fallback after breaker' }, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 2, completion_tokens: 2, total_tokens: 4 },
+        });
+      },
+      nowFactory: () => new Date('2026-07-02T15:00:00.000Z'),
+    });
+
+    try {
+      const cookie = await fixture.createVerifiedCustomer('overspent-slow-breaker@example.com');
+      await fixture.request('/api/frist/redeem', {
+        method: 'POST',
+        cookie,
+        body: { code: 'FRIST-DAY-001' },
+      });
+      const token = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie,
+        body: { name: 'Overspent Slow Breaker Key', modelGroup: 'OpenAI' },
+      });
+      await fixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'https://86gamestore.example.com/openai',
+          pool: 'day',
+          models: ['gpt-5.5'],
+          keys: [
+            {
+              value: 'sk-overspent-slow',
+              quotaRemaining: 100,
+              quotaTotal: 5000,
+              latencyMs: 16_110,
+              dailySpendLimitCents: 120,
+            },
+          ],
+        },
+      });
+      await fixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'https://supplier.example.com/openai',
+          pool: 'default',
+          models: ['gpt-5.5'],
+          keys: [{ value: 'sk-fallback-healthy', quotaRemaining: 900, quotaTotal: 900, latencyMs: 80 }],
+        },
+      });
+      const data = await fixture.readData();
+      const slowCredential = data.credentials.find((item) => item.rawKey === 'sk-overspent-slow');
+      assert.equal(slowCredential.dailySpendLimitCents, 120);
+      data.events.push({
+        type: 'gateway_routed',
+        credentialId: slowCredential.id,
+        quotaCost: 150,
+        latencyMs: 16_110,
+        status: 'success',
+        at: '2026-07-02T10:00:00.000Z',
+      });
+      await fixture.writeData(data);
+
+      const gateway = await fixture.request('/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token.json.key.secret}` },
+        body: {
+          model: 'gpt-5.5',
+          messages: [{ role: 'user', content: 'ping' }],
+          max_tokens: 8,
+        },
+      });
+      const inventory = await fixture.request('/api/admin/replenishments', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+
+      assert.equal(gateway.status, 200);
+      assert.equal(gateway.json.choices[0].message.content, 'fallback after breaker');
+      assert.deepEqual(upstreamCalls, ['fallback-healthy']);
+      const slowInventory = inventory.json.credentials.find((item) => item.keyPreview === slowCredential.keyPreview);
+      assert.equal(slowInventory.status, 'exhausted');
+      assert.equal(slowInventory.enabled, false);
+      assert.match(slowInventory.lastProbeReason, /daily_spend_limit/);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('marks probe-healthy credentials failed and sends one alert when real calls return 503', async () => {
+    const upstreamCalls = [];
+    const alerts = [];
+    const fixture = await createServerFixture({
+      fetchImpl: async (url, options) => {
+        const auth = options.headers.authorization || '';
+        if (auth.includes('real-503')) {
+          upstreamCalls.push('real-503');
+          return jsonResponse(503, { error: 'upstream overloaded' });
+        }
+        upstreamCalls.push('fallback-ok');
+        return jsonResponse(200, {
+          id: 'chatcmpl-fallback-ok',
+          object: 'chat.completion',
+          model: 'gpt-5.5',
+          choices: [{ message: { role: 'assistant', content: 'fallback ok' }, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 2, completion_tokens: 2, total_tokens: 4 },
+        });
+      },
+      notifyCredentialIssue: async (payload) => {
+        alerts.push(payload);
+      },
+    });
+
+    try {
+      const cookie = await fixture.createVerifiedCustomer('probe-real-503@example.com');
+      await fixture.request('/api/frist/redeem', {
+        method: 'POST',
+        cookie,
+        body: { code: 'FRIST-DAY-001' },
+      });
+      const token = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie,
+        body: { name: 'Probe Healthy Real 503 Key', modelGroup: 'OpenAI' },
+      });
+      await fixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'https://supplier.example.com/openai',
+          pool: 'day',
+          models: ['gpt-5.5'],
+          keys: [
+            { value: 'sk-real-503', quotaRemaining: 900, latencyMs: 10 },
+            { value: 'sk-fallback-ok', quotaRemaining: 900, latencyMs: 20 },
+          ],
+        },
+      });
+
+      const firstGateway = await fixture.request('/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token.json.key.secret}` },
+        body: {
+          model: 'gpt-5.5',
+          messages: [{ role: 'user', content: 'ping' }],
+          max_tokens: 8,
+        },
+      });
+      const secondGateway = await fixture.request('/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token.json.key.secret}` },
+        body: {
+          model: 'gpt-5.5',
+          messages: [{ role: 'user', content: 'ping again' }],
+          max_tokens: 8,
+        },
+      });
+      const inventory = await fixture.request('/api/admin/replenishments', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+
+      assert.equal(firstGateway.status, 200);
+      assert.equal(secondGateway.status, 200);
+      assert.deepEqual(upstreamCalls, ['real-503', 'fallback-ok', 'fallback-ok']);
+      assert.equal(alerts.length, 1);
+      assert.equal(alerts[0].issueType, 'upstream');
+      assert.match(alerts[0].reason, /upstream_http_503/);
+      assert.equal(inventory.json.credentials.find((item) => item.status === 'failed')?.status, 'failed');
+      assert.equal(inventory.json.credentials.find((item) => item.status === 'healthy')?.status, 'healthy');
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it('exports the same complete model list for Codex and OpenCode import URLs', async () => {
     const fixture = await createServerFixture({ requireEmailVerification: false });
 
@@ -1984,7 +2196,7 @@ describe('Frist-API public server chain', () => {
     }
   });
 
-  it('keeps the OpenAI model family complete when the New-API bridge only reports partial limits', async () => {
+  it('rejects New-API wildcard-only imports until real upstream models are known', async () => {
     const fixture = await createServerFixture({
       requireEmailVerification: false,
       newApiEnabled: true,
@@ -2042,24 +2254,55 @@ describe('Frist-API public server chain', () => {
       const imported = await fixture.request('/api/frist/import-url?target=Codex&model=gpt-5.4', {
         cookie: registered.cookie,
       });
-      const importUrl = new URL(imported.json.url);
-      const expectedModels = [
-        'gpt-5.5',
-        'gpt-5.4',
-        'gpt-5.4-mini',
-        'gpt-image-2',
-        'gpt-image-1.5',
-        'gpt-5.3-codex',
-        'gpt-4o',
-        'gpt-5-codex',
-      ];
-
-      assert.deepEqual(imported.json.availableModels, expectedModels);
-      assert.equal(importUrl.searchParams.get('availableModels'), null);
+      assert.equal(imported.status, 409);
+      assert.match(imported.json.error, /暂无健康上游模型/);
       assert.deepEqual(
-        normalizeClientAvailableModels(['gpt-*'], { modelGroup: 'OpenAI' }),
-        expectedModels,
+        normalizeClientAvailableModels(['gpt-*'], { modelGroup: 'OpenAI', expandPatterns: false }),
+        [],
       );
+    } finally {
+      await fixture.close();
+    }
+  });
+
+
+  it('does not show hard-coded catalog models when a customer has no healthy upstream inventory', async () => {
+    const fixture = await createServerFixture({ requireEmailVerification: false });
+
+    try {
+      const registered = await fixture.request('/api/frist/register', {
+        method: 'POST',
+        body: { email: 'no-live-models@example.com', password: 'TestPass123!' },
+      });
+      await fixture.request('/api/frist/redeem', {
+        method: 'POST',
+        cookie: registered.cookie,
+        body: { code: 'FRIST-DAY-001' },
+      });
+      await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie: registered.cookie,
+        body: { name: 'No Live Key', modelGroup: 'OpenAI' },
+      });
+
+      const imported = await fixture.request('/api/frist/import-url?target=Codex&model=gpt-5.5', {
+        cookie: registered.cookie,
+      });
+      const token = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie: registered.cookie,
+        body: { name: 'Empty Inventory Key', modelGroup: 'OpenAI' },
+      });
+      const models = await fixture.request('/v1/models', {
+        headers: { Authorization: `Bearer ${token.json.key.secret}` },
+      });
+      const dashboard = await fixture.request('/api/frist/dashboard', { cookie: registered.cookie });
+
+      assert.equal(imported.status, 409);
+      assert.match(imported.json.error, /暂无健康上游模型/);
+      assert.equal(models.status, 200);
+      assert.deepEqual(models.json.data, []);
+      assert.equal(dashboard.json.modelCatalog.some((item) => item.model === 'gpt-5.5'), false);
     } finally {
       await fixture.close();
     }
@@ -4590,7 +4833,7 @@ describe('Frist-API public server chain', () => {
     temporaryIpServer.close();
   });
 
-  it('enforces production boundaries for brand domain, New-API database, 2FA and merchant payment', () => {
+  it('enforces production boundaries for brand domain, New-API database, 2FA and redemption billing', () => {
     assert.throws(
       () =>
         createFristApiServer({
@@ -4603,10 +4846,9 @@ describe('Frist-API public server chain', () => {
           publicGatewayBaseUrl: 'https://frist-api.101-43-41-96.nip.io/v1',
           canonicalHost: 'frist-api.101-43-41-96.nip.io',
         }),
-      /固定 HTTPS 品牌域名|New-API 数据库|管理员 2FA|真实支付商户/,
+      /固定 HTTPS 品牌域名|New-API 数据库|管理员 2FA|兑换码/,
     );
 
-    const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
     const productionServer = createFristApiServer({
       publicMode: true,
       enforceProductionReadiness: true,
@@ -4618,11 +4860,6 @@ describe('Frist-API public server chain', () => {
       requireAdmin2fa: true,
       adminTotpSecrets: ['JBSWY3DPEHPK3PXP'],
       requireCsrf: true,
-      paymentEnabled: true,
-      alipayEnabled: true,
-      alipayAppId: '2021000000000000',
-      alipayPrivateKey: privateKey.export({ type: 'pkcs8', format: 'pem' }),
-      alipayPublicKey: publicKey.export({ type: 'spki', format: 'pem' }),
       adminToken: 'admin-token-with-enough-randomness-2026',
       sessionSecret: 'session-secret-with-enough-randomness-2026',
       dataEncryptionKey: 'runtime-encryption-key-with-enough-randomness-2026',

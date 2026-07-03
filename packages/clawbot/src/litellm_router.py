@@ -127,7 +127,7 @@ except ImportError:
         # 降级版缓存 key 生成：对参数做 SHA-256 哈希
         try:
             raw = _json_cache.dumps(args, sort_keys=True, ensure_ascii=False, default=str)
-            return "llm:" + _hashlib.sha256(raw.encode("utf-8")).hexdigest()
+            return f"llm:{_hashlib.sha256(raw.encode('utf-8')).hexdigest()}"
         except Exception:
             return ""
 
@@ -182,9 +182,7 @@ class FreeAPISource:
     def can_accept_request(self) -> bool:
         if self.disabled or self.consecutive_errors >= 5:
             return False
-        if self.daily_limit > 0 and self.used_today >= self.daily_limit:
-            return False
-        return True
+        return not (self.daily_limit > 0 and self.used_today >= self.daily_limit)
 
 
 # ---- 模型强度排名 — T5-3: 优先从 JSON 加载，fallback 到硬编码默认值 ----
@@ -399,7 +397,7 @@ def _trigger_iflow_auto_renew() -> None:
             logger.info("[iflow] 🔄 后台启动自动续期脚本...")
             _sp.Popen(
                 [_sys.executable, str(renew_script), "--restart"],
-                stdout=open("/tmp/iflow_renew.log", "w"),
+                stdout=open("/tmp/iflow_renew.log", "w"),  # noqa: SIM115
                 stderr=_sp.STDOUT,
                 start_new_session=True,
             )
@@ -444,7 +442,7 @@ class LiteLLMPool:
 
             init_phoenix()
         except ImportError:
-            pass
+            pass  # 合理保留：可选依赖缺失时继续走后续降级链
 
     @property
     def sources(self) -> dict[str, list[FreeAPISource]]:
@@ -918,7 +916,7 @@ class LiteLLMPool:
             if self._routing_config and self._routing_config.get("providers"):
                 deps = build_deployments_from_config(self._routing_config, self._dep)
                 if deps:
-                    families = set(d["model_name"] for d in deps)
+                    families = {d["model_name"] for d in deps}
                     fallbacks = build_fallbacks_from_config(self._routing_config, families)
                     logger.info(f"[LiteLLMPool] JSON Config 加载成功: {len(deps)} deployments")
         except Exception as e:
@@ -931,7 +929,7 @@ class LiteLLMPool:
             if not deps:
                 logger.warning("[LiteLLMPool] 无可用 deployment")
                 return
-            families = set(d["model_name"] for d in deps)
+            families = {d["model_name"] for d in deps}
             # 硬编码 fallback 链
             fallbacks = []
             for f in families:
@@ -945,7 +943,7 @@ class LiteLLMPool:
                 chain.append("g4f")
                 fallbacks.append({f: chain})
 
-        families = set(d["model_name"] for d in deps)
+        families = {d["model_name"] for d in deps}
 
         try:
             # 从 JSON router_config 读取参数（T5-2: 消除硬编码，JSON 为单一真相源）
@@ -1014,7 +1012,7 @@ class LiteLLMPool:
             "status": "active",
             "config_source": getattr(self, "_config_source", "unknown"),
             "total_deployments": len(deployments),
-            "model_groups": len(set(d["model_group"] for d in deployments)),
+            "model_groups": len({d["model_group"] for d in deployments}),
             "deployments": deployments,
         }
 
@@ -1059,7 +1057,7 @@ class LiteLLMPool:
             complexity = self._estimate_complexity(messages, max_tokens)
             model = self._smart_route(complexity)
 
-        all_msgs = ([{"role": "system", "content": system_prompt}] + messages) if system_prompt else messages
+        all_msgs = ([{"role": "system", "content": system_prompt}, *messages]) if system_prompt else messages
 
         # ---- Cache layer (non-streaming only) ----
         use_cache = not stream and not no_cache and cache_ttl > 0 and _HAS_LLM_CACHE
@@ -1408,7 +1406,7 @@ class LiteLLMPool:
         # Group sources by provider to avoid redundant checks
         providers_seen: dict[str, bool] = {}
 
-        for family, sources in self._sources.items():
+        for _family, sources in self._sources.items():
             for src in sources:
                 if src.provider in providers_seen:
                     # Apply same result
@@ -1421,7 +1419,7 @@ class LiteLLMPool:
                     # Minimal ping: 1-token completion with short timeout
                     await asyncio.wait_for(
                         self.acompletion(
-                            model_family=family,
+                            model_family=_family,
                             messages=[{"role": "user", "content": "hi"}],
                             max_tokens=1,
                             temperature=0,
@@ -1437,7 +1435,7 @@ class LiteLLMPool:
                     disabled_providers.append(f"{src.provider}/{src.model}")
 
         # Mark all sources of failed providers as disabled
-        for family, sources in self._sources.items():
+        for _family, sources in self._sources.items():
             for src in sources:
                 if src.provider in providers_seen and not providers_seen[src.provider]:
                     src.disabled = True
@@ -1555,7 +1553,7 @@ class LiteLLMPool:
             """测试一个 provider 组, 返回 (display, result_dict)"""
             if len(key_map) == 1:
                 # 单 key provider — 测一次
-                raw_prov, src = next(iter(key_map.items()))
+                _raw_prov, src = next(iter(key_map.items()))
                 result = await self._test_single_key(src, timeout)
                 if result["status"] == "auth_error":
                     src.disabled = True

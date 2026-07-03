@@ -76,7 +76,7 @@ SYSTEM_WRITER = """你是一位顶级网文作家，正在创作一部{genre}小
 class NovelWriter:
     """AI 网文写作引擎"""
 
-    def __init__(self, db_path: str = None):
+    def __init__(self, db_path: str | None = None):
         self.db_path = Path(db_path) if db_path else _DB_PATH
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
@@ -320,11 +320,11 @@ class NovelWriter:
         if novel["tagline"]:
             lines.append(f"{novel['tagline']}\n")
         lines.append(f"题材: {novel['genre']}  风格: {novel['style']}\n")
-        lines.append("=" * 40 + "\n\n")
+        lines.append(f"{'=' * 40}\n\n")
 
         for ch in chapters:
             lines.append(f"\n第{ch['chapter_num']}章 {ch['title']}\n\n")
-            lines.append(ch["content"] + "\n")
+            lines.append(f"{ch['content']}\n")
 
         # 写入文件
         safe_title = "".join(c for c in novel["title"] if c.isalnum() or c in "_ -")[:50]

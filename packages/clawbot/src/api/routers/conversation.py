@@ -544,7 +544,7 @@ async def voice_transcribe(file: UploadFile = File(...)):
             raise HTTPException(
                 status_code=500,
                 detail=f"语音识别服务异常: {e}",
-            )
+            ) from e
 
     finally:
         # 清理临时文件

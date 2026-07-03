@@ -107,7 +107,7 @@ class PerfTracker:
             lines.append(f"  P95: {stats['p95']:.4f}s")
             lines.append(f"  最大值: {stats['max']:.4f}s")
             lines.append(f"  最小值: {stats['min']:.4f}s")
-        lines.append("\n" + "=" * 40)
+        lines.append(f"\n{'=' * 40}")
         return "\n".join(lines)
 
     @staticmethod

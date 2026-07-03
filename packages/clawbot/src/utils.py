@@ -50,7 +50,7 @@ def env_bool(key: str, default: bool) -> bool:
     return str(raw).strip().lower() in ("1", "true", "yes", "on")
 
 
-def env_int(key: str, default: int, minimum: int = None) -> int:
+def env_int(key: str, default: int, minimum: int | None = None) -> int:
     """从环境变量读取整数，支持可选最小值限制"""
     raw = os.getenv(key)
     if raw is None:
@@ -76,7 +76,7 @@ def env_float(key: str, default: float) -> float:
         return default
 
 
-def emit_flow_event(source: str, target: str, status: str, msg: str, data: dict = None):
+def emit_flow_event(source: str, target: str, status: str, msg: str, data: dict | None = None):
     """
     通过日志流向 Tauri 前端广播执行图状态
     格式规范必须严格遵守前缀 __CLAW_FLOW_EVENT__
@@ -104,7 +104,7 @@ def emit_flow_event(source: str, target: str, status: str, msg: str, data: dict 
 
 # ── 日志脱敏工具 ──────────────────────────────────────
 
-import re as _re
+import re as _re  # noqa: E402
 
 
 def scrub_secrets(msg: str) -> str:

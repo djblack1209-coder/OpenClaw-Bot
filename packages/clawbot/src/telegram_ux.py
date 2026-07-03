@@ -37,7 +37,7 @@ class TypingIndicator:
                 await self.context.bot.send_chat_action(chat_id=self.chat_id, action=ChatAction.TYPING)
                 await asyncio.sleep(self.interval)
         except asyncio.CancelledError as e:  # noqa: F841
-            pass
+            pass  # 合理保留：任务取消是正常停止流程
         except Exception as e:
             logger.debug(f"[TypingIndicator] stopped: {e}")
 
@@ -51,10 +51,10 @@ class TypingIndicator:
     async def __aexit__(self, *exc):
         if self._task:
             self._task.cancel()
-            try:
+            try:  # noqa: SIM105
                 await self._task
             except asyncio.CancelledError as e:  # noqa: F841
-                pass
+                pass  # 合理保留：任务取消是正常停止流程
 
 
 @asynccontextmanager
@@ -105,10 +105,10 @@ class ProgressTracker:
     async def __aexit__(self, exc_type, *exc):
         if self._task:
             self._task.cancel()
-            try:
+            try:  # noqa: SIM105
                 await self._task
             except asyncio.CancelledError as e:  # noqa: F841
-                pass
+                pass  # 合理保留：任务取消是正常停止流程
         # Final update
         if self._message:
             elapsed = time.time() - self._start_time
@@ -149,7 +149,7 @@ class ProgressTracker:
                 except Exception:
                     logger.debug("Silenced exception", exc_info=True)
         except asyncio.CancelledError as e:  # noqa: F841
-            pass
+            pass  # 合理保留：任务取消是正常停止流程
 
 
 class StreamingEditor:
@@ -519,7 +519,7 @@ def format_quote_card(data: dict) -> str:
 
 # ============ 图表可视化 — 搬运自 freqtrade + PampCop 的 Telegram 图表模式 ============
 
-import io
+import io  # noqa: E402
 
 
 def _setup_chart_style():
@@ -689,7 +689,7 @@ def generate_portfolio_pie(positions: list, title: str = "持仓分布") -> io.B
     chart_colors = ["#00d4aa", "#3498db", "#e74c3c", "#f39c12", "#9b59b6", "#1abc9c", "#e67e22", "#2ecc71"]
     colors = [chart_colors[i % len(chart_colors)] for i in range(len(symbols))]
 
-    wedges, texts, autotexts = ax.pie(
+    _wedges, _texts, autotexts = ax.pie(
         values,
         labels=symbols,
         autopct=lambda p: f"{p:.1f}%" if p > 3 else "",
@@ -765,7 +765,7 @@ def generate_sector_pie(sector_values: dict, title: str = "行业分布") -> io.
     ]
     colors = [sector_colors[i % len(sector_colors)] for i in range(len(sectors))]
 
-    wedges, texts, autotexts = ax.pie(
+    _wedges, _texts, autotexts = ax.pie(
         values,
         labels=labels,
         autopct=lambda p: f"{p:.1f}%" if p > 3 else "",
@@ -808,7 +808,7 @@ async def send_chart(update, context, chart_buf: io.BytesIO, caption: str = ""):
 # 借鉴 aiogram (5.5k⭐) InlineKeyboardBuilder 模式
 # ══════════════════════════════════════════════════════
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup  # noqa: E402
 
 
 class CardBuilder:

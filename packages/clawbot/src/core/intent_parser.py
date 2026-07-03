@@ -14,7 +14,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 # ── 任务类型枚举 ──────────────────────────────────────────
 
 
-class TaskType(str, Enum):
+class TaskType(StrEnum):
     """任务分类"""
 
     INVESTMENT = "investment"  # 投资分析/交易
@@ -144,10 +144,10 @@ class IntentLLMOutput(BaseModel):
 # ── 意图解析器 ──────────────────────────────────────────
 
 # LLM 解析提示词 — 从中央注册表导入
-from config.prompts import (
+from config.prompts import (  # noqa: E402
     INTENT_PARSER_PROMPT as _PARSE_SYSTEM_PROMPT,
 )
-from config.prompts import (
+from config.prompts import (  # noqa: E402
     INTENT_PARSER_USER_TEMPLATE as _PARSE_USER_TEMPLATE,
 )
 
@@ -634,12 +634,12 @@ class IntentParser:
             parsed = json_repair.loads(raw_text)
             if not isinstance(parsed, dict):
                 raise ValueError("json_repair did not return a dict")
-        except Exception as e:  # noqa: F841
+        except Exception as e:
             json_match = re.search(r"\{.*\}", raw_text, re.DOTALL)
             if json_match:
                 parsed = json.loads(json_match.group())
             else:
-                raise ValueError(f"LLM 返回非 JSON: {raw_text[:200]}")
+                raise ValueError(f"LLM 返回非 JSON: {raw_text[:200]}") from e
 
         # 尝试用 Pydantic 做校验（比 dict.get 更安全）
         try:

@@ -58,7 +58,7 @@ def _get_cached_quote(symbol: str, allow_stale: bool = False) -> dict | None:
     qc = _get_global_quote_cache()
     if qc is not None:
         price = qc.get(key)
-        if price is not None and price > 0:
+        if price is not None and price > 0:  # noqa: SIM102
             # QuoteCache 只存 price，本地缓存存完整 dict
             if key in _quote_cache:
                 quote, ts = _quote_cache[key]
@@ -220,7 +220,7 @@ async def get_stock_quote(symbol: str) -> dict:
         return await get_quote(symbol)
     except ImportError:
         # 回退到 yfinance-only (原始代码)
-        pass
+        pass  # 合理保留：该分支只用于显式跳过并继续后续降级/清理流程
 
     return await asyncio.to_thread(_sync_get_quote, symbol)
 
@@ -271,7 +271,7 @@ async def get_market_summary() -> str:
         else:
             results.append(f"{name}: 数据获取失败")
 
-    return "市场概览\n" + "\n".join(results)
+    return f"市场概览\n{'\n'.join(results)}"
 
 
 def format_quote(quote: dict) -> str:
@@ -318,7 +318,7 @@ def format_quote(quote: dict) -> str:
 class Portfolio:
     """模拟投资组合管理器（SQLite context manager + 动态 initial_capital）"""
 
-    def __init__(self, db_path: str = None):
+    def __init__(self, db_path: str | None = None):
         if db_path is None:
             db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "portfolio.db")
         self.db_path = db_path
@@ -782,26 +782,25 @@ async def get_earnings_calendar(symbols: list, days_ahead: int = 14) -> list:
 
                 # 提取 Earnings Date
                 earnings_date = cal_dict.get("Earnings Date")
-                if earnings_date:
-                    if isinstance(earnings_date, dict):
-                        # {0: Timestamp, 1: Timestamp}
-                        for _, ts in earnings_date.items():
-                            if hasattr(ts, "to_pydatetime"):
-                                dt = ts.to_pydatetime().replace(tzinfo=None)
-                            else:
-                                continue
-                            # HI-576: 使用统一的 naive datetime 比较
-                            if now_naive <= dt <= cutoff:
-                                events.append(
-                                    {
-                                        "symbol": sym,
-                                        "date": dt.strftime("%Y-%m-%d"),
-                                        "event": "Earnings",
-                                        "est_eps": cal_dict.get("Earnings Average", {}).get(0, None),
-                                        "est_revenue": cal_dict.get("Revenue Average", {}).get(0, None),
-                                    }
-                                )
-                                break
+                if earnings_date and isinstance(earnings_date, dict):
+                    # {0: Timestamp, 1: Timestamp}
+                    for _, ts in earnings_date.items():
+                        if hasattr(ts, "to_pydatetime"):
+                            dt = ts.to_pydatetime().replace(tzinfo=None)
+                        else:
+                            continue
+                        # HI-576: 使用统一的 naive datetime 比较
+                        if now_naive <= dt <= cutoff:
+                            events.append(
+                                {
+                                    "symbol": sym,
+                                    "date": dt.strftime("%Y-%m-%d"),
+                                    "event": "Earnings",
+                                    "est_eps": cal_dict.get("Earnings Average", {}).get(0, None),
+                                    "est_revenue": cal_dict.get("Revenue Average", {}).get(0, None),
+                                }
+                            )
+                            break
             except Exception as e:
                 logger.debug(f"[invest_tools] 财报日历 {sym} 获取失败: {e}")
 

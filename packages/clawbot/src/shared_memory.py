@@ -127,7 +127,7 @@ def _build_mem0_config() -> dict:
         else:
             sf_unlimited_url.rstrip("/")
     else:
-        pass
+        pass  # 合理保留：无额外配置时保持默认值
 
     # 选择可用的 SiliconFlow key 和对应 base URL
     # 优先使用标准 siliconflow.cn（稳定，支持 LLM + embeddings）
@@ -914,7 +914,7 @@ class SharedMemory:
         highlights = ""
         if highlight_rows:
             hl_parts = [f"· {r['key']}: {r['value'][:60]}" for r in highlight_rows]
-            highlights = "\n" + "\n".join(hl_parts)
+            highlights = f"\n{'\n'.join(hl_parts)}"
 
         return (
             f"\n\n<memory-index>\n"

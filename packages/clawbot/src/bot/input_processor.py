@@ -21,14 +21,11 @@ def _detect_correction(text: str) -> bool:
         r"^(?:纠正|更正|我说的是|我的意思是|我是说)",
         r"^(?:重新(?:来|说|分析|查))",
     ]
-    for pattern in _CORRECTION_PATTERNS:
-        if re.search(pattern, text.strip()):
-            return True
-    return False
+    return any(re.search(pattern, text.strip()) for pattern in _CORRECTION_PATTERNS)
 
 
 def _build_smart_reply_keyboard(
-    response_text: str, bot_id: str, model_used: str, chat_id: int, ai_suggestions: list = None
+    response_text: str, bot_id: str, model_used: str, chat_id: int, ai_suggestions: list | None = None
 ):
     """分析 LLM 回复内容，生成上下文相关的行动按钮
 

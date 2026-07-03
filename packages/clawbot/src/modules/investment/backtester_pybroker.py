@@ -220,7 +220,7 @@ class PyBrokerBacktester:
         symbol: str,
         strategy_name: str = "pb_ma_cross",
         period: str = "1y",
-        initial_capital: float = None,
+        initial_capital: float | None = None,
     ) -> PyBrokerResult:
         """
         运行单策略回测

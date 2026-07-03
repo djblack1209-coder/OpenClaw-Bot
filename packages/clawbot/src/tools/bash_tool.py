@@ -152,9 +152,9 @@ class BashTool:
             # 截断过长输出
             max_output = 50000
             if len(stdout_str) > max_output:
-                stdout_str = stdout_str[:max_output] + f"\n... (输出已截断，共 {len(stdout)} 字节)"
+                stdout_str = f"{stdout_str[:max_output]}\n... (输出已截断，共 {len(stdout)} 字节)"
             if len(stderr_str) > max_output:
-                stderr_str = stderr_str[:max_output] + "\n... (错误输出已截断)"
+                stderr_str = f"{stderr_str[:max_output]}\n... (错误输出已截断)"
 
             return {
                 "success": returncode == 0,

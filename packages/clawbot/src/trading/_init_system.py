@@ -111,14 +111,14 @@ def init_trading_system(
                 logger.warning("[TradingSystem] IBKR不可用，降级到模拟卖出 %s", symbol)
                 if notify_func:
                     try:
-                        await notify_func("!! IBKR卖出失败，降级模拟卖出 %s x%s !!" % (symbol, quantity))
+                        await notify_func(f"!! IBKR卖出失败，降级模拟卖出 {symbol} x{quantity} !!")
                     except Exception as e:
                         logger.warning("[TradingSystem] 降级卖出通知失败: %s", e)
                 price_data = await get_quote_func(symbol)
                 price = price_data.get("price", 0) if isinstance(price_data, dict) else 0
                 if price > 0:
                     return portfolio.sell(symbol, quantity, price, decided_by, reason)
-            return {"error": "IBKR和模拟卖出均失败: %s" % symbol}
+            return {"error": f"IBKR和模拟卖出均失败: {symbol}"}
 
         sell_func = _resilient_sell
     elif portfolio:
@@ -127,7 +127,7 @@ def init_trading_system(
             price_data = await get_quote_func(symbol) if get_quote_func else {"price": 0}
             price = price_data.get("price", 0) if isinstance(price_data, dict) else 0
             if price <= 0:
-                return {"error": "无法获取 %s 价格" % symbol}
+                return {"error": f"无法获取 {symbol} 价格"}
             return portfolio.sell(symbol, quantity, price, decided_by, reason)
 
         sell_func = _sim_sell
@@ -355,7 +355,7 @@ def init_trading_system(
                 master_insights = [r for r in panel_results if isinstance(r, str)]
 
                 if master_insights:
-                    account_context += "\n\n[投资大师圆桌会议 — 5位大师(巴菲特/塔勒布/木头姐/Burry/德鲁肯米勒)的共识]\n" + "\n".join(master_insights)
+                    account_context += f"\n\n[投资大师圆桌会议 — 5位大师(巴菲特/塔勒布/木头姐/Burry/德鲁肯米勒)的共识]\n{'\n'.join(master_insights)}"
                     logger.info("[TradingSystem] 大师圆桌分析已注入: %d 个标的", len(master_insights))
             except ImportError:
                 logger.debug("[TradingSystem] master_analysts 模块不可用，跳过大师分析")

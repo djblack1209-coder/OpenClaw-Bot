@@ -10,11 +10,12 @@ Design principles:
   4. Sync methods for fast reads, async methods only when calling async subsystems
 """
 
+import json
 import logging
 import os
 import re
 import time
-import json
+from datetime import UTC
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -244,7 +245,7 @@ def _bounded_metric_int(value, max_value: int = 999_999_999) -> int:
     if isinstance(value, (int, float)):
         if value != value:  # NaN
             return 0
-        return max(0, min(max_value, int(round(value))))
+        return max(0, min(max_value, round(value)))
     raw = str(value or "").strip().lower().replace(",", "")
     if not raw:
         return 0
@@ -259,7 +260,7 @@ def _bounded_metric_int(value, max_value: int = 999_999_999) -> int:
         number *= 1_000_000
     elif suffix in {"w", "万"}:
         number *= 10_000
-    return max(0, min(max_value, int(round(number))))
+    return max(0, min(max_value, round(number)))
 
 
 def _sanitize_social_performance_payload(payload: dict) -> dict:
@@ -391,7 +392,7 @@ def _extension_compose_draft(platform: str, topic: str, context: dict, settings:
     persona = " / ".join(str(tag) for tag in tags[:3]) or "热点观察"
     trends = context.get("trends") if isinstance(context.get("trends"), list) else []
     trend_line = "、".join(trends[:3]) if trends else "当前页信号"
-    created_at = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    time.strftime("%Y-%m-%dT%H:%M:%S%z")
 
     if platform == "xhs":
         title = _bounded_str(topic if "夏日" in topic or "教程" in topic else f"今天这个话题值得收藏：{topic}", 28)
@@ -408,7 +409,7 @@ def _extension_compose_draft(platform: str, topic: str, context: dict, settings:
         title = _bounded_str(f"闲鱼成交优化：{topic}", 48)
         body = "\n".join([
             f"当前商品/聊天线索：{topic}",
-            f"运营建议：先判断买家意图，再用「价格锚点 + 使用场景 + 小让步」回复。",
+            "运营建议：先判断买家意图，再用「价格锚点 + 使用场景 + 小让步」回复。",
             f"可用信号：{trend_line}。",
             "待审回复：这个价格我已经压得比较低了，如果你今天能拍，我可以帮你优先发出/包好一点。",
         ])
@@ -485,8 +486,8 @@ def _extension_content_asset_plan(platform: str, topic: str, context: dict, sett
                 ),
                 "asset_prompts": [
                     f"步骤图：围绕「{clean_topic}」展示材料清单，清爽浅色背景，适合小红书图文教程",
-                    f"过程图：3-5 个步骤分镜，手作生活感，画面统一，不出现夸张功效承诺",
-                    f"收尾图：成品展示 + 收藏提示，和封面保持同一色调，适合女性向生活攻略",
+                    "过程图：3-5 个步骤分镜，手作生活感，画面统一，不出现夸张功效承诺",
+                    "收尾图：成品展示 + 收藏提示，和封面保持同一色调，适合女性向生活攻略",
                 ],
                 "visual_style": "明亮、干净、可收藏、茶饮/生活方式品牌感",
             },
@@ -837,7 +838,7 @@ def _safe_error(e: Exception) -> str:
     msg = re.sub(r"line \d+", "", msg)
     # 截断过长信息
     if len(msg) > 200:
-        msg = msg[:200] + "..."
+        msg = f"{msg[:200]}..."
     return msg
 
 
@@ -954,7 +955,7 @@ def _merged_social_draft_refs() -> list[dict]:
     try:
         from src.execution.social import x_auto_ops
 
-        state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)  # noqa: SLF001
+        state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)
         for idx, draft in enumerate(state.get("drafts", []) or []):
             if draft.get("platform") not in {"x", "xhs"} or not _active_x_auto_status(str(draft.get("status") or "")):
                 continue
@@ -984,7 +985,7 @@ def _persona_review_payload() -> dict:
     try:
         from src.execution.social import persona_review
 
-        return persona_review.get_persona_review(persona_review._STATE_FILE)  # noqa: SLF001
+        return persona_review.get_persona_review(persona_review._STATE_FILE)
     except Exception as e:
         logger.debug("读取社媒人设确认状态失败: %s", e)
         return {
@@ -1003,7 +1004,7 @@ def _ensure_social_review_drafts(x_count: int = 6, xhs_count: int = 2) -> dict:
     try:
         from src.execution.social import x_auto_ops
 
-        state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)  # noqa: SLF001
+        state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)
 
         def _active(draft: dict, platform: str) -> bool:
             status = str(draft.get("status") or "").lower()
@@ -1021,13 +1022,13 @@ def _ensure_social_review_drafts(x_count: int = 6, xhs_count: int = 2) -> dict:
         if len(x_existing) < max(1, x_count):
             created_x = x_auto_ops.build_daily_drafts(
                 count=max(1, x_count),
-                state_path=x_auto_ops._STATE_FILE,  # noqa: SLF001
+                state_path=x_auto_ops._STATE_FILE,
                 fetch_transcript=False,
             )
         if len(xhs_existing) < max(1, xhs_count):
             created_xhs = x_auto_ops.build_xhs_review_drafts(
                 count=max(1, xhs_count),
-                state_path=x_auto_ops._STATE_FILE,  # noqa: SLF001
+                state_path=x_auto_ops._STATE_FILE,
                 fetch_transcript=False,
             )
         return {
@@ -1077,9 +1078,7 @@ def _social_review_pack_payload(limit: int = 8, ensure: bool = True) -> dict:
         ]
         if any(fragment.lower() in combined for fragment in bad_fragments):
             return False
-        if text.startswith("OpenClaw 自动蒸馏"):
-            return False
-        return True
+        return not text.startswith("OpenClaw 自动蒸馏")
 
     samples: list[dict] = []
     indexed_drafts = sorted(
@@ -1891,7 +1890,7 @@ class ClawBotRPC:
                 approved=approved,
                 reviewer=reviewer,
                 notes=notes,
-                path=persona_review._STATE_FILE,  # noqa: SLF001
+                path=persona_review._STATE_FILE,
             )
         except Exception as e:
             logger.error("Social persona review update failed: %s", e)
@@ -2001,7 +2000,7 @@ class ClawBotRPC:
             ]
             growth_feedback_applied = False
             try:
-                state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)  # noqa: SLF001
+                state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)
                 growth_feedback_applied = _extension_apply_growth_feedback(trends, normalized_platform, state)
             except Exception as feedback_error:
                 logger.debug("Chrome 插件热点增长反馈加权失败: %s", feedback_error)
@@ -2023,7 +2022,7 @@ class ClawBotRPC:
             if not deduped:
                 deduped = [
                     _extension_seed_to_trend(seed, normalized_platform)
-                    for seed in x_auto_ops._FALLBACK_SEEDS[:bounded_limit]  # noqa: SLF001
+                    for seed in x_auto_ops._FALLBACK_SEEDS[:bounded_limit]
                 ]
             return {
                 "success": True,
@@ -2082,7 +2081,7 @@ class ClawBotRPC:
 
         from src.execution.social import x_auto_ops
 
-        state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)  # noqa: SLF001
+        state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)
         digest_raw = json.dumps(
             {
                 "platform": platform,
@@ -2148,7 +2147,7 @@ class ClawBotRPC:
         drafts.append(draft)
         state["drafts"] = drafts[-100:]
         state["last_run"] = created_at
-        x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)  # noqa: SLF001
+        x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)
 
         status = _sanitize_social_extension_payload({
             **payload,
@@ -2176,7 +2175,7 @@ class ClawBotRPC:
             return {"success": False, "error": "draft_id required"}
         from src.execution.social import x_auto_ops
 
-        state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)  # noqa: SLF001
+        state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)
         drafts = list(state.get("drafts", []) or [])
         for draft in drafts:
             if str(draft.get("id") or "") != clean_id:
@@ -2190,7 +2189,7 @@ class ClawBotRPC:
             draft["review_status"] = "pending"
             draft["edited_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
             state["drafts"] = drafts
-            x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)  # noqa: SLF001
+            x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)
             return {
                 "success": True,
                 "draft": draft,
@@ -2208,7 +2207,7 @@ class ClawBotRPC:
             return {"success": False, "error": "draft_id required"}
         from src.execution.social import x_auto_ops
 
-        state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)  # noqa: SLF001
+        state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)
         drafts = list(state.get("drafts", []) or [])
         for draft in drafts:
             if str(draft.get("id") or "") != clean_id:
@@ -2218,7 +2217,7 @@ class ClawBotRPC:
             draft["reviewed_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
             draft["approved_by"] = reviewer if approved else ""
             state["drafts"] = drafts
-            x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)  # noqa: SLF001
+            x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)
             return {
                 "success": True,
                 "draft": draft,
@@ -2244,9 +2243,10 @@ class ClawBotRPC:
             }
 
         from datetime import datetime, timedelta
+
         from src.execution.social import x_auto_ops
 
-        state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)  # noqa: SLF001
+        state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)
         drafts = list(state.get("drafts", []) or [])
         now_iso = time.strftime("%Y-%m-%dT%H:%M:%S%z")
         clean_scheduled_at = _bounded_str(scheduled_at, 80)
@@ -2259,7 +2259,7 @@ class ClawBotRPC:
             if draft.get("review_status") != "approved":
                 draft["status"] = "needs_review"
                 state["drafts"] = drafts
-                x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)  # noqa: SLF001
+                x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)
                 return {
                     "success": False,
                     "requires_review": True,
@@ -2295,7 +2295,7 @@ class ClawBotRPC:
             draft["schedule_status"] = "queued_for_owner_publish"
             state["drafts"] = drafts
             state["last_run"] = now_iso
-            x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)  # noqa: SLF001
+            x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)
             return {
                 "success": True,
                 "draft": draft,
@@ -2317,7 +2317,8 @@ class ClawBotRPC:
     def _rpc_social_extension_schedule_queue(limit: int = 20) -> dict:
         """读取 Chrome 插件排程队列；到点只标记待最终确认，不触发发布。"""
         try:
-            from datetime import datetime, timezone
+            from datetime import datetime
+
             from src.execution.social import x_auto_ops
 
             def _parse_time(value: str):
@@ -2328,19 +2329,19 @@ class ClawBotRPC:
                 try:
                     parsed = datetime.fromisoformat(normalized)
                     if parsed.tzinfo is None:
-                        parsed = parsed.replace(tzinfo=timezone.utc)
-                    return parsed.astimezone(timezone.utc)
+                        parsed = parsed.replace(tzinfo=UTC)
+                    return parsed.astimezone(UTC)
                 except ValueError:
                     return None
 
-            state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)  # noqa: SLF001
+            state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)
             raw_queue = state.get("extension_schedule", [])
             if not isinstance(raw_queue, list):
                 raw_queue = []
             drafts = list(state.get("drafts", []) or [])
             draft_by_id = {str(draft.get("id") or ""): draft for draft in drafts if isinstance(draft, dict)}
             bounded_limit = min(max(1, int(limit or 20)), 100)
-            now_utc = datetime.now(timezone.utc)
+            now_utc = datetime.now(UTC)
             changed = False
             queue = []
             due_count = 0
@@ -2402,7 +2403,7 @@ class ClawBotRPC:
                 state["extension_schedule"] = raw_queue
                 state["drafts"] = drafts
                 state["last_run"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
-                x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)  # noqa: SLF001
+                x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)
             queue.sort(key=lambda item: item.get("scheduled_at") or "")
             return {
                 "success": True,
@@ -2439,7 +2440,7 @@ class ClawBotRPC:
             }
         from src.execution.social import x_auto_ops
 
-        state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)  # noqa: SLF001
+        state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)
         drafts = list(state.get("drafts", []) or [])
         queue = list(state.get("extension_schedule", []) or [])
         draft = next((item for item in drafts if str(item.get("id") or "") == clean_id), None)
@@ -2488,7 +2489,7 @@ class ClawBotRPC:
         state["drafts"] = drafts
         state["extension_schedule"] = queue
         state["last_run"] = now_iso
-        x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)  # noqa: SLF001
+        x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)
         return {
             "success": True,
             "draft": draft,
@@ -2515,7 +2516,7 @@ class ClawBotRPC:
 
         from src.execution.social import x_auto_ops
 
-        state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)  # noqa: SLF001
+        state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)
         records = state.get("extension_performance") if isinstance(state.get("extension_performance"), list) else []
         candidates: list[dict] = []
         baseline_count = 0
@@ -2690,7 +2691,7 @@ class ClawBotRPC:
         record = _sanitize_social_performance_payload(payload)
         from src.execution.social import x_auto_ops
 
-        state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)  # noqa: SLF001
+        state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)
         performance_log = list(state.get("extension_performance", []) or [])
         performance_log.append(record)
         state["extension_performance"] = performance_log[-300:]
@@ -2716,7 +2717,7 @@ class ClawBotRPC:
         state["drafts"] = drafts
         state["growth_feedback"] = growth_feedback
         state["last_run"] = record["recorded_at"]
-        x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)  # noqa: SLF001
+        x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)
 
         status = _load_social_extension_status(_SOCIAL_EXTENSION_STATUS_FILE)
         status["online"] = True
@@ -2786,7 +2787,7 @@ class ClawBotRPC:
             from src.xianyu.xianyu_context import XianyuContextManager
 
             ctx = XianyuContextManager()
-            with ctx._conn() as c:  # noqa: SLF001 - 复用现有上下文管理器只读查询
+            with ctx._conn() as c:
                 rows = c.execute(
                     """
                     SELECT chat_id, MAX(ts) as last_ts, COUNT(*) as msg_count,
@@ -3415,7 +3416,7 @@ class ClawBotRPC:
         if ref["source"] == "x_auto_ops":
             from src.execution.social import x_auto_ops
 
-            state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)  # noqa: SLF001
+            state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)
             drafts = state.get("drafts", [])
             idx = ref["index"]
             if 0 <= idx < len(drafts):
@@ -3424,7 +3425,7 @@ class ClawBotRPC:
                 drafts[idx]["review_status"] = "pending"
                 drafts[idx]["edited_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
                 state["drafts"] = drafts
-                x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)  # noqa: SLF001
+                x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)
                 return {"success": True}
 
         from src.social_scheduler import _load_state, _save_state
@@ -3451,7 +3452,7 @@ class ClawBotRPC:
         if ref["source"] == "x_auto_ops":
             from src.execution.social import x_auto_ops
 
-            state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)  # noqa: SLF001
+            state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)
             drafts = state.get("drafts", [])
             idx = ref["index"]
             if 0 <= idx < len(drafts):
@@ -3459,7 +3460,7 @@ class ClawBotRPC:
                 drafts[idx]["review_status"] = "rejected"
                 drafts[idx]["rejected_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
                 state["drafts"] = drafts
-                x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)  # noqa: SLF001
+                x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)
                 return {"success": True}
 
         from src.social_scheduler import _load_state, _save_state
@@ -3489,7 +3490,7 @@ class ClawBotRPC:
                 draft_id,
                 approved=approved,
                 reviewer=reviewer,
-                state_path=x_auto_ops._STATE_FILE,  # noqa: SLF001
+                state_path=x_auto_ops._STATE_FILE,
             )
 
         from src.social_scheduler import _load_state, _save_state
@@ -3533,7 +3534,7 @@ class ClawBotRPC:
             if draft.get("review_status") != "approved":
                 from src.execution.social import x_auto_ops
 
-                return x_auto_ops.require_draft_review(draft, state_path=x_auto_ops._STATE_FILE)  # noqa: SLF001
+                return x_auto_ops.require_draft_review(draft, state_path=x_auto_ops._STATE_FILE)
             platform = str(draft.get("platform") or "x").lower()
             content = draft.get("text") or draft.get("content") or draft.get("body") or ""
             if platform in {"xhs", "xiaohongshu"}:
@@ -3545,14 +3546,14 @@ class ClawBotRPC:
             if result.get("success"):
                 from src.execution.social import x_auto_ops
 
-                x_auto_ops.mark_published(draft, result, state_path=x_auto_ops._STATE_FILE)  # noqa: SLF001
+                x_auto_ops.mark_published(draft, result, state_path=x_auto_ops._STATE_FILE)
             else:
                 from src.execution.social import x_auto_ops
 
                 x_auto_ops.mark_failed(
                     draft,
                     result.get("error") or result.get("status") or "unknown",
-                    state_path=x_auto_ops._STATE_FILE,  # noqa: SLF001
+                    state_path=x_auto_ops._STATE_FILE,
                 )
             return result
 

@@ -117,7 +117,7 @@ class _ContextMixin:
                 return
 
             before_tokens = context_manager.estimate_tokens(messages)
-            compressed, summary = context_manager.compress_local(messages)
+            compressed, _summary = context_manager.compress_local(messages)
             after_tokens = context_manager.estimate_tokens(compressed)
 
             context_manager.update_history_store(

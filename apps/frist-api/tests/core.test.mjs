@@ -398,7 +398,7 @@ describe('Frist-API core flows', () => {
       const importUrl = new URL(config.ccSwitchUrl);
       const providerConfig =
         target === 'OpenCode' ? JSON.parse(config.openCodeProviderJson).provider['frist-api'] : null;
-      const expectedModels = ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano', 'gpt-image-2', 'gpt-5.3-codex'];
+      const expectedModels = ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano', 'gpt-5.3-codex', 'gpt-image-2'];
 
       assert.equal(config.modelName, 'gpt-5.5');
       assert.equal(config.defaultModel, 'gpt-5.5');
@@ -412,26 +412,16 @@ describe('Frist-API core flows', () => {
         assert.deepEqual(Object.keys(providerConfig.models), expectedModels);
         assert.deepEqual(providerConfig.models['gpt-5.3-codex'], { name: 'gpt-5.3-codex' });
       } else {
-        assert.match(config.configToml, /available_models = \["gpt-5\.5", "gpt-5\.4", "gpt-5\.4-mini", "gpt-5\.4-nano", "gpt-image-2", "gpt-5\.3-codex"\]/);
+        assert.match(config.configToml, /available_models = \["gpt-5\.5", "gpt-5\.4", "gpt-5\.4-mini", "gpt-5\.4-nano", "gpt-5\.3-codex", "gpt-image-2"\]/);
       }
-      assert.match(config.configToml, /available_models = \["gpt-5\.5", "gpt-5\.4", "gpt-5\.4-mini", "gpt-5\.4-nano", "gpt-image-2", "gpt-5\.3-codex"\]/);
+      assert.match(config.configToml, /available_models = \["gpt-5\.5", "gpt-5\.4", "gpt-5\.4-mini", "gpt-5\.4-nano", "gpt-5\.3-codex", "gpt-image-2"\]/);
     }
   });
 
-  it('expands OpenAI wildcard model limits into the visible CC Switch model set', () => {
+  it('does not expand wildcard model limits into customer-visible models by default', () => {
     const models = normalizeClientAvailableModels(['gpt-*', 'dall-*'], { modelGroup: 'OpenAI' });
-    const expectedModels = [
-      'gpt-5.5',
-      'gpt-5.4',
-      'gpt-5.4-mini',
-      'gpt-image-2',
-      'gpt-image-1.5',
-      'gpt-5.3-codex',
-      'gpt-4o',
-      'gpt-5-codex',
-    ];
 
-    assert.deepEqual(models, expectedModels);
+    assert.deepEqual(models, []);
   });
 
   it('builds a copyable OpenCode provider fragment with the full model map', () => {
@@ -1065,6 +1055,10 @@ describe('Frist-API user dashboard boundaries', () => {
       'position: sticky',
       'top: 68px',
       'background: var(--primary)',
+      'data-source-disclosure',
+      'data-source-code-link',
+      'https://github.com/djblack1209-coder/OpenClaw-Bot',
+      'AGPL-3.0 上游',
     ]) {
       assert.equal(`${userHtml}\n${scriptsAndStyles}`.includes(required), true, `${required} 应该支撑用户端 Tabcode 控制台、状态和动效`);
     }
