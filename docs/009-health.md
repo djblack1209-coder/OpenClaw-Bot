@@ -91,7 +91,7 @@
 
 2026-06-23 继续补齐安全互动闭环：Chrome 插件新增“扫互动”入口，能在当前 X / 小红书 / 闲鱼页面只读扫描评论、聊天或可回复信号，并点击候选卡片生成 `chrome_extension_interaction_scan` 来源的待审回复草稿。该链路只读页面文本，不点击回复/发送/评论/发布按钮；Background 只提供 `socialInteractionScan`，不提供自动评论提交路径；后端仍把草稿固定为 `needs_review/pending`，确认前不会评论或外发。
 
-## 当前系统状态: 🟡 可运行且生产收口基本完成, 剩余为凭据人工输入和外部账号判断
+## 当前系统状态: 🟡 可运行且生产已切到 Oracle, 剩余为 SMTP 无回显输入和外部账号判断
 
 | 指标 | 值 |
 |------|------|
@@ -102,10 +102,10 @@
 | 闲鱼客服 | ✅ 自动回复活跃 |
 | 社媒自动驾驶 | 🟡 草稿生成、素材计划、网页登录额度接力、只读互动扫描、增长复盘和 Telegram 审核/排程中控可运行；旧自动互动/自动发布已锁住，外部发布/评论必须走人工最终确认 |
 | 测试 | ✅ 2026-07-03 收口验证已完成：后端 pytest `1606 passed / 2 skipped / 0 failed`；Frist-API Node 全量 `162 passed / 0 failed`；`make lint` 0 遗留；桌面端 typecheck/lint/build 通过；桌面端与 Frist-API `npm audit --audit-level=high --omit=dev` 均 0 高危；Python 3.12 环境 `pip check` 无破损依赖，`.venv312/bin/python -m pip_audit` 无已知漏洞；可提交文件 gitleaks 0 泄露；可达 Git 历史 gitleaks 0 泄露；`git diff --check` 0 问题。历史基线：后端 pytest 1601 passed / 2 skipped / 0 failed，Frist-API 157/157，桌面端 typecheck/build 通过；本地必须走 `make test` 或 `.venv312/bin/python -m pytest`，不能直接用系统 `pytest`。 |
-| Frist-API 入口 | ✅ 兜底入口 `http://frist-api.101-43-41-96.nip.io` 外网 Dashboard 200；正式入口 `https://frist-api.245334.xyz` 已通过 Cloudflare proxied A + 源站 Origin CA 闭环，外网 Dashboard 200 |
-| Frist-API | ✅ AI_POOL 自动熔断、真实调用失败降级、客户可见模型真实上游优先和 AGPL 源码入口已处理。New-API 生产迁移已按授权执行：用户 19、token 1、充值/订单 4、兑换码 2、日志 162 已迁入，回滚目录为 `/opt/frist-api/backups/newapi-migration-20260703T005433Z`；16 个历史 `enc:v1:` 用户 Key 因旧加密密钥缺失未迁移，必须重新生成/补录。R2 定时备份已启用。SMTP 密码尚未安全落地，需 Carven 在终端无回显输入。 |
+| Frist-API 入口 | ✅ 正式入口 `https://frist-api.245334.xyz` 已切到 Oracle ARM `150.136.73.15`，通过 Cloudflare proxied A + Apache/Origin CA 闭环，外网 Dashboard 200；旧腾讯云/nip.io 入口只保留为冷回滚，不再对用户宣称为可用兜底 |
+| Frist-API | ✅ AI_POOL 自动熔断、真实调用失败降级、客户可见模型真实上游优先和 AGPL 源码入口已处理。New-API 生产迁移已按授权执行：用户 19、token 1、充值/订单 4、兑换码 2、日志 162 已迁入，回滚目录为 `/opt/frist-api/backups/newapi-migration-20260703T005433Z`；Oracle 当前以 `frist-api.service` + `openclaw-newapi.service` 承接生产，R2 定时备份在 Oracle 启用。16 个历史 `enc:v1:` 用户 Key 因旧加密密钥缺失未迁移，必须重新生成/补录。SMTP 密码尚未安全落地，需 Carven 在终端无回显输入。 |
 | Frist-API 批注修复 | ✅ 2026-05-09 已处理 Logo、状态灯、工作台折叠菜单、通道展示批注、管理员快捷入口、固定工作台导航、趋势图 hover 数据和首页当前项背景；423×718 浏览器复验无横向溢出，Logo 105px，状态灯 18px，导航默认折叠且切页后自动收起，顶栏“登录/身份码/管理”可操作，`.provider-models` 为 0，控制台 0 error/0 warning；同日追加 319×718 极窄屏修复，Dashboard 与 CC Switch 本地浏览器复验 `scrollWidth=319`，顶栏账户按钮 173px，CC Switch 用量说明宽 235px 且无横向裁切 |
-| Frist-API 腾讯云部署 | ✅ HI-875 用户端深色体验和官方计价修复已同步到 `/opt/frist-api`；部署前应用备份 `backups/frist-api-app-20260505-211636-before-ux-deploy.tgz`、运行数据备份 `backups/frist-api-runtime-20260505-211636-before-ux-deploy.tgz`；2026-05-08 复验 `frist-api-server` 容器 healthy，公网首页 200、看板 200、裸域名 301、未授权 `/v1/models` 401；2026-05-09 工作台批注修复已同步到 `/opt/frist-api`，部署备份 `/opt/frist-api/backups/frist-api-workbench-comments-20260509-035316-before-385bfce.tgz`，远端 `node --check` 和批注相关测试 57/57 通过，`frist-api-server` 重启后 healthy，公网首页 200、Dashboard 200、未授权 `/v1/models` 401；同日 319px 移动端批注修复已同步到 `/opt/frist-api`，部署备份 `/opt/frist-api/backups/frist-api-mobile-319-20260509-045253-before-f2d6eda.tgz`，远端 `node --check` 和聚焦测试 57/57 通过，公网 319×718 Dashboard/CC Switch 复验 `scrollWidth=319` |
+| Frist-API Oracle 生产 / 腾讯冷回滚 | ✅ 2026-07-03 已从国内腾讯云切到 Oracle ARM `150.136.73.15`：Oracle `/opt/frist-api` 运行 `frist-api.service`、`openclaw-newapi.service`、`apache2` 和 `frist-api-r2-backup.timer`；Cloudflare `frist-api.245334.xyz` 代理到 Oracle；公网 Dashboard 3/3 HTTP 200，未授权 `/v1/models` 3/3 HTTP 401；最新外网压测 Dashboard 100/100 HTTP 200（p95 0.792s），models 50/50 HTTP 401（p95 0.758s）。腾讯云 `/opt/frist-api` 仅保留冷回滚数据和备份，旧 `frist-api-server` / `openclaw-newapi` 容器已停止，旧 R2 timer 已禁用，避免双源探测和备份漂移。 |
 | ClawBot 腾讯云部署 | ✅ 2026-05-08 已单文件部署闲鱼管理页转义修复到 `/home/clawbot/clawbot/src/xianyu/xianyu_admin.py`；远端备份 `/home/clawbot/clawbot/backups/xianyu_admin_20260508155652_before_escape.py`；远端 `py_compile` 通过，`clawbot.service` 重启后 active |
 | 微信命令 | ✅ 27/27 可用 (25✅ 2⚠️数据空) |
 | Ollama 内存 | ✅ 151MB (原9.3GB) |
@@ -123,18 +123,18 @@
 | ID | 分类 | 描述 | 发现日期 | 状态 |
 |----|------|------|----------|------|
 | HI-872 | UX | Frist-API `#switch` 页面曾因导出模型展开逻辑被部分上游库存裁掉 `gpt-5.4`、`gpt-5.4-mini`、`gpt-image-2`、`gpt-5.3-codex`，且品牌标被 Tabcode 皮肤覆盖；已补完整 OpenAI 模型族可见逻辑、恢复原品牌标并加回归 | 2026-05-05 | ✅ 已处理 |
-| HI-873 | INFRA | Frist-API 免费 nip.io 裸域名 `101-43-41-96.nip.io` 曾和品牌域名并列直接服务同一页面，用户误以为有两个网站；已收口为 `frist-api.101-43-41-96.nip.io` 唯一内容入口，裸域名只做 301 跳转 | 2026-05-05 | ✅ 已处理 |
+| HI-873 | INFRA | Frist-API 免费 nip.io 裸域名 `101-43-41-96.nip.io` 曾和品牌域名并列直接服务同一页面，用户误以为有两个网站；历史阶段已收口裸域名跳转。2026-07-03 后正式入口改为 `https://frist-api.245334.xyz`，旧 nip.io 只保留腾讯冷回滚排障，不再作为用户内容入口 | 2026-05-05 | ✅ 已处理 |
 | HI-817 | SECURITY | 公开 Git 历史曾提交 `.openclaw/openclaw.json*`、`.openclaw/devices/paired.json` 和数据库文件；当前代码侧已增加 CI gitleaks 和本地 tracked-tree 扫描门禁，防止新增明文残留。真实历史凭证轮换只能由账号所有者到对应平台完成；用户本轮选择暂不推进轮换，风险继续保留为人工事项。 | 2026-04-28 | 🟠 人工风险项，代码侧已加门禁 |
 | HI-818 | SECURITY | 本机 ignored `.env` 与浏览器 profile 日志曾含真实 API token；当前跟踪文件不新增明文，CI 已补 secret scan，ignored 本机配置继续不提交。真实 token 是否轮换只能由账号所有者在对应平台处理；用户本轮选择暂不推进轮换，风险继续保留为人工事项。 | 2026-04-28 | 🟠 人工风险项，代码侧已加门禁 |
 | HI-885 | BUG | 后端全量测试发现 `src.api.routers.store` 被删除但 `api/server.py` 仍挂载，导致 APIServer 初始化失败；已恢复 `/api/v1/store/catalog` 和 `/api/v1/store/categories` 最小兼容路由，并用 1491 passed 回归确认 | 2026-05-08 | ✅ 已处理 |
-| HI-886 | INFRA | `make new-api-check` 显示 New-API 本地源码和 Compose 镜像曾为 `v1.0.0-rc.2`，GitHub 最新为 `v1.0.0-rc.4`；已通过自动同步 PR #1 更新 submodule 和 Compose 镜像到 `v1.0.0-rc.4`，并复验 compose 配置通过；2026-05-09 已在腾讯云完成数据备份、镜像拉取、端口冲突处理和数据目录权限修复，New-API `v1.0.0-rc.4` 当前 healthy | 2026-05-08 | ✅ 已处理 |
+| HI-886 | INFRA | `make new-api-check` 显示 New-API 本地源码和 Compose 镜像曾为 `v1.0.0-rc.2`，GitHub 最新为 `v1.0.0-rc.4`；已通过自动同步 PR #1 更新 submodule 和 Compose 镜像到 `v1.0.0-rc.4`，并复验 compose 配置通过。2026-07-03 生产 New-API 已迁到 Oracle ARM release 二进制 `openclaw-newapi.service`，腾讯 Compose 只保留冷回滚 | 2026-05-08 | ✅ 已处理 |
 | HI-887 | AI_POOL/PERF | 86GameStore/余额站类渠道已补日消费限额、当日消费高于剩余额度且慢线时自动熔断、慢线降级到备用健康渠道和一次性告警；补号入库可保存 `dailySpendLimitCents` / `slowLatencyThresholdMs` / `costSensitive`。充值本身仍由用户付款处理。 | 2026-05-08 | ✅ 已处理（充值为人工事项） |
 | HI-890 | SECURITY | 服务器 root 密码曾在对话中明文出现，视同泄露；当前仓库未写入该密码，CI/本地 gitleaks 门禁可防新增明文。真实 root 密码轮换、登录审计、禁用密码登录只能由服务器账号所有者执行；用户本轮选择暂不推进轮换，风险继续保留为人工事项。 | 2026-05-08 | 🟠 人工风险项，代码侧已加门禁 |
 | HI-891 | INFRA | `New-API Scheduled Sync` 最近失败 run `25576027773` 卡在 `docker compose -f docker-compose.newapi.yml config`：CI 缺少 `NEWAPI_INITIAL_TOKEN`，导致已完成的 New-API 同步无法进入创建 PR；已给 compose 校验注入 CI 占位 token，并让检查脚本用退出码 `2` 明确表示“需要同步”、其他非零表示真实错误；复验 run `25588894721` 已成功并创建 PR #1 | 2026-05-08 | ✅ 已处理 |
 | HI-892 | UX | 内置浏览器审计发现 Frist-API 隐藏视图的多个返回按钮文本箭头会在可访问性快照中聚合为 `← ← ←`，对屏幕阅读器和自动化审计产生噪音；已将 `.back-home::before` 改为纯 CSS 图形箭头，本地浏览器复验不再出现箭头文本且控制台无 error/warn | 2026-05-08 | ✅ 已处理 |
 | HI-893 | UX | 内置浏览器复审发现账户弹窗密码字段不在真实 `form` 内，浏览器密码管理器会给出结构提示；已将登录/注册、改密码、重置密码和身份码激活拆成独立 `data-auth-form`，补齐 `autocomplete`，并让回车提交复用原处理逻辑 | 2026-05-08 | ✅ 已处理 |
 | HI-894 | INFRA | 审计入口复核发现直接运行系统 `pytest` 会命中本机 Python 3.9 用户级脚本，导致 Python 3.12 项目代码被旧解释器误判；已将 AGENTS 和快速导航命令收口为 `make test` / `.venv312/bin/python -m pytest`，并用 `make test` 复验 | 2026-05-08 | ✅ 已处理 |
-| HI-895 | INFRA | 腾讯云 New-API 远端 compose 曾仍为 `v1.0.0-rc.2`；2026-05-09 已重新备份运行数据，成功拉取 `calciumion/new-api:v1.0.0-rc.4`，并处理共享服务器 `127.0.0.1:3000` 端口冲突和 `data/newapi` UID 501 权限问题；当前 `openclaw-newapi` healthy，`/api/status` 返回 `version=v1.0.0-rc.4` | 2026-05-08 | ✅ 已处理 |
+| HI-895 | INFRA | 腾讯云 New-API 远端 compose 曾仍为 `v1.0.0-rc.2`；2026-05-09 已重新备份运行数据，成功拉取 `calciumion/new-api:v1.0.0-rc.4`，并处理共享服务器 `127.0.0.1:3000` 端口冲突和 `data/newapi` UID 501 权限问题。2026-07-03 后 Oracle `openclaw-newapi.service` 为生产，腾讯旧 `openclaw-newapi` 容器已停止并保留冷回滚 | 2026-05-08 | ✅ 已处理 |
 | HI-896 | AI_POOL/BUG | 已补“探测健康但真实调用失败”的降级：真实聊天返回 503/401 时自动标记上游 failed/exhausted、清理会话粘滞、一次性告警，并避免面板继续把该渠道展示成可用。补充/轮换真实上游 Key 仍是平台账号人工事项。 | 2026-05-09 | ✅ 代码侧已处理，补 Key 为人工事项 |
 | HI-897 | INFRA/DOCS | 本地工作区遗留可重建缓存、调试日志和审计截图容易干扰后续审计基线；已清理 `.DS_Store`、`.playwright-mcp`、`.pytest_cache`、`__pycache__`、`.ruff_cache`、Playwright/Expect 临时产物、历史审计截图和本地旧日志，并保留运行配置、runtime 数据、依赖环境与生产备份 | 2026-05-09 | ✅ 已处理 |
 | HI-898 | UX/AI_POOL | 移动端批注发现 Frist-API 顶栏状态灯和 Logo 挤压、工作台导航占屏、连通性卡按 Claude/OpenAI 模型分类且存在默认延迟疑似 mock；已改为小状态点、紧凑 Logo、默认折叠导航、卡商号池渠道展示、60 秒刷新口径和无真实延迟空态，并用 423×718 浏览器复验 | 2026-05-09 | ✅ 已处理 |
@@ -211,7 +211,7 @@
 | HI-854 | UX | Frist-API 前端服务不可用时静默降级无重试入口，用户看不到明确恢复指引 | 2026-05-03 |
 | HI-856 | ARCH_LIMIT | Frist-API 已抽取 shared/catalog/newApiBridge/email/auth/payments/store 等职责；本轮进一步把 SMTP DNS 轮询、注册/重置/余额预警邮件模板和邮箱归一化迁入 `server/email.js`，`server.js` 从 7881 行降到 7247 行并通过 Frist-API `161/161` 回归。核心账号/网关路由仍在主入口，继续完整拆分属于高风险重构，应按独立 PR 分批做，不作为本轮生产收口阻塞。 | 2026-05-03 |
 | HI-857 | ARCH_LIMIT | 当前 Frist-API 单实例部署下，轻量 captcha/rateLimit 内存态可接受；生产水平扩展或多进程部署前必须迁移到 Redis/SQLite。已在运维文档写明判断依据和触发条件。 | 2026-05-03 |
-| HI-863 | INFRA | Frist-API 长期入口仍缺固定品牌域名；免费域名已实测，`sslip.io` 在腾讯 DNSPod 侧被拦截，当前过渡入口切到 `frist-api.101-43-41-96.nip.io`；Let’s Encrypt 访问 ACME challenge 被重置，HTTPS 仍需自有域名或 Cloudflare Tunnel 闭环 | 2026-05-04 |
+| HI-863 | INFRA | Frist-API 长期入口已复用 VPS-Config 既有域名和 Cloudflare 资产闭环：`frist-api.245334.xyz` 当前通过 Cloudflare proxied A 指向 Oracle ARM `150.136.73.15`，旧 `frist-api.101-43-41-96.nip.io` 只保留冷回滚排障语境，不再作为生产兜底入口 | 2026-05-04 |
 | HI-864 | UX/COMMERCE | Frist-API 个人阶段不再推进个人收款码自动识别；已改为管理端批量生成一次性兑换码、用户端专属兑换页核销自动到账，并预留闲鱼商品链接位置 | 2026-05-04 |
 | HI-865 | AI_POOL/UX | Frist-API 需要管理自用 ChatGPT Plus 账号资产但不能把 Plus 账号变成可售 API 路由库存；已新增管理端 Plus 台账、到期摘要、敏感备注加密和用户路由隔离回归 | 2026-05-04 |
 | HI-866 | AI_POOL/UX | Frist-API 需要参考 New-API Codex OAuth 和 Grok RT JSON 格式支持 Refresh Token 批量管理，同时不能减少原 New-API 管理侧能力；已新增管理端 RT JSON/TXT 导入、脱敏台账、加密落盘和路由隔离回归 | 2026-05-04 |
@@ -221,7 +221,7 @@
 | HI-870 | UX/SECURITY/ARCH_LIMIT | Frist-API CC Switch 导出曾按本机 Tabcode Claude/Codex 真实导入结构补齐大块 `settings_config`；后续 HI-877 已按 CC Switch 当前官方 parser 收敛为短 deep link，页面仍展示完整模型清单，协议无响应时自动复制降级；管理认证失败脱敏审计、runtime 写入失败 warning 和 SIGTERM/SIGINT 优雅关闭已保留 | 2026-05-05 |
 | HI-871 | UX | Frist-API Tabcode 浅色皮肤存在旧深色规则残留，黑底按钮/代码栏复制按钮/返回按钮出现灰字低对比；已更新资源版本并增加对比度护栏，用户端 6 个主路由和管理端可见交互元素扫描低对比为 0 | 2026-05-05 |
 | HI-874 | AI_POOL/INFRA | 用户提供的 `https://www.inroi.shop/v1` 是授权上游请求地址，后续字符串是上游 Key，不是 Frist-API 对外入口；已按 `x-admin-token` 复查远端管理号池，同 Key 旧根地址记录为 `exhausted/enabled=false` 不可路由，正确 `/v1` 记录为 `healthy/enabled=true` 且模型 21 个，runtime 中 rawKey 为 AES-GCM 加密字段 | 2026-05-05 |
-| HI-875 | UX/AI_POOL | Frist-API 用户端日志过长、测试页文字爆炸、深色对比不足、模型价格说明不完整、记录页缺客户端/费用/延迟、API Key 前缀像 fake；已改为 5 条精简日志、短动效反馈、深色控制台逐页审计、官方输入/缓存/输出价、3 分钟自动检测、消费后余额刷新、邮箱遮罩、兑换码前置、消费返利 5% 上限和资料可编辑，并已部署到腾讯云公网入口；2026-05-06 上线前安全复审已将新 Key 前缀恢复为 `fk-live-*` | 2026-05-05 |
+| HI-875 | UX/AI_POOL | Frist-API 用户端日志过长、测试页文字爆炸、深色对比不足、模型价格说明不完整、记录页缺客户端/费用/延迟、API Key 前缀像 fake；已改为 5 条精简日志、短动效反馈、深色控制台逐页审计、官方输入/缓存/输出价、3 分钟自动检测、消费后余额刷新、邮箱遮罩、兑换码前置、消费返利 5% 上限和资料可编辑；2026-07-03 当前生产入口已迁到 Oracle `https://frist-api.245334.xyz`，历史腾讯入口仅冷回滚；2026-05-06 上线前安全复审已将新 Key 前缀恢复为 `fk-live-*` | 2026-05-05 |
 | HI-876 | SECURITY | Frist-API 上线前安全闭环复审发现 CSRF、SSRF、支付少付入账、runtime 写入原子性、用户 Key 明文回显、共享脱敏前缀和生产模板开关存在上线风险；已补 CSRF Token、补号 URL 私网阻断、支付金额校验、临时文件 fsync+rename、Dashboard 不再持久回显明文 Key、`fk-live-*` 脱敏一致性和生产 `FRIST_API_REQUIRE_CSRF`/`FRIST_API_ALLOW_PRIVATE_UPSTREAM_URLS` 登记 | 2026-05-06 |
 | HI-877 | UX/BACKEND | CC Switch 用量查询曾只能靠用户按教程手填 Key 和 API 地址，且 DeepSeek 官方端点导入时用量脚本可能误用上游域名；已核对 CC Switch 3.14.1 官方 deep link 支持 `usageScript` 等字段，导入链接自动带 Base64URL 用量脚本并移除旧 `config` / `availableModels` 大块参数，新增 `/api/frist/key-usage` 只读脱敏接口，修复 New-API 用量接口 500 回归，并将模型请求地址与 Frist 用量查询地址解耦；2026-05-06 实机验证中 CC Switch 日志确认解析 `resource=provider/app=claude/name=Frist-API`，临时等价导入后 Claude CLI 返回 `Frist API CLI OK`，测试后已恢复用户原配置 | 2026-05-06 |
 | HI-878 | UX/BACKEND | Frist-API 渠道状态监视器此前只有 healthy/total 简表，用户无法判断降级、慢线、最近状态和刷新口径；已参考 86GameStore `/monitor` 补齐当前库存快照、可用率、最低/平均延迟、慢线/失败状态条和 60 秒刷新展示，响应继续脱敏；2026-05-07 已通过 HI-882 补齐持久化探测事件和 7/15/30 天 SLA 摘要 | 2026-05-06 |
@@ -244,7 +244,7 @@
 | TD-004 | TECH_DEBT | 历史 `pass` 已从 63 降到 49；剩余均为可选依赖降级、任务取消、幂等辅助或异常兜底路径，并补中文注释说明保留原因，不再静默误导主流程 | ✅ 已处理 |
 | TD-005 | TECH_DEBT | 历史 lint 问题已机械清理到 `make lint` 可通过；2026-07-02 fresh `make lint` 输出 `All checks passed!` | ✅ 已处理 |
 | TD-006 | ARCH_LIMIT | Frist-API JSON runtime → New-API 生产迁移已按授权执行：用户 19、token 1、充值/订单 4、兑换码 2、日志 162 已迁入，New-API adapter 已启用，回滚目录为 `/opt/frist-api/backups/newapi-migration-20260703T005433Z`；16 个历史 `enc:v1:` 用户 Key 因旧加密密钥缺失未迁移，需重新生成/补录 | ✅ 代码/迁移已处理，旧 Key 为人工补录 |
-| TD-007 | INFRA | 域名/Cloudflare/R2 不新购，已复用 `/Users/blackdj/Documents/VPS-Config` 既有资产：`frist-api.245334.xyz` 写入 Cloudflare proxied A，源站 Origin CA 证书和 Nginx 443 已落地，R2 备份 timer enabled/active；SMTP 密码仍需 Carven 终端无回显输入，不能由 Codex 写进命令历史 | ✅ 域名/R2 已处理，SMTP 密码为人工安全输入 |
+| TD-007 | INFRA | 域名/Cloudflare/R2 不新购，已复用 `/Users/blackdj/Documents/VPS-Config` 既有资产并完成 Oracle 切流：`frist-api.245334.xyz` 为 Cloudflare proxied A → Oracle ARM `150.136.73.15` → Apache/Origin CA → `127.0.0.1:3180`；R2 备份 timer 在 Oracle enabled/active，腾讯旧 timer disabled/inactive。SMTP 密码仍需 Carven 终端无回显输入，不能由 Codex 写进命令历史 | ✅ 域名/R2/Oracle 生产已处理，SMTP 密码为人工安全输入 |
 | TD-008 | ARCH_LIMIT | 客户可见模型目录已改为健康上游 `/v1/models` / 真实探测优先；硬编码模型目录只用于后台审计排序，不再兜底展示不存在模型 | ✅ 已处理 |
 | TD-009 | TECH_DEBT | Frist-API `ccswitch://` 导入链接依赖用户已安装 CC Switch，浏览器无协议处理器时降级体验为空；已改为点击导入自动复制链接并显示短降级反馈 | ✅ 已处理 |
 | TD-010 | SECURITY | Frist-API 管理 API 失败认证不生成审计事件，暴力破解无法检测；已补脱敏审计事件且不记录提交的 token | ✅ 已处理 |

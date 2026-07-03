@@ -255,16 +255,16 @@
 | `FRIST_API_CAPTCHA_MAX_ATTEMPTS` | 单个验证码最大错误次数 | 默认 `3`，超过后需刷新挑战 |
 | `FRIST_API_PASSWORD_RESET_TTL_MS` | 忘记密码验证码有效期 | 默认 `900000`，即 15 分钟 |
 | `FRIST_API_DATA_ENCRYPTION_KEY` | runtime 敏感字段加密密钥 | 公开模式必填；用于加密用户 Key 和上游 rawKey |
-| `FRIST_API_PUBLIC_GATEWAY_BASE_URL` | 用户导出和邮件使用的公网 `/v1` 网关地址 | 正式值应为 `https://frist-api.245334.xyz/v1`；nip.io 保留为兜底入口；`https://www.inroi.shop/v1` 是授权上游请求地址，不是用户导出入口 |
+| `FRIST_API_PUBLIC_GATEWAY_BASE_URL` | 用户导出和邮件使用的公网 `/v1` 网关地址 | 正式值应为 `https://frist-api.245334.xyz/v1`；旧 nip.io 只保留冷回滚排障，不是当前用户导出入口；`https://www.inroi.shop/v1` 是授权上游请求地址，不是用户导出入口 |
 | `FRIST_API_REQUIRE_CSRF` | Cookie 登录态非幂等接口 CSRF 校验开关 | 生产建议 `1`；公开模式和 `NODE_ENV=production` 会自动启用 |
 | `FRIST_API_REQUIRE_ADMIN_2FA` | 是否强制管理端 TOTP 二次验证 | 生产强制模式必须为 `1` |
 | `FRIST_API_ADMIN_TOTP_SECRETS` | 管理员 TOTP Base32 Secret 列表 | 逗号分隔；只放服务器环境变量或安全注入，不写文档正文 |
 | `FRIST_API_ADMIN_2FA_SESSION_TTL_MS` | 管理员 2FA 会话有效期 | 默认 `3600000`，即 1 小时 |
 | `FRIST_API_ALLOW_PRIVATE_UPSTREAM_URLS` | 是否允许管理端补号 URL 指向私网/本机地址 | 生产必须保持 `0`，只用于本地私网测试 |
-| `FRIST_API_CANONICAL_HOST` | Frist-API 唯一内容入口域名 | 正式为 `frist-api.245334.xyz`；`frist-api.101-43-41-96.nip.io` 保留为 HTTP 兜底入口 |
-| `FRIST_API_REDIRECT_HOSTS` | 需要跳转到唯一入口的旧/裸域名 | 当前为 `101-43-41-96.nip.io`，只做 301，不直接服务页面；Docker Compose 已透传 |
+| `FRIST_API_CANONICAL_HOST` | Frist-API 唯一内容入口域名 | 正式为 `frist-api.245334.xyz`；旧 `frist-api.101-43-41-96.nip.io` 只保留冷回滚排障语境，不作为生产兜底入口 |
+| `FRIST_API_REDIRECT_HOSTS` | 需要跳转到唯一入口的旧/裸域名 | Oracle 正式生产以 `frist-api.245334.xyz` 为唯一入口；腾讯冷回滚时才需要旧 `101-43-41-96.nip.io` / nip.io 主机跳转配置 |
 | `FRIST_API_ENFORCE_PRODUCTION_READINESS` | 是否强制生产边界检查 | `1` 时缺固定 HTTPS 品牌域名、New-API 数据库、2FA、兑换码/备份等运营闭环会启动失败；自动支付商户不是当前硬门槛 |
-| `FRIST_API_ALLOW_INSECURE_PUBLIC_HTTP` | 是否允许临时公网 HTTP 网关 | nip.io 兜底期才设 `1`；正式 HTTPS 域名已通后应为 `0` |
+| `FRIST_API_ALLOW_INSECURE_PUBLIC_HTTP` | 是否允许临时公网 HTTP 网关 | 正式 Oracle + Cloudflare HTTPS 已通，生产应为 `0`；只有冷回滚排障才临时打开 |
 | `FRIST_API_BACKUP_STATUS_MAX_AGE_HOURS` | 备份新鲜度上限 | 默认 `26` 小时，超过视为备份监控未闭环 |
 | `FRIST_API_SLA_RETENTION_DAYS` | 渠道 SLA 探测事件保留天数 | 默认 `30` 天 |
 | `FRIST_API_CHANNEL_MONITOR_ENABLED` | 是否启用后台 60 秒通道巡检 | `1` 启用；无人调用时也会巡检健康库存 |
@@ -292,13 +292,13 @@
 | `FRIST_API_ALIPAY_NOTIFY_URL` | 支付宝回调 URL | 默认可由公开入口推导为 `/api/frist/payments/alipay/notify` |
 | `FRIST_API_NEWAPI_ENABLED` | 是否启用 Frist-API 服务端 New-API 业务桥接 | `1` 启用；未启用时继续走本地 JSON 自研逻辑 |
 | `FRIST_API_REQUIRE_NEWAPI_DATABASE` | 是否把 New-API 数据库作为生产必备持久化层 | 生产强制模式必须为 `1`，用于防止继续把 JSON runtime 当生产数据库 |
-| `FRIST_API_NEWAPI_BASE_URL` | New-API 内网 API 地址 | 例如 `http://openclaw-newapi:3000`，不要暴露公网管理口 |
+| `FRIST_API_NEWAPI_BASE_URL` | New-API 内网 API 地址 | Oracle 生产为 `http://127.0.0.1:13000`；Docker/本地开发可用 `http://openclaw-newapi:3000`，不要暴露公网管理口 |
 | `FRIST_API_NEWAPI_ACCESS_TOKEN` | New-API 用户 access token | 只放服务器环境变量，禁止写入仓库 |
 | `FRIST_API_NEWAPI_USER_ID` | access token 所属 New-API 用户 ID | v1 会校验 `New-Api-User` 头 |
 | `FRIST_API_NEWAPI_DEFAULT_GROUP` | New-API 新建 Token 默认分组 | 默认 `default` |
 | `FRIST_API_NEWAPI_DEFAULT_TOKEN_QUOTA` | New-API 新建 Token 默认额度 | `0` 配合 `unlimited_quota=true` |
 | `FRIST_API_NEWAPI_GATEWAY_ENABLED` | 是否让 Frist-API `/v1` 直接代理 New-API 网关 | `1` 启用；默认关闭以保留自研路由兜底 |
-| `FRIST_API_NEWAPI_GATEWAY_BASE_URL` | New-API 网关地址 | 通常为 `http://openclaw-newapi:3000/v1` |
+| `FRIST_API_NEWAPI_GATEWAY_BASE_URL` | New-API 网关地址 | Oracle 生产为 `http://127.0.0.1:13000/v1`；Docker/本地开发通常为 `http://openclaw-newapi:3000/v1` |
 | `MITMDUMP_BIN` | mitmdump 可执行文件 | 可指向 `~/.openclaw/tools/mitmproxy-local-venv/bin/mitmdump` 这类独立工具 venv，避免污染项目虚拟环境 |
 
 ---
@@ -308,18 +308,20 @@
 | 类型 | 名称 | 路径 / 命令 | 说明 |
 |------|------|-------------|------|
 | 上游源码 | `QuantumNous/new-api` | `packages/new-api-upstream` | Git submodule，当前固定 `v1.0.0-rc.4` |
-| Compose 镜像 | `calciumion/new-api` | `docker-compose.newapi.yml` | 当前镜像 `calciumion/new-api:v1.0.0-rc.4`，不使用 `latest` |
+| Compose 镜像 | `calciumion/new-api` | `docker-compose.newapi.yml` | 本地/冷回滚 Compose 固定 `calciumion/new-api:v1.0.0-rc.4`，不使用 `latest`；Oracle 生产为 release ARM64 二进制 systemd，不安装 Docker |
 | 同步检查 | `new-api-check` | `make new-api-check` | 检查 GitHub 最新非草稿 release、submodule 指针和 compose 镜像 tag 是否一致 |
 | 同步升级 | `new-api-sync` | `make new-api-sync` | 更新 submodule 到最新 release，并同步 compose 镜像 tag |
 | 同步脚本 | `sync_new_api_upstream.sh` | `scripts/sync_new_api_upstream.sh` | 支持 `check` / `update`；`check` 发现落后返回非 0，适合 CI/定时任务 |
 | 定时同步 | `New-API Scheduled Sync` | `.github/workflows/new-api-sync.yml` | 每天检查最新 release，落后时自动开 `codex/new-api-scheduled-sync` PR；不会直接升级生产数据库 |
-| Frist-API 桥接 | `newApiBridge.js` | `apps/frist-api/server/newApiBridge.js` | 通过 New-API HTTP 接口承接用户看板、Token、日志、兑换、订阅、邀请和可选网关代理 |
+| Frist-API 桥接 | `newApiBridge.js` | `apps/frist-api/server/newApiBridge.js` | 通过 New-API HTTP 接口承接用户看板、Token、日志、兑换、订阅、邀请和可选网关代理；Oracle 生产调用 `127.0.0.1:13000` |
 | 迁移/回滚 | `frist_api_newapi_migration_dry_run.mjs` | `scripts/frist_api_newapi_migration_dry_run.mjs` | 默认只读 Frist-API runtime；`--package` 生成带时间戳的 runtime 备份、幂等迁移计划和回滚脚本；2026-07-03 已授权并执行生产 `--apply`，回滚目录在服务器 `/opt/frist-api/backups/newapi-migration-20260703T005433Z` |
+| Oracle 生产运行 | `openclaw-newapi.service` | Oracle ARM `/opt/frist-api` | New-API v1.0.0-rc.4 ARM64 release 二进制，以 systemd 监听 `127.0.0.1:13000`；Frist-API 通过 `frist-api.service` 监听 `127.0.0.1:3180`，Apache/Cloudflare 只公开 `frist-api.245334.xyz` |
+| 腾讯冷回滚 | `frist-api-server` / `openclaw-newapi` | 腾讯云 `/opt/frist-api` | 旧 Docker 容器已停止、R2 timer 已禁用，仅保留数据和备份；回滚时先恢复容器/timer，再把 Cloudflare A 记录切回 `101.43.41.96` |
 
 | 环境变量 | 用途 | 备注 |
 |----------|------|------|
-| `NEWAPI_BASE_URL` | New-API 内网服务地址 | 默认 `http://localhost:3000` |
-| `NEWAPI_HOST_PORT` | New-API 宿主机回环监听端口 | 默认 `3000`；共享服务器如端口冲突可改为 `13000`，容器内部仍为 `3000` |
+| `NEWAPI_BASE_URL` | New-API 内网服务地址 | Oracle 生产为 `http://127.0.0.1:13000`；本地默认可为 `http://localhost:3000` |
+| `NEWAPI_HOST_PORT` | New-API 宿主机回环监听端口 | 本地/冷回滚 Docker 默认 `3000`，共享服务器可改 `13000`；Oracle 生产二进制直接监听 `127.0.0.1:13000` |
 | `NEWAPI_ADMIN_TOKEN` | New-API 用户 access token | 通过 New-API 用户资料页或 `/api/user/token` 生成，禁止写入仓库 |
 | `NEWAPI_ADMIN_USER_ID` | New-API 当前用户 ID | New-API v1 后台/用户 API 会校验 `New-Api-User` 头，需与 access token 所属用户一致 |
 | `NEWAPI_INITIAL_TOKEN` | New-API 容器初始 root token | 只放本机或服务器环境文件，用于首次初始化 |

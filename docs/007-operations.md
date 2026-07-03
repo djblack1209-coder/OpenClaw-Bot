@@ -19,45 +19,48 @@ Frist-API 现在不是只会展示页面的 MVP，已经能跑小范围真实验
 
 | 模块 | 当前状态 | 生产要求 |
 |------|------|------|
-| 访问入口 | 过渡入口 `http://frist-api.101-43-41-96.nip.io` 已可外网访问；正式入口 `https://frist-api.245334.xyz` 已通过 Cloudflare proxied A + 源站 Origin CA 证书闭环，外网 Dashboard 冒烟返回 HTTP 200 | 固定 HTTPS 入口 + nip.io 兜底入口均已冒烟 |
+| 访问入口 | 正式入口 `https://frist-api.245334.xyz` 已切到 Oracle ARM `150.136.73.15`，通过 Cloudflare proxied A + Apache/Origin CA 闭环，外网 Dashboard 冒烟返回 HTTP 200；旧腾讯云/nip.io 只保留冷回滚，不再作为生产兜底入口 | 固定 HTTPS 入口已冒烟；冷回滚入口只有回滚时才启用 |
 | 充值 | 主路径为管理端生成兑换码、闲鱼等平台售卖、用户端核销自动到账；商户支付代码保留但当前不要求开通 | 平台售卖链接、自动发货规则、兑换码对账和库存告警 |
 | 价格 | 管理端可直接编辑套餐和模型价格 JSON | 兑换码售卖前人工确认价格；若未来恢复自动支付，再增加价格版本审计和生效审批 |
 | 邮箱 | 已支持余额预警、注册验证码和找回密码 SMTP 邮件 | 企业邮箱或稳定邮件服务商 + 发信监控 |
 | 防刷 | 轻量验证码 + 登录限流；单实例下内存态可接受 | 若水平扩展再接 Turnstile + Redis/SQLite 限流 |
-| 数据 | 生产 New-API 迁移已按授权执行：用户/余额/订单/兑换码/日志已迁入 New-API，历史 `enc:v1:` 用户 Key 因旧加密密钥缺失未伪造迁移；R2 定时备份已启用 | New-API 数据库 + VPS-Config 既有 R2/备份体系 |
+| 数据 | 生产 New-API 迁移已按授权执行：用户/余额/订单/兑换码/日志已迁入 Oracle 本机 New-API，历史 `enc:v1:` 用户 Key 因旧加密密钥缺失未伪造迁移；R2 定时备份已在 Oracle 启用，腾讯旧 timer 已禁用 | New-API 数据库 + VPS-Config 既有 R2/备份体系 |
 | 管理员 | 一次性身份码 + 管理登录态 | 管理员 2FA + 审计 |
 | 模型列表 | 客户可见模型只来自健康上游 `/v1/models` / 真实探测；内置目录仅做后台审计排序参考 | 定期审计上游真实模型和价格 |
 | 上游来源 | 授权供应商余额站/自有额度为主；CPA JSON、chong 只作为人工审核备用渠道登记 | 禁止把批量 OAuth Session、来路不明 JSON 号源或规避风控的账号池默认当作生产库存 |
 
-## 腾讯云部署摘要
+## Oracle 主生产部署摘要（腾讯云冷回滚）
 
-Frist-API 在共享腾讯云服务器上按“小服务独立端口 + 反向代理”的方式运行，避免抢占其他项目的 80/443 默认站点。
+Frist-API 生产流量已从国内腾讯云迁到 Oracle ARM Always Free，目的是把公开客户网关放到资源更充沛、长期免费的海外实例上，同时降低国内共享服务器端口和资源耦合。腾讯云只保留冷回滚数据，不再承接正式流量。
 
 | 项目 | 当前约定 |
 |------|------|
-| 运行目录 | `/opt/frist-api` |
-| 容器 | `frist-api-server` |
-| 本地服务 | `http://127.0.0.1:3180` |
-| 公网入口 | `frist-api.101-43-41-96.nip.io` 反代到 `127.0.0.1:3180`；`101-43-41-96.nip.io` 不直接服务页面 |
-| HTTPS 正式入口 | `https://frist-api.245334.xyz` 通过 Cloudflare proxied A 指向腾讯云 Nginx，源站使用 Cloudflare Origin CA 证书，Dashboard 外网冒烟 HTTP 200 |
-| 运行数据 | `data/frist-api/runtime/runtime.json`，含用户 Key 和上游 Key，禁止提交 Git |
-| 环境变量 | 只放服务器本机环境文件，禁止写入仓库 |
+| 主生产服务器 | Oracle ARM `150.136.73.15`（SSH alias: `oracle-arm1`） |
+| 运行目录 | Oracle `/opt/frist-api` |
+| Frist-API | `frist-api.service`，监听 `http://127.0.0.1:3180` |
+| New-API | `openclaw-newapi.service`，监听 `http://127.0.0.1:13000`；使用 New-API v1.0.0-rc.4 ARM64 release 二进制，不在 Oracle 上安装 Docker |
+| 公网入口 | `https://frist-api.245334.xyz` → Cloudflare proxied A → Oracle Apache 443/Origin CA → `127.0.0.1:3180` |
+| 备份 | `frist-api-r2-backup.timer` 在 Oracle active；最近手动上传日志为 `backup_ok ... http=200` |
+| 冷回滚 | 腾讯云 `101.43.41.96:/opt/frist-api` 保留旧数据和备份，旧 `frist-api-server` / `openclaw-newapi` 容器已停止，旧 R2 timer 已禁用 |
+| 运行数据 | `data/frist-api/runtime/runtime.json` 和 New-API 数据库均只在服务器环境中保存，含用户 Key 和上游 Key，禁止提交 Git |
+| 环境变量 | 只放服务器本机环境文件，禁止写入仓库；SMTP 密码必须无回显输入，不能放进命令历史 |
 
 上线或重启后按下面顺序验收:
 
-1. `docker ps` 确认 `frist-api-server` 为 `healthy`。
-2. `curl -sS http://127.0.0.1:3180/` 确认容器本地入口可用。
-3. 检查 Nginx 或 Tunnel 是否只把 Frist-API 页面公开到品牌域名，裸域名必须 301 到品牌域名。
-4. 普通 `/admin.html` 应返回 404；只有登录账号完成一次性管理员身份码激活后才显示运营入口。
-5. 跑 `apps/frist-api/deploy/smoke-test.sh http://127.0.0.1:3180 "$FRIST_API_ADMIN_PAGE_CODE"`，再用公网入口跑一次冒烟。
+1. `ssh oracle-arm1 'systemctl is-active frist-api.service openclaw-newapi.service apache2 frist-api-r2-backup.timer'` 必须全部为 `active`。
+2. `ssh oracle-arm1 'curl -sS -o /dev/null -w "%{http_code}" http://127.0.0.1:3180/api/frist/dashboard'` 应返回 `200`。
+3. `ssh oracle-arm1 'curl -sS -o /dev/null -w "%{http_code}" http://127.0.0.1:13000/api/status'` 应返回 `200`。
+4. 本机访问 `https://frist-api.245334.xyz/api/frist/dashboard` 应返回 `200`；未授权访问 `https://frist-api.245334.xyz/v1/models` 应返回 `401`。
+5. `ssh oracle-arm1 'systemctl --failed --no-pager'` 应显示 `0 loaded units listed`。
+6. 旧腾讯云只做冷回滚；除非执行回滚，不要同时启动旧 Frist-API 和旧 R2 timer，避免双源探测、重复备份或上游渠道状态漂移。
 
-正式开放陌生付费用户前，仍需确认 SMTP 密码已通过无回显方式写入服务器环境变量并跑通测试邮件；New-API 数据库、R2 备份和 Cloudflare DNS 代码侧已落地。支付当前走闲鱼兑换码，不把微信/支付宝/Stripe 商户自动支付作为上线必备。
+正式开放陌生付费用户前，仍需确认 SMTP 密码已通过无回显方式写入 Oracle 环境变量并跑通测试邮件；New-API 数据库、R2 备份和 Cloudflare DNS 代码侧已落地。支付当前走闲鱼兑换码，不把微信/支付宝/Stripe 商户自动支付作为上线必备。
 
 ## 你需要人工开通的服务
 
 | 优先级 | 服务 | 你要准备的字段 | 我接入后的接口 |
 |------|------|------|------|
-| P0 | 域名和 Cloudflare / 免费 DNS | 已复用 `/Users/blackdj/Documents/VPS-Config` 的 `config/domain-routing.public.json`、`config/cloudflare-assets.public.json`，不新购域名；正式主机名为 `frist-api.245334.xyz` | `https://frist-api.245334.xyz/` 和 `https://frist-api.245334.xyz/v1`；nip.io 继续保留为兜底 |
+| P0 | 域名和 Cloudflare / 免费 DNS | 已复用 `/Users/blackdj/Documents/VPS-Config` 的 `config/domain-routing.public.json`、`config/cloudflare-assets.public.json`，不新购域名；正式主机名为 `frist-api.245334.xyz` | `https://frist-api.245334.xyz/` 和 `https://frist-api.245334.xyz/v1`；nip.io 只作为历史/冷回滚排障，不再对用户宣称兜底 |
 | P0 | 兑换码售卖平台 | 闲鱼商品/SKU、自动发货规则、兑换码库存和对账表 | Frist-API `#redeem` 核销；不需要自动支付商户资质 |
 | P0 | 备份目标 | 已复用 VPS-Config 既有 R2/对象存储备份资产；密钥只在服务器环境文件和私有凭据仓，未写入仓库 | 每日 R2 timer 已启用，最近一次手动上传返回 HTTP 200 |
 | P1 | SMTP 邮箱 | 主机、端口、用户名、应用密码、发件邮箱；Gmail 只作为短期测试，密码只能写服务器环境变量 | 余额预警、注册验证、找回密码已接入 |
@@ -310,29 +313,29 @@ Stripe 的 API Secret Key、Webhook Signing Secret 和账号实名审核只能�
 
 ## 固定域名和证书
 
-长期方案不新购域名，复用 `/Users/blackdj/Documents/VPS-Config` 已有域名、Cloudflare DNS 和 R2/备份资产；OpenClaw 只记录变量名和验证步骤，不复制该项目的私有凭据。2026-07-03 生产采用 Cloudflare proxied A 指向腾讯云 Nginx；专用 Tunnel 曾短暂验证但因 systemd 日志会暴露 token 已停用并删除。
+长期方案不新购域名，复用 `/Users/blackdj/Documents/VPS-Config` 已有域名、Cloudflare DNS 和 R2/备份资产；OpenClaw 只记录变量名和验证步骤，不复制该项目的私有凭据。2026-07-03 生产已从腾讯云切到 Oracle ARM：Cloudflare proxied A 指向 `150.136.73.15`，Oracle Apache 使用 Cloudflare Origin CA 反代 Frist-API；专用 Tunnel 曾短暂验证但因 systemd 日志会暴露 token 已停用并删除。
 
-无自有域名时的免费方案: 先用 `nip.io` 这种 wildcard DNS。它会把主机名里的 IP 自动解析到服务器，例如 `frist-api.101-43-41-96.nip.io` 会解析到 `101.43.41.96`。2026-05-04 公网实测中，`sslip.io` 在腾讯 DNSPod 侧被拦截到封禁页，当前可用免费入口切到 `frist-api.101-43-41-96.nip.io`。`101-43-41-96.nip.io` 只作为兼容跳转入口，不直接服务页面。这不是正式品牌域名，只是带 Frist-API 前缀的免费固定 HTTP 过渡入口。
+历史免费方案曾使用 `nip.io` wildcard DNS，例如 `frist-api.101-43-41-96.nip.io` 会解析到腾讯云 `101.43.41.96`。现在正式入口已经是 `https://frist-api.245334.xyz`，旧 nip.io 只保留冷回滚排障语境；如果腾讯云旧容器保持停止，旧 nip.io 返回 502 属于预期，不应再发给用户。
 
-免费域名部署步骤:
+旧 nip.io 冷回滚排障步骤（非当前生产入口）:
 
 1. 在服务器检查 80/443 是否已被其他项目占用，避免影响共享项目。
 2. 新增 Nginx server block: `server_name frist-api.101-43-41-96.nip.io` 反代到 `http://127.0.0.1:3180`；`server_name 101-43-41-96.nip.io` 只返回 301 到品牌域名。
 3. 使用 certbot 给 `frist-api.101-43-41-96.nip.io` 申请证书；本轮证书机构访问 80 端口 ACME challenge 返回 connection reset，免费域名 HTTPS 未签发成功。
-4. 当前 HTTP 过渡入口需要配置服务器环境变量（只写变量名，不把任何真实密钥写进文档）：`FRIST_API_PUBLIC_GATEWAY_BASE_URL` 使用公开 `/v1` 入口，`FRIST_API_CANONICAL_HOST` 使用规范主机，`FRIST_API_REDIRECT_HOSTS` 使用旧主机列表，并临时打开 `FRIST_API_ALLOW_INSECURE_PUBLIC_HTTP`；拿到 HTTPS 后再切回正式 HTTPS 域名。
+4. 只有执行腾讯云冷回滚时才临时配置旧 HTTP 入口；正常 Oracle 生产必须保持 `FRIST_API_PUBLIC_GATEWAY_BASE_URL` 填 `https://frist-api.245334.xyz/v1`、`FRIST_API_CANONICAL_HOST` 填 `frist-api.245334.xyz`，并保持 `FRIST_API_ALLOW_INSECURE_PUBLIC_HTTP` 关闭。
 5. 重启容器后跑首页、看板、`/v1/models` 未授权 401、管理员入口隐藏和支付回调 URL 冒烟。
 
-免费域名只适合兜底。正式投放时复用 VPS-Config 里已存在的域名/Cloudflare 资产，不在本项目另买新域名。
+免费域名只适合历史排障。正式投放使用 VPS-Config 里已存在的域名/Cloudflare 资产，不在本项目另买新域名。
 
 2026-07-03 当前入口状态：
 
-1. `http://frist-api.101-43-41-96.nip.io/`：Nginx 兜底入口，外网看板冒烟返回 HTTP 200。
-2. `https://frist-api.245334.xyz/`：Cloudflare DNS 已写入 proxied A，源站安装 Cloudflare Origin CA 证书并新增 Nginx 443 反代；外网 Dashboard 冒烟返回 HTTP 200。
-3. 生产服务器环境已启用 New-API adapter；`FRIST_API_NEWAPI_ENABLED=1` 与 `FRIST_API_REQUIRE_NEWAPI_DATABASE=1` 已生效。
-4. R2 定时备份已启用；最近一次手动上传 HTTP 200。
+1. `https://frist-api.245334.xyz/`：Cloudflare DNS proxied A 指向 Oracle ARM `150.136.73.15`，Oracle Apache 使用 Origin CA 证书反代；外网 Dashboard 冒烟返回 HTTP 200。
+2. Oracle 生产服务已启用 New-API adapter；`FRIST_API_NEWAPI_ENABLED=1` 与 `FRIST_API_REQUIRE_NEWAPI_DATABASE=1` 已生效。
+3. R2 定时备份已在 Oracle 启用；最近一次手动上传 HTTP 200。
+4. 腾讯云旧入口和 `http://frist-api.101-43-41-96.nip.io/` 只保留冷回滚，不再作为用户入口；旧容器停止时该地址不可用是预期。
 5. SMTP 密码尚未通过无回显方式落地，测试邮件需要先完成下方“邮箱和防刷”的密码写入步骤。
 
-当前采用 Cloudflare DNS 代理，不依赖长期 `cloudflared` 服务。2026-07-03 源站已安装 Cloudflare Origin CA 证书并让 Nginx 监听 `frist-api.245334.xyz:443`，解决 Cloudflare 526。若未来重新启用 Tunnel，必须把 Tunnel token 放在 root-only 环境文件，且禁止通过 `systemctl status` / 服务日志输出 token。
+当前采用 Cloudflare DNS 代理，不依赖长期 `cloudflared` 服务。2026-07-03 Oracle 源站已安装 Cloudflare Origin CA 证书并让 Apache 监听 `frist-api.245334.xyz:443`，解决 Cloudflare 526。若未来重新启用 Tunnel，必须把 Tunnel token 放在 root-only 环境文件，且禁止通过 `systemctl status` / 服务日志输出 token。
 
 参考官方文档：
 
@@ -429,11 +432,11 @@ Frist-API 是独立公开网站，放在 `apps/frist-api/`，不改 OpenClaw APP
 
 当前公网验收入口:
 
-- HTTP 过渡用户端: `http://frist-api.101-43-41-96.nip.io/`
-- HTTP 过渡 API 网关: `http://frist-api.101-43-41-96.nip.io/v1`
-- 裸域名 `http://101-43-41-96.nip.io/` 只做 301 跳转，不直接服务页面。
+- 正式用户端: `https://frist-api.245334.xyz/`
+- 正式 API 网关: `https://frist-api.245334.xyz/v1`
+- 旧 `http://frist-api.101-43-41-96.nip.io/` 和裸 `http://101-43-41-96.nip.io/` 只保留腾讯云冷回滚排障，不再作为生产入口。
 
-当前固定品牌域名和 HTTPS 证书仍未闭环；进生产时建议绑定自有域名到 Cloudflare Tunnel 或 DNS，再把 `FRIST_API_PUBLIC_GATEWAY_BASE_URL` 切到固定 HTTPS 域名。
+当前固定品牌域名和 HTTPS 证书已闭环；生产 `FRIST_API_PUBLIC_GATEWAY_BASE_URL` 应保持 `https://frist-api.245334.xyz/v1`。
 
 管理端不公开展示。普通 `/admin.html` 在公网会返回 404。日常用法是先注册/登录自己的用户账号，在右上角账户区域输入一次性管理员身份码，当前账号会升级为管理员，身份码随即作废；升级后账户区域会出现运营入口，管理 API 也会直接识别当前登录态。隐藏入口码和管理员令牌仍保留为服务器后备方案，不给普通用户展示。
 
@@ -701,19 +704,17 @@ tar -czf "data/backups/newapi-$(date +%Y%m%d-%H%M%S).tgz" data/newapi
 - `docker-compose.newapi.yml` 默认把容器 `3000` 端口绑定到宿主机 `127.0.0.1:${NEWAPI_HOST_PORT:-3000}`；共享服务器已有其他项目占用 3000 时，只设置 `NEWAPI_HOST_PORT=13000`，不要停止无关服务。
 - 公开商业化时，AGPL-3.0 合规要求必须准备源码公开入口或公开 fork。
 
-当前腾讯云状态:
+当前生产状态:
 
-- 共享服务器 `/opt/frist-api` 已保留 `data/newapi` 运行数据并启动独立 New-API 容器；因 `/opt/ccgame` 已长期占用宿主机 `127.0.0.1:3000`，腾讯云使用 `NEWAPI_HOST_PORT=13000` 只在本机回环暴露 New-API。
-- Frist-API Workbench 仍使用独立 `127.0.0.1:3180` 入口；切换到 New-API 数据库前还需要生成 New-API 用户 access token、配置 `FRIST_API_NEWAPI_*` 并做历史 JSON 迁移演练。
+- Oracle ARM `/opt/frist-api` 已承接 Frist-API 和 New-API：`frist-api.service` 监听 `127.0.0.1:3180`，`openclaw-newapi.service` 监听 `127.0.0.1:13000`。
+- 腾讯云 `/opt/frist-api` 仅保留冷回滚数据；旧 `frist-api-server` / `openclaw-newapi` 容器已停止，旧 `frist-api-r2-backup.timer` 已禁用。
 
 ## 下一步
 
-1. 复用 VPS-Config 既有域名/Cloudflare/R2 资产，为 Frist-API 配正式 HTTPS 入口并关闭临时公网 HTTP 开关。
-2. 维护闲鱼兑换码商品、自动发货规则和卡密库存告警；自动支付商户平台开户当前不推进。
-3. 用 `scripts/frist_api_newapi_migration_dry_run.mjs --package` 生成备份、幂等迁移计划和回滚脚本，再在具备 `FRIST_API_NEWAPI_*` 与解密环境变量的生产窗口执行迁移。
-4. 给 Frist-API UI 接 New-API 用户会话或服务端代理，避免重复维护账号、Key、计费和日志逻辑。
-5. 持续审计上游真实 `/v1/models`、余额站日限额、慢线降级和价格版本。
-6. 保持页面源码入口可见，确保 AGPL-3.0 上游合规。
+1. 维护闲鱼兑换码商品、自动发货规则和卡密库存告警；自动支付商户平台开户当前不推进。
+2. 用无回显终端输入 SMTP 密码并跑测试邮件；不要把密码写进聊天、命令历史、文档或 Git。
+3. 持续审计上游真实 `/v1/models`、余额站日限额、慢线降级和价格版本。
+4. 保持页面源码入口可见，确保 AGPL-3.0 上游合规。
 
 ---
 
