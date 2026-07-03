@@ -92,7 +92,7 @@ def _make_module_filter(min_levels: dict[str, str]):
     def _filter(record) -> bool:
         name: str = record.get("name", "")
         for mod, min_no in level_map.items():
-            if name == mod or name.startswith(mod + "."):
+            if name == mod or name.startswith(f"{mod}."):
                 # loguru record["level"].no 是 loguru 的等级数值
                 return record["level"].no >= min_no
         return True

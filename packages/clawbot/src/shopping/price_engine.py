@@ -291,9 +291,7 @@ def _extract_price(text: str) -> float:
 def _build_ai_prompt(query: str, priced: list[PriceResult]) -> str:
     """Build AI analysis prompt from comparison results."""
     items_text = "\n".join(
-        f"- {r.title}: ¥{r.price} ({r.platform})"
-        + (f" [{r.shop}]" if r.shop else "")
-        + f" {r.url}"
+        f"- {r.title}: ¥{r.price} ({r.platform}){(f' [{r.shop}]' if r.shop else '')} {r.url}"
         for r in priced[:10]
     )
     return (
@@ -389,7 +387,7 @@ async def search_smzdm_rss(keyword: str, limit: int = 10) -> list[PriceResult]:
                             link = link.strip()
 
                         # 从标题或描述中提取价格
-                        price = _extract_rss_price(title + " " + (desc_el.text if desc_el else ""))
+                        price = _extract_rss_price(f"{title} {desc_el.text if desc_el else ''}")
 
                         results.append(PriceResult(
                             title=title[:120],

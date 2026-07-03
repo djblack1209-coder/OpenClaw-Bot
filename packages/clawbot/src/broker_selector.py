@@ -84,7 +84,7 @@ def get_broker():
             logger.debug("[BrokerSelector] 使用 Alpaca")
             return alpaca
     except ImportError:
-        pass
+        pass  # 合理保留：可选依赖缺失时继续走后续降级链
 
     # 3. 降级到 IBKR 模拟盘
     logger.debug("[BrokerSelector] 使用 IBKR (模拟盘)")

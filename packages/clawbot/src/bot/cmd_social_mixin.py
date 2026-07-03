@@ -779,7 +779,7 @@ class SocialCommandsMixin:
             if not published.get("success"):
                 await update.message.reply_text(
                     f"小红书发布未完成: {published.get('error', published.get('raw', '未知错误'))}"
-                    f"{self._social_login_retry_hint(published, '/post_xhs ' + topic if topic else '/post_xhs')}"
+                    f"{self._social_login_retry_hint(published, f"/post_xhs {topic}" if topic else '/post_xhs')}"
                 )
                 return
             text = format_social_published(
@@ -911,7 +911,7 @@ class SocialCommandsMixin:
                 )
             except Exception as e:
                 from src.telegram_ux import send_error_with_retry
-                await send_error_with_retry(update, context, e, retry_command="/hot --preview " + topic)
+                await send_error_with_retry(update, context, e, retry_command=f"/hot --preview {topic}")
             return
 
         # 非预览模式 — 直接发布（原有逻辑）
@@ -1114,7 +1114,7 @@ class SocialCommandsMixin:
                 await update.message.reply_text(
                     f"X 自动发帖未完成: {ret.get('status', ret.get('error', '未知错误'))}\n"
                     f"页面: {ret.get('url', '')}"
-                    f"{self._social_login_retry_hint(ret, '/post_x ' + topic if topic else '/post_x')}"
+                    f"{self._social_login_retry_hint(ret, f"/post_x {topic}" if topic else '/post_x')}"
                 )
         except Exception as e:
             logger.warning("[cmd_xpost] 执行失败: %s", e)
@@ -1171,7 +1171,7 @@ class SocialCommandsMixin:
                 await update.message.reply_text(
                     f"小红书自动发帖未完成: {ret.get('status', ret.get('error', '未知错误'))}\n"
                     f"页面: {ret.get('url', '')}"
-                    f"{self._social_login_retry_hint(ret, '/post_xhs ' + topic if topic else '/post_xhs')}"
+                    f"{self._social_login_retry_hint(ret, f"/post_xhs {topic}" if topic else '/post_xhs')}"
                 )
         except Exception as e:
             logger.warning("[cmd_xhspost] 执行失败: %s", e)
@@ -1195,8 +1195,10 @@ class SocialCommandsMixin:
                 help_text += "支持平台:\n"
                 for key, info in platforms.items():
                     caps = []
-                    if info["video"]: caps.append("视频")
-                    if info["note"]: caps.append("图文")
+                    if info["video"]:
+                        caps.append("视频")
+                    if info["note"]:
+                        caps.append("图文")
                     help_text += f"  • {key} ({info['name']}) — {'/'.join(caps)}\n"
                 help_text += "\n示例:\n  /publish douyin /path/to/video.mp4 我的视频标题"
                 await update.message.reply_text(help_text)

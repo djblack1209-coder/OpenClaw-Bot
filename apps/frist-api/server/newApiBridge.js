@@ -147,7 +147,14 @@ export function createNewApiBridge(options = {}) {
         throw publicBridgeError(409, 'New-API 未返回完整 API Key');
       }
       const modelGroup = normalizeBridgeModelGroup(key);
-      const availableModels = normalizeClientAvailableModels(normalizeModelLimits(key), { modelGroup });
+      // 参考 OpenAI Models API list（2026-07-02 复核）：New-API token 通配符只代表权限范围，不等同于真实健康 /v1/models 库存。
+      const availableModels = normalizeClientAvailableModels(normalizeModelLimits(key), {
+        modelGroup,
+        expandPatterns: false,
+      });
+      if (!availableModels.length) {
+        throw publicBridgeError(409, '暂无健康上游模型，请先在 New-API 渠道中补齐真实模型后再导入客户端');
+      }
       const defaultModel = strongestBridgeModel(availableModels, requestUrl.searchParams.get('model') || '', modelGroup);
       return buildUrl({
         target: requestUrl.searchParams.get('target') || 'Claude',
@@ -492,15 +499,11 @@ function normalizeModelLimits(token) {
   return String(raw || '').split(/[\n,]+/).map((item) => item.trim()).filter(Boolean);
 }
 
-function strongestBridgeModel(models, requested, modelGroup) {
+function strongestBridgeModel(models, requested) {
   const cleaned = models.filter((model) => !model.includes('*'));
-  if (requested) return requested;
-  if (cleaned.length) return cleaned[0];
-  const group = normalizeModelGroup(modelGroup);
-  if (group === 'DeepSeek') return 'deepseek-v4-flash';
-  if (group === 'Claude') return 'claude-opus-4-6-thinking-c';
-  if (group === 'Gemini') return 'gemini-2.5-flash';
-  return 'gpt-5.5';
+  const normalizedRequested = normalizeClientAvailableModels([requested], { expandPatterns: false })[0] || '';
+  if (normalizedRequested && cleaned.includes(normalizedRequested)) return normalizedRequested;
+  return cleaned[0] || '';
 }
 
 function tokenEnabled(status) {

@@ -236,11 +236,10 @@ if _freqtrade_available:
         def custom_exit(self, pair, trade, current_time, current_rate, current_profit, **kwargs):
             """自定义退出逻辑（桥接 PositionMonitor）"""
             # 盈利回撤保护：盈利超过 3% 后回撤 30% 则退出
-            if current_profit > 0.03:
-                if hasattr(trade, "max_rate") and trade.max_rate:
-                    drawdown = (trade.max_rate - current_rate) / trade.max_rate
-                    if drawdown > 0.01:  # 从最高点回撤 1%
-                        return "profit_drawdown_guard"
+            if current_profit > 0.03 and hasattr(trade, "max_rate") and trade.max_rate:
+                drawdown = (trade.max_rate - current_rate) / trade.max_rate
+                if drawdown > 0.01:  # 从最高点回撤 1%
+                    return "profit_drawdown_guard"
 
             # 时间止损：持仓超过 5 天
             if trade.open_date_utc:

@@ -783,11 +783,9 @@ class SocialAutopilot:
         try:
             self._main_loop = asyncio.get_running_loop()
         except RuntimeError:
-            # 如果在非异步上下文中初始化，尝试获取或创建事件循环
-            try:
-                self._main_loop = asyncio.get_event_loop()
-            except RuntimeError:
-                self._main_loop = None
+            # Python 3.12 中 get_event_loop() 在无线程默认循环时会产生废弃警告；
+            # 非异步上下文保持 None，让 _run_async 使用 asyncio.run() 创建短生命周期循环。
+            self._main_loop = None
         SocialAutopilot._main_loop = self._main_loop
         logger.info("[Autopilot] SocialAutopilot 初始化 (主事件循环: %s)", self._main_loop is not None)
 

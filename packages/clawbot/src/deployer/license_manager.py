@@ -256,7 +256,7 @@ class LicenseManager:
         if not row:
             return {"ok": False, "message": "License Key 无效"}
 
-        username, status, max_dev, bound_json, expires = row
+        _username, status, max_dev, bound_json, expires = row
         if status != "active":
             return {"ok": False, "message": f"License 状态异常: {status}"}
         if expires and expires < time.strftime("%Y-%m-%d %H:%M:%S"):

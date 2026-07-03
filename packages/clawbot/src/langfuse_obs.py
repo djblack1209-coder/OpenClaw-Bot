@@ -203,7 +203,7 @@ def log_generation(
         logger.debug("[LangfuseObs] log_generation 失败: %s", e)
 
 
-def log_event(name: str, metadata: dict[str, Any] = None):
+def log_event(name: str, metadata: dict[str, Any] | None = None):
     """记录非 LLM 事件（如工具调用、错误等）"""
     if not _langfuse_client:
         return

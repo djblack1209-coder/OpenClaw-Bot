@@ -43,7 +43,7 @@ class TradingCommandsMixin:
             sub = args[0].lower() if args else "status"
             if sub == "start":
                 await trader.start()
-                await update.message.reply_text("AutoTrader 已启动 (扫描间隔%d分钟)" % trader.scan_interval)
+                await update.message.reply_text(f'AutoTrader 已启动 (扫描间隔{int(trader.scan_interval):d}分钟)')
             elif sub == "stop":
                 await trader.stop()
                 await update.message.reply_text("AutoTrader 已停止")
@@ -57,18 +57,17 @@ class TradingCommandsMixin:
                 await update.message.reply_text("手动触发交易循环...")
                 result = await trader.run_cycle_once()
                 await update.message.reply_text(
-                    "交易循环完成\n\n扫描信号: %d\n候选标的: %d\n交易提案: %d\n已执行: %d\n被拒绝: %d"
-                    % (result["scanned"], result["candidates"], result["proposals"], result["executed"], result["rejected"])
+                    '交易循环完成\n\n扫描信号: {:d}\n候选标的: {:d}\n交易提案: {:d}\n已执行: {:d}\n被拒绝: {:d}'.format(int(result["scanned"]), int(result["candidates"]), int(result["proposals"]), int(result["executed"]), int(result["rejected"]))
                 )
             elif sub == "confirm":
                 result = await trader.confirm_proposal()
                 if result:
-                    await update.message.reply_text("提案已执行: %s" % result.get("status", "unknown"))
+                    await update.message.reply_text('提案已执行: {}'.format(result.get("status", "unknown")))
                 else:
                     await update.message.reply_text("无待确认提案")
             elif sub == "cancel":
                 count = trader.cancel_proposals()
-                await update.message.reply_text("已取消 %d 个待确认提案" % count)
+                await update.message.reply_text(f'已取消 {int(count):d} 个待确认提案')
             else:
                 await update.message.reply_text(trader.format_status())
         except Exception as e:
@@ -230,7 +229,7 @@ class TradingCommandsMixin:
             if adv_period not in ("1mo", "3mo", "6mo", "1y", "2y", "5y"):
                 adv_period = "1y"
             if not adv_symbol:
-                await update.message.reply_text("请指定标的代码\n\n用法: /backtest %s AAPL" % subcmd.lower())
+                await update.message.reply_text(f'请指定标的代码\n\n用法: /backtest {subcmd.lower()} AAPL')
                 return
             await self._run_advanced_backtest(update, context, subcmd, adv_symbol, adv_period)
             return
@@ -242,7 +241,7 @@ class TradingCommandsMixin:
 
         if subcmd == "LIST":
             symbols = ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AMD"]
-            progress_msg = await update.message.reply_text("开始回测 %d 个标的 (%s)..." % (len(symbols), period))
+            progress_msg = await update.message.reply_text(f'开始回测 {len(symbols):d} 个标的 ({period})...')
             try:
                 from src.backtest_reporter import BacktestReporter
                 from src.backtester import format_multi_report, run_backtest
@@ -289,7 +288,7 @@ class TradingCommandsMixin:
         else:
             symbol = subcmd
             engine_label = "Freqtrade" if use_freqtrade else ("PyBroker" if use_pybroker else "自研")
-            await update.message.reply_text("开始回测 %s (%s) [%s引擎]..." % (symbol, period, engine_label))
+            await update.message.reply_text(f'开始回测 {symbol} ({period}) [{engine_label}引擎]...')
 
             if use_pybroker:
                 # ── PyBroker 引擎路径 (Numba加速+Bootstrap验证) ──
@@ -333,7 +332,7 @@ class TradingCommandsMixin:
                     if llm_text:
                         result_text += "\n\n🤖 AI 分析:\n" + llm_text
                     if not result.success:
-                        result_text = "回测失败: %s" % result.error
+                        result_text = f'回测失败: {result.error}'
 
                     if len(result_text) > TG_SAFE_LENGTH:
                         for part in result_text.split("\n\n"):
@@ -357,7 +356,7 @@ class TradingCommandsMixin:
                     report = await asyncio.to_thread(run_backtest, symbol, period=period)
                     result_text = report.format()
                     if report.total_trades > 0:
-                        result_text += "\n\n总交易: %d笔" % report.total_trades
+                        result_text += f'\n\n总交易: {int(report.total_trades):d}笔'
                         try:
                             reporter = BacktestReporter()
                             reporter.generate_report(report)
@@ -415,7 +414,7 @@ class TradingCommandsMixin:
         }
         label = mode_labels.get(mode, mode)
         await update.message.reply_text(
-            "开始 %s — %s (%s)...\n⏳ 高级分析可能需要较长时间，请耐心等待" % (label, symbol, period)
+            f'开始 {label} — {symbol} ({period})...\n⏳ 高级分析可能需要较长时间，请耐心等待'
         )
 
         try:
@@ -442,7 +441,7 @@ class TradingCommandsMixin:
                     enhanced = calc_enhanced_metrics(report)
                     if "error" not in enhanced:
                         extra = (
-                            "\n\n📈 增强绩效指标:\n"
+                            "\n\n📈 增强绩效指标:\n"  # noqa: UP031
                             "  Sortino比率: %.2f\n"
                             "  Calmar比率: %.2f\n"
                             "  最大连续亏损: %d次\n"
@@ -476,7 +475,7 @@ class TradingCommandsMixin:
                 result_text = format_walk_forward(wf_result)
 
             else:
-                result_text = "未知的分析模式: %s" % mode
+                result_text = f'未知的分析模式: {mode}'
 
             chat_id = update.effective_chat.id
             await send_long_message(chat_id, result_text, context)
@@ -486,7 +485,7 @@ class TradingCommandsMixin:
             from src.telegram_ux import send_error_with_retry
 
             await send_error_with_retry(
-                update, context, e, retry_command="/backtest %s %s %s" % (mode.lower(), symbol, period)
+                update, context, e, retry_command=f'/backtest {mode.lower()} {symbol} {period}'
             )
 
     async def _send_bokeh_chart(self, update, context, symbol: str, period: str):
@@ -545,7 +544,7 @@ class TradingCommandsMixin:
                 if file_size < 50 * 1024 * 1024:
                     await context.bot.send_document(
                         chat_id=update.effective_chat.id,
-                        document=open(report_path, "rb"),
+                        document=open(report_path, "rb"),  # noqa: SIM115
                         filename=f"{symbol}_tearsheet_{period}.html",
                         caption=(
                             f"📊 {symbol} QuantStats 完整报告 ({period})\n"
@@ -569,12 +568,12 @@ class TradingCommandsMixin:
         if subcmd == "set":
             preset_name = args[1].lower() if len(args) > 1 else ""
             if preset_name not in PRESET_ALLOCATIONS:
-                names = ", ".join("%s(%s)" % (k, v[0]) for k, v in PRESET_ALLOCATIONS.items())
-                await update.message.reply_text("可用预设配置:\n%s\n\n用法: /rebalance set tech" % names)
+                names = ", ".join(f'{k}({v[0]})' for k, v in PRESET_ALLOCATIONS.items())
+                await update.message.reply_text(f'可用预设配置:\n{names}\n\n用法: /rebalance set tech')
                 return
             label, targets = PRESET_ALLOCATIONS[preset_name]
             rebalancer.set_targets(targets)
-            await update.message.reply_text("已设置目标配置: %s\n\n%s" % (label, rebalancer.format_targets()))
+            await update.message.reply_text(f'已设置目标配置: {label}\n\n{rebalancer.format_targets()}')
             return
 
         if subcmd == "targets":

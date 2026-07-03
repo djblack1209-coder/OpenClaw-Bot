@@ -25,7 +25,7 @@ class KellyMixin:
         entry_price: float,
         stop_loss: float,
         take_profit: float = 0,
-        capital: float = None,
+        capital: float | None = None,
     ) -> dict:
         """
         基于凯利公式计算最优仓位（对标 freqtrade 的仓位优化）

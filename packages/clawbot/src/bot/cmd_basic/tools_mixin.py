@@ -111,7 +111,7 @@ class _ToolsMixin:
             buf = generate_qr(text)
 
             # 截断显示文本
-            display = text if len(text) <= 60 else text[:57] + "..."
+            display = text if len(text) <= 60 else f"{text[:57]}..."
             await context.bot.send_photo(
                 chat_id=update.effective_chat.id,
                 photo=buf,
@@ -391,12 +391,11 @@ end tell
                 import asyncio
 
                 from src.wechat_bridge import send_to_wechat
-                asyncio.create_task(send_to_wechat(
-                    "🖥 Claude Code 已在桌面启动" +
-                    (f"\n> {prompt[:80]}" if prompt else "")
+                asyncio.create_task(send_to_wechat(  # noqa: RUF006
+                    f"🖥 Claude Code 已在桌面启动{(f'\n> {prompt[:80]}' if prompt else '')}"
                 ))
             except Exception:
-                pass
+                pass  # 合理保留：该分支只用于显式跳过并继续后续降级/清理流程
 
         except Exception as e:
             logger.warning("[cmd_claude_code] 启动终端失败: %s", e)

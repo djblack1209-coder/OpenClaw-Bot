@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import contextlib
 import json
 import logging
 import os
@@ -422,7 +423,7 @@ class XianyuLive:
         old_cookies = self.cookies_str
         env_path = os.path.join(os.path.dirname(__file__), "..", "..", "config", ".env")
 
-        for i in range(90):  # 每 10 秒检查一次，共 15 分钟
+        for _i in range(90):  # 每 10 秒检查一次，共 15 分钟
             await asyncio.sleep(10)
             # 读取 .env 检查 Cookie 是否更新
             if os.path.exists(env_path):
@@ -582,7 +583,7 @@ class XianyuLive:
                 "cache-header": "app-key token ua wv",
                 "app-key": self._app_key,
                 "token": self.current_token,
-                "ua": XIANYU_USER_AGENT + " DingTalk(2.1.5)",
+                "ua": f"{XIANYU_USER_AGENT} DingTalk(2.1.5)",
                 "dt": "j",
                 "wv": "im:3,au:3,sy:6",
                 "sync": "0,0;0;0;",
@@ -898,10 +899,8 @@ class XianyuLive:
             except Exception as _san_err:
                 logger.warning("闲鱼消息消毒失败（fail-close，跳过本条消息）: %s", _san_err)
                 # HI-735: 消毒失败时给买家一个兜底回复，避免完全无响应
-                try:
+                with contextlib.suppress(Exception):
                     await self.send_msg(ws, chat_id, sender_id, "亲，消息没收到呢，麻烦重新发一下哦～")
-                except Exception:
-                    pass
                 return
 
             # AI 回复（直接异步调用 LiteLLM Router）

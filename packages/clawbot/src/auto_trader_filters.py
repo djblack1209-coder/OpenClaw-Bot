@@ -104,7 +104,7 @@ class AutoTraderFiltersMixin:
             quantity = max(1, int(max_cost / price))
 
         reasons = candidate.get("reasons", [])
-        reason_text = " | ".join(reasons) if reasons else ("信号评分%d" % score)
+        reason_text = " | ".join(reasons) if reasons else (f"信号评分{int(score)}")
 
         return TradeProposal(
             symbol=symbol,

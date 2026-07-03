@@ -49,7 +49,7 @@ async def execute_trade_via_pipeline(trade_dict: dict, pipeline=None, get_quote_
     qty = trade_dict.get("qty", 0)
 
     if not pipeline:
-        return "X %s %s: TradingPipeline not initialized" % (action, symbol)
+        return f"X {action} {symbol}: TradingPipeline not initialized"
 
     from src.models import TradeProposal
 
@@ -116,14 +116,13 @@ async def execute_trade_via_pipeline(trade_dict: dict, pipeline=None, get_quote_
     if status == "executed":
         tid = r.get("trade_id", "?")
         eq = r.get("quantity", qty)
-        return "[OK] %s %s x%s @ $%.2f (SL=$%.2f TP=$%.2f) trade#%s" % (
-            action, symbol, eq, entry_price, stop_loss, take_profit, tid)
+        return f"[OK] {action} {symbol} x{eq} @ ${entry_price:.2f} (SL=${stop_loss:.2f} TP=${take_profit:.2f}) trade#{tid}"
     elif status == "rejected":
         reason = r.get("reason", "")
-        return "[RISK REJECTED] %s %s: %s" % (action, symbol, reason)
+        return f"[RISK REJECTED] {action} {symbol}: {reason}"
     elif status == "skipped":
         reason = r.get("reason", "skipped")
-        return "[SKIP] %s: %s" % (symbol, reason)
+        return f"[SKIP] {symbol}: {reason}"
     else:
         reason = r.get("reason", status)
-        return "[ERROR] %s %s: %s" % (action, symbol, reason)
+        return f"[ERROR] {action} {symbol}: {reason}"

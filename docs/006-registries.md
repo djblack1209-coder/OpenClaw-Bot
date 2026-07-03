@@ -149,7 +149,7 @@
 ## 二、命令注册表
 
 
-> 最后更新: 2026-05-09 (同步 Frist-API 319px 移动端批注修复) | Bot 命令总数 104
+> 最后更新: 2026-07-02 (全面收口：安全门禁、/cli 注册、微信编号命令、Frist-API 渠道熔断) | Bot 命令总数 105
 
 ---
 
@@ -222,7 +222,7 @@
 | 管理端 Plus 账号台账 | `/admin.html` + `data-admin-plus-accounts` / `data-admin-plus-save` / `data-admin-plus-edit` / `/api/admin/plus-accounts` | 登记和更新自用 ChatGPT Plus 账号、Apple ID、到期、TRY 余额、设备/Profile 和合规状态；不进入用户 `/v1` 路由 |
 | 管理端 RT JSON 导入 | `/admin.html` + `data-admin-rt-accounts` / `data-admin-rt-import` / `/api/admin/rt-accounts/import` | 支持 JSON 数组、单个对象和 TXT 行导入 `refresh_token`、邮箱和账号 ID；只做脱敏台账和刷新准备，不减少 New-API 原有管理能力且不进入用户 `/v1` 路由 |
 | 管理员 2FA | `/api/admin/2fa/verify` + `data-admin-2fa-code` | 管理端 TOTP 二次验证；启用 `FRIST_API_REQUIRE_ADMIN_2FA=1` 后，管理 API 除 2FA 验证入口外都必须带有效二次验证会话 |
-| 生产边界检查 | `/api/admin/production-readiness` + `data-admin-readiness` | 汇总固定品牌域名、New-API 数据库、备份监控、管理员 2FA、真实支付商户和长期渠道 SLA 状态 |
+| 生产边界检查 | `/api/admin/production-readiness` + `data-admin-readiness` | 汇总固定品牌域名、New-API 数据库、备份监控、管理员 2FA、兑换码收款闭环和长期渠道 SLA 状态；自动支付商户仅作备用 |
 | 备份状态登记 | `/api/admin/backups/status` | 记录最近备份、恢复演练、备份目标、校验值和状态，供生产强制检查使用 |
 | 管理端补号 | `/admin.html` + `data-admin-replenish` | 独立管理端写入号源库存，不出现在用户端 |
 | 管理端代理地址 | `/admin.html` + `data-admin-proxy-url` | 可选填写代理请求地址，补号时自动与直连路径择优 |
@@ -255,16 +255,16 @@
 | `FRIST_API_CAPTCHA_MAX_ATTEMPTS` | 单个验证码最大错误次数 | 默认 `3`，超过后需刷新挑战 |
 | `FRIST_API_PASSWORD_RESET_TTL_MS` | 忘记密码验证码有效期 | 默认 `900000`，即 15 分钟 |
 | `FRIST_API_DATA_ENCRYPTION_KEY` | runtime 敏感字段加密密钥 | 公开模式必填；用于加密用户 Key 和上游 rawKey |
-| `FRIST_API_PUBLIC_GATEWAY_BASE_URL` | 用户导出和邮件使用的公网 `/v1` 网关地址 | 生产必须使用 HTTPS 品牌域名；`https://www.inroi.shop/v1` 是授权上游请求地址，不是用户导出入口 |
+| `FRIST_API_PUBLIC_GATEWAY_BASE_URL` | 用户导出和邮件使用的公网 `/v1` 网关地址 | 正式值应为 `https://frist-api.245334.xyz/v1`；nip.io 保留为兜底入口；`https://www.inroi.shop/v1` 是授权上游请求地址，不是用户导出入口 |
 | `FRIST_API_REQUIRE_CSRF` | Cookie 登录态非幂等接口 CSRF 校验开关 | 生产建议 `1`；公开模式和 `NODE_ENV=production` 会自动启用 |
 | `FRIST_API_REQUIRE_ADMIN_2FA` | 是否强制管理端 TOTP 二次验证 | 生产强制模式必须为 `1` |
 | `FRIST_API_ADMIN_TOTP_SECRETS` | 管理员 TOTP Base32 Secret 列表 | 逗号分隔；只放服务器环境变量或安全注入，不写文档正文 |
 | `FRIST_API_ADMIN_2FA_SESSION_TTL_MS` | 管理员 2FA 会话有效期 | 默认 `3600000`，即 1 小时 |
 | `FRIST_API_ALLOW_PRIVATE_UPSTREAM_URLS` | 是否允许管理端补号 URL 指向私网/本机地址 | 生产必须保持 `0`，只用于本地私网测试 |
-| `FRIST_API_CANONICAL_HOST` | Frist-API 唯一内容入口域名 | 当前为 `frist-api.101-43-41-96.nip.io`；Docker Compose 已透传 |
+| `FRIST_API_CANONICAL_HOST` | Frist-API 唯一内容入口域名 | 正式为 `frist-api.245334.xyz`；`frist-api.101-43-41-96.nip.io` 保留为 HTTP 兜底入口 |
 | `FRIST_API_REDIRECT_HOSTS` | 需要跳转到唯一入口的旧/裸域名 | 当前为 `101-43-41-96.nip.io`，只做 301，不直接服务页面；Docker Compose 已透传 |
-| `FRIST_API_ENFORCE_PRODUCTION_READINESS` | 是否强制生产边界检查 | `1` 时缺固定 HTTPS 品牌域名、New-API 数据库、2FA 或真实支付商户会启动失败 |
-| `FRIST_API_ALLOW_INSECURE_PUBLIC_HTTP` | 是否允许临时公网 HTTP 网关 | 免费 HTTP 过渡期才设 `1`；正式 HTTPS 域名应为 `0` |
+| `FRIST_API_ENFORCE_PRODUCTION_READINESS` | 是否强制生产边界检查 | `1` 时缺固定 HTTPS 品牌域名、New-API 数据库、2FA、兑换码/备份等运营闭环会启动失败；自动支付商户不是当前硬门槛 |
+| `FRIST_API_ALLOW_INSECURE_PUBLIC_HTTP` | 是否允许临时公网 HTTP 网关 | nip.io 兜底期才设 `1`；正式 HTTPS 域名已通后应为 `0` |
 | `FRIST_API_BACKUP_STATUS_MAX_AGE_HOURS` | 备份新鲜度上限 | 默认 `26` 小时，超过视为备份监控未闭环 |
 | `FRIST_API_SLA_RETENTION_DAYS` | 渠道 SLA 探测事件保留天数 | 默认 `30` 天 |
 | `FRIST_API_CHANNEL_MONITOR_ENABLED` | 是否启用后台 60 秒通道巡检 | `1` 启用；无人调用时也会巡检健康库存 |
@@ -272,6 +272,8 @@
 | `FRIST_API_CHANNEL_MONITOR_BATCH_SIZE` | 每轮巡检最多探测的 Key 数量 | 默认 `4`，防止一次性压测所有库存 |
 | `FRIST_API_CHANNEL_MONITOR_COOLDOWN_MS` | 同一 Key 自动巡检最小间隔毫秒 | 默认 `55000`，避免短时间重复探测 |
 | `FRIST_API_KEY_ALERT_WEBHOOK` | Key 认证/额度异常告警 Webhook | 可选；未配置 Telegram 时可走通用告警 Webhook |
+| `FRIST_API_GATEWAY_DAILY_SPEND_LIMIT_CENTS` | 上游 Key 默认日消费限额 | 可选；余额站库存可单 Key 覆盖，超过后自动熔断并切备用健康渠道 |
+| `FRIST_API_GATEWAY_SLOW_LATENCY_MS` | 慢线上游降级阈值 | 默认 `5000`；当余额站当日消费已超过剩余额度且响应慢，会自动下线该 Key |
 | `FRIST_API_TELEGRAM_BOT_TOKEN` | Telegram Bot Token | 可选；配置后自动发送一次性补号提醒 |
 | `FRIST_API_TELEGRAM_CHAT_ID` | Telegram 接收群/用户 ID | 与 Bot Token 搭配，用于接收 Key 异常提醒 |
 | `FRIST_API_PAYMENT_ENABLED` | 是否启用真实支付接口 | 总开关；未启用时仍可人工确认 |
@@ -312,7 +314,7 @@
 | 同步脚本 | `sync_new_api_upstream.sh` | `scripts/sync_new_api_upstream.sh` | 支持 `check` / `update`；`check` 发现落后返回非 0，适合 CI/定时任务 |
 | 定时同步 | `New-API Scheduled Sync` | `.github/workflows/new-api-sync.yml` | 每天检查最新 release，落后时自动开 `codex/new-api-scheduled-sync` PR；不会直接升级生产数据库 |
 | Frist-API 桥接 | `newApiBridge.js` | `apps/frist-api/server/newApiBridge.js` | 通过 New-API HTTP 接口承接用户看板、Token、日志、兑换、订阅、邀请和可选网关代理 |
-| 迁移演练 | `frist_api_newapi_migration_dry_run.mjs` | `scripts/frist_api_newapi_migration_dry_run.mjs` | 默认只读 Frist-API runtime，输出用户、Token、订单、日志迁移清单和风险提示，不写生产 New-API |
+| 迁移/回滚 | `frist_api_newapi_migration_dry_run.mjs` | `scripts/frist_api_newapi_migration_dry_run.mjs` | 默认只读 Frist-API runtime；`--package` 生成带时间戳的 runtime 备份、幂等迁移计划和回滚脚本；2026-07-03 已授权并执行生产 `--apply`，回滚目录在服务器 `/opt/frist-api/backups/newapi-migration-20260703T005433Z` |
 
 | 环境变量 | 用途 | 备注 |
 |----------|------|------|
@@ -324,9 +326,9 @@
 
 ---
 
-## 1. 注册命令一览（101 个）
+## 1. 注册命令一览（105 个）
 
-命令在 `multi_bot.py:288-397` 统一注册。
+命令在 `multi_bot.py` 统一注册；`/cli` 已正式挂到 `CLICommandsMixin`，不再作为预备死代码。
 
 ### 1.1 基础命令 — `BasicCommandsMixin` (cmd_basic_mixin.py, 1038 行) + `ToolsMixin` (cmd_basic/tools_mixin.py)
 
@@ -353,6 +355,7 @@
 | 18 | `/keyhealth` | `cmd_keyhealth` | API Key 健康验证报告 (Admin) | N |
 | 19 | `/tts` | `cmd_tts` | 文字转语音 (edge-tts, 支持6种中文音色) | N |
 | 20 | `/claude` | `cmd_claude` | Claude Code CLI 桥接，启动/停止 Claude Code 开发环境 | N |
+| 21 | `/cli` | `cmd_cli` | CLI-Anything 工具入口，支持 list/run/install/help/status；已补启动注册回归 | N |
 
 ### 1.2 投资命令 — `InvestCommandsMixin` (cmd_invest_mixin.py, 498 行)
 
@@ -697,21 +700,21 @@
 
 | 编号 | 映射命令 | 说明 |
 |------|----------|------|
-| 230 | `/ibuy` | IBKR 买入 |
-| 231 | `/isell` | IBKR 卖出 |
+| 230 | `/ibuy` | IBKR 买入（微信端不直接下单，需交易面板人工确认） |
+| 231 | `/isell` | IBKR 卖出（微信端不直接下单，需交易面板人工确认） |
 | 232 | `/ipositions` | IBKR 持仓 |
 | 233 | `/iorders` | IBKR 挂单 |
 | 234 | `/iaccount` | IBKR 账户 |
-| 235 | `/icancel` | 取消订单 |
+| 235 | `/icancel` | 取消订单（微信端不直接执行，需交易面板人工确认） |
 
 ### 300-308: 社媒
 
 | 编号 | 映射命令 | 说明 |
 |------|----------|------|
 | 300 | `/hot` | 热点发文 |
-| 301 | `/post` | 双平台发文 |
-| 302 | `/xpost` | 发 X |
-| 303 | `/xhspost` | 发小红书 |
+| 301 | `/post` | 双平台发文（仅生成待审草稿，不自动发布） |
+| 302 | `/xpost` | 发 X（仅生成待审草稿，不自动发布） |
+| 303 | `/xhspost` | 发小红书（仅生成待审草稿，不自动发布） |
 | 304 | `/social_plan` | 发文计划 |
 | 305 | `/social_persona` | 社媒人设 |
 | 306 | `/topic` | 题材研究 |
@@ -765,6 +768,9 @@
 |---|---|---|---|
 | `pytest` | `>=9.0.3,<10.0` | Python 测试框架 | 修复 Dependabot 报告的 tmpdir 处理漏洞 |
 | `pytest-asyncio` | `>=1.4.0,<2.0` | Python 异步测试插件 | 配套支持 pytest 9，避免依赖解析冲突 |
+| `requests` / `urllib3` | `>=2.33.0,<3` / `>=2.7.0,<3` | Python HTTP 兼容栈 | 修复历史版本组合告警，`pip check` 当前无冲突 |
+| `aiohttp` / `fastapi` / `starlette` / `litellm` | 安全下限版本 | 后端 API、网关与 LLM 路由 | 按 2026-07-02 官方/PyPI 安全下限收口，避免解析回退到已知漏洞版本 |
+| `crawl4ai` / `browser-use` / `crewai` / `docling` / `textblob` | 默认不安装，隔离可选 | 爬虫、浏览器 Agent、多 Agent、文档理解、英文情感分析 | 默认依赖树存在无修复漏洞或安全版本冲突；项目代码保持 graceful degradation，需要时单独隔离安装并审计 |
 | `react-simple-maps` | 已移除 | 桌面端世界地图 | 替换为 `d3-geo` + `topojson-client`，清理旧 d3 漏洞链 |
 | `d3-geo` | `^3.1.1` | 地理投影和 SVG path 生成 | `WorldMonitor` 直接渲染本地 TopoJSON |
 | `topojson-client` | `^3.1.0` | TopoJSON → GeoJSON | `WorldMonitor` 读取 `countries-110m.json` |
@@ -790,7 +796,7 @@
 
 | 包 | Stars | 用途 | 文件 | 版本 |
 |----|-------|------|------|------|
-| crawl4ai | 62.4k | 购物比价引擎 | shopping/crawl4ai_engine.py | >=0.6.0 |
+| crawl4ai | 62.4k | 购物比价引擎 | shopping/crawl4ai_engine.py | 默认不安装，隔离可选 |
 | RestrictedPython | 1.2k | 代码沙箱安全执行 | tools/code_tool.py | >=8.0 |
 | jieba | 34.8k | 中文分词+意图识别 | core/intent_parser.py | >=0.42.1 |
 | loguru | 23.7k | 全局结构化日志 | log_config.py | >=0.7.0 |
@@ -814,7 +820,7 @@
 | PyrateLimiter | 485 | API 令牌桶限流 | resilience.py | >=3.0.0 |
 | feedparser | 9.8k | RSS/Atom 解析 | news_fetcher.py | >=6.0.0 |
 | snownlp | 6k | 中文情感分析 | social_tools.py | >=0.12.3 |
-| textblob | 9k | 英文情感分析 | social_tools.py | >=0.18.0 |
+| textblob | 9k | 英文情感分析 | social_tools.py | 默认不安装，词袋降级 |
 | PyPortfolioOpt | 4.6k | 投资组合有效前沿优化 | rebalancer.py | >=1.5.0 |
 | exchange-calendars | 4.1k | 全球交易所日历 (50+) | auto_trader.py | >=4.5.0 |
 | alpaca-py | 1k | Alpaca 券商 SDK | alpaca_bridge.py | >=0.30.0 |
@@ -833,19 +839,19 @@
 | 包 | 用途 | 版本 |
 |----|------|------|
 | python-telegram-bot | Telegram Bot API | ~=22.5 |
-| litellm | 统一 LLM 路由 | >=1.70.0 |
+| litellm | 统一 LLM 路由 | >=1.84.0,<2.0.0 |
 | mem0ai | AI 记忆层 | >=0.1.30 |
-| browser-use | AI 浏览器代理 | >=0.2.0 |
+| browser-use | AI 浏览器代理 | 默认不安装，隔离可选 |
 | langfuse | LLM 观测平台 | >=2.0.0 |
-| crewai | 多 Agent 协作 | >=0.80.0 |
-| fastapi | 内控 API | >=0.115.0 |
+| crewai | 多 Agent 协作 | 默认不安装，原生投票降级 |
+| fastapi | 内控 API | >=0.120.4,<0.140.0 |
 | httpx | HTTP 客户端 | ~=0.28.1 |
-| yfinance | 美股数据 | ~=1.1.0 |
+| yfinance | 美股数据 | >=1.3.0,<2.0.0 |
 | akshare | A股数据 | >=1.15.0 |
 | ccxt | 加密货币 108+ 交易所 | >=4.4.0 |
 | DrissionPage | 反检测浏览器 | >=4.1.0 |
 | apscheduler | 定时任务 | >=3.10.0 |
-| pandas / numpy / ta | 数据分析+技术指标 | ~=2.3.3 / ~=2.0.2 / ~=0.11.0 |
+| pandas / numpy / ta | 数据分析+技术指标 | >=2.2,<3 / >=2.0.2,<3 / ~=0.11.0 |
 | optuna | 超参数优化 | >=4.0.0 |
 | python-dotenv | 环境变量加载 (.env) | ~=1.2.1 |
 | beautifulsoup4 | HTML 解析 | ~=4.14.3 |

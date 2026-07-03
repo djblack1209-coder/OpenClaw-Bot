@@ -73,7 +73,7 @@ except ImportError:
 
 # Telegram MarkdownV2 要求转义的字符
 _V2_ESCAPE_CHARS = r"_*[]()~`>#+-=|{}.!"
-_V2_ESCAPE_RE = re.compile(r"([" + re.escape(_V2_ESCAPE_CHARS) + r"])")
+_V2_ESCAPE_RE = re.compile(rf"([{re.escape(_V2_ESCAPE_CHARS)}])")
 
 
 # ══════════════════════════════════════════════════════
@@ -188,7 +188,7 @@ if HAS_MISTLETOE:
                     prefix = "•"
                 content = self._render_children(item).strip()
                 result.append(f"  {prefix} {content}")
-            return "\n".join(result) + "\n"
+            return f"{'\n'.join(result)}\n"
 
         def render_list_item(self, token: ListItem) -> str:
             return self._render_children(token)
@@ -231,10 +231,10 @@ if HAS_MISTLETOE:
             content = self._render_children(token).strip()
             # MarkdownV2 引用块
             lines = content.split("\n")
-            return "\n".join(f">{line}" for line in lines) + "\n"
+            return f"{'\n'.join(f'>{line}' for line in lines)}\n"
 
         def render_thematic_break(self, token: ThematicBreak) -> str:
-            return self._escape_v2("───────────────────") + "\n"
+            return f"{self._escape_v2('───────────────────')}\n"
 
         def render_html_block(self, token: HTMLBlock) -> str:
             # 原样输出 HTML 标签内容（转义）
@@ -330,7 +330,7 @@ if HAS_MISTLETOE:
                     prefix = "•"
                 content = self._render_children(item).strip()
                 result.append(f"  {prefix} {content}")
-            return "\n".join(result) + "\n"
+            return f"{'\n'.join(result)}\n"
 
         def render_list_item(self, token: ListItem) -> str:
             return self._render_children(token)

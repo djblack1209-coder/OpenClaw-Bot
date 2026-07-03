@@ -453,7 +453,7 @@ class ContentAdapter:
         if len(content) > max_chars:
             # 为省略号和 hashtag 留空间
             reserve = 50 if add_hashtags else 5
-            content = content[:max_chars - reserve] + "..."
+            content = f"{content[:max_chars - reserve]}..."
 
         return content
 

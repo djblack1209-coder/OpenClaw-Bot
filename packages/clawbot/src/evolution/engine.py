@@ -348,7 +348,7 @@ class EvolutionEngine:
             seen_names.add(repo.name)
 
             # 语言过滤
-            if repo.language and repo.language.lower() not in [l.lower() for l in self.languages]:
+            if repo.language and repo.language.lower() not in [language.lower() for language in self.languages]:
                 continue
 
             # Star 数过滤
@@ -671,7 +671,7 @@ class EvolutionEngine:
         """追加扫描记录到 history.jsonl"""
         HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
         with open(HISTORY_FILE, "a", encoding="utf-8") as f:
-            f.write(json.dumps(scan_result.to_dict(), ensure_ascii=False) + "\n")
+            f.write(f"{json.dumps(scan_result.to_dict(), ensure_ascii=False)}\n")
 
     def get_scan_history(self, limit: int = 20) -> list[dict]:
         """获取最近的扫描历史。"""

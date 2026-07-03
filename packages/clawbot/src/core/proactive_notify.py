@@ -37,7 +37,7 @@ async def _send_proactive(user_id: str, text: str):
         import asyncio
 
         from src.wechat_bridge import send_to_wechat
-        asyncio.create_task(send_to_wechat(f"💡 {text}"))
+        asyncio.create_task(send_to_wechat(f"💡 {text}"))  # noqa: RUF006
     except Exception as e:
         logger.debug("[WeChat] 主动通知镜像失败: %s", e)
 

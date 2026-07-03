@@ -134,7 +134,7 @@ async def compose_post(
         if result.get("success"):
             text = result.get("raw", "").strip()
             if platform == "x" and len(text) > max_length:
-                text = text[:max_length - 3] + "..."
+                text = f"{text[:max_length - 3]}..."
             return {"success": True, "text": text, "platform": platform}
         return {"success": False, "error": "内容生成失败"}
     except Exception as e:

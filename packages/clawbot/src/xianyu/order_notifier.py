@@ -142,7 +142,7 @@ class OrderNotifier:
 
         if loop is not None:
             # 异步上下文 — 在后台任务中用 httpx 异步发送，不阻塞事件循环
-            asyncio.ensure_future(self._send_telegram_async(url, payload))
+            asyncio.ensure_future(self._send_telegram_async(url, payload))  # noqa: RUF006
         else:
             # 同步上下文 — 用 httpx 同步客户端
             self._send_telegram_sync(url, payload)

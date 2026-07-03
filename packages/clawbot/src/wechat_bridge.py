@@ -28,11 +28,10 @@ import secrets
 from pathlib import Path
 
 from src.constants import TG_SAFE_LENGTH
+from src.http_client import ResilientHTTPClient
 from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
-
-from src.http_client import ResilientHTTPClient
 
 # 模块级别 HTTP 客户端（自动重试 + 熔断）
 _http = ResilientHTTPClient(timeout=15.0, name="wechat_bridge")
@@ -54,7 +53,7 @@ class _CredentialStore:
     使用 __slots__ 限制属性访问，__repr__ 屏蔽敏感值，
     避免 token 在日志、调试器或 dir() 中意外泄露。
     """
-    __slots__ = ("_context_token", "_context_token_ts", "_token", "_user_id", "_warned")
+    __slots__ = ("_context_token", "_context_token_ts", "_token", "_token_expired_warned", "_user_id", "_warned")
 
     def __init__(self) -> None:
         self._token: str | None = None
@@ -62,6 +61,7 @@ class _CredentialStore:
         self._context_token: str | None = None
         self._context_token_ts: float = 0
         self._warned: bool = False
+        self._token_expired_warned: bool = False
 
     def __repr__(self) -> str:
         # 屏蔽敏感值，防止在日志或调试中意外泄露
@@ -102,6 +102,14 @@ class _CredentialStore:
     @warned.setter
     def warned(self, value: bool) -> None:
         self._warned = value
+
+    @property
+    def token_expired_warned(self) -> bool:
+        return self._token_expired_warned
+
+    @token_expired_warned.setter
+    def token_expired_warned(self, value: bool) -> None:
+        self._token_expired_warned = value
 
     def _ensure_loaded(self) -> None:
         """懒加载凭证 — 首次访问时才从文件读取"""
@@ -174,6 +182,35 @@ def _build_headers(token: str, body_bytes: bytes) -> dict:
     return headers
 
 
+def _parse_ilink_json(resp) -> dict:
+    """解析 iLink JSON 响应，解析失败时返回空对象。"""
+    try:
+        data = resp.json()
+    except ValueError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _is_ilink_token_expired(data: dict) -> bool:
+    """识别 iLink 平台侧 Bot Token 失效错误。"""
+    return int(data.get("errcode") or 0) == -14
+
+
+def _warn_ilink_token_expired_once(stage: str, data: dict) -> None:
+    """只告警一次，明确告诉用户需要重新扫码授权。"""
+    _creds.clear_context()
+    if _creds.token_expired_warned:
+        return
+    _creds.token_expired_warned = True
+    logger.warning(
+        "[WeChatBridge] iLink bot token 已失效(%s errcode=-14)，"
+        "请在本机执行 openclaw channels login --channel openclaw-weixin 重新扫码授权；"
+        "系统不会伪造 token，也不会继续把微信通知误判为发送成功。errmsg=%s",
+        stage,
+        scrub_secrets(str(data.get("errmsg") or data.get("message") or ""))[:120],
+    )
+
+
 def is_wechat_notify_enabled() -> bool:
     """检查微信通知是否已启用并有凭证。"""
     if not _WECHAT_ENABLED:
@@ -201,14 +238,18 @@ async def _get_context_token(token: str, user_id: str) -> str | None:
             headers=headers,
         )
         if resp.status_code == 200:
-                data = resp.json()
-                ct = data.get("context_token", "")
-                if ct:
-                    _creds.context_token = ct
-                    _creds.context_token_ts = time.time()
-                    return ct
+            data = _parse_ilink_json(resp)
+            if _is_ilink_token_expired(data):
+                _warn_ilink_token_expired_once("getconfig", data)
+                return None
+            ct = data.get("context_token", "")
+            if ct:
+                _creds.context_token = ct
+                _creds.context_token_ts = time.time()
+                return ct
     except Exception as e:
-        logger.debug(f"[WeChatBridge] getconfig 失败: {e}")
+        # 参考 httpx 官方 Exceptions 文档（2026-07-02 访问版）：网络/超时异常由 ResilientHTTPClient 重试后在这里统一降级。
+        logger.debug("[WeChatBridge] getconfig 失败: %s", scrub_secrets(str(e)))
     return None
 
 
@@ -268,7 +309,7 @@ async def send_to_wechat(text: str, user_id: str | None = None) -> bool:
     headers = _build_headers(token, body_bytes)
 
     # 最多重试 1 次（仅用于 401/403 token 刷新，网络级重试由 ResilientHTTPClient 处理）
-    for attempt in range(2):
+    for _attempt in range(2):
         try:
             resp = await _http.post(
                 f"{_ILINK_BASE}/ilink/bot/sendmessage",
@@ -276,6 +317,10 @@ async def send_to_wechat(text: str, user_id: str | None = None) -> bool:
                 headers=headers,
             )
             if resp.status_code == 200:
+                data = _parse_ilink_json(resp)
+                if _is_ilink_token_expired(data):
+                    _warn_ilink_token_expired_once("sendmessage", data)
+                    return False
                 logger.debug(f"[WeChatBridge] 消息已发送到微信 {target[:20]}...")
                 return True
             # token 过期，清缓存重试
@@ -283,9 +328,10 @@ async def send_to_wechat(text: str, user_id: str | None = None) -> bool:
                 _creds.clear_context()
                 context_token = await _get_context_token(token, target)
                 continue
-            logger.warning(f"[WeChatBridge] 发送失败 HTTP {resp.status_code}: {scrub_secrets(resp.text[:200])}")
+            logger.warning("[WeChatBridge] 发送失败 HTTP %s: %s", resp.status_code, scrub_secrets(resp.text[:200]))
             _creds.clear_context()
         except Exception as e:
+            # 参考 httpx 官方 Exceptions 文档（2026-07-02 访问版）：请求异常只记录脱敏原因，避免泄露 token。
             logger.warning("[微信桥接] 发送失败: %s", e)
     return False
 

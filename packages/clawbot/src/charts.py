@@ -342,8 +342,8 @@ def generate_pnl_waterfall(
 
     # Waterfall: measures = "relative" for each trade, "total" for final
     measures = ["relative"] * len(pnls) + ["total"]
-    labels = symbols + ["合计"]
-    values = pnls + [sum(pnls)]
+    labels = [*symbols, "合计"]
+    values = [*pnls, sum(pnls)]
 
     fig = go.Figure(
         go.Waterfall(

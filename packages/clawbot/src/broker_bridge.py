@@ -284,7 +284,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                             proc = await asyncio.create_subprocess_exec(
                                 *shlex.split(start_cmd), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
                             )
-                            stdout, stderr = await asyncio.wait_for(
+                            _stdout, stderr = await asyncio.wait_for(
                                 proc.communicate(), timeout=IBKR_GATEWAY_LAUNCH_TIMEOUT
                             )
                             if proc.returncode == 0:
@@ -504,7 +504,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         if "error" in summary:
             return summary["error"]
 
-        lines = ["IBKR 模拟账户 (%s)\n" % self.account]
+        lines = [f"IBKR 模拟账户 ({self.account})\n"]
         tag_names = {
             "NetLiquidation": "净清算价值",
             "TotalCashValue": "现金余额",
@@ -614,7 +614,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             async with self._budget_lock:
                 remaining = self.budget - self.total_spent
             if remaining <= 0:
-                return {"error": "预算已用完 ($%.2f/$%.2f)" % (self.total_spent, self.budget)}
+                return {"error": f"预算已用完 (${self.total_spent:.2f}/${self.budget:.2f})"}
 
         try:
             contract = self._make_contract(symbol)
@@ -892,12 +892,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         """获取预算使用情况"""
         remaining = self.budget - self.total_spent
         pct = (self.total_spent / self.budget * 100) if self.budget > 0 else 0
-        return ("IBKR 预算状态\n\n预算上限: $%.2f\n已使用: $%.2f (%.1f%%)\n剩余: $%.2f") % (
-            self.budget,
-            self.total_spent,
-            pct,
-            remaining,
-        )
+        return (f"IBKR 预算状态\n\n预算上限: ${self.budget:.2f}\n已使用: ${self.total_spent:.2f} ({pct:.1f}%)\n剩余: ${remaining:.2f}")
 
     def reset_budget(self, new_budget: float = 0.0):
         """重置预算（total_spent 归零）
@@ -944,15 +939,15 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         if self.is_connected():
             uptime_min = (_time.time() - self._connected_since) / 60 if self._connected_since else 0
             parts = [
-                "IBKR: 已连接 (%s, clientId=%d)" % (self.account, self.client_id),
-                "  连续运行: %.0f 分钟" % uptime_min,
-                "  连续心跳: %d 次" % self._consecutive_pings,
-                "  心跳延迟: %.0f ms" % self._last_ping_latency_ms,
-                "  累计断连: %d 次" % self._disconnect_count,
-                "  累计重连: %d 次" % self._total_reconnects,
+                f"IBKR: 已连接 ({self.account}, clientId={int(self.client_id)})",
+                f"  连续运行: {uptime_min:.0f} 分钟",
+                f"  连续心跳: {int(self._consecutive_pings)} 次",
+                f"  心跳延迟: {self._last_ping_latency_ms:.0f} ms",
+                f"  累计断连: {int(self._disconnect_count)} 次",
+                f"  累计重连: {int(self._total_reconnects)} 次",
             ]
             return "\n".join(parts)
-        return "IBKR: 未连接 (断连%d次, 重连%d次)" % (self._disconnect_count, self._total_reconnects)
+        return f"IBKR: 未连接 (断连{int(self._disconnect_count)}次, 重连{int(self._total_reconnects)}次)"
 
 
 # ── 向后兼容重导出 ──────────────────────────────────────────

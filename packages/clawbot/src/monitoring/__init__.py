@@ -48,21 +48,32 @@ async def check_g4f_health(**kwargs):
 
 
 # 导入 now_et 使得 @patch("src.monitoring.now_et") 在测试中仍然生效
-from src.utils import now_et
+from src.utils import now_et  # noqa: E402
 
 __all__ = [
-    # 指标
-    "PrometheusMetrics", "prom", "start_metrics_server", "_start_time",
+    "AlertManager",
     # 告警
-    "AlertRule", "AlertManager",
-    # 日志
-    "StructuredLogger", "TaskObserver", "task_observer",
-    # 健康
-    "HealthChecker", "AutoRecovery",
-    # 成本
-    "CostAnalyzer", "cost_analyzer",
+    "AlertRule",
     # 异常检测
-    "AnomalyDetector", "anomaly_detector",
+    "AnomalyDetector",
+    "AutoRecovery",
+    # 成本
+    "CostAnalyzer",
+    # 健康
+    "HealthChecker",
+    # 指标
+    "PrometheusMetrics",
+    # 日志
+    "StructuredLogger",
+    "TaskObserver",
+    "_start_time",
+    "anomaly_detector",
+    "check_g4f_health",
+    "cost_analyzer",
     # 辅助
-    "get_system_resources", "check_g4f_health", "now_et",
+    "get_system_resources",
+    "now_et",
+    "prom",
+    "start_metrics_server",
+    "task_observer",
 ]

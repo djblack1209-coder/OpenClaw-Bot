@@ -107,8 +107,7 @@ class ToolsExecutorMixin:
                     resp = await free_pool.acompletion(
                         model_family=FAMILY_DEEPSEEK,
                         messages=[{"role": "user", "content": task_desc}],
-                        system_prompt=SOUL_CORE
-                        + "\n\n你现在在做代码生成任务。只输出可执行的Python代码，不要解释。用```python代码块包裹。",
+                        system_prompt=f"{SOUL_CORE}\n\n你现在在做代码生成任务。只输出可执行的Python代码，不要解释。用```python代码块包裹。",
                         temperature=0.2,
                         max_tokens=2000,
                     )

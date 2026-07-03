@@ -6,6 +6,7 @@ v2 修复:
   - HI-NEW-03: 初始状态获取无异常保护 → 加 try/except 降级发送空状态
 """
 import asyncio
+import contextlib
 import json
 import logging
 import threading
@@ -26,7 +27,7 @@ _client_queues: dict[WebSocket, asyncio.Queue] = {}
 _lock = threading.Lock()
 
 
-def push_event(event_type: WSMessageType, data: dict = None):
+def push_event(event_type: WSMessageType, data: dict | None = None):
     """从任意上下文（同步/异步）推送事件到所有已连接客户端。线程安全。
 
     每个客户端有独立队列，不会因一个客户端消费而导致其他客户端丢失事件。
@@ -50,7 +51,7 @@ def push_event(event_type: WSMessageType, data: dict = None):
                     logger.debug("[WS] 慢客户端事件队列溢出: %s", e)
 
 
-async def broadcast_event(event_type: WSMessageType, data: dict = None):
+async def broadcast_event(event_type: WSMessageType, data: dict | None = None):
     """异步广播事件到所有已连接客户端。
     由其他模块在发生重要事件时调用。
     """
@@ -133,10 +134,8 @@ async def websocket_events(websocket: WebSocket):
                 # 取消未完成的任务
                 for task in pending:
                     task.cancel()
-                    try:
+                    with contextlib.suppress(asyncio.CancelledError, Exception):
                         await task
-                    except (asyncio.CancelledError, Exception):
-                        pass
 
                 if not done:
                     # 超时 — 发送心跳
@@ -178,7 +177,7 @@ async def websocket_events(websocket: WebSocket):
                 except Exception:
                     break
     except WebSocketDisconnect:
-        pass
+        pass  # 合理保留：客户端主动断开属于正常流程
     except Exception as e:
         logger.debug("WebSocket error: %s", e)
     finally:

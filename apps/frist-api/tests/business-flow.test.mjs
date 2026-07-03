@@ -702,20 +702,25 @@ describe('Frist-API page business wiring', () => {
     }
   });
 
-  it('documents the payment last-mile work that still needs the operator', () => {
+  it('documents the current redemption-code billing path and keeps automatic payment optional', () => {
     const runbook = readFileSync(new URL('../../../docs/007-operations.md', import.meta.url), 'utf8');
 
     for (const required of [
+      '闲鱼等第三方平台 C2C 售卖兑换码',
+      'Frist-API `#redeem` 页面自动核销',
+      '自动支付备用说明（当前不推进）',
+      '不要求开户注册',
+      '不需要自动支付商户资质',
+      '卡密库存告警',
+      '人工入账只作为异常兜底',
       '支付宝当面付',
       '微信支付 Native',
       '商户号',
       '签名密钥',
       '异步通知',
-      '收款二维码',
-      '人工确认入账',
       '不要把密钥发到聊天里',
     ]) {
-      assert.equal(runbook.includes(required), true, `${required} 应该写入支付最后一公里手册`);
+      assert.equal(runbook.includes(required), true, `${required} 应该写入当前收款边界手册`);
     }
   });
 

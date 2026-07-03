@@ -30,7 +30,7 @@ def ping():
         return ClawBotRPC._rpc_ping()
     except Exception as e:
         logger.exception("Ping 失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.get("/perf")
@@ -66,7 +66,7 @@ def perf_metrics():
             today_messages = _stats.get("today_messages", 0)
             active_users = len(_bots) if _bots else 0
         except Exception:
-            pass
+            pass  # 合理保留：该分支只用于显式跳过并继续后续降级/清理流程
 
         # 系统资源（转为前端期望的字段名）
         cpu_count = os.cpu_count() or 1
@@ -102,7 +102,7 @@ def perf_metrics():
         }
     except Exception as e:
         logger.exception("获取性能指标失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.get("/status", response_model=SystemStatus)
@@ -112,7 +112,7 @@ def system_status():
         return ClawBotRPC._rpc_system_status()
     except Exception as e:
         logger.exception("获取系统状态失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 # ============ 今日简报 ============
@@ -223,7 +223,7 @@ async def daily_brief():
         return result
     except Exception as e:
         logger.exception("获取今日简报失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 # ============ 通知中心 ============
@@ -295,7 +295,7 @@ def list_notifications(
         }
     except Exception as e:
         logger.exception("获取通知列表失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.post("/system/notifications/{notification_id}/read")
@@ -310,7 +310,7 @@ def mark_notification_read(notification_id: str = Path(...)):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.post("/system/notifications/read-all")
@@ -324,7 +324,7 @@ def mark_all_notifications_read():
                 count += 1
         return {"ok": True, "marked_count": count}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 # ============ 服务管理 ============
@@ -389,7 +389,7 @@ def _check_process_alive(keyword: str, port: int | None = None) -> bool:
         if result.returncode == 0:
             return True
     except Exception:
-        pass
+        pass  # 合理保留：该分支只用于显式跳过并继续后续降级/清理流程
     # pgrep 没找到（可能在 Docker 里），尝试端口探活
     if port:
         import socket
@@ -397,7 +397,7 @@ def _check_process_alive(keyword: str, port: int | None = None) -> bool:
             with socket.create_connection(("127.0.0.1", port), timeout=2):
                 return True
         except (OSError, ConnectionRefusedError):
-            pass
+            pass  # 合理保留：该分支只用于显式跳过并继续后续降级/清理流程
     return False
 
 
@@ -428,7 +428,7 @@ def _get_process_uptime_seconds(keyword: str) -> int | None:
         elif len(parts) == 4:    # DD:HH:MM:SS
             return parts[0] * 86400 + parts[1] * 3600 + parts[2] * 60 + parts[3]
     except Exception:
-        pass
+        pass  # 合理保留：该分支只用于显式跳过并继续后续降级/清理流程
     return None
 
 
@@ -465,7 +465,7 @@ def list_services():
         return {"services": services}
     except Exception as e:
         logger.exception("获取服务列表失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.get("/system/services/{service_id}")
@@ -576,7 +576,7 @@ def start_service(service_id: str = Path(...)):
         raise
     except Exception as e:
         logger.exception("启动服务 %s 失败", service_id)
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.post("/system/services/{service_id}/stop")
@@ -634,7 +634,7 @@ def stop_service(service_id: str = Path(...)):
         raise
     except Exception as e:
         logger.exception("停止服务 %s 失败", service_id)
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 # ============ 开发者面板辅助端点 ============
@@ -674,7 +674,7 @@ def git_log():
         return commits
     except Exception as e:
         logger.exception("获取 Git 日志失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.get("/system/health-summary")
@@ -752,7 +752,7 @@ def health_summary():
         }
     except Exception as e:
         logger.exception("解析 HEALTH.md 失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.get("/system/outdated-deps")
@@ -777,4 +777,4 @@ def outdated_deps():
         return packages
     except Exception as e:
         logger.exception("检查过时依赖失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e

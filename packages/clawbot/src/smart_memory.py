@@ -593,7 +593,7 @@ class SmartMemoryPipeline:
 {{"consolidated": ["整合后记忆1", "整合后记忆2"], "removed_keys": ["被合并的旧记忆key1", "key2"]}}
 ```"""
 
-    async def consolidate(self, chat_id: int = None, category: str = None, min_count: int = 15):
+    async def consolidate(self, chat_id: int | None = None, category: str | None = None, min_count: int = 15):
         """周期性记忆整合 — 将碎片化记忆合并为精炼摘要
 
         借鉴 Letta 的 memory consolidation 机制:

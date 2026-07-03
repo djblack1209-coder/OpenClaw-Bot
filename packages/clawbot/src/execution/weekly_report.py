@@ -98,7 +98,7 @@ async def weekly_report() -> str:
 
             xctx = XianyuContextManager()
         except ImportError:
-            pass
+            pass  # 合理保留：可选依赖缺失时继续走后续降级链
 
         if xctx:
             items = []
@@ -139,7 +139,7 @@ async def weekly_report() -> str:
 
             ca = cost_analyzer
         except ImportError:
-            pass
+            pass  # 合理保留：可选依赖缺失时继续走后续降级链
 
         if ca:
             items = []
@@ -181,7 +181,7 @@ async def weekly_report() -> str:
 
             tj = journal
         except ImportError:
-            pass
+            pass  # 合理保留：可选依赖缺失时继续走后续降级链
 
         if tj and hasattr(tj, "format_target_progress"):
             progress_text = tj.format_target_progress()

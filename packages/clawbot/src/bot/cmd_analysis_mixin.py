@@ -129,7 +129,7 @@ class AnalysisCommandsMixin:
                 try:
                     days = int(context.args[0])
                 except ValueError as e:  # noqa: F841
-                    await update.message.reply_text("⚠️ 天数参数无效 '%s'，使用默认值30天" % context.args[0])
+                    await update.message.reply_text(f"⚠️ 天数参数无效 '{context.args[0]}'，使用默认值30天")
             text = journal.format_performance(days)
             await send_long_message(update.effective_chat.id, text, context,
                                     reply_to_message_id=update.message.message_id)
@@ -188,7 +188,7 @@ class AnalysisCommandsMixin:
             role_name, role_prompt = review_roles.get(bot_id, ("分析师", "请复盘"))
             prompt = f"【每日复盘会议】\n{role_prompt}\n"
             if previous:
-                prompt += "\n前面的复盘意见:\n" + "\n---\n".join(previous) + "\n"
+                prompt += f"\n前面的复盘意见:\n{'\n---\n'.join(previous)}\n"
 
             try:
                 response = await asyncio.wait_for(caller(chat_id, prompt), timeout=120)
@@ -284,7 +284,7 @@ class AnalysisCommandsMixin:
                 days = int(context.args[0])
             except ValueError as e:  # noqa: F841
                 await update.message.reply_text(
-                    "⚠️ 天数参数无效 '%s'，使用默认值30天" % context.args[0])
+                    f"⚠️ 天数参数无效 '{context.args[0]}'，使用默认值30天")
 
         try:
             data = journal.get_prediction_accuracy(days)
@@ -341,10 +341,10 @@ class AnalysisCommandsMixin:
                 days = int(context.args[0])
             except ValueError as e:  # noqa: F841
                 await update.message.reply_text(
-                    "⚠️ 天数参数无效 '%s'，使用默认值30天" % context.args[0])
+                    f"⚠️ 天数参数无效 '{context.args[0]}'，使用默认值30天")
 
         try:
-            equity_values, date_labels = journal.get_equity_curve(days)
+            equity_values, _date_labels = journal.get_equity_curve(days)
 
             # 没有交易数据时的友好提示
             if not equity_values:
@@ -454,7 +454,7 @@ class AnalysisCommandsMixin:
                     stars = "★☆☆☆☆"
 
                 lesson = r.get("lessons_learned", "") or ""
-                lesson_short = lesson[:40] + "..." if len(lesson) > 40 else lesson
+                lesson_short = f"{lesson[:40]}..." if len(lesson) > 40 else lesson
 
                 pnl = r.get("total_pnl", 0) or 0
                 trades_count = r.get("trades_reviewed", 0) or 0

@@ -32,6 +32,48 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ─── 密钥扫描 + 依赖高危漏洞门禁 ───
+  security-gates:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 参考 GitHub Actions 官方 marketplace/release（2026-07-02 复核）：v6/v8 动作使用新版 Node 运行时，避免旧 Node 20 预警继续漂移。
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Secret scan with Gitleaks
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Audit desktop dependencies
+        working-directory: apps/openclaw-manager-src
+        run: npm audit --audit-level=high --omit=dev
+
+      - name: Audit Frist-API dependencies
+        working-directory: apps/frist-api
+        run: npm audit --audit-level=high --omit=dev
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.2.0
+
+      - name: Audit backend Python dependencies
+        working-directory: packages/clawbot
+        run: |
+          uv pip install --system pip-audit
+          pip-audit -r requirements.txt -r requirements-dev.txt --vulnerability-service pypi --progress-spinner off --cache-dir /tmp/openclaw-pip-audit-cache --timeout 10
+
   # ─── Python 后端测试 + Lint ───
   python-tests:
     runs-on: ubuntu-latest
@@ -40,18 +82,19 @@ jobs:
         working-directory: packages/clawbot
 
     steps:
+      # 参考 GitHub Actions 官方 marketplace/release（2026-07-02 复核）：checkout/setup-python/cache 均固定到已发布新版主版本。
       - uses: actions/checkout@v6
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v8.2.0
 
       - name: Cache uv dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/uv
           key: ${{ runner.os }}-uv-${{ hashFiles('packages/clawbot/requirements-dev.txt') }}

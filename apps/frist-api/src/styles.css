@@ -150,6 +150,27 @@ pre {
   min-height: 100vh;
 }
 
+.source-disclosure {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px clamp(18px, 4vw, 58px) 22px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+  text-align: center;
+  background: rgba(10, 10, 10, 0.92);
+}
+
+.source-disclosure a {
+  color: #fff;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .topbar,
 body[data-current-view="dashboard"] .topbar {
   position: relative;

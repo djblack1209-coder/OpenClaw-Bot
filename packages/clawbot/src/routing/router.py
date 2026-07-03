@@ -268,7 +268,7 @@ class ChatRouter(SessionMixin):
         # 7. 智能路由：关键词意图分类
         intents = self.classify_intent(text)
         if group_intent_enabled and intents:
-            top_intent, top_score = intents[0]
+            top_intent, _top_score = intents[0]
             preferred_bots = INTENT_BOT_MAP.get(top_intent, [])
             if bot_id in preferred_bots:
                 rank = preferred_bots.index(bot_id)
@@ -286,7 +286,7 @@ class ChatRouter(SessionMixin):
 
         # 9. 自动服务工作流
         starter_bot = self._select_service_workflow_starter()
-        if starter_bot and self.should_auto_service_workflow(text, chat_type):
+        if starter_bot and self.should_auto_service_workflow(text, chat_type):  # noqa: SIM102
             if bot_id == starter_bot and not self._already_responded(message_id, bot_id):
                 self._record_response(message_id, bot_id)
                 return True, f"service_workflow:auto -> {starter_bot}"
@@ -391,7 +391,7 @@ class ChatRouter(SessionMixin):
 
             intents = self.classify_intent(text)
             if group_intent_enabled and intents:
-                top_intent, top_score = intents[0]
+                top_intent, _top_score = intents[0]
                 preferred_bots = INTENT_BOT_MAP.get(top_intent, [])
                 if bot_id in preferred_bots:
                     rank = preferred_bots.index(bot_id)
@@ -407,7 +407,7 @@ class ChatRouter(SessionMixin):
                     return True, f"兜底轮换: {fallback_bot}"
 
             starter_bot = self._select_service_workflow_starter()
-            if starter_bot and self.should_auto_service_workflow(text, chat_type):
+            if starter_bot and self.should_auto_service_workflow(text, chat_type):  # noqa: SIM102
                 if bot_id == starter_bot and not self._already_responded(message_id, bot_id):
                     self._record_response(message_id, bot_id)
                     return True, f"service_workflow:auto -> {starter_bot}"
@@ -433,7 +433,7 @@ class ChatRouter(SessionMixin):
             return False
         with self._response_lock_sync:
             record = self._recent_responses.get(message_id)
-            if record and record["bot_id"] != current_bot_id:
+            if record and record["bot_id"] != current_bot_id:  # noqa: SIM102
                 if time.time() - record["time"] < self._response_window:
                     return True
             return False

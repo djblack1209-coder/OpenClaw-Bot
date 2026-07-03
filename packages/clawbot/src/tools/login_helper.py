@@ -56,7 +56,7 @@ class LoginHelper:
     def play_sound(self, sound_name: str = "Ping", repeat: int = 3) -> None:
         """播放 macOS 系统提示音 — 已禁用。"""
         # 用户明确要求不弹任何通知/声音
-        pass
+        pass  # 合理保留：该分支只用于显式跳过并继续后续降级/清理流程
 
     def open_url(self, url: str, bring_to_front: bool = True) -> bool:
         """在系统默认浏览器中打开 URL。

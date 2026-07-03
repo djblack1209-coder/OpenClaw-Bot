@@ -146,8 +146,7 @@ def _parse_single_article(article: str, since: str) -> TrendingRepo | None:
     # 总 star 数
     stars = 0
     star_match = re.search(
-        r'href="/' + re.escape(full_name) + r'/stargazers"[^>]*>\s*'
-        r'(?:<[^>]*>)*\s*([\d,]+)',
+        rf'href="/{re.escape(full_name)}' + r'/stargazers"[^>]*>\s*(?:<[^>]*>)*\s*([\d,]+)',
         article,
     )
     if star_match:
@@ -162,8 +161,7 @@ def _parse_single_article(article: str, since: str) -> TrendingRepo | None:
     # Fork 数
     forks = 0
     fork_match = re.search(
-        r'href="/' + re.escape(full_name) + r'/forks"[^>]*>\s*'
-        r'(?:<[^>]*>)*\s*([\d,]+)',
+        rf'href="/{re.escape(full_name)}' + r'/forks"[^>]*>\s*(?:<[^>]*>)*\s*([\d,]+)',
         article,
     )
     if fork_match:
@@ -307,7 +305,7 @@ async def fetch_readme(repo_name: str, token: str | None = None, max_chars: int 
     for branch in ("main", "master"):
         url = f"https://raw.githubusercontent.com/{repo_name}/{branch}/README.md"
         try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:  # noqa: SIM117
                 async with session.get(
                     url, headers=headers,
                     timeout=aiohttp.ClientTimeout(total=10),

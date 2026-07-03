@@ -214,9 +214,7 @@ class Backtester:
             return False
         if len(self._open_trades) >= self.config.max_concurrent:
             return False
-        if self._trades_today >= self.config.max_trades_per_day:
-            return False
-        return True
+        return not self._trades_today >= self.config.max_trades_per_day
 
     # ============ 持仓管理 ============
 
@@ -457,7 +455,7 @@ def format_multi_report(reports: dict[str, PerformanceReport]) -> str:
         "ClawBot 多标的回测汇总",
         "=" * 60,
         "",
-        "%-8s %6s %6s %10s %8s %6s" % ("标的", "交易数", "胜率", "总PnL", "回撤", "夏普"),
+        '{:<8} {:>6} {:>6} {:>10} {:>8} {:>6}'.format("标的", "交易数", "胜率", "总PnL", "回撤", "夏普"),
         "-" * 60,
     ]
 
@@ -467,11 +465,10 @@ def format_multi_report(reports: dict[str, PerformanceReport]) -> str:
         total_pnl += r.total_pnl
         total_trades += r.total_trades
         lines.append(
-            "%-8s %6d %5.1f%% $%+9.2f %6.1f%% %6.2f"
-            % (sym, r.total_trades, r.win_rate, r.total_pnl, r.max_drawdown_pct, r.sharpe_ratio)
+            f'{sym:<8} {int(r.total_trades):6d} {float(r.win_rate):5.1f}% ${float(r.total_pnl):+9.2f} {float(r.max_drawdown_pct):6.1f}% {float(r.sharpe_ratio):6.2f}'
         )
 
     lines.append("-" * 60)
-    lines.append("%-8s %6d %6s $%+9.2f" % ("合计", total_trades, "", total_pnl))
+    lines.append('{:<8} {:6d} {:>6} ${:+9.2f}'.format("合计", int(total_trades), "", float(total_pnl)))
     lines.append("=" * 60)
     return "\n".join(lines)

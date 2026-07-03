@@ -76,10 +76,10 @@ class WatchlistMonitor:
         self._running = False
         if self._task and not self._task.done():
             self._task.cancel()
-            try:
+            try:  # noqa: SIM105
                 await self._task
             except asyncio.CancelledError as e:  # noqa: F841
-                pass
+                pass  # 合理保留：任务取消是正常停止流程
         logger.info("📡 自选股异动监控已停止")
 
     def _loop_done(self, task: asyncio.Task):

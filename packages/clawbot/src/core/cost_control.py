@@ -140,7 +140,7 @@ class CostController:
         # 持久化
         try:
             with open(DAILY_LOG, "a") as f:
-                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+                f.write(f"{json.dumps(record, ensure_ascii=False)}\n")
         except Exception as e:
             logger.warning("[CostControl] 成本记录持久化失败: %s", e)
 

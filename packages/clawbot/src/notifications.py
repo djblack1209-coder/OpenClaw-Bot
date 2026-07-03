@@ -460,7 +460,7 @@ class NotificationManager:
             bus = get_event_bus()
 
             # 为每种映射的事件注册 handler
-            for event_type, config in _EVENT_NOTIFY_MAP.items():
+            for event_type, _config in _EVENT_NOTIFY_MAP.items():
                 bus.subscribe(
                     event_type,
                     self._on_event,

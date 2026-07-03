@@ -116,7 +116,7 @@ def _network_errors() -> tuple[type[Exception], ...]:
             _httpx.RemoteProtocolError,
         )
     except ImportError:
-        pass
+        pass  # 合理保留：可选依赖缺失时继续走后续降级链
     return base + httpx_net
 
 

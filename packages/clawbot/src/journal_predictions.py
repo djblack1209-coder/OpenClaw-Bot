@@ -17,7 +17,7 @@ class JournalPredictionsMixin:
     def record_prediction(self, symbol: str, direction: str, target_price: float,
                           stop_price: float = 0, timeframe: str = '1d',
                           confidence: float = 0.5, reasoning: str = '',
-                          decided_by: str = '', trade_id: int = None) -> int:
+                          decided_by: str = '', trade_id: int | None = None) -> int:
         """记录 AI 研判预期（开仓时调用），返回 prediction_id"""
         from src.utils import now_et
         with self._conn() as conn:
@@ -63,7 +63,7 @@ class JournalPredictionsMixin:
         logger.debug("[Predictions] 记录 %d 条个体投票 (prediction_id=%d, symbol=%s)",
                      len(votes), prediction_id, symbol)
 
-    def validate_predictions(self, date: str = None) -> dict:
+    def validate_predictions(self, date: str | None = None) -> dict:
         """收盘验证：对比 AI 研判 vs 实际走势，同时验证个体投票"""
         if date is None:
             date = now_et().strftime('%Y-%m-%d')

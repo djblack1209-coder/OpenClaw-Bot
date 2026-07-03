@@ -175,7 +175,7 @@ class ContextManager:
             return any(kw in content for kw in self.KEY_MARKERS)
         if isinstance(content, list):
             for block in content:
-                if block.get("type") == "text":
+                if block.get("type") == "text":  # noqa: SIM102
                     if any(kw in block.get("text", "") for kw in self.KEY_MARKERS):
                         return True
         return False
@@ -199,7 +199,7 @@ class ContextManager:
         if isinstance(content, str):
             if len(content) <= max_chars:
                 return msg
-            truncated = content[:max_chars] + "...[已截断]"
+            truncated = f"{content[:max_chars]}...[已截断]"
             return {**msg, "content": truncated}
         if isinstance(content, list):
             new_blocks = []
@@ -207,7 +207,7 @@ class ContextManager:
                 if block.get("type") == "text":
                     text = block.get("text", "")
                     if len(text) > max_chars:
-                        new_blocks.append({**block, "text": text[:max_chars] + "...[已截断]"})
+                        new_blocks.append({**block, "text": f"{text[:max_chars]}...[已截断]"})
                     else:
                         new_blocks.append(block)
                 # 跳过图片等大块内容
@@ -379,7 +379,7 @@ class ContextManager:
         logger.info(f"上下文 {tokens} tokens 超过阈值 {self.COMPRESS_THRESHOLD}，自动本地压缩...")
 
         target = min(self.COMPRESS_THRESHOLD, model_max_tokens // 2)
-        compressed, summary = self.compress_local(messages, target_tokens=target)
+        compressed, _summary = self.compress_local(messages, target_tokens=target)
         return compressed, True
 
     def update_history_store(
@@ -639,7 +639,7 @@ class TieredContextManager:
         """追加到 core memory 条目"""
         core = self._get_core(chat_id)
         existing = core.get(key, "")
-        core[key] = (existing + "\n" + text).strip()
+        core[key] = f"{existing}\n{text}".strip()
         if chat_id == 0:
             self._core_dirty_global = True
         else:
@@ -655,7 +655,7 @@ class TieredContextManager:
                 parts.append(f"[{label}]\n{value}")
         if not parts:
             return ""
-        return "=== Core Memory ===\n" + "\n\n".join(parts)
+        return f"=== Core Memory ===\n{'\n\n'.join(parts)}"
 
     # ---- Archival Memory 检索 ----
 
@@ -670,7 +670,7 @@ class TieredContextManager:
             parts = []
             for r in results:
                 parts.append(f"- [{r['category']}] {r['key']}: {r['value'][:150]} (sim={r['similarity']})")
-            return "=== Archival Memory (retrieved) ===\n" + "\n".join(parts)
+            return f"=== Archival Memory (retrieved) ===\n{'\n'.join(parts)}"
         except Exception as e:
             logger.debug(f"[TieredCtx] Archival search failed: {e}")
             return ""
@@ -760,7 +760,7 @@ class TieredContextManager:
                 logger.debug("[TieredCtx] user_profile 同步失败", exc_info=True)
 
         except ImportError:
-            pass
+            pass  # 合理保留：可选依赖缺失时继续走后续降级链
         except Exception as e:
             logger.debug(f"[TieredCtx] SmartMemory 同步失败: {e}")
 

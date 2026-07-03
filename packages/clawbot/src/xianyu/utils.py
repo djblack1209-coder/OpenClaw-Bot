@@ -35,7 +35,7 @@ def generate_device_id(user_id: str) -> str:
         else:
             # 使用密码学安全随机数替代 random.random()
             result.append(chars[secrets.randbelow(16)])
-    return "".join(result) + "-" + user_id
+    return f"{''.join(result)}-{user_id}"
 
 
 def generate_sign(t: str, token: str, data: str) -> str:
@@ -64,12 +64,16 @@ class _MsgPackDecoder:
     def _byte(self) -> int:
         if self.pos >= self.length:
             raise ValueError("Unexpected end")
-        b = self.data[self.pos]; self.pos += 1; return b
+        b = self.data[self.pos]
+        self.pos += 1
+        return b
 
     def _read(self, n: int) -> bytes:
         if self.pos + n > self.length:
             raise ValueError("Unexpected end")
-        r = self.data[self.pos:self.pos + n]; self.pos += n; return r
+        r = self.data[self.pos:self.pos + n]
+        self.pos += n
+        return r
 
     def _u8(self): return self._byte()
     def _u16(self): return struct.unpack(">H", self._read(2))[0]
@@ -85,34 +89,62 @@ class _MsgPackDecoder:
 
     def decode(self) -> Any:
         f = self._byte()
-        if f <= 0x7F: return f
-        if 0x80 <= f <= 0x8F: return self._map(f & 0x0F)
-        if 0x90 <= f <= 0x9F: return self._arr(f & 0x0F)
-        if 0xA0 <= f <= 0xBF: return self._str(f & 0x1F)
-        if f == 0xC0: return None
-        if f == 0xC2: return False
-        if f == 0xC3: return True
-        if f == 0xC4: return self._read(self._u8())
-        if f == 0xC5: return self._read(self._u16())
-        if f == 0xC6: return self._read(self._u32())
-        if f == 0xCA: return self._f32()
-        if f == 0xCB: return self._f64()
-        if f == 0xCC: return self._u8()
-        if f == 0xCD: return self._u16()
-        if f == 0xCE: return self._u32()
-        if f == 0xCF: return self._u64()
-        if f == 0xD0: return self._i8()
-        if f == 0xD1: return self._i16()
-        if f == 0xD2: return self._i32()
-        if f == 0xD3: return self._i64()
-        if f == 0xD9: return self._str(self._u8())
-        if f == 0xDA: return self._str(self._u16())
-        if f == 0xDB: return self._str(self._u32())
-        if f == 0xDC: return self._arr(self._u16())
-        if f == 0xDD: return self._arr(self._u32())
-        if f == 0xDE: return self._map(self._u16())
-        if f == 0xDF: return self._map(self._u32())
-        if f >= 0xE0: return f - 256
+        if f <= 0x7F:
+            return f
+        if 0x80 <= f <= 0x8F:
+            return self._map(f & 0x0F)
+        if 0x90 <= f <= 0x9F:
+            return self._arr(f & 0x0F)
+        if 0xA0 <= f <= 0xBF:
+            return self._str(f & 0x1F)
+        if f == 0xC0:
+            return None
+        if f == 0xC2:
+            return False
+        if f == 0xC3:
+            return True
+        if f == 0xC4:
+            return self._read(self._u8())
+        if f == 0xC5:
+            return self._read(self._u16())
+        if f == 0xC6:
+            return self._read(self._u32())
+        if f == 0xCA:
+            return self._f32()
+        if f == 0xCB:
+            return self._f64()
+        if f == 0xCC:
+            return self._u8()
+        if f == 0xCD:
+            return self._u16()
+        if f == 0xCE:
+            return self._u32()
+        if f == 0xCF:
+            return self._u64()
+        if f == 0xD0:
+            return self._i8()
+        if f == 0xD1:
+            return self._i16()
+        if f == 0xD2:
+            return self._i32()
+        if f == 0xD3:
+            return self._i64()
+        if f == 0xD9:
+            return self._str(self._u8())
+        if f == 0xDA:
+            return self._str(self._u16())
+        if f == 0xDB:
+            return self._str(self._u32())
+        if f == 0xDC:
+            return self._arr(self._u16())
+        if f == 0xDD:
+            return self._arr(self._u32())
+        if f == 0xDE:
+            return self._map(self._u16())
+        if f == 0xDF:
+            return self._map(self._u32())
+        if f >= 0xE0:
+            return f - 256
         raise ValueError(f"Unknown format: 0x{f:02x}")
 
     def _arr(self, n: int) -> list[Any]:

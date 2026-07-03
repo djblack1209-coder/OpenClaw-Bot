@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 # 序列化/反序列化使用 pickle，与 diskcache 行为一致
 # diskcache 默认用 pickle 存储复杂 Python 对象（如 LiteLLM Response）
-import pickle
+import pickle  # noqa: E402
 
 
 class DiskCache:

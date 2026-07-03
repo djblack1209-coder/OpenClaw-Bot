@@ -70,7 +70,7 @@ async def xianyu_status():
         return result
     except Exception as e:
         logger.exception("获取闲鱼状态失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 # ---------------------------------------------------------------------------
@@ -117,7 +117,7 @@ async def generate_qr_code():
 
     except Exception as e:
         logger.exception("闲鱼 QR 生成失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 # ---------------------------------------------------------------------------
@@ -232,7 +232,7 @@ async def qr_login_status():
 
     except Exception as e:
         logger.exception("闲鱼 QR 状态查询失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 # ---------------------------------------------------------------------------
@@ -283,7 +283,7 @@ async def get_xianyu_conversations(limit: int = 20):
         return {"conversations": [], "total": 0}
     except Exception as e:
         logger.exception("获取闲鱼对话失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 # ---------------------------------------------------------------------------
@@ -304,7 +304,7 @@ async def cookiecloud_status():
         return {"success": True, **manager.status}
     except Exception as e:
         logger.exception("获取 CookieCloud 状态失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @router.post("/xianyu/cookiecloud/sync")
@@ -331,7 +331,7 @@ async def cookiecloud_sync_now():
         }
     except Exception as e:
         logger.exception("CookieCloud 手动同步失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 class CookieCloudConfigRequest(BaseModel):
@@ -367,7 +367,7 @@ async def cookiecloud_configure(req: CookieCloudConfigRequest):
         }
     except Exception as e:
         logger.exception("CookieCloud 配置失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 # ---------------------------------------------------------------------------
@@ -389,7 +389,7 @@ async def get_xianyu_profit(days: int = 30):
         }
     except Exception as e:
         logger.exception("获取闲鱼利润失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 # ---------------------------------------------------------------------------

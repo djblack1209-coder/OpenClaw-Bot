@@ -126,7 +126,7 @@ class QuoteCache:
             timestamp=_time.time(), source=source,
         )
 
-    async def refresh(self, symbols: list[str] = None):
+    async def refresh(self, symbols: list[str] | None = None):
         """批量刷新报价"""
         if not self._get_quote_func:
             return
@@ -176,10 +176,10 @@ class QuoteCache:
         self._running = False
         if self._task:
             self._task.cancel()
-            try:
+            try:  # noqa: SIM105
                 await self._task
             except asyncio.CancelledError as e:  # noqa: F841
-                pass
+                pass  # 合理保留：任务取消是正常停止流程
         logger.info("[QuoteCache] 已停止")
 
     async def _refresh_loop(self):
@@ -210,11 +210,11 @@ class QuoteCache:
 
         lines = [
             "-- 行情缓存 --",
-            "监控标的: %d" % len(self._watch_symbols),
-            "缓存条目: %d (新鲜%d / 过期%d)" % (len(self._cache), fresh, stale),
-            "命中率: %.1f%% (%d/%d)" % (hit_rate, self._hits, total),
-            "API调用: %d (错误%d)" % (self._api_calls, self._errors),
-            "自动刷新: %s" % ("运行中" if self._running else "停止"),
+            f"监控标的: {len(self._watch_symbols)}",
+            f"缓存条目: {len(self._cache)} (新鲜{int(fresh)} / 过期{int(stale)})",
+            f"命中率: {hit_rate:.1f}% ({int(self._hits)}/{int(total)})",
+            f"API调用: {int(self._api_calls)} (错误{int(self._errors)})",
+            f"自动刷新: {'运行中' if self._running else '停止'}",
         ]
         return "\n".join(lines)
 

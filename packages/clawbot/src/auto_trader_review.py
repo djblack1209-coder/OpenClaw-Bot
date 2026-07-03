@@ -23,26 +23,23 @@ class AutoTraderReviewMixin:
             closed = tj.get_closed_trades(days=1, limit=20)
 
             lines = ["-- AutoTrader 收盘复盘 --\n"]
-            lines.append("今日盈亏: $%.2f (%d笔交易)" % (
-                today_pnl.get("pnl", 0), today_pnl.get("trades", 0)))
-            lines.append("扫描循环: %d次" % self._cycle_count)
+            lines.append(f"今日盈亏: ${today_pnl.get('pnl', 0):.2f} ({int(today_pnl.get('trades', 0))}笔交易)")
+            lines.append(f"扫描循环: {int(self._cycle_count)}次")
 
             wins = 0
             losses = 0
             if closed:
                 wins = sum(1 for t in closed if t.get("pnl", 0) >= 0)
                 losses = len(closed) - wins
-                lines.append("\n已平仓: %d笔 (盈%d 亏%d)" % (len(closed), wins, losses))
+                lines.append(f"\n已平仓: {len(closed)}笔 (盈{int(wins)} 亏{int(losses)})")
                 for t in closed:
                     sign = "+" if t.get("pnl", 0) >= 0 else ""
-                    lines.append("  %s %s %s$%.2f" % (
-                        t.get("side", "?"), t.get("symbol", "?"),
-                        sign, t.get("pnl", 0)))
+                    lines.append(f"  {t.get('side', '?')} {t.get('symbol', '?')} {sign}${t.get('pnl', 0):.2f}")
 
             if open_trades:
-                lines.append("\n持仓中: %d笔" % len(open_trades))
+                lines.append(f"\n持仓中: {len(open_trades)}笔")
                 for t in open_trades:
-                    lines.append("  %s x%s @ $%s 止损$%s" % (
+                    lines.append("  {} x{} @ ${} 止损${}".format(
                         t.get("symbol", "?"), t.get("quantity", "?"),
                         t.get("entry_price", "?"), t.get("stop_loss", "无")))
 
@@ -73,7 +70,7 @@ class AutoTraderReviewMixin:
                     logger.info("[AutoTrader] 复盘教训已持久化")
 
                 if lessons:
-                    lines.append("\n📝 教训: " + lessons)
+                    lines.append(f"\n📝 教训: {lessons}")
             except Exception as e:
                 logger.warning("[AutoTrader] 复盘持久化失败(非致命): %s", e)
 
@@ -82,5 +79,5 @@ class AutoTraderReviewMixin:
             await self._safe_notify("\n".join(lines))
         except Exception as e:
             logger.error("[AutoTrader] 复盘失败: %s", e)
-            await self._safe_notify("收盘复盘生成失败: %s" % e)
+            await self._safe_notify(f"收盘复盘生成失败: {e}")
         self.state = TraderState.IDLE

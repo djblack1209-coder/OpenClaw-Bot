@@ -76,7 +76,7 @@ def dashboard(date: str = ""):
         raise
     except Exception as e:
         logger.error(f"[XianyuAdmin] /api/dashboard 出错: {scrub_secrets(str(e))}", exc_info=True)
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 # ============================================================
@@ -105,7 +105,7 @@ def list_chats(limit: int = Query(50, le=200)):
         raise
     except Exception as e:
         logger.error(f"[XianyuAdmin] /api/chats 出错: {scrub_secrets(str(e))}", exc_info=True)
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 @app.get("/api/chats/{chat_id}")
@@ -129,7 +129,7 @@ def get_chat(chat_id: str, limit: int = Query(100, le=500)):
         raise
     except Exception as e:
         logger.error(f"[XianyuAdmin] /api/chats/{chat_id} 出错: {scrub_secrets(str(e))}", exc_info=True)
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 # ============================================================
@@ -154,7 +154,7 @@ def list_items():
         raise
     except Exception as e:
         logger.error(f"[XianyuAdmin] /api/items 出错: {scrub_secrets(str(e))}", exc_info=True)
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 # ============================================================
@@ -185,7 +185,7 @@ def list_orders(date: str = "", limit: int = Query(50, le=200)):
         raise
     except Exception as e:
         logger.error(f"[XianyuAdmin] /api/orders 出错: {scrub_secrets(str(e))}", exc_info=True)
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 # ============================================================
@@ -219,7 +219,7 @@ def list_consultations(date: str = "", limit: int = Query(50, le=200)):
         raise
     except Exception as e:
         logger.error(f"[XianyuAdmin] /api/consultations 出错: {scrub_secrets(str(e))}", exc_info=True)
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 # ============================================================
@@ -241,7 +241,7 @@ def system_status():
         return status
     except Exception as e:
         logger.error(f"[XianyuAdmin] /api/status 出错: {scrub_secrets(str(e))}", exc_info=True)
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 # ============================================================
@@ -260,7 +260,7 @@ def list_prompts():
         return prompts
     except Exception as e:
         logger.error(f"[XianyuAdmin] /api/prompts GET 出错: {scrub_secrets(str(e))}", exc_info=True)
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 class PromptUpdate(BaseModel):
@@ -286,7 +286,7 @@ def update_prompt(req: PromptUpdate):
         raise
     except Exception as e:
         logger.error(f"[XianyuAdmin] /api/prompts POST 出错: {scrub_secrets(str(e))}", exc_info=True)
-        raise HTTPException(status_code=500, detail=_safe_error(e))
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 # ============================================================

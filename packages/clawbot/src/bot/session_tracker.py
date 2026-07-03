@@ -127,7 +127,7 @@ class SessionTrackerMixin:
         # 发送恢复摘要
         try:
             gap_text = f"{gap_hours:.0f}小时" if gap_hours < 24 else f"{gap_hours / 24:.0f}天"
-            greeting = f"👋 你离开了 {gap_text}，这期间发生了：\n" + "\n".join(summary_parts)
+            greeting = f"👋 你离开了 {gap_text}，这期间发生了：\n{'\n'.join(summary_parts)}"
             await update.message.reply_text(greeting)
             return True
         except Exception:

@@ -39,7 +39,7 @@ class InvestExecutorMixin:
                     "vetoed": result.is_vetoed,
                 }
         except ImportError:
-            pass
+            pass  # 合理保留：可选依赖缺失时继续走后续降级链
         except Exception as e:
             logger.warning(f"Pydantic 分析引擎失败: {scrub_secrets(str(e))}")
 
@@ -78,7 +78,7 @@ class InvestExecutorMixin:
             if team:
                 return await team.quant_analysis(params.get("symbol", ""))
         except ImportError:
-            pass
+            pass  # 合理保留：可选依赖缺失时继续走后续降级链
         return {"source": "quant_unavailable", "note": "量化分析模块未就绪"}
 
     async def _exec_risk_check(self, params: dict) -> dict:

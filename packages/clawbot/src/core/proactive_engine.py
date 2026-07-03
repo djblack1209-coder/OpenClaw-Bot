@@ -283,7 +283,7 @@ class ProactiveEngine:
             )
             return result
         except ImportError:
-            pass
+            pass  # 合理保留：可选依赖缺失时继续走后续降级链
 
         # 降级: 用 free_pool + json_repair
         try:
@@ -388,7 +388,7 @@ class ProactiveEngine:
             "TRUE",
             "FALSE",
         }
-        tickers = sorted(set(t for t in tickers if t not in _noise_words))
+        tickers = sorted({t for t in tickers if t not in _noise_words})
         parts.extend(tickers)
 
         # 2. 提取数字变化方向

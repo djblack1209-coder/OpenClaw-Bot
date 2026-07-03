@@ -83,7 +83,7 @@ def _get_instructor_client(router: Any) -> Any:
 # ── 公开 API ─────────────────────────────────────────────────
 
 
-async def structured_completion(
+async def structured_completion[T: BaseModel](
     response_model: type[T],
     messages: list[dict[str, str]],
     model_family: str = FAMILY_QWEN,
@@ -125,7 +125,7 @@ async def structured_completion(
 
     # 合并 system prompt 到 messages
     all_msgs = (
-        [{"role": "system", "content": system_prompt}] + messages
+        [{"role": "system", "content": system_prompt}, *messages]
         if system_prompt
         else list(messages)
     )
@@ -164,7 +164,7 @@ async def structured_completion(
 # ── instructor 路径 ──────────────────────────────────────────
 
 
-async def _instructor_path(
+async def _instructor_path[T: BaseModel](
     response_model: type[T],
     messages: list[dict[str, str]],
     model_family: str,
@@ -202,7 +202,7 @@ async def _instructor_path(
 # ── json_repair 降级路径 ─────────────────────────────────────
 
 
-async def _fallback_path(
+async def _fallback_path[T: BaseModel](
     response_model: type[T],
     messages: list[dict[str, str]],
     model_family: str,

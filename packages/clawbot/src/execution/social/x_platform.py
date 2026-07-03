@@ -205,8 +205,8 @@ try:
 except ImportError:
     logger.info("[X] tweepy 未安装 (pip install tweepy)")
 
-from src.utils import emit_flow_event as _emit_flow
-from src.utils import scrub_secrets
+from src.utils import emit_flow_event as _emit_flow  # noqa: E402
+from src.utils import scrub_secrets  # noqa: E402
 
 
 async def fetch_x_profile_posts(
@@ -371,7 +371,7 @@ def _parse_jina_x_output(text: str, handle: str, count: int) -> list[dict]:
 async def publish_x_post(
     content: str,
     worker_fn=None,
-    image_path: str = None,
+    image_path: str | None = None,
 ) -> dict:
     """发布推文
 
@@ -550,7 +550,7 @@ def extract_x_profile_posts_from_markdown(
             if re.match(r"^\[.*\]\(https://x\.com/", block):
                 continue
             if block and not block.startswith("[") and not block.startswith("http"):
-                current_text += block + " "
+                current_text += f"{block} "
 
     if current_id and current_text:
         posts.append({
@@ -581,7 +581,7 @@ async def fetch_x_reader_payload(
 # ── X 监控简报 (从 execution_hub.py 迁移) ───────────────────
 
 async def generate_x_monitor_brief(
-    monitors: list[dict] = None,
+    monitors: list[dict] | None = None,
     fetch_posts_fn=None,
 ) -> str:
     """生成 X 监控简报"""

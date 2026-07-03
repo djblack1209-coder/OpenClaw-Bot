@@ -577,7 +577,7 @@ class VectorbtBacktester:
 
                 for _ in range(len(test_df) - 1):
                     action, _ = model.predict(obs, deterministic=True)
-                    obs, reward, done, truncated, info = test_env.step(action)
+                    obs, _reward, done, _truncated, _info = test_env.step(action)
                     portfolio_values.append(test_env.portfolio_value)
                     if done:
                         break
@@ -636,7 +636,7 @@ class VectorbtBacktester:
         使用 16 个 Alpha 因子 + 可选 LightGBM 生成买卖信号，
         通过 vectorbt Portfolio.from_signals 回测。
         """
-        strategy_name = "Alpha因子" + ("+ML" if use_ml else "")
+        strategy_name = f"Alpha因子{'+ML' if use_ml else ''}"
 
         if not self._available:
             return BacktestResult(symbol=symbol, strategy=strategy_name,
@@ -734,13 +734,13 @@ class VectorbtBacktester:
             if HAS_GYM and HAS_SB3:
                 tasks.append(self.run_drl_strategy(symbol, period=period))
         except ImportError:
-            pass
+            pass  # 合理保留：可选依赖缺失时继续走后续降级链
         try:
             from src.strategies.factor_strategy import HAS_LGB
             if HAS_LGB:
                 tasks.append(self.run_factor_strategy(symbol, period=period, use_ml=True))
         except ImportError:
-            pass
+            pass  # 合理保留：可选依赖缺失时继续走后续降级链
         results = await asyncio.gather(*tasks, return_exceptions=True)
         valid = [r for r in results if isinstance(r, BacktestResult) and not r.details.get("error")]
         if not valid:

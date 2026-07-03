@@ -54,10 +54,10 @@ class ExecutionScheduler:
         self._running = False
         if self._task and not self._task.done():
             self._task.cancel()
-            try:
+            try:  # noqa: SIM105
                 await self._task
             except asyncio.CancelledError as e:  # noqa: F841
-                pass
+                pass  # 合理保留：任务取消是正常停止流程
         self._task = None
         logger.info("[ExecutionScheduler] stopped")
 
@@ -330,7 +330,7 @@ class ExecutionScheduler:
                 name = alert.get("account_name", "")
                 msg = (
                     f"⚠️ {emoji} {label}余额不足!\n"
-                    f"{'— ' + name + chr(10) if name else ''}"
+                    f"{f"— {name}{chr(10)}" if name else ''}"
                     f"💰 余额: ¥{alert['balance']:.1f} (阈值: ¥{alert['low_threshold']:.0f})\n"
                     f"请尽快充值!"
                 )
@@ -373,7 +373,7 @@ class ExecutionScheduler:
                     name = rem.get("account_name", "")
                     msg = (
                         f"🔔 {emoji} {label}查询提醒\n"
-                        f"{'— ' + name + chr(10) if name else ''}"
+                        f"{f"— {name}{chr(10)}" if name else ''}"
                         f"上次余额: ¥{rem['balance']:.1f}\n"
                         f"请查询最新余额并告诉我"
                     )
@@ -446,7 +446,7 @@ class ExecutionScheduler:
                         f"⚠️ 库存预警\n商品: {iid}\n剩余: {item['available']} 张\n请及时补货！"
                     )
         except ImportError:
-            pass
+            pass  # 合理保留：可选依赖缺失时继续走后续降级链
         except Exception as e:
             logger.debug("[Scheduler] 库存巡检异常: %s", e)
 
@@ -496,7 +496,7 @@ class ExecutionScheduler:
                 return
 
             alert_count = 0
-            for user_id_str, budget in rows:
+            for user_id_str, _budget in rows:
                 try:
                     user_id = int(user_id_str)
                 except (ValueError, TypeError) as e:  # noqa: F841

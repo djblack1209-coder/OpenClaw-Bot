@@ -78,7 +78,7 @@ class TelegramAlertNotifier:
                 except RuntimeError as e:  # noqa: F841
                     loop = None
             if loop and loop.is_running():
-                asyncio.ensure_future(self._send(rule_name, message))
+                asyncio.ensure_future(self._send(rule_name, message))  # noqa: RUF006
             elif loop is not None:
                 loop.run_until_complete(self._send(rule_name, message))
             else:

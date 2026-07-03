@@ -110,7 +110,7 @@ class MonitoredPosition:
         cost = self.entry_price * self.quantity
         self.unrealized_pnl_pct = (self.unrealized_pnl / cost * 100) if cost > 0 else 0
 
-        if self.side == "BUY":
+        if self.side == "BUY":  # noqa: SIM102
             # 保本止损：当盈利 >= 1R（入场价 - 原始止损）时，止损移到入场价 + 小缓冲
             if not self.breakeven_triggered and self.stop_loss > 0:
                 risk_per_share = self.entry_price - self.stop_loss
@@ -123,8 +123,7 @@ class MonitoredPosition:
                         self.breakeven_triggered = True
                         # v2.0: 记录调整事件供通知
                         self._pending_adjustments.append(
-                            "🛡️ %s 保本止损触发\n止损上移: $%.2f → $%.2f\n当前价: $%.2f (盈利达1R)"
-                            % (self.symbol, old, new_stop, price)
+                            f'🛡️ {self.symbol} 保本止损触发\n止损上移: ${float(old):.2f} → ${float(new_stop):.2f}\n当前价: ${float(price):.2f} (盈利达1R)'
                         )
                         logger.info(
                             "[Monitor] %s 保本止损触发: $%.2f -> $%.2f (盈利达1R, 当前$%.2f)",
@@ -154,8 +153,7 @@ class MonitoredPosition:
                         move_pct = ((new_trailing - old) / old * 100) if old > 0 else 0
                         if move_pct >= 0.5:
                             self._pending_adjustments.append(
-                                "📈 %s 追踪止损上移\n$%.2f → $%.2f (+%.1f%%)\n最高价: $%.2f"
-                                % (self.symbol, old, new_trailing, move_pct, price)
+                                f'📈 {self.symbol} 追踪止损上移\n${float(old):.2f} → ${float(new_trailing):.2f} (+{float(move_pct):.1f}%)\n最高价: ${float(price):.2f}'
                             )
                         logger.info(
                             "[Monitor] %s 追踪止损上移: $%.2f -> $%.2f (最高价$%.2f%s)",
@@ -163,7 +161,7 @@ class MonitoredPosition:
                             old,
                             self.trailing_stop_price,
                             price,
-                            " ATR=%.2f" % self.atr if self.atr > 0 else "",
+                            f' ATR={float(self.atr):.2f}' if self.atr > 0 else "",
                         )
         else:
             # SELL方向（做空）：价格创新低时下移追踪止损
@@ -186,8 +184,7 @@ class MonitoredPosition:
                         move_pct = ((old - new_trailing) / old * 100) if old > 0 else 0
                         if move_pct >= 0.5:
                             self._pending_adjustments.append(
-                                "📉 %s 空单追踪止损下移\n$%.2f → $%.2f (-%.1f%%)\n最低价: $%.2f"
-                                % (self.symbol, old, new_trailing, move_pct, price)
+                                f'📉 {self.symbol} 空单追踪止损下移\n${float(old):.2f} → ${float(new_trailing):.2f} (-{float(move_pct):.1f}%)\n最低价: ${float(price):.2f}'
                             )
                         logger.info(
                             "[Monitor] %s 空单追踪止损下移: $%.2f -> $%.2f (最低价$%.2f%s)",
@@ -195,7 +192,7 @@ class MonitoredPosition:
                             old,
                             self.trailing_stop_price,
                             price,
-                            " ATR=%.2f" % self.atr if self.atr > 0 else "",
+                            f' ATR={float(self.atr):.2f}' if self.atr > 0 else "",
                         )
 
     def drain_adjustments(self) -> list[str]:
@@ -312,10 +309,10 @@ class PositionMonitor:
         self._running = False
         if self._task:
             self._task.cancel()
-            try:
+            try:  # noqa: SIM105
                 await self._task
             except asyncio.CancelledError as e:  # noqa: F841
-                pass
+                pass  # 合理保留：任务取消是正常停止流程
         logger.info("[PositionMonitor] 监控循环已停止")
 
     async def _monitor_loop(self) -> None:
@@ -369,8 +366,7 @@ class PositionMonitor:
                         pnl_warning = self.risk_manager.update_position_pnl(pos.symbol, pos.unrealized_pnl)
                         if pnl_warning and pnl_warning.get("action"):
                             await self._send_alert(
-                                "⚠️ %s 利润回撤预警\n%s\n当前浮盈: $%.2f"
-                                % (pos.symbol, pnl_warning.get("action", ""), pos.unrealized_pnl)
+                                '⚠️ {} 利润回撤预警\n{}\n当前浮盈: ${:.2f}'.format(pos.symbol, pnl_warning.get("action", ""), float(pos.unrealized_pnl))
                             )
                     except Exception as e:
                         logger.warning("[Monitor] 利润回撤预警检查失败 (%s): %s", pos.symbol, e)
@@ -397,10 +393,7 @@ class PositionMonitor:
                     position=pos,
                     reason=ExitReason.STOP_LOSS,
                     trigger_price=price,
-                    message=(
-                        "止损触发! %s 当前$%.2f <= 止损$%.2f | 亏损$%.2f (%.1f%%)"
-                        % (pos.symbol, price, pos.stop_loss, pos.unrealized_pnl, pos.unrealized_pnl_pct)
-                    ),
+                    message=f'止损触发! {pos.symbol} 当前${float(price):.2f} <= 止损${float(pos.stop_loss):.2f} | 亏损${float(pos.unrealized_pnl):.2f} ({float(pos.unrealized_pnl_pct):.1f}%)',
                 )
             # 追踪止损
             if pos.trailing_stop_price > 0 and price <= pos.trailing_stop_price:
@@ -408,17 +401,7 @@ class PositionMonitor:
                     position=pos,
                     reason=ExitReason.TRAILING_STOP,
                     trigger_price=price,
-                    message=(
-                        "追踪止损触发! %s 当前$%.2f <= 追踪$%.2f | 最高$%.2f | 盈亏$%.2f (%.1f%%)"
-                        % (
-                            pos.symbol,
-                            price,
-                            pos.trailing_stop_price,
-                            pos.highest_price,
-                            pos.unrealized_pnl,
-                            pos.unrealized_pnl_pct,
-                        )
-                    ),
+                    message=f'追踪止损触发! {pos.symbol} 当前${float(price):.2f} <= 追踪${float(pos.trailing_stop_price):.2f} | 最高${float(pos.highest_price):.2f} | 盈亏${float(pos.unrealized_pnl):.2f} ({float(pos.unrealized_pnl_pct):.1f}%)',
                 )
             # 分批止盈: 盈利达1.5R时平掉50%，剩余用尾部止损
             if not pos.partial_exit_done and pos.stop_loss > 0 and pos.quantity >= 2:
@@ -428,10 +411,7 @@ class PositionMonitor:
                         position=pos,
                         reason=ExitReason.PARTIAL_TAKE_PROFIT,
                         trigger_price=price,
-                        message=(
-                            "分批止盈触发! %s 盈利达1.5R | 当前$%.2f | 平仓50%% (%d股) | 盈亏$%.2f"
-                            % (pos.symbol, price, int(pos.quantity * 0.5), pos.unrealized_pnl)
-                        ),
+                        message=f'分批止盈触发! {pos.symbol} 盈利达1.5R | 当前${float(price):.2f} | 平仓50% ({int(pos.quantity * 0.5):d}股) | 盈亏${float(pos.unrealized_pnl):.2f}',
                     )
             # 止盈（仅对未分批止盈的持仓触发全仓止盈）
             if pos.take_profit > 0 and price >= pos.take_profit:
@@ -439,10 +419,7 @@ class PositionMonitor:
                     position=pos,
                     reason=ExitReason.TAKE_PROFIT,
                     trigger_price=price,
-                    message=(
-                        "止盈触发! %s 当前$%.2f >= 止盈$%.2f | 盈利$%.2f (%.1f%%)"
-                        % (pos.symbol, price, pos.take_profit, pos.unrealized_pnl, pos.unrealized_pnl_pct)
-                    ),
+                    message=f'止盈触发! {pos.symbol} 当前${float(price):.2f} >= 止盈${float(pos.take_profit):.2f} | 盈利${float(pos.unrealized_pnl):.2f} ({float(pos.unrealized_pnl_pct):.1f}%)',
                 )
 
         elif pos.side == "SELL":
@@ -453,10 +430,7 @@ class PositionMonitor:
                     position=pos,
                     reason=ExitReason.STOP_LOSS,
                     trigger_price=price,
-                    message=(
-                        "空单止损触发! %s 当前$%.2f >= 止损$%.2f | 亏损$%.2f (%.1f%%)"
-                        % (pos.symbol, price, pos.stop_loss, pos.unrealized_pnl, pos.unrealized_pnl_pct)
-                    ),
+                    message=f'空单止损触发! {pos.symbol} 当前${float(price):.2f} >= 止损${float(pos.stop_loss):.2f} | 亏损${float(pos.unrealized_pnl):.2f} ({float(pos.unrealized_pnl_pct):.1f}%)',
                 )
             # 做空追踪止损：价格回涨超过追踪止损价时触发
             if pos.trailing_stop_price > 0 and price >= pos.trailing_stop_price:
@@ -464,17 +438,7 @@ class PositionMonitor:
                     position=pos,
                     reason=ExitReason.TRAILING_STOP,
                     trigger_price=price,
-                    message=(
-                        "空单追踪止损触发! %s 当前$%.2f >= 追踪$%.2f | 最低$%.2f | 盈亏$%.2f (%.1f%%)"
-                        % (
-                            pos.symbol,
-                            price,
-                            pos.trailing_stop_price,
-                            pos.highest_price,
-                            pos.unrealized_pnl,
-                            pos.unrealized_pnl_pct,
-                        )
-                    ),
+                    message=f'空单追踪止损触发! {pos.symbol} 当前${float(price):.2f} >= 追踪${float(pos.trailing_stop_price):.2f} | 最低${float(pos.highest_price):.2f} | 盈亏${float(pos.unrealized_pnl):.2f} ({float(pos.unrealized_pnl_pct):.1f}%)',
                 )
             # 做空分批止盈：盈利达1.5R时平掉50%
             if not pos.partial_exit_done and pos.stop_loss > 0 and pos.quantity >= 2:
@@ -484,10 +448,7 @@ class PositionMonitor:
                         position=pos,
                         reason=ExitReason.PARTIAL_TAKE_PROFIT,
                         trigger_price=price,
-                        message=(
-                            "空单分批止盈触发! %s 盈利达1.5R | 当前$%.2f | 平仓50%% (%d股) | 盈亏$%.2f"
-                            % (pos.symbol, price, int(pos.quantity * 0.5), pos.unrealized_pnl)
-                        ),
+                        message=f'空单分批止盈触发! {pos.symbol} 盈利达1.5R | 当前${float(price):.2f} | 平仓50% ({int(pos.quantity * 0.5):d}股) | 盈亏${float(pos.unrealized_pnl):.2f}',
                     )
             # 做空止盈：价格下跌到目标价时触发
             if pos.take_profit > 0 and price <= pos.take_profit:
@@ -495,10 +456,7 @@ class PositionMonitor:
                     position=pos,
                     reason=ExitReason.TAKE_PROFIT,
                     trigger_price=price,
-                    message=(
-                        "空单止盈触发! %s 当前$%.2f <= 止盈$%.2f | 盈利$%.2f (%.1f%%)"
-                        % (pos.symbol, price, pos.take_profit, pos.unrealized_pnl, pos.unrealized_pnl_pct)
-                    ),
+                    message=f'空单止盈触发! {pos.symbol} 当前${float(price):.2f} <= 止盈${float(pos.take_profit):.2f} | 盈利${float(pos.unrealized_pnl):.2f} ({float(pos.unrealized_pnl_pct):.1f}%)',
                 )
 
         # 时间止损（仅对亏损/持平持仓触发，盈利持仓转为纯尾部止损）
@@ -520,10 +478,7 @@ class PositionMonitor:
                         position=pos,
                         reason=ExitReason.TIME_STOP,
                         trigger_price=price,
-                        message=(
-                            "时间止损触发! %s 持仓%.1f小时 >= 上限%.0f小时 | 亏损$%.2f (%.1f%%)"
-                            % (pos.symbol, hold_hours, pos.max_hold_hours, pos.unrealized_pnl, pos.unrealized_pnl_pct)
-                        ),
+                        message=f'时间止损触发! {pos.symbol} 持仓{float(hold_hours):.1f}小时 >= 上限{float(pos.max_hold_hours):.0f}小时 | 亏损${float(pos.unrealized_pnl):.2f} ({float(pos.unrealized_pnl_pct):.1f}%)',
                     )
                 else:
                     # 盈利: 不平仓，但取消时间止损，完全依赖尾部止损
@@ -548,10 +503,7 @@ class PositionMonitor:
                             position=pos,
                             reason=ExitReason.DAILY_LIMIT,
                             trigger_price=price,
-                            message=(
-                                "日亏损限额熔断! %s 浮亏$%.2f + 今日已亏$%.2f >= 限额$%.0f | 强制平仓"
-                                % (pos.symbol, pos.unrealized_pnl, today_pnl, limit_val)
-                            ),
+                            message=f'日亏损限额熔断! {pos.symbol} 浮亏${float(pos.unrealized_pnl):.2f} + 今日已亏${float(today_pnl):.2f} >= 限额${float(limit_val):.0f} | 强制平仓',
                         )
             except Exception as e:
                 logger.warning("[Monitor] 日亏损检查异常: %s", e)
@@ -571,7 +523,7 @@ class PositionMonitor:
             )
             if self.notify:
                 await self.notify(
-                    "🚨 紧急：平仓多次失败 🚨\n\n"
+                    "🚨 紧急：平仓多次失败 🚨\n\n"  # noqa: UP031
                     "标的: %s\n"
                     "数量: %d 股\n"
                     "入场价: $%.2f\n"
@@ -611,7 +563,7 @@ class PositionMonitor:
                     quantity=sell_qty,
                     order_type="MKT",
                     decided_by="PositionMonitor",
-                    reason="%s: %s" % (signal.reason.value, signal.message),
+                    reason=f'{signal.reason.value}: {signal.message}',
                 )
                 logger.info("[Monitor] 平仓执行结果: %s", sell_result)
             except Exception as e:
@@ -619,8 +571,7 @@ class PositionMonitor:
                 logger.error("[Monitor] 平仓执行失败 (第%d次): %s", retry_count + 1, e)
                 if self.notify:
                     await self.notify(
-                        "!! 平仓执行失败 (第%d/%d次) !!\n%s\n错误: %s\n%s秒后重试..."
-                        % (retry_count + 1, self._max_exit_retries, signal.message, e, self.check_interval)
+                        f'!! 平仓执行失败 (第{int(retry_count + 1):d}/{int(self._max_exit_retries):d}次) !!\n{signal.message}\n错误: {e}\n{self.check_interval}秒后重试...'
                     )
                 return
 
@@ -685,24 +636,7 @@ class PositionMonitor:
                 ExitReason.TIME_STOP: ">>",
             }
             emoji = emoji_map.get(signal.reason, "**")
-            msg = (
-                "%s 自动平仓 %s\n\n%s\n\n"
-                "标的: %s\n方向: %s\n数量: %s\n"
-                "入场: $%.2f\n出场: $%.2f\n"
-                "盈亏: $%.2f (%.1f%%)\n原因: %s"
-            ) % (
-                emoji,
-                emoji,
-                signal.message,
-                pos.symbol,
-                pos.side,
-                pos.quantity,
-                pos.entry_price,
-                signal.trigger_price,
-                pos.unrealized_pnl,
-                pos.unrealized_pnl_pct,
-                signal.reason.value,
-            )
+            msg = f'{emoji} 自动平仓 {emoji}\n\n{signal.message}\n\n标的: {pos.symbol}\n方向: {pos.side}\n数量: {pos.quantity}\n入场: ${float(pos.entry_price):.2f}\n出场: ${float(signal.trigger_price):.2f}\n盈亏: ${float(pos.unrealized_pnl):.2f} ({float(pos.unrealized_pnl_pct):.1f}%)\n原因: {signal.reason.value}'
             await self.notify(msg)
 
     # ============ v2.0: 接近止损预警 (搬运 PanWatch throttle 模式) ============
@@ -755,28 +689,10 @@ class PositionMonitor:
                 emoji = _ALERT_EMOJI.get(level, "⚠️")
                 distance_pct = distance_ratio * 100
                 direction_arrow = "▼" if pos.side == "BUY" else "▲"
-                msg = (
-                    "%s %s 接近止损位\n"
-                    "━━━━━━━━━━━━━━━━\n"
-                    "方向: %s | 现价: $%.2f (%s%.1f%%)\n"
-                    "止损: $%.2f (距离 $%.2f, %.0f%%)\n"
-                    "浮亏: $%.2f (%.1f%%)"
-                ) % (
-                    emoji,
-                    pos.symbol,
-                    pos.side,
-                    pos.current_price,
-                    direction_arrow,
-                    abs(pos.unrealized_pnl_pct),
-                    pos.stop_loss,
-                    remaining_distance,
-                    distance_pct,
-                    pos.unrealized_pnl,
-                    pos.unrealized_pnl_pct,
-                )
+                msg = f'{emoji} {pos.symbol} 接近止损位\n━━━━━━━━━━━━━━━━\n方向: {pos.side} | 现价: ${float(pos.current_price):.2f} ({direction_arrow}{float(abs(pos.unrealized_pnl_pct)):.1f}%)\n止损: ${float(pos.stop_loss):.2f} (距离 ${float(remaining_distance):.2f}, {float(distance_pct):.0f}%)\n浮亏: ${float(pos.unrealized_pnl):.2f} ({float(pos.unrealized_pnl_pct):.1f}%)'
                 # 追踪止损信息
                 if pos.trailing_stop_price > 0:
-                    msg += "\n追踪止损: $%.2f" % pos.trailing_stop_price
+                    msg += f'\n追踪止损: ${float(pos.trailing_stop_price):.2f}'
                 msg += "\n━━━━━━━━━━━━━━━━"
                 if level == AlertLevel.CRITICAL:
                     msg += "\n💡 价格接近止损，请关注是否需要手动干预"
@@ -841,7 +757,7 @@ class PositionMonitor:
                         lambda t: t.exception() and logger.debug("EventBus 发布异常: %s", t.exception())
                     )
                 except RuntimeError as e:  # noqa: F841
-                    pass  # 无运行中的事件循环，跳过
+                    pass  # 合理保留：无运行中的事件循环时跳过异步事件发布
         except Exception as e:
             logger.debug("EventBus 不可用: %s", e)
 
@@ -890,42 +806,30 @@ class PositionMonitor:
         s = self.get_status()
         running_text = "运行中" if s["running"] else "已停止"
         lines = [
-            "持仓监控器 (%s)" % running_text,
-            "监控持仓: %d个" % s["monitored_count"],
-            "未实现盈亏: $%+.2f" % s["total_unrealized_pnl"],
-            "检查间隔: %d秒" % s["check_interval"],
+            f'持仓监控器 ({running_text})',
+            '监控持仓: {:d}个'.format(int(s["monitored_count"])),
+            '未实现盈亏: ${:+.2f}'.format(float(s["total_unrealized_pnl"])),
+            '检查间隔: {:d}秒'.format(int(s["check_interval"])),
             "",
         ]
         if s["positions"]:
             lines.append("-- 监控中的持仓 --")
             for p in s["positions"]:
                 sign = "+" if p["unrealized_pnl"] >= 0 else ""
-                sl_info = "SL=$%.2f" % p["stop_loss"] if p["stop_loss"] > 0 else "SL=无"
-                tp_info = "TP=$%.2f" % p["take_profit"] if p["take_profit"] > 0 else "TP=无"
+                sl_info = 'SL=${:.2f}'.format(float(p["stop_loss"])) if p["stop_loss"] > 0 else "SL=无"
+                tp_info = 'TP=${:.2f}'.format(float(p["take_profit"])) if p["take_profit"] > 0 else "TP=无"
                 ts_info = ""
                 if p["trailing_stop_price"] > 0:
-                    ts_info = " TS=$%.2f" % p["trailing_stop_price"]
+                    ts_info = ' TS=${:.2f}'.format(float(p["trailing_stop_price"]))
                 lines.append(
-                    "  %s %s x%s $%.2f->$%.2f (%s%.1f%%) %s %s%s"
-                    % (
-                        p["symbol"],
-                        p["side"],
-                        p["quantity"],
-                        p["entry_price"],
-                        p["current_price"],
-                        sign,
-                        p["unrealized_pnl_pct"],
-                        sl_info,
-                        tp_info,
-                        ts_info,
-                    )
+                    '  {} {} x{} ${:.2f}->${:.2f} ({}{:.1f}%) {} {}{}'.format(p["symbol"], p["side"], p["quantity"], float(p["entry_price"]), float(p["current_price"]), sign, float(p["unrealized_pnl_pct"]), sl_info, tp_info, ts_info)
                 )
         else:
             lines.append("暂无监控持仓")
         if self._exit_history:
-            lines.append("\n最近自动平仓: %d笔" % len(self._exit_history))
+            lines.append(f'\n最近自动平仓: {len(self._exit_history):d}笔')
             for sig in self._exit_history[-3:]:
-                lines.append("  %s %s @ $%.2f" % (sig.position.symbol, sig.reason.value, sig.trigger_price))
+                lines.append(f'  {sig.position.symbol} {sig.reason.value} @ ${float(sig.trigger_price):.2f}')
         return "\n".join(lines)
 
     async def check_once(self) -> list[ExitSignal]:

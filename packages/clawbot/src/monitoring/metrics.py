@@ -116,7 +116,7 @@ class PrometheusMetrics:
                     lines.append(f"{name}_sum{label_str} {total}")
                     lines.append(f"{name}_count{label_str} {count}")
 
-        return "\n".join(lines) + "\n"
+        return f"{'\n'.join(lines)}\n"
 
 
 # 全局 Prometheus 实例

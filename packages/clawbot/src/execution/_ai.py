@@ -14,7 +14,7 @@ try:
 except ImportError:
     log_generation = None  # type: ignore[assignment]
 
-from src.constants import (
+from src.constants import (  # noqa: E402
     BOT_CLAUDE_HAIKU,
     BOT_CLAUDE_SONNET,
     BOT_DEEPSEEK,
@@ -23,8 +23,8 @@ from src.constants import (
     BOT_QWEN,
     FAMILY_QWEN,
 )
-from src.utils import emit_flow_event as _emit_flow
-from src.utils import scrub_secrets
+from src.utils import emit_flow_event as _emit_flow  # noqa: E402
+from src.utils import scrub_secrets  # noqa: E402
 
 
 class AICallerPool:
@@ -49,7 +49,7 @@ class AICallerPool:
                 return candidate
         return next(iter(self._callers.keys()), preferred)
 
-    async def call(self, prompt: str, system_prompt: str = None) -> dict:
+    async def call(self, prompt: str, system_prompt: str | None = None) -> dict:
         """调用 AI：先尝试注入的 caller，失败则走 LiteLLM Router"""
         if not prompt:
             return {"success": False, "error": "empty prompt"}
@@ -68,7 +68,7 @@ class AICallerPool:
                 _emit_flow("llm", "hub", "error", f"AI 失败: {bot_id}", {"error": str(e)[:100]})
         return await self.call_via_litellm(prompt, system_prompt)
 
-    async def call_via_litellm(self, prompt: str, system_prompt: str = None) -> dict:
+    async def call_via_litellm(self, prompt: str, system_prompt: str | None = None) -> dict:
         """通过 LiteLLM Router 调用 — 替代手写 HTTP"""
         if not prompt:
             return {"success": False, "error": "empty prompt"}

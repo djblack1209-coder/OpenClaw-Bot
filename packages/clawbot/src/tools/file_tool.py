@@ -35,10 +35,10 @@ class FileTool:
         # 核心安全检查：resolved 必须在 base_dir 下
         try:
             resolved.relative_to(self.base_dir)
-        except ValueError as e:  # noqa: F841
+        except ValueError as e:
             raise PermissionError(
                 f"路径越权: {path} 解析为 {resolved}，不在允许范围 {self.base_dir} 内"
-            )
+            ) from e
 
         return resolved
 
@@ -66,7 +66,7 @@ class FileTool:
             numbered = []
             for i, line in enumerate(selected, start=offset + 1):
                 if len(line) > 2000:
-                    line = line[:2000] + "...\n"
+                    line = f"{line[:2000]}...\n"
                 numbered.append(f"{i:5d}| {line.rstrip()}")
 
             return {

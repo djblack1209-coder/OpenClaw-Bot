@@ -183,7 +183,7 @@ class CollabCommandsMixin:
         ta_results = await asyncio.gather(*ta_tasks, return_exceptions=True)
 
         ta_text = ""
-        for sym, data in zip(top_symbols, ta_results):
+        for _sym, data in zip(top_symbols, ta_results):
             if isinstance(data, dict) and "error" not in data:
                 ta_text += f"\n{format_analysis(data)}\n"
 
@@ -286,7 +286,7 @@ class CollabCommandsMixin:
                 real_sym = f"{sym}-USD" if sym in {"BTC", "ETH", "SOL", "BNB", "XRP", "DOGE"} else sym
                 ta_tasks.append(get_full_analysis(real_sym))
             ta_results = await asyncio.gather(*ta_tasks, return_exceptions=True)
-            for sym, data in zip(target_syms[:5], ta_results):
+            for _sym, data in zip(target_syms[:5], ta_results):
                 if isinstance(data, dict) and "error" not in data:
                     target_quote += f"\n{format_quote({'symbol': data['symbol'], 'name': data['name'], 'price': data['price'], 'change': data['change'], 'change_pct': data['change_pct'], 'high': data['indicators'].get('high_5d', 0), 'low': data['indicators'].get('low_5d', 0), 'volume': data['indicators'].get('volume', 0), 'currency': 'USD'})}\n"
                     ta_data_text += f"\n--- {data['symbol']} 技术指标 ---\n{format_analysis(data)}\n"
@@ -378,7 +378,7 @@ class CollabCommandsMixin:
             except Exception:
                 logger.debug("Silenced exception", exc_info=True)
 
-        for i, bot_id in enumerate(invest_order):
+        for _i, bot_id in enumerate(invest_order):
             # 检查是否被中断
             if not chat_router.get_discuss_session(chat_id):
                 await context.bot.send_message(
@@ -402,7 +402,7 @@ class CollabCommandsMixin:
             # 构造提示
             prompt = f"【投资分析会议】\n议题: {topic}\n\n{invest_context}\n你的角色: {role_name}\n{role_prompt}\n"
             if previous_opinions:
-                prompt += "\n前面分析师的观点:\n" + "\n---\n".join(previous_opinions) + "\n"
+                prompt += f"\n前面分析师的观点:\n{'\n---\n'.join(previous_opinions)}\n"
 
             timeout_sec = 120
             last_response = ""

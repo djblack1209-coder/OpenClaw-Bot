@@ -57,7 +57,7 @@ class JournalReviewMixin:
             ).fetchall()
         return [dict(r) for r in rows]
 
-    def generate_review_data(self, date: str = None) -> dict:
+    def generate_review_data(self, date: str | None = None) -> dict:
         """生成复盘数据（供AI团队复盘用）"""
         if date is None:
             date = now_et().strftime('%Y-%m-%d')
@@ -92,7 +92,7 @@ class JournalReviewMixin:
             "performance_30d": perf,
         }
 
-    def format_review_prompt(self, date: str = None) -> str:
+    def format_review_prompt(self, date: str | None = None) -> str:
         """生成复盘提示词（给AI团队用）"""
         data = self.generate_review_data(date)
 

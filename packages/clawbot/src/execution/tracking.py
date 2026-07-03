@@ -316,7 +316,7 @@ async def check_price_watches(notify_func=None, db_path=None) -> int:
         from src.shopping.price_engine import smart_compare_prices
 
         for watch in watches:
-            wid, user_id, chat_id, keyword, target, old_price, lowest = watch
+            wid, _user_id, chat_id, keyword, target, _old_price, lowest = watch
             try:
                 # 调用统一比价引擎（fast_mode=True: 只用 SMZDM+JD 爬取，速度快不消耗 API）
                 report = await smart_compare_prices(

@@ -131,7 +131,7 @@ def _regex_extract_ecommerce(ocr_text: str) -> dict[str, Any]:
     """正则兜底提取"""
     prices_raw = re.findall(r'(?:¥|￥)\s*(\d+\.?\d*)', ocr_text)
     prices_raw += re.findall(r'(\d+\.?\d*)\s*元', ocr_text)
-    prices = sorted(set(float(p) for p in prices_raw if 0 < float(p) < 100000))
+    prices = sorted({float(p) for p in prices_raw if 0 < float(p) < 100000})
     sales = re.findall(r'(?:月销|已售|销量)\s*(\d+)', ocr_text)
     return {
         "price_range": {"min": prices[0], "max": prices[-1], "avg": sum(prices)/len(prices)} if prices else {},

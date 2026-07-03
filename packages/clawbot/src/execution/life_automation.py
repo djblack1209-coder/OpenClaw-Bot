@@ -34,7 +34,7 @@ except ImportError:
     logger.info("[life_automation] dateparser 未安装，提醒仅支持分钟延迟 (pip install dateparser)")
 
 
-def _parse_remind_time(time_text: str = None, delay_minutes: int = None) -> tuple:
+def _parse_remind_time(time_text: str | None = None, delay_minutes: int | None = None) -> tuple:
     """解析提醒时间 — 搬运 dateparser 自然语言解析模式。
 
     支持:
@@ -74,7 +74,7 @@ def _parse_remind_time(time_text: str = None, delay_minutes: int = None) -> tupl
 async def create_reminder(
     message=None,
     delay_minutes=None,
-    time_text: str = None,
+    time_text: str | None = None,
     recurrence_rule: str = "",
     user_chat_id: int = 0,
     db_path=None,
@@ -310,7 +310,7 @@ def _calc_next_occurrence(recurrence_rule: str, from_time: datetime) -> datetime
 # 如需 HomeKit 控制，请使用下方 _run_local_home_action() 的白名单路由
 
 
-def _run_local_home_action(action: str = "", payload: dict = None) -> dict:
+def _run_local_home_action(action: str = "", payload: dict | None = None) -> dict:
     """执行本地 macOS 智能家居动作
 
     支持: ping / notify / open_url / open_app / say / shortcut
@@ -511,7 +511,7 @@ def _run_local_home_action(action: str = "", payload: dict = None) -> dict:
     }
 
 
-async def trigger_home_action(action: str = "", payload: dict = None) -> dict:
+async def trigger_home_action(action: str = "", payload: dict | None = None) -> dict:
     """触发智能家居/本地 macOS 动作 (异步入口)"""
     try:
         # 使用 to_thread 避免 subprocess.run 阻塞事件循环
@@ -527,7 +527,7 @@ async def trigger_home_action(action: str = "", payload: dict = None) -> dict:
 
 
 # ── 向后兼容导出 (v6.0 拆分, 消费者逐步迁移后移除) ──
-from src.execution.bookkeeping import (  # noqa: F401
+from src.execution.bookkeeping import (  # noqa: E402, F401
     _CATEGORY_EMOJI,
     _CATEGORY_KEYWORDS,
     BILL_TYPE_ALIAS,
@@ -557,7 +557,7 @@ from src.execution.bookkeeping import (  # noqa: F401
     set_monthly_budget,
     update_bill_balance,
 )
-from src.execution.tracking import (  # noqa: F401
+from src.execution.tracking import (  # noqa: E402, F401
     MAX_PRICE_WATCHES_PER_USER,
     add_price_watch,
     check_price_watches,

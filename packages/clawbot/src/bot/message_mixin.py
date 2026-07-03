@@ -16,13 +16,13 @@ from src.utils import scrub_secrets
 logger = logging.getLogger(__name__)
 
 # ── 输入预处理函数从 input_processor.py 导入（向后兼容）──
-from src.bot.callback_mixin import CallbackMixin
-from src.bot.input_processor import _build_smart_reply_keyboard, _detect_correction
-from src.bot.session_tracker import SessionTrackerMixin
-from src.bot.stream_manager import StreamManagerMixin
-from src.bot.voice_handler import VoiceHandlerMixin
-from src.bot.workflow_mixin import WorkflowMixin
-from src.perf_metrics import perf_timer
+from src.bot.callback_mixin import CallbackMixin  # noqa: E402
+from src.bot.input_processor import _build_smart_reply_keyboard, _detect_correction  # noqa: E402
+from src.bot.session_tracker import SessionTrackerMixin  # noqa: E402
+from src.bot.stream_manager import StreamManagerMixin  # noqa: E402
+from src.bot.voice_handler import VoiceHandlerMixin  # noqa: E402
+from src.bot.workflow_mixin import WorkflowMixin  # noqa: E402
+from src.perf_metrics import perf_timer  # noqa: E402
 
 
 class MessageHandlerMixin(WorkflowMixin, CallbackMixin, VoiceHandlerMixin, SessionTrackerMixin, StreamManagerMixin):
@@ -412,7 +412,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin, VoiceHandlerMixin, Sessi
                             logger.exception("思考动画更新失败")
                             break
                 except asyncio.CancelledError as e:  # noqa: F841
-                    pass
+                    pass  # 合理保留：该分支只用于显式跳过并继续后续降级/清理流程
 
             from src.core.async_utils import create_monitored_task
             _thinking_task = create_monitored_task(
@@ -463,7 +463,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin, VoiceHandlerMixin, Sessi
                         await context.bot.edit_message_text(
                             chat_id=chat_id,
                             message_id=sent_message.message_id,
-                            text=content + " ▌",
+                            text=f"{content} ▌",
                         )
                         prev_text = content
                         last_edit_time = _time.monotonic()
@@ -487,20 +487,20 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin, VoiceHandlerMixin, Sessi
                         continue
 
                     if status != "finished":
-                        display = (content + " ▌")[:TG_MSG_LIMIT]
+                        display = f"{content} ▌"[:TG_MSG_LIMIT]
 
                     try:
                         # Phase 3: 完成时用 md_to_html 安全渲染 + HTML parse_mode
                         if status == "finished":
                             try:
                                 display = (
-                                    md_to_html(content) + f"\n\n<code>— {getattr(self, 'name', self.bot_id)}</code>"
+                                    f"{md_to_html(content)}\n\n<code>— {getattr(self, 'name', self.bot_id)}</code>"
                                 )
                                 display = display[:TG_MSG_LIMIT]
                                 parse_mode = constants.ParseMode.HTML
                             except Exception:
                                 logger.exception("流式消息 HTML 渲染失败，降级为 Markdown")
-                                display = (content + f"\n\n`— {getattr(self, 'name', self.bot_id)}`")[:TG_MSG_LIMIT]
+                                display = f"{content}\n\n`— {getattr(self, 'name', self.bot_id)}`"[:TG_MSG_LIMIT]
                                 parse_mode = constants.ParseMode.MARKDOWN
                         else:
                             parse_mode = None
@@ -538,7 +538,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin, VoiceHandlerMixin, Sessi
                     except BadRequest as e:
                         err_msg = str(e)
                         if "Message is not modified" in err_msg:
-                            pass
+                            pass  # 合理保留：该分支只用于显式跳过并继续后续降级/清理流程
                         elif "parse" in err_msg.lower() or "can't" in err_msg.lower():
                             try:
                                 await context.bot.edit_message_text(
@@ -643,7 +643,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin, VoiceHandlerMixin, Sessi
                         await context.bot.edit_message_text(
                             chat_id=chat_id,
                             message_id=sent_message.message_id,
-                            text=clean_text + "\n\n⚠️ 回复中断",
+                            text=f"{clean_text}\n\n⚠️ 回复中断",
                         )
                 except Exception as e:
                     logger.debug("Silenced exception", exc_info=True)
@@ -671,7 +671,7 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin, VoiceHandlerMixin, Sessi
                     logger.debug("Silenced exception", exc_info=True)
         finally:
             typing_task.cancel()
-            try:
+            try:  # noqa: SIM105
                 await typing_task
             except asyncio.CancelledError as e:  # noqa: F841
-                pass
+                pass  # 合理保留：任务取消是正常停止流程

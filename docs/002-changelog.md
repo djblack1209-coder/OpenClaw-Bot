@@ -5,6 +5,66 @@
 
 ## 最近更新（2026-07 / 2026-06 / 2026-05）
 
+
+## [2026-07-03] Frist-API 生产迁移与域名/R2 收口
+> 领域: `backend` | `deploy` | `infra` | `docs`
+> 影响模块: `Frist-API`, `New-API Bridge`, `Cloudflare DNS`, `R2 Backup`, `GitHub Actions`
+> 关联问题: TD-006, TD-007, TD-014, TD-015, HI-856, HI-857
+
+### 变更内容
+- 按 Carven 授权执行生产 New-API 迁移：用户、余额/订单、兑换码和日志已写入生产 New-API 数据库，Frist-API 生产环境启用 New-API adapter，并保留带时间戳回滚目录。
+- 对历史 `enc:v1:` 用户 Key 采取安全跳过策略：旧数据加密密钥未能在本地、VPS-Config 或服务器常规备份中找到，不能把密文伪造成可用 Key；前端/服务端会把这类 Key 标记为需重新生成。
+- 复用 VPS-Config 的 Cloudflare/R2 资产：`frist-api.245334.xyz` 写入 Cloudflare proxied A，源站 Origin CA 证书和 Nginx 443 已落地，正式 HTTPS 外网冒烟 HTTP 200；R2 备份脚本、root-only env、systemd timer 已在服务器启用并完成一次手动上传验证。
+- 修正生产 SMTP 边界：代码和文档只登记变量名，不写入聊天里出现过的 SMTP 密码；服务器当前未检测到 `FRIST_API_SMTP_PASSWORD`，需 Carven 用无回显终端输入一次。
+- 补齐提交前门禁：根目录 `.venv312` 软链加入忽略规则，避免误把本机 Python 环境提交；Python 依赖审计改用项目 Python 3.12 环境，避免系统 Python 3.9 误判 `requests>=2.33.0` 不可解析；gitleaks 历史误报通过指纹 allowlist 收口。
+
+### 文件变更
+- `docs/002-changelog.md` — 记录生产迁移、R2、Cloudflare 和 SMTP 安全边界。
+- `docs/006-registries.md` — 更新 Frist-API 网关地址、New-API 迁移入口和回滚目录状态。
+- `docs/007-operations.md` — 更新生产入口、New-API 已迁移、R2 已启用、SMTP 无回显输入和 Cloudflare proxied A 方案。
+- `docs/009-health.md` — 更新 TD-006 / TD-007 和当前系统状态。
+- `.gitignore` — 忽略根目录 `.venv312` 虚拟环境软链。
+- `.gitleaksignore` — 只忽略两个历史误报指纹，保留默认 secret 扫描规则。
+
+### 验证
+- 生产迁移：`/opt/frist-api` apply 结果为 `migrated_users=19`、`tokens=1`、`frist_topups=4`、`redemptions=2`、`logs=162`；回滚目录 `/opt/frist-api/backups/newapi-migration-20260703T005433Z`。
+- 生产健康：服务器 `docker compose --env-file .env -f docker-compose.frist-api.yml ps` 显示 `frist-api-server` 与 `openclaw-newapi` 均 healthy；本机 curl `http://frist-api.101-43-41-96.nip.io/api/frist/dashboard` 返回 HTTP 200；未授权 `/v1/models` 仍返回 401。
+- R2 备份：`frist-api-r2-backup.timer` 为 enabled/active，手动上传返回 `http=200`。
+- DNS/HTTPS：Cloudflare API 记录 `frist-api.245334.xyz` 为 A/proxied 指向腾讯云；源站安装 Cloudflare Origin CA 证书并新增 Nginx 443 反代，Nginx 配置备份目录为服务器 `/opt/frist-api/backups/nginx-origin-ca-20260703T013937Z`；`dig @ace.ns.cloudflare.com frist-api.245334.xyz A +short` 返回 Cloudflare 代理 IP；`curl https://frist-api.245334.xyz/api/frist/dashboard` 返回 HTTP 200。
+- 依赖安全：`.venv312/bin/python -m pip_audit -r packages/clawbot/requirements.txt -r packages/clawbot/requirements-dev.txt --vulnerability-service pypi --progress-spinner off --cache-dir /tmp/openclaw-pip-audit-cache --timeout 10` → `No known vulnerabilities found`；`.venv312/bin/python -m pip check` → `No broken requirements found`；可提交文件 gitleaks 与 `gitleaks git . --redact --log-level error` 均返回 0。
+
+## [2026-07-02] OpenClaw Bot / Frist-API 全面收口
+> 领域: `backend` | `frontend` | `ai-pool` | `infra` | `docs` | `social` | `xianyu`
+> 影响模块: `Frist-API`, `AI Pool`, `New-API Bridge`, `ClawBot`, `WeChat Bridge`, `Social Guardrails`, `GitHub Actions`, `Docs`
+> 关联问题: HI-812, HI-817, HI-818, HI-856, HI-857, HI-887, HI-890, HI-896, TD-001, TD-002, TD-003, TD-004, TD-005, TD-006, TD-007, TD-008, TD-014, TD-015, TD-016, TD-017
+
+### 变更内容
+- AI_POOL 收口：余额站/86GameStore 类渠道新增日消费限额、慢线阈值、成本敏感标记、当日消费超剩余额且慢线自动熔断、真实调用 503/401 自动降级、清理会话粘滞和一次性告警，避免面板继续展示失效渠道。
+- Frist-API 模型目录收口：客户可见模型只来自健康上游 `/v1/models` 或真实探测，硬编码目录只用于后台审计排序；New-API wildcard-only token 不再膨胀成客户可见模型。
+- Frist-API 生产边界按最新运营决策改为“固定 HTTPS + New-API + 管理员 2FA + 兑换码收款闭环 + 备份/SLA”，微信/支付宝/Stripe 自动支付保留为未来备用，不再作为当前上线硬门槛。
+- New-API 迁移脚本新增 dry-run/package/rollback：生成 runtime 备份、幂等迁移计划和回滚脚本；`--apply` 仍阻塞在人工确认执行窗口，不直接写生产库。
+- ClawBot 后端收口：`/cli` 正式注册；微信编号命令可接内部只读 API 的全部映射到真实 GET 路由，交易/发文/发货/导出等高风险入口明确转人工确认；iLink token 失效时给出重新扫码提示和一次性告警。
+- Frist-API 架构收口：已把邮件发送、SMTP DNS 轮询、注册/重置/余额预警邮件模板和邮箱归一化抽到 `server/email.js`，`server.js` 从 7881 行降到 7247 行；核心网关/账号路由仍保留在主入口，避免本轮为追求拆分引入生产行为风险。
+- 依赖和安全门禁收口：升级 Python 依赖安全下限，默认移出高风险/冲突可选依赖并保持 graceful degradation；CI 新增 Gitleaks、npm audit high、pip-audit 门禁，并升级 `actions/cache@v6`、`actions/setup-python@v6`、`astral-sh/setup-uv@v8.2.0`。
+- 社媒边界保持克制：只做工程质量和文档收口，继续保持待审草稿、只读采集、人工最终确认；没有恢复自动发布、评论、关注、私信、点赞或推广。
+- 运维文档同步：域名/Cloudflare/R2 改为复用 `/Users/blackdj/Documents/VPS-Config` 既有资产；收款主路径改为闲鱼等第三方平台售卖兑换码 + Frist-API 核销；AGPL 源码入口已在 Frist-API 页脚暴露现有 GitHub 仓库链接。
+
+### 文件变更
+- `.github/workflows/ci.yml` — 增加 secret/audit 安全门禁并升级 GitHub Actions 运行时。
+- `apps/frist-api/server/server.js` / `apps/frist-api/server/email.js` / `apps/frist-api/server/shared.js` / `apps/frist-api/server/catalog.js` / `apps/frist-api/server/newApiBridge.js` — AI_POOL 熔断、模型目录、New-API 桥接、邮件模块拆分和生产边界收口。
+- `apps/frist-api/src/core.js` / `apps/frist-api/src/app.js` / `apps/frist-api/index.html` / `apps/frist-api/src/styles.css` — 客户可见模型、AGPL 源码入口和前端状态文案同步。
+- `scripts/frist_api_newapi_migration_dry_run.mjs` / `apps/frist-api/tests/migration.test.mjs` — New-API 迁移演练、备份和回滚包。
+- `packages/clawbot/src/bot/multi_bot.py` / `packages/clawbot/src/bot/cmd_cli_mixin.py` — `/cli` 正式注册。
+- `packages/clawbot/src/api/routers/wechat.py` / `packages/clawbot/src/wechat_bridge.py` — 微信编号命令真实 API 映射、危险动作转人工、iLink 失效提示和告警。
+- `packages/clawbot/requirements.txt` / `packages/clawbot/pytest.ini` — 依赖安全下限和第三方 warning 隔离。
+- `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 注册表、运维和健康状态同步。
+
+### 验证
+- Frist-API：`cd apps/frist-api && node --test tests/core.test.mjs tests/server.test.mjs tests/migration.test.mjs tests/new-api-adapter.test.mjs tests/business-flow.test.mjs` → `161 passed / 0 failed / 0 skipped`；拆分邮件模块后 `tests/server.test.mjs` 单跑 → `92 passed / 0 failed`。
+- 后端：`cd packages/clawbot && .venv312/bin/python -m pytest tests/ -o addopts='' --tb=short` → `1606 passed / 2 skipped / 0 failed`。
+- 质量门禁：`make lint` → `All checks passed!`；桌面端 `npx tsc --noEmit && npm run lint && npm run build` → exit 0；`npm audit --audit-level=high --omit=dev`（桌面端、Frist-API）均 `found 0 vulnerabilities`；`pip check` → `No broken requirements found`；`pip-audit` → `No known vulnerabilities found`；tracked-tree `gitleaks detect --redact --no-git` → `no leaks found`；社媒真实浏览器 smoke → X/小红书/闲鱼 `buttonClicks=0`、`auto_publish_enabled=false`、`external_actions_locked=true`；`git diff --check` → exit 0。
+
+
 ## [2026-07-02] 社媒运营插件排程与增长复盘收口
 > 领域: `backend` | `frontend` | `social` | `docs` | `infra`
 > 影响模块: `OpenClaw Manager`, `Chrome Social Pilot`, `Social API`, `Telegram Commands`, `Execution Scheduler`, `Docs`

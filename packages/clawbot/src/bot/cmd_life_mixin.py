@@ -442,7 +442,7 @@ class LifeCommandsMixin:
                 msg = (
                     f"✅ 账单追踪已添加\n\n"
                     f"{emoji} {label}"
-                    f"{' — ' + account_name if account_name else ''}\n"
+                    f"{f" — {account_name}" if account_name else ''}\n"
                     f"⚠️ 低于 ¥{threshold:.0f} 时提醒\n"
                 )
                 if remind_day > 0:
@@ -488,7 +488,7 @@ class LifeCommandsMixin:
                         from src.core.event_bus import EventType, get_event_bus
 
                         bus = get_event_bus()
-                        asyncio.ensure_future(
+                        asyncio.ensure_future(  # noqa: RUF006
                             bus.publish(
                                 EventType.BILL_DUE,
                                 {
@@ -561,8 +561,8 @@ class LifeCommandsMixin:
                     else:
                         all_tips.append(f"{emoji} {label}: 暂无优惠信息（AI 正在搜索中...）")
                         # 异步触发 AI 搜索优惠
-                        asyncio.ensure_future(self._fetch_bill_discounts(atype, user.id, chat_id, context))
-                msg = "💡 缴费优惠渠道\n━━━━━━━━━━━━━━━\n\n" + "\n\n".join(all_tips)
+                        asyncio.ensure_future(self._fetch_bill_discounts(atype, user.id, chat_id, context))  # noqa: RUF006
+                msg = f"💡 缴费优惠渠道\n━━━━━━━━━━━━━━━\n\n{'\n\n'.join(all_tips)}"
                 await update.message.reply_text(msg)
                 return
             # 查指定类型
@@ -799,7 +799,7 @@ class LifeCommandsMixin:
                 )
                 return
             lines = ["🔔 我的降价监控:\n"]
-            for i, w in enumerate(watches, 1):
+            for _i, w in enumerate(watches, 1):
                 status_icon = "🟢" if w["status"] == "active" else "⏸️"
                 price_info = ""
                 if w["current_price"] > 0:

@@ -94,7 +94,7 @@ class NovelCommandsMixin:
                 content = result["content"]
                 header = f"📖 《续写》第{result['chapter_num']}章 {result['title']}\n字数: {result['word_count']}\n\n"
                 if len(header + content) > TG_SAFE_LENGTH:
-                    content = content[:3900] + "\n\n...(完整内容请导出 TXT)"
+                    content = f"{content[:3900]}\n\n...(完整内容请导出 TXT)"
                 await update.message.reply_text(header + content)
                 return
 

@@ -36,11 +36,11 @@ SLEEP_OFF_HOURS = 600  # 非交易时段（盘前/盘后）等待间隔（10分�
 
 
 # 从拆分后的模块导入
-from src.auto_trader_filters import AutoTraderFiltersMixin
-from src.auto_trader_review import AutoTraderReviewMixin
-from src.perf_metrics import perf_timer
-from src.trading.market_calendar import is_market_holiday
-from src.trading_pipeline import TraderState, TradingPipeline
+from src.auto_trader_filters import AutoTraderFiltersMixin  # noqa: E402
+from src.auto_trader_review import AutoTraderReviewMixin  # noqa: E402
+from src.perf_metrics import perf_timer  # noqa: E402
+from src.trading.market_calendar import is_market_holiday  # noqa: E402
+from src.trading_pipeline import TraderState, TradingPipeline  # noqa: E402
 
 
 class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
@@ -126,8 +126,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
         self._task.add_done_callback(_main_loop_done)
         logger.info("[AutoTrader] 已启动")
         await self._safe_notify(
-            "AutoTrader 已启动\n扫描间隔: %d分钟\n自动模式: %s"
-            % (self.scan_interval, "开启" if self.auto_mode else "关闭")
+            'AutoTrader 已启动\n扫描间隔: {:d}分钟\n自动模式: {}'.format(int(self.scan_interval), "开启" if self.auto_mode else "关闭")
         )
 
     async def stop(self) -> None:
@@ -135,10 +134,10 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
         self.state = TraderState.IDLE
         if self._task:
             self._task.cancel()
-            try:
+            try:  # noqa: SIM105
                 await self._task
             except asyncio.CancelledError as e:  # noqa: F841
-                pass
+                pass  # 合理保留：任务取消是正常停止流程
         logger.info("[AutoTrader] 已停止")
 
     async def _safe_notify(self, msg: str) -> None:
@@ -244,23 +243,23 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
         """构建账户上下文信息供AI投票参考 — 含近期交易结果（闭环学习）"""
         lines = ["[账户状态]"]
         capital = self._get_capital()
-        lines.append("总资金: $%.0f" % capital)
-        lines.append("单笔风险: 2%% ($%.0f)" % (capital * 0.02))
-        lines.append("今日已交易: %d/%d笔" % (self._today_trades, self.max_trades_per_day))
+        lines.append(f'总资金: ${float(capital):.0f}')
+        lines.append(f'单笔风险: 2% (${float(capital * 0.02):.0f})')
+        lines.append(f'今日已交易: {int(self._today_trades):d}/{int(self.max_trades_per_day):d}笔')
 
         # 今日盈亏
         if self.risk_manager:
             today_pnl = getattr(self.risk_manager, "_today_pnl", 0)
-            lines.append("今日已实现盈亏: $%.2f" % today_pnl)
+            lines.append(f'今日已实现盈亏: ${float(today_pnl):.2f}')
             daily_limit = 100
             if hasattr(self.risk_manager, "config"):
                 daily_limit = getattr(self.risk_manager.config, "daily_loss_limit", 100)
-            lines.append("日亏损限额: $%.0f (剩余$%.0f)" % (daily_limit, daily_limit + today_pnl))
+            lines.append(f'日亏损限额: ${float(daily_limit):.0f} (剩余${float(daily_limit + today_pnl):.0f})')
 
         # 当前持仓数
         if self.pipeline and self.pipeline.monitor:
             pos_count = len(self.pipeline.monitor.positions)
-            lines.append("当前持仓: %d笔" % pos_count)
+            lines.append(f'当前持仓: {int(pos_count):d}笔')
 
         # 闭环学习：注入近期交易结果 + 教训
         try:
@@ -272,15 +271,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
                     lines.append("\n[近3日交易结果]")
                     for t in closed[:5]:
                         lines.append(
-                            "  %s %s PnL=$%+.2f (%+.1f%%) 持仓%.1fh | %s"
-                            % (
-                                t.get("side", "?"),
-                                t.get("symbol", "?"),
-                                t.get("pnl", 0),
-                                t.get("pnl_pct", 0),
-                                t.get("hold_duration_hours", 0) or 0,
-                                (t.get("exit_reason") or t.get("entry_reason") or "")[:40],
-                            )
+                            '  {} {} PnL=${:+.2f} ({:+.1f}%) 持仓{:.1f}h | {}'.format(t.get("side", "?"), t.get("symbol", "?"), float(t.get("pnl", 0)), float(t.get("pnl_pct", 0)), float(t.get("hold_duration_hours", 0) or 0), (t.get("exit_reason") or t.get("entry_reason") or "")[:40])
                         )
                 # 注入迭代教训
                 if hasattr(tj, "generate_iteration_report"):
@@ -334,7 +325,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
             except Exception as e:
                 self.state = TraderState.ERROR
                 logger.error("[AutoTrader] 主循环异常: %s", e, exc_info=True)
-                await self._safe_notify("AutoTrader 异常: %s" % e)
+                await self._safe_notify(f'AutoTrader 异常: {e}')
 
             await asyncio.sleep(self.scan_interval * 60)
 
@@ -390,7 +381,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
         remaining_today = self.max_trades_per_day - self._today_trades
         if remaining_today <= 0:
             await self._safe_notify(
-                "今日已达交易上限 (%d/%d笔)，停止扫描。\n明日自动继续。" % (self._today_trades, self.max_trades_per_day)
+                f'今日已达交易上限 ({int(self._today_trades):d}/{int(self.max_trades_per_day):d}笔)，停止扫描。\n明日自动继续。'
             )
             self.state = TraderState.IDLE
             return cycle_result
@@ -400,7 +391,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
         logger.info("[AutoTrader] === 交易循环 #%d ===", self._cycle_count)
 
         await self._safe_notify(
-            "-- 交易循环 #%d 开始 --\n"
+            "-- 交易循环 #%d 开始 --\n"  # noqa: UP031
             "阶段 1/4: 全市场扫描中...\n"
             "今日已交易: %d/%d笔" % (self._cycle_count, self._today_trades, self.max_trades_per_day)
         )
@@ -412,7 +403,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
                 cycle_result["scanned"] = len(self._scan_results)
             except Exception as e:
                 logger.error("[AutoTrader] 扫描失败: %s", e)
-                await self._safe_notify("扫描失败: %s" % e)
+                await self._safe_notify(f'扫描失败: {e}')
                 self.state = TraderState.ERROR
                 return cycle_result
 
@@ -433,21 +424,12 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
 
         if self.notify:
             scan_lines = [
-                "阶段 1/4: 扫描完成\n扫描 %d 个标的 -> 筛选出 %d 个候选\n" % (cycle_result["scanned"], len(candidates))
+                '阶段 1/4: 扫描完成\n扫描 {:d} 个标的 -> 筛选出 {:d} 个候选\n'.format(int(cycle_result["scanned"]), len(candidates))
             ]
             for i, c in enumerate(top_candidates):
                 arrow = "+" if c.get("change_pct", 0) >= 0 else ""
                 scan_lines.append(
-                    "  %d. %s $%.2f (%s%.1f%%) 评分:%+d %s"
-                    % (
-                        i + 1,
-                        c.get("symbol", "?"),
-                        c.get("price", 0),
-                        arrow,
-                        c.get("change_pct", 0),
-                        c.get("score", 0),
-                        c.get("signal_cn", ""),
-                    )
+                    '  {:d}. {} ${:.2f} ({}{:.1f}%) 评分:{:+d} {}'.format(int(i + 1), c.get("symbol", "?"), float(c.get("price", 0)), arrow, float(c.get("change_pct", 0)), int(c.get("score", 0)), c.get("signal_cn", ""))
                 )
             if not top_candidates:
                 scan_lines.append("  无符合条件的候选，继续观望。")
@@ -460,7 +442,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
         # ========== 阶段3: AI团队分析 + 投票 ==========
         self.state = TraderState.ANALYZING
 
-        await self._safe_notify("阶段 2/4: 获取 %d 个候选的详细技术数据..." % len(top_candidates))
+        await self._safe_notify(f'阶段 2/4: 获取 {len(top_candidates):d} 个候选的详细技术数据...')
 
         # 优先复用扫描阶段已获取的分析数据（避免重复调用 yfinance 被限流）
         analyses = {}
@@ -497,7 +479,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
             logger.info("[AutoTrader] 全部 %d 候选已有缓存分析数据，跳过重复获取", len(top_candidates))
 
         await self._safe_notify(
-            "阶段 2/4: 技术数据就绪 (%d/%d)\n\n"
+            "阶段 2/4: 技术数据就绪 (%d/%d)\n\n"  # noqa: UP031
             "阶段 3/4: AI团队投票决策中...\n"
             "雷达 -> 宏观 -> 图表 -> 风控 -> 指挥官" % (len(analyses), len(top_candidates))
         )
@@ -518,7 +500,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
                 cycle_result["voted"] = len(voted_results)
             except Exception as e:
                 logger.error("[AutoTrader] AI团队投票失败: %s", e)
-                await self._safe_notify("AI团队投票异常: %s\n降级为机械策略" % e)
+                await self._safe_notify(f'AI团队投票异常: {e}\n降级为机械策略')
 
         # 从投票结果生成提案
         proposals = []
@@ -590,7 +572,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
                         signal_score=candidate.get("score", 0),
                         confidence=vr.avg_confidence,
                         reason=vr.summary,
-                        decided_by="AI团队投票(%d/%d)" % (vr.buy_count, len(vr.votes)),
+                        decided_by=f'AI团队投票({int(vr.buy_count):d}/{len(vr.votes):d})',
                         atr=candidate.get("atr_pct", 2.0) / 100 * price,
                         votes=list(vr.votes),  # 保留每个AI的独立投票，供准确率追踪
                     )
@@ -658,7 +640,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
                         exposure_budget_left -= p.quantity * p.entry_price
                 if proposals:
                     await self._safe_notify(
-                        "阶段 3/4: 触发防空仓策略\n"
+                        "阶段 3/4: 触发防空仓策略\n"  # noqa: UP031
                         "连续 %d 轮无交易提案，启用探索仓位 %d 笔（最小评分>=%d）"
                         % (self._no_trade_cycles, len(proposals), self.force_trade_min_score)
                     )
@@ -668,7 +650,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
 
         if not proposals:
             await self._safe_notify(
-                "阶段 3/4: AI团队投票完成\n"
+                "阶段 3/4: AI团队投票完成\n"  # noqa: UP031
                 "结论: 暂无达成共识的交易机会，继续观望。\n"
                 "连续无提案轮次: %d" % self._no_trade_cycles
             )
@@ -682,8 +664,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
             prop_lines = ["阶段 4/4: 风控审核 + 执行\n"]
             for p in proposals:
                 prop_lines.append(
-                    "  BUY %s x%d @ $%.2f | 止损$%.2f 止盈$%.2f\n  %s"
-                    % (p.symbol, p.quantity, p.entry_price, p.stop_loss, p.take_profit, p.reason[:80])
+                    f'  BUY {p.symbol} x{int(p.quantity):d} @ ${float(p.entry_price):.2f} | 止损${float(p.stop_loss):.2f} 止盈${float(p.take_profit):.2f}\n  {p.reason[:80]}'
                 )
             await self._safe_notify("\n".join(prop_lines))
 
@@ -749,11 +730,11 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
                                     "confidence": proposal.confidence,
                                 }
                             )
-                            card += "\n\n今日交易: %d/%d笔" % (self._today_trades, self.max_trades_per_day)
+                            card += f'\n\n今日交易: {int(self._today_trades):d}/{int(self.max_trades_per_day):d}笔'
                             await self._safe_notify(card)
                         except Exception as e:  # noqa: F841
                             await self._safe_notify(
-                                "交易执行成功\n"
+                                "交易执行成功\n"  # noqa: UP031
                                 "BUY %s x%d @ $%.2f\n"
                                 "止损: $%.2f | 止盈: $%.2f\n"
                                 "今日交易: %d/%d笔"
@@ -770,13 +751,12 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
                     elif exec_result["status"] == "rejected":
                         cycle_result["rejected"] += 1
                         await self._safe_notify(
-                            "交易被风控拒绝: %s %s\n原因: %s"
-                            % (proposal.symbol, proposal.action, exec_result.get("reason", "未知"))
+                            '交易被风控拒绝: {} {}\n原因: {}'.format(proposal.symbol, proposal.action, exec_result.get("reason", "未知"))
                         )
                     elif exec_result["status"] == "submitted":
                         cycle_result["submitted"] += 1
                         await self._safe_notify(
-                            "订单已提交待成交: %s %s x%d\n"
+                            "订单已提交待成交: %s %s x%d\n"  # noqa: UP031
                             "订单ID: %s | 后续由回写校验器自动同步"
                             % (
                                 proposal.action,
@@ -787,12 +767,12 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
                         )
                 except Exception as e:
                     logger.error("[AutoTrader] 执行失败: %s", e)
-                    await self._safe_notify("执行异常: %s %s - %s" % (proposal.symbol, proposal.action, e))
+                    await self._safe_notify(f'执行异常: {proposal.symbol} {proposal.action} - {e}')
         else:
             if self.notify:
                 for p in proposals:
                     await self._safe_notify(
-                        "交易提案 (待确认)\n"
+                        "交易提案 (待确认)\n"  # noqa: UP031
                         "%s %s x%d @ $%.2f\n"
                         "止损: $%.2f | 止盈: $%.2f\n"
                         "理由: %s"
@@ -801,7 +781,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
 
         self.state = TraderState.MONITORING
         await self._safe_notify(
-            "-- 循环 #%d 完成 --\n"
+            "-- 循环 #%d 完成 --\n"  # noqa: UP031
             "扫描%d -> 候选%d -> 分析%d -> 投票%d -> 提案%d -> 提交%d -> 执行%d 拒绝%d\n"
             "今日交易: %d/%d笔"
             % (
@@ -863,16 +843,16 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
         lines = [
             "AutoTrader 状态",
             "",
-            "状态: %s" % state_cn.get(s["state"], s["state"]),
-            "运行: %s" % ("是" if s["running"] else "否"),
-            "自动模式: %s" % ("开启" if s["auto_mode"] else "关闭(需确认)"),
-            "已完成循环: %d次" % s["cycle_count"],
-            "扫描间隔: %d分钟" % s["scan_interval_min"],
-            "上次扫描: %s" % (s["last_scan"] or "无"),
-            "最近信号: %d个" % s["last_signals"],
-            "待确认提案: %d个" % s["pending_proposals"],
-            "连续无提案: %d轮" % s["no_trade_cycles"],
-            "防空仓执行: %d/%d笔" % (s["forced_trades_today"], self.max_forced_trades_per_day),
+            '状态: {}'.format(state_cn.get(s["state"], s["state"])),
+            '运行: {}'.format("是" if s["running"] else "否"),
+            '自动模式: {}'.format("开启" if s["auto_mode"] else "关闭(需确认)"),
+            '已完成循环: {:d}次'.format(int(s["cycle_count"])),
+            '扫描间隔: {:d}分钟'.format(int(s["scan_interval_min"])),
+            '上次扫描: {}'.format(s["last_scan"] or "无"),
+            '最近信号: {:d}个'.format(int(s["last_signals"])),
+            '待确认提案: {:d}个'.format(int(s["pending_proposals"])),
+            '连续无提案: {:d}轮'.format(int(s["no_trade_cycles"])),
+            '防空仓执行: {:d}/{:d}笔'.format(int(s["forced_trades_today"]), int(self.max_forced_trades_per_day)),
         ]
         return "\n".join(lines)
 
@@ -907,4 +887,4 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
 
 
 # ── 向后兼容导出 (v6.0 拆分) ──
-from src.trading_pipeline import TradingPipeline
+from src.trading_pipeline import TradingPipeline  # noqa: E402

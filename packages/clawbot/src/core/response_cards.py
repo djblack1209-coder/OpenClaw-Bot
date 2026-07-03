@@ -105,7 +105,7 @@ class InvestmentAnalysisCard(ResponseCard):
                 return f"⏸ {sym} 目前没有明确方向，建议先观望"
 
         # 星级评分
-        def stars(score): return "⭐" * max(1, int(score / 2)) + f" {score:.1f}"
+        def stars(score): return f"{'⭐' * max(1, int(score / 2))} {score:.1f}"
 
         lines = [
             f"📊 <b>投资分析: {self.symbol}</b>",
@@ -146,7 +146,7 @@ class InvestmentAnalysisCard(ResponseCard):
         if self.position_size_pct > 0:
             lines.append(f"📊 建议仓位: {self.position_size_pct:.1%}")
 
-        return "\n".join(l for l in lines if l)
+        return "\n".join(line for line in lines if line)
 
     def action_buttons(self) -> InlineKeyboardMarkup | None:
         buttons = []

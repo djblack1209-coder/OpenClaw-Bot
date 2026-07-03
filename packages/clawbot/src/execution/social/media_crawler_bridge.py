@@ -235,7 +235,7 @@ class MediaCrawlerBridge:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=180)
+            _stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=180)
 
             if proc.returncode == 0:
                 # 尝试读取输出的 JSON 文件

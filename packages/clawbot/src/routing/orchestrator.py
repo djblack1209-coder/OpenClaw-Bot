@@ -290,7 +290,7 @@ class CollabOrchestrator:
 ## 审查意见（{task.reviewer_id}）
 {task.review_result[:1000]}
 审查结论: {'通过' if task.review_passed else '修订后通过'}
-{'修订次数: ' + str(task.retry_count) if task.retry_count > 0 else ''}
+{f"修订次数: {task.retry_count!s}" if task.retry_count > 0 else ''}
 """
 
         summary_prompt = f"""【协作任务 - 汇总阶段】

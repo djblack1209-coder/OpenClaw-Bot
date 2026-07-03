@@ -23,16 +23,16 @@ v1.1 变更 (2026-03-23):
 6. 持仓监控（position_monitor 止损/止盈）
 7. 收盘复盘（trading_journal）
 """
-import json
-import logging
-import os
-import re
-from collections.abc import Callable
-from enum import Enum
-from typing import Any
+import json  # noqa: E402
+import logging  # noqa: E402
+import os  # noqa: E402
+import re  # noqa: E402
+from collections.abc import Callable  # noqa: E402
+from enum import Enum  # noqa: E402
+from typing import Any  # noqa: E402
 
-from src.models import TradeProposal
-from src.notify_style import (
+from src.models import TradeProposal  # noqa: E402
+from src.notify_style import (  # noqa: E402
     format_trade_executed,
     format_trade_submitted,
 )
@@ -131,15 +131,14 @@ class TradingPipeline:
                 result["steps"].append({"decision_validation": str(validation)})
                 if not validation.approved:
                     result["status"] = "rejected"
-                    result["reason"] = "决策验证失败: " + "; ".join(validation.issues)
+                    result["reason"] = f"决策验证失败: {'; '.join(validation.issues)}"
                     logger.warning(
                         "[Pipeline] 决策验证拒绝: %s %s - %s",
                         proposal.symbol, proposal.action, validation.issues,
                     )
                     if self.notify:
                         await self._safe_notify(
-                            "决策验证拒绝 %s %s\n原因: %s"
-                            % (proposal.symbol, proposal.action, "; ".join(validation.issues))
+                            f"决策验证拒绝 {proposal.symbol} {proposal.action}\n原因: {'; '.join(validation.issues)}"
                         )
                     return result
                 if validation.warnings:
@@ -205,8 +204,7 @@ class TradingPipeline:
 
                 if self.notify:
                     await self._safe_notify(
-                        "风控拒绝 %s %s\n原因: %s"
-                        % (proposal.symbol, proposal.action, check.reason)
+                        f"风控拒绝 {proposal.symbol} {proposal.action}\n原因: {check.reason}"
                     )
                 return result
 
@@ -214,7 +212,7 @@ class TradingPipeline:
                 old_qty = proposal.quantity
                 proposal.quantity = int(check.adjusted_quantity)
                 result["steps"].append({
-                    "qty_adjusted": "%d -> %d" % (old_qty, proposal.quantity)
+                    "qty_adjusted": f"{int(old_qty)} -> {int(proposal.quantity)}"
                 })
 
         if proposal.quantity <= 0:
@@ -257,7 +255,7 @@ class TradingPipeline:
                             order_result.get("error", ""),
                         )
                         result["status"] = "error"
-                        result["reason"] = "IBKR下单失败且无模拟组合: " + order_result.get("error", "")
+                        result["reason"] = f"IBKR下单失败且无模拟组合: {order_result.get('error', '')}"
                         return result
             except Exception as e:
                 if self.portfolio:
@@ -268,7 +266,7 @@ class TradingPipeline:
                     # 无模拟组合可用，直接返回错误
                     logger.error("[Pipeline] IBKR异常且无模拟组合，交易中止: %s", e)
                     result["status"] = "error"
-                    result["reason"] = "IBKR下单异常且无模拟组合: %s" % e
+                    result["reason"] = f"IBKR下单异常且无模拟组合: {e}"
                     return result
 
         if order_result is None and self.portfolio:
@@ -341,7 +339,7 @@ class TradingPipeline:
 
         # P0#6: 检测是否为模拟降级交易
         is_simulated_fallback = False
-        if self.broker and order_result:
+        if self.broker and order_result:  # noqa: SIM102
             # 有 broker 但结果来自模拟组合（无 order_id 或有 sim 标记）
             if "sim_order" in str(result.get("steps", [])):
                 is_simulated_fallback = True
@@ -390,9 +388,9 @@ class TradingPipeline:
                 except Exception as e:
                     logger.warning("[Pipeline] 记录AI预测失败: %s", e)
                 if is_entry_pending:
-                    result["steps"].append({"journal": "trade #%s (pending)" % trade_id})
+                    result["steps"].append({"journal": f"trade #{trade_id} (pending)"})
                 else:
-                    result["steps"].append({"journal": "trade #%s" % trade_id})
+                    result["steps"].append({"journal": f"trade #{trade_id}"})
             except Exception as e:
                 logger.error("[Pipeline] 记录日志失败: %s", e)
 

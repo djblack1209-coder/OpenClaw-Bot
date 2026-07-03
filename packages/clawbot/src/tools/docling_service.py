@@ -161,7 +161,7 @@ async def summarize_document(
         for t in tables[:5]:  # 最多展示前 5 个表格信息
             cols = ", ".join(t["columns"][:10])
             table_info.append(f"  - 表格 {t['index'] + 1}: {t['rows']} 行, 列: {cols}")
-        table_summary = "\n\n📊 文档中的表格:\n" + "\n".join(table_info)
+        table_summary = f"\n\n📊 文档中的表格:\n{'\n'.join(table_info)}"
 
     if question:
         system_prompt = (

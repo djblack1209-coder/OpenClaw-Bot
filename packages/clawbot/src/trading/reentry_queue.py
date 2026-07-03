@@ -68,7 +68,7 @@ def load_pending_reentry_queue(journal=None) -> list[dict]:
     return normalized
 
 
-def save_pending_reentry_queue(journal=None, queue: list[dict] = None) -> None:
+def save_pending_reentry_queue(journal=None, queue: list[dict] | None = None) -> None:
     """持久化重入队列到 trading_journal 配置。"""
     if queue is None:
         queue = []

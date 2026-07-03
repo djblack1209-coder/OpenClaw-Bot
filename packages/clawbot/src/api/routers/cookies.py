@@ -69,18 +69,25 @@ async def sync_all_cookies() -> dict[str, Any]:
 
     # 触发 CookieCloud 同步（会自动提取闲鱼+X+XHS）
     try:
-        from src.xianyu.cookie_cloud import CookieCloudManager
-        manager = CookieCloudManager.get_instance()
-        if manager:
+        from src.xianyu.cookie_cloud import get_cookie_cloud_manager
+
+        manager = get_cookie_cloud_manager()
+        if manager.enabled:
             sync_result = await manager.sync_once()
             results["cookiecloud"] = {
-                "success": sync_result is not None,
+                "success": bool(sync_result),
                 "message": "CookieCloud 同步完成" if sync_result else "CookieCloud 同步失败或未配置",
             }
         else:
-            results["cookiecloud"] = {"success": False, "message": "CookieCloud 未配置"}
+            results["cookiecloud"] = {
+                "success": False,
+                "message": "CookieCloud 可选增强未配置；闲鱼会继续使用扫码/现有 Cookie 兜底",
+            }
     except Exception as e:
-        results["cookiecloud"] = {"success": False, "message": str(e)[:100]}
+        results["cookiecloud"] = {
+            "success": False,
+            "message": f"CookieCloud 可选同步失败，不阻断主流程: {str(e)[:80]}",
+        }
 
     # 返回同步后的状态
     status = await cookie_status()

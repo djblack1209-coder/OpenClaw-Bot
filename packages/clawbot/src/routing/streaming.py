@@ -94,12 +94,12 @@ async def stream_llm_to_telegram(
             if message_id is None:
                 # 首次发送
                 if len(full_text) >= 10:
-                    message_id = await send_func(chat_id, full_text + " ▌")
+                    message_id = await send_func(chat_id, f"{full_text} ▌")
                     last_edit_time = now
                     pending_chars = 0
             elif should_edit:
                 try:
-                    await send_func(chat_id, full_text + " ▌", edit_message_id=message_id)
+                    await send_func(chat_id, f"{full_text} ▌", edit_message_id=message_id)
                     last_edit_time = now
                     pending_chars = 0
                 except Exception as e:
@@ -116,7 +116,7 @@ async def stream_llm_to_telegram(
         logger.error(f"[Streaming] 流式传输失败: {scrub_secrets(str(e))}")
         if full_text and message_id:
             try:
-                await send_func(chat_id, full_text + "\n\n⚠️ 流式传输中断",
+                await send_func(chat_id, f"{full_text}\n\n⚠️ 流式传输中断",
                                 edit_message_id=message_id)
             except Exception as e:
                 logger.warning(f"[Streaming] Failed to send interruption notice: {scrub_secrets(str(e))}")

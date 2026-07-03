@@ -95,6 +95,7 @@ audit-*.png
 R21-*.png
 
 # Python 虚拟环境（确保通配符覆盖）
+.venv312
 .venv*/
 
 # Node modules（所有位置）

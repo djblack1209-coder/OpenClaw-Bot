@@ -266,7 +266,7 @@ async def _fetch_trending_projects() -> list[str]:
                     if relevant and stars > 50:
                         items.append(f"⭐{stars} {name}: {repo.description[:80] if repo.description else ''}")
         except ImportError:
-            pass
+            pass  # 合理保留：可选依赖缺失时继续走后续降级链
 
         if not items:
             items.append("暂无与 OpenClaw 相关的热门项目")

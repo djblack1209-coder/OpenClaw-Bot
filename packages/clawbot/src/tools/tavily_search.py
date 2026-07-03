@@ -55,7 +55,7 @@ def _get_client() -> Optional["TavilyClient"]:
             _HAS_TAVILY = True
             return _tavily_client
         except ImportError:
-            pass
+            pass  # 合理保留：可选依赖缺失时继续走后续降级链
     return None
 
 

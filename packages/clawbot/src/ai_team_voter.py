@@ -636,7 +636,7 @@ async def run_team_vote(
         if tj and hasattr(tj, "get_latest_review"):
             latest_review = tj.get_latest_review("daily")
             if latest_review and latest_review.get("lessons_learned"):
-                trade_lessons = "[近期交易教训]\n" + str(latest_review["lessons_learned"])[:300]
+                trade_lessons = f"[近期交易教训]\n{str(latest_review['lessons_learned'])[:300]}"
     except Exception:
         logger.debug("Silenced exception", exc_info=True)
 
@@ -777,7 +777,7 @@ async def run_team_vote(
                 result.decision = "BUY"
         else:
             result.decision = "HOLD"
-            result.veto_reason = "BUY票数达标但平均置信度不足(%.1f/10 < %.1f)" % (avg_buy_conf, min_avg_buy_conf)
+            result.veto_reason = f"BUY票数达标但平均置信度不足({avg_buy_conf:.1f}/10 < {min_avg_buy_conf:.1f})"
     else:
         result.decision = "HOLD"
 

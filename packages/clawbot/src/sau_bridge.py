@@ -30,7 +30,7 @@ DEFAULT_ACCOUNT = os.getenv("SAU_DEFAULT_ACCOUNT", "default")
 
 async def _run_sau_cmd(args: list[str], timeout: int = 120) -> dict:
     """执行 sau CLI 命令并返回结构化结果"""
-    cmd = ["sau"] + args
+    cmd = ["sau", *args]
     logger.info("[SAU] 执行: %s", " ".join(cmd[:5]))
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -90,7 +90,7 @@ async def publish_video(
     video_path: str,
     title: str,
     description: str = "",
-    tags: list[str] = None,
+    tags: list[str] | None = None,
     account: str = "",
     timeout: int = 180,
 ) -> dict:
@@ -120,7 +120,7 @@ async def publish_note(
     images: list[str],
     title: str,
     content: str = "",
-    tags: list[str] = None,
+    tags: list[str] | None = None,
     account: str = "",
     timeout: int = 120,
 ) -> dict:
@@ -136,10 +136,7 @@ async def publish_note(
     if not valid_images:
         return {"success": False, "error": "没有有效的图片文件"}
 
-    args = [platform, "upload-note",
-            "--account", account,
-            "--title", title[:100],
-            "--images"] + valid_images
+    args = [platform, "upload-note", "--account", account, "--title", title[:100], "--images", *valid_images]
     if content:
         args += ["--note", content[:2000]]
     if tags:
@@ -151,10 +148,10 @@ async def publish_note(
 async def publish_multi_platform(
     platforms: list[str],
     video_path: str = "",
-    images: list[str] = None,
+    images: list[str] | None = None,
     title: str = "",
     description: str = "",
-    tags: list[str] = None,
+    tags: list[str] | None = None,
     account: str = "",
 ) -> dict[str, dict]:
     """一键多平台发布（并行执行）"""
