@@ -54,7 +54,7 @@ Frist-API 生产流量已从国内腾讯云迁到 Oracle ARM Always Free，目�
 5. `ssh oracle-arm1 'systemctl --failed --no-pager'` 应显示 `0 loaded units listed`。
 6. 旧腾讯云只做冷回滚；除非执行回滚，不要同时启动旧 Frist-API 和旧 R2 timer，避免双源探测、重复备份或上游渠道状态漂移。
 
-正式开放陌生付费用户前，仍需确认 SMTP 密码已通过无回显方式写入 Oracle 环境变量并跑通测试邮件；New-API 数据库、R2 备份和 Cloudflare DNS 代码侧已落地。支付当前走闲鱼兑换码，不把微信/支付宝/Stripe 商户自动支付作为上线必备。
+SMTP 密码已通过隐藏输入方式写入 Oracle 环境变量，并已用 Gmail 465/TLS 跑通生产测试邮件；New-API 数据库、R2 备份和 Cloudflare DNS 代码侧已落地。支付当前走闲鱼兑换码，不把微信/支付宝/Stripe 商户自动支付作为上线必备。
 
 ## 你需要人工开通的服务
 
@@ -68,7 +68,7 @@ Frist-API 生产流量已从国内腾讯云迁到 Oracle ARM Always Free，目�
 | P1 | 告警 Webhook | Telegram、企业微信、飞书或 OpenClaw 通知地址 | 低库存、5xx、支付失败、异常扣费告警 |
 | P2 | 合规文档 | 服务条款、退款规则、隐私政策、AGPL 源码入口 | 页面页脚和订单确认页展示 |
 
-不要把 API Key、Webhook Secret、商户密钥、SMTP 密码或服务器密码发到聊天里。SMTP 密码即使用户在聊天里给过，也不能由 Codex 写进命令历史或最终报告；正确做法是在服务器终端用无回显 `read -rsp` 输入一次，再写入 `/opt/frist-api/.env`。
+不要把 API Key、Webhook Secret、商户密钥、SMTP 密码或服务器密码发到聊天里。SMTP 密码即使用户在聊天里给过，也不能由 Codex 写进命令历史或最终报告；本轮已通过本机隐藏输入框写入 Oracle `/etc/frist-api/frist-api.env`，并同步兼容 `/opt/frist-api/.env`，文档只记录状态不记录值。
 
 ## 备用渠道人工风控
 
@@ -333,7 +333,7 @@ Stripe 的 API Secret Key、Webhook Signing Secret 和账号实名审核只能�
 2. Oracle 生产服务已启用 New-API adapter；`FRIST_API_NEWAPI_ENABLED=1` 与 `FRIST_API_REQUIRE_NEWAPI_DATABASE=1` 已生效。
 3. R2 定时备份已在 Oracle 启用；最近一次手动上传 HTTP 200。
 4. 腾讯云旧入口和 `http://frist-api.101-43-41-96.nip.io/` 只保留冷回滚，不再作为用户入口；旧容器停止时该地址不可用是预期。
-5. SMTP 密码尚未通过无回显方式落地，测试邮件需要先完成下方“邮箱和防刷”的密码写入步骤。
+5. SMTP 密码已通过隐藏输入方式落地；生产测试邮件已返回 `smtp_test=sent`。
 
 当前采用 Cloudflare DNS 代理，不依赖长期 `cloudflared` 服务。2026-07-03 Oracle 源站已安装 Cloudflare Origin CA 证书并让 Apache 监听 `frist-api.245334.xyz:443`，解决 Cloudflare 526。若未来重新启用 Tunnel，必须把 Tunnel token 放在 root-only 环境文件，且禁止通过 `systemctl status` / 服务日志输出 token。
 
@@ -354,7 +354,7 @@ Stripe 的 API Secret Key、Webhook Signing Secret 和账号实名审核只能�
 - Cloudflare Turnstile Site Key 和 Secret Key。
 - 一个客服邮箱，用于账单、找回密码和异常申诉。
 
-建议先用企业邮箱或域名邮箱，不建议用个人邮箱长期发验证码。Gmail 这类个人邮箱只能作为短期测试，应用专用密码只允许写入服务器环境变量，不能写入仓库、文档、命令历史或运行数据。当前服务器尚未发现 `FRIST_API_SMTP_PASSWORD`，需要 Carven 在 SSH 终端按最终报告提供的无回显命令输入一次密码，再重启 Frist-API 容器。
+建议先用企业邮箱或域名邮箱，不建议用个人邮箱长期发验证码。Gmail 这类个人邮箱只能作为短期测试，应用专用密码只允许写入服务器环境变量，不能写入仓库、文档、命令历史或运行数据。当前生产已配置 Gmail SMTP：使用 `smtp.gmail.com`、465 端口、TLS、`FRIST_API_SMTP_FAMILY=auto`；测试邮件已成功发出。
 
 余额预警测试方式:
 
@@ -363,7 +363,7 @@ Stripe 的 API Secret Key、Webhook Signing Secret 和账号实名审核只能�
 3. 点击 `发送测试邮件`。成功说明 SMTP 可以发信；失败时页面会显示 SMTP 未配置或连接异常。
 4. 真实扣费后，系统只在余额从阈值上方跌到阈值以下时发送一次，避免每次调用都刷邮件。
 
-如果本机或云厂商出口限制 SMTP，可能出现 465/587 端口 TCP 可连但 TLS 或 SMTP greeting 阶段无响应。遇到这种情况，不要反复换代码，先在正式服务器网络上跑测试邮件，再决定是否改用企业邮箱、邮件服务商或放行 SMTP 出口。腾讯云实测中 Gmail IPv6 出口可用、IPv4 465 超时，因此默认 `FRIST_API_SMTP_FAMILY=auto` 会按 DNS 地址逐个尝试；如某台服务器 IPv4 长期超时，可临时设为 `6`。
+如果本机或云厂商出口限制 SMTP，可能出现 465/587 端口 TCP 可连但 TLS 或 SMTP greeting 阶段无响应。遇到这种情况，不要反复换代码，先在正式服务器网络上跑测试邮件，再决定是否改用企业邮箱、邮件服务商或放行 SMTP 出口。Oracle 实测 Gmail 465/TLS 可用；默认 `FRIST_API_SMTP_FAMILY=auto` 会按 DNS 地址逐个尝试。如某台服务器 IPv4 长期超时，可临时设为 `6`。
 
 Turnstile 接入后，前端只保存 Site Key，Secret Key 只能放在服务器。服务端必须校验 Cloudflare 返回结果，不能只检查前端传了一个 token。
 
@@ -644,7 +644,7 @@ apps/frist-api/deploy/smoke-test.sh http://127.0.0.1:3180 "$FRIST_API_ADMIN_PAGE
 ## 当前限制
 
 - JSON runtime 仍作为兜底和本地小范围验收可用；生产已启用 `FRIST_API_NEWAPI_ENABLED=1` 和 `FRIST_API_REQUIRE_NEWAPI_DATABASE=1`。2026-07-03 已按授权执行 New-API 迁移：用户、余额、订单、兑换码和日志已迁入 New-API；16 个历史 `enc:v1:` 用户 Key 因旧加密密钥缺失未迁移，避免把密文伪造成可用 Key。
-- 已有轻量验证码、认证限流、一次性管理员身份码、管理员 TOTP 2FA、余额预警 SMTP 邮件、兑换码核销和备用真实支付回调代码；当前收款走闲鱼兑换码，商户自动支付不是必需项。正式域名/Cloudflare/R2 已复用 VPS-Config 既有资产落地，SMTP 密码仍需用无回显终端输入。
+- 已有轻量验证码、认证限流、一次性管理员身份码、管理员 TOTP 2FA、余额预警 SMTP 邮件、兑换码核销和备用真实支付回调代码；当前收款走闲鱼兑换码，商户自动支付不是必需项。正式域名/Cloudflare/R2 已复用 VPS-Config 既有资产落地，SMTP 密码已隐藏输入并通过生产测试邮件验证。
 - 补号探测已做低成本可用性判断、Responses fallback、直连/代理择优和认证字段清洗，但未做完整上下文上限、工具调用、流式能力和模型质量评分。
 - CPA JSON/chong 入口只做人工登记和放行，不包含 OAuth Session 提取、Refresh Token 刷新、账号池规避风控或自动化批量获取逻辑。
 - `QuantumNous/new-api` 是 AGPL-3.0；Frist-API 页面页脚已提供现有 OpenClaw-Bot 源码入口。若后续二开 New-API 本体并公开运营，仍需确保复用的 GitHub 仓库/fork 可公开访问。
@@ -712,9 +712,8 @@ tar -czf "data/backups/newapi-$(date +%Y%m%d-%H%M%S).tgz" data/newapi
 ## 下一步
 
 1. 维护闲鱼兑换码商品、自动发货规则和卡密库存告警；自动支付商户平台开户当前不推进。
-2. 用无回显终端输入 SMTP 密码并跑测试邮件；不要把密码写进聊天、命令历史、文档或 Git。
-3. 持续审计上游真实 `/v1/models`、余额站日限额、慢线降级和价格版本。
-4. 保持页面源码入口可见，确保 AGPL-3.0 上游合规。
+2. 持续审计上游真实 `/v1/models`、余额站日限额、慢线降级和价格版本。
+3. 保持页面源码入口可见，确保 AGPL-3.0 上游合规。
 
 ---
 
