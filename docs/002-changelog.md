@@ -6,16 +6,16 @@
 ## 最近更新（2026-07 / 2026-06 / 2026-05）
 
 
-## [2026-07-03] Frist-API 生产迁移与域名/R2 收口
+## [2026-07-03] Frist-API Oracle 生产迁移与域名/R2 收口
 > 领域: `backend` | `deploy` | `infra` | `docs`
-> 影响模块: `Frist-API`, `New-API Bridge`, `Cloudflare DNS`, `R2 Backup`, `GitHub Actions`
+> 影响模块: `Frist-API`, `New-API Bridge`, `Oracle ARM`, `Cloudflare DNS`, `R2 Backup`, `GitHub Actions`
 > 关联问题: TD-006, TD-007, TD-014, TD-015, HI-856, HI-857
 
 ### 变更内容
 - 按 Carven 授权执行生产 New-API 迁移：用户、余额/订单、兑换码和日志已写入生产 New-API 数据库，Frist-API 生产环境启用 New-API adapter，并保留带时间戳回滚目录。
 - 对历史 `enc:v1:` 用户 Key 采取安全跳过策略：旧数据加密密钥未能在本地、VPS-Config 或服务器常规备份中找到，不能把密文伪造成可用 Key；前端/服务端会把这类 Key 标记为需重新生成。
-- 复用 VPS-Config 的 Cloudflare/R2 资产：`frist-api.245334.xyz` 写入 Cloudflare proxied A，源站 Origin CA 证书和 Nginx 443 已落地，正式 HTTPS 外网冒烟 HTTP 200；R2 备份脚本、root-only env、systemd timer 已在服务器启用并完成一次手动上传验证。
-- 修正生产 SMTP 边界：代码和文档只登记变量名，不写入聊天里出现过的 SMTP 密码；服务器当前未检测到 `FRIST_API_SMTP_PASSWORD`，需 Carven 用无回显终端输入一次。
+- 复用 VPS-Config 的 Cloudflare/R2 资产并完成 Oracle ARM 切流：`frist-api.245334.xyz` 的 Cloudflare proxied A 已切到 Oracle ARM `150.136.73.15`，源站由 Apache + Cloudflare Origin CA 反代到 Frist-API `127.0.0.1:3180`；New-API 以 ARM64 二进制 systemd 运行在 `127.0.0.1:13000`；R2 备份脚本、root-only env、systemd timer 已在 Oracle 启用并完成手动上传验证。
+- 修正生产 SMTP 边界：代码和文档只登记变量名，不写入聊天里出现过的 SMTP 密码；Oracle 服务器当前仍未检测到 `FRIST_API_SMTP_PASSWORD`，这不能由 Codex 通过命令历史代填，需 Carven 用无回显终端输入一次。
 - 补齐提交前门禁：根目录 `.venv312` 软链加入忽略规则，避免误把本机 Python 环境提交；Python 依赖审计改用项目 Python 3.12 环境，避免系统 Python 3.9 误判 `requests>=2.33.0` 不可解析；gitleaks 历史误报通过指纹 allowlist 收口。
 
 ### 文件变更
@@ -27,10 +27,12 @@
 - `.gitleaksignore` — 只忽略两个历史误报指纹，保留默认 secret 扫描规则。
 
 ### 验证
-- 生产迁移：`/opt/frist-api` apply 结果为 `migrated_users=19`、`tokens=1`、`frist_topups=4`、`redemptions=2`、`logs=162`；回滚目录 `/opt/frist-api/backups/newapi-migration-20260703T005433Z`。
-- 生产健康：服务器 `docker compose --env-file .env -f docker-compose.frist-api.yml ps` 显示 `frist-api-server` 与 `openclaw-newapi` 均 healthy；本机 curl `http://frist-api.101-43-41-96.nip.io/api/frist/dashboard` 返回 HTTP 200；未授权 `/v1/models` 仍返回 401。
-- R2 备份：`frist-api-r2-backup.timer` 为 enabled/active，手动上传返回 `http=200`。
-- DNS/HTTPS：Cloudflare API 记录 `frist-api.245334.xyz` 为 A/proxied 指向腾讯云；源站安装 Cloudflare Origin CA 证书并新增 Nginx 443 反代，Nginx 配置备份目录为服务器 `/opt/frist-api/backups/nginx-origin-ca-20260703T013937Z`；`dig @ace.ns.cloudflare.com frist-api.245334.xyz A +short` 返回 Cloudflare 代理 IP；`curl https://frist-api.245334.xyz/api/frist/dashboard` 返回 HTTP 200。
+- New-API 数据迁移：`/opt/frist-api` apply 结果为 `migrated_users=19`、`tokens=1`、`frist_topups=4`、`redemptions=2`、`logs=162`；New-API 迁移回滚目录 `/opt/frist-api/backups/newapi-migration-20260703T005433Z`。
+- Oracle 生产健康：`ssh oracle-arm1 systemctl is-active frist-api.service openclaw-newapi.service apache2 frist-api-r2-backup.timer` → 4 个 `active`；`systemctl --failed` → `0 loaded units listed`；Oracle 本机 `127.0.0.1:3180/api/frist/dashboard` → HTTP 200，`127.0.0.1:13000/api/status` → HTTP 200。
+- 公网入口：`curl https://frist-api.245334.xyz/api/frist/dashboard` 连续 3 次 → `200/200/200`，耗时约 `0.65s`；未授权 `curl https://frist-api.245334.xyz/v1/models` 连续 3 次 → `401/401/401`。最新外网压测 Dashboard `100/100` 为 HTTP 200（p50 `0.648s` / p95 `0.792s`），未授权 models `50/50` 为 HTTP 401（p50 `0.670s` / p95 `0.758s`）。
+- R2 备份：Oracle `frist-api-r2-backup.timer` 为 active，最近手动备份日志包含 `backup_ok ... http=200`；旧腾讯云 `frist-api-r2-backup.timer` 已 disabled/inactive，避免双源备份漂移。
+- 腾讯冷回滚：`root@101.43.41.96 docker ps -a` 显示旧 `frist-api-server` 与 `openclaw-newapi` 已停止，`/opt/frist-api` 与备份目录保留；旧 `http://frist-api.101-43-41-96.nip.io` 当前不作为生产入口。
+- DNS/HTTPS：`frist-api.245334.xyz` 通过 Cloudflare proxied A 对外返回 Cloudflare Anycast IP，源站记录已在 VPS-Config 登记为 Oracle `150.136.73.15`；公网 HTTPS Dashboard 冒烟 HTTP 200。
 - 依赖安全：`.venv312/bin/python -m pip_audit -r packages/clawbot/requirements.txt -r packages/clawbot/requirements-dev.txt --vulnerability-service pypi --progress-spinner off --cache-dir /tmp/openclaw-pip-audit-cache --timeout 10` → `No known vulnerabilities found`；`.venv312/bin/python -m pip check` → `No broken requirements found`；可提交文件 gitleaks 与 `gitleaks git . --redact --log-level error` 均返回 0。
 
 ## [2026-07-02] OpenClaw Bot / Frist-API 全面收口
