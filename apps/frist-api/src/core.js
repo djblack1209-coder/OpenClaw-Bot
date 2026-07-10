@@ -4,7 +4,7 @@ const CLIENT_PROFILES = new Map([
     {
       slug: 'claude',
       clientName: 'Claude',
-      providerName: 'Frist-API',
+      providerName: 'CC中转',
       remark: 'Claude 兼容入口',
       wireApi: 'responses',
     },
@@ -14,7 +14,7 @@ const CLIENT_PROFILES = new Map([
     {
       slug: 'codex',
       clientName: 'Codex',
-      providerName: 'Frist-API',
+      providerName: 'CC中转',
       remark: 'Codex auth.json + config.toml',
       wireApi: 'responses',
     },
@@ -24,7 +24,7 @@ const CLIENT_PROFILES = new Map([
     {
       slug: 'gemini',
       clientName: 'Gemini',
-      providerName: 'Frist-API',
+      providerName: 'CC中转',
       remark: 'Gemini OpenAI 兼容入口',
       wireApi: 'responses',
     },
@@ -34,7 +34,7 @@ const CLIENT_PROFILES = new Map([
     {
       slug: 'opencode',
       clientName: 'OpenCode',
-      providerName: 'Frist-API',
+      providerName: 'CC中转',
       remark: 'OpenCode OpenAI 兼容入口',
       wireApi: 'responses',
     },
@@ -44,7 +44,7 @@ const CLIENT_PROFILES = new Map([
     {
       slug: 'openclaw',
       clientName: 'OpenClaw',
-      providerName: 'Frist-API',
+      providerName: 'CC中转',
       remark: 'OpenClaw 内部模型入口',
       wireApi: 'responses',
     },
@@ -54,7 +54,7 @@ const CLIENT_PROFILES = new Map([
     {
       slug: 'hermes',
       clientName: 'Hermes',
-      providerName: 'Frist-API',
+      providerName: 'CC中转',
       remark: 'Hermes 兼容代理入口',
       wireApi: 'responses',
     },
@@ -64,7 +64,7 @@ const CLIENT_PROFILES = new Map([
     {
       slug: 'harmes',
       clientName: 'Harmes',
-      providerName: 'Frist-API',
+      providerName: 'CC中转',
       remark: 'Harmes 兼容代理入口',
       wireApi: 'responses',
     },
@@ -327,7 +327,7 @@ export function buildClientConfig({
     contextWindow,
     compressionThreshold,
     reasoningEffort: 'xhigh',
-    billingNote: '按官方标准计费，Frist-API 自动折扣结算',
+    billingNote: '按参考标价口径计费，CC中转 自动折扣结算',
     teammatesMode: false,
     toolSearchEnabled: true,
     responsesEnabled: true,
@@ -489,12 +489,12 @@ function buildCcSwitchUsageConfig({ apiKey, baseUrl }) {
     '    if (!response || response.ok === false) {',
     '      return {',
     '        isValid: false,',
-    '        invalidMessage: response && (response.error || response.message) || "Frist-API 用量查询失败"',
+    '        invalidMessage: response && (response.error || response.message) || "CC中转 用量查询失败"',
     '      };',
     '    }',
     '    return {',
     '      isValid: response.valid !== false,',
-    '      planName: response.plan || "Frist-API",',
+    '      planName: response.plan || "CC中转",',
     '      remaining: Number(response.remainingUsd || 0),',
     '      used: Number(response.usedUsd || 0),',
     '      total: Number(response.totalUsd || 0),',
@@ -557,7 +557,7 @@ function buildResponsesConfigToml({
   defaultModel,
   availableModels = [],
   modelGroup,
-  providerName = 'Frist-API',
+  providerName = 'CC中转',
   contextWindow = 1_000_000,
   compressionThreshold = 900_000,
   sdkOptions = {},
@@ -685,6 +685,48 @@ export function parsePriceText(text, options = {}) {
     .filter(Boolean)
     .map((line) => parsePriceLine(line, { usdToCny, profitMultiplier, safetyCnyPerMillion }))
     .filter(Boolean);
+}
+
+
+export function applyRateMarkup(value, markup = 0.1) {
+  const base = Number(value || 0);
+  const extra = Number(markup ?? 0.1);
+  if (!Number.isFinite(base) || base < 0) return round2(Math.max(0, extra));
+  if (!Number.isFinite(extra)) return round2(base);
+  return round2(base + extra);
+}
+
+export function normalizeUpstreamChannelSnapshot(channels = [], options = {}) {
+  const markup = Number(options.markup ?? 0.1);
+  return (Array.isArray(channels) ? channels : [])
+    .map((channel, index) => {
+      const upstreamMultiplier = Number(
+        channel.upstreamMultiplier ?? channel.multiplier ?? channel.rate ?? channel.costMultiplier ?? 0,
+      );
+      const model = normalizeOfficialModelName(channel.model || channel.name || '');
+      const platform = String(channel.platform || inferProviderGroup(model || channel.provider || '') || 'Other').trim();
+      const status = normalizeChannelStatus(channel.status || channel.state || 'unknown');
+      return {
+        id: String(channel.id || `upstream-${index + 1}`),
+        provider: String(channel.provider || platform || '参考渠道').trim(),
+        platform,
+        model,
+        status,
+        upstreamMultiplier: round2(Number.isFinite(upstreamMultiplier) ? upstreamMultiplier : 0),
+        saleMultiplier: applyRateMarkup(upstreamMultiplier, markup),
+        latencyMs: Math.max(0, Number(channel.latencyMs || channel.responseTimeMs || 0)),
+        checkedAt: String(channel.checkedAt || channel.updatedAt || new Date().toISOString()),
+      };
+    })
+    .filter((channel) => channel.model || channel.provider || channel.platform);
+}
+
+function normalizeChannelStatus(value) {
+  const status = String(value || '').trim().toLowerCase();
+  if (['healthy', 'ok', 'normal', 'up', 'active', '可用', '正常'].includes(status)) return 'healthy';
+  if (['slow', 'degraded', 'warning', 'warn', '降级', '较慢'].includes(status)) return 'slow';
+  if (['down', 'failed', 'error', 'disabled', '不可用', '失败'].includes(status)) return 'down';
+  return 'unknown';
 }
 
 export function recommendConnectionPath({ direct, proxy }) {
@@ -1130,7 +1172,7 @@ function buildCcSwitchCapabilitySummary({ profile, modelList, mcpServers }) {
 
 function buildCcSwitchManualChecklist({ profile, modelList }) {
   const common = [
-    '导入后确认供应商卡片显示 Frist-API。',
+    '导入后确认供应商卡片显示 CC中转。',
     `默认模型应为 ${modelList[0] || DEFAULT_PUBLIC_MODEL}。`,
     '右侧用量查询显示已启用，测试脚本返回余额。',
     'Prompt/Skill 不会跟随供应商链接写入；有自定义提示词或 Skill 仓库时按 CC Switch 单独资源导入。',
@@ -1313,7 +1355,7 @@ function buildGuideJsonConfig(config) {
   }
   return `${JSON.stringify(
     {
-      provider: 'Frist-API',
+      provider: 'CC中转',
       api_key_env: 'OPENAI_API_KEY',
       base_url: config.apiRequestUrl,
       model: config.modelName,

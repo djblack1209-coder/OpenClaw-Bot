@@ -90,6 +90,7 @@ export function normalizeFristDashboard(payload, fallback = createEmptyDashboard
   const modelCatalog = Array.isArray(payload.modelCatalog) ? payload.modelCatalog : [];
   const rechargeOptions = Array.isArray(payload.rechargeOptions) ? payload.rechargeOptions : [];
   const balanceAlert = normalizeBalanceAlert(payload.balanceAlert, fallback.balanceAlert);
+  const security = normalizeSecurityConfig(payload.security, fallback.security);
   const accountFallback = authenticated ? fallback.accountSummary : guestAccountFallback(fallback.accountSummary);
 
   return {
@@ -137,6 +138,7 @@ export function normalizeFristDashboard(payload, fallback = createEmptyDashboard
     usageAnomalies: normalizeUsageAnomalies(payload.usageAnomalies || fallback.usageAnomalies || []),
     recentLogs: normalizeRecentLogs(payload.recentLogs || fallback.recentLogs || []),
     balanceAlert,
+    security,
   };
 }
 
@@ -182,6 +184,35 @@ function createEmptyDashboard() {
       thresholdCents: 3600,
       email: '',
       lastAlertAt: '',
+    },
+    security: {
+      turnstile: {
+        enabled: false,
+        siteKey: '',
+        actions: {
+          register: 'register',
+          login: 'login',
+          redeem: 'redeem',
+        },
+      },
+    },
+  };
+}
+
+function normalizeSecurityConfig(value = {}, fallback = {}) {
+  const turnstile = value.turnstile || {};
+  const fallbackTurnstile = fallback.turnstile || {};
+  const fallbackActions = fallbackTurnstile.actions || {};
+  return {
+    ...fallback,
+    turnstile: {
+      enabled: Boolean(turnstile.enabled ?? fallbackTurnstile.enabled),
+      siteKey: String(turnstile.siteKey || fallbackTurnstile.siteKey || ''),
+      actions: {
+        register: String(turnstile.actions?.register || fallbackActions.register || 'register'),
+        login: String(turnstile.actions?.login || fallbackActions.login || 'login'),
+        redeem: String(turnstile.actions?.redeem || fallbackActions.redeem || 'redeem'),
+      },
     },
   };
 }
@@ -320,7 +351,7 @@ function normalizeModelCatalog(rows, fallbackRows = []) {
     family: row.family || row.provider || 'Other',
     tagline: row.tagline || row.description || '当前可用',
     context: row.context || '按模型能力',
-    price: row.price || row.billing || '官方价格待同步',
+    price: row.price || row.billing || '参考标价待同步',
     available: row.available !== false,
   }));
 }

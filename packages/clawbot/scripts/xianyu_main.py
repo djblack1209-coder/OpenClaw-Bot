@@ -35,6 +35,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger("xianyu_main")
 
+# 第三方 HTTP 客户端会把完整请求 URL 写进 INFO 日志。
+# Telegram Bot 通知 URL 中包含 token，因此这里统一降到 WARNING，避免敏感信息落盘。
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 
 def _load_env():
     env_path = os.path.join(ROOT, "config", ".env")

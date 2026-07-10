@@ -1,5 +1,6 @@
-"""闲鱼 API 封装 — Token/商品信息/登录状态（异步版，使用 httpx.AsyncClient）"""
+"""闲鱼 API 封装 — Token/商品/订单信息（异步版，使用 httpx.AsyncClient）"""
 import asyncio
+import json
 import logging
 import os
 import re
@@ -73,6 +74,11 @@ class XianyuApis:
                 cleaned[name] = value
         self.client.cookies.clear()
         self.client.cookies.update(cleaned)
+
+    def export_cookie_string(self) -> str:
+        """导出当前 Cookie 字符串，供令牌刷新后同步回主运行态。"""
+        self._clear_dup_cookies()
+        return "; ".join(f"{name}={value}" for name, value in self.client.cookies.items())
 
     def _update_env_cookies(self):
         """将当前 cookies 写回 .env 文件（原子写入，防止崩溃时损坏）"""
@@ -196,6 +202,177 @@ class XianyuApis:
             logger.error(f"get_item_info 异常: {scrub_secrets(str(e))}")
         await asyncio.sleep(0.5)
         return await self.get_item_info(item_id, retry + 1)
+
+    # ------------------------------------------------------------------
+    async def get_sold_orders_page(
+        self,
+        page: int = 1,
+        query_code: str = "NOT_SHIP",
+        retry: int = 0,
+    ) -> dict:
+        """获取卖家已售订单列表单页。
+
+        这是自动发货的 WebSocket 漏单兜底：优先查 ``NOT_SHIP`` 待发货订单，
+        不做下单、付款、砍价或批量私信动作，只读取卖家订单状态。
+        """
+        if retry >= 2:
+            return {"success": False, "items": [], "error": "订单列表请求重试耗尽"}
+        safe_page = max(1, int(page or 1))
+        safe_query_code = (query_code or "NOT_SHIP").strip() or "NOT_SHIP"
+        t = str(int(time.time() * 1000))
+        data_val = json.dumps(
+            {
+                "pageNumber": safe_page,
+                "rowsPerPage": 30,
+                "orderIds": "",
+                "queryCode": safe_query_code,
+                "orderSearchParam": "{}",
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        params = {
+            "jsv": "2.7.2",
+            "appKey": "34839810",
+            "t": t,
+            "sign": generate_sign(t, self._h5_token(), data_val),
+            "v": "1.0",
+            "type": "json",
+            "accountSite": "xianyu",
+            "dataType": "json",
+            "timeout": "20000",
+            "api": "mtop.taobao.idle.trade.merchant.sold.get",
+            "valueType": "string",
+            "sessionOption": "AutoLoginOnly",
+        }
+        try:
+            resp = await self.client.post(
+                "https://h5api.m.goofish.com/h5/mtop.taobao.idle.trade.merchant.sold.get/1.0/",
+                params=params,
+                data={"data": data_val},
+                headers={
+                    "content-type": "application/x-www-form-urlencoded",
+                    "idle_site_biz_code": "COMMONPRO",
+                    "referer": "https://seller.goofish.com/",
+                    "cookie": self.export_cookie_string(),
+                },
+            )
+            rj = resp.json()
+            ret = rj.get("ret", [])
+            if any("SUCCESS" in str(item) for item in ret):
+                module = ((rj.get("data") or {}).get("module") or {})
+                total_count_raw = module.get("totalCount", "0")
+                try:
+                    total_count = int(total_count_raw)
+                except (TypeError, ValueError):
+                    total_count = 0
+                return {
+                    "success": True,
+                    "items": module.get("items") or [],
+                    "next_page": str(module.get("nextPage", "false")).lower() == "true",
+                    "total_count": total_count,
+                    "cookies_str": self.export_cookie_string(),
+                    "ret": ret,
+                }
+            if "set-cookie" in resp.headers and retry < 1:
+                self._clear_dup_cookies()
+                await asyncio.sleep(0.5)
+                return await self.get_sold_orders_page(safe_page, safe_query_code, retry + 1)
+            ret_text = ";".join(str(item) for item in ret) if ret else "未知错误"
+            logger.warning("获取闲鱼卖家订单失败: %s", scrub_secrets(ret_text))
+            return {"success": False, "items": [], "error": ret_text, "ret": ret}
+        except Exception as e:
+            logger.error("get_sold_orders_page 异常: %s", scrub_secrets(str(e)))
+            await asyncio.sleep(0.5)
+            return await self.get_sold_orders_page(safe_page, safe_query_code, retry + 1)
+
+    async def confirm_dummy_shipment(self, order_id: str, retry: int = 0) -> dict:
+        """确认虚拟商品已发货。
+
+        这个接口来自高星闲鱼管理系统的成熟做法，只用于“已付款且已发送兑换码”
+        之后把闲鱼订单推进到已发货；默认由上层开关关闭，避免误改订单状态。
+        """
+        safe_order_id = str(order_id or "").strip()
+        if not re.fullmatch(r"\d{10,}", safe_order_id):
+            return {
+                "success": False,
+                "order_id": safe_order_id,
+                "error": "订单号不是闲鱼数字订单号，已跳过确认发货",
+                "non_retryable": True,
+            }
+        if retry >= 2:
+            return {
+                "success": False,
+                "order_id": safe_order_id,
+                "error": "确认发货请求重试耗尽",
+            }
+
+        t = str(int(time.time() * 1000))
+        data_val = json.dumps(
+            {
+                "orderId": safe_order_id,
+                "tradeText": "",
+                "picList": [],
+                "newUnconsign": True,
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        params = {
+            "jsv": "2.7.2",
+            "appKey": "34839810",
+            "t": t,
+            "sign": generate_sign(t, self._h5_token(), data_val),
+            "v": "1.0",
+            "type": "originaljson",
+            "accountSite": "xianyu",
+            "dataType": "json",
+            "timeout": "20000",
+            "api": "mtop.taobao.idle.logistic.consign.dummy",
+            "sessionOption": "AutoLoginOnly",
+        }
+        try:
+            resp = await self.client.post(
+                "https://h5api.m.goofish.com/h5/mtop.taobao.idle.logistic.consign.dummy/1.0/",
+                params=params,
+                data={"data": data_val},
+                headers={
+                    "accept": "application/json",
+                    "content-type": "application/x-www-form-urlencoded",
+                    "referer": "https://seller.goofish.com/",
+                    "cookie": self.export_cookie_string(),
+                },
+            )
+            rj = resp.json()
+            ret = rj.get("ret", [])
+            if any("SUCCESS" in str(item) for item in ret):
+                return {
+                    "success": True,
+                    "order_id": safe_order_id,
+                    "cookies_str": self.export_cookie_string(),
+                    "ret": ret,
+                }
+            if "set-cookie" in resp.headers and retry < 1:
+                self._clear_dup_cookies()
+                await asyncio.sleep(0.5)
+                return await self.confirm_dummy_shipment(safe_order_id, retry + 1)
+            ret_text = ";".join(str(item) for item in ret) if ret else "未知错误"
+            logger.warning("闲鱼确认发货失败: %s", scrub_secrets(ret_text))
+            non_retryable = any(
+                key in ret_text
+                for key in ("ORDER_STATUS_ERROR", "订单状态", "PERMISSION", "权限")
+            )
+            return {
+                "success": False,
+                "order_id": safe_order_id,
+                "error": ret_text,
+                "ret": ret,
+                "non_retryable": non_retryable,
+            }
+        except Exception as e:
+            logger.error("confirm_dummy_shipment 异常: %s", scrub_secrets(str(e)))
+            await asyncio.sleep(0.5)
+            return await self.confirm_dummy_shipment(safe_order_id, retry + 1)
 
     # ------------------------------------------------------------------
     async def close(self):

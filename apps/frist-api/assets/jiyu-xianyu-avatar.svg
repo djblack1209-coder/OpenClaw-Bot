@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="CC中转 闲鱼头像">
+  <defs>
+    <radialGradient id="bg" cx="35%" cy="25%" r="80%">
+      <stop stop-color="#C4B5FD"/>
+      <stop offset="0.55" stop-color="#7F77DD"/>
+      <stop offset="1" stop-color="#1E1B4B"/>
+    </radialGradient>
+  </defs>
+  <rect width="400" height="400" rx="96" fill="url(#bg)"/>
+  <path d="M96 265c52-103 121-157 207-163-32 39-51 86-57 141 33-12 62-33 88-62-20 77-78 126-174 145l31-97c-34 13-66 25-95 36Z" fill="#fff" opacity="0.96"/>
+  <circle cx="263" cy="123" r="18" fill="#EDE9FE"/>
+  <text x="200" y="354" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="42" font-weight="900" fill="#fff">CC</text>
+</svg>

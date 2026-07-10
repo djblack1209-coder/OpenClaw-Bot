@@ -51,7 +51,7 @@ const dashboardSeed = {
       channel: '卡商1',
       poolLabel: '日卡号池',
       model: 'claude-opus-4-6-thinking-c',
-      endpoint: 'https://api.frist.example.com/claude/office',
+      endpoint: 'https://jiyu.245334.xyz/claude/office',
       ok: true,
       latencyMs: 1912,
       pingMs: 87,
@@ -67,7 +67,7 @@ const dashboardSeed = {
       channel: '卡商2',
       poolLabel: '月卡号池',
       model: 'gpt-5.5',
-      endpoint: 'https://api.frist.example.com/openai/pro',
+      endpoint: 'https://jiyu.245334.xyz/openai/pro',
       ok: true,
       latencyMs: 1771,
       pingMs: 196,
@@ -89,7 +89,7 @@ const dashboardSeed = {
   ],
 };
 
-describe('Frist-API customer business chain', () => {
+describe('CC中转 customer business chain', () => {
   it('runs register, verify, recharge, create key, toggle key and CC Switch import as one customer flow', () => {
     let state = createBusinessStateFromDashboard(dashboardSeed, {
       idFactory: createIds(['user-1', 'key-1']),
@@ -115,12 +115,12 @@ describe('Frist-API customer business chain', () => {
     assert.equal(deriveDashboardData(state, dashboardSeed).accountSummary.balance, '$2.68');
 
     state = setCustomerKeyEnabled(state, { id: 'key-1', enabled: false });
-    assert.throws(() => buildBusinessImportUrl(state, { target: 'Claude', baseUrl: 'https://api.frist.example.com/v1' }), /没有可用的 API Key/);
+    assert.throws(() => buildBusinessImportUrl(state, { target: 'Claude', baseUrl: 'https://jiyu.245334.xyz/v1' }), /没有可用的 API Key/);
 
     state = setCustomerKeyEnabled(state, { id: 'key-1', enabled: true });
     const importUrl = buildBusinessImportUrl(state, {
       target: 'Claude',
-      baseUrl: 'https://api.frist.example.com/v1',
+      baseUrl: 'https://jiyu.245334.xyz/v1',
       model: 'claude-haiku-4-5-20251001',
     });
 
@@ -130,7 +130,7 @@ describe('Frist-API customer business chain', () => {
 
     const codexConfig = buildBusinessClientConfig(state, {
       target: 'Codex',
-      baseUrl: 'https://api.frist.example.com/v1',
+      baseUrl: 'https://jiyu.245334.xyz/v1',
       model: 'gpt-5.5',
     });
     assert.match(codexConfig.configToml, /wire_api = "responses"/);
@@ -142,7 +142,7 @@ describe('Frist-API customer business chain', () => {
       now: '2026-05-01T20:00:00.000Z',
     });
 
-    state = redeemCode(state, { code: 'FRIST-DAY-001' });
+    state = redeemCode(state, { code: 'CC-DAY-001' });
     const customerData = deriveDashboardData(state, dashboardSeed);
 
     assert.equal(customerData.accountSummary.plan, '日卡');
@@ -151,7 +151,7 @@ describe('Frist-API customer business chain', () => {
   });
 });
 
-describe('Frist-API management replenishment chain', () => {
+describe('CC中转 management replenishment chain', () => {
   it('cleans pasted order details into replenishment report inputs without exposing raw supplier data to users', () => {
     const report = createReplenishmentReportFromOrderText({
       orderText: `
@@ -340,7 +340,7 @@ describe('Frist-API management replenishment chain', () => {
   });
 });
 
-describe('Frist-API page business wiring', () => {
+describe('CC中转 page business wiring', () => {
   const page = [
     readFileSync(new URL('../index.html', import.meta.url), 'utf8'),
     readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8'),
@@ -388,6 +388,18 @@ describe('Frist-API page business wiring', () => {
     assert.equal(userHtml.includes('role="dialog"'), true, '注册登录应该使用可聚焦弹窗承载');
     assert.equal(userHtml.includes('data-auth-form'), true, '账户弹窗应该用真实表单承载密码字段，兼容浏览器密码管理器');
     assert.equal(userHtml.includes('data-auth-form-kind="primary"'), true, '登录和注册应该使用独立主表单');
+    assert.match(
+      userHtml,
+      /<div class="auth-dialog"[\s\S]*?<form class="auth-form" data-auth-form data-auth-form-kind="primary">(?:(?!<\/form>)[\s\S])*data-turnstile-scope="auth"/,
+      'Cloudflare 验证应该放在登录/注册表单容器内，不能漂在页面底部',
+    );
+    assert.match(
+      userHtml,
+      /<div class="clone-login-card">[\s\S]*?<form class="clone-login-form auth-form" data-auth-form data-auth-form-kind="primary">(?:(?!<\/form>)[\s\S])*data-turnstile-scope="auth"(?:(?!<\/form>)[\s\S])*data-auth-submit="login"/,
+      '主登录卡片也必须把 Cloudflare 验证放在登录/注册表单内，并位于提交按钮上方',
+    );
+    assert.equal(page.includes('.turnstile-slot {'), true, 'Cloudflare 验证槽应该有本地样式约束，不能裸露漂到底部');
+    assert.equal(page.includes('min-height: 65px'), true, 'Cloudflare 验证槽应该在表单内预留稳定高度，避免加载后跳到底部');
     assert.equal(userHtml.includes('data-auth-form-kind="password"'), true, '改密码应该使用独立表单，避免多个密码动作混在一起');
     assert.equal(userHtml.includes('data-auth-form-kind="reset-confirm"'), true, '重置密码应该使用独立表单');
     assert.equal(userHtml.includes('data-auth-form-kind="owner"'), true, '身份码激活应该使用独立表单');
@@ -693,9 +705,9 @@ describe('Frist-API page business wiring', () => {
       'setActiveWalkthrough',
       'data-flow-claude-base',
       'data-flow-codex-base',
-      'body[data-design-system="tabcode-console"] .switch-surface *',
-      'body[data-design-system="tabcode-console"] .usage-import-guide',
-      'body[data-design-system="tabcode-console"] .cross-import-guide',
+      'body[data-design-system="game-store-console"] .switch-surface *',
+      'body[data-design-system="game-store-console"] .usage-import-guide',
+      'body[data-design-system="game-store-console"] .cross-import-guide',
       'overflow-wrap: anywhere',
     ]) {
       assert.equal(`${switchPanel}\n${appScript}\n${styles}`.includes(required), true, `${required} 应该接入导入页状态和样式`);
@@ -706,8 +718,8 @@ describe('Frist-API page business wiring', () => {
     const runbook = readFileSync(new URL('../../../docs/007-operations.md', import.meta.url), 'utf8');
 
     for (const required of [
-      '闲鱼等第三方平台 C2C 售卖兑换码',
-      'Frist-API `#redeem` 页面自动核销',
+      '生产环境内测，暂未正式售卖',
+      'CC中转 `#redeem` 页面自动核销',
       '自动支付备用说明（当前不推进）',
       '不要求开户注册',
       '不需要自动支付商户资质',
@@ -823,6 +835,27 @@ describe('Frist-API page business wiring', () => {
       '/api/frist/balance-alert/test',
     ]) {
       assert.equal(combined.includes(required), true, `${required} 应该接入用户余额预警设置`);
+    }
+  });
+
+  it('wires Turnstile widgets into login, register and redemption submissions', () => {
+    const userHtml = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+    const appScript = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
+    const combined = `${userHtml}\n${appScript}`;
+
+    for (const required of [
+      'data-turnstile-scope="auth"',
+      'data-turnstile-scope="redeem"',
+      'ensureTurnstileScript',
+      'renderTurnstileWidgets',
+      'getTurnstileToken',
+      'resetTurnstileToken',
+      'turnstileToken',
+      "action: 'register'",
+      "action: 'login'",
+      "action: 'redeem'",
+    ]) {
+      assert.equal(combined.includes(required), true, `${required} 应该接入 Cloudflare Turnstile 闭环`);
     }
   });
 

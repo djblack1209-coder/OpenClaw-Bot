@@ -41,6 +41,13 @@ const els = {
   personaTags: document.getElementById('persona-tags'),
   modelRoute: document.getElementById('model-route'),
   tasks: document.getElementById('tasks'),
+  xianyuDeliveryPanel: document.getElementById('xianyu-delivery-panel'),
+  xianyuDeliveryHint: document.getElementById('xianyu-delivery-hint'),
+  xianyuDeliveryScan: document.getElementById('xianyu-delivery-scan'),
+  xianyuDeliverySend: document.getElementById('xianyu-delivery-send'),
+  xianyuDeliveryWatch: document.getElementById('xianyu-delivery-watch'),
+  xianyuDeliveryWatchAll: document.getElementById('xianyu-delivery-watch-all'),
+  xianyuDeliveryState: document.getElementById('xianyu-delivery-state'),
   refreshTrends: document.getElementById('refresh-trends'),
   scanPageContext: document.getElementById('scan-page-context'),
   pageContextPanel: document.getElementById('page-context-panel'),
@@ -158,6 +165,7 @@ async function loadState() {
   running = Boolean(activeTab?.id && runningByTab[String(activeTab.id)])
   render()
   await refreshCoreStrategySettings({ silent: true })
+  await syncToCore()
 }
 
 function render() {
@@ -193,6 +201,13 @@ function render() {
   els.refreshGrowthFeedback.disabled = !supported
   els.refreshSchedule.disabled = !supported
   els.refreshReviewPack.disabled = !supported
+  const xianyuDeliveryVisible = platform.id === 'xianyu'
+  els.xianyuDeliveryPanel.dataset.visible = xianyuDeliveryVisible ? 'true' : 'false'
+  els.xianyuDeliveryHint.style.display = xianyuDeliveryVisible ? 'none' : 'block'
+  els.xianyuDeliveryScan.disabled = !xianyuDeliveryVisible
+  els.xianyuDeliverySend.disabled = !xianyuDeliveryVisible
+  els.xianyuDeliveryWatch.disabled = !xianyuDeliveryVisible
+  els.xianyuDeliveryWatchAll.disabled = false
 }
 
 function renderDraftEditor(draft) {
@@ -404,6 +419,137 @@ async function capturePerformanceSnapshot() {
   } finally {
     els.capturePerformance.disabled = !platform.supported
     els.capturePerformance.textContent = '采表现'
+  }
+}
+
+function renderXianyuDeliveryState(result, prefix = '') {
+  const scan = result?.result || result?.scan || {}
+  const signals = Array.isArray(scan.paidSignals) && scan.paidSignals.length
+    ? `信号：${scan.paidSignals.join(' / ')}`
+    : '信号：未看到已付款/待发货'
+  const input = scan.inputReady ? '输入框：已找到' : '输入框：未找到'
+  const send = scan.sendButtonReady ? '发送按钮：已找到' : '发送按钮：未找到'
+  els.xianyuDeliveryState.textContent = [prefix, signals, input, send].filter(Boolean).join('\n')
+}
+
+async function scanXianyuDelivery() {
+  setError('')
+  els.xianyuDeliveryScan.disabled = true
+  els.xianyuDeliveryScan.textContent = '检测中…'
+  try {
+    if (!hasChromeRuntime()) {
+      renderXianyuDeliveryState({
+        result: { paidSignals: ['买家已付款'], inputReady: true, sendButtonReady: true },
+      }, '预览模式：当前聊天可发货。')
+      return
+    }
+    const result = await chrome.runtime.sendMessage({ type: 'xianyuDeliveryScan', payload: {} })
+    if (!result?.ok) {
+      setError(result?.error || '检测当前闲鱼页面失败。')
+      return
+    }
+    renderXianyuDeliveryState(result, result.result?.ready ? '当前聊天通过发货预检。' : '当前聊天还不能自动发货。')
+  } catch (err) {
+    setError(err instanceof Error ? err.message : String(err))
+  } finally {
+    els.xianyuDeliveryScan.disabled = platform.id !== 'xianyu'
+    els.xianyuDeliveryScan.textContent = '检测当前聊天'
+  }
+}
+
+async function sendXianyuDelivery() {
+  setError('')
+  els.xianyuDeliverySend.disabled = true
+  els.xianyuDeliverySend.textContent = '发送中…'
+  try {
+    if (!hasChromeRuntime()) {
+      renderXianyuDeliveryState({
+        result: { paidSignals: ['买家已付款'], inputReady: true, sendButtonReady: true },
+      }, '预览模式：会填入待发货卡密并点击发送。')
+      return
+    }
+    const result = await chrome.runtime.sendMessage({ type: 'xianyuDeliverySend', payload: {} })
+    if (!result?.ok) {
+      renderXianyuDeliveryState(result, '已阻止发送。')
+      setError(result?.error || '发送失败，请检查当前闲鱼聊天页。')
+      return
+    }
+    renderXianyuDeliveryState(result, `已发送并标记本机记录 #${result.shipment?.id || ''}。`)
+    els.draftResult.textContent = '发货完成：买家收到兑换网址和卡密后，继续让买家注册/登录、兑换、创建 API Key、导入 CC Switch 并调一次模型。'
+  } catch (err) {
+    setError(err instanceof Error ? err.message : String(err))
+  } finally {
+    els.xianyuDeliverySend.disabled = platform.id !== 'xianyu'
+    els.xianyuDeliverySend.textContent = '发送待发货卡密'
+  }
+}
+
+async function refreshXianyuDeliveryWatchState() {
+  if (!els.xianyuDeliveryWatch) return
+  try {
+    if (!hasChromeRuntime()) {
+      els.xianyuDeliveryWatch.textContent = '看守当前聊天页'
+      return
+    }
+    const state = await chrome.runtime.sendMessage({ type: 'xianyuDeliveryWatchState', payload: {} })
+    const enabled = Boolean(state?.watch?.enabled)
+    const scope = state?.watch?.scope || 'current_chat'
+    els.xianyuDeliveryWatch.textContent = enabled && scope === 'current_chat' ? '关闭看守' : '看守当前聊天页'
+    els.xianyuDeliveryWatchAll.textContent = enabled && scope === 'all_open_xianyu_tabs' ? '关闭全局看守' : '看守所有闲鱼页'
+    if (state?.watch?.last_result?.ok) {
+      renderXianyuDeliveryState(
+        state.watch.last_result,
+        scope === 'all_open_xianyu_tabs' ? `全局看守运行中：已扫描 ${state.watch.tabCount || 0} 个闲鱼页。` : '看守模式最近一次已发货。',
+      )
+    }
+  } catch {
+    els.xianyuDeliveryWatch.textContent = '看守当前聊天页'
+    els.xianyuDeliveryWatchAll.textContent = '看守所有闲鱼页'
+  }
+}
+
+async function toggleXianyuDeliveryWatch(scope = 'current_chat') {
+  setError('')
+  const button = scope === 'all_open_xianyu_tabs' ? els.xianyuDeliveryWatchAll : els.xianyuDeliveryWatch
+  button.disabled = true
+  button.textContent = '处理中…'
+  try {
+    if (!hasChromeRuntime()) {
+      renderXianyuDeliveryState({
+        result: { paidSignals: ['买家已付款'], inputReady: true, sendButtonReady: true },
+      }, scope === 'all_open_xianyu_tabs' ? '预览模式：会看守所有已打开闲鱼页。' : '预览模式：会看守当前聊天页，命中后自动发送一次。')
+      return
+    }
+    const state = await chrome.runtime.sendMessage({ type: 'xianyuDeliveryWatchState', payload: {} })
+    const enabled = Boolean(state?.watch?.enabled)
+    const currentScope = state?.watch?.scope || 'current_chat'
+    const nextEnabled = !(enabled && currentScope === scope)
+    const result = await chrome.runtime.sendMessage({
+      type: 'xianyuDeliveryWatchSet',
+      payload: { enabled: nextEnabled, scope },
+    })
+    if (!result?.ok) {
+      setError(result?.error || (scope === 'all_open_xianyu_tabs' ? '全局看守开启失败，请先打开闲鱼买家聊天页。' : '看守模式切换失败，请确认当前页是闲鱼买家聊天页。'))
+      return
+    }
+    if (nextEnabled) {
+      const prefix = scope === 'all_open_xianyu_tabs'
+        ? `已开启全局看守：保持闲鱼聊天页打开（当前 ${result.watch?.tabCount || 0} 个）。`
+        : '已开启看守：保持当前闲鱼买家聊天页打开。'
+      renderXianyuDeliveryState(result.scan || {}, prefix)
+      els.draftResult.textContent = scope === 'all_open_xianyu_tabs'
+        ? '全局看守已开启：只在本机刚好 1 条待发货、页面看见已付款信号时发送，成功一次后自动关闭。'
+        : '看守模式已开启：插件会定时检查当前聊天页；成功发货一次后自动关闭，避免重复发送。'
+    } else {
+      els.xianyuDeliveryState.textContent = '看守模式已关闭。'
+      els.draftResult.textContent = '已关闭闲鱼发货看守。'
+    }
+  } catch (err) {
+    setError(err instanceof Error ? err.message : String(err))
+  } finally {
+    els.xianyuDeliveryWatch.disabled = platform.id !== 'xianyu'
+    els.xianyuDeliveryWatchAll.disabled = false
+    await refreshXianyuDeliveryWatchState()
   }
 }
 
@@ -973,6 +1119,27 @@ async function saveRunning(value) {
   await syncToCore()
 }
 
+function buildExtensionHeartbeat() {
+  const manifest = hasChromeRuntime() && chrome.runtime.getManifest ? chrome.runtime.getManifest() : {}
+  return {
+    manifest_version: String(manifest.version || 'preview'),
+    cc_delivery_helper_version: '2026-07-07-paid-page-fallback',
+    capabilities: {
+      xianyu_delivery_scan: true,
+      xianyu_delivery_send: true,
+      xianyu_confirm_shipment: true,
+      xianyu_relist_item: true,
+      current_chat_watch: true,
+      all_open_xianyu_tabs_watch: true,
+      target_tab_preflight: true,
+      single_pending_global_gate: true,
+      background_heartbeat: true,
+      relist_queue_watch: true,
+      paid_page_dispatch: true,
+    },
+  }
+}
+
 async function syncToCore() {
   setError('')
   const payload = {
@@ -982,6 +1149,7 @@ async function syncToCore() {
     detected_platform: platform,
     settings,
     tasks: createDefaultTaskPreview(platform.id),
+    extension: buildExtensionHeartbeat(),
   }
   try {
     if (!hasChromeRuntime()) {
@@ -1573,6 +1741,10 @@ els.capturePerformance.addEventListener('click', () => void capturePerformanceSn
 els.refreshGrowthFeedback.addEventListener('click', () => void refreshGrowthFeedback())
 els.generateGrowthDrafts.addEventListener('click', () => void generateGrowthDrafts())
 els.refreshReviewPack.addEventListener('click', () => void refreshReviewPack())
+els.xianyuDeliveryScan.addEventListener('click', () => void scanXianyuDelivery())
+els.xianyuDeliverySend.addEventListener('click', () => void sendXianyuDelivery())
+els.xianyuDeliveryWatch.addEventListener('click', () => void toggleXianyuDeliveryWatch('current_chat'))
+els.xianyuDeliveryWatchAll.addEventListener('click', () => void toggleXianyuDeliveryWatch('all_open_xianyu_tabs'))
 els.personaApprove.addEventListener('click', () => void reviewPersonaDirection(true))
 els.personaReject.addEventListener('click', () => void reviewPersonaDirection(false))
 els.refreshSchedule.addEventListener('click', () => void refreshScheduleQueue())
@@ -1602,4 +1774,5 @@ els.attachRelay.addEventListener('click', (event) => {
 })
 
 void loadState()
+void refreshXianyuDeliveryWatchState()
 renderDraftEditor(null)

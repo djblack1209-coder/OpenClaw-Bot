@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { createCipheriv, createHash, createHmac, createSign, generateKeyPairSync, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
@@ -36,7 +38,7 @@ function totpCode(secret, date = new Date()) {
   return String(binary % 1_000_000).padStart(6, '0');
 }
 
-describe('Frist-API public server chain', () => {
+describe('CC中转 public server chain', () => {
   it('resolves SMTP targets in DNS order so IPv6 can bypass blocked IPv4 exits', async () => {
     const targets = await resolveSmtpSocketTargets({
       host: 'smtp.example.com',
@@ -74,13 +76,67 @@ describe('Frist-API public server chain', () => {
     try {
       const home = await fixture.request('/');
       assert.equal(home.status, 200);
-      assert.match(home.text, /Frist-API/);
+      assert.match(home.text, /CC中转/);
     } finally {
       await fixture.close();
     }
   });
 
-  it('redirects the bare nip host to the single Frist-API branded host', async () => {
+  it('keeps serving after an origin-form proxy request hits the static error path', async () => {
+    const fixture = await createServerFixture();
+
+    try {
+      const invalidPath = await sendRawHttpRequest({
+        port: fixture.port,
+        requestText:
+          'GET /%E0%A4%A HTTP/1.1\r\n' +
+          'Host: frist-api-oracle.245334.xyz\r\n' +
+          'Connection: close\r\n' +
+          '\r\n',
+      });
+      assert.match(invalidPath, /^HTTP\/1\.1 500/m);
+      assert.match(invalidPath, /服务暂时不可用/);
+
+      const admin = await sendRawHttpRequest({
+        port: fixture.port,
+        requestText:
+          'GET /admin.html HTTP/1.1\r\n' +
+          'Host: frist-api-oracle.245334.xyz\r\n' +
+          'Connection: close\r\n' +
+          '\r\n',
+      });
+      assert.match(admin, /^HTTP\/1\.1 200/m);
+      assert.match(admin, /CC中转/);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('normalizes chained proxy forwarded headers before parsing request URLs', async () => {
+    const fixture = await createServerFixture();
+
+    try {
+      const dashboard = await sendRawHttpRequest({
+        port: fixture.port,
+        requestText:
+          'GET /api/frist/dashboard HTTP/1.1\r\n' +
+          'Host: jiyu.245334.xyz\r\n' +
+          'X-Forwarded-Proto: https, http\r\n' +
+          'X-Forwarded-Host: jiyu.245334.xyz, internal.local\r\n' +
+          'Connection: close\r\n' +
+          '\r\n',
+      });
+      assert.match(dashboard, /^HTTP\/1\.1 200/m);
+      assert.match(dashboard, /"authenticated":false/);
+
+      const stillAlive = await fixture.request('/');
+      assert.equal(stillAlive.status, 200);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('redirects the bare nip host to the single CC中转 branded host', async () => {
     const fixture = await createServerFixture();
 
     try {
@@ -93,17 +149,17 @@ describe('Frist-API public server chain', () => {
       assert.equal(redirected.status, 301);
       assert.equal(
         redirected.location,
-        'http://frist-api.101-43-41-96.nip.io/api/frist/dashboard?from=bare-host',
+        'http://jiyu.245334.xyz/api/frist/dashboard?from=bare-host',
       );
       assert.equal(redirected.text, '');
 
       const canonical = await fixture.request('/', {
         headers: {
-          'x-forwarded-host': 'frist-api.101-43-41-96.nip.io',
+          'x-forwarded-host': 'jiyu.245334.xyz',
         },
       });
       assert.equal(canonical.status, 200);
-      assert.match(canonical.text, /Frist-API/);
+      assert.match(canonical.text, /CC中转/);
     } finally {
       await fixture.close();
     }
@@ -129,11 +185,12 @@ describe('Frist-API public server chain', () => {
           durationDays: item.durationDays,
         })),
         [
-          { id: 'codex-30-day', quotaUsd: 30, priceCny: 5.88, durationDays: 1 },
-          { id: 'codex-30-unlimited', quotaUsd: 30, priceCny: 8.88, durationDays: 0 },
-          { id: 'codex-100-unlimited', quotaUsd: 100, priceCny: 28.88, durationDays: 0 },
-          { id: 'codex-500-unlimited', quotaUsd: 500, priceCny: 68.88, durationDays: 0 },
-          { id: 'codex-1000-unlimited', quotaUsd: 1000, priceCny: 118.88, durationDays: 0 },
+          { id: 'xianyu-test-1', quotaUsd: 1, priceCny: 1, durationDays: 0 },
+          { id: 'xianyu-5', quotaUsd: 5, priceCny: 5, durationDays: 0 },
+          { id: 'xianyu-15', quotaUsd: 15, priceCny: 15, durationDays: 0 },
+          { id: 'xianyu-50', quotaUsd: 50, priceCny: 50, durationDays: 0 },
+          { id: 'xianyu-100', quotaUsd: 100, priceCny: 100, durationDays: 0 },
+          { id: 'xianyu-500', quotaUsd: 500, priceCny: 500, durationDays: 0 },
         ],
       );
     } finally {
@@ -159,6 +216,150 @@ describe('Frist-API public server chain', () => {
     }
   });
 
+  it('requires verified Turnstile tokens for register, login and redeem when enabled', async () => {
+    const turnstileCalls = [];
+    const fixture = await createServerFixture({
+      requireTurnstile: true,
+      turnstileSecret: 'turnstile-secret-for-tests',
+      turnstileAllowedHostnames: ['jiyu.245334.xyz'],
+      fetchImpl: async (url, options = {}) => {
+        if (String(url) === 'https://challenges.cloudflare.com/turnstile/v0/siteverify') {
+          const params = new URLSearchParams(String(options.body || ''));
+          turnstileCalls.push({
+            url: String(url),
+            method: options.method,
+            secret: params.get('secret'),
+            response: params.get('response'),
+          });
+          const action = String(params.get('response') || '').split(':')[0];
+          return jsonResponse(200, {
+            success: true,
+            hostname: 'jiyu.245334.xyz',
+            action,
+          });
+        }
+        return jsonResponse(200, { ok: true });
+      },
+    });
+
+    try {
+      const blockedRegister = await fixture.request('/api/frist/register', {
+        method: 'POST',
+        body: { email: 'turnstile@example.com', password: 'TestPass123!' },
+      });
+      assert.equal(blockedRegister.status, 400);
+      assert.match(blockedRegister.json.error, /人机验证/);
+
+      const registered = await fixture.request('/api/frist/register', {
+        method: 'POST',
+        body: { email: 'turnstile@example.com', password: 'TestPass123!', turnstileToken: 'register:ok' },
+      });
+      assert.equal(registered.status, 200);
+
+      const blockedLogin = await fixture.request('/api/frist/login', {
+        method: 'POST',
+        body: { email: 'turnstile@example.com', password: 'TestPass123!' },
+      });
+      assert.equal(blockedLogin.status, 400);
+      assert.match(blockedLogin.json.error, /人机验证/);
+
+      const loggedIn = await fixture.request('/api/frist/login', {
+        method: 'POST',
+        body: { email: 'turnstile@example.com', password: 'TestPass123!', turnstileToken: 'login:ok' },
+      });
+      assert.equal(loggedIn.status, 200);
+
+      const blockedRedeem = await fixture.request('/api/frist/redeem', {
+        method: 'POST',
+        cookie: registered.cookie,
+        body: { code: 'JIYU-DAY-001' },
+      });
+      assert.equal(blockedRedeem.status, 400);
+      assert.match(blockedRedeem.json.error, /人机验证/);
+
+      const redeemed = await fixture.request('/api/frist/redeem', {
+        method: 'POST',
+        cookie: registered.cookie,
+        body: { code: 'JIYU-DAY-001', turnstileToken: 'redeem:ok' },
+      });
+      assert.equal(redeemed.status, 200);
+      assert.equal(redeemed.json.account.balance, '$1.11');
+
+      assert.deepEqual(
+        turnstileCalls.map((call) => ({
+          url: call.url,
+          method: call.method,
+          secret: call.secret,
+          response: call.response,
+        })),
+        [
+          {
+            url: 'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+            method: 'POST',
+            secret: 'turnstile-secret-for-tests',
+            response: 'register:ok',
+          },
+          {
+            url: 'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+            method: 'POST',
+            secret: 'turnstile-secret-for-tests',
+            response: 'login:ok',
+          },
+          {
+            url: 'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+            method: 'POST',
+            secret: 'turnstile-secret-for-tests',
+            response: 'redeem:ok',
+          },
+        ],
+      );
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('rejects Turnstile failures, action mismatches and unexpected hostnames', async () => {
+    const responses = [
+      { success: false, 'error-codes': ['timeout-or-duplicate'] },
+      { success: true, hostname: 'jiyu.245334.xyz', action: 'login' },
+      { success: true, hostname: 'evil.example.com', action: 'register' },
+    ];
+    const fixture = await createServerFixture({
+      requireTurnstile: true,
+      turnstileSecret: 'turnstile-secret-for-tests',
+      turnstileAllowedHostnames: ['jiyu.245334.xyz'],
+      fetchImpl: async (url) => {
+        assert.equal(String(url), 'https://challenges.cloudflare.com/turnstile/v0/siteverify');
+        return jsonResponse(200, responses.shift());
+      },
+    });
+
+    try {
+      const failed = await fixture.request('/api/frist/register', {
+        method: 'POST',
+        body: { email: 'bad-turnstile@example.com', password: 'TestPass123!', turnstileToken: 'register:bad' },
+      });
+      assert.equal(failed.status, 403);
+      assert.match(failed.json.error, /验证失败|刷新/);
+
+      const actionMismatch = await fixture.request('/api/frist/register', {
+        method: 'POST',
+        body: { email: 'bad-action@example.com', password: 'TestPass123!', turnstileToken: 'register:wrong-action' },
+      });
+      assert.equal(actionMismatch.status, 403);
+      assert.match(actionMismatch.json.error, /刷新/);
+
+      const hostnameMismatch = await fixture.request('/api/frist/register', {
+        method: 'POST',
+        body: { email: 'bad-host@example.com', password: 'TestPass123!', turnstileToken: 'register:wrong-host' },
+      });
+      assert.equal(hostnameMismatch.status, 403);
+      assert.match(hostnameMismatch.json.error, /刷新/);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it('lets admins update recharge packages and custom model prices without changing code', async () => {
     const fixture = await createServerFixture();
 
@@ -167,7 +368,7 @@ describe('Frist-API public server chain', () => {
         headers: { 'x-admin-token': 'admin-test-token' },
       });
       assert.equal(pricing.status, 200);
-      assert.equal(pricing.json.rechargePlans.length, 5);
+      assert.equal(pricing.json.rechargePlans.length, 6);
       assert.equal(pricing.json.modelPrices.find((item) => item.model === 'gpt-5.5').source, 'official');
 
       const updated = await fixture.request('/api/admin/pricing', {
@@ -175,11 +376,12 @@ describe('Frist-API public server chain', () => {
         headers: { 'x-admin-token': 'admin-test-token' },
         body: {
           rechargePlans: [
-            { id: 'codex-30-day', label: 'Codex API 30刀额度/日卡', quotaUsd: 30, priceCny: 6.66, durationDays: 1 },
-            { id: 'codex-30-unlimited', label: 'Codex API 30刀额度/不限时', quotaUsd: 30, priceCny: 8.88, durationDays: 0 },
-            { id: 'codex-100-unlimited', label: 'Codex API 100刀额度/不限时', quotaUsd: 100, priceCny: 28.88, durationDays: 0 },
-            { id: 'codex-500-unlimited', label: 'Codex API 500刀额度/不限时', quotaUsd: 500, priceCny: 68.88, durationDays: 0 },
-            { id: 'codex-1000-unlimited', label: 'Codex API 1000刀额度/不限时', quotaUsd: 1000, priceCny: 118.88, durationDays: 0 },
+            { id: 'xianyu-test-1', label: 'CC中转 1元测试档', quotaUsd: 1, priceCny: 1.11, durationDays: 0 },
+            { id: 'xianyu-5', label: 'CC中转 5元档', quotaUsd: 5, priceCny: 5, durationDays: 0 },
+            { id: 'xianyu-15', label: 'CC中转 15元档', quotaUsd: 15, priceCny: 15, durationDays: 0 },
+            { id: 'xianyu-50', label: 'CC中转 50元档', quotaUsd: 50, priceCny: 50, durationDays: 0 },
+            { id: 'xianyu-100', label: 'CC中转 100元档', quotaUsd: 100, priceCny: 100, durationDays: 0 },
+            { id: 'xianyu-500', label: 'CC中转 500元档', quotaUsd: 500, priceCny: 500, durationDays: 0 },
           ],
           modelPrices: [
             {
@@ -195,7 +397,7 @@ describe('Frist-API public server chain', () => {
         },
       });
       assert.equal(updated.status, 200);
-      assert.equal(updated.json.rechargePlans[0].priceCny, 6.66);
+      assert.equal(updated.json.rechargePlans[0].priceCny, 1.11);
 
       await fixture.request('/api/admin/replenishments', {
         method: 'POST',
@@ -209,8 +411,8 @@ describe('Frist-API public server chain', () => {
       });
 
       const dashboard = await fixture.request('/api/frist/dashboard');
-      assert.equal(dashboard.json.rechargeOptions[0].priceCny, 6.66);
-      assert.equal(dashboard.json.rechargeOptions[0].cny, '¥6.66');
+      assert.equal(dashboard.json.rechargeOptions[0].priceCny, 1.11);
+      assert.equal(dashboard.json.rechargeOptions[0].cny, '¥1.11');
       assert.equal(dashboard.json.modelCatalog.find((item) => item.model === 'gpt-5.5').price, '$1.250/$6.806 每 1M');
     } finally {
       await fixture.close();
@@ -246,7 +448,7 @@ describe('Frist-API public server chain', () => {
       const officialGpt = pricing.json.modelPrices.find((item) => item.model === 'gpt-5.5');
       assert.equal(officialGpt.inputSaleCnyPerMillion, 36);
       assert.equal(officialGpt.outputSaleCnyPerMillion, 216);
-      assert.equal(officialGpt.displayPrice, '官方 输入 $5.00 / 缓存 $0.50 / 输出 $30.00 每 1M');
+      assert.equal(officialGpt.displayPrice, '参考标价 输入 $5.00 / 缓存 $0.50 / 输出 $30.00 每 1M');
 
       await fixture.request('/api/admin/replenishments', {
         method: 'POST',
@@ -262,7 +464,7 @@ describe('Frist-API public server chain', () => {
       const dashboard = await fixture.request('/api/frist/dashboard');
       assert.equal(
         dashboard.json.modelCatalog.find((item) => item.model === 'gpt-5.5').price,
-        '官方 输入 $5.00 / 缓存 $0.50 / 输出 $30.00 每 1M',
+        '参考标价 输入 $5.00 / 缓存 $0.50 / 输出 $30.00 每 1M',
       );
     } finally {
       await fixture.close();
@@ -392,6 +594,9 @@ describe('Frist-API public server chain', () => {
       assert.equal(sentEmails[0].to, 'mail-verify@example.com');
       assert.match(sentEmails[0].subject, /注册验证码/);
       assert.match(sentEmails[0].text, new RegExp(registered.json.verificationCode));
+      assert.match(sentEmails[0].html, /mail-shell|brand-card|security-badge/);
+      assert.match(sentEmails[0].html, /font-size:\s*4[0-9]px/);
+      assert.match(sentEmails[0].html, /如果不是你本人操作/);
 
       const resetRequested = await fixture.request('/api/frist/password-reset/request', {
         method: 'POST',
@@ -401,6 +606,8 @@ describe('Frist-API public server chain', () => {
       assert.equal(sentEmails.length, 2);
       assert.match(sentEmails[1].subject, /密码重置验证码/);
       assert.match(sentEmails[1].text, new RegExp(resetRequested.json.resetCode));
+      assert.match(sentEmails[1].html, /mail-shell|brand-card|security-badge/);
+      assert.match(sentEmails[1].html, /如果不是你本人操作/);
 
       const resetConfirmed = await fixture.request('/api/frist/password-reset/confirm', {
         method: 'POST',
@@ -919,7 +1126,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie: registered.cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -951,6 +1158,111 @@ describe('Frist-API public server chain', () => {
       assert.equal(upstreamCalls.at(-1).authorization, 'Bearer sk-encrypted-upstream');
     } finally {
       await fixture.close();
+    }
+  });
+
+  it('quarantines legacy orphan encrypted runtime fields when a new data encryption key is configured', async () => {
+    const fixture = await createServerFixture({
+      dataEncryptionKey: 'new-runtime-encryption-key-after-orphan-fields',
+    });
+
+    try {
+      await fixture.writeData({
+        credentials: [
+          {
+            id: 'cred-orphan-encrypted',
+            rawKey: 'enc:v1:old:missing:key',
+            keyPreview: '',
+            enabled: true,
+            status: 'healthy',
+            riskStatus: 'approved',
+            sourceType: 'authorized',
+            baseUrl: 'https://supplier.example.com/v1',
+            models: ['gpt-5.5'],
+          },
+        ],
+        userKeys: [
+          {
+            id: 'key-orphan-encrypted',
+            userId: 'user-orphan',
+            name: '历史 Key',
+            secret: 'enc:v1:old:missing:userkey',
+            enabled: true,
+          },
+        ],
+      });
+
+      const dashboard = await fixture.request('/api/frist/dashboard');
+      assert.equal(dashboard.status, 200);
+
+      const admin = await fixture.request('/api/admin/replenishments', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+      assert.equal(admin.status, 200);
+      assert.equal(admin.json.credentials[0].enabled, false);
+      assert.equal(admin.json.credentials[0].requiresRotation, true);
+      assert.equal(admin.json.credentials[0].keyPreview, '需重新生成');
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('quarantines marked encrypted runtime fields when the old data key is unavailable', async () => {
+    const oldFixture = await createServerFixture({
+      requireEmailVerification: false,
+      dataEncryptionKey: 'old-runtime-encryption-key-that-is-not-available',
+    });
+    let markedEncryptedRuntime = '';
+
+    try {
+      const registered = await oldFixture.request('/api/frist/register', {
+        method: 'POST',
+        body: { email: 'marked-orphan@example.com', password: 'TestPass123!' },
+      });
+      const token = await oldFixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie: registered.cookie,
+        body: { name: 'Marked Orphan Key', modelGroup: 'OpenAI' },
+      });
+      await oldFixture.request('/api/admin/replenishments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          baseUrl: 'https://supplier.example.com/openai',
+          pool: 'day',
+          models: ['gpt-5.5'],
+          keys: [{ value: 'sk-marked-orphan-upstream', quotaRemaining: 900, latencyMs: 80 }],
+        },
+      });
+
+      markedEncryptedRuntime = await oldFixture.readRawData();
+      assert.match(markedEncryptedRuntime, /"__encryption"/);
+      assert.equal(markedEncryptedRuntime.includes(token.json.key.secret), false);
+      assert.equal(markedEncryptedRuntime.includes('sk-marked-orphan-upstream'), false);
+    } finally {
+      await oldFixture.close();
+    }
+
+    const newFixture = await createServerFixture({
+      dataEncryptionKey: 'new-runtime-encryption-key-after-marked-orphan-fields',
+    });
+
+    try {
+      await writeFile(newFixture.dataFile, markedEncryptedRuntime, 'utf8');
+
+      const dashboard = await newFixture.request('/api/frist/dashboard');
+      assert.equal(dashboard.status, 200);
+
+      const admin = await newFixture.request('/api/admin/replenishments', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+      assert.equal(admin.status, 200);
+      assert.equal(admin.json.credentials[0].enabled, false);
+      assert.equal(admin.json.credentials[0].requiresRotation, true);
+      assert.equal(admin.json.credentials[0].keyPreview, '需重新生成');
+      assert.equal(admin.json.productionReadiness.ready, false);
+    } finally {
+      await newFixture.close();
     }
   });
 
@@ -1100,7 +1412,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -1169,12 +1481,12 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       await fixture.request('/api/frist/recharge', {
         method: 'POST',
         cookie,
-        body: { amountCny: 1, method: 'manual_test' },
+        body: { amountCny: 1.01, method: 'manual_test' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -1290,7 +1602,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       await fixture.request('/api/frist/balance-alert', {
         method: 'PUT',
@@ -1323,10 +1635,10 @@ describe('Frist-API public server chain', () => {
       assert.equal(sentEmails.length, 1);
       assert.equal(sentEmails[0].to, 'billing-watch@example.com');
       assert.match(sentEmails[0].subject, /余额预警/);
-      assert.match(sentEmails[0].html, /Frist-API Balance Guard/);
+      assert.match(sentEmails[0].html, /CC中转 Balance Guard/);
       assert.match(sentEmails[0].html, /当前余额/);
       assert.match(sentEmails[0].html, /预警阈值/);
-      assert.match(sentEmails[0].html, /打开 Frist-API/);
+      assert.match(sentEmails[0].html, /打开 CC中转/);
       assert.match(sentEmails[0].html, /\$5\.50/);
       assert.match(sentEmails[0].text, /threshold-crossing@example\.com/);
       assert.match(sentEmails[0].text, /预警阈值: \$5\.50/);
@@ -1366,7 +1678,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -1430,7 +1742,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -1512,7 +1824,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -1585,7 +1897,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -1643,7 +1955,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -1714,7 +2026,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -1778,7 +2090,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -1851,7 +2163,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -1913,7 +2225,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -1982,7 +2294,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -1993,7 +2305,7 @@ describe('Frist-API public server chain', () => {
         method: 'POST',
         headers: { 'x-admin-token': 'admin-test-token' },
         body: {
-          baseUrl: 'https://86gamestore.example.com/openai',
+          baseUrl: 'https://metered-supplier.example.com/openai',
           pool: 'day',
           models: ['gpt-5.5'],
           keys: [
@@ -2084,7 +2396,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -2151,7 +2463,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie: registered.cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -2243,7 +2555,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie: registered.cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -2277,7 +2589,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie: registered.cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -2333,7 +2645,7 @@ describe('Frist-API public server chain', () => {
       const image = dashboard.json.modelCatalog.find((item) => item.model === 'gpt-image-2');
       assert.equal(gpt.family, 'OpenAI');
       assert.equal(gpt.available, true);
-      assert.equal(gpt.price, '官方 输入 $5.00 / 缓存 $0.50 / 输出 $30.00 每 1M');
+      assert.equal(gpt.price, '参考标价 输入 $5.00 / 缓存 $0.50 / 输出 $30.00 每 1M');
       assert.equal(image.tagline, '图片生成');
       assert.equal(JSON.stringify(dashboard.json.modelCatalog).includes('sk-catalog-secret'), false);
       assert.equal(JSON.stringify(dashboard.json.modelCatalog).includes('supplier.example.com'), false);
@@ -2363,7 +2675,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -2386,7 +2698,7 @@ describe('Frist-API public server chain', () => {
         headers: { Authorization: `Bearer ${token.json.key.secret}` },
         body: {
           model: 'image2',
-          prompt: '生成一张 Frist-API 测试图',
+          prompt: '生成一张 CC中转 测试图',
           size: '1024x1024',
         },
       });
@@ -2397,7 +2709,7 @@ describe('Frist-API public server chain', () => {
       assert.equal(upstreamCalls[0].url, 'https://supplier.example.com/openai/images/generations');
       assert.equal(upstreamCalls[0].authorization, 'Bearer sk-image-day');
       assert.equal(upstreamCalls[0].body.model, 'gpt-image-2');
-      assert.equal(upstreamCalls[0].body.prompt, '生成一张 Frist-API 测试图');
+      assert.equal(upstreamCalls[0].body.prompt, '生成一张 CC中转 测试图');
     } finally {
       await fixture.close();
     }
@@ -2526,7 +2838,7 @@ describe('Frist-API public server chain', () => {
               authHeaderValuePrefix: '',
               extraHeaders: {
                 'http-referer': 'https://frist-api.example',
-                'x-title': 'Frist-API',
+                'x-title': 'CC中转',
               },
             },
           ],
@@ -2540,7 +2852,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -2655,20 +2967,25 @@ describe('Frist-API public server chain', () => {
       const batch = await fixture.request('/api/admin/redemption-cards', {
         method: 'POST',
         headers: { 'x-admin-token': 'admin-test-token' },
-        body: { planId: 'codex-100-unlimited', quantity: 2, prefix: 'FRIST', note: '闲鱼测试批次' },
+        body: { planId: 'codex-100-unlimited', quantity: 2, note: '内测测试批次' },
       });
       assert.equal(batch.status, 200);
       assert.equal(batch.json.cards.length, 2);
-      assert.match(batch.json.cards[0].code, /^FRIST-/);
+      assert.match(batch.json.cards[0].code, /^CC-/);
       assert.match(batch.json.exportText, /Codex API 100刀额度\/不限时/);
+      const code = batch.json.cards[0].code;
+      const rawAfterCreate = await fixture.readRawData();
+      assert.equal(rawAfterCreate.includes(code), false, '新卡密不能明文落库');
+      assert.match(rawAfterCreate, /codeHash/);
+      assert.match(rawAfterCreate, /codeCipher/);
 
       const inventory = await fixture.request('/api/admin/redemption-cards', {
         headers: { 'x-admin-token': 'admin-test-token' },
       });
       assert.equal(inventory.status, 200);
       assert.equal(inventory.json.cards.filter((card) => card.status === 'unused').length, 2);
+      assert.equal(inventory.json.cards.some((card) => card.code === code), false, '列表只能展示脱敏卡密');
 
-      const code = batch.json.cards[0].code;
       const firstCookie = await fixture.createVerifiedCustomer('first-card@example.com');
       const firstRedeem = await fixture.request('/api/frist/redeem', {
         method: 'POST',
@@ -2690,9 +3007,643 @@ describe('Frist-API public server chain', () => {
       const afterRedeem = await fixture.request('/api/admin/redemption-cards', {
         headers: { 'x-admin-token': 'admin-test-token' },
       });
-      const redeemedCard = afterRedeem.json.cards.find((card) => card.code === code);
+      const redeemedCard = afterRedeem.json.cards.find((card) => card.codeHash === batch.json.cards[0].codeHash);
       assert.equal(redeemedCard.status, 'redeemed');
       assert.equal(redeemedCard.redeemedEmail, 'fi***@example.com');
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('rate limits redemption attempts by IP and logged-in account', async () => {
+    const fixture = await createServerFixture({ redemptionRateLimitMax: 1, redemptionRateLimitWindowMs: 60_000 });
+
+    try {
+      const cookie = await fixture.createVerifiedCustomer('redeem-limit@example.com');
+      const first = await fixture.request('/api/frist/redeem', {
+        method: 'POST',
+        cookie,
+        headers: { 'x-forwarded-for': '198.51.100.10' },
+        body: { code: 'BAD-CODE-ONE' },
+      });
+      assert.equal(first.status, 400);
+
+      const sameIp = await fixture.request('/api/frist/redeem', {
+        method: 'POST',
+        cookie,
+        headers: { 'x-forwarded-for': '198.51.100.10' },
+        body: { code: 'BAD-CODE-TWO' },
+      });
+      assert.equal(sameIp.status, 429);
+
+      const sameUser = await fixture.request('/api/frist/redeem', {
+        method: 'POST',
+        cookie,
+        headers: { 'x-forwarded-for': '198.51.100.11' },
+        body: { code: 'BAD-CODE-THREE' },
+      });
+      assert.equal(sameUser.status, 429);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+
+  it('auto replenishes Xianyu card stock to approved safety levels without exceeding daily caps', async () => {
+    const fixture = await createServerFixture();
+
+    try {
+      const first = await fixture.request('/api/admin/redemption-cards/autoreplenish', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: { dryRun: false },
+      });
+      assert.equal(first.status, 200);
+      assert.equal(first.json.enabled, true);
+      assert.equal(first.json.created, 32);
+      assert.equal(first.json.dailyCap, 50);
+      assert.deepEqual(
+        first.json.plans.map((plan) => ({ planId: plan.planId, safetyStock: plan.safetyStock, currentUnused: plan.currentUnused, toCreate: plan.toCreate, created: plan.created })),
+        [
+          { planId: 'xianyu-test-1', safetyStock: 3, currentUnused: 0, toCreate: 3, created: 3 },
+          { planId: 'xianyu-5', safetyStock: 10, currentUnused: 0, toCreate: 10, created: 10 },
+          { planId: 'xianyu-15', safetyStock: 10, currentUnused: 0, toCreate: 10, created: 10 },
+          { planId: 'xianyu-50', safetyStock: 5, currentUnused: 0, toCreate: 5, created: 5 },
+          { planId: 'xianyu-100', safetyStock: 3, currentUnused: 0, toCreate: 3, created: 3 },
+          { planId: 'xianyu-500', safetyStock: 1, currentUnused: 0, toCreate: 1, created: 1 },
+        ],
+      );
+
+      const inventory = await fixture.request('/api/admin/redemption-cards', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+      assert.equal(inventory.json.cards.filter((card) => card.status === 'unused').length, 32);
+      assert.equal(inventory.json.cards.some((card) => card.code && /-[A-Z0-9]{8}-[A-Z0-9]{8}/.test(card.code)), false);
+
+      const second = await fixture.request('/api/admin/redemption-cards/autoreplenish', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: { dryRun: false },
+      });
+      assert.equal(second.status, 200);
+      assert.equal(second.json.created, 0);
+      assert.equal(second.json.dailyCreated, 32);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('starts Xianyu card auto replenishment in the background when enabled', async () => {
+    const fixture = await createServerFixture({ cardAutoreplenishEnabled: true });
+
+    try {
+      await waitFor(async () => {
+        const inventory = await fixture.request('/api/admin/redemption-cards', {
+          headers: { 'x-admin-token': 'admin-test-token' },
+        });
+        assert.ok(inventory.json.cards.filter((card) => card.status === 'unused').length >= 32);
+      });
+      const data = await fixture.readData();
+      const event = data.events.find((item) => item.type === 'redemption_cards_autoreplenished');
+      assert.equal(event.created, 32);
+      assert.equal(event.dryRun, false);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('syncs newly generated CC cards into New-API redemptions when the production bridge is enabled', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'frist-newapi-redemptions-'));
+    const sqliteDb = join(dir, 'one-api.db');
+    createNewApiRedemptionSchema(sqliteDb);
+    const fixture = await createServerFixture({
+      newApiEnabled: true,
+      newApiBaseUrl: 'http://new-api.example.test',
+      newApiAccessToken: 'new-api-access-token-with-enough-randomness',
+      newApiUserId: '1',
+      newApiSqliteDb: sqliteDb,
+    });
+
+    try {
+      const batch = await fixture.request('/api/admin/redemption-cards', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: { planId: 'codex-30-day', quantity: 1, note: 'INTERNAL-TEST New-API sync' },
+      });
+      assert.equal(batch.status, 200);
+      assert.match(batch.json.cards[0].code, /^CC-/);
+      assert.equal(batch.json.newApiSync.synced, 1);
+      assert.equal(
+        sqliteScalar(sqliteDb, `select count(*) from redemptions where \`key\`=${sqlQuote(batch.json.cards[0].code)} and status=1;`),
+        '1',
+      );
+      assert.equal(
+        sqliteScalar(sqliteDb, `select quota > 0 from redemptions where \`key\`=${sqlQuote(batch.json.cards[0].code)};`),
+        '1',
+      );
+    } finally {
+      await fixture.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps Xianyu 1 yuan test cards at exactly 1 yuan credit in local and New-API redemption quota', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'frist-newapi-one-yuan-'));
+    const sqliteDb = join(dir, 'one-api.db');
+    createNewApiRedemptionSchema(sqliteDb);
+    const fixture = await createServerFixture({
+      newApiEnabled: true,
+      newApiBaseUrl: 'http://new-api.example.test',
+      newApiAccessToken: 'new-api-access-token-with-enough-randomness',
+      newApiUserId: '1',
+      newApiSqliteDb: sqliteDb,
+    });
+
+    try {
+      const batch = await fixture.request('/api/admin/redemption-cards', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: { planId: 'xianyu-test-1', quantity: 1, note: 'INTERNAL-TEST one yuan quota' },
+      });
+
+      assert.equal(batch.status, 200);
+      assert.equal(batch.json.cards[0].priceCny, 1);
+      assert.equal(batch.json.cards[0].creditCents, 100);
+      assert.equal(batch.json.cards[0].quotaUsd, 1);
+      assert.equal(
+        sqliteScalar(sqliteDb, `select quota from redemptions where \`key\`=${sqlQuote(batch.json.cards[0].code)};`),
+        '500000',
+      );
+    } finally {
+      await fixture.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('syncs New-API native redemption status back to local Xianyu fulfillment', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'frist-newapi-status-sync-'));
+    const sqliteDb = join(dir, 'one-api.db');
+    createNewApiRedemptionSchema(sqliteDb);
+    const fixture = await createServerFixture({
+      publicGatewayBaseUrl: 'https://jiyu.245334.xyz/v1',
+      newApiEnabled: true,
+      newApiBaseUrl: 'http://new-api.example.test',
+      newApiAccessToken: 'new-api-access-token-with-enough-randomness',
+      newApiUserId: '1',
+      newApiSqliteDb: sqliteDb,
+      newApiRedemptionStatusSyncEnabled: false,
+    });
+
+    try {
+      const batch = await fixture.request('/api/admin/redemption-cards', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: { planId: 'codex-30-day', quantity: 1, note: 'INTERNAL-TEST New-API native status sync' },
+      });
+      assert.equal(batch.status, 200);
+      const cardCode = batch.json.cards[0].code;
+
+      const fulfillment = await fixture.request('/api/admin/xianyu/fulfillments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          orderId: 'xy_native_status_sync_001',
+          buyerHint: '内测买家',
+          productTitle: 'CC中转 内测日卡',
+          cardCode,
+        },
+      });
+      assert.equal(fulfillment.status, 200);
+      assert.equal(fulfillment.json.fulfillment.status, 'delivered');
+
+      const redeemedTime = Math.floor(Date.parse('2026-07-05T12:00:00Z') / 1000);
+      sqliteScalar(
+        sqliteDb,
+        `update redemptions set status=2, redeemed_time=${redeemedTime}, used_user_id=88 where \`key\`=${sqlQuote(cardCode)};`,
+      );
+
+      const synced = await fixture.request('/api/admin/redemption-cards/sync-newapi-status', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+      assert.equal(synced.status, 200);
+      assert.equal(synced.json.syncedCards, 1);
+      assert.equal(synced.json.syncedFulfillments, 1);
+      assert.equal(synced.json.backfilledRedemptions, 1);
+
+      const after = await fixture.request('/api/admin/xianyu/fulfillments', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+      assert.equal(after.json.summary.redeemed, 1);
+      assert.equal(after.json.fulfillments[0].status, 'redeemed');
+      assert.equal(after.json.fulfillments[0].orderId, 'xy_native_status_sync_001');
+
+      const cards = await fixture.request('/api/admin/redemption-cards', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+      assert.equal(cards.json.cards.find((card) => card.id === fulfillment.json.card.id).status, 'redeemed');
+      const rawRuntime = await fixture.readRawData();
+      assert.equal(rawRuntime.includes(cardCode), false, 'New-API 状态回写不能把完整卡密明文落库');
+    } finally {
+      await fixture.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+
+  it('marks local CC card and Xianyu fulfillment redeemed after a New-API topup succeeds', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'frist-newapi-local-redeem-'));
+    const sqliteDb = join(dir, 'one-api.db');
+    createNewApiRedemptionSchema(sqliteDb);
+    const newApiCalls = [];
+    const fixture = await createServerFixture({
+      requireEmailVerification: false,
+      publicGatewayBaseUrl: 'https://jiyu.245334.xyz/v1',
+      newApiEnabled: true,
+      newApiBaseUrl: 'https://new-api.internal',
+      newApiAccessToken: 'newapi-access-token',
+      newApiUserId: '42',
+      newApiSqliteDb: sqliteDb,
+      fetchImpl: async (url, init = {}) => {
+        const path = new URL(String(url)).pathname;
+        newApiCalls.push({ path, init });
+        if (path === '/api/user/topup') {
+          const body = JSON.parse(init.body || '{}');
+          assert.match(body.key, /^CC-/);
+          return jsonResponse(200, { success: true, data: { key: body.key, quota: 360000 } });
+        }
+        if (path === '/api/user/self') {
+          return jsonResponse(200, {
+            success: true,
+            data: { email: 'newapi@example.com', username: 'newapi-user', group: 'default', quota: 360000, used_quota: 0 },
+          });
+        }
+        if (path === '/api/log/self') {
+          return jsonResponse(200, { success: true, data: { items: [] } });
+        }
+        return jsonResponse(404, { success: false, message: `unexpected ${path}` });
+      },
+    });
+
+    try {
+      const batch = await fixture.request('/api/admin/redemption-cards', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: { plan: 'balance', quotaUsd: 0.01, quantity: 1, note: 'INTERNAL-TEST New-API local redeem' },
+      });
+      assert.equal(batch.status, 200);
+
+      const fulfillment = await fixture.request('/api/admin/xianyu/fulfillments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          orderId: 'XY-NEWAPI-LOCAL-REDEEM',
+          buyerHint: '内测买家',
+          productTitle: 'CC中转 内测加油包',
+          cardCode: batch.json.cards[0].code,
+        },
+      });
+      assert.equal(fulfillment.status, 200);
+      const deliveredCode = fulfillment.json.deliveryMessage.match(/兑换码：([A-Z0-9-]+)/)?.[1] || '';
+      assert.match(deliveredCode, /^CC-/);
+      assert.match(fulfillment.json.deliveryMessage, /注册或登录账号/);
+      assert.match(fulfillment.json.deliveryMessage, /进入“兑换码”/);
+      assert.match(fulfillment.json.deliveryMessage, /进入“API Key”/);
+      assert.match(fulfillment.json.deliveryMessage, /进入“CC Switch”/);
+      assert.match(fulfillment.json.deliveryMessage, /选择模型测试/);
+      assert.doesNotMatch(fulfillment.json.deliveryMessage, /jiyu\.245334\.xyz\/v1/);
+
+      const registered = await fixture.request('/api/frist/register', {
+        method: 'POST',
+        body: { email: 'newapi-local-redeem@example.com', password: 'TestPass123!' },
+      });
+      const redeemed = await fixture.request('/api/frist/redeem', {
+        method: 'POST',
+        cookie: registered.cookie,
+        body: { code: deliveredCode },
+      });
+      assert.equal(redeemed.status, 200);
+      assert.ok(newApiCalls.some((call) => call.path === '/api/user/topup'));
+
+      const after = await fixture.request('/api/admin/xianyu/fulfillments', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+      assert.equal(after.json.summary.redeemed, 1);
+      assert.equal(after.json.fulfillments[0].status, 'redeemed');
+      assert.equal(after.json.fulfillments[0].redeemedEmail, 'ne***@example.com');
+
+      const cards = await fixture.request('/api/admin/redemption-cards', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+      assert.equal(cards.json.cards.find((card) => card.id === fulfillment.json.card.id).status, 'redeemed');
+    } finally {
+      await fixture.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+
+  it('syncs New-API upstream balance and warns below operator thresholds without exposing admin tokens', async () => {
+    const calls = [];
+    const fixture = await createServerFixture({
+      newApiEnabled: true,
+      newApiBaseUrl: 'https://new-api.internal',
+      newApiAccessToken: 'newapi-secret-token',
+      newApiUserId: '42',
+      fetchImpl: async (url, init = {}) => {
+        calls.push({ url: String(url), authorization: init.headers?.Authorization || '' });
+        if (String(url).endsWith('/api/user/self')) {
+          return jsonResponse(200, { success: true, data: { username: 'operator', quota: 35 * 100, used_quota: 1000, group: 'default' } });
+        }
+        return jsonResponse(404, { success: false, message: 'unexpected endpoint' });
+      },
+    });
+
+    try {
+      const synced = await fixture.request('/api/admin/upstream-balance/sync', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+      assert.equal(synced.status, 200);
+      assert.equal(synced.json.ok, true);
+      assert.equal(synced.json.balance.remainingCny, 35);
+      assert.equal(synced.json.balance.level, 'warning');
+      assert.equal(synced.json.balance.pauseRecommended, false);
+      assert.equal(JSON.stringify(synced.json).includes('newapi-secret-token'), false);
+      assert.equal(calls[0].authorization, 'Bearer newapi-secret-token');
+
+      const inventory = await fixture.request('/api/admin/replenishments', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+      assert.equal(inventory.json.upstreamBalance.remainingCny, 35);
+      assert.equal(inventory.json.upstreamBalance.level, 'warning');
+      assert.equal(JSON.stringify(inventory.json).includes('newapi-secret-token'), false);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('syncs upstream channel multipliers with downstream markup for operator review', async () => {
+    const fixture = await createServerFixture({ rateMarkup: 0.1 });
+
+    try {
+      const synced = await fixture.request('/api/admin/upstream-sync', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          source: 'reference-channel',
+          channels: [
+            { provider: '参考渠道', platform: 'Plus', model: 'gpt-5.5', status: 'healthy', multiplier: 0.18, latencyMs: 890 },
+            { provider: '参考渠道', platform: 'Claude', model: 'claude-opus-4-6', status: 'degraded', multiplier: 0.33, latencyMs: 2100 },
+          ],
+        },
+      });
+
+      assert.equal(synced.status, 200);
+      assert.equal(synced.json.rateMarkup, 0.1);
+      assert.deepEqual(
+        synced.json.channels.map((channel) => ({ model: channel.model, status: channel.status, upstreamMultiplier: channel.upstreamMultiplier, saleMultiplier: channel.saleMultiplier })),
+        [
+          { model: 'gpt-5.5', status: 'healthy', upstreamMultiplier: 0.18, saleMultiplier: 0.28 },
+          { model: 'claude-opus-4-6-c', status: 'slow', upstreamMultiplier: 0.33, saleMultiplier: 0.43 },
+        ],
+      );
+      assert.equal(synced.json.summary.healthy, 1);
+      assert.equal(JSON.stringify(synced.json).includes('sk-'), false);
+
+      const inventory = await fixture.request('/api/admin/replenishments', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+      assert.equal(inventory.json.channelSyncSummary.rateMarkup, 0.1);
+      assert.equal(inventory.json.upstreamChannels[0].saleMultiplier, 0.28);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('allocates a redemption card for a Xianyu order and marks fulfillment after redeem', async () => {
+    const fixture = await createServerFixture({ publicGatewayBaseUrl: 'https://jiyu.245334.xyz/v1' });
+
+    try {
+      const batch = await fixture.request('/api/admin/redemption-cards', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: { planId: 'codex-30-day', quantity: 1, prefix: 'XY', note: '闲鱼自动发货批次' },
+      });
+      assert.equal(batch.status, 200);
+
+      const fulfillment = await fixture.request('/api/admin/xianyu/fulfillments', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: {
+          orderId: 'XY202607040001',
+          buyerHint: '买家A',
+          productTitle: 'Codex API 30刀额度/日卡',
+          planId: 'codex-30-day',
+        },
+      });
+      assert.equal(fulfillment.status, 200);
+      assert.equal(fulfillment.json.fulfillment.status, 'delivered');
+      assert.match(fulfillment.json.deliveryMessage, /兑换码：XY-/);
+      assert.match(fulfillment.json.deliveryMessage, /https:\/\/jiyu\.245334\.xyz/);
+      assert.match(fulfillment.json.deliveryMessage, /注册或登录账号/);
+      assert.match(fulfillment.json.deliveryMessage, /进入“API Key”/);
+      assert.match(fulfillment.json.deliveryMessage, /进入“CC Switch”/);
+      assert.doesNotMatch(fulfillment.json.deliveryMessage, /jiyu\.245334\.xyz\/v1/);
+      assert.equal(fulfillment.json.summary.availableCards, 0);
+      assert.equal(fulfillment.json.summary.soldCards, 1);
+      const deliveredCode = fulfillment.json.deliveryMessage.match(/兑换码：([A-Z0-9-]+)/)?.[1] || '';
+      assert.match(deliveredCode, /^XY-/);
+      const rawAfterFulfillment = await fixture.readRawData();
+      assert.equal(rawAfterFulfillment.includes(deliveredCode), false, '闲鱼履约不能把完整卡密明文落库');
+
+      const soldInventory = await fixture.request('/api/admin/redemption-cards', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+      const soldCard = soldInventory.json.cards.find((card) => card.id === fulfillment.json.card.id);
+      assert.equal(soldCard.status, 'sold');
+      assert.equal(soldCard.soldOrderId, 'XY202607040001');
+
+      const cookie = await fixture.createVerifiedCustomer('xianyu-buyer@example.com');
+      const redeemed = await fixture.request('/api/frist/redeem', {
+        method: 'POST',
+        cookie,
+        body: { code: deliveredCode },
+      });
+      assert.equal(redeemed.status, 200);
+      assert.equal(redeemed.json.account.plan, '日卡');
+
+      const after = await fixture.request('/api/admin/xianyu/fulfillments', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+      assert.equal(after.json.summary.redeemed, 1);
+      assert.equal(after.json.fulfillments[0].status, 'redeemed');
+      assert.equal(after.json.fulfillments[0].redeemedEmail, 'xi***@example.com');
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('accepts paid Xianyu orders through a low-scope auto-ship webhook only after payment is confirmed', async () => {
+    const fixture = await createServerFixture({
+      publicGatewayBaseUrl: 'https://jiyu.245334.xyz/v1',
+      xianyuWebhookToken: 'low-scope-xianyu-token',
+    });
+
+    try {
+      const batch = await fixture.request('/api/admin/redemption-cards', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: { planId: 'codex-30-day', quantity: 1, prefix: 'XY', note: '闲鱼全自动发货批次' },
+      });
+      assert.equal(batch.status, 200);
+
+      const noToken = await fixture.request('/api/ops/xianyu/paid-order', {
+        method: 'POST',
+        body: { orderId: 'XY-AUTO-001', status: '等待卖家发货', paid: true },
+      });
+      assert.equal(noToken.status, 401);
+
+      const unpaid = await fixture.request('/api/ops/xianyu/paid-order', {
+        method: 'POST',
+        headers: { 'x-cc-xianyu-token': 'low-scope-xianyu-token' },
+        body: { orderId: 'XY-AUTO-001', status: '等待买家付款', paid: false },
+      });
+      assert.equal(unpaid.status, 409);
+      assert.match(unpaid.json.error, /未确认已付款/);
+
+      const paid = await fixture.request('/api/ops/xianyu/paid-order', {
+        method: 'POST',
+        headers: { 'x-cc-xianyu-token': 'low-scope-xianyu-token' },
+        body: {
+          orderId: 'XY-AUTO-001',
+          status: '等待卖家发货',
+          paid: true,
+          productTitle: 'CC中转 日卡',
+          buyerHint: '买家尾号001',
+          planId: 'codex-30-day',
+        },
+      });
+      assert.equal(paid.status, 200);
+      assert.equal(paid.json.ok, true);
+      assert.equal(paid.json.autoShip, true);
+      assert.equal(paid.json.fulfillment.status, 'delivered');
+      assert.match(paid.json.deliveryMessage, /兑换码：XY-/);
+
+      const duplicate = await fixture.request('/api/ops/xianyu/paid-order', {
+        method: 'POST',
+        headers: { 'x-cc-xianyu-token': 'low-scope-xianyu-token' },
+        body: { orderId: 'XY-AUTO-001', status: '买家已付款', paid: true },
+      });
+      assert.equal(duplicate.status, 200);
+      assert.equal(duplicate.json.idempotent, true);
+      assert.equal(duplicate.json.summary.soldCards, 1);
+      assert.equal(duplicate.json.summary.availableCards, 0);
+
+      const inventory = await fixture.request('/api/admin/replenishments', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+      });
+      assert.equal(inventory.json.xianyuAutomation.enabled, true);
+      assert.equal(inventory.json.xianyuAutomation.authHeader, 'x-cc-xianyu-token');
+      assert.equal(JSON.stringify(inventory.json.xianyuAutomation).includes('low-scope-xianyu-token'), false);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('remaps a browser Xianyu fulfillment to a real order id without issuing another card', async () => {
+    const fixture = await createServerFixture({
+      publicGatewayBaseUrl: 'https://jiyu.245334.xyz/v1',
+      xianyuWebhookToken: 'low-scope-xianyu-token',
+    });
+
+    try {
+      const batch = await fixture.request('/api/admin/redemption-cards', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: { planId: 'codex-30-day', quantity: 1, prefix: 'XY', note: '闲鱼真实订单接管批次' },
+      });
+      assert.equal(batch.status, 200);
+
+      const paid = await fixture.request('/api/ops/xianyu/paid-order', {
+        method: 'POST',
+        headers: { 'x-cc-xianyu-token': 'low-scope-xianyu-token' },
+        body: {
+          orderId: 'xy_browser_old_order',
+          status: '等待卖家发货',
+          paid: true,
+          productTitle: 'CC中转 日卡',
+          buyerHint: '真实买家',
+          planId: 'codex-30-day',
+        },
+      });
+      assert.equal(paid.status, 200);
+      assert.equal(paid.json.summary.soldCards, 1);
+      assert.equal(paid.json.summary.availableCards, 0);
+
+      const noToken = await fixture.request('/api/ops/xianyu/remap-order', {
+        method: 'POST',
+        body: { oldOrderId: 'xy_browser_old_order', newOrderId: 'xy_oid_real_order' },
+      });
+      assert.equal(noToken.status, 401);
+
+      const remap = await fixture.request('/api/ops/xianyu/remap-order', {
+        method: 'POST',
+        headers: { 'x-cc-xianyu-token': 'low-scope-xianyu-token' },
+        body: { oldOrderId: 'xy_browser_old_order', newOrderId: 'xy_oid_real_order' },
+      });
+      assert.equal(remap.status, 200);
+      assert.equal(remap.json.ok, true);
+      assert.equal(remap.json.fulfillment.orderId, 'xy_oid_real_order');
+      assert.equal(remap.json.card.soldOrderId, 'xy_oid_real_order');
+      assert.equal(remap.json.summary.soldCards, 1);
+      assert.equal(remap.json.summary.availableCards, 0);
+
+      const duplicate = await fixture.request('/api/ops/xianyu/paid-order', {
+        method: 'POST',
+        headers: { 'x-cc-xianyu-token': 'low-scope-xianyu-token' },
+        body: { orderId: 'xy_oid_real_order', status: '买家已付款', paid: true },
+      });
+      assert.equal(duplicate.status, 200);
+      assert.equal(duplicate.json.idempotent, true);
+      assert.equal(duplicate.json.summary.soldCards, 1);
+      assert.equal(duplicate.json.summary.availableCards, 0);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('allocates an unused Xianyu card even when the paid-order webhook has no plan id', async () => {
+    const fixture = await createServerFixture({
+      publicGatewayBaseUrl: 'https://jiyu.245334.xyz/v1',
+      xianyuWebhookToken: 'low-scope-xianyu-token',
+    });
+
+    try {
+      const batch = await fixture.request('/api/admin/redemption-cards', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: { planId: 'codex-30-day', quantity: 1, prefix: 'XY', note: '闲鱼无套餐订单发货批次' },
+      });
+      assert.equal(batch.status, 200);
+
+      const paid = await fixture.request('/api/ops/xianyu/paid-order', {
+        method: 'POST',
+        headers: { 'x-cc-xianyu-token': 'low-scope-xianyu-token' },
+        body: {
+          orderId: 'XY-AUTO-NO-PLAN-001',
+          status: '等待卖家发货',
+          paid: true,
+          productTitle: 'CC中转 日卡',
+          buyerHint: '直接付款买家001',
+        },
+      });
+      assert.equal(paid.status, 200);
+      assert.equal(paid.json.fulfillment.status, 'delivered');
+      assert.equal(paid.json.card.plan, 'day');
+      assert.match(paid.json.deliveryMessage, /兑换码：XY-/);
+      assert.equal(paid.json.summary.availableCards, 0);
+      assert.equal(paid.json.summary.soldCards, 1);
     } finally {
       await fixture.close();
     }
@@ -2719,7 +3670,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -2903,7 +3854,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -2978,7 +3929,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -3108,7 +4059,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const claudeToken = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -3177,7 +4128,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       await fixture.request('/api/admin/replenishments', {
         method: 'POST',
@@ -3449,7 +4400,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
 
       const replenished = await fixture.request('/api/admin/replenishments', {
@@ -3520,7 +4471,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
 
       const quarantined = await fixture.request('/api/admin/replenishments', {
@@ -3628,7 +4579,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -3695,7 +4646,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -3758,7 +4709,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -3833,7 +4784,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -3905,7 +4856,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -3970,7 +4921,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -4065,7 +5016,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -4139,7 +5090,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -4203,7 +5154,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -4278,7 +5229,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -4341,7 +5292,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -4452,6 +5403,7 @@ describe('Frist-API public server chain', () => {
 
   it('uses New-API business endpoints for dashboard, token management, import and gateway when enabled', async () => {
     const newApiCalls = [];
+    let newApiTokenStatus = 1;
     const fixture = await createServerFixture({
       requireEmailVerification: false,
       newApiEnabled: true,
@@ -4481,11 +5433,25 @@ describe('Frist-API public server chain', () => {
             },
           });
         }
+        if (path === '/api/models/') {
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              items: [
+                { model_name: 'deepseek-v4-flash' },
+                { model_name: 'deepseek-v4-pro' },
+                { model_name: 'deepseek-chat' },
+                { model_name: 'deepseek-reasoner' },
+                { model_name: 'gpt-5.5' },
+              ],
+            },
+          });
+        }
         if (path === '/api/token/' && init.method === 'POST') {
           const body = JSON.parse(init.body);
           assert.equal(body.name, 'Codex NewAPI Key');
           assert.equal(body.model_limits_enabled, true);
-          assert.equal(body.model_limits, 'deepseek-*');
+          assert.equal(body.model_limits, 'deepseek-v4-flash,deepseek-v4-pro,deepseek-chat,deepseek-reasoner');
           return jsonResponse(200, { success: true, message: '' });
         }
         if (path === '/api/token/' && (!init.method || init.method === 'GET')) {
@@ -4497,7 +5463,7 @@ describe('Frist-API public server chain', () => {
                   id: 9,
                   name: 'Codex NewAPI Key',
                   key: 'sk-newapi-full-secret',
-                  status: 1,
+                  status: newApiTokenStatus,
                   used_quota: 100,
                   remain_quota: 7100,
                   model_limits_enabled: true,
@@ -4518,7 +5484,7 @@ describe('Frist-API public server chain', () => {
                   id: 9,
                   name: 'Codex NewAPI Key',
                   key: 'sk-newapi-full-secret',
-                  status: 1,
+                  status: newApiTokenStatus,
                   remain_quota: 7100,
                   used_quota: 100,
                   model_limits: 'deepseek-v4-flash,deepseek-v4-pro,deepseek-chat,deepseek-reasoner',
@@ -4536,7 +5502,7 @@ describe('Frist-API public server chain', () => {
             data: {
               id: 9,
               name: 'Codex NewAPI Key',
-              status: 1,
+              status: newApiTokenStatus,
               remain_quota: 7100,
               model_limits_enabled: true,
               model_limits: 'deepseek-v4-flash,deepseek-v4-pro,deepseek-chat,deepseek-reasoner',
@@ -4545,10 +5511,16 @@ describe('Frist-API public server chain', () => {
           });
         }
         if (path === '/api/token/' && init.method === 'PUT') {
+          assert.equal(requestUrl.searchParams.get('status_only'), 'true');
           const body = JSON.parse(init.body);
           assert.equal(body.id, 9);
           assert.equal(body.status, 2);
+          newApiTokenStatus = body.status;
           return jsonResponse(200, { success: true, data: { ...body, key: 'sk-newapi-full-secret' } });
+        }
+        if (path === '/api/token/9/' && init.method === 'DELETE') {
+          newApiTokenStatus = 2;
+          return jsonResponse(200, { success: true, data: 1 });
         }
         if (path === '/api/log/self') {
           return jsonResponse(200, {
@@ -4573,6 +5545,12 @@ describe('Frist-API public server chain', () => {
         }
         if (path === '/api/subscription/self' || path === '/api/user/topup/info' || path === '/api/user/aff') {
           return jsonResponse(200, { success: true, data: {} });
+        }
+        if (path === '/v1/models') {
+          assert.equal(init.headers.authorization, 'Bearer sk-newapi-full-secret');
+          assert.equal(init.method || 'GET', 'GET');
+          assert.equal(Object.prototype.hasOwnProperty.call(init, 'body'), false);
+          return jsonResponse(200, { object: 'list', data: [{ id: 'deepseek-v4-flash', object: 'model' }] });
         }
         if (path === '/v1/responses') {
           const body = JSON.parse(init.body);
@@ -4635,6 +5613,13 @@ describe('Frist-API public server chain', () => {
       assert.equal(usage.json.usedUsd, 0.14);
       assert.equal(JSON.stringify(usage.json).includes('sk-newapi-full-secret'), false);
 
+      const models = await fixture.request('/v1/models', {
+        headers: { Authorization: 'Bearer sk-newapi-full-secret' },
+      });
+      assert.equal(models.status, 200);
+      assert.equal(models.json.data[0].id, 'deepseek-v4-flash');
+      assert.ok(newApiCalls.some((call) => call.url === 'https://new-api.internal/v1/models'));
+
       const disabled = await fixture.request('/api/frist/token/9', {
         method: 'PATCH',
         cookie: registered.cookie,
@@ -4651,8 +5636,65 @@ describe('Frist-API public server chain', () => {
       assert.equal(gateway.status, 200);
       assert.equal(gateway.json.id, 'resp-newapi');
       assert.ok(newApiCalls.some((call) => call.url === 'https://new-api.internal/v1/responses'));
+
+      const deleted = await fixture.request('/api/frist/token/9', {
+        method: 'DELETE',
+        cookie: registered.cookie,
+      });
+      assert.equal(deleted.status, 200);
+      assert.equal(deleted.json.deletedKeyId, '9');
+      assert.ok(newApiCalls.some((call) => call.url === 'https://new-api.internal/api/token/9/'));
     } finally {
       await fixture.close();
+    }
+  });
+
+  it('hard-deletes New-API SQLite token rows after API soft deletion', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'frist-api-newapi-token-delete-'));
+    const sqliteDb = join(dir, 'one-api.db');
+    const sqlite = spawnSync('sqlite3', [sqliteDb], {
+      input: [
+        'create table tokens (id integer primary key, name text, status integer, deleted_at text, used_quota integer);',
+        "insert into tokens (id, name, status, deleted_at, used_quota) values (9, 'OpenAI e2e-token-cleanup', 2, '2026-07-05 20:53:13+08:00', 12);",
+      ].join('\n'),
+      encoding: 'utf8',
+    });
+    assert.equal(sqlite.status, 0, sqlite.stderr || sqlite.stdout);
+
+    const newApiCalls = [];
+    const fixture = await createServerFixture({
+      requireEmailVerification: false,
+      newApiEnabled: true,
+      newApiBaseUrl: 'https://new-api.internal',
+      newApiAccessToken: 'newapi-access-token',
+      newApiUserId: '42',
+      newApiSqliteDb: sqliteDb,
+      fetchImpl: async (url, init = {}) => {
+        newApiCalls.push({ url: String(url), init });
+        const path = new URL(String(url)).pathname;
+        if (path === '/api/token/9/' && init.method === 'DELETE') {
+          return jsonResponse(200, { success: true, data: 1 });
+        }
+        return jsonResponse(404, { success: false, message: `unexpected ${path}` });
+      },
+    });
+
+    try {
+      const registered = await fixture.request('/api/frist/register', {
+        method: 'POST',
+        body: { email: 'cleanup-newapi@example.com', password: 'TestPass123!' },
+      });
+      const deleted = await fixture.request('/api/frist/token/9', {
+        method: 'DELETE',
+        cookie: registered.cookie,
+      });
+      assert.equal(deleted.status, 200);
+      assert.equal(deleted.json.deletedKeyId, '9');
+      assert.ok(newApiCalls.some((call) => call.url === 'https://new-api.internal/api/token/9/'));
+      assert.equal(sqliteScalar(sqliteDb, 'select count(*) from tokens where id=9;'), '0');
+    } finally {
+      await fixture.close();
+      await rm(dir, { recursive: true, force: true });
     }
   });
 
@@ -4696,7 +5738,7 @@ describe('Frist-API public server chain', () => {
       await fixture.request('/api/frist/redeem', {
         method: 'POST',
         cookie,
-        body: { code: 'FRIST-DAY-001' },
+        body: { code: 'JIYU-DAY-001' },
       });
       const token = await fixture.request('/api/frist/token', {
         method: 'POST',
@@ -4843,10 +5885,10 @@ describe('Frist-API public server chain', () => {
           sessionSecret: 'session-secret-with-enough-randomness-2026',
           dataEncryptionKey: 'runtime-encryption-key-with-enough-randomness-2026',
           adminPageCode: 'hidden-admin-entry-2026',
-          publicGatewayBaseUrl: 'https://frist-api.101-43-41-96.nip.io/v1',
-          canonicalHost: 'frist-api.101-43-41-96.nip.io',
+          publicGatewayBaseUrl: 'https://jiyu.245334.xyz/v1',
+          canonicalHost: 'jiyu.245334.xyz',
         }),
-      /固定 HTTPS 品牌域名|New-API 数据库|管理员 2FA|兑换码/,
+      /固定 HTTPS 品牌域名|New-API 数据库|管理员 2FA|兑换码|人机验证/,
     );
 
     const productionServer = createFristApiServer({
@@ -4859,13 +5901,16 @@ describe('Frist-API public server chain', () => {
       newApiUserId: '1',
       requireAdmin2fa: true,
       adminTotpSecrets: ['JBSWY3DPEHPK3PXP'],
+      requireTurnstile: true,
+      turnstileSiteKey: '1x00000000000000000000AA',
+      turnstileSecret: '1x0000000000000000000000000000000AA',
       requireCsrf: true,
       adminToken: 'admin-token-with-enough-randomness-2026',
       sessionSecret: 'session-secret-with-enough-randomness-2026',
       dataEncryptionKey: 'runtime-encryption-key-with-enough-randomness-2026',
       adminPageCode: 'hidden-admin-entry-2026',
-      publicGatewayBaseUrl: 'https://api.frist.example/v1',
-      canonicalHost: 'api.frist.example',
+      publicGatewayBaseUrl: 'https://jiyu.245334.xyz/v1',
+      canonicalHost: 'jiyu.245334.xyz',
     });
     productionServer.close();
   });
@@ -5026,6 +6071,178 @@ describe('Frist-API public server chain', () => {
     }
   });
 
+  it('keeps production readiness blocked when no healthy upstream inventory is available', async () => {
+    const fixedNow = new Date('2026-05-07T12:00:00.000Z');
+    const secret = 'JBSWY3DPEHPK3PXP';
+    const fixture = await createServerFixture({
+      publicGatewayBaseUrl: 'https://jiyu.245334.xyz/v1',
+      canonicalHost: 'jiyu.245334.xyz',
+      newApiEnabled: true,
+      newApiBaseUrl: 'https://new-api.internal',
+      newApiAccessToken: 'new-api-access-token-with-enough-randomness',
+      newApiUserId: '42',
+      requireNewApiDatabase: true,
+      requireAdmin2fa: true,
+      adminTotpSecrets: [secret],
+      requireTurnstile: true,
+      turnstileSiteKey: '1x00000000000000000000AA',
+      turnstileSecret: '1x0000000000000000000000000000000AA',
+      nowFactory: () => fixedNow,
+    });
+
+    try {
+      const verified = await fixture.request('/api/admin/2fa/verify', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: { code: totpCode(secret, fixedNow) },
+      });
+      assert.equal(verified.status, 200);
+
+      await fixture.request('/api/admin/production-readiness', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+        cookie: verified.cookie,
+      });
+      await fixture.writeData({
+        ...(await fixture.readData()),
+        backupStatus: {
+          provider: 'rclone',
+          target: 's3://frist-api-prod/runtime',
+          lastBackupAt: '2026-05-07T11:30:00.000Z',
+          lastRestoreTestAt: '2026-05-07T11:40:00.000Z',
+          status: 'ok',
+          artifact: 'runtime-20260507.tgz',
+          checksum: 'sha256:test-checksum',
+          updatedAt: '2026-05-07T11:40:00.000Z',
+        },
+        channelProbeEvents: [
+          {
+            model: 'gpt-5.5',
+            status: 'ok',
+            at: '2026-05-07T11:55:00.000Z',
+            latencyMs: 88,
+          },
+        ],
+        credentials: [
+          {
+            id: 'cred-failed-only',
+            sourceId: 'source-failed-only',
+            baseUrl: 'https://supplier.example.com/v1',
+            routeBaseUrl: 'https://supplier.example.com/v1',
+            rawKey: 'sk-failed-only',
+            pool: 'default',
+            modelGroup: 'OpenAI',
+            models: ['gpt-5.5'],
+            enabled: true,
+            status: 'failed',
+            quotaRemaining: 1000,
+            quotaTotal: 1000,
+            sourceType: 'authorized',
+            riskStatus: 'approved',
+          },
+        ],
+      });
+
+      const readiness = await fixture.request('/api/admin/production-readiness', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+        cookie: verified.cookie,
+      });
+      assert.equal(readiness.status, 200);
+      assert.equal(readiness.json.ready, false);
+      const upstream = readiness.json.checks.find((check) => check.id === 'healthy_upstream_inventory');
+      assert.equal(upstream.ok, false);
+      assert.match(upstream.detail, /暂无健康上游/);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('counts New-API inventory for production readiness with the current SQLite schema', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'frist-api-newapi-readiness-'));
+    const sqliteDb = join(dir, 'one-api.db');
+    const fixedNow = new Date('2026-05-07T12:00:00.000Z');
+    const secret = 'JBSWY3DPEHPK3PXP';
+    const sqlite = spawnSync(
+      'sqlite3',
+      [sqliteDb],
+      {
+        input: [
+          'create table channels (id integer primary key, status integer, models text);',
+          'create table models (id integer primary key, model_name text, status integer);',
+          "insert into channels (status, models) values (1, 'gpt-5.5,claude-sonnet-4-5-c');",
+          "insert into models (model_name, status) values ('gpt-5.5', 1);",
+        ].join('\n'),
+        encoding: 'utf8',
+      },
+    );
+    assert.equal(sqlite.status, 0, sqlite.stderr);
+
+    const fixture = await createServerFixture({
+      publicGatewayBaseUrl: 'https://jiyu.245334.xyz/v1',
+      canonicalHost: 'jiyu.245334.xyz',
+      newApiEnabled: true,
+      newApiBaseUrl: 'https://new-api.internal',
+      newApiAccessToken: 'new-api-access-token-with-enough-randomness',
+      newApiUserId: '42',
+      newApiSqliteDb: sqliteDb,
+      requireNewApiDatabase: true,
+      requireAdmin2fa: true,
+      adminTotpSecrets: [secret],
+      requireTurnstile: true,
+      turnstileSiteKey: '1x00000000000000000000AA',
+      turnstileSecret: '1x0000000000000000000000000000000AA',
+      nowFactory: () => fixedNow,
+    });
+
+    try {
+      const verified = await fixture.request('/api/admin/2fa/verify', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: { code: totpCode(secret, fixedNow) },
+      });
+      assert.equal(verified.status, 200);
+
+      await fixture.request('/api/admin/production-readiness', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+        cookie: verified.cookie,
+      });
+      await fixture.writeData({
+        ...(await fixture.readData()),
+        backupStatus: {
+          provider: 'rclone',
+          target: 's3://frist-api-prod/runtime',
+          lastBackupAt: '2026-05-07T11:30:00.000Z',
+          lastRestoreTestAt: '2026-05-07T11:40:00.000Z',
+          status: 'ok',
+          artifact: 'runtime-20260507.tgz',
+          checksum: 'sha256:test-checksum',
+          updatedAt: '2026-05-07T11:40:00.000Z',
+        },
+        channelProbeEvents: [
+          {
+            model: 'gpt-5.5',
+            status: 'ok',
+            at: '2026-05-07T11:55:00.000Z',
+            latencyMs: 88,
+          },
+        ],
+        credentials: [],
+      });
+
+      const readiness = await fixture.request('/api/admin/production-readiness', {
+        headers: { 'x-admin-token': 'admin-test-token' },
+        cookie: verified.cookie,
+      });
+      assert.equal(readiness.status, 200);
+      assert.equal(readiness.json.upstreamInventory.sqliteDbReadable, true);
+      assert.equal(readiness.json.upstreamInventory.newApiEnabledChannels, 1);
+      assert.equal(readiness.json.upstreamInventory.newApiModels, 1);
+      assert.equal(readiness.json.checks.find((check) => check.id === 'healthy_upstream_inventory').ok, true);
+    } finally {
+      await fixture.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('records failed admin authentication without storing submitted tokens', async () => {
     const fixture = await createServerFixture();
 
@@ -5081,7 +6298,7 @@ describe('Frist-API public server chain', () => {
 
       const allowed = await fixture.request('/admin.html?code=hidden-admin-entry-2026');
       assert.equal(allowed.status, 200);
-      assert.match(allowed.text, /Frist-API 管理端|>Admin</);
+      assert.match(allowed.text, /CC中转 管理端|>Admin</);
     } finally {
       await fixture.close();
     }
@@ -5313,11 +6530,20 @@ async function createServerFixture(options = {}) {
     channelMonitorIntervalMs: options.channelMonitorIntervalMs,
     channelMonitorBatchSize: options.channelMonitorBatchSize,
     channelMonitorCooldownMs: options.channelMonitorCooldownMs,
+    rateMarkup: options.rateMarkup,
+    xianyuWebhookToken: options.xianyuWebhookToken,
     notifyCredentialIssue: options.notifyCredentialIssue,
     balanceAlertEmailSender: options.balanceAlertEmailSender,
     requireCaptcha: options.requireCaptcha,
+    requireTurnstile: options.requireTurnstile,
+    turnstileSiteKey: options.turnstileSiteKey,
+    turnstileSecret: options.turnstileSecret,
+    turnstileVerifyUrl: options.turnstileVerifyUrl,
+    turnstileAllowedHostnames: options.turnstileAllowedHostnames,
     authRateLimitMax: options.authRateLimitMax,
     authRateLimitWindowMs: options.authRateLimitWindowMs,
+    redemptionRateLimitMax: options.redemptionRateLimitMax,
+    redemptionRateLimitWindowMs: options.redemptionRateLimitWindowMs,
     publicMode: options.publicMode,
     allowInsecurePublicHttp: options.allowInsecurePublicHttp,
     publicGatewayBaseUrl: options.publicGatewayBaseUrl,
@@ -5327,8 +6553,15 @@ async function createServerFixture(options = {}) {
     newApiBaseUrl: options.newApiBaseUrl,
     newApiAccessToken: options.newApiAccessToken,
     newApiUserId: options.newApiUserId,
+    newApiSqliteDb: Object.hasOwn(options, 'newApiSqliteDb') ? options.newApiSqliteDb : '',
     newApiGatewayEnabled: options.newApiGatewayEnabled,
     newApiGatewayBaseUrl: options.newApiGatewayBaseUrl,
+    newApiRedemptionStatusSyncEnabled: options.newApiRedemptionStatusSyncEnabled,
+    newApiRedemptionStatusSyncIntervalMs: options.newApiRedemptionStatusSyncIntervalMs,
+    cardAutoreplenishEnabled: options.cardAutoreplenishEnabled,
+    cardAutoreplenishIntervalMs: options.cardAutoreplenishIntervalMs,
+    cardAutoreplenishDailyCap: options.cardAutoreplenishDailyCap,
+    cardAutoreplenishSafetyStock: options.cardAutoreplenishSafetyStock,
     dataEncryptionKey: options.dataEncryptionKey,
     passwordHashSecret: options.passwordHashSecret,
     legacyPasswordHashSecrets: options.legacyPasswordHashSecrets,
@@ -5373,6 +6606,7 @@ async function createServerFixture(options = {}) {
 
   return {
     baseUrl,
+    port,
     dataFile,
     async request(path, options = {}) {
       const response = await fetch(`${baseUrl}${path}`, {
@@ -5435,6 +6669,24 @@ async function createServerFixture(options = {}) {
       await rm(dir, { force: true, recursive: true });
     },
   };
+}
+
+function sendRawHttpRequest({ port, requestText }) {
+  return new Promise((resolve, reject) => {
+    const socket = connect({ host: '127.0.0.1', port });
+    let response = '';
+    socket.setEncoding('utf8');
+    socket.setTimeout(3000);
+    socket.on('connect', () => socket.write(requestText));
+    socket.on('data', (chunk) => {
+      response += chunk;
+    });
+    socket.on('end', () => resolve(response));
+    socket.on('timeout', () => {
+      socket.destroy(new Error('raw HTTP request timed out'));
+    });
+    socket.on('error', reject);
+  });
 }
 
 function jsonResponse(status, body) {
@@ -5505,10 +6757,54 @@ function signAlipayNotifyBody(params, privateKey) {
   return new URLSearchParams(payload).toString();
 }
 
+function createNewApiRedemptionSchema(sqliteDb) {
+  const sql = `
+    create table redemptions (
+      id integer primary key,
+      user_id integer,
+      \`key\` char(32) unique,
+      status integer default 1,
+      name text,
+      quota integer default 100,
+      created_time integer,
+      redeemed_time integer,
+      used_user_id integer,
+      expired_time integer
+    );
+  `;
+  const result = spawnSync('sqlite3', [sqliteDb], { input: sql, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+}
+
+function sqliteScalar(sqliteDb, sql) {
+  const result = spawnSync('sqlite3', [sqliteDb, sql], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  return result.stdout.trim();
+}
+
+function sqlQuote(value) {
+  return `'${String(value ?? '').replace(/'/g, "''")}'`;
+}
+
 function delay(ms) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+async function waitFor(assertion, { timeoutMs = 800, intervalMs = 25 } = {}) {
+  const startedAt = Date.now();
+  let lastError = null;
+  while (Date.now() - startedAt <= timeoutMs) {
+    try {
+      await assertion();
+      return;
+    } catch (error) {
+      lastError = error;
+      await delay(intervalMs);
+    }
+  }
+  throw lastError || new Error('waitFor timed out');
 }
 
 function legacyPasswordHash(password, salt) {

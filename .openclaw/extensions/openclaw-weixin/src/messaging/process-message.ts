@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
 
 import {
@@ -55,6 +57,236 @@ function extractTextBody(itemList?: import("../api/types.js").MessageItem[]): st
     }
   }
   return "";
+}
+
+function shouldHandleIntelBriefShortcut(text: string): boolean {
+  const cleaned = String(text ?? "").trim();
+  if (!cleaned) return false;
+  if (/^70[0-8](\s+.+)?$/.test(cleaned)) return true;
+  const exactShortcuts = new Set([
+    "菜单",
+    "帮助",
+    "help",
+    "今日简报",
+    "看今日简报",
+    "每日简报",
+    "我的订阅",
+    "订阅状态",
+    "简报状态",
+    "市场资金",
+    "AI科技",
+    "AI 科技",
+    "天气预警",
+    "推送时间",
+    "设置时间",
+    "添加追踪",
+    "简报帮助",
+    "暂停简报",
+    "暂停",
+  ]);
+  if (exactShortcuts.has(cleaned)) return true;
+  return ["推送时间", "设置时间", "添加追踪", "追踪"].some((prefix) => cleaned.startsWith(`${prefix} `));
+}
+
+function readLocalOpenClawApiToken(): string {
+  const envToken = process.env.OPENCLAW_INTEL_BRIEF_API_TOKEN || process.env.OPENCLAW_API_TOKEN || "";
+  if (envToken.trim()) return envToken.trim();
+  const envPath = process.env.OPENCLAW_INTEL_BRIEF_ENV_FILE
+    || path.join(process.env.HOME || "", "Desktop", "OpenEverything", "packages", "clawbot", "config", ".env");
+  try {
+    const raw = fs.readFileSync(envPath, "utf-8");
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
+      const [key, ...rest] = trimmed.split("=");
+      if (key.trim() !== "OPENCLAW_API_TOKEN") continue;
+      return rest.join("=").trim().replace(/^['"]|['"]$/g, "");
+    }
+  } catch {
+    return "";
+  }
+  return "";
+}
+
+function classifyIntelBriefShortcut(text: string): string {
+  const cleaned = String(text ?? "").trim();
+  if (/^700(\s+.*)?$/.test(cleaned) || ["今日简报", "看今日简报", "每日简报"].includes(cleaned)) return "today";
+  if (/^701(\s+.*)?$/.test(cleaned) || ["我的订阅", "订阅状态", "简报状态"].includes(cleaned)) return "status";
+  if (/^702(\s+.*)?$/.test(cleaned) || cleaned === "市场资金") return "market";
+  if (/^703(\s+.*)?$/.test(cleaned) || ["AI科技", "AI 科技"].includes(cleaned)) return "ai";
+  if (/^704(\s+.*)?$/.test(cleaned) || cleaned === "天气预警") return "weather";
+  if (/^705(\s+.*)?$/.test(cleaned) || cleaned === "推送时间" || cleaned === "设置时间" || cleaned.startsWith("推送时间 ") || cleaned.startsWith("设置时间 ")) return "schedule";
+  if (/^706(\s+.*)?$/.test(cleaned) || cleaned === "添加追踪" || cleaned.startsWith("添加追踪 ") || cleaned.startsWith("追踪 ")) return "track";
+  if (/^707(\s+.*)?$/.test(cleaned) || cleaned === "简报帮助") return "help";
+  if (/^708(\s+.*)?$/.test(cleaned) || ["暂停简报", "暂停"].includes(cleaned)) return "pause";
+  if (["菜单", "帮助", "help"].includes(cleaned)) return "menu";
+  return "unknown";
+}
+
+function hashSenderForEvidence(senderId: string): string {
+  if (!senderId) return "";
+  return crypto.createHash("sha256").update(senderId).digest("hex").slice(0, 12);
+}
+
+function intelBriefEvidenceFile(): string {
+  return process.env.OPENCLAW_INTEL_BRIEF_WECHAT_EVIDENCE_FILE
+    || path.join(
+      process.env.HOME || "",
+      "Desktop",
+      "OpenEverything",
+      "packages",
+      "clawbot",
+      "data",
+      "intel_evidence",
+      "phasefix",
+      "wechat-bridge",
+      "runtime.json",
+    );
+}
+
+function sanitizeBridgeUrl(urlText: string): string {
+  try {
+    const url = new URL(urlText);
+    return `${url.protocol}//${url.host}${url.pathname}`;
+  } catch {
+    return "invalid-url";
+  }
+}
+
+function writeIntelBriefBridgeEvidence(event: Record<string, unknown>): void {
+  const evidencePath = intelBriefEvidenceFile();
+  try {
+    fs.mkdirSync(path.dirname(evidencePath), { recursive: true });
+    let recent: unknown[] = [];
+    try {
+      const existing = JSON.parse(fs.readFileSync(evidencePath, "utf-8"));
+      if (Array.isArray(existing?.recent_events)) recent = existing.recent_events.slice(-19);
+    } catch {
+      recent = [];
+    }
+    const latest = {
+      schema_version: 1,
+      recorded_at: new Date().toISOString(),
+      source: "openclaw-weixin-intel-brief-bridge",
+      ...event,
+    };
+    recent.push(latest);
+    fs.writeFileSync(evidencePath, JSON.stringify({ latest, recent_events: recent }, null, 2), "utf-8");
+  } catch (err) {
+    logger.warn(`[weixin] Intel Brief bridge evidence write failed: ${String(err)}`);
+  }
+}
+
+function buildIntelBriefBridgeEvidence(params: {
+  full: WeixinMessage;
+  textBody: string;
+  bridgeUrl: string;
+  apiToken: string;
+  status: string;
+  reason?: string;
+  httpStatus?: number;
+  reply?: string;
+  sentReplySuccess?: boolean;
+  error?: unknown;
+}): Record<string, unknown> {
+  const reply = params.reply || "";
+  const errorName = params.error instanceof Error ? params.error.name : "";
+  return {
+    status: params.status,
+    reason: params.reason || "",
+    shortcut_class: classifyIntelBriefShortcut(params.textBody),
+    sender_hash: hashSenderForEvidence(params.full.from_user_id ?? ""),
+    text_length: String(params.textBody ?? "").trim().length,
+    bridge_url: sanitizeBridgeUrl(params.bridgeUrl),
+    api_token_present: Boolean(params.apiToken),
+    http_status: params.httpStatus ?? null,
+    reply_present: Boolean(reply.trim()),
+    reply_length: reply.length,
+    reply_contains_menu: reply.includes("700 今日简报") || reply.includes("700 每日简报"),
+    reply_contains_status: reply.includes("订阅状态"),
+    reply_contains_schedule_prompt: reply.includes("回复数字即可设置"),
+    reply_contains_tracking_prompt: reply.includes("下一条直接回复名字"),
+    reply_fell_to_llm: reply.includes("具体的问题") || reply.includes("没能理解") || reply.includes("OpenClaw 是**完全免费"),
+    sent_reply_success: Boolean(params.sentReplySuccess),
+    error_name: errorName,
+  };
+}
+
+async function tryHandleIntelBriefBridge(params: {
+  full: WeixinMessage;
+  deps: ProcessMessageDeps;
+  textBody: string;
+  contextToken?: string;
+}): Promise<boolean> {
+  if (!shouldHandleIntelBriefShortcut(params.textBody)) return false;
+  const to = params.full.from_user_id ?? "";
+  if (!to) return false;
+  const bridgeUrl = process.env.OPENCLAW_INTEL_BRIEF_WECHAT_BRIDGE_URL || "http://127.0.0.1:18790/wechat/incoming";
+  const apiToken = readLocalOpenClawApiToken();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (apiToken) headers["X-API-Token"] = apiToken;
+    const resp = await fetch(bridgeUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ from_user: to, text: params.textBody }),
+      signal: controller.signal,
+    });
+    const payload = await resp.json().catch(() => ({}));
+    const reply = typeof payload?.reply === "string" ? payload.reply.trim() : "";
+    if (!resp.ok || !reply) {
+      logger.warn(`[weixin] Intel Brief bridge skipped: status=${resp.status} reply=${reply ? "present" : "missing"}`);
+      writeIntelBriefBridgeEvidence(buildIntelBriefBridgeEvidence({
+        full: params.full,
+        textBody: params.textBody,
+        bridgeUrl,
+        apiToken,
+        status: "skipped",
+        reason: !resp.ok ? "http_not_ok" : "empty_reply",
+        httpStatus: resp.status,
+        reply,
+      }));
+      return false;
+    }
+    await sendMessageWeixin({
+      to,
+      text: reply,
+      opts: {
+        baseUrl: params.deps.baseUrl,
+        token: params.deps.token,
+        contextToken: params.contextToken,
+      },
+    });
+    writeIntelBriefBridgeEvidence(buildIntelBriefBridgeEvidence({
+      full: params.full,
+      textBody: params.textBody,
+      bridgeUrl,
+      apiToken,
+      status: "handled",
+      reason: "sent_reply",
+      httpStatus: resp.status,
+      reply,
+      sentReplySuccess: true,
+    }));
+    logger.info(`[weixin] Intel Brief bridge handled shortcut, skipping AI pipeline`);
+    return true;
+  } catch (err) {
+    writeIntelBriefBridgeEvidence(buildIntelBriefBridgeEvidence({
+      full: params.full,
+      textBody: params.textBody,
+      bridgeUrl,
+      apiToken,
+      status: "failed",
+      reason: "exception",
+      error: err,
+    }));
+    logger.warn(`[weixin] Intel Brief bridge failed, falling back to AI pipeline: ${String(err)}`);
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 /**
@@ -202,6 +434,14 @@ export async function processOneMessage(
     `authorization: senderId=${senderId} commandAuthorized=${String(commandAuthorized)} senderAllowed=${String(senderAllowedForCommands)}`,
   );
 
+  const contextToken = getContextTokenFromMsgContext(ctx);
+  if (contextToken) {
+    setContextToken(deps.accountId, full.from_user_id ?? "", contextToken);
+  }
+  if (await tryHandleIntelBriefBridge({ full, deps, textBody, contextToken })) {
+    return;
+  }
+
   if (debug) {
     debugTrace.push(
       "── 鉴权 & 路由 ──",
@@ -262,10 +502,6 @@ export async function processOneMessage(
     `recordInboundSession: done storePath=${storePath} sessionKey=${route.sessionKey ?? "(none)"}`,
   );
 
-  const contextToken = getContextTokenFromMsgContext(ctx);
-  if (contextToken) {
-    setContextToken(deps.accountId, full.from_user_id ?? "", contextToken);
-  }
   const humanDelay = deps.channelRuntime.reply.resolveHumanDelayConfig(deps.config, route.agentId);
 
   const hasTypingTicket = Boolean(deps.typingTicket);

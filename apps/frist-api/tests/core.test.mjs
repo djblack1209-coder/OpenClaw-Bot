@@ -8,9 +8,11 @@ import {
   buildCcSwitchImportUrl,
   buildCcSwitchMcpImportUrl,
   chooseNextCredential,
+  applyRateMarkup,
   normalizeClientAvailableModels,
   normalizeOfficialModelList,
   normalizeOfficialModelName,
+  normalizeUpstreamChannelSnapshot,
   normalizeBaseUrl,
   parseSupplierOrderText,
   parsePriceText,
@@ -24,7 +26,7 @@ function decodeUrlSafeBase64(value) {
   return Buffer.from(padded, 'base64').toString('utf8');
 }
 
-describe('Frist-API core flows', () => {
+describe('CC中转 core flows', () => {
   it('normalizes supplier base URLs without losing the API version path', () => {
     assert.equal(normalizeBaseUrl(' https://supplier.example.com/v1/ '), 'https://supplier.example.com/v1');
     assert.equal(normalizeBaseUrl('supplier.example.com/api/openai'), 'https://supplier.example.com/api/openai');
@@ -58,7 +60,7 @@ describe('Frist-API core flows', () => {
       buildCcSwitchImportUrl({
         target,
         apiKey: 'fk_demo_user_preview',
-        baseUrl: 'https://api.frist.example.com/v1/',
+        baseUrl: 'https://jiyu.245334.xyz/v1/',
         model: 'claude-opus-4-6-thinking',
       }),
     );
@@ -70,21 +72,21 @@ describe('Frist-API core flows', () => {
       const app = parsed.searchParams.get('app');
       const expectedEndpoint =
         app === 'claude'
-          ? 'https://api.frist.example.com'
-          : 'https://api.frist.example.com/v1';
+          ? 'https://jiyu.245334.xyz'
+          : 'https://jiyu.245334.xyz/v1';
       const script = decodeUrlSafeBase64(parsed.searchParams.get('usageScript'));
       const params = [...parsed.searchParams.keys()].sort();
 
       assert.ok(url.length < 3500, `CC Switch deep link should stay compact, got ${url.length}`);
-      assert.match(decoded, /Frist-API/);
+      assert.match(decoded, /CC中转/);
       assert.equal(parsed.searchParams.get('resource'), 'provider');
-      assert.equal(parsed.searchParams.get('name'), 'Frist-API');
+      assert.equal(parsed.searchParams.get('name'), 'CC中转');
       assert.equal(parsed.searchParams.get('endpoint'), expectedEndpoint);
-      assert.equal(parsed.searchParams.get('homepage'), 'https://api.frist.example.com');
+      assert.equal(parsed.searchParams.get('homepage'), 'https://jiyu.245334.xyz');
       assert.equal(parsed.searchParams.get('apiKey'), 'fk_demo_user_preview');
       assert.equal(parsed.searchParams.get('model'), 'claude-opus-4-6-thinking-c');
       assert.match(decoded, /fk_demo_user_preview/);
-      assert.match(decoded, /https:\/\/api\.frist\.example\.com/);
+      assert.match(decoded, /https:\/\/jiyu\.245334\.xyz/);
       assert.match(decoded, /claude-opus-4-6-thinking-c/);
     assert.equal(decoded.includes('claude-haiku-4-5-20251001'), false);
     assert.equal(parsed.searchParams.get('config'), null);
@@ -92,7 +94,7 @@ describe('Frist-API core flows', () => {
     assert.equal(parsed.searchParams.get('availableModels'), null);
     assert.equal(parsed.searchParams.get('usageEnabled'), 'true');
       assert.equal(parsed.searchParams.get('usageApiKey'), 'fk_demo_user_preview');
-      assert.equal(parsed.searchParams.get('usageBaseUrl'), 'https://api.frist.example.com');
+      assert.equal(parsed.searchParams.get('usageBaseUrl'), 'https://jiyu.245334.xyz');
       assert.equal(parsed.searchParams.get('usageAutoInterval'), '15');
     assert.match(parsed.searchParams.get('usageScript'), /^[A-Za-z0-9_-]+$/);
     assert.match(script, /\/api\/frist\/key-usage/);
@@ -147,7 +149,7 @@ describe('Frist-API core flows', () => {
       buildCcSwitchImportUrl({
         target: 'Claude',
         apiKey: 'fk_ccswitch_claude_preview',
-        baseUrl: 'https://api.frist.example.com/v1',
+        baseUrl: 'https://jiyu.245334.xyz/v1',
         model: 'gpt-5.5',
         availableModels: ['gpt-5.5', 'claude-opus-4-6-c', 'claude-sonnet-4-5-c'],
         modelGroup: 'OpenAI',
@@ -158,9 +160,9 @@ describe('Frist-API core flows', () => {
     assert.ok(claudeUrl.toString().length < 3500);
     assert.equal(claudeUrl.searchParams.get('resource'), 'provider');
     assert.equal(claudeUrl.searchParams.get('app'), 'claude');
-    assert.equal(claudeUrl.searchParams.get('name'), 'Frist-API');
-    assert.equal(claudeUrl.searchParams.get('endpoint'), 'https://api.frist.example.com');
-    assert.equal(claudeUrl.searchParams.get('homepage'), 'https://api.frist.example.com');
+    assert.equal(claudeUrl.searchParams.get('name'), 'CC中转');
+    assert.equal(claudeUrl.searchParams.get('endpoint'), 'https://jiyu.245334.xyz');
+    assert.equal(claudeUrl.searchParams.get('homepage'), 'https://jiyu.245334.xyz');
     assert.equal(claudeUrl.searchParams.get('enabled'), 'true');
     assert.equal(claudeUrl.searchParams.get('apiKey'), 'fk_ccswitch_claude_preview');
     assert.equal(claudeUrl.searchParams.get('model'), 'gpt-5.5');
@@ -178,7 +180,7 @@ describe('Frist-API core flows', () => {
       buildCcSwitchImportUrl({
         target: 'Codex',
         apiKey: 'fk_ccswitch_codex_preview',
-        baseUrl: 'https://api.frist.example.com/v1',
+        baseUrl: 'https://jiyu.245334.xyz/v1',
         model: 'gpt-5.3-codex',
         availableModels: ['gpt-5.5', 'gpt-5.3-codex'],
         modelGroup: 'OpenAI',
@@ -189,9 +191,9 @@ describe('Frist-API core flows', () => {
     assert.ok(codexUrl.toString().length < 3500);
     assert.equal(codexUrl.searchParams.get('resource'), 'provider');
     assert.equal(codexUrl.searchParams.get('app'), 'codex');
-    assert.equal(codexUrl.searchParams.get('endpoint'), 'https://api.frist.example.com/v1');
+    assert.equal(codexUrl.searchParams.get('endpoint'), 'https://jiyu.245334.xyz/v1');
     assert.equal(codexUrl.searchParams.get('enabled'), 'true');
-    assert.equal(codexUrl.searchParams.get('usageBaseUrl'), 'https://api.frist.example.com');
+    assert.equal(codexUrl.searchParams.get('usageBaseUrl'), 'https://jiyu.245334.xyz');
     assert.match(codexScript, /Authorization/);
     assert.equal(codexUrl.searchParams.get('config'), null);
     assert.equal(codexUrl.searchParams.get('settings_config'), null);
@@ -212,7 +214,7 @@ describe('Frist-API core flows', () => {
 
       assert.match(config.ccSwitchUrl, /^ccswitch:\/\/v1\/import\?/);
       assert.equal(JSON.parse(config.authJson).OPENAI_API_KEY, 'fk_test_preview_only');
-      assert.equal(config.providerName, 'Frist-API');
+      assert.equal(config.providerName, 'CC中转');
       assert.equal(config.interfaceFormat, 'responses');
       assert.equal(config.authField, 'OPENAI_API_KEY');
       assert.equal(config.contextWindow, 1_000_000);
@@ -220,7 +222,7 @@ describe('Frist-API core flows', () => {
       assert.equal(config.sdkOptions.timeout, 600);
       assert.equal(config.modelGroup, 'OpenAI');
       assert.match(config.remark, /到期 2026-05-02/);
-      assert.match(config.billingNote, /按官方标准计费/);
+      assert.match(config.billingNote, /按参考标价口径计费/);
       assert.match(config.officialUrl, /^http:\/\/101\.43\.41\.96:5566/);
       assert.equal(config.apiRequestUrl, 'http://101.43.41.96:5566/v1');
       assert.equal(config.modelName, 'gpt-5.5');
@@ -230,7 +232,7 @@ describe('Frist-API core flows', () => {
       assert.match(config.configToml, /model_auto_compact_token_limit = 900000/);
       assert.match(config.configToml, /wire_api = "responses"/);
       assert.match(config.configToml, /requires_openai_auth = true/);
-      assert.match(config.configToml, /name = "Frist-API"/);
+      assert.match(config.configToml, /name = "CC中转"/);
       assert.match(config.configToml, /base_url = "http:\/\/101\.43\.41\.96:5566\/v1"/);
       assert.equal(config.targetSlug, target.toLowerCase());
 
@@ -277,7 +279,7 @@ describe('Frist-API core flows', () => {
     const config = buildClientConfig({
       target: 'Claude',
       apiKey: 'fk_claude_openai_preview',
-      baseUrl: 'https://api.frist.example.com/v1',
+      baseUrl: 'https://jiyu.245334.xyz/v1',
       model: 'gpt-5.5',
       availableModels: ['gpt-5.5', 'gpt-5.4-mini'],
       modelGroup: 'OpenAI',
@@ -286,16 +288,16 @@ describe('Frist-API core flows', () => {
     const claudeJson = JSON.parse(config.authJson);
 
     assert.equal(config.targetSlug, 'claude');
-    assert.equal(config.apiRequestUrl, 'https://api.frist.example.com');
+    assert.equal(config.apiRequestUrl, 'https://jiyu.245334.xyz');
     assert.equal(config.interfaceFormat, 'anthropic-messages');
     assert.equal(config.authField, 'ANTHROPIC_AUTH_TOKEN');
     assert.equal(config.modelName, 'gpt-5.5');
     assert.equal(importUrl.searchParams.get('app'), 'claude');
-    assert.equal(importUrl.searchParams.get('endpoint'), 'https://api.frist.example.com');
+    assert.equal(importUrl.searchParams.get('endpoint'), 'https://jiyu.245334.xyz');
     assert.equal(importUrl.searchParams.get('config'), null);
     assert.equal(importUrl.searchParams.get('settings_config'), null);
     assert.equal(claudeJson.env.ANTHROPIC_AUTH_TOKEN, 'fk_claude_openai_preview');
-    assert.equal(claudeJson.env.ANTHROPIC_BASE_URL, 'https://api.frist.example.com');
+    assert.equal(claudeJson.env.ANTHROPIC_BASE_URL, 'https://jiyu.245334.xyz');
     assert.equal(claudeJson.env.ANTHROPIC_MODEL, 'gpt-5.5');
     assert.equal(claudeJson.env.ENABLE_TOOL_SEARCH, 'true');
   });
@@ -304,7 +306,7 @@ describe('Frist-API core flows', () => {
     const config = buildClientConfig({
       target: 'Codex',
       apiKey: 'fk_codex_claude_preview',
-      baseUrl: 'https://api.frist.example.com/v1',
+      baseUrl: 'https://jiyu.245334.xyz/v1',
       model: 'claude-opus-4-6-c',
       availableModels: ['claude-opus-4-6-c', 'claude-sonnet-4-5-c'],
       modelGroup: 'Claude',
@@ -316,7 +318,7 @@ describe('Frist-API core flows', () => {
     assert.equal(config.authField, 'OPENAI_API_KEY');
     assert.match(config.configToml, /wire_api = "responses"/);
     assert.match(config.configToml, /model = "claude-opus-4-6-c"/);
-    assert.match(config.configToml, /base_url = "https:\/\/api\.frist\.example\.com\/v1"/);
+    assert.match(config.configToml, /base_url = "https:\/\/jiyu\.245334\.xyz\/v1"/);
     assert.equal(importUrl.searchParams.get('app'), 'codex');
     assert.equal(importUrl.searchParams.get('model'), 'claude-opus-4-6-c');
     assert.equal(importUrl.searchParams.get('config'), null);
@@ -326,7 +328,7 @@ describe('Frist-API core flows', () => {
     const config = buildClientConfig({
       target: 'Codex',
       apiKey: 'sk-redacted-deepseek-user-local',
-      baseUrl: 'https://api.frist.example.com/v1',
+      baseUrl: 'https://jiyu.245334.xyz/v1',
       model: 'deepseek-v4-flash',
       availableModels: ['deepseek-chat', 'deepseek-reasoner', 'deepseek-v4-flash', 'deepseek-v4-pro'],
       modelGroup: 'DeepSeek',
@@ -342,7 +344,7 @@ describe('Frist-API core flows', () => {
     assert.match(config.configToml, /base_url = "https:\/\/api\.deepseek\.com\/v1"/);
     assert.equal(JSON.parse(config.authJson).OPENAI_API_KEY, 'sk-redacted-deepseek-user-local');
     assert.equal(importUrl.searchParams.get('endpoint'), 'https://api.deepseek.com/v1');
-    assert.equal(importUrl.searchParams.get('usageBaseUrl'), 'https://api.frist.example.com');
+    assert.equal(importUrl.searchParams.get('usageBaseUrl'), 'https://jiyu.245334.xyz');
     assert.match(usageScript, /\/api\/frist\/key-usage/);
     assert.equal(importUrl.searchParams.get('config'), null);
     assert.equal(combined.includes('sk-redacted-deepseek-user-local'), true);
@@ -352,7 +354,7 @@ describe('Frist-API core flows', () => {
     const config = buildClientConfig({
       target: 'Codex',
       apiKey: 'sk-redacted-deepseek-user-local',
-      baseUrl: 'https://api.frist.example.com/v1',
+      baseUrl: 'https://jiyu.245334.xyz/v1',
       model: 'deepseek-chat',
       availableModels: ['deepseek-chat', 'deepseek-reasoner'],
       modelGroup: 'DeepSeek',
@@ -372,7 +374,7 @@ describe('Frist-API core flows', () => {
       const config = buildClientConfig({
         target,
         apiKey: `fk_${expectedSlug}_preview`,
-        baseUrl: 'https://api.frist.example.com/v1',
+        baseUrl: 'https://jiyu.245334.xyz/v1',
         model: expectedSlug === 'gemini' ? 'gemini-2.5-flash' : 'gpt-5.5',
         modelGroup: expectedSlug === 'gemini' ? 'Gemini' : 'OpenAI',
       });
@@ -389,7 +391,7 @@ describe('Frist-API core flows', () => {
       const config = buildClientConfig({
         target,
         apiKey: 'fk_all_models_preview',
-        baseUrl: 'https://api.frist.example.com/v1',
+        baseUrl: 'https://jiyu.245334.xyz/v1',
         model: 'gpt-5.4',
         defaultModel: 'gpt-5.5',
         availableModels: ['gpt-5.4', 'gpt-5.5', 'gpt-5.4-mini', 'gpt-5.4-nano', 'gpt-image-2', 'gpt-5.3-codex'],
@@ -408,7 +410,7 @@ describe('Frist-API core flows', () => {
       assert.equal(importUrl.searchParams.get('config'), null);
       if (target === 'OpenCode') {
         assert.equal(providerConfig.npm, '@ai-sdk/openai-compatible');
-        assert.equal(providerConfig.options.baseURL, 'https://api.frist.example.com/v1');
+        assert.equal(providerConfig.options.baseURL, 'https://jiyu.245334.xyz/v1');
         assert.deepEqual(Object.keys(providerConfig.models), expectedModels);
         assert.deepEqual(providerConfig.models['gpt-5.3-codex'], { name: 'gpt-5.3-codex' });
       } else {
@@ -428,7 +430,7 @@ describe('Frist-API core flows', () => {
     const config = buildClientConfig({
       target: 'OpenCode',
       apiKey: 'fk_opencode_full_config',
-      baseUrl: 'https://api.frist.example.com/v1',
+      baseUrl: 'https://jiyu.245334.xyz/v1',
       model: 'gpt-5.5',
       defaultModel: 'gpt-5.5',
       availableModels: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex'],
@@ -441,12 +443,12 @@ describe('Frist-API core flows', () => {
 
     assert.deepEqual(Object.keys(fragment), ['provider']);
     assert.equal(provider.npm, '@ai-sdk/openai-compatible');
-    assert.equal(provider.options.baseURL, 'https://api.frist.example.com/v1');
+    assert.equal(provider.options.baseURL, 'https://jiyu.245334.xyz/v1');
     assert.equal(provider.options.apiKey, 'fk_opencode_full_config');
     assert.deepEqual(Object.keys(provider.models), ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex']);
     assert.deepEqual(provider.models['gpt-5.3-codex'], { name: 'gpt-5.3-codex' });
     assert.equal(importUrl.searchParams.get('usageEnabled'), 'true');
-    assert.equal(importUrl.searchParams.get('usageBaseUrl'), 'https://api.frist.example.com');
+    assert.equal(importUrl.searchParams.get('usageBaseUrl'), 'https://jiyu.245334.xyz');
     assert.equal(importUrl.searchParams.get('config'), null);
     assert.match(usageScript, /remainingUsd/);
     assert.match(usageScript, /extra: \[/);
@@ -457,7 +459,7 @@ describe('Frist-API core flows', () => {
     const config = buildClientConfig({
       target: 'OpenCode',
       apiKey: 'fk_pro_models_preview',
-      baseUrl: 'https://api.frist.example.com/v1',
+      baseUrl: 'https://jiyu.245334.xyz/v1',
       model: 'gpt-5.5',
       defaultModel: 'gpt-5.5',
       availableModels: ['gpt-5.4-pro', 'gpt-5.5', 'gpt-5.5-pro', 'gpt-image-2'],
@@ -472,7 +474,7 @@ describe('Frist-API core flows', () => {
     const config = buildClientConfig({
       target: 'Codex',
       apiKey: 'fk_customer_selected_model',
-      baseUrl: 'https://api.frist.example.com/v1',
+      baseUrl: 'https://jiyu.245334.xyz/v1',
       model: 'gpt-5.4',
       defaultModel: 'gpt-5.4',
       availableModels: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-image-2'],
@@ -503,7 +505,7 @@ describe('Frist-API core flows', () => {
     assert.match(setup.jsonPath, /\.codex\/auth\.json$/);
     assert.match(setup.configPath, /\.codex\/config\.toml$/);
     assert.match(setup.jsonConfig, /"OPENAI_API_KEY": "fk_user_visible_only"/);
-    assert.match(setup.tomlConfig, /name = "Frist-API"/);
+    assert.match(setup.tomlConfig, /name = "CC中转"/);
     assert.match(setup.tomlConfig, /base_url = "https:\/\/frist-api\.101\.43\.41\.96\.sslip\.io\/v1"/);
     assert.match(setup.macos, /mkdir -p/);
     assert.match(setup.macos, /auth\.json/);
@@ -514,7 +516,7 @@ describe('Frist-API core flows', () => {
     const combined = `${setup.jsonConfig}\n${setup.tomlConfig}\n${setup.macos}\n${setup.windows}`;
     assert.equal(combined.includes('supplier-codex.example.com'), false, '用户教程不能泄露上游请求地址');
     assert.equal(combined.includes('cr_fake_supplier_secret'), false, '用户教程不能泄露上游 Key');
-    assert.match(combined, /Frist-API/);
+    assert.match(combined, /CC中转/);
   });
 
   it('builds CC Switch MCP import and copyable real CLI test commands', () => {
@@ -538,7 +540,7 @@ describe('Frist-API core flows', () => {
     const claudeConfig = buildClientConfig({
       target: 'Claude',
       apiKey: 'fk_claude_test_command',
-      baseUrl: 'https://api.frist.example.com/v1',
+      baseUrl: 'https://jiyu.245334.xyz/v1',
       model: 'claude-sonnet-4-5-c',
       modelGroup: 'Claude',
     });
@@ -551,7 +553,7 @@ describe('Frist-API core flows', () => {
     const codexConfig = buildClientConfig({
       target: 'Codex',
       apiKey: 'fk_codex_test_command',
-      baseUrl: 'https://api.frist.example.com/v1',
+      baseUrl: 'https://jiyu.245334.xyz/v1',
       model: 'gpt-5.4-mini',
       modelGroup: 'OpenAI',
     });
@@ -612,7 +614,7 @@ describe('Frist-API core flows', () => {
       认证字段: X-API-Key
       认证前缀: 空
       请求头: HTTP-Referer: https://frist-api.example
-      请求头: X-Title: Frist-API
+      请求头: X-Title: CC中转
       模型: gpt-5.5
       `,
     );
@@ -621,7 +623,7 @@ describe('Frist-API core flows', () => {
     assert.equal(parsed.authHeaderValuePrefix, '');
     assert.deepEqual(parsed.extraHeaders, {
       'http-referer': 'https://frist-api.example',
-      'x-title': 'Frist-API',
+      'x-title': 'CC中转',
     });
     assert.equal(parsed.keys[0].authHeaderName, 'x-api-key');
     assert.equal(parsed.keys[0].authHeaderValuePrefix, '');
@@ -676,6 +678,27 @@ describe('Frist-API core flows', () => {
     assert.equal(draft[1].currency, 'CNY');
     assert.equal(draft[1].inputSaleCnyPerMillion, 11);
     assert.equal(draft[1].outputSaleCnyPerMillion, 65);
+  });
+
+  it('adds downstream markup to upstream 参考渠道 channel multipliers', () => {
+    assert.equal(applyRateMarkup(0.18, 0.1), 0.28);
+    assert.equal(applyRateMarkup(1.25, 0.1), 1.35);
+
+    const channels = normalizeUpstreamChannelSnapshot(
+      [
+        { provider: '参考渠道', platform: 'Plus', model: 'gpt-5.5', status: 'healthy', multiplier: 0.18, latencyMs: 880 },
+        { provider: '参考渠道', platform: 'Claude', model: 'claude-opus-4-6', status: 'degraded', rate: 0.33 },
+      ],
+      { markup: 0.1 },
+    );
+
+    assert.deepEqual(
+      channels.map((channel) => ({ model: channel.model, status: channel.status, upstreamMultiplier: channel.upstreamMultiplier, saleMultiplier: channel.saleMultiplier })),
+      [
+        { model: 'gpt-5.5', status: 'healthy', upstreamMultiplier: 0.18, saleMultiplier: 0.28 },
+        { model: 'claude-opus-4-6-c', status: 'slow', upstreamMultiplier: 0.33, saleMultiplier: 0.43 },
+      ],
+    );
   });
 
   it('chooses proxy only when it beats direct on success and latency', () => {
@@ -802,7 +825,7 @@ describe('Frist-API core flows', () => {
   });
 });
 
-describe('Frist-API user dashboard boundaries', () => {
+describe('CC中转 user dashboard boundaries', () => {
   const page = [
     readFileSync(new URL('../index.html', import.meta.url), 'utf8'),
     readFileSync(new URL('../src/app.js', import.meta.url), 'utf8'),
@@ -822,7 +845,6 @@ describe('Frist-API user dashboard boundaries', () => {
 
   it('removes non-clickable sidebar headings and old dense dashboard copy', () => {
     for (const forbidden of [
-      '控制台',
       'API 与用量',
       '模型与渠道',
       '充值与订购',
@@ -895,11 +917,11 @@ describe('Frist-API user dashboard boundaries', () => {
     }
 
     const focusMetricCount = (userHtml.match(/class="focus-metric/g) || []).length;
-    const headerBrandCount = (userHtml.match(/<strong>Frist-API<\/strong>/g) || []).length;
+    const headerBrandCount = (userHtml.match(/<strong>CC中转<\/strong>/g) || []).length;
     assert.ok(focusMetricCount >= 4, '用户首屏应该只保留最关键的余额、Key、今日和成功率指标');
     assert.equal((userHtml.match(/data-hero-primary-import/g) || []).length, 1, '首屏只保留一个主行动入口');
     assert.equal(headerBrandCount, 1, '顶部品牌 Logo 应该是全站唯一可见品牌块，侧栏不再重复');
-    assert.equal(userHtml.includes('Frist Gateway'), true, '首屏需要保留简短品牌信号');
+    assert.equal(userHtml.includes('CC中转控制台'), true, '首屏需要保留下游克隆经营的简短品牌信号');
     assert.equal(userHtml.includes('Commercial API Gateway'), false, '首屏不再使用冗长英文营销文案');
     assert.equal(userHtml.includes('月卡 Pro'), false, '公开页面初始 HTML 不应该闪现演示套餐');
     assert.equal(userHtml.includes('¥428.90'), false, '公开页面初始 HTML 不应该闪现演示消耗金额');
@@ -934,7 +956,7 @@ describe('Frist-API user dashboard boundaries', () => {
     assert.equal(userHtml.includes('data-rail-current'), true, '移动端折叠按钮应该展示当前页面');
     assert.equal(userHtml.includes('aria-controls="workspace-nav"'), true, '折叠按钮应该绑定导航区域');
     assert.equal(actionDock.includes('id="workspace-nav"'), true, '导航区域应该提供稳定 id 供折叠按钮引用');
-    for (const required of ['首页', 'API Key', 'CC Switch', '测试', '资料']) {
+    for (const required of ['仪表盘', 'API Key', 'CC Switch', '测试', '兑换码', '套餐订阅', '资料']) {
       assert.equal(actionDock.includes(required), true, `${required} 应该保留为工作台直接入口`);
     }
     for (const hidden of ['充值', '邀请', '教程']) {
@@ -980,130 +1002,69 @@ describe('Frist-API user dashboard boundaries', () => {
     );
   });
 
-  it('ships the visual hooks for the Tabcode-style console skin, loading states and reduced-motion friendly animation', () => {
+  it('ships the visual hooks for the CC中转 branded light console skin and commerce flow', () => {
     const userHtml = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+    const adminHtml = readFileSync(new URL('../admin.html', import.meta.url), 'utf8');
     const scriptsAndStyles = [
       readFileSync(new URL('../src/app.js', import.meta.url), 'utf8'),
+      readFileSync(new URL('../src/admin.js', import.meta.url), 'utf8'),
       readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8'),
     ].join('\n');
 
     for (const required of [
-      'renderProviderSummary',
-      'renderClientConfig',
-      'handleImportProtocolFallback',
-      'copyTextToClipboard',
-      'data-copy-auth-json',
-      'data-copy-config-toml',
-      'workspace-layout',
-      'workspace-rail',
-      'workspace-content',
-      'console-metrics',
-      'data-design-system="tabcode-console"',
-      'renderLoadingState',
-      'renderSkeletonRows',
-      'renderEmptyState',
-      'userFacingLoadError',
-      '离线',
-      'data-server-recovery',
-      'data-retry-dashboard',
-      'handleRetryDashboard',
-      "signalAction('success')",
-      "return '已连接'",
-      "return '后端暂不可用'",
-      'aria-current',
-      'skeleton-row',
-      'empty-row--stack',
-      'table-empty',
-      'model-picker-panel',
-      'playground-model-row',
-      'selected-model-panel',
-      'playground-diagnostics',
-      'Tabcode console layer',
-      '--workspace: #0b0d10',
-      '#ffffff',
-      '--primary: #8fb5ff',
-      'grid-template-columns: 160px minmax(0, 1fr)',
-      'height: 54px',
-      'border-radius: 14px',
-      'content-visibility: auto',
-      '@media (prefers-reduced-motion: reduce)',
-      'Tabcode contrast guard',
-      '20260509-mobile-review-2',
-      '319px mobile review guard',
-      '@media (max-width: 360px)',
-      'grid-template-rows: auto auto',
-      '暂无真实请求',
-      '未发现异常',
-      '等待检测',
-      'data-language-status',
-      '仅切换语言偏好',
-      'overflow-wrap: anywhere',
-      'body[data-design-system="tabcode-console"] .back-home',
-      'body[data-design-system="tabcode-console"] .terminal-head .text-action',
-      'body[data-design-system="tabcode-console"] .chat-delete',
-      'officialModelTemplateByGroup',
-      'gpt-5.4-mini',
-      'gpt-image-2',
-      'gpt-5.3-codex',
-      'normalizeClientAvailableModels(config?.availableModels',
-      'data-trend-tooltip',
-      'trend-chart__hit',
-      'activeTrendPoint',
-      'updateActiveTrendPoint',
-      'transform: rotate(34deg)',
-      'background: #101114',
-      'position: sticky',
-      'top: 68px',
-      'background: var(--primary)',
+      'data-design-system="game-store-console"',
+      'CC中转控制台',
+      'data-admin-upstream-sync',
+      'data-admin-upstream-json',
+      'data-admin-xianyu-fulfillment',
+      'data-admin-xianyu-message',
+      'syncUpstreamChannels',
+      'createXianyuFulfillment',
+      'renderUpstreamChannels',
+      'renderXianyuFulfillments',
+      'CC中转 brand commerce layer',
+      '生产环境内测',
+      '暂未正式售卖',
+      'CC-DAY-001',
+      '--primary: #7F77DD',
+      'grid-template-columns: 220px minmax(0, 1fr)',
+      'background: #ffffff',
+      'color-scheme: light',
       'data-source-disclosure',
       'data-source-code-link',
-      'https://github.com/djblack1209-coder/OpenClaw-Bot',
+      'data-view="about"',
+      'data-view="terms"',
+      'data-view="refund"',
+      'data-view="privacy"',
+            '售后规则',
       'AGPL-3.0 上游',
+      '@media (prefers-reduced-motion: reduce)',
+      '@media (max-width: 860px)',
     ]) {
-      assert.equal(`${userHtml}\n${scriptsAndStyles}`.includes(required), true, `${required} 应该支撑用户端 Tabcode 控制台、状态和动效`);
+      assert.equal(`${userHtml}\n${adminHtml}\n${scriptsAndStyles}`.includes(required), true, `${required} 应该支撑 CC中转 品牌后台和商业闭环`);
     }
 
     assert.equal(scriptsAndStyles.includes('transition: all'), false, '用户端动画不能使用 transition: all');
-    assert.equal(scriptsAndStyles.includes('appleStatusPulse'), false, '旧 Apple 状态动效不应再存在');
     assert.equal(scriptsAndStyles.includes('min-width: 320px'), false, '319px 视口不能被 body 最小宽度撑出横向溢出');
-    assert.match(scriptsAndStyles, /body\[data-design-system="tabcode-console"\] \.primary-action,[\s\S]*?color: #07080a;/);
-    assert.match(scriptsAndStyles, /body\[data-design-system="tabcode-console"\] \.back-home,[\s\S]*?color: var\(--ink\);/);
-    assert.match(
-      scriptsAndStyles,
-      /body\[data-design-system="tabcode-console"\] \.rail-toggle \{[\s\S]*?overflow: hidden;[\s\S]*?padding: 7px 34px 7px 10px;/,
-      '319px 折叠导航箭头必须固定在按钮内部',
-    );
-    assert.match(
-      scriptsAndStyles,
-      /body\[data-design-system="tabcode-console"\] \.auth-shell \{[\s\S]*?grid-column: 4;[\s\S]*?grid-row: 1;/,
-      '319px 顶栏账户按钮必须留在第二行操作网格内，不能被旧移动端规则压缩遮挡',
-    );
-    assert.match(
-      scriptsAndStyles,
-      /body\[data-design-system="tabcode-console"\] \.target-list \{[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/,
-      '319px CC Switch 目标按钮应压成两列而不是横向裁切',
-    );
-    assert.doesNotMatch(
-      scriptsAndStyles,
-      /body\[data-design-system="tabcode-console"\] \.brand-mark \{[^}]*?background: var\(--paper\);/,
-      'Tabcode 皮肤不能替换 Frist-API 原品牌 Logo',
-    );
+    assert.equal(userHtml.includes('data-design-system="tabcode-console"'), false, '用户端不应继续使用旧 Tabcode 皮肤标识');
+    assert.equal(adminHtml.includes('data-design-system="tabcode-console"'), false, '管理端不应继续使用旧 Tabcode 皮肤标识');
     assert.match(
       userHtml,
       /<span class="brand-mark" aria-hidden="true">[\s\S]*?<i><\/i>[\s\S]*?<b><\/b>[\s\S]*?<\/span>/,
-      '用户端 Logo 应该保留红白斜切品牌图形，不应退回单字母占位',
+      '用户端 Logo 应该保留图形品牌，不应退回单字母占位',
     );
     assert.doesNotMatch(userHtml, /<span class="brand-mark" aria-hidden="true">F<\/span>/, '用户端 Logo 不应显示 F 字母占位');
-    assert.match(
-      scriptsAndStyles,
-      /body\[data-design-system="tabcode-console"\] \.action-dock\.workspace-nav a\.is-active \{[\s\S]*?background: transparent;/,
-      '导航当前项应使用细线和文字提示，不应再出现大块背景',
-    );
-    assert.match(
-      scriptsAndStyles,
-      /body\[data-design-system="tabcode-console"\] \.export-model-chip[\s\S]*?color: var\(--ink\);/,
-      '导出模型 chip 必须在深色控制台里清晰可读',
-    );
     assert.equal(userHtml.includes('aria-busy="true"'), true, '主内容初始加载阶段应该向辅助技术声明 busy');
-  });
-});
+    for (const forbidden of ['第三方', '官方合作', '官方授权', '平台直营', '86GameStore', 'Frist-API']) {
+      assert.equal(`${userHtml}\n${adminHtml}`.includes(forbidden), false, `用户可见页面不应残留禁用文案: ${forbidden}`);
+    }
+    for (const asset of ['../assets/jiyu-logo.svg', '../assets/jiyu-xianyu-avatar.svg', '../assets/jiyu-xianyu-banner.svg']) {
+      assert.equal(existsSync(new URL(asset, import.meta.url)), true, `${asset} 应该作为CC中转 静态品牌资产落地`);
+    }
+    const brandAssets = [
+      readFileSync(new URL('../assets/jiyu-logo.svg', import.meta.url), 'utf8'),
+      readFileSync(new URL('../assets/jiyu-xianyu-avatar.svg', import.meta.url), 'utf8'),
+      readFileSync(new URL('../favicon.svg', import.meta.url), 'utf8'),
+    ].join('\n');
+    assert.equal(/极域|JiYu/.test(brandAssets), false, '静态品牌资产不应残留旧品牌字样');
+  });});

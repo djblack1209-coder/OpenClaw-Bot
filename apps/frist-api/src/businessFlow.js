@@ -10,9 +10,12 @@ import {
 } from './core.js';
 
 const DAY_CARD_CODES = new Map([
-  ['FRIST-DAY-001', { plan: '日卡', days: 1, packageCents: 800 }],
-  ['FRIST-MONTH-001', { plan: '月卡 Pro', days: 30, packageCents: 8000 }],
-  ['FRIST-BOOST-100', { plan: null, days: 0, boosterCents: 10000 }],
+  ['CC-DAY-001', { plan: '日卡', days: 1, packageCents: 800 }],
+  ['CC-MONTH-001', { plan: '月卡 Pro', days: 30, packageCents: 8000 }],
+  ['CC-BOOST-100', { plan: null, days: 0, boosterCents: 10000 }],
+  ['JIYU-DAY-001', { plan: '日卡', days: 1, packageCents: 800 }],
+  ['JIYU-MONTH-001', { plan: '月卡 Pro', days: 30, packageCents: 8000 }],
+  ['JIYU-BOOST-100', { plan: null, days: 0, boosterCents: 10000 }],
 ]);
 
 const DEFAULT_PUBLIC_MODEL = 'gpt-5.5';

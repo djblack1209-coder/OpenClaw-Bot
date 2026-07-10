@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "OpenEverything Social Pilot",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "No-code social operations cockpit for X, Xiaohongshu and Xianyu, with OpenEverything local control sync.",
   "icons": {
     "16": "icons/icon16.png",
@@ -19,7 +19,9 @@
     "https://*.xiaohongshu.com/*",
     "https://goofish.com/*",
     "https://*.goofish.com/*",
-    "https://2.taobao.com/*"
+    "https://2.taobao.com/*",
+    "https://m.tb.cn/*",
+    "https://*.tb.cn/*"
   ],
   "background": { "service_worker": "background.js", "type": "module" },
   "action": {

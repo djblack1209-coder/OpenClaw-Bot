@@ -8,6 +8,7 @@ import logging
 import os
 import time
 from collections.abc import Callable
+from pathlib import Path
 
 from src.execution._utils import parse_hhmm, safe_int
 from src.utils import now_et
@@ -28,6 +29,7 @@ class ExecutionScheduler:
         self._last_monitor_ts = 0.0
         self._last_bounty_ts = 0.0
         self._last_social_operator_ts = 0.0
+        self._last_intel_brief_date = ""
         self._last_stock_check_ts = 0.0
         self._stock_alert_cooldown: dict[str, float] = {}  # 库存预警冷却(每item 24h)
         self._last_price_watch_ts = 0.0  # 降价监控上次检查时间
@@ -36,6 +38,8 @@ class ExecutionScheduler:
         self.monitor_manager = None
         self.social_autopilot_func = None
         self.bounty_scan_func = None
+        self.intel_brief_sandbox_runner = None
+        self.intel_brief_production_runner = None
 
     async def start(self, notify_func=None, private_notify_func=None):
         self._notify_func = notify_func
@@ -63,6 +67,7 @@ class ExecutionScheduler:
 
     async def _loop(self):
         brief_time = parse_hhmm(os.getenv("OPS_BRIEF_TIME"), (8, 0))
+        intel_brief_time = parse_hhmm(os.getenv("INTEL_BRIEF_TIME"), (8, 30))
         monitor_interval = max(1, safe_int(os.getenv("OPS_MONITOR_INTERVAL_MIN"), 15)) * 60
         bounty_interval = max(1, safe_int(os.getenv("OPS_BOUNTY_INTERVAL_MIN"), 45)) * 60
         social_op_interval = safe_int(os.getenv("OPS_SOCIAL_OPERATOR_CHECK_INTERVAL_MIN"), 0) * 60
@@ -77,6 +82,7 @@ class ExecutionScheduler:
             ts = time.time()
 
             await self._run_daily_brief(now, brief_time)
+            await self._run_intel_brief(now, intel_brief_time)
             await self._run_morning_news(now)  # 每早自动推送科技早报
             await self._run_monitors(ts, monitor_interval)
             await self._run_social_operator(ts, social_op_interval)
@@ -211,6 +217,62 @@ class ExecutionScheduler:
                 await self._notify_func(result)
         except Exception as e:
             logger.error("[Scheduler] daily brief failed: %s", e)
+
+    async def _run_intel_brief(self, now, intel_brief_time):
+        """Run Intel Brief through the sandbox or production safety gate."""
+        from src.execution.intel_brief import build_intel_brief_scheduler_gate
+        from src.intel.scheduled_pipeline import run_scheduled_sandbox_pipeline
+        from src.intel.telegram_delivery import build_telegram_summary_delivery_probe
+
+        gate = build_intel_brief_scheduler_gate(
+            now=now,
+            scheduled_time=intel_brief_time,
+            last_run_date=self._last_intel_brief_date,
+        )
+        if gate["reason"] in {"disabled", "before_scheduled_time", "already_ran_today"}:
+            return {"status": "skipped", "gate": gate}
+        today = str(gate["run_date"])
+        if not gate["should_run"]:
+            self._last_intel_brief_date = today
+            logger.warning("[Scheduler] Intel Brief blocked by safety gate: %s", gate.get("missing_gates", []))
+            return {"status": "blocked", "gate": gate}
+
+        stamp = now.strftime("%Y%m%dT%H%M%SZ")
+        evidence_dir = Path(str(gate["evidence_dir"]))
+        if gate["mode"] == "production":
+            evidence_path = evidence_dir / f"{stamp}-telegram-summary-production-delivery.json"
+            runner_kwargs = {
+                "summary_evidence_path": gate["summary_evidence"],
+                "evidence_path": evidence_path,
+                "allow_real_network": True,
+            }
+            if self.intel_brief_production_runner is None:
+                result = await asyncio.to_thread(build_telegram_summary_delivery_probe, **runner_kwargs)
+            else:
+                result = self.intel_brief_production_runner(**runner_kwargs)
+            if asyncio.iscoroutine(result):
+                result = await result
+            self._last_intel_brief_date = today
+            return result
+
+        evidence_path = evidence_dir / f"{stamp}-scheduled-sandbox.json"
+        runner_kwargs = {
+            "collect_evidence_path": gate["collect_evidence"],
+            "output_dir": evidence_dir,
+            "evidence_path": evidence_path,
+            "now_iso": gate["now_iso"],
+            "scheduled_time": gate["scheduled_time"],
+            "stamp": stamp,
+            "llm_mode": os.getenv("INTEL_BRIEF_LLM_MODE", "fallback-only"),
+        }
+        if self.intel_brief_sandbox_runner is None:
+            result = await asyncio.to_thread(run_scheduled_sandbox_pipeline, **runner_kwargs)
+        else:
+            result = self.intel_brief_sandbox_runner(**runner_kwargs)
+        if asyncio.iscoroutine(result):
+            result = await result
+        self._last_intel_brief_date = today
+        return result
 
     async def _run_monitors(self, ts, interval):
         if os.getenv("OPS_MONITOR_ENABLED", "").lower() not in ("1", "true", "yes", "on"):

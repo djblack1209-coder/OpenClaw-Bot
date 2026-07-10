@@ -5,10 +5,13 @@
 """
 
 import logging
+import os
 import re
 import time
+from datetime import UTC, datetime
+from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -18,7 +21,9 @@ router = APIRouter(prefix="/wechat")
 # ── 微信对话记忆缓存 ──
 # 每个用户保留最近 10 条消息，30 分钟无活动自动过期
 _wechat_memory: dict[str, dict] = {}
+_wechat_pending_actions: dict[str, dict] = {}
 _MEMORY_TTL = 1800  # 30 分钟
+_PENDING_TTL = 600  # 10 分钟
 _MAX_MESSAGES = 10
 
 
@@ -43,6 +48,29 @@ def _add_to_history(user_id: str, role: str, content: str) -> None:
     # 保留最近 N 条
     if len(entry["messages"]) > _MAX_MESSAGES:
         entry["messages"] = entry["messages"][-_MAX_MESSAGES:]
+
+
+def _set_pending_action(user_id: str, action: str) -> None:
+    """记录微信下一条普通文字要接着完成的操作。"""
+    if not user_id:
+        return
+    _wechat_pending_actions[user_id] = {"action": action, "last_active": time.time()}
+
+
+def _get_pending_action(user_id: str) -> str:
+    """读取微信两步式操作，过期自动清理。"""
+    entry = _wechat_pending_actions.get(user_id)
+    if not entry:
+        return ""
+    if time.time() - float(entry.get("last_active", 0)) > _PENDING_TTL:
+        _wechat_pending_actions.pop(user_id, None)
+        return ""
+    return str(entry.get("action") or "")
+
+
+def _clear_pending_action(user_id: str) -> None:
+    """清理微信两步式操作状态。"""
+    _wechat_pending_actions.pop(user_id, None)
 
 
 class WeChatIncomingRequest(BaseModel):
@@ -132,7 +160,63 @@ NUMBERED_COMMANDS: dict[int, tuple[str, bool, str]] = {
     604: ("性能指标", False, "cmd_perf"),
     605: ("成本配额", False, "cmd_cost"),
     606: ("运行配置", False, "cmd_config"),
+    # 🧭 700-708: 每日简报
+    700: ("每日简报菜单", False, "cmd_intel_menu"),
+    701: ("简报状态", False, "cmd_intel_status"),
+    702: ("市场资金", False, "cmd_intel_market"),
+    703: ("AI科技", False, "cmd_intel_ai"),
+    704: ("天气预警", False, "cmd_intel_weather"),
+    705: ("推送时间", False, "cmd_intel_schedule"),
+    706: ("添加追踪", True, "cmd_intel_custom"),
+    707: ("简报帮助", False, "cmd_intel_help"),
+    708: ("暂停简报", False, "cmd_intel_pause"),
 }
+
+_INTEL_NUMBERED_FUNC_TO_NUM: dict[str, int] = {
+    "cmd_intel_menu": 700,
+    "cmd_intel_status": 701,
+    "cmd_intel_market": 702,
+    "cmd_intel_ai": 703,
+    "cmd_intel_weather": 704,
+    "cmd_intel_schedule": 705,
+    "cmd_intel_custom": 706,
+    "cmd_intel_help": 707,
+    "cmd_intel_pause": 708,
+}
+
+_INTEL_TEXT_SHORTCUTS: dict[str, tuple[int, str]] = {
+    "今日简报": (700, ""),
+    "看今日简报": (700, ""),
+    "每日简报": (700, ""),
+    "我的订阅": (701, ""),
+    "订阅状态": (701, ""),
+    "简报状态": (701, ""),
+    "市场资金": (702, ""),
+    "AI科技": (703, ""),
+    "AI 科技": (703, ""),
+    "天气预警": (704, ""),
+    "推送时间": (705, ""),
+    "设置时间": (705, ""),
+    "添加追踪": (706, ""),
+    "简报帮助": (707, ""),
+    "暂停简报": (708, ""),
+    "暂停": (708, ""),
+}
+
+_INTEL_TEXT_PREFIX_SHORTCUTS: tuple[tuple[str, int], ...] = (
+    ("推送时间", 705),
+    ("设置时间", 705),
+    ("添加追踪", 706),
+    ("追踪", 706),
+)
+
+
+def _intel_brief_db_path() -> Path:
+    """返回每日简报数据库路径，优先使用生产环境配置。"""
+    configured = os.environ.get("INTEL_BRIEF_DB_PATH", "").strip()
+    if configured:
+        return Path(configured)
+    return Path(__file__).resolve().parents[3] / "data" / "intel_brief.db"
 
 
 def _build_welcome_message() -> str:
@@ -147,16 +231,19 @@ def _build_welcome_message() -> str:
         "200 查股价  |  201 市场概览\n"
         "202 组合  |  217 AI投资会\n"
         "300 热点发文  |  401 闲鱼报表\n"
+        "700 每日简报  |  706 英伟达\n"
         "\n"
         "💡 带参数用法\n"
         "发 \"200 AAPL\" → 查苹果股价\n"
         "发 \"103 一只猫\" → AI 画图\n"
         "发 \"217 半导体\" → AI 投资分析会\n"
         "发 \"206 TSLA\" → K线图\n"
+        "发 \"706 英伟达\" → 追踪英伟达相关新闻\n"
         "\n"
         "📈 投资: 200-221 | 🏦 实盘: 230-235\n"
         "📱 社媒: 300-308 | 🛒 闲鱼: 400-405/407-408\n"
         "🏠 生活: 500-503 | ⚙️ 系统: 600-606\n"
+        "🧭 每日简报: 700-708\n"
         "\n"
         "也可以直接说中文：\n"
         "  · \"特斯拉多少钱\"\n"
@@ -179,6 +266,7 @@ def _build_full_help() -> str:
         4: "🛒 闲鱼 & 电商 (400-405/407-408)",
         5: "🏠 生活助手 (500-503)",
         6: "⚙️ 系统设置 (600-606)",
+        7: "🧭 每日简报 (700-708)",
     }
 
     for num, (desc, needs_arg, _) in sorted(NUMBERED_COMMANDS.items()):
@@ -221,6 +309,21 @@ def _parse_numbered_cmd(text: str) -> tuple[int | None, str]:
         if num in NUMBERED_COMMANDS:
             return num, arg
     return None, text
+
+
+def _parse_intel_text_shortcut(text: str) -> tuple[int, str] | None:
+    """解析微信每日简报中文快捷词，让小白用户不用记数字。"""
+    cleaned = re.sub(r"\s+", " ", text.strip())
+    if not cleaned:
+        return None
+    direct = _INTEL_TEXT_SHORTCUTS.get(cleaned)
+    if direct:
+        return direct
+    for prefix, number in _INTEL_TEXT_PREFIX_SHORTCUTS:
+        if cleaned.startswith(f"{prefix} "):
+            arg = cleaned[len(prefix) :].strip()
+            return number, arg
+    return None
 
 
 async def _self_call_api(path: str, timeout: float = 10.0) -> dict | list | str:
@@ -307,7 +410,7 @@ _CMD_API_MAP: dict[str, tuple[str, str]] = {
     "cmd_dashboard": ("/api/v1/trading/dashboard", "交易仪表盘"),
 }
 
-_LOCAL_COMMAND_HANDLERS: set[int] = {100, 101, 203, 207, 408}
+_LOCAL_COMMAND_HANDLERS: set[int] = {100, 101, 203, 207, 408, *range(700, 709)}
 _EXPLICIT_UNAVAILABLE_COMMANDS: dict[int, str] = {
     105: "文字转语音目前只有 Telegram 文件发送形态，微信转发器没有对应音频回传 API；请在 Telegram 使用 /tts。",
     106: "二维码生成目前只有 Telegram 图片回传形态，微信转发器没有对应图片回传 API；请在 Telegram 使用 /qr。",
@@ -325,7 +428,7 @@ _EXPLICIT_UNAVAILABLE_COMMANDS: dict[int, str] = {
 }
 
 
-async def _execute_numbered_cmd(num: int, arg: str) -> str:
+async def _execute_numbered_cmd(num: int, arg: str, from_user: str = "") -> str:
     """执行编号命令，返回文本结果。
 
     通过 HTTP self-call 调用本地 FastAPI 端点，确保调用路径与 API 路由层完全一致。
@@ -335,6 +438,24 @@ async def _execute_numbered_cmd(num: int, arg: str) -> str:
         return f"未知命令编号: {num}"
 
     desc, needs_arg, func_name = cmd_info
+
+    # 每日简报的 706 没参数时要给示例，而不是返回通用错误。
+    if 700 <= num <= 708:
+        try:
+            from src.intel.channel_menu import handle_numbered_intel_command
+
+            result = handle_numbered_intel_command(
+                _intel_brief_db_path(),
+                channel="wechat",
+                external_user_id=from_user or "wechat-user",
+                number=num,
+                arg=arg,
+                now=datetime.now(UTC).isoformat(),
+            )
+            return str(result.get("reply_text") or "已处理每日简报命令。")
+        except Exception as e:
+            logger.warning("[微信] 每日简报命令 %d 执行失败: %s", num, e)
+            return "每日简报命令执行出错，请稍后再试。"
 
     # 需要参数但没提供
     if needs_arg and not arg:
@@ -543,8 +664,41 @@ async def wechat_incoming(payload: WeChatIncomingRequest) -> WeChatIncomingRespo
     logger.info("[微信] 收到消息 from=%s...: %s", from_user[:15], text[:50])
     start = time.time()
 
-    # ── 1. 编号命令优先 ──
+    # ── 1. 编号命令/显式菜单/中文快捷词优先 ──
     num, arg = _parse_numbered_cmd(text)
+
+    # 菜单/帮助这类显式跳转要能打断两步式状态，避免把“菜单”误当成推送时间或追踪词。
+    if num is None and text.lower() in ("/start", "你好", "hi", "hello", "菜单", "帮助", "help"):
+        _clear_pending_action(from_user)
+        return WeChatIncomingResponse(reply=_build_welcome_message())
+
+    # 微信没有 Telegram 的点击按钮，小白用户常会直接发中文入口名。
+    text_shortcut = _parse_intel_text_shortcut(text)
+    if num is None and text_shortcut is not None:
+        _clear_pending_action(from_user)
+        num, arg = text_shortcut
+        if num == 705 and not arg:
+            _set_pending_action(from_user, "intel_schedule")
+        if num == 706 and not arg:
+            _set_pending_action(from_user, "intel_custom")
+        reply = await _execute_numbered_cmd(num, arg, from_user=from_user)
+        elapsed = round(time.time() - start, 2)
+        logger.info("[微信] 快捷词命令 %d 执行 (%ss): %s...", num, elapsed, reply[:50])
+        return WeChatIncomingResponse(reply=reply)
+
+    pending_action = _get_pending_action(from_user)
+    if pending_action and num is None:
+        if text.lower() in ("0", "取消", "cancel", "算了", "不用了"):
+            _clear_pending_action(from_user)
+            return WeChatIncomingResponse(reply="已取消。需要时回复 700 打开每日简报菜单。")
+        if pending_action == "intel_schedule":
+            _clear_pending_action(from_user)
+            return WeChatIncomingResponse(reply=await _execute_numbered_cmd(705, text, from_user=from_user))
+        if pending_action == "intel_custom":
+            _clear_pending_action(from_user)
+            return WeChatIncomingResponse(reply=await _execute_numbered_cmd(706, text, from_user=from_user))
+    if pending_action and num is not None:
+        _clear_pending_action(from_user)
     if num is not None:
         # 特殊处理: 100 = 帮助菜单
         if num == 100:
@@ -552,17 +706,18 @@ async def wechat_incoming(payload: WeChatIncomingRequest) -> WeChatIncomingRespo
         # 101 = 清空对话记忆
         if num == 101:
             _wechat_memory.pop(from_user, None)
+            _clear_pending_action(from_user)
             return WeChatIncomingResponse(reply="✅ 对话记忆已清空")
-        reply = await _execute_numbered_cmd(num, arg)
+        if num == 705 and not arg:
+            _set_pending_action(from_user, "intel_schedule")
+        if num == 706 and not arg:
+            _set_pending_action(from_user, "intel_custom")
+        reply = await _execute_numbered_cmd(num, arg, from_user=from_user)
         elapsed = round(time.time() - start, 2)
         logger.info("[微信] 命令 %d 执行 (%ss): %s...", num, elapsed, reply[:50])
         return WeChatIncomingResponse(reply=reply)
 
-    # ── 2. 招呼语 → 欢迎消息 ──
-    if text.lower() in ("/start", "你好", "hi", "hello", "菜单", "帮助", "help"):
-        return WeChatIncomingResponse(reply=_build_welcome_message())
-
-    # ── 3. LLM 对话（带对话记忆）──
+    # ── 2. LLM 对话（带对话记忆）──
     history = _get_user_history(from_user)
     reply = await _generate_wechat_reply(text, history=history)
     if not reply:
@@ -576,3 +731,31 @@ async def wechat_incoming(payload: WeChatIncomingRequest) -> WeChatIncomingRespo
     elapsed = round(time.time() - start, 2)
     logger.info("[微信] 回复生成 (%ss): %s...", elapsed, reply[:50])
     return WeChatIncomingResponse(reply=reply)
+
+
+@router.get("/intel-brief-bridge-status")
+async def wechat_intel_brief_bridge_status(
+    max_age_seconds: int = Query(default=900, ge=30, le=86400),
+) -> dict:
+    """返回微信每日简报真实桥接状态，只读且不暴露聊天内容。"""
+    from src.intel.wechat_bridge_runtime import (
+        build_wechat_bridge_runtime_acceptance,
+        summarize_wechat_bridge_status,
+    )
+
+    result = build_wechat_bridge_runtime_acceptance(max_age_seconds=max_age_seconds)
+    summary = summarize_wechat_bridge_status(result)
+    return {
+        "ok": bool(summary.get("verified")),
+        "state": summary["state"],
+        "severity": summary["severity"],
+        "title": summary["title"],
+        "next_action": summary["next_action"],
+        "checked_at": result.get("checked_at"),
+        "max_age_seconds": result.get("max_age_seconds"),
+        "age_seconds": result.get("age_seconds"),
+        "blockers": summary.get("blockers", []),
+        "latest": summary.get("latest", {}),
+        "privacy": summary.get("privacy", {}),
+        "safe_to_show_owner": True,
+    }

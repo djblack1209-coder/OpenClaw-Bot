@@ -1,4 +1,6 @@
-import { normalizeBaseUrl, normalizeClientAvailableModels, normalizeModelGroup } from '../src/core.js';
+import { spawnSync } from 'node:child_process';
+
+import { modelMatchesGroup, normalizeBaseUrl, normalizeClientAvailableModels, normalizeModelGroup } from '../src/core.js';
 
 const DEFAULT_QUOTA_PER_CNY = 100;
 const DEFAULT_USD_TO_CNY = 7.2;
@@ -82,8 +84,26 @@ export function createNewApiBridge(options = {}) {
         }),
       };
     },
+    async syncUpstreamBalance() {
+      const self = unwrapObject(await request('/api/user/self'));
+      const remainingQuota = numberFromAny(self.quota ?? self.remain_quota ?? self.remaining_quota);
+      const usedQuota = numberFromAny(self.used_quota ?? self.usedQuota);
+      return {
+        provider: 'New-API',
+        userId: config.userId,
+        username: String(self.username || self.display_name || '').slice(0, 80),
+        emailMasked: maskEmail(self.email || ''),
+        group: String(self.group || self.plan || self.plan_name || 'default').slice(0, 80),
+        remainingQuota,
+        usedQuota,
+        remainingCny: quotaToCnyNumber(remainingQuota),
+        usedCny: quotaToCnyNumber(usedQuota),
+        remainingUsd: moneyNumber(remainingQuota),
+      };
+    },
     async createToken(body) {
-      const tokenPayload = tokenCreatePayload(body, config);
+      const modelInventory = await fetchNewApiModelInventory(request);
+      const tokenPayload = tokenCreatePayload(body, config, modelInventory);
       await request('/api/token/', { method: 'POST', body: tokenPayload });
       const tokens = unwrapArray(await request(`/api/token/search?keyword=${encodeURIComponent(tokenPayload.name)}&p=1&size=10`));
       const created = tokens.find((token) => String(token.name || '') === tokenPayload.name) || tokens[0] || tokenPayload;
@@ -93,6 +113,10 @@ export function createNewApiBridge(options = {}) {
     },
     async updateToken(keyId, body) {
       const current = unwrapObject(await request(`/api/token/${encodeURIComponent(keyId)}`));
+      const wantsStatusChange = Object.prototype.hasOwnProperty.call(body, 'enabled');
+      const wantsMetadataChange = ['name', 'expiredTime', 'expired_time', 'remainQuota', 'remain_quota', 'unlimitedQuota', 'unlimited_quota'].some((key) =>
+        Object.prototype.hasOwnProperty.call(body, key),
+      );
       const patch = {
         ...current,
         id: Number(current.id || keyId),
@@ -112,11 +136,27 @@ export function createNewApiBridge(options = {}) {
       if (!patch.name) {
         throw publicBridgeError(400, 'API Key 名称不能为空');
       }
-      const updated = await request('/api/token/', { method: 'PUT', body: patch });
-      return { key: sanitizeBridgeToken(unwrapObject(updated) || patch, { revealSecret: true }) };
+      if (wantsMetadataChange) {
+        await request('/api/token/', { method: 'PUT', body: patch });
+      }
+      if (wantsStatusChange) {
+        // New-API 的普通 PUT 不会更新 status，必须使用官方前端同款 status_only 入口。
+        await request('/api/token/?status_only=true', {
+          method: 'PUT',
+          body: { id: patch.id, status: patch.status },
+        });
+      }
+      const latest = unwrapObject(await request(`/api/token/${encodeURIComponent(keyId)}`));
+      return { key: sanitizeBridgeToken({ ...patch, ...latest, status: wantsStatusChange ? patch.status : latest.status }, { revealSecret: true }) };
     },
     async deleteToken(keyId) {
-      await request(`/api/token/${encodeURIComponent(keyId)}`, { method: 'DELETE' });
+      // New-API 前端删除 Token 使用带尾斜杠的资源路径；无尾斜杠在部分版本不会真正删除。
+      await request(`/api/token/${encodeURIComponent(keyId)}/`, { method: 'DELETE' });
+      // 生产内测使用 SQLite 作为 New-API 数据源。New-API 删除接口可能只写 deleted_at 软删除，
+      // 也可能让详情接口查不到但 tokens 表仍残留；这里做一次幂等硬删除，避免 E2E 临时 Key 越积越多。
+      if (config.sqliteDb || await newApiTokenStillExists(request, keyId)) {
+        deleteNewApiTokenFromSqlite(config.sqliteDb, keyId);
+      }
       return { deletedKeyId: String(keyId) };
     },
     async redeemCode(body) {
@@ -211,11 +251,14 @@ export function createNewApiBridge(options = {}) {
       };
     },
     async proxyGateway({ request, response, url, bodyText }) {
-      const upstream = await fetchImpl(`${config.gatewayBaseUrl}${gatewayPath(url.pathname)}`, {
+      const upstreamRequest = {
         method: request.method,
         headers: filterGatewayHeaders(request.headers),
-        body: bodyText,
-      });
+      };
+      if (!['GET', 'HEAD'].includes(String(request.method || '').toUpperCase())) {
+        upstreamRequest.body = bodyText;
+      }
+      const upstream = await fetchImpl(`${config.gatewayBaseUrl}${gatewayPath(url.pathname)}`, upstreamRequest);
       response.writeHead(upstream.status, {
         'content-type': upstream.headers.get('content-type') || 'application/json; charset=utf-8',
         'access-control-allow-origin': '*',
@@ -250,9 +293,34 @@ function normalizeBridgeConfig(options) {
     gatewayBaseUrl: normalizeBaseUrl(options.newApiGatewayBaseUrl || process.env.FRIST_API_NEWAPI_GATEWAY_BASE_URL || `${baseUrl}/v1`),
     accessToken: /^Bearer\s+/i.test(accessToken) ? accessToken : `Bearer ${accessToken}`,
     userId,
+    sqliteDb: String(options.newApiSqliteDb || process.env.FRIST_API_NEWAPI_SQLITE_DB || '').trim(),
     defaultTokenQuota: Number(options.newApiDefaultTokenQuota ?? process.env.FRIST_API_NEWAPI_DEFAULT_TOKEN_QUOTA ?? 0),
     defaultGroup: String(options.newApiDefaultGroup || process.env.FRIST_API_NEWAPI_DEFAULT_GROUP || 'default'),
   };
+}
+
+async function newApiTokenStillExists(request, keyId) {
+  try {
+    const token = unwrapObject(await request(`/api/token/${encodeURIComponent(keyId)}`));
+    return String(token.id || '') === String(keyId);
+  } catch {
+    return false;
+  }
+}
+
+function deleteNewApiTokenFromSqlite(sqliteDb, keyId) {
+  const id = Number(keyId);
+  if (!sqliteDb || !Number.isSafeInteger(id) || id <= 0) {
+    return;
+  }
+  const result = spawnSync('sqlite3', [sqliteDb], {
+    input: `delete from tokens where id=${id};\n`,
+    encoding: 'utf8',
+    maxBuffer: 1024 * 1024,
+  });
+  if (result.status !== 0) {
+    throw publicBridgeError(502, `New-API API Key 删除兜底失败: ${String(result.stderr || result.stdout || 'sqlite3_failed').split('\n')[0].slice(0, 120)}`);
+  }
 }
 
 function booleanOption(value, envValue) {
@@ -260,11 +328,27 @@ function booleanOption(value, envValue) {
   return String(envValue || '') === '1';
 }
 
-function tokenCreatePayload(body, config) {
+async function fetchNewApiModelInventory(request) {
+  try {
+    return extractNewApiModelNames(await request('/api/models/?page_size=1000'));
+  } catch {
+    return [];
+  }
+}
+
+function extractNewApiModelNames(payload) {
+  return uniqueStrings(
+    unwrapArray(payload)
+      .map((item) => String(item.model_name || item.id || item.name || item.model || '').trim())
+      .filter(Boolean),
+  );
+}
+
+function tokenCreatePayload(body, config, modelInventory = []) {
   const modelGroup = normalizeModelGroup(body.modelGroup);
-  const modelLimits = modelLimitsForGroup(modelGroup);
+  const modelLimits = modelLimitsForGroup(modelGroup, modelInventory);
   return {
-    name: String(body.name || `Frist-API Key ${Date.now()}`).trim().slice(0, 50),
+    name: String(body.name || `CC Key ${Date.now()}`).trim().slice(0, 50),
     expired_time: normalizeExpiredTime(body.expiredTime ?? body.expired_time),
     remain_quota: Number(body.remainQuota ?? body.remain_quota ?? config.defaultTokenQuota),
     unlimited_quota: body.unlimitedQuota ?? body.unlimited_quota ?? true,
@@ -276,12 +360,47 @@ function tokenCreatePayload(body, config) {
   };
 }
 
-function modelLimitsForGroup(group) {
+function modelLimitsForGroup(group, modelInventory = []) {
   const normalized = normalizeModelGroup(group);
-  if (normalized === 'Claude') return ['claude-*'];
-  if (normalized === 'OpenAI') return ['gpt-*', 'o*', 'dall-*'];
-  if (normalized === 'Gemini') return ['gemini-*'];
-  if (normalized === 'DeepSeek') return ['deepseek-*'];
+  const inventoryLimits = normalizeClientAvailableModels(modelInventory, {
+    modelGroup: normalized,
+    expandPatterns: false,
+  }).filter((model) => model && !model.includes('*') && modelMatchesGroup(model, normalized));
+  if (inventoryLimits.length > 0) {
+    return inventoryLimits;
+  }
+  // New-API 网关不按 OpenAI 风格通配符授权，生产 Key 必须写入精确模型名。
+  if (normalized === 'Claude') {
+    return [
+      'claude-haiku-4-5-20251001',
+      'claude-sonnet-4-5-20250929',
+      'claude-sonnet-4-6',
+      'claude-sonnet-5',
+      'claude-opus-4-6',
+      'claude-opus-4-7',
+      'claude-opus-4-8',
+      'claude-fable-5',
+      'claude-opus-4-6-thinking-c',
+      'claude-opus-4-6-c',
+      'claude-sonnet-4-5-c',
+    ];
+  }
+  if (normalized === 'OpenAI') {
+    return [
+      'gpt-5.3-codex-spark',
+      'gpt-5.4-mini',
+      'gpt-5.4',
+      'gpt-5.5',
+      'gpt-image-1',
+      'gpt-image-1.5',
+      'gpt-image-2',
+      'gpt-5.3-codex',
+      'gpt-5-codex',
+      'gpt-4o',
+    ];
+  }
+  if (normalized === 'Gemini') return ['gemini-2.5-flash', 'gemini-2.0-flash'];
+  if (normalized === 'DeepSeek') return ['deepseek-v4-flash', 'deepseek-v4-pro', 'deepseek-chat', 'deepseek-reasoner'];
   return [];
 }
 
@@ -598,6 +717,10 @@ function formatMoney(quota) {
 
 function moneyNumber(quota) {
   return Math.round((numberFromAny(quota) / DEFAULT_QUOTA_PER_CNY / DEFAULT_USD_TO_CNY) * 100) / 100;
+}
+
+function quotaToCnyNumber(quota) {
+  return Math.round((numberFromAny(quota) / DEFAULT_QUOTA_PER_CNY) * 100) / 100;
 }
 
 function formatQuota(quota) {

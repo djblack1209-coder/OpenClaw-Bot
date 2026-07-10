@@ -273,6 +273,7 @@ class APIServer:
                 "tauri://localhost",          # Tauri 生产（macOS/Linux）
                 "https://tauri.localhost",    # Tauri 生产（Windows）
             ],
+            allow_origin_regex=r"^chrome-extension://[a-p]{32}$",
             allow_credentials=True,
             allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
             allow_headers=["X-API-Token", "Content-Type", "Authorization"],
@@ -295,6 +296,9 @@ class APIServer:
         self.app.include_router(router_cli, prefix="/api/v1", tags=["CLI"])
         self.app.include_router(router_monitor, prefix="/api/v1", tags=["WorldMonitor"])
         self.app.include_router(router_wechat, prefix="/api/v1", tags=["WeChat"])
+        # 微信旧转发器历史上直连 /wechat/incoming；保留无 /api/v1 前缀的兼容入口。
+        # 认证仍沿用 FastAPI 全局依赖，不因为兼容路径放松安全门。
+        self.app.include_router(router_wechat, tags=["WeChat Legacy"], include_in_schema=False)
         self.app.include_router(router_cookies, prefix="/api/v1", tags=["Cookies"])
         self.app.include_router(router_store, prefix="/api/v1", tags=["Store"])
 

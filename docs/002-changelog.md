@@ -5,6 +5,2612 @@
 
 ## 最近更新（2026-07 / 2026-06 / 2026-05）
 
+## [2026-07-08] 微信控制权限医生深度诊断与权限页引导
+> 领域: `infra` | `docs`
+> 影响模块: `Weixin ClawBot`, `Computer Use`, `Intel Brief`
+> 关联问题: HI-wechat-control-permission
+### 变更内容
+- 补强 `scripts/wechat_control_doctor.sh`：支持 `--deep` 深度探针，分别判断全屏截图、微信单窗口截图、macOS 辅助功能内部控件和输入框是否可见。
+- 诊断同时读取 Codex 主程序和 OpenAI Computer Use 辅助进程的屏幕录制授权记录，避免系统设置里只勾 Codex、漏掉辅助进程。
+- 微信存在多个浮窗时，医生会选择面积最大的微信窗口做判断，避免误抓小浮窗导致“没有主窗口”的假结论。
+- 诊断口径从“可能没权限”收口为更准确的三层判断：系统全屏截图可用、微信单窗口截图被拒绝、微信辅助功能只暴露标题栏按钮而不暴露聊天输入框。
+- 新增 `--open-permissions` 参数：一键打开 macOS 屏幕录制、辅助功能和自动化权限页，方便老板手动勾选 Codex / WeChat / Terminal；脚本不直接修改系统隐私开关。
+- 当前实机结论：Codex 辅助功能和 Apple Events 自动化授权可用，WeChat 能被拉到前台；但微信主窗口 `kCGWindowSharingState=0` 且 AX 输入框数量为 0，不能安全用 Computer Use 视觉接管微信聊天，继续禁止坐标盲发。
+### 文件变更
+- `scripts/wechat_control_doctor.sh` — 增加参数解析、AX 深度探针、微信单窗口截图探针、全屏截图探针和更细的 JSON 字段。
+- `docs/002-changelog.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步权限诊断结论、老板操作步骤和边界。
+### 验证
+- 语法检查：`bash -n scripts/wechat_control_doctor.sh` 通过。
+- 实机深度诊断：`scripts/wechat_control_doctor.sh --json --deep` 输出 `status=blocked_by_wechat_capture_protection`、`fullscreen_capture_ok=1`、`window_capture_ok=0`、`ax_content_visible=0`、`ax_editable_count=0`。
+- 权限页引导：`scripts/wechat_control_doctor.sh --open-permissions` 已能打开 macOS 隐私权限页，并再次输出同一根因。
+
+## [2026-07-08] Weixin 每日简报真实桥接脱敏证据验收器
+> 领域: `backend` | `infra` | `docs`
+> 影响模块: `Intel Brief`, `OpenClaw Weixin 插件`, `微信真实入站验收`
+> 关联问题: HI-wechat-bridge-runtime-evidence
+### 变更内容
+- 给 OpenClaw Weixin 每日简报插件桥增加脱敏运行证据文件：真实微信入站快捷词命中后，插件会记录是否调用 `/wechat/incoming`、HTTP 状态、回复是否存在、是否已回发微信、是否疑似落入 LLM。
+- 证据文件不保存微信聊天原文、不保存原始用户 ID、不保存 Token，只保存快捷词类型、文本长度、sender hash、回复特征和状态。
+- 新增 `intel_wechat_bridge_runtime_acceptance.py`：老板或 Codex 在真实微信发送 `今日简报` / `700` 后运行该脚本，即可判断最近一次真实入站是否完成“微信 → 插件桥 → 本机处理器 → 回发微信”的闭环。
+- 验收器新增等待模式：`--wait-seconds 120 --poll-seconds 2`，可以开着等老板发微信，自动轮询到 `verified=true` 或明确超时。
+- 当前已重启 OpenClaw Gateway；`openclaw-weixin` 通道仍为 `enabled, configured, running`。由于本轮没有新的真实微信入站消息，默认验收报告按预期显示 `verified=false`、blocker 为“未找到微信桥接证据文件”。
+### 文件变更
+- `.openclaw/extensions/openclaw-weixin/src/messaging/process-message.ts` — 插件桥新增脱敏证据写入、sender hash、快捷词分类和回发状态记录。
+- `~/.openclaw/npm/projects/tencent-weixin-openclaw-weixin-7783ac86ba/node_modules/@tencent-weixin/openclaw-weixin/dist/src/messaging/process-message.js` — 当前实际加载产物同步证据写入逻辑。
+- `packages/clawbot/scripts/intel_wechat_bridge_runtime_acceptance.py` — 新增真实微信桥接证据验收器。
+- `packages/clawbot/tests/test_intel_wechat_bridge_runtime_acceptance.py` — 新增验收器回归测试。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步验收命令、边界和运行证据口径。
+### 验证
+- 语法检查：`py_compile scripts/intel_wechat_bridge_runtime_acceptance.py tests/test_intel_wechat_bridge_runtime_acceptance.py` 通过。
+- 单测：`tests/test_intel_wechat_bridge_runtime_acceptance.py` 为 `5 passed`。
+- 插件产物语法：`node --check ~/.openclaw/.../process-message.js` 通过。
+- 运行态：`openclaw gateway restart` 后 `openclaw channels status --channel openclaw-weixin --probe` 显示 `enabled, configured, running`。
+- 默认真实证据验收：`intel_wechat_bridge_runtime_acceptance.py` 输出 `verified=false`，唯一 blocker 是还没有新的真实微信桥接证据文件，符合当前未能视觉代发微信消息的边界。
+- 等待模式验收：`--wait-seconds 1 --poll-seconds 0.2` 输出 `timed_out=true`，blocker 明确包含“等待 1 秒后仍未看到新的真实微信桥接成功证据”。
+
+## [2026-07-08] 微信每日简报中文快捷词与两步式跳转修复
+> 领域: `backend` | `infra` | `docs`
+> 影响模块: `Intel Brief`, `微信编号菜单`, `OpenClaw Weixin 插件`
+> 关联问题: HI-wechat-intel-shortcuts
+### 变更内容
+- 修复 Weixin 插件桥已拦截“今日简报/我的订阅”，但本机 `/wechat/incoming` 未识别中文快捷词、会落入普通 LLM 闲聊的问题。
+- 微信每日简报入口现在同时支持数字和中文：`今日简报/每日简报/我的订阅/订阅状态/市场资金/AI科技/天气预警/推送时间/添加追踪/暂停简报`，并支持 `推送时间 09:00`、`添加追踪 英伟达` 这类人话格式。
+- 修复两步式设置中的误吃参数：用户发 `705` 或 `706` 后，如果下一条回复“菜单/今日简报”，系统会跳转对应入口并清理 pending 状态，不再把“菜单”当推送时间或把“今日简报”当追踪词。
+- OpenClaw Weixin 插件桥的快捷词白名单同步扩展到上述中文入口；已同步源码和当前实际加载的 dist 产物，并重启 Gateway 生效。
+- 真实库 live 验证使用的临时微信测试用户已清理，未保留测试订阅、偏好或追踪污染。
+### 文件变更
+- `packages/clawbot/src/api/routers/wechat.py` — 新增微信每日简报中文快捷词解析，并让显式菜单/快捷词打断两步式 pending。
+- `packages/clawbot/tests/test_wechat_numbered_commands.py` — 增加中文快捷词不落 LLM、pending 中回复菜单/今日简报不误吃参数的回归测试。
+- `packages/clawbot/scripts/intel_wechat_user_journey_acceptance.py` — 微信用户旅程验收扩展到 18 步，覆盖中文快捷词和两步式中途跳转。
+- `.openclaw/extensions/openclaw-weixin/src/messaging/process-message.ts` 与当前加载的 `~/.openclaw/.../process-message.js` — 扩展每日简报桥接快捷词。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/009-health.md` — 同步命令注册、证据和真实边界。
+### 验证
+- 先写失败测试：`今日简报` 原本会调用 LLM，测试报错 `微信每日简报快捷入口不应该调用 LLM`。
+- 语法检查：`py_compile` 通过；当前 OpenClaw Weixin dist `node --check` 通过。
+- 回归：`cd packages/clawbot && .venv312/bin/python -m pytest tests/test_wechat_numbered_commands.py tests/test_intel_multichannel_numbered_menu.py --tb=short -q`：`11 passed`。
+- 用户旅程验收：`intel_wechat_user_journey_acceptance.py` 输出 `verified=true`、`passed_steps=18`、`failed_steps=[]`、`real_wechat_network_calls=0`。
+- Live HTTP 复验：POST `/wechat/incoming` 覆盖 `菜单 → 今日简报 → 我的订阅 → 705 → 菜单 → 705 → 2 → 706 → 今日简报 → 706 → 英伟达 → 708 → 701 → 702 → 701`，全部 HTTP 200，未落 LLM；测试用户随后已从生产库清理。
+- OpenClaw Weixin：`openclaw channels status --channel openclaw-weixin --probe` 显示 `enabled, configured, running`。
+
+## [2026-07-08] 微信桌面控制权限诊断与防误发收口
+> 领域: `infra` | `docs`
+> 影响模块: `Weixin ClawBot`, `Computer Use`, `Intel Brief`
+> 关联问题: HI-wechat-control-permission
+### 变更内容
+- 新增微信控制诊断脚本，只做权限、前台窗口、窗口共享状态检查，不发送微信消息、不修改系统设置。
+- 诊断确认本机 Codex 已具备 Apple Events 自动化授权，System Events 辅助功能可用，且能把 WeChat 拉到前台；但微信主窗口 `kCGWindowSharingState=0`，表示窗口禁止被截图/读取。
+- 因微信窗口内容对截图/视觉控制不可见，当前不再用坐标盲点代替用户发送测试消息，避免误发到错误会话或重复发送。
+- 后续真实微信验收优先走 OpenClaw Weixin 插件桥的入站处理与日志证据；若必须视觉接管，需要老板手动关闭微信防截图/隐私保护或给 Codex 补齐屏幕录制授权后重跑诊断。
+### 文件变更
+- `scripts/wechat_control_doctor.sh` — 新增微信控制医生，输出 `blocked_by_wechat_capture_protection`、权限状态、前台应用和窗口坐标。
+- `docs/002-changelog.md` / `docs/009-health.md` — 登记根因、边界和下一步。
+### 验证
+- 语法检查：`bash -n scripts/wechat_control_doctor.sh` 通过。
+- 实机诊断：`scripts/wechat_control_doctor.sh --json` 输出 `status=blocked_by_wechat_capture_protection`、`ui_enabled=true`、`front_app=WeChat`、`wechat_onscreen=1`、`wechat_sharing_state=0`。
+
+## [2026-07-08] 每日简报微信入站桥接与编号菜单闭环推进
+> 领域: `backend` | `infra` | `docs`
+> 影响模块: `Intel Brief`, `微信编号菜单`, `OpenClaw Weixin 插件`
+> 关联问题: HI-intel-wechat-inbound-bridge
+### 变更内容
+- 修复本机微信转发兼容入口：每日简报微信处理器同时支持 `/api/v1/wechat/incoming` 和旧转发器路径 `/wechat/incoming`；兼容路径仍走全局 API Token 认证，不放松安全门。
+- 修复微信编号菜单运行时使用固定远未来时间导致有效订阅被误判“未开通或已到期”的问题；运行时改用当前 UTC 时间判断订阅状态。
+- 新增微信用户旅程验收脚本，覆盖 `菜单 → 700 → 701 → 705 两步式 → 706 两步式 → 708 暂停 → 702 恢复 → 701`，证据写入 `packages/clawbot/data/intel_evidence/phasefix/wechat-user-journey/acceptance.json`。
+- 给当前实际加载的 OpenClaw Weixin 插件增加“每日简报编号菜单直通桥”：授权微信会话发送 `700-708`、`菜单`、`今日简报`、`我的订阅` 时，插件先调用本机 `/wechat/incoming` 并把回复直接发回微信，避免继续落入普通大模型闲聊。
+- 重启本机 `ai.openclaw.clawbot-agent` 和 OpenClaw Gateway 后复验：18790 两个入口均返回每日简报菜单，OpenClaw Weixin 通道为 `enabled, configured, running`。
+- 真实桌面微信自动输入测试受本机坐标/焦点限制，未能稳定代替用户在「Global Intelligence AI」会话发送 `700`；因此本轮不夸大为“真实微信入站消息已人工发送验收”，只声明处理器、插件桥和通道状态已就绪。
+### 文件变更
+- `packages/clawbot/src/api/server.py` — 挂载 `/wechat/incoming` 兼容路由。
+- `packages/clawbot/src/api/routers/wechat.py` — 微信每日简报命令按当前 UTC 时间判断订阅。
+- `packages/clawbot/scripts/intel_wechat_user_journey_acceptance.py` — 新增微信编号菜单用户旅程验收脚本。
+- `packages/clawbot/tests/test_wechat_numbered_commands.py` / `packages/clawbot/tests/test_intel_commercial_mvp.py` — 补齐路由兼容与新 Telegram 命令菜单合同回归。
+- `.openclaw/extensions/openclaw-weixin/src/messaging/process-message.ts` — 本仓库内 OpenClaw Weixin 插件源码补直通桥。
+- `~/.openclaw/npm/projects/tencent-weixin-openclaw-weixin-7783ac86ba/node_modules/@tencent-weixin/openclaw-weixin/dist/src/messaging/process-message.js` — 当前实际加载的插件产物同步补直通桥并重启 Gateway 生效。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步完成项、证据与剩余边界。
+### 验证
+- 语法检查：`python -m py_compile src/api/server.py src/api/routers/wechat.py scripts/intel_wechat_user_journey_acceptance.py tests/test_wechat_numbered_commands.py tests/test_intel_commercial_mvp.py` 通过。
+- 针对性回归：`31 passed`（微信编号、跨渠道菜单、商业 MVP 菜单、Telegram 菜单用户旅程相关测试）。
+- 全量后端回归：`cd packages/clawbot && .venv312/bin/python -m pytest tests/ --tb=no -q` exit 0，进度输出到 `[100%]`。
+- 微信本地用户旅程验收：`intel_wechat_user_journey_acceptance.py` exit 0，`verified=true`，`passed_steps=12`，`real_wechat_network_calls=0`。
+- Live HTTP 复验：带本机 API Token POST `/wechat/incoming` 和 `/api/v1/wechat/incoming`，两者 HTTP 200，均返回“🧭 今日简报 / 700 今日简报 / 701 我的订阅 ...”，不再把 `700` 当普通聊天。
+- OpenClaw Weixin：`openclaw channels status --channel openclaw-weixin --probe` 显示 `enabled, configured, running`；`node --check` 当前实际插件产物通过。
+
+## [2026-07-08] 每日简报点击优先菜单与业务故障转移方案收口
+> 领域: `backend` | `infra` | `docs`
+> 影响模块: `Intel Brief`, `Telegram 菜单`, `微信编号菜单`, `VPS 故障转移`
+> 关联问题: HI-intel-menu-click-first-and-vps-failover
+### 变更内容
+- 将每日简报 Telegram 左侧命令菜单同步为点击优先的 10 个斜杠命令：`/start`、`/today`、`/status`、`/market`、`/ai`、`/weather`、`/schedule`、`/track`、`/pause`、`/help`，避免清理聊天记录后只剩旧命令或无菜单。
+- 明确多端菜单原则：Telegram 这类支持点击的平台优先按钮/斜杠菜单；微信这类不支持点击命令菜单的平台才使用 `700-708` 数字编号降级。
+- 推送时间新增小白两步式：用户发 `/schedule` 或 `705` 后，可以下一条回复 `1-5` 快速选择，也可回复 `每周 09:00` / `705 07:30`。
+- 微信端数字降级补齐两步式：`705 → 2` 可设置推送时间，`706 → 名字` 可添加追踪；但当前只完成代码层和本地回归，未宣称微信真实闭环。
+- 调研 `/Users/blackdj/Documents/VPS-Config` 后登记当前 CC中转部署位置与故障转移建议：主生产在 Oracle ARM-1 `150.136.73.15`，Oracle ARM-2 `129.213.33.101` 可作为温备候选；推荐“Cloudflare 切入口 + 主备同步 + 双入口单数据库”，不建议 Telegram/微信消息流互相同步。
+### 文件变更
+- `packages/clawbot/src/intel/subscriptions.py` — Telegram BotCommand 更新为点击优先命令清单。
+- `packages/clawbot/src/intel/channel_menu.py` / `packages/clawbot/src/intel/telegram_menu.py` — 补齐 `/today`、`/market`、`/ai`、`/weather`、`/track`、`/pause` 和两步式时间设置路径。
+- `packages/clawbot/src/api/routers/wechat.py` — 微信编号命令增加 `705/706` pending action。
+- `packages/clawbot/scripts/intel_telegram_user_journey_acceptance.py` — 用户旅程验收扩展到 14 步。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步菜单边界、微信登录态结论和 VPS 故障转移方案。
+### 验证
+- Telegram Bot API 真实同步：`intel_telegram_bot_runtime_probe.py` 输出 `status=success`、`set_my_commands_success=true`、`network_calls=2`，证据文件记录 `command_count=10` 且 `setMyCommands.success=true`。
+- 常驻监听器：`launchctl` 为 running，心跳 `last_status=no_new_updates`、`raw_updates_persisted=false`。
+- 用户旅程验收：`intel_telegram_user_journey_acceptance.py` 输出 `verified=true`、`passed_steps=14/14`、`failed_steps=0`、`real_telegram_network_calls=0`。
+- 针对性回归：`cd packages/clawbot && .venv312/bin/python -m pytest tests/test_intel_telegram_user_journey_acceptance.py tests/test_intel_telegram_menu_handlers.py tests/test_intel_telegram_runtime.py tests/test_intel_telegram_update_processor.py tests/test_intel_telegram_update_daemon.py tests/test_intel_telegram_bot_runtime.py tests/test_intel_multichannel_numbered_menu.py tests/test_wechat_numbered_commands.py tests/test_wechat_bridge.py --tb=short -q --maxfail=5`：`42 passed`。
+- 微信旧登录态只读探测：本机凭证文件存在且 `token_present=true`、`userId_present=true`，但 iLink `getconfig` 返回 `ret=-4`，`context_token_obtained=false`，需要重新扫码后才能真实接管测试。
+
+## [2026-07-08] 每日简报 Telegram 真人两步式追踪优化
+> 领域: `backend` | `docs`
+> 影响模块: `Intel Brief`, `Telegram 菜单`, `Telegram 用户旅程验收`
+> 关联问题: HI-intel-telegram-real-user-journey
+### 变更内容
+- 接管本机 Telegram 站在普通用户视角真实发送 `700/701/705/706/708/702/707`，确认菜单、今日简报、订阅状态、改时间、暂停/恢复和帮助入口可用。
+- 发现 `706` 空关键词虽然能提示格式，但对小白用户仍要求记完整命令；已优化为两步式：先发 `706` 或点“添加追踪”，下一条直接回复名字即可添加追踪。
+- 新增 Telegram pending action 状态表，保存“下一条消息用于添加追踪”的短暂状态；成功、取消或菜单命令都会清理，避免误吃后续正常搜索。
+- 真实 Telegram 复测 `706 → Codex20260708` 已成功添加追踪；测试产生的 `NVIDIA/Codex20260708` 追踪对象已从生产库清理，真实订阅偏好恢复为 `ai_model_updates/akshare/senate_trading`、每天 08:30。
+- 自动验收脚本新增“两步式添加追踪 706→周杰伦”步骤，后续回归会防止小白路径退化。
+### 文件变更
+- `packages/clawbot/src/intel/telegram_menu.py` — 新增两步式添加追踪状态、取消逻辑和统一成功回复。
+- `packages/clawbot/src/intel/db/intel_brief_schema.sql` — 新增 `telegram_pending_actions` 表，兼容已有生产库按需创建。
+- `packages/clawbot/scripts/intel_telegram_user_journey_acceptance.py` — 用户旅程验收从 9 步扩展到 10 步，覆盖两步式追踪。
+- `packages/clawbot/tests/test_intel_telegram_menu_handlers.py` / `packages/clawbot/tests/test_intel_telegram_user_journey_acceptance.py` — 增加回归保护。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/009-health.md` — 同步真人实测结论、边界和验证证据。
+### 验证
+- 真实 Telegram：`700` 返回今日简报，`701` 显示订阅状态，`705 09:00` 改时间成功，`706 NVIDIA` 成功添加追踪，`708` 暂停成功，暂停后 `701` 不偷偷恢复，`702` 恢复成功，`707` 打开帮助菜单。
+- 真实 Telegram 新路径：`706` 后机器人提示“下一条直接回复名字就行”，下一条 `Codex20260708` 被正确添加追踪；测试数据已清理。
+- 监听器：`launchctl print gui/$(id -u)/ai.openclaw.intel-brief.telegram-listener` 显示 `state = running`，心跳 `raw_updates_persisted=false`。
+- 针对性回归：`packages/clawbot/.venv312/bin/python -m pytest ...`（Telegram/Intel Brief 相关 9 个测试文件）通过。
+- 用户旅程验收：`intel_telegram_user_journey_acceptance.py` 输出 `verified=true`、`passed_steps=10/10`、`real_telegram_network_calls=0`。
+
+## [2026-07-08] 每日简报 Telegram 用户旅程闭环体验修正
+> 领域: `backend` | `docs`
+> 影响模块: `Intel Brief`, `Telegram 菜单`, `Telegram 用户旅程验收`
+> 关联问题: HI-intel-brief-user-journey-closure
+### 变更内容
+- 从普通用户视角补齐菜单后续体验，不再只把 `/start` 能回菜单当成闭环。
+- 底部常驻快捷键从“功能导航/热搜排行”改成更直接的“今日简报/我的订阅”，减少用户思考成本。
+- 修复“点今日简报又回菜单”的体验断点：旧文字快捷键 `🧭 今日简报` 现在和按钮 callback `today` 一样，优先返回最近一次成功简报。
+- 修复 `708 暂停简报` 写在菜单里但路由没接上的问题；暂停后，用户查看状态或打开菜单不会偷偷恢复，只有重新选择内容/添加追踪时才恢复推送。
+- 优化推送时间输入：普通用户发 `/schedule 09:00` 会正确设置为每天 09:00，不再误把 `09:00` 当成推送频率。
+- 新增普通用户完整旅程验收器，覆盖 `/start → 今日简报 → 我的订阅 → 改时间 → 添加追踪 → 暂停 → 暂停后查看/打开菜单 → 选择内容恢复`。
+### 文件变更
+- `packages/clawbot/src/intel/channel_menu.py` — 补齐 `708`/暂停路由、快捷键映射、暂停态不被被动查询恢复。
+- `packages/clawbot/src/intel/subscriptions.py` — 底部常驻键盘改成“今日简报/我的订阅”，订阅状态显式保留 `paused`。
+- `packages/clawbot/src/intel/telegram_menu.py` — 透传暂停/时间/最近简报等验收状态，兼容 `/schedule 09:00`。
+- `packages/clawbot/scripts/intel_telegram_user_journey_acceptance.py` — 新增普通用户旅程验收器。
+- `packages/clawbot/tests/test_intel_telegram_user_journey_acceptance.py` / `packages/clawbot/tests/test_intel_telegram_menu_handlers.py` / `packages/clawbot/tests/test_intel_telegram_runtime.py` — 增加并更新用户旅程回归测试。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/009-health.md` — 同步本轮体验闭环和边界。
+### 验证
+- 新增保护测试先红后绿：`/schedule 09:00`、`🧭 今日简报`、`708 暂停后不被 /start/701 偷偷恢复`。
+- 语法检查：`python3 -m py_compile packages/clawbot/src/intel/channel_menu.py packages/clawbot/src/intel/subscriptions.py packages/clawbot/src/intel/telegram_menu.py packages/clawbot/scripts/intel_telegram_user_journey_acceptance.py packages/clawbot/tests/test_intel_telegram_user_journey_acceptance.py`：exit 0。
+- 针对性回归：`packages/clawbot/.venv312/bin/python -m pytest packages/clawbot/tests/test_intel_telegram_user_journey_acceptance.py packages/clawbot/tests/test_intel_telegram_menu_handlers.py packages/clawbot/tests/test_intel_multichannel_numbered_menu.py packages/clawbot/tests/test_intel_commercial_mvp.py packages/clawbot/tests/test_intel_telegram_runtime.py packages/clawbot/tests/test_intel_telegram_update_processor.py packages/clawbot/tests/test_intel_telegram_update_daemon.py packages/clawbot/tests/test_intel_telegram_start_menu_acceptance.py --tb=short -q --maxfail=5`：`39 passed`。
+- 用户旅程验收：`packages/clawbot/.venv312/bin/python packages/clawbot/scripts/intel_telegram_user_journey_acceptance.py --output packages/clawbot/data/intel_evidence/phasefix/telegram-user-journey/acceptance.json --db packages/clawbot/data/intel_evidence/phasefix/telegram-user-journey/acceptance.sqlite3`：`verified=true`、`passed_steps=9/9`、`real_telegram_network_calls=0`。
+
+## [2026-07-08] 每日简报 Telegram 常驻菜单与多渠道数字命令收口
+> 领域: `backend` | `docs`
+> 影响模块: `Intel Brief`, `Telegram 菜单`, `微信编号命令`, `多渠道菜单协议`
+> 关联问题: HI-intel-brief-menu-closure
+### 变更内容
+- 修复“清理 Telegram 聊天后 `/start` 没人回菜单”的根因：每日简报新增常驻 Telegram 更新监听器，LaunchAgent `ai.openclaw.intel-brief.telegram-listener` 当前为 running，并持续轮询新消息。
+- 监听器心跳现在会保留最近一次 `/start` 菜单发送成功证据，不会被后续“无新消息”轮询覆盖；证据只保留成功时间、按钮是否发送、回复条数和脱敏布尔值，不保存聊天内容、chat id、用户 id 或 token。
+- 新增 `/start` 真人验收器 `packages/clawbot/scripts/intel_telegram_start_menu_acceptance.py`：老板发完 `/start` 后，脚本自动输出 `verified=true/false` 和下一步，不需要老板看日志。
+- Telegram 菜单从旧的配置表式按钮收口为用户能直接理解的产品菜单：今日简报、我的订阅、市场资金、AI科技、天气预警、推送时间、添加追踪、帮助；同时支持直接回复 700-708 数字命令。
+- 微信端已接入 700-708 数字回复入口，用户发 `700` 可打开每日简报，发 `706 英伟达` 可添加追踪；该入口走本地每日简报逻辑，不落到 LLM 兜底。
+- 飞书/钉钉当前只完成统一菜单合同和数字命令协议；由于没有真实 webhook/token/回调入口，本轮不声明真实闭环。
+- `700 今日简报` 不再只弹菜单，会优先读取该用户最近一次成功投递的简报；没有记录时才提示下一次推送和菜单。
+- 本轮复核发现生产库曾被临时测试写入偏好/追踪，已清理回真实用户原始偏好，避免测试污染老板真实订阅。
+### 文件变更
+- `packages/clawbot/src/intel/channel_menu.py` — 新增跨渠道菜单文案、700-708 数字命令和平台能力边界。
+- `packages/clawbot/src/intel/subscriptions.py` — Telegram `/start` 菜单合同改为新的产品化菜单。
+- `packages/clawbot/src/intel/telegram_menu.py` — Telegram 按钮、旧按钮兼容和数字命令入口接入。
+- `packages/clawbot/src/api/routers/wechat.py` — 微信 700-708 编号命令接入每日简报逻辑。
+- `packages/clawbot/scripts/intel_telegram_update_daemon.py` — 每日简报 Telegram 常驻监听器，心跳保留最近一次 `/start` 菜单成功证据。
+- `packages/clawbot/scripts/intel_telegram_start_menu_acceptance.py` — 新增真人 `/start` 菜单验收器。
+- `packages/clawbot/tests/test_intel_telegram_start_menu_acceptance.py` / `packages/clawbot/tests/test_intel_telegram_update_daemon.py` — 覆盖验收器和心跳成功证据不被覆盖。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/009-health.md` — 登记真实完成项与未完成边界。
+### 验证
+- `launchctl print gui/$(id -u)/ai.openclaw.intel-brief.telegram-listener`：`state = running`。
+- 心跳文件 `packages/clawbot/data/intel_evidence/phasefix/telegram-listener/heartbeat.json`：`last_status=no_new_updates`、`raw_updates_persisted=false`，说明监听器在轮询且不保存原始聊天内容。
+- Bot API `getMe` 已确认每日简报机器人为 `@carven_Jianbao_bot`，直达链接为 `https://t.me/carven_Jianbao_bot?start=start`；`getMyCommands` 已确认 `/start` 命令存在。
+- 老板本人向 `@carven_Jianbao_bot` 发送 `/start` 后，真人验收器输出 `verified=true`、`listener_fresh=true`、`blockers=[]`；证据显示菜单发送时间为 `2026-07-08T17:44:43.993878+00:00`，已发送 inline 按钮菜单和常驻键盘，共 2 条回复。
+- 生产库只保留真实 Telegram 用户偏好：`ai_model_updates`、`akshare`、`senate_trading`；最近 `delivery_log` 有真实 Telegram success 记录。
+- 针对性回归：`packages/clawbot/.venv312/bin/python -m pytest packages/clawbot/tests/test_intel_telegram_update_daemon.py packages/clawbot/tests/test_intel_telegram_start_menu_acceptance.py packages/clawbot/tests/test_intel_telegram_real_update_runner.py packages/clawbot/tests/test_intel_telegram_update_processor.py packages/clawbot/tests/test_intel_telegram_runtime.py packages/clawbot/tests/test_intel_telegram_menu_handlers.py packages/clawbot/tests/test_intel_multichannel_numbered_menu.py packages/clawbot/tests/test_intel_commercial_mvp.py packages/clawbot/tests/test_wechat_numbered_commands.py --tb=short -q --maxfail=5`：`42 passed`。
+
+## [2026-07-08] 自动发货恢复与首单观察开启
+> 领域: `xianyu` | `docs`
+> 影响模块: `CC中转操作台`, `CC中转自动发货`, `CC中转售卖锁`
+> 关联问题: HI-cc-auto-ship-restored
+### 变更内容
+- 按老板明确指令“恢复自动发货”，先执行恢复前安全检查，确认 `safe_to_resume=true`、`blockers=[]` 后，恢复常驻自动发货开关。
+- 恢复后系统自动开启首单观察保险：下一笔真实发卡进入 `message_sent` 后，会自动暂停一次，防止重复发卡事故复发。
+- 当前正式售卖锁已放行：`can_public_sale=true`、`state=public_sale_unlocked`，补救队列为 0，首页显示“正式售卖已放行 / 自动发货开着”。
+- 本轮只恢复运营开关，不主动点击闲鱼发货按钮，不额外发送卡密。
+### 文件变更
+- `docs/002-changelog.md` / `docs/009-health.md` — 登记本次恢复动作、live 复验状态和截图证据。
+### 验证
+- `GET /api/cc-operator-mode/resume-preflight`：`safe_to_resume=true`、`blockers=[]`。
+- `POST /api/cc-operator-mode`：`auto_ship_paused=false`、`auto_resume_canary_active=true`、`can_auto_ship_paid_orders=true`。
+- `GET /api/cc-public-sale-lock?refresh=true`：`can_public_sale=true`、`state=public_sale_unlocked`、`blockers=[]`。
+- Playwright 截图：`output/playwright/cc-ops-console-auto-ship-restored-20260708.png`，页面可见“正式售卖已放行 / 自动发货开着 / 补救 0 / 库存 36 张”。
+
+## [2026-07-08] 恢复前安全检查自动刷新证据
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuAdmin`, `CC中转恢复预检`, `CC中转操作台`
+> 关联问题: HI-cc-resume-preflight-auto-refresh
+### 变更内容
+- 恢复前安全检查现在会在库存/渠道证据冷启动为空时，自动跑一次只读上架锁刷新，不再要求老板先记住“刷新上架锁”这个额外步骤。
+- 该刷新只读，不分配卡密、不发闲鱼消息、不点击发货、不恢复自动发货。
+- 安全门没有放松：预检仍会检查 webhook、闲鱼在线/Cookie、补救队列、库存/兑换码/渠道、买家公网入口、CC Switch 入口和真实小额单严格门。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — `_cc_auto_ship_resume_preflight()` 在库存证据缺失时自动 `refresh=True` 只读刷新。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 增加恢复前预检自动刷新和不绕过严格门的回归断言。
+- `docs/002-changelog.md` / `docs/009-health.md` — 同步 live 复验结果。
+### 验证
+- 先写失败用例：`test_xianyu_resume_preflight_refreshes_inventory_when_cache_cold` 初次失败为 `assert [] == ['refresh']`，证明旧逻辑不会自动刷新。
+- `python3 -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/tests/test_api_routes_regression.py`：exit 0。
+- `node --check /tmp/cc_ops_console_inline.js`：exit 0。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py::test_xianyu_resume_preflight_refreshes_inventory_when_cache_cold tests/test_api_routes_regression.py::test_xianyu_operator_mode_can_pause_auto_ship tests/test_api_routes_regression.py::test_xianyu_ops_snapshot_uses_precheck_when_inventory_cache_cold tests/test_api_routes_regression.py::test_xianyu_ops_snapshot_treats_pause_after_strict_gate_as_healthy tests/test_api_routes_regression.py::test_xianyu_operator_next_action_treats_pause_after_strict_gate_as_resume_prompt tests/test_api_routes_regression.py::test_xianyu_admin_public_sale_lock_explains_manual_pause_after_strict_gate tests/test_api_routes_regression.py::test_xianyu_admin_page_escapes_dynamic_fields tests/test_xianyu_cc_auto_ship.py::test_cc_shipment_summary_excludes_skipped_manual_confirm_from_page_pending --tb=short -q`：`8 passed`。
+- 重启本机 `ai.openclaw.xianyu` 后 live 只读复验：`/api/cc-operator-mode/resume-preflight` 返回 `safe_to_resume=true`、`refreshed_inventory=true`、`blockers=[]`；`/api/cc-operator-mode` 仍为 `auto_ship_paused=true`、`one_shot_active=false`、`auto_resume_canary_active=false`。
+
+## [2026-07-08] 18800 冷启动暂停保护口径修正
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuAdmin`, `CC中转操作台`, `CC中转运营快照`
+> 关联问题: HI-cc-paused-strict-gate-cold-start
+### 变更内容
+- 修复 18800 服务重启后库存/渠道证据缓存未刷新时，总快照短暂把“严格门已通过但自动发货暂停保护”误报成 `auto_ship_not_ready/danger` 的问题。
+- 售卖锁现在在严格门已过、补救队列清零、买家入口和 CC Switch 基础项正常、仅库存证据缓存冷启动时，会展示为 `paused_after_strict_gate`，老板看到的是“待恢复自动发货”，不是“系统故障”。
+- 总快照 `ok` 现在把 `paused_after_strict_gate` / `paused_internal_test_ready` 视为健康待恢复态；`/api/cc-operator-next-action` 同步返回 `severity=warning`。
+- 恢复自动发货预检没有放松：冷启动时仍会提示“库存/渠道证据未刷新，先点刷新上架锁”，不会直接恢复常驻自动发货。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 合并暂停保护展示态，修正总快照 ok 和下一步提示。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 增加冷启动暂停保护、总快照健康态和下一步提示回归测试。
+- `docs/002-changelog.md` / `docs/009-health.md` — 同步 live 复验结果。
+### 验证
+- 先写失败用例：`test_xianyu_ops_snapshot_uses_precheck_when_inventory_cache_cold` 初次失败为 `assert False is True`，证明冷启动会误报。
+- 先写失败用例：`test_xianyu_operator_next_action_treats_pause_after_strict_gate_as_resume_prompt` 初次失败为 `auto_ship_not_ready != paused_after_strict_gate`。
+- `node --check /tmp/cc_ops_console_inline.js`：exit 0。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py::test_xianyu_ops_snapshot_uses_precheck_when_inventory_cache_cold tests/test_api_routes_regression.py::test_xianyu_ops_snapshot_treats_pause_after_strict_gate_as_healthy tests/test_api_routes_regression.py::test_xianyu_operator_next_action_treats_pause_after_strict_gate_as_resume_prompt tests/test_api_routes_regression.py::test_xianyu_operator_next_action_waits_for_inventory_evidence tests/test_api_routes_regression.py::test_xianyu_admin_public_sale_lock_explains_manual_pause_after_strict_gate tests/test_api_routes_regression.py::test_xianyu_admin_public_sale_lock_blocks_bad_buyer_entry tests/test_api_routes_regression.py::test_xianyu_admin_public_sale_lock_blocks_bad_ccswitch_entry tests/test_api_routes_regression.py::test_xianyu_admin_page_escapes_dynamic_fields tests/test_xianyu_cc_auto_ship.py::test_cc_shipment_summary_excludes_skipped_manual_confirm_from_page_pending --tb=short -q`：`9 passed`。
+- 重启本机 `ai.openclaw.xianyu` 后 live 只读复验：`/api/cc-ops-snapshot.ok=true`、`next_state=paused_after_strict_gate`、`next_severity=warning`、`can_internal_test=true`、`can_public_sale=false`；`/api/cc-operator-mode` 仍为 `auto_ship_paused=true`、`one_shot_active=false`、`auto_resume_canary_active=false`。
+
+## [2026-07-08] 闲鱼 skipped 发货确认假告警修正
+> 领域: `xianyu` | `frontend` | `docs`
+> 影响模块: `XianyuContext`, `XianyuAdmin`, `CC中转操作台`
+> 关联问题: HI-cc-skipped-confirm-false-alert
+### 变更内容
+- 修复旧手工/浏览器内测单 `xianyu_confirm_status=skipped` 仍被计入“待点发货”的假告警。
+- 后端 `cc_shipment_summary()` 的 `xianyu_confirm_page_pending` 现在排除 `confirmed` 和 `skipped`，老板首页不会再显示无需处理的旧内测单。
+- 18800 补救队列表格同步排除 `skipped`，避免把“已明确跳过确认发货”的记录展示成“已发卡密，待页面点击发货”。
+- 该改动只修正看板和队列显示，不发卡、不点击闲鱼发货、不恢复自动发货。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_context.py` — 修正 skipped 确认发货统计口径。
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 前端补救队列表格排除 skipped。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` / `packages/clawbot/tests/test_api_routes_regression.py` — 增加 skipped 不产生待发货假告警的回归测试。
+- `docs/002-changelog.md` / `docs/009-health.md` — 同步本轮假告警修复。
+### 验证
+- 先写失败用例：`test_cc_shipment_summary_excludes_skipped_manual_confirm_from_page_pending` 初次失败为 `assert 1 == 0`，证明旧逻辑会把 skipped 计入待点发货。
+- `python3 -m py_compile packages/clawbot/src/xianyu/xianyu_context.py packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/tests/test_xianyu_cc_auto_ship.py packages/clawbot/tests/test_api_routes_regression.py`：exit 0。
+- `node --check /tmp/cc_ops_console_inline.js`：exit 0。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_api_routes_regression.py::test_xianyu_admin_page_escapes_dynamic_fields --tb=short -q`：`121 passed`。
+- 重启本机 `ai.openclaw.xianyu` 后 live 只读复验：`pending_rescue=0`、`xianyu_confirm_page_pending=0`、`xianyu_confirm_pending=0`、`xianyu_confirm_failed=0`；自动发货仍为 `auto_ship_paused=true`、`one_shot_active=false`。
+- Playwright 截图：`output/playwright/cc-ops-console-skipped-confirm-false-alert-fixed-20260708.png`。
+
+## [2026-07-08] 18800 layui 人工预检口径合并
+> 领域: `xianyu` | `frontend` | `docs`
+> 影响模块: `XianyuAdmin`, `CC中转操作台`
+> 关联问题: HI-cc-owner-console-precheck-display
+### 变更内容
+- 确认 `layui/layui` 适合继续作为 18800 本机老板操作台的渐进式 UI 底座：使用本地静态资源，不走 CDN，不替换后端业务链路。
+- 新增前端 `mergeLockWithPrecheck`：当人工预检 6/6 已通过且状态为“严格门已通过，自动发货暂停保护”时，首屏会按这个老板可理解口径显示，不再被旧售卖锁快照误导成“先别卖”。
+- 该改动只修正看板展示，不发卡、不点击闲鱼发货、不恢复自动发货。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 18800 页面合并人工预检证据与售卖锁展示口径。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 增加前端合并逻辑静态回归断言。
+- `docs/002-changelog.md` / `docs/009-health.md` — 同步本轮 UI 收口和验证证据。
+### 验证
+- `python3 -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/tests/test_api_routes_regression.py`：exit 0。
+- `node --check /tmp/cc_ops_console_inline.js`：exit 0。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py::test_xianyu_admin_page_escapes_dynamic_fields tests/test_api_routes_regression.py::test_xianyu_admin_public_sale_lock_refreshes_readonly_audit --tb=short -q`：`2 passed`。
+- 重启本机 `ai.openclaw.xianyu` 后 live 只读复验：首页 HTTP 200，页面包含 `function mergeLockWithPrecheck`、`/static/layui/layui.js`、`人工预检证据`、`待你恢复自动发货`。
+- live 安全态复验：`GET /api/cc-operator-mode` 仍为 `auto_ship_paused=true`、`one_shot_active=false`、`auto_resume_canary_active=false`；`GET /api/cc-manual-precheck-evidence` 为 `passed=6/6`、`state=paused_after_strict_gate`。
+- Playwright 截图：`output/playwright/cc-ops-console-layui-precheck-merge-20260708.png`。
+
+## [2026-07-08] 人工预检闭环证据接口
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuAdmin`, `CC中转操作台`, `Frist-API 用户页`
+> 关联问题: HI-cc-manual-precheck-evidence
+### 变更内容
+- 新增只读接口 `GET /api/cc-manual-precheck-evidence`，把人工预检反馈拆成 6 项可验证证据：注册/登录 CF 位置、邮箱模板质感、闲鱼重复发卡保护、自动发货策略、1 元额度 1:1、真实小额单严格门。
+- 接口只读取源码和当前运行态，不发卡、不点击闲鱼发货、不恢复自动发货，返回 `safety.read_only=true` 等安全边界。
+- live 复验显示 `passed=6/6`、`precheck_ready=true`、`state=paused_after_strict_gate`、`state_label=严格门已通过，自动发货暂停保护`；`auto_ship_paused=true`、`one_shot_active=false`、`auto_resume_canary_active=false` 仍保持。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增人工预检闭环证据汇总函数和只读 API。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 增加接口结构、6 项证据和安全边界回归断言。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/009-health.md` — 同步新证据入口与 live 状态。
+### 验证
+- `python3 -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/tests/test_api_routes_regression.py`：exit 0。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py::test_xianyu_admin_public_sale_lock_refreshes_readonly_audit tests/test_api_routes_regression.py::test_xianyu_admin_page_escapes_dynamic_fields --tb=short -q`：`2 passed`。
+- live 只读复验：`GET /api/cc-manual-precheck-evidence` 返回 `passed=6,total=6,precheck_ready=true,state=paused_after_strict_gate,missing=[]`；`GET /api/cc-operator-mode` 仍返回自动发货暂停、单次放行关闭、首单观察未激活。
+
+## [2026-07-08] 注册登录 CF 位置与 1 元额度回归守护
+> 领域: `frontend` | `backend` | `docs`
+> 影响模块: `Frist-API 用户页`, `CC中转注册登录`, `CC中转卡密套餐`
+> 关联问题: HI-cc-auth-turnstile-email-price-guard
+### 变更内容
+- 补强注册/登录页结构测试：Cloudflare Turnstile 不只要存在，还必须位于主登录卡片的登录/注册表单容器内，并在提交按钮上方，防止再次漂到页面底部。
+- 补强本地样式守护：Turnstile 容器必须由本地 CSS 预留稳定高度，避免验证码加载后挤到页面底部或造成跳动。
+- 复验邮件模板与 1 元额度链路：注册验证码/密码重置邮件继续使用卡片化品牌模板；`xianyu-test-1` 继续保持本地 `creditCents=100`，同步到 New-API 兑换额度为 1 元对应 quota，不再按美元汇率变成 7.x 元。
+### 文件变更
+- `apps/frist-api/tests/business-flow.test.mjs` — 新增主登录卡片内 Turnstile 位置与样式回归断言。
+- `docs/002-changelog.md` / `docs/009-health.md` — 同步本轮验证证据。
+### 验证
+- `cd apps/frist-api && node --test tests/business-flow.test.mjs --test-name-pattern "user-facing HTML exposes production auth|Turnstile"`：`20 passed`。
+- `cd apps/frist-api && node --test tests/server.test.mjs --test-name-pattern "sends registration email codes|keeps Xianyu 1 yuan"`：`114 passed`。
+
+## [2026-07-08] 18800 layui 操作台暂停态收口
+> 领域: `xianyu` | `frontend` | `docs`
+> 影响模块: `XianyuAdmin`, `CC中转操作台`
+> 关联问题: HI-cc-owner-console-layui-paused-ready
+### 变更内容
+- 确认 `layui/layui` 适合 18800 本机老板操作台：当前采用本地 vendored 静态资源，不走 CDN，不把后端迁到 React，也不改变发货业务接口。
+- 修复 18800 主渲染函数漏定义 `strictPaused` 的问题，避免“严格门已通过但自动发货暂停保护”状态在浏览器运行时报错。
+- 首屏文案收口为“待你恢复自动发货 / 严格门已通过，自动发货暂停保护”，明确这不是系统故障，而是重复发卡事故后的安全保护；恢复后第 1 单仍会自动暂停观察。
+- 新增页面结构回归断言，锁住 layui 本地资源、暂停保护文案、恢复前安全检查和首单观察提示。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 补齐 `strictPaused` 渲染变量，确保暂停保护态首屏正常显示。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 增加老板可见文案和运行时变量结构守护。
+- `docs/002-changelog.md` / `docs/009-health.md` — 同步本轮 UI 收口和验证证据。
+### 验证
+- `python3 -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/tests/test_api_routes_regression.py`：exit 0。
+- `node --check /tmp/cc_ops_console_inline.js`：exit 0。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py::test_xianyu_admin_page_escapes_dynamic_fields tests/test_api_routes_regression.py::test_xianyu_admin_serves_local_layui_assets tests/test_api_routes_regression.py::test_xianyu_admin_serves_local_layui_assets_without_api_token tests/test_api_routes_regression.py::test_xianyu_operator_mode_can_pause_auto_ship tests/test_api_routes_regression.py::test_xianyu_admin_public_sale_lock_explains_manual_pause_after_strict_gate tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_resume_auto_ship_canary_pauses_after_first_sent tests/test_xianyu_cc_auto_ship.py::test_xianyu_live_message_sent_consumes_auto_resume_canary --tb=short -q`：`7 passed`。
+- live 只读复验：`/api/cc-public-sale-lock?refresh=true` 返回 `state=paused_after_strict_gate`；`/api/cc-operator-mode/resume-preflight` 返回 `safe_to_resume=true`；`/api/cc-operator-mode` 仍为 `auto_ship_paused=true`、`one_shot_active=false`、`auto_resume_canary_active=false`。
+- Chrome 截图：`output/playwright/cc-ops-console-paused-ready-to-resume-20260708.png`，页面可见“待你恢复自动发货 / 严格门已通过，自动发货暂停保护 / 恢复前安全检查 / 恢复自动发货”。
+
+## [2026-07-08] 恢复自动发货首单观察保险
+> 领域: `xianyu` | `backend` | `frontend` | `docs`
+> 影响模块: `cc_operator_state`, `XianyuAdmin`, `XianyuLive`, `CC中转操作台`
+> 关联问题: HI-cc-auto-resume-canary
+### 变更内容
+- 恢复常驻自动发货时，系统会自动写入“首单观察票”：恢复后第 1 条卡密真正标记为 `message_sent` 时，会立刻把 `auto_ship_paused` 重新置为 `true`。
+- `XianyuAdmin` 手动/浏览器 `mark-sent` 路径和 `XianyuLive` WebSocket 自动发货记录路径都会消耗首单观察票，避免恢复后连续处理多单。
+- 18800 恢复成功提示会明确“系统已开启首单观察：第 1 单发卡成功后会自动暂停”。
+- 当前 live 复验只读刷新后 `resume-preflight.safe_to_resume=true`，但 `auto_ship_paused=true`、`auto_resume_canary_active=false`，说明首单观察票只会在老板明确恢复时开启。
+### 文件变更
+- `packages/clawbot/src/xianyu/cc_operator_state.py` — 新增 `auto_resume_canary` 状态、恢复时武装、发卡后消费并自动暂停。
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 恢复自动发货时启用首单观察票，`mark-sent` 后自动暂停，页面提示首单观察。
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 自动发货写入 `message_sent` 时同样消耗首单观察票。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` / `packages/clawbot/tests/test_api_routes_regression.py` — 增加恢复首单自动暂停和 WebSocket 路径回归。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/009-health.md` — 同步恢复保险策略。
+### 验证
+- `python3 -m py_compile packages/clawbot/src/xianyu/cc_operator_state.py packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/src/xianyu/xianyu_live.py packages/clawbot/tests/test_xianyu_cc_auto_ship.py packages/clawbot/tests/test_api_routes_regression.py`：exit 0。
+- `node --check /tmp/cc_ops_console_inline.js`：exit 0。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py::test_xianyu_live_message_sent_consumes_auto_resume_canary tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_resume_auto_ship_canary_pauses_after_first_sent tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_one_shot_delivery_allows_exactly_one_claim_when_paused tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_one_shot_dispatch_consumes_gate_for_paid_page_fallback tests/test_api_routes_regression.py::test_xianyu_operator_mode_can_pause_auto_ship tests/test_api_routes_regression.py::test_xianyu_admin_page_escapes_dynamic_fields --tb=short -q`：`6 passed`。
+- live 复验：重启 `ai.openclaw.xianyu` 后页面包含“恢复前安全检查 / 系统已开启首单观察 / 第 1 单发卡成功后会自动暂停”；只读刷新后 `resume-preflight.ok=true`，但当前仍 `auto_ship_paused=true`、`auto_resume_canary_active=false`。
+- Playwright 截图：`output/playwright/cc-ops-console-auto-resume-canary-20260708.png`。
+
+## [2026-07-08] 恢复自动发货增加安全预检
+> 领域: `xianyu` | `backend` | `frontend` | `docs`
+> 影响模块: `XianyuAdmin`, `CC中转操作台`, `CC中转发货安全闸门`
+> 关联问题: HI-cc-safe-auto-ship-resume
+### 变更内容
+- `POST /api/cc-operator-mode` 在恢复自动发货前新增只读安全预检：补救队列、库存/兑换码/渠道、买家公网入口、webhook 未授权拦截、CC Switch 导入入口、闲鱼连接/Cookie 和真实小额单严格门全部通过后才允许恢复。
+- 新增 `GET /api/cc-operator-mode/resume-preflight`，老板可先点“恢复前安全检查”，只读查看是否可以恢复，不改变暂停开关、不发卡、不分配卡密。
+- 18800 操作台新增“恢复前安全检查”按钮；点“恢复自动发货”时会二次确认，并在后端预检不通过时拒绝恢复、显示人话原因。
+- 当前 live 复验：只读刷新后 `resume-preflight.ok=true`，但 `auto_ship_paused=true` 仍保持，说明系统已经具备恢复条件但不会擅自恢复。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增 `_cc_auto_ship_resume_preflight()`、恢复前 409 阻断、只读预检接口和前端按钮/错误解释。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 更新暂停/恢复测试，确认不安全恢复会被 409 拒绝，安全预检通过后才允许恢复。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/009-health.md` — 同步恢复前安全闸门。
+### 验证
+- `python3 -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/tests/test_api_routes_regression.py`：exit 0。
+- `node --check /tmp/cc_ops_console_inline.js`：exit 0。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py::test_xianyu_operator_mode_can_pause_auto_ship tests/test_api_routes_regression.py::test_xianyu_admin_public_sale_lock_refreshes_readonly_audit tests/test_api_routes_regression.py::test_xianyu_admin_public_sale_lock_explains_manual_pause_after_strict_gate tests/test_api_routes_regression.py::test_xianyu_admin_public_sale_lock_blocks_bad_buyer_entry tests/test_api_routes_regression.py::test_xianyu_admin_public_sale_lock_blocks_bad_ccswitch_entry tests/test_api_routes_regression.py::test_xianyu_admin_page_escapes_dynamic_fields tests/test_api_routes_regression.py::test_xianyu_admin_page_opens_without_token_but_api_requires_token tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_dashboard_alias_points_to_owner_console --tb=short -q`：`8 passed`。
+- live 复验：重启 `ai.openclaw.xianyu` 后，冷启动 `resume-preflight` 先提示库存/渠道证据未刷新；运行 `/api/cc-public-sale-lock?refresh=true` 后，`resume-preflight.ok=true/safe_to_resume=true`、`auto_ship_paused=true`、`one_shot_active=false`。
+- Playwright 截图：`output/playwright/cc-ops-console-resume-preflight-20260708.png`，页面可见“恢复前安全检查”和“恢复自动发货”两个独立按钮。
+
+## [2026-07-08] 售卖锁区分自动发货暂停保护
+> 领域: `xianyu` | `backend` | `frontend` | `docs`
+> 影响模块: `XianyuAdmin`, `CC中转操作台`, `CC中转上架锁`
+> 关联问题: HI-cc-public-sale-lock-pause-copy
+### 变更内容
+- `GET /api/cc-public-sale-lock` 现在会区分“老板手动暂停自动发货保护”和“自动发货链路真的坏了”。
+- 当真实小额单严格门已通过、库存/渠道/买家入口都正常，但 `auto_ship_paused=true` 时，接口返回 `state=paused_after_strict_gate`、`state_label=严格门已通过，自动发货暂停保护`。
+- 售卖锁仍保持 `can_public_sale=false`，不会绕过防重复发卡安全开关；老板确认准备正式卖后，仍需在 18800 操作台手动点“恢复自动发货”。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 上架锁新增 `auto_ship_paused/webhook_configured/ws_connected/cookie_ok` 诊断字段，并细分暂停保护文案。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 新增严格门已过但自动发货暂停时的回归测试。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/009-health.md` — 同步老板可见语义。
+### 验证
+- 先补失败用例：`test_xianyu_admin_public_sale_lock_explains_manual_pause_after_strict_gate` 初次失败在 `gates.auto_ship_paused` 不存在，证明旧接口无法区分暂停保护。
+- `python3 -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/tests/test_api_routes_regression.py`：exit 0。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py::test_xianyu_admin_public_sale_lock_refreshes_readonly_audit tests/test_api_routes_regression.py::test_xianyu_admin_public_sale_lock_explains_manual_pause_after_strict_gate tests/test_api_routes_regression.py::test_xianyu_admin_public_sale_lock_blocks_bad_buyer_entry tests/test_api_routes_regression.py::test_xianyu_admin_public_sale_lock_blocks_bad_ccswitch_entry tests/test_api_routes_regression.py::test_xianyu_admin_page_escapes_dynamic_fields --tb=short -q`：`5 passed`。
+- 重启 `ai.openclaw.xianyu` 后 live 复验：`/api/cc-public-sale-lock?refresh=true` 返回 `state=paused_after_strict_gate`、`state_label=严格门已通过，自动发货暂停保护`、`can_public_sale=false`、`blockers=[自动发货被手动暂停保护（防重复发卡）]`。
+- Playwright 截图：`output/playwright/cc-ops-console-paused-after-strict-gate-20260708.png`，页面可见“严格门已通过，自动发货暂停保护”。
+
+## [2026-07-08] 18800 layui 运营台告警置顶
+> 领域: `xianyu` | `frontend` | `docs`
+> 影响模块: `XianyuAdmin`, `CC中转操作台`
+> 关联问题: HI-cc-owner-console-layui-alerts
+### 变更内容
+- 在 `http://127.0.0.1:18800/` layui 操作台首屏新增红/黄告警置顶区：补救队列、待确认发货、自动发货暂停、闲鱼连接异常和库存不足会直接显示在状态卡片上方。
+- 每条告警都配“怎么办/去处理/只读检查”按钮，老板不需要先展开高级排障；按钮只跳转或触发只读检查/单次放行确认，不会恢复常驻自动发货。
+- 保持重复发卡事故后的安全边界：运行态复验 `auto_ship_paused=true`、`one_shot_active=false`，没有恢复桥接器常驻发卡。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 18800 操作台新增 `top-alerts`、`renderTopAlerts` 和 `scrollToSection`。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 增加 layui 告警置顶与“怎么办”按钮结构守护。
+- `docs/002-changelog.md` / `docs/009-health.md` — 同步本轮 UI 安全收口状态。
+### 验证
+- `python3 -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/tests/test_api_routes_regression.py`：exit 0。
+- `node --check /tmp/cc_ops_console_inline.js`：exit 0。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py::test_xianyu_admin_page_escapes_dynamic_fields tests/test_api_routes_regression.py::test_xianyu_admin_serves_local_layui_assets tests/test_api_routes_regression.py::test_xianyu_admin_serves_local_layui_assets_without_api_token tests/test_api_routes_regression.py::test_xianyu_admin_page_opens_without_token_but_api_requires_token --tb=short -q`：`4 passed`。
+- 已重启 `ai.openclaw.xianyu` 后复验 live 页面包含 `id="top-alerts"`、`function renderTopAlerts` 和“自动发货仍处于暂停保护”。
+- Playwright 截图：`output/playwright/cc-ops-console-layui-alerts-20260708.png`，可见顶部黄色暂停保护告警和“只放行一次”按钮。
+- `GET /api/cc-operator-mode`：`auto_ship_paused=true`、`one_shot_active=false`；`GET /api/cc-public-sale-lock`：`can_public_sale=false`，安全锁未被绕过。
+
+## [2026-07-08] 闲鱼真实小额订单严格门通过与真实订单接管
+> 领域: `xianyu` | `backend` | `deploy` | `docs`
+> 影响模块: `CC中转卖家桥接器`, `XianyuAdmin`, `Frist-API`, `CC中转严格门`
+> 关联问题: HI-cc-real-order-strict-gate
+### 变更内容
+- 卖家桥接器新增只读监听闲鱼 `message.headinfo` 网络响应能力：当前聊天页只显示“等待卖家发货”但 DOM 没有订单号时，会刷新并点击左侧已付款会话行，提取真实订单号和商品 ID；不发卡、不点击“去发货”。
+- 新增 `scripts/cc_xianyu_headinfo_parser.mjs`，只在“已付款/待发货/去发货”上下文中提取 `orderId`，并把 `itemId` 单独返回，防止把商品 ID 当真实订单号。
+- 为避免重复发卡，已发出的 `xy_browser_*` 浏览器临时单在后续识别到真实闲鱼订单号时，会接管为 `xy_oid_*`，不会再次分配或发送新卡密；单次放行票会被消费并记录“本次不再发送卡密”。
+- Frist-API 新增低权限 `/api/ops/xianyu/remap-order`，复用闲鱼 webhook token，仅允许把已发卡履约记录从旧订单号改为真实订单号，并同步卡密 `soldOrderId`；不会创建新卡、不会开放管理员能力。
+- 已将 `apps/frist-api/server/server.js` 同步到 Oracle `/opt/frist-api/apps/frist-api/server/server.js`，远端备份后重启 `frist-api.service`，服务为 `active`。
+- 当前真实订单已从 `xy_browser_*` 安全接管为 `xy_oid_87f...`；同一订单已完成买家兑换、API Key 创建和真实模型调用，正式严格门 `--require-real-order` 返回 PASS。
+- 出于重复发卡事故后的安全边界，`auto_ship_paused=true` 仍保持，公开售卖锁现在只剩“自动发货暂停”人为安全开关；老板确认后可在 18800 操作台一键恢复。
+### 文件变更
+- `scripts/cc_xianyu_headinfo_parser.mjs` / `scripts/cc_xianyu_headinfo_parser.test.mjs` — 新增闲鱼 headinfo 订单号与商品 ID 解析及防误判测试。
+- `scripts/cc_zhongzhuan_seller_bridge.mjs` — 严格只读扫描通过 CDP Network 捕获 headinfo，回填真实订单号和商品 ID。
+- `packages/clawbot/src/xianyu/xianyu_context.py` — 新增已发卡浏览器临时单接管真实订单号的方法。
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 手动/浏览器已付款派发在识别真实订单时优先接管旧记录，不再重复发卡。
+- `apps/frist-api/server/server.js` — 新增低权限闲鱼履约订单号接管接口。
+- `apps/frist-api/tests/server.test.mjs` / `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 增加“接管不发新卡”的回归测试。
+### 验证
+- `node scripts/cc_zhongzhuan_seller_bridge.mjs --scan-only --require-real-order-id --json`：`ok=true`、`strictReadyPages=1`、`orderIdHintPresent=true`、`itemIdHintPresent=true`。
+- `node scripts/cc_zhongzhuan_seller_bridge.mjs --one-shot-override --delivery-only --require-real-order-id --json`：返回 `shipment_already_handled`，未发送新卡密，旧记录接管为 `xy_oid_*`。
+- `GET http://127.0.0.1:18800/api/cc-shipments?limit=5`：最新真实记录为 `xy_oid_87fdf5e5cf60c82f`、`status=message_sent`、`pending_rescue=0`。
+- Oracle 真实调用：同一真实订单对应买家 Key 的 `model_logs_after_redeem` 从 `0` 增加到 `1`，`chat_http=200`。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --require-real-order`：`PASS`，`realXianyuOrderProof=PASS`、`oracle=PASS`、`readyOrders=1`。
+- `GET /api/cc-readiness-audit?mode=strict`：`ok=true`、`real_orders=1`、`same_order_ready=1`，严格门摘要已写入本机 18800。
+- `cd apps/frist-api && node --test --test-name-pattern "accepts paid Xianyu orders|remaps a browser Xianyu fulfillment" tests/server.test.mjs`：2 项通过。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_manual_paid_order_dispatch_does_not_resend_sent_shipment tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_manual_paid_order_dispatch_adopts_browser_sent_shipment_to_real_order tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_browser_delivery_next_ignores_already_sent_messages -q`：3 项通过。
+
+## [2026-07-08] 闲鱼当前页真实订单号识别增强
+> 领域: `xianyu` | `frontend` | `docs`
+> 影响模块: `Chrome Social Pilot`, `CC中转卖家桥接器`, `CC中转操作台`
+> 关联问题: HI-cc-real-order-id-scan
+### 变更内容
+- 针对真实聊天页已显示“等待卖家发货”但没有可见订单号的问题，页面执行器新增只读识别：可从白名单订单参数 `orderId/tradeId/bizOrderId/biz_order_id`、订单相关 `data-*` 属性和“去发货/待发货”链接里提取真实订单号。
+- 为避免误判，普通商品链接 `id=...` 不会被当成真实订单号；没有订单号时仍不会发卡，继续保持 `xy_browser_*` 不能解锁正式售卖。
+- 只读扫描新增 `orderCardPresent` / `shipActionPresent`，18800 和桥接器会在看到待发货订单卡但缺订单号时提示老板点“¥1.00 / 等待卖家发货”订单卡或“去发货”旁边进入订单详情。
+- 已同步运行版 Chrome 插件 `~/.openclaw/cc-social-pilot-runtime-extension/social-page-runner.js`；卖家桥接器本身读取仓库源码，立即使用新版只读扫描。
+### 文件变更
+- `packages/openclaw-npm/assets/chrome-extension/social-page-runner.js` — 增强真实订单号提取与待发货订单卡识别。
+- `scripts/cc_zhongzhuan_seller_bridge.mjs` — 透传订单卡/去发货入口信号，并输出更明确下一步。
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 18800 只读检查的人话提示优先展示“点订单卡/去发货旁边进入详情”。
+- `packages/openclaw-npm/assets/chrome-extension/test/social-page-runner.test.mjs` / `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 增加订单号链接提取、商品 ID 防误判和老板提示回归。
+### 验证
+- `node --check packages/openclaw-npm/assets/chrome-extension/social-page-runner.js && node --check scripts/cc_zhongzhuan_seller_bridge.mjs`：exit 0。
+- `cd packages/openclaw-npm/assets/chrome-extension && node --test test/social-page-runner.test.mjs test/popup-static.test.mjs`：`54 passed / 0 failed`。
+- `python3 -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/tests/test_xianyu_cc_auto_ship.py`：exit 0。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_seller_bridge_page_scan_is_read_only tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_seller_bridge_page_scan_guides_im_list tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_seller_bridge_page_scan_guides_paid_order_card tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_seller_bridge_open_page_only_navigates tests/test_api_routes_regression.py::test_xianyu_admin_page_escapes_dynamic_fields -q`：`5 passed`。
+- 实机只读扫描当前卖家 Chromium：`paidSignal=true`、`orderCardPresent=true`、`inputReady=false`、`orderIdHintPresent=false`，未发卡；下一步提示为点击订单卡/去发货旁边进入详情。
+
+## [2026-07-08] 闲鱼单次发卡放行闸门
+> 领域: `xianyu` | `backend` | `frontend` | `docs`
+> 影响模块: `cc_operator_state`, `XianyuAdmin`, `Chrome Social Pilot`, `CC中转卖家桥接器`, `CC中转操作台`
+> 关联问题: HI-cc-xianyu-one-shot-delivery
+### 变更内容
+- 在保持 `auto_ship_paused=true` 的前提下，新增“只放行一次发卡”能力：老板可在 18800 操作台点一次，3 分钟内仅允许浏览器助手发送 1 条卡密，发送/领取后自动失效。
+- 新增 `/api/cc-operator-mode/one-shot-delivery`，单次放行状态写入 `.openclaw/cc-zhongzhuan-operator-state.json`，不改库存、不恢复常驻自动发货、不绕过本机 `X-API-Token`。
+- `/api/cc-browser-delivery/next` 支持 `one_shot=1`：暂停状态下没有有效放行票仍返回 `operator_paused` 且不返回卡密；有票时只原子领取一条并消费放行票，第二次请求拿不到同一条话术。
+- 浏览器付款页兜底 `/api/cc-manual-paid-order/dispatch` 增加 `one_shot` 参数：暂停状态下若要由插件/桥接器生成并发送卡密，必须先消费单次放行票，避免多个触发器连续发两条卡密。
+- 本机卖家桥接器新增 `--one-shot-override` / `--one-shot` 参数；Chrome 插件读取待发话术时自动带 `one_shot=1`，没有放行票时仍然被暂停闸门拦住。
+- 18800 layui 操作台新增“只放行一次发卡”按钮和状态提示，文案明确“发完 1 条自动失效，常驻自动发货仍暂停”。
+- 18800 操作台继续新增“一键跑当前页”，后端调用卖家桥接器 `--delivery-only --one-shot-override --require-single-xianyu-page --require-real-order-id --json`：只扫描当前闲鱼已付款页并最多发送 1 条卡密，不执行确认发货、不恢复上架；为防止多聊天页发错买家，单次发卡要求只打开 1 个闲鱼页，并且页面必须能识别真实订单号/交易号，避免新的严格门证据落成 `xy_browser_*`。
+- 继续新增“只读检查当前页”按钮和 `/api/cc-seller-bridge/page-scan`：调用 `--scan-only --require-real-order-id --json` 只注入页面扫描器读取付款信号、输入框和订单号提示，不调用发货 API、不申请单次放行票、不改本机履约状态，用于老板点发卡前确认自己是否打开了正确页面。
+- 只读检查的返回语义改成“检查是否跑完”和“当前页是否可发卡”分离：当前页不是付款页、缺输入框或缺订单号时返回 `scanCompleted=true/notReady=true` 和下一步建议，不再误报 `seller_bridge_scan_failed`，避免老板把正常未命中当成系统故障。
+- 只读检查增加“闲鱼首页”专门提示：如果当前唯一闲鱼页是 `https://www.goofish.com/` 首页，会直接提示“现在打开的是闲鱼首页，请从消息或订单列表打开这笔已付款订单，并看到订单号/交易号后再检查”，减少老板猜下一步。
+- 18800 前端同步优先展示后端 `nextAction` 人话建议，不再把 `no_paid_order_signal` 这类机器原因直接展示给老板。
+- 18800 单次发卡区域新增“打开卖家 Chromium 的闲鱼消息”和“打开卖家 Chromium 的工作台”快捷入口；只读检查未通过时会附带这两个按钮，方便老板从闲鱼首页切到已付款买家的聊天/订单页。该入口调用 `/api/cc-seller-bridge/open-page` 和桥接器 `--open-page=im|seller --json`，只导航卖家专用 Chromium，并通过 `Page.bringToFront` 尽量把目标标签页带到前台；不发卡、不申请放行票、不改订单，普通浏览器链接仅作为兜底。
+- 只读检查继续细分“闲鱼消息列表页”和“卖家工作台页”：如果已经在 `goofish.com/im` 但还没点进买家，会提示从左侧会话列表点进已付款买家；如果在 `seller.goofish.com`，会提示从订单/待发货打开该订单或联系买家。
+- 18800 后端新增 Node 选择器，优先使用支持 DevTools WebSocket 的 Node，避免 LaunchAgent PATH 命中旧 Node 导致桥接器报 `WebSocket is not defined`。
+### 文件变更
+- `packages/clawbot/src/xianyu/cc_operator_state.py` — 新增单次放行票的授权、查看、消费和过期判断。
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增单次放行 API、浏览器领取/手动兜底 one-shot 闸门、卖家桥接器只读扫描/一键 API 和操作台按钮。
+- `scripts/cc_zhongzhuan_seller_bridge.mjs` — 支持 `--scan-only` / `--one-shot-override` / `--delivery-only` / `--require-single-xianyu-page` / `--require-real-order-id` / `--open-page=im|seller`，只读扫描不发卡，只有扫到唯一已付款页且可识别真实订单号时才申请单次放行；`--scan-only` 扫描成功但未命中付款页时也以正常诊断退出，避免被 GUI 误判为脚本崩溃。
+- `packages/openclaw-npm/assets/chrome-extension/background.js` — 插件领取发货话术与付款页兜底派发均带单次放行参数。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` / `packages/clawbot/tests/test_api_routes_regression.py` — 增加暂停、一票一次、页面入口回归。
+### 验证
+- `packages/clawbot/.venv312/bin/python -m py_compile packages/clawbot/src/xianyu/cc_operator_state.py packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/tests/test_xianyu_cc_auto_ship.py packages/clawbot/tests/test_api_routes_regression.py`：exit 0。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_api_routes_regression.py --tb=short -q`：跑到 `[100%]`，exit 0。
+- `node --check scripts/cc_zhongzhuan_seller_bridge.mjs`、`node --check packages/openclaw-npm/assets/chrome-extension/background.js`：exit 0。
+- `cd packages/openclaw-npm/assets/chrome-extension && node --test test/social-page-runner.test.mjs test/popup-static.test.mjs`：`52 passed / 0 failed`。
+- 已同步运行版插件 `~/.openclaw/cc-social-pilot-runtime-extension`，`background.js` 和 `social-page-runner.js` 源/运行目录 SHA256 一致。
+- 重启 `ai.openclaw.xianyu` 后实测：首页包含“只放行一次发卡”和 `/api/cc-operator-mode/one-shot-delivery`；无 Token 调用新接口 HTTP 401。
+- 当前闲鱼页停在 `https://www.goofish.com/` 首页时实测 `/api/cc-seller-bridge/one-shot-delivery` 返回 `mode=one_shot_delivery_only`、`deliveries[0].reason=no_paid_order_signal`，未发送卡密，`one_shot_delivery_active=false`、`pending_rescue=0`。
+- 同一首页实测 `node scripts/cc_zhongzhuan_seller_bridge.mjs --scan-only --require-real-order-id --json` 退出码为 0；`/api/cc-seller-bridge/page-scan` 返回 `ok=true`、`scanCompleted=true`、`notReady=true`、`mode=scan_only`、`readOnly=true`、`readyPages=0`，`nextAction` 明确提示“现在打开的是闲鱼首页，请从闲鱼消息或订单列表打开这笔已付款订单”，未发送卡密，未把正常未命中误报为系统故障。
+- 重启 `ai.openclaw.xianyu` 后实测：18800 首页 HTTP 200，`/static/layui/layui.js` HTTP 200，无 Token `/api/cc-operator-mode` HTTP 401；页面包含“打开闲鱼消息 / 打开卖家工作台”链接和 `xianyuPageShortcutHtml`，`/api/cc-seller-bridge/page-scan` 在闲鱼首页返回 `ok=true/scanCompleted=true/notReady=true`，仍不发卡。
+- 继续实测 `/api/cc-seller-bridge/open-page`：POST `destination=im` 返回 HTTP 200、`mode=open_page_only`、`openedIn=existing_tab`、`broughtFront=true`、`openPageOnly=true`、`deliveryOnly=false`、`oneShot=false`，卖家 Chromium 已从闲鱼首页导航到 `https://www.goofish.com/im?...`；随后只读扫描显示 `title=聊天_闲鱼`、`paidSignal=false`、`inputReady=false`，确认只是打开消息页，没有发卡。
+- 重启后再测当前 `goofish.com/im` 消息列表页：`/api/cc-seller-bridge/page-scan` 返回 `ok=true/scanCompleted=true/notReady=true`，`nextAction` 已明确提示“请在左侧会话列表点进已付款买家，看到聊天输入框和订单号/交易号后再点只读检查”；仍未发卡。
+- 追加前台激活复验：`/api/cc-seller-bridge/open-page` 再次打开 `destination=im` 返回 `broughtFront=true`、`deliveryOnly=false`、`oneShot=false`；随后只读扫描仍提示在左侧会话列表点进已付款买家，未发卡。
+
+## [2026-07-08] 闲鱼真实待发货只读扫单入口
+> 领域: `xianyu` | `backend` | `frontend` | `docs`
+> 影响模块: `XianyuLive`, `XianyuAdmin`, `CC中转操作台`, `CC中转严格门`
+> 关联问题: HI-cc-real-order-readonly-probe
+### 变更内容
+- 新增 `/api/cc-paid-order-probe`，只读扫描闲鱼卖家“待发货”订单列表，用于老板重新下单后先确认系统是否看得到真实待发货单。
+- 新入口只读取并脱敏返回候选订单，不调用 CC中转 webhook、不分配卡密、不发送闲鱼消息、不点击“去发货”，也不会解除 `auto_ship_paused`；当闲鱼卖家订单 API 返回“无权限访问”时，会明确提示改走浏览器当前页兜底。
+- 18800 操作台新增“真实待发货扫单”折叠区，按钮文案明确为“只读扫真实待发货订单”，帮助在重复发卡事故后安全推进 `xy_oid_*` 严格门。
+- Live 层新增 `scan_cc_paid_orders_readonly()`，复用卖家订单列表解析和状态分类逻辑，只返回订单哈希、买家/商品是否存在、本机履约状态等脱敏摘要。
+- 浏览器当前已付款页兜底升级：页面执行器会从 URL 或“订单号/交易号”可见文案提取真实订单号；只有提取到真实订单号时才传 `xianyu-real:*` 给本机后端并转换为 `xy_oid_*`，否则仍保持 `xy_browser_*`，不放宽正式严格门。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 新增真实待发货只读扫描方法。
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增只读扫单 API、脱敏输出和 18800 操作台入口。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 增加只读扫单不发卡、不写履约记录、不泄露原始订单/买家的回归测试。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 增加操作台只读扫单入口结构守护。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/009-health.md` — 同步安全边界和当前严格门卡点。
+### 验证
+- 先补失败用例：`test_xianyu_admin_paid_order_probe_is_read_only_and_scrubbed` 初次失败在 `/api/cc-paid-order-probe` HTTP 404，证明接口未实现。
+- `python3 -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/src/xianyu/xianyu_live.py packages/clawbot/tests/test_xianyu_cc_auto_ship.py packages/clawbot/tests/test_api_routes_regression.py`：exit 0。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_paid_order_probe_is_read_only_and_scrubbed tests/test_xianyu_cc_auto_ship.py::test_xianyu_live_readonly_paid_order_probe_does_not_send_or_record tests/test_api_routes_regression.py::test_xianyu_admin_page_escapes_dynamic_fields --tb=short -q`：`3 passed`。
+
+## [2026-07-08] 闲鱼后端 H5 确认发货实验入口
+> 领域: `xianyu` | `backend` | `frontend` | `docs`
+> 影响模块: `XianyuAdmin`, `XianyuApis`, `CC中转操作台`, `CC中转严格门`
+> 关联问题: HI-cc-xianyu-backend-confirm-shipment
+### 变更内容
+- 在 18800 操作台新增后端 H5 虚拟发货实验入口 `/api/cc-shipments/{id}/confirm-xianyu-backend`，复用 `mtop.taobao.idle.logistic.consign.dummy`，用于“卡密已确认发给买家”后尝试把闲鱼真实订单推进到已发货。
+- 继续保持安全边界：默认关闭，必须显式设置 `CC_XIANYU_AUTO_CONFIRM_SHIPMENT_ENABLED=1` 才执行；只接受 10 位以上纯数字闲鱼订单号；`xy_manual_*` / `xy_browser_*` / 未发卡记录只标记跳过，不会调用闲鱼接口。
+- 操作台补救队列对真实数字 `message_sent` 订单展示“后端确认发货”按钮；按钮会再次弹窗确认，失败只回写 `xianyu_confirm_status=failed`，不会重新分配卡密或重复发消息。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增后端确认发货 API、Cookie 选择逻辑和操作台按钮。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 增加默认关闭、真实数字订单确认、手工单跳过回归。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 操作台静态结构守护新增后端确认发货按钮和接口。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/009-health.md` — 同步默认关闭和真实订单安全边界。
+### 验证
+- 先补失败用例：`test_xianyu_admin_backend_confirm_is_disabled_by_default` 初次失败在接口 HTTP 404，证明 18800 尚未暴露后端确认发货入口。
+- `python3 -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py`：exit 0。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py::test_xianyu_admin_page_escapes_dynamic_fields tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_backend_confirm_is_disabled_by_default tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_backend_confirm_only_confirms_numeric_order -q`：`3 passed`。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py tests/test_xianyu_cc_auto_ship.py --tb=short -q`：跑到 `[100%]`，exit 0。
+- 重启 `ai.openclaw.xianyu` 后实测：`/` HTTP 200、`/static/layui/css/layui.css` HTTP 200、无 Token `/api/cc-operator-mode` HTTP 401；页面包含“后端确认发货”、`confirmShipmentBackend` 和 `/confirm-xianyu-backend`；`ai.openclaw.cc-seller-bridge` 未启动。
+
+## [2026-07-08] 18800 本机操作台 layui 组件化重构
+> 领域: `xianyu` | `frontend` | `docs`
+> 影响模块: `XianyuAdmin`, `CC中转操作台`, `本机静态资源`
+> 关联问题: HI-cc-owner-console-layui
+### 变更内容
+- 确认可以基于 `layui/layui` 重构 `http://127.0.0.1:18800/`，但采用“本机静态资源 + 渐进增强”方式：不走 CDN，不改业务接口，不恢复自动发货，避免本机 Token 页面加载外部脚本。
+- 将 `layui@2.13.8` 的 `layui.js`、`layui.css` 和字体文件复制到 `packages/clawbot/src/xianyu/static/layui/`，并由 FastAPI 挂载 `/static/layui/...`。
+- 操作台首页接入 `layui.use(['layer','element'])`，危险确认/提示改用 layui layer 组件；无 layui 时仍降级为浏览器原生提示。
+- 补救队列从卡片列表升级为 `layui-table` 表格，保留“填入话术 / 已手动发送 / 重试发送 / 标记已处理”等原有安全操作。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 挂载本机静态资源、首页引入 layui、补救队列表格化和 layer 交互。
+- `packages/clawbot/src/xianyu/static/layui/` — 新增本机 layui 前端资源，避免外链 CDN。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 增加本机 layui 资源、页面结构和静态资源免 Token 加载回归。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/009-health.md` — 同步操作台重构状态。
+### 验证
+- 先补失败用例：`test_xianyu_admin_page_escapes_dynamic_fields` 初次失败在首页缺少 `/static/layui/layui.js`，证明旧页面未完成 layui 接入。
+- `python3 -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py`：exit 0。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py::test_xianyu_admin_page_escapes_dynamic_fields tests/test_api_routes_regression.py::test_xianyu_admin_serves_local_layui_assets tests/test_api_routes_regression.py::test_xianyu_admin_serves_local_layui_assets_without_api_token tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_dashboard_alias_points_to_owner_console -q`：通过。
+- 重启 `ai.openclaw.xianyu` 后实测：`/`、`/static/layui/css/layui.css`、`/static/layui/layui.js` 均 HTTP 200；无 Token 访问 `/api/cc-operator-mode` 仍 HTTP 401。
+- 系统 Chrome Playwright 验收：`window.layui=true`、本机 layui CSS 已加载、页面不含外部 CDN，console `0 error / 0 warning`；截图 `output/playwright/cc-ops-console-layui-20260708.png`。
+
+## [2026-07-08] 闲鱼重复发卡事故止血与领取锁
+> 领域: `xianyu` | `backend` | `frontend` | `docs`
+> 影响模块: `XianyuContextManager`, `XianyuAdmin`, `Chrome Social Pilot`, `CC中转卖家桥接器`, `严格门审计`
+> 关联问题: HI-cc-xianyu-duplicate-delivery
+### 变更内容
+- 紧急止血：本机自动发货已保持 `auto_ship_paused=true`，`ai.openclaw.cc-seller-bridge` LaunchAgent 未恢复；重启后仅保留 `ai.openclaw.xianyu` 管理服务，防止继续自动刷屏买家。
+- 修复根因：`/api/cc-browser-delivery/next` 从“只读下一条话术”改为服务端原子领取，领取后状态变为 `browser_delivery_claimed`，第二个浏览器/桥接器/标签页无法再次拿到完整卡密话术。
+- 暂停开关加固：浏览器发货入口在自动发货暂停时直接返回 `reason=operator_paused`，不再向插件/桥接器返回卡密，也阻断“当前付款页兜底生成话术并发送”的旁路。
+- 失败回写闭环：新增 `/api/cc-shipments/{id}/mark-send-failed`，页面发送失败时退回 `message_send_failed` 队列；桥接器和 Chrome 插件均会调用该接口，避免记录永久卡在“发送中”。
+- 严格门和看板同步：`browser_delivery_claimed` 纳入补救/严格门待处理统计，导出状态报告和操作台补救队列会显示该状态，避免发货中断时误判为绿灯。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_context.py` — 新增浏览器发货领取锁、领取超时退回和发送失败回写。
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 浏览器待发接口接入暂停保护和原子领取，新增 `mark-send-failed` 接口，并把新状态加入导出/看板。
+- `scripts/cc_zhongzhuan_seller_bridge.mjs` — 暂停时不再走付款页兜底派发；页面发送失败会回写失败队列。
+- `packages/openclaw-npm/assets/chrome-extension/background.js` — Chrome 插件同样尊重暂停状态，并在发送失败时回写失败。
+- `scripts/cc_zhongzhuan_readiness_audit.mjs` — 正式售卖审计把 `browser_delivery_claimed` 计入未收尾队列。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 增加领取一次、暂停保护、发送失败释放三条回归测试。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/009-health.md` — 同步事故、接口和当前运行状态。
+### 验证
+- 先补失败用例：`test_xianyu_admin_browser_delivery_next_claims_pending_once` 初次失败在 `manual_delivery_ready != browser_delivery_claimed`，证明原接口没有领取锁。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py -q`：跑到 `[100%]`，exit 0。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py --tb=short -q`：`43 passed`。
+- `cd packages/openclaw-npm/assets/chrome-extension && node --check background.js && node --check social-page-runner.js && node --test test/social-page-runner.test.mjs test/popup-static.test.mjs`：`51 passed / 0 failed`。
+- `python3 -m py_compile packages/clawbot/src/xianyu/xianyu_context.py packages/clawbot/src/xianyu/xianyu_admin.py`、`node --check scripts/cc_zhongzhuan_seller_bridge.mjs`、`node --check scripts/cc_zhongzhuan_readiness_audit.mjs`：exit 0。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/ --tb=short -q`：跑到 `[100%]`，exit 0（仅第三方 `js2py` deprecation warning）。
+- 重启 `ai.openclaw.xianyu` 后实测：`/api/cc-operator-mode` 返回 `auto_ship_paused=true`、`stage=operator_paused`；`/api/cc-browser-delivery/next` 返回 `hasPending=false`、`reason=operator_paused`，不返回卡密话术；`launchctl list` 中无 `ai.openclaw.cc-seller-bridge`。
+
+## [2026-07-08] CC中转真实小额订单预检问题收口
+> 领域: `xianyu` | `frontend` | `backend` | `docs`
+> 影响模块: `Frist-API`, `Chrome Social Pilot`, `CC中转卖家桥接器`, `XianyuAdmin`
+> 关联问题: HI-cc-real-order-preflight
+### 变更内容
+- 修复注册/登录弹窗里 Turnstile 验证位置不符合用户习惯的问题：弹窗表单现在自带 `auth-turnstile-slot`，验证码会出现在登录/注册组件容器内，不再掉到页面底部。
+- 邮箱验证码和重置密码邮件改为“大厂感”事务邮件模板：卡片化布局、大号验证码、安全提示、深色模式和移动端响应式；未新增第三方依赖，只复用纯 HTML/CSS。
+- 补齐闲鱼卡密防重复发送三层保护：后端对已 `message_sent` 订单幂等跳过，卖家桥接器收到 `alreadyHandled` 不再填话术，浏览器页面执行器发现输入框残留同一张卡密/同一段发货话术时会清空草稿而不是再次发送。
+- 实机复验时发现本机旧服务未重启会继续把已发订单当作待发送；已补“已发订单不进浏览器待发送队列”回归、增加已处理订单残留草稿清理函数，并重启 `ai.openclaw.xianyu` / `ai.openclaw.cc-seller-bridge` 让运行环境加载新版逻辑。
+- 修复“1 元商品到账 7.5 美元/人民币折算额度”的口径错误：`xianyu-*` 套餐现在按闲鱼售价人民币 1:1 入账，1 元测试档本地余额为 100 分，同步 New-API 兑换额度为 500000。
+- 完成开源社区调研后的自动发货路线判断：PC 页面的“去发货”经常被闲鱼引导扫码去 App，不能作为稳定自动化主链路；下一步应实验 H5/mtop 虚拟发货接口，只允许真实数字订单号走接口确认发货，页面点击继续作为兜底。
+- 多价格商品短期方案收口为“多个商品链接对应多个套餐”，避免普通卖家网页端多规格自动发布不稳定；长期再评估闲鱼开放平台/服务商 SKU 发布能力。
+- 完成用户指定 21 个 GitHub 高 Star 项目调研，新增 `docs/082-open-source-wheel-research.md`，按“直接可用 / 借鉴思路 / 暂不建议”给出接入路线。
+### 文件变更
+- `apps/frist-api/index.html` — 登录/注册弹窗内新增验证码容器。
+- `apps/frist-api/server/email.js` — 统一事务邮件模板，优化验证码/重置邮件观感。
+- `apps/frist-api/server/server.js` — 闲鱼套餐按人民币售价 1:1 计算到账额度。
+- `packages/openclaw-npm/assets/chrome-extension/social-page-runner.js` / `background.js` — 新增 Enter 发送兜底、重复卡密草稿清理和已处理订单残留草稿清理。
+- `scripts/cc_zhongzhuan_seller_bridge.mjs` — 已处理订单安全跳过并触发残留草稿清理，避免重复填入/发送卡密。
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 手工已付款订单派发接口增加已发订单幂等保护，浏览器待发送队列只返回待发送/发送失败状态。
+- `apps/frist-api/tests/business-flow.test.mjs` / `apps/frist-api/tests/server.test.mjs` / `packages/openclaw-npm/assets/chrome-extension/test/social-page-runner.test.mjs` / `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 增加对应回归测试。
+- `docs/082-open-source-wheel-research.md` / `docs/003-docs-index.md` — 新增开源轮子调研报告并登记索引。
+### 验证
+- `cd apps/frist-api && node --test tests/server.test.mjs tests/business-flow.test.mjs`：`133 passed / 0 failed`。
+- `cd packages/openclaw-npm/assets/chrome-extension && node --check social-page-runner.js && node --check background.js && node --test test/social-page-runner.test.mjs`：`22 passed / 0 failed`。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_manual_paid_order_dispatch_does_not_resend_sent_shipment tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_browser_delivery_next_ignores_already_sent_messages tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_browser_delivery_next_reuses_pending_message -q`：`3 passed`。
+- `node --check scripts/cc_zhongzhuan_seller_bridge.mjs`、`python3 -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py`：exit 0。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py -q`：跑到 `[100%]`，exit 0。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/ --tb=short -q`：跑到 `[100%]`，exit 0。
+- 重启本机 `ai.openclaw.xianyu` / `ai.openclaw.cc-seller-bridge` 后复验：`/api/cc-browser-delivery/next` 返回 `hasPending=false`；`node scripts/cc_zhongzhuan_seller_bridge.mjs --once --json` 对已发订单返回 `stage=pending`、`reason=shipment_already_handled`，未再出现 `stage=sent`。
+- `git diff --check`：exit 0。
+
+## [2026-07-08] CC中转严格模拟门闭环收口
+> 领域: `xianyu` | `frontend` | `docs`
+> 影响模块: `Chrome Social Pilot`, `CC中转卖家桥接器`, `严格模拟门`
+> 关联问题: HI-cc-xianyu-auto-ops
+### 变更内容
+- 补齐替换模式最后一环：当前页是可访问的闲鱼商品详情页，且没有“已下架/已售罄/商品已失效”文案时，页面执行器会把它视为“商品在线核验通过”，不再强依赖页面必须出现“在售中/正常展示”等卖家后台文案。
+- 卖家桥接器 `--relist-only --simulation-relist` 已在当前打开的商品详情页完成只读在线核验，并把本次模拟履约记录回写为 `relist_status=online_verified`。
+- `/api/cc-simulation-gate` 复验为全绿：`simulation_gate_ok=true`、`missing_steps=[]`、`can_unlock_public_sale=false`；模拟门仍明确排除“买家真实下单付款”和“最终点击闲鱼发货按钮”，不会解锁正式售卖。
+- 正式严格门继续保持安全锁：`node scripts/cc_zhongzhuan_readiness_audit.mjs --require-real-order --json` 仍因没有新的 `xy_oid_*` 真实闲鱼自动订单返回 `ok=false`，这是预期阻断，不是故障。
+### 文件变更
+- `packages/openclaw-npm/assets/chrome-extension/social-page-runner.js` — 恢复上架执行器新增商品详情 URL 在线核验分支。
+- `packages/openclaw-npm/assets/chrome-extension/test/social-page-runner.test.mjs` — 新增可访问 goofish 商品详情页不点击“重新上架”但回写在线核验的回归测试。
+- `docs/002-changelog.md` / `docs/009-health.md` — 同步模拟门闭环状态和正式售卖边界。
+### 验证
+- 先补失败用例：`node --test test/social-page-runner.test.mjs --test-name-pattern 'verifies accessible goofish item detail page as online'` 初次失败在 `onlineVerified=false`，修复后通过。
+- `cd packages/openclaw-npm/assets/chrome-extension && node --check social-page-runner.js && node --test test/social-page-runner.test.mjs`：`19 passed / 0 failed`。
+- `node --test scripts/auto_ops_scripts.test.mjs`：`2 passed / 0 failed`。
+- `python3 -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py`：exit 0。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py --tb=short -q`：`[100%]`，exit 0。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/ --tb=short -q`：第二次全量跑到 `[100%]`，exit 0；首次全量在 Intel Worker CLI 外部源用例出现一次 `raw_count=0` 抖动，单测复跑和第二次全量均通过。
+- `node scripts/cc_zhongzhuan_seller_bridge.mjs --relist-only --simulation-relist --json`：`ok=true`、`onlineVerified=true`、`reason=item_detail_online`。
+- `/api/cc-simulation-gate` 摘要：`simulation_gate_ok=true`、`missing_steps=[]`、`can_unlock_public_sale=false`、`excluded_steps=[real_buyer_payment, final_xianyu_ship_click]`。
+- `/api/export-status` 已同步模拟门摘要；Dashboard 截图保存为 `output/playwright/openeverything-simulation-gate-closed.png` 和 `output/playwright/openeverything-simulation-gate-closed-expanded.png`，浏览器 console 无 error/warning。
+
+## [2026-07-07] 老板统一运营入口、替换模式与自动恢复脚本
+> 领域: `xianyu` | `backend` | `infra` | `docs`
+> 影响模块: `XianyuAdmin`, `CC中转操作台`, `自动健康检查`, `灾备脚本`
+> 关联问题: HI-cc-xianyu-auto-ops
+### 变更内容
+- 新增 `http://127.0.0.1:18800/dashboard` 老板唯一收藏入口，首页聚合首页总览、闲鱼售卖、每日简报、系统维护、帮助中心和技术支持报告。
+- 新增 `/api/export-status` / `/export-status` 脱敏状态报告，方便一键发给技术支持；不输出卡密、Token、买家昵称或 API Key。
+- 新增 `/api/cc-replacement-mode-test-pack` 与 Dashboard“替换模式模拟验收”，在买家号不可用时可演练模拟下单、发卡、发货、公网注册、兑换、创建 API、导入 CC Switch 和终端调用；正式售卖严格门仍只认新的 `xy_oid_*` 真实小额订单。
+- 新增 `auto_health_check.sh`、`auto_recovery.sh`、`local_backup.sh`、`disaster_recovery.sh` 四个自动化脚本：只读健康检查、dry-run 恢复、本地 30 天备份和显式确认灾备恢复。
+- 修复 `/dashboard` 被外层 Token 鉴权挡住导致普通浏览器无法先打开登录框的问题；状态报告导出改为页面内携带本地 Token 调 `/api/export-status` 下载，API 仍保持受保护。
+- 截图验收过程中按安全流程轮换本机 `OPENCLAW_API_TOKEN`，重启 `ai.openclaw.xianyu`、`ai.openclaw.cc-seller-bridge`、`ai.openclaw.clawbot-agent` 并复验本机接口；未记录任何 Token 值。
+- 新增 `GET /api/cc-simulation-gate` 严格模拟门 v2：除“买家真实下单付款”和“最终点击闲鱼发货按钮”外，逐步追踪真实发卡、商品模板/重新上架、买家公网兑换、API Key、CC Switch、终端模型调用、渠道/服务器状态；即使全绿也固定 `can_unlock_public_sale=false`。
+- Dashboard“替换模式模拟验收”改为显示严格模拟门逐步状态，脱敏状态报告也带上模拟门缺失项，方便技术支持判断还差哪一步。
+- 修复 Intel Brief 菜单契约测试中的旧按钮文案，把旧 `🔍 情报搜索` 同步为当前菜单 `🔍 备用搜索`。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — Dashboard 别名、统一入口文案、严格模拟门 v2、替换模式清单、脱敏状态报告接口。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` / `test_intel_commercial_mvp.py` — 新增入口/报告/替换模式回归，并修复菜单契约旧文案。
+- `scripts/auto_health_check.sh` / `auto_recovery.sh` / `local_backup.sh` / `disaster_recovery.sh` / `auto_ops_scripts.test.mjs` — 自动健康、恢复、备份、灾备脚本和契约测试。
+- `docs/081-owner-ops-handbook.md` / `docs/003-docs-index.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 老板手册、索引、注册表、运维和健康状态同步。
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_dashboard_alias_points_to_owner_console tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_export_status_returns_redacted_support_report tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_replacement_mode_pack_keeps_public_sale_locked tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_manual_paid_order_mark_sent_clears_rescue_but_not_real_order_gate tests/test_xianyu_cc_auto_ship.py::test_xianyu_status_reports_local_bridge_next_action -q`：`5 passed`。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_intel_commercial_mvp.py::test_telegram_menu_contract_reflects_subscription_state_and_supported_commands -q`：`1 passed`。
+- `node --test scripts/auto_ops_scripts.test.mjs`：`1 passed`。
+- `scripts/auto_health_check.sh --json`：JSON 可解析，健康检查实测返回 `ok=true`。
+- `scripts/auto_recovery.sh --dry-run`：只输出拟执行动作，未重启服务。
+- `OPENCLAW_BACKUP_DIR=/tmp/openclaw-test-backups scripts/local_backup.sh` + `scripts/disaster_recovery.sh --archive <临时备份> --dry-run`：备份/恢复预演通过，备份包未包含 `.env`。
+
+## [2026-07-07] CC中转操作台重设计与已发卡密后半段补救
+> 领域: `xianyu` | `frontend` | `backend` | `docs`
+> 影响模块: `XianyuAdmin`, `XianyuContextManager`, `CC中转卖家桥接器`, `CC中转操作台`
+> 关联问题: HI-cc-xianyu-auto-ops
+### 变更内容
+- 重新设计本机 `http://127.0.0.1:18800/` CC中转操作台：改为 Apple 风格深色状态面板，首屏只回答老板日常 6 件事：当前能不能卖、自动发货是否开着、库存是否够、上游余额是否同步、是否有待处理订单、是否需要介入；商品绑定、漏单兜底、巡检和高级排障默认折叠。
+- 补齐“已发卡密 → 点击闲鱼发货”后半段独立运行路径：新增本机只读候选接口 `/api/cc-xianyu-confirm/current-page-candidate`，允许 `xy_manual_*` / `xy_browser_*` 这类已发卡密的生产内测补救单，在当前闲鱼页面明确可见“已付款/待发货”信号时继续点击“去发货/无需物流/确认发货”。
+- 桥接器主循环新增独立 `confirms` 阶段：即使没有新的待发送话术，也会单独检查当前打开闲鱼页是否可执行确认发货；页面没有付款信号时返回 `no_paid_order_signal` 并安全跳过。
+- 正式售卖严格门没有放宽：`xy_manual_*` / `xy_browser_*` 仍不进入正式 `xy_oid_*` 严格门，只能作为生产内测/补救证据。
+- 发现 Playwright 验证脚本曾把本机 API Token 回显到工具输出，已立即轮换 `OPENCLAW_API_TOKEN`，重启 `ai.openclaw.xianyu`、`ai.openclaw.cc-seller-bridge` 和 `ai.openclaw.clawbot-agent`，并复验本机 18800/18790 链路正常；未在文档记录任何 Token 值。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增当前页面确认发货补救候选接口，重做操作台 UI，补空 favicon 避免浏览器误报 401 噪音。
+- `packages/clawbot/src/xianyu/xianyu_context.py` — 状态摘要新增 `xianyu_confirm_page_pending`，让操作台能提示“已发卡密但待页面点击发货”。
+- `scripts/cc_zhongzhuan_seller_bridge.mjs` — 主循环新增独立确认发货巡检，正式队列为空时才走当前页面补救候选。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` / `packages/clawbot/tests/test_api_routes_regression.py` — 增加手工内测单后半段补救回归，更新操作台静态结构守护。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步操作方式、接口登记和当前状态。
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_social_extension_status.py tests/test_api_routes_regression.py -q`：`[100%]`，exit 0。
+- `cd packages/openclaw-npm/assets/chrome-extension && node --test test/popup-static.test.mjs test/social-page-runner.test.mjs`：`47 passed / 0 failed`。
+- `cd apps/frist-api && node --test tests/*.test.mjs`：`185 passed / 0 failed`。
+- `node scripts/cc_zhongzhuan_seller_bridge.mjs --once --json`：`ok=true`、`xianyuTabs=1`、`bridgeStatusPosted=true`；当前打开页无已付款信号，`deliveries/confirms` 均安全跳过。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --mode=read_only --json`：`ok=true`，库存 `36`、启用兑换码 `36`、启用渠道 `2`、补救队列 `0`。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --require-real-order --json`：`ok=false`，原因是尚无新的 `xy_oid_*` 真实闲鱼自动订单；这是正式售卖安全锁，不是系统故障。
+- Playwright 视觉验证：`output/playwright/cc-ops-console-redesign-20260707-final.png`，控制台 `0 error / 0 warning`，首屏 6 张状态卡齐全，提示旧测试单“打开已付款测试单页面”。
+
+## [2026-07-07] CC中转方案 B 商品绑定稳健性与生产内测复核
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuContextManager`, `XianyuAdmin`, `CC中转卖家桥接器`
+> 关联问题: HI-cc-xianyu-auto-ops
+### 变更内容
+- 商品套餐绑定现在兼容三种输入：完整闲鱼分享文本、短链接本体、短链接加 `CZ007` 分享码；后续真实订单/浏览器桥接只回传短链接时，也能命中已绑定套餐。
+- 已重启本机 `ai.openclaw.xianyu` 服务加载新规则，并重新拉起卖家专用 Chromium；本机桥接器可连接调试端口，当前无已付款信号时安全跳过。
+- 保持正式售卖严格门不放宽：生产内测巡检通过，但 `--require-real-order` 仍因尚无新的 `xy_oid_*` 真实闲鱼自动订单而失败，这是预期阻断。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_context.py` — `get_cc_item_mapping()` 增加短链/分享文本兜底命中。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 增加完整分享文本、短链接和带分享码三种命中回归。
+- `docs/002-changelog.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步当前生产内测状态和老板商品绑定口径。
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_social_extension_status.py tests/test_api_routes_regression.py -q`：`[100%]`，exit 0。
+- `cd packages/openclaw-npm/assets/chrome-extension && node --test test/popup-static.test.mjs test/social-page-runner.test.mjs`：`47 passed / 0 failed`。
+- `cd apps/frist-api && node --test tests/*.test.mjs`：`185 passed / 0 failed`。
+- `node scripts/cc_zhongzhuan_seller_bridge.mjs --once --json`：`ok=true`、`xianyuTabs=1`，当前无已付款信号，安全跳过。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --mode=read_only --json`：`ok=true`；`--require-real-order`：`ok=false`，唯一原因是尚无新的 `xy_oid_*` 真实闲鱼付款自动订单。
+- Oracle runtime 只读核验：`upstreamBalance.level=ok`，warning/critical 阈值为 `50/20` 元；今日自动补库存事件曾创建 `32` 张，后续后台巡检创建 `0` 张，说明安全库存已补齐。
+
+## [2026-07-07] CC中转正式售卖门历史摘要防误导
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuAdmin`, `CC中转严格门`, `API Routes Regression`
+> 关联问题: HI-cc-xianyu-auto-ops
+### 变更内容
+- 修正本机看板严格门历史摘要：旧的 `xy_manual_*` / `xy_browser_*` 内测单即使完成买家链路，也不再在摘要里显示为“真实自动订单”。
+- 严格门展示层现在只把 `xy_oid_*` 且 `ready=true` 的订单计入 `real_orders`；旧历史摘要会附加内部提示，避免老板误以为可以正式售卖。
+- 更新旧回归用例，避免 `xy_buyer` 这类非真实订单前缀继续被测试当成正式闭环。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 严格门摘要脱敏/规整时只统计 `xy_oid_*` 自动订单。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` / `packages/clawbot/tests/test_api_routes_regression.py` — 增加手工单不计真实订单摘要的回归，并修正旧前缀测试数据。
+- `docs/002-changelog.md` / `docs/009-health.md` — 同步当前生产内测口径。
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_social_extension_status.py tests/test_api_routes_regression.py -q`：`[100%]`，exit 0。
+- `cd apps/frist-api && node --test tests/*.test.mjs`：`185 passed / 0 failed`。
+- `cd packages/openclaw-npm/assets/chrome-extension && node --test test/popup-static.test.mjs test/social-page-runner.test.mjs`：`47 passed / 0 failed`。
+- `git diff --check`：exit 0。
+
+## [2026-07-07] CC中转方案 B 决策确认与套餐默认源收口
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `Frist-API`, `CC中转操作台`, `Chrome Seller Launcher`
+> 关联问题: HI-cc-xianyu-auto-ops
+### 变更内容
+- 老板已确认方案 B：套餐按 `1元测试 / 5 / 15 / 50 / 100 / 500` 六档执行，库存按安全水位自动补，上游余额每天同步一次，低于 50 元提醒、低于 20 元严重提醒。
+- 修正 Frist-API 默认套餐源漂移：`server.js` 已是六档套餐，公共 `shared.js` 仍残留旧 `codex-30-*` 默认值，现已统一为六档，避免桥接/目录默认值和生产套餐不一致。
+- 已把 `shared.js` 单文件同步到 Oracle `/opt/frist-api/apps/frist-api/server/shared.js`，同步前创建远端备份 `/opt/frist-api/backups/shared.js-before-cc-plan-default-20260707T132748Z.bak`，并重启 `frist-api.service`。
+- 卖家专用 Chrome 启动器保持“准备运行版插件目录 + 打开入口”的定位：Google Chrome 不允许命令行自动加载 unpacked extension，仍需老板在 `chrome://extensions` 手动加载一次 `~/.openclaw/cc-social-pilot-runtime-extension`。
+- 继续保持生产内测口径：普通巡检可绿，正式售卖严格门不放宽，必须等新的 `xy_oid_*` 真实闲鱼付款订单完成买家链路后才允许公开售卖。
+### 文件变更
+- `apps/frist-api/server/shared.js` — 默认充值套餐统一为 CC中转六档。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步方案 B 已确认口径、插件加载路径和严格门状态。
+### 验证
+- `node --check scripts/cc_zhongzhuan_launch_seller_chrome.mjs`、`node --check scripts/cc_zhongzhuan_configure_seller_extension.mjs` 与 Frist-API 关键 server 文件语法检查：exit 0。
+- `cd apps/frist-api && node --test tests/*.test.mjs`：`185 passed / 0 failed`。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_social_extension_status.py -q`：跑到 `[100%]`，exit 0。
+- `cd packages/openclaw-npm/assets/chrome-extension && node --test test/popup-static.test.mjs test/social-page-runner.test.mjs`：`47 passed / 0 failed`。
+- `node scripts/cc_zhongzhuan_launch_seller_chrome.mjs --dry-run --json`：`ok=true`，`manualExtensionLoadRequired=true`。
+- Oracle 复验：`frist-api.service` / `openclaw-newapi.service` / `apache2` active，`systemctl --failed` 为 `0 loaded units listed`，公网主站 HTTP 200，未授权 `/v1/models` HTTP 401。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --json`：`ok=true`；`--require-real-order`：`ok=false`，正确原因是尚无新的 `xy_oid_*` 真实自动订单。
+
+## [2026-07-07] CC中转方案 B 浏览器助手加载状态提示修正
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuAdmin`, `Chrome Social Pilot`, `CC中转操作台`
+> 关联问题: HI-cc-xianyu-auto-ops
+### 变更内容
+- 本机实机复核发现 Chrome 仍只有旧社媒插件心跳，没有检测到 `OpenEverything Social Pilot` 扩展已加载；操作台之前只提示“刷新扩展”，容易误导老板。
+- `cc_chrome_extension` 摘要新增 Social Pilot 加载检测字段；当未检测到本项目插件目录时，下一步明确提示在 `chrome://extensions` 加载运行版插件目录 `~/.openclaw/cc-social-pilot-runtime-extension`，而不是笼统刷新。
+- 保持正式售卖严格门不放宽：代码/后台可继续生产内测，但浏览器兜底自动点发货/恢复上架必须等 Chrome 真正加载新版插件后才算启用。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增 Social Pilot 浏览器配置只读检测，并修正 `cc_chrome_extension.next_action`。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 增加未加载插件与旧心跳场景回归。
+- `docs/007-operations.md` / `docs/009-health.md` — 同步当前实机状态和老板操作步骤。
+### 验证
+- `python3 -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py`：exit 0。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py::test_xianyu_status_reports_chrome_extension_global_watch_capability tests/test_xianyu_cc_auto_ship.py::test_xianyu_status_marks_stale_chrome_extension_heartbeat_offline tests/test_social_extension_status.py::test_social_extension_status_preserves_known_cc_capabilities_when_old_payload_arrives -q`：`3 passed / 0 failed`。
+- 重启 `ai.openclaw.xianyu` 后，`/api/status.cc_chrome_extension` 返回 `social_pilot_installed=false`、`supports_paid_page_dispatch=false`、`supports_relist_queue=false`，下一步提示运行 `make cc-seller-chrome` 并加载运行版插件目录 `~/.openclaw/cc-social-pilot-runtime-extension`。
+
+## [2026-07-07] CC中转方案 B 浏览器付款页兜底与严格门口径收紧
+> 领域: `xianyu` | `backend` | `frontend`
+> 影响模块: `XianyuAdmin`, `Chrome Social Pilot`, `XianyuLive`, `CC中转严格门`
+> 关联问题: HI-cc-xianyu-auto-ops
+### 变更内容
+- 闲鱼卖家订单列表 API 当前对本机登录态返回 `PERMISSION_EXCEPTION::无权限访问`，不能作为全自动发货唯一通道；新增 Chrome 付款页兜底：在可见闲鱼聊天/订单页检测到“已付款/待发货”信号且没有待发送话术时，插件会调用本机受保护的 `/api/cc-manual-paid-order/dispatch` 生成卡密话术，再填入发送。
+- 浏览器兜底订单统一使用 `xy_browser_*` 前缀；手工/浏览器兜底单可以完成内测发货，但不再冒充 `xy_oid_*` 卖家订单接口真实自动订单，正式售卖严格门只认 `xy_oid_*`。
+- 后端确认发货补强：订单轮询拿到真实数字订单号时只在内存里用于 `confirm_dummy_shipment()`，本机数据库仍保存脱敏 `xy_oid_*`，避免泄露真实闲鱼订单号。
+- 恢复可售补齐队列入口 `/api/cc-xianyu-relist/next`；只有 `message_sent` 且闲鱼确认发货状态为 `confirmed` 的记录才进入恢复上架候选，页面仍需看到“已下架/已售罄 + 重新上架按钮”才会点击。
+- Chrome 插件能力上报新增 `paid_page_dispatch`、`relist_queue_watch`、`xianyu_confirm_shipment`、`xianyu_relist_item`，操作台能区分旧插件和新版付款页/恢复上架能力。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 真实订单号只在内存中用于确认发货，落库仍使用脱敏订单号。
+- `packages/clawbot/src/xianyu/xianyu_admin.py` / `packages/clawbot/src/xianyu/xianyu_context.py` — 恢复上架队列、严格门真实订单口径、浏览器兜底订单前缀。
+- `packages/openclaw-npm/assets/chrome-extension/background.js` / `popup.js` — 付款页自动生成待发货话术、恢复上架队列定时巡检、新能力心跳。
+- `packages/clawbot/src/api/rpc.py` — Chrome 插件状态白名单新增新版 CC中转能力字段。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` / `test_social_extension_status.py` / `packages/openclaw-npm/assets/chrome-extension/test/*` — 增加真实订单口径、浏览器兜底、恢复上架和插件能力回归测试。
+### 验证
+- `python3 -m py_compile packages/clawbot/src/api/rpc.py packages/clawbot/src/xianyu/xianyu_live.py packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/src/xianyu/xianyu_context.py packages/clawbot/src/xianyu/xianyu_apis.py`：exit 0。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_social_extension_status.py -q`：`[100%]`，0 failed。
+- `cd packages/openclaw-npm/assets/chrome-extension && node --check background.js && node --check popup.js && node --check social-page-runner.js && node --test test/popup-static.test.mjs test/social-page-runner.test.mjs`：`47 passed / 0 failed`。
+- `cd apps/frist-api && node --test tests/server.test.mjs --test-name-pattern "auto replenishes Xianyu|starts Xianyu card auto replenishment|syncs New-API upstream balance"`：`112 passed / 0 failed`。
+- 本机运行态：`ai.openclaw.xianyu` active，`/api/status` HTTP 200，WebSocket/Cookie 正常，自动发货未暂停，补救队列 0，确认发货/恢复上架队列均为空。
+- 生产内测只读巡检：`node scripts/cc_zhongzhuan_readiness_audit.mjs --json` 返回 `ok=true`；正式售卖严格门 `--require-real-order` 返回 `ok=false`，正确原因是尚未产生新的 `xy_oid_*` 真实闲鱼自动发货订单。
+### 当前边界
+- 当前 Chrome 已上报旧能力，仍需老板手动刷新一次 unpacked Chrome 扩展，才能启用新版 `paid_page_dispatch/relist_queue_watch`。
+- 旧手工兜底内测单不再算正式售卖真实自动订单；下一步要用另一个账号跑 1 元测试单，产生 `xy_oid_*` 后再复验严格门。
+
+
+
+## [2026-07-07] CC中转方案 B 生产部署与 6 档库存收口
+> 领域: `xianyu` | `backend` | `deploy`
+> 影响模块: `CC中转`, `Frist-API`, `Oracle`, `XianyuAdmin`
+> 关联问题: HI-cc-xianyu-auto-ops
+### 变更内容
+- 已将本地 Frist-API 方案 B 改动同步到 Oracle 生产内测服务，远端备份后重启 `frist-api.service`，`openclaw-newapi.service` 保持 active。
+- 生产套餐从旧 `codex-30-*` 收口为老板确认的 6 档：`1元测试 / 5 / 15 / 50 / 100 / 500`，并执行一次自动补库存，当前 6 档安全库存已补齐。
+- 远端开启 `FRIST_API_CARD_AUTOREPLENISH_ENABLED=1`、`FRIST_API_UPSTREAM_BALANCE_SYNC_ENABLED=1`、`FRIST_API_RATE_MARKUP=0.1` 和 New-API 兑换状态同步；上游余额同步结果为 `level=ok`。
+- 本机闲鱼商品映射和默认套餐改为 `xianyu-test-1`，下一笔测试单默认发 1 元测试档。
+- 安全修正：`xy_manual_*` 手工兜底单没有真实闲鱼数字订单号，不再进入浏览器“自动点击闲鱼发货按钮”队列，避免旧兜底单卡队列或误点页面。
+- Docker Compose 补齐方案 B 环境变量透传，避免未来容器化启动时自动补库存/余额同步开关丢失。
+### 文件变更
+- `docker-compose.frist-api.yml` — 透传自动补库存、上游余额同步、倍率、New-API 兑换状态同步和闲鱼 webhook token。
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 确认发货队列只接收真实数字闲鱼订单号，手工兜底单自动标记 skipped。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 增加手工兜底单跳过确认发货队列的回归测试。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/009-health.md` — 同步生产内测状态。
+### 验证
+- `cd apps/frist-api && node --test tests/server.test.mjs --test-name-pattern "auto replenishes Xianyu|starts Xianyu card auto replenishment|syncs New-API upstream balance"`：`112 passed / 0 failed`。
+- `cd packages/openclaw-npm/assets/chrome-extension && node --test test/popup-static.test.mjs test/social-page-runner.test.mjs`：`47 passed / 0 failed`。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_confirm_shipment_queue_returns_sent_unconfirmed_order tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_confirm_shipment_queue_skips_manual_orders tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_confirm_shipment_mark_routes_update_status -q`：`3 passed / 0 failed`。
+- Oracle 生产内测 smoke：`https://jiyu.245334.xyz/` HTTP 200，`/v1/models` 无 token HTTP 401，`frist-api.service` / `openclaw-newapi.service` active，6 档库存 `3/10/10/5/3/1` 已补齐，上游余额同步 `level=ok`。
+- 严格巡检：`node scripts/cc_zhongzhuan_readiness_audit.mjs --require-real-order --json` 应继续返回 `ok=false`，直到出现新的 `xy_oid_*` 真实闲鱼付款订单并完成买家兑换、创建 API Key、CC Switch 导入和调模型证据；公网主站、CC Switch 导入入口、兑换/创建 Key/调模型基础证据仍在。
+
+## [2026-07-07] CC中转方案 B 自动运营闭环增强
+> 领域: `xianyu` | `backend` | `frontend`
+> 影响模块: `CC中转`, `Frist-API`, `Chrome Social Pilot`, `XianyuAdmin`
+> 关联问题: HI-cc-xianyu-auto-ops
+### 变更内容
+- 按老板确认的方案 B，补齐套餐档位 `1/5/15/50/100/500` 的库存自动补卡，并将自动补卡从管理按钮接入服务后台定时启动。
+- 新增 New-API 上游余额同步与低余额预警配置，默认 warning 50 元、critical 20 元。
+- Chrome 闲鱼发货助手在发送卡密话术成功后，会继续在当前闲鱼页面安全点击“去发货/无需物流/确认发货”，并回写确认结果；页面缺少已付款信号时不点击。
+- 新增恢复可售兜底：只有商品页明确显示“已下架/已售罄/重新上架”时才点击恢复上架；不改标题、不改价格、不新建商品。
+- `cc_shipments` 增加闲鱼确认发货与恢复上架状态字段，便于补救队列和生产内测追踪。
+### 文件变更
+- `apps/frist-api/server/server.js` / `apps/frist-api/tests/server.test.mjs` — 自动补卡后台定时、余额同步测试、档位验证。
+- `packages/clawbot/src/xianyu/xianyu_context.py` / `packages/clawbot/src/xianyu/xianyu_admin.py` — 确认发货、恢复上架队列和回写 API。
+- `packages/openclaw-npm/assets/chrome-extension/background.js` / `social-page-runner.js` / `test/social-page-runner.test.mjs` — 浏览器确认发货与恢复上架页面执行器。
+- `apps/frist-api/deploy/production.env.example` / `packages/clawbot/config/.env.example` / `docs/006-registries.md` — 生产配置和注册表同步。
+### 验证
+- `cd packages/openclaw-npm/assets/chrome-extension && node --check background.js && node --check popup.js && node --check social-page-runner.js && node --test test/popup-static.test.mjs test/social-page-runner.test.mjs`：`47 passed / 0 failed`。
+- `cd packages/clawbot && .venv312/bin/python -m py_compile src/xianyu/xianyu_context.py src/xianyu/xianyu_admin.py && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_social_extension_status.py -q`：相关 Python 测试通过到 `[100%]`。
+- `cd apps/frist-api && node --test tests/server.test.mjs --test-name-pattern "auto replenishes Xianyu|starts Xianyu card auto replenishment|syncs New-API upstream balance"`：`112 passed / 0 failed`。
+
+
+## [2026-07-07] Intel Brief production-once 入口与 launch package 升级
+> 领域: `backend` | `infra` | `docs`
+> 影响模块: `Intel Brief`, `Production Once`, `Launch Package`
+> 关联问题: IntelBrief-PhaseQ
+### 变更内容
+- 新增 `intel_production_once.py`，作为未来 scheduler 的真实一次性入口；缺门禁时不联网。
+- launchd dry-run package 改为调用 production-once，而不是占位 `--help`。
+- 当前由于私有 env 未写入且缺 production ack，production-once 正确 blocked。
+### 文件变更
+- `packages/clawbot/src/intel/production_once.py` / `packages/clawbot/scripts/intel_production_once.py`。
+- `packages/clawbot/src/intel/launch_package.py` / `packages/clawbot/scripts/intel_launch_package.py`。
+- `packages/clawbot/tests/test_intel_production_once.py` / `packages/clawbot/tests/test_intel_launch_package.py`。
+### 验证
+- Production-once blocked evidence：`packages/clawbot/data/intel_evidence/phaseq/20260707T031446Z-production-once-private-env-blocked.json`。
+- Launch package evidence：`packages/clawbot/data/intel_evidence/phaseq/20260707T031446Z-launchd-production-once-dry-run-package.json`。
+- 最终验证 evidence 见 Phase Q verification。
+
+
+## [2026-07-07] Intel Brief 私有 env 与 launchd dry-run package
+> 领域: `backend` | `infra` | `docs`
+> 影响模块: `Intel Brief`, `Private Env`, `Launch Package`, `Scheduler Gate`
+> 关联问题: IntelBrief-PhaseP
+### 变更内容
+- 新增私有 env 写入/审计工具，默认 `.openclaw/intel-brief.production.env`，权限 0600，证据脱敏。
+- Scheduler gate 支持 `INTEL_BRIEF_PRIVATE_ENV` 合并私有 env 后判定，但不输出明文。
+- 新增 launchd dry-run package 生成器，只生成 plist/README/rollback，不安装、不加载。
+- 当前剪贴板没有可识别 token，真实私有 env 未写入；readiness 保持 `ready=3/5`。
+### 文件变更
+- `packages/clawbot/src/intel/private_env.py` / `packages/clawbot/scripts/intel_private_env.py`。
+- `packages/clawbot/src/intel/launch_package.py` / `packages/clawbot/scripts/intel_launch_package.py`。
+- `packages/clawbot/src/execution/intel_brief.py`。
+- `packages/clawbot/tests/test_intel_private_env.py` / `tests/test_intel_launch_package.py` / `tests/test_intel_scheduler_gate.py`。
+### 验证
+- Private env audit：`packages/clawbot/data/intel_evidence/phasep/20260707T030509Z-private-env-audit-redacted.json`。
+- Launch package dry-run：`packages/clawbot/data/intel_evidence/phasep/20260707T030509Z-launchd-dry-run-package.json`。
+- Readiness private-env path：`packages/clawbot/data/intel_evidence/phasep/20260707T030727Z-readiness-private-env-path-blocked.json`。
+- 最终验证 evidence：`packages/clawbot/data/intel_evidence/phasep/20260707T030858Z-phase-p-private-env-launch-verification.json`。
+
+
+## [2026-07-07] Intel Brief 真实 Telegram sandbox 与 SGW preferred worker 闭合
+> 领域: `backend` | `infra` | `docs`
+> 影响模块: `Intel Brief`, `Telegram Delivery`, `SGW Worker`, `Collect Once`
+> 关联问题: IntelBrief-PhaseO
+### 变更内容
+- 使用本机剪贴板 token 作为一次性 env 完成真实 Telegram sandbox delivery；证据脱敏，不写 token/chat id。
+- 真实验证 SGW SSH/Python，并发现 remote runner 无依赖场景不应强制 venv；修复后 SGW `senate_trading` 成功。
+- `senate_trading` 默认 collect worker 从 oracle-arm1 fallback 升级为 `oracle-sg-west-preferred-overseas`。
+- 使用 SGW + Yanhuoyun 完成 collect-once 与 scheduled sandbox，readiness 提升为 `ready=3/5`。
+### 文件变更
+- `packages/clawbot/scripts/intel_worker_remote_run.py` / `packages/clawbot/scripts/intel_collect_once.py`。
+- `packages/clawbot/tests/test_intel_worker_remote_runner.py` / `packages/clawbot/tests/test_intel_collect_once.py`。
+- `docs/052-intel-brief-master-plan.md` / `docs/084-intel-brief-implementation-report.md` / `docs/009-health.md` / VPS-Config Intel Brief placement docs。
+### 验证
+- Telegram success：`packages/clawbot/data/intel_evidence/phasel/20260707T024537Z-telegram-local-bootstrap-real-sandbox.json`。
+- SGW worker success：`packages/clawbot/data/intel_evidence/phasen/20260707T024852Z-sgw-senate-worker-remote-run-system-python.json`。
+- SGW+Yanhuoyun collect：`packages/clawbot/data/intel_evidence/phasen/20260707T025103Z-collect-once-sgw-senate-yanhuoyun-akshare.json`。
+- Readiness 3/5：`packages/clawbot/data/intel_evidence/phasen/20260707T025328Z-production-readiness-sgw-placement-confirmed.json`。
+- 最终验证 evidence：`packages/clawbot/data/intel_evidence/phasen/20260707T025535Z-phase-o-telegram-sgw-verification.json`。
+
+
+## [2026-07-07] Intel Brief production runner 合同闭合
+> 领域: `backend` | `infra` | `docs`
+> 影响模块: `Intel Brief`, `ExecutionScheduler`, `Production Readiness`
+> 关联问题: IntelBrief-PhaseN
+### 变更内容
+- Production gate 新增 summary evidence 与 Telegram sandbox ack 校验，不再用 `production_runner_not_implemented` 永久阻断。
+- `ExecutionScheduler._run_intel_brief()` 新增 production branch，gate ready 后可调用注入 production runner 或默认 Telegram summary delivery probe。
+- 当前 readiness 仍 blocked，但阻断原因已收敛为真实外部门槛：token/chat/ack/worker placement/production ack。
+### 文件变更
+- `packages/clawbot/src/execution/intel_brief.py` / `packages/clawbot/src/execution/scheduler.py`。
+- `packages/clawbot/tests/test_intel_scheduler_gate.py` / `packages/clawbot/tests/test_intel_production_readiness.py`。
+- `docs/052-intel-brief-master-plan.md` / `docs/084-intel-brief-implementation-report.md` / `docs/009-health.md` / VPS-Config Intel Brief placement docs。
+### 验证
+- 新 readiness evidence：`packages/clawbot/data/intel_evidence/phasem/20260707T024108Z-production-readiness-runner-contract-audit.json` → `status=blocked`、`ready=2/5`、`network_calls=0`，且不再包含 `production_runner_not_implemented`。
+- 最终验证 evidence：`packages/clawbot/data/intel_evidence/phasem/20260707T024229Z-production-runner-contract-verification.json`。
+
+
+## [2026-07-07] Intel Brief production readiness 与 Telegram 本机自举助手
+> 领域: `backend` | `infra` | `docs`
+> 影响模块: `Intel Brief`, `Production Readiness`, `Telegram Delivery`
+> 关联问题: IntelBrief-PhaseM
+### 变更内容
+- 新增只读 production readiness 聚合器与 CLI，统一汇总 collect、summary、Telegram、scheduler 和 worker placement 门槛。
+- 新增 Telegram 本机沙盒自举助手：支持隐藏 token 输入、本机 Telegram deep link、轮询 `/start intel_brief_sandbox` 自动发现 chat id，并在门槛齐备时发送真实 summary sandbox 消息。
+- 当前真实网络仍未调用：运行环境没有安全注入 token/ack，chat id 尚未发现，production runner 仍显式未实现。
+### 文件变更
+- `packages/clawbot/src/intel/production_readiness.py` / `packages/clawbot/scripts/intel_production_readiness_audit.py` / `packages/clawbot/tests/test_intel_production_readiness.py`。
+- `packages/clawbot/src/intel/telegram_bootstrap.py` / `packages/clawbot/scripts/intel_telegram_local_bootstrap.py` / `packages/clawbot/tests/test_intel_telegram_bootstrap.py`。
+- `docs/052-intel-brief-master-plan.md` / `docs/084-intel-brief-implementation-report.md` / `docs/006-registries.md` / `docs/009-health.md` / VPS-Config Intel Brief placement docs。
+### 验证
+- readiness evidence：`packages/clawbot/data/intel_evidence/phasem/20260707T020329Z-production-readiness-audit.json` → `status=blocked`、`ready=2/5`、`network_calls=0`。
+- Telegram local bootstrap gate evidence：`packages/clawbot/data/intel_evidence/phasel/20260707T021607Z-telegram-local-bootstrap-gate-blocked.json` → 缺 token runtime 注入/ack/real-network allow，`network_calls=0`。
+- 单测：`tests/test_intel_telegram_bootstrap.py` 已覆盖 hidden-token 自举路径的关键合同；最终验证 evidence：`packages/clawbot/data/intel_evidence/phasem/20260707T022907Z-production-readiness-bootstrap-verification.json`。
+
+## [2026-07-07] CC中转真实买家链路内测通过（旧严格门口径）
+> 领域: `xianyu` | `deploy` | `docs`
+> 影响模块: `Xianyu Delivery`, `New-API`, `CC Switch`, `Readiness Audit`
+> 关联问题: HI-907
+### 变更内容
+- 以买家视角跑完当前真实内测单：已发卡密在生产 New-API 中完成兑换到账，生成买家专用 API Key，并通过公网 `https://jiyu.245334.xyz/v1` 完成模型调用。
+- CC Switch 导入合同已验证：导入链接 scheme、Base URL、API Key 参数和默认模型字段齐全；`/v1/models` 对买家 Key 返回 200，模型列表可读。
+- 清理了本轮调试中手工插入但无效的测试 Key，仅保留 New-API 官方接口创建的买家 Key，避免干扰后续运营。
+- 当时的旧严格门曾把该内测单计为 `ok=true`；2026-07-07 后续已收紧口径，`xy_manual_*` / `xy_browser_*` 只算内测或补救，正式售卖严格门必须等待新的 `xy_oid_*` 真实自动订单证据。
+### 文件变更
+- `docs/002-changelog.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步真实内测单闭环通过状态。
+### 验证
+- 买家 Key 公网 `/v1/models` → HTTP 200，模型数 15。
+- 买家 Key 公网 `/v1/chat/completions`（`gpt-5.4-mini`）→ HTTP 200，并在 New-API logs 中出现同买家模型调用记录。
+- CC Switch 导入合同 → `ccswitch://v1/import`、`baseURL=https://jiyu.245334.xyz/v1`、`apiKey` 存在、默认模型 `gpt-5.4-mini`。
+- `/api/cc-buyer-chain-progress` → `stage=verified`，发货/兑换/API Key/模型调用/同单验证五步均为 true。
+- `/api/cc-loop-watch` → 旧口径曾显示 `stage=closed_loop_verified`；当前口径以新的 `xy_oid_*` 严格门为准。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --require-real-order --json` → 旧口径曾返回 `ok=true`；当前正式售卖前必须重新跑真实小额自动订单严格门。
+
+
+
+## [2026-07-07] CC中转真实闲鱼测试单已发送，等待买家自助链路
+> 领域: `xianyu` | `docs`
+> 影响模块: `Xianyu Delivery`, `Readiness Audit`, `Operations Docs`
+> 关联问题: HI-907
+### 变更内容
+- 获老板明确确认后，接管当前 Chrome 闲鱼聊天页，只读复查页面仍为 1 元测试单、已付款待发货状态、输入框为空且发送按钮可用。
+- 将本机已分配的发货话术发送到该买家聊天，并调用本机 `mark-sent` 标记履约记录；`cc_shipments.id=1` 已从 `manual_delivery_ready` 变为 `message_sent`。
+- 补救队列已清零：`/api/cc-browser-delivery/next` 返回 `hasPending=false`，不再有待浏览器发货记录。
+- 严格门仍按预期未放行正式售卖：真实闲鱼发货证据已通过，但买家尚未完成兑换到账、创建 API Key、CC Switch 导入和调模型。
+### 文件变更
+- `docs/002-changelog.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步真实测试单当前状态。
+### 验证
+- Chrome 当前闲鱼页发送后只读校验：输入框已清空，聊天中出现兑换入口和 CC Switch 操作提示。
+- `POST /api/cc-shipments/1/mark-sent` → `{"ok": true, "status": "message_sent"}`。
+- `/api/cc-sale-readiness` → `pending_rescue=0`、`real_order_seen=true`、`ready_for_public_sale=false`。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --require-real-order --json` → `ok=false`，正确原因是同单买家链路尚未完成。
+
+## [2026-07-07] CC中转 Chrome 发货助手后台心跳与状态防漂移
+> 领域: `xianyu` | `frontend` | `backend` | `docs`
+> 影响模块: `Chrome Extension`, `Social Extension Status`, `XianyuAdmin`
+> 关联问题: HI-907
+### 变更内容
+- Chrome 发货助手新增后台心跳：后台 keepalive / 看守闹钟 / 启动事件会自动向本机上报新版发货能力，不再完全依赖老板手动打开插件弹窗。
+- 本机操作台新增插件状态新鲜度判断：状态文件超过 15 分钟未更新时不再继续显示为在线，避免旧心跳误导生产检查。
+- 后端保存社媒插件状态时会保留已知 CC 发货能力位，避免旧插件动作或普通社媒心跳把 `extension.capabilities` 覆盖成空。
+- 当前真实内测单仍未外发：严格门继续正确阻断在 `pendingRescue=1`，等待老板明确确认发送真实买家消息。
+### 文件变更
+- `packages/openclaw-npm/assets/chrome-extension/background.js` — 新增后台发货能力心跳。
+- `packages/openclaw-npm/assets/chrome-extension/test/popup-static.test.mjs` — 增加后台心跳防回归断言。
+- `packages/clawbot/src/api/rpc.py` — 保留已知发货能力位，支持 `background_heartbeat`。
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 插件心跳超过 15 分钟即判定需刷新。
+- `packages/clawbot/tests/test_social_extension_status.py` / `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 增加能力保留和过期心跳测试。
+### 验证
+- `cd packages/openclaw-npm/assets/chrome-extension && node --check background.js && node --test test/popup-static.test.mjs` → `29 passed / 0 failed`。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_social_extension_status.py tests/test_xianyu_cc_auto_ship.py -q` → 跑到 `[100%]`，退出码 `0`。
+- 重启 `ai.openclaw.clawbot-agent` 和 `ai.openclaw.xianyu` 后，本机 `/api/status` 正常返回，严格门 `node scripts/cc_zhongzhuan_readiness_audit.mjs --require-real-order --json` 仍 `ok=false`，正确原因是当前真实单未发送到闲鱼聊天。
+
+## [2026-07-07] CC中转闲鱼自动发货开源复核与确认发货能力补齐
+> 领域: `xianyu` | `backend` | `infra` | `docs`
+> 影响模块: `XianyuLive`, `XianyuApis`, `XianyuContext`, `Chrome Bookmarks`, `Open Source Intake`
+> 关联问题: HI-907
+### 变更内容
+- 复核 6 个闲鱼/卡密自动发货开源项目：`zhinianboke/xianyu-auto-reply`、`GuDong2003/xianyu-auto-reply-fix`、`23Star/xianyu-super-butler`、`HJYHJYHJY/xianyu-auto-reply`、`Jasonmars12/xianyu-auto-ship`、`rrrrrede1/autofishing`；结论是继续搬运能力模式，不整套替换。
+- 借鉴开源项目的“发码后确认发货”能力，新增闲鱼虚拟商品确认发货封装；默认关闭，只有 `CC_XIANYU_AUTO_CONFIRM_SHIPMENT_ENABLED=1` 且订单号为真实数字订单号时才会在发码成功后尝试确认发货。
+- `cc_shipments` 新增闲鱼侧确认发货结果字段，只记录 `confirmed/failed/skipped`，不改变卡密已发状态，确认发货接口失败不会回滚已发送兑换码。
+- Chrome `CC中转运营` 书签文件夹从 3 个入口继续收敛为 2 个：本机操作台、用户主站；`/ops-links` 保留兼容但不再默认收藏，减少老板日常标签页。
+- 已只读接管当前闲鱼聊天页，确认页面可见 1 元测试商品、当前买家聊天、待发货提示、输入框和发送按钮；未获明确确认前没有发送真实消息。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_apis.py` — 新增 `confirm_dummy_shipment()`，对非数字订单号直接拒绝，避免误调用。
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 发码/补发成功后接入默认关闭的可选确认发货钩子。
+- `packages/clawbot/src/xianyu/xianyu_context.py` — `cc_shipments` 追加闲鱼确认发货状态字段和记录方法。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 增加默认关闭、开启后确认、手工订单跳过和 API 自身校验测试。
+- `scripts/cc_zhongzhuan_chrome_bookmarks.mjs` / `scripts/cc_zhongzhuan_readiness_audit.mjs` — 老板书签入口收敛为 2 个。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步能力边界和当前真实单状态。
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m py_compile src/xianyu/xianyu_apis.py src/xianyu/xianyu_context.py src/xianyu/xianyu_live.py` → 通过。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py -q` → `78 passed`。
+- `node --check scripts/cc_zhongzhuan_chrome_bookmarks.mjs && node --check scripts/cc_zhongzhuan_readiness_audit.mjs && node scripts/cc_zhongzhuan_chrome_bookmarks.mjs --json` → 4 个 Chrome Profile 均 `urlCount=2`、`bookmarkBarVisible=true`。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --require-real-order --json` → `ok=false`，正确阻断原因仍是 `pendingRescue=1` / 当前真实单还没发到闲鱼聊天；书签、服务、Cookie、WebSocket、公网和库存检查正常。
+
+## [2026-07-06] CC中转闲鱼全局看守与目标标签预检修复
+> 领域: `xianyu` | `frontend` | `docs`
+> 影响模块: `Chrome Extension`, `Xianyu Delivery Watch`, `XianyuAdmin`
+> 关联问题: HI-907
+### 变更内容
+- 复核闲鱼自动发货开源轮子和 New-API/Sub2API 管理生态：成熟闲鱼项目仍以 `xianyu-auto-reply` 系列为主，但多为 AGPL 或许可证不清，且同样无法绕过当前卖家订单接口无权限问题；本轮继续搬运“卡密队列、幂等发货、看守补发”能力，不整套替换。
+- 修复 Chrome 插件后台看守的目标标签预检问题：`sendXianyuCcDeliveryFromTab(tab)` 现在会预检传入的目标闲鱼标签页，不再误用当前激活标签页。
+- 新增“看守所有闲鱼页”入口：插件会扫描已打开的闲鱼页；只有本机刚好 1 条待发货、页面可见已付款/待发货信号、且找到聊天输入框时才发送，成功一次后自动关闭。
+- 本机操作台下一步提示改为更直接的老板操作口径：刷新 Chrome 插件，打开买家聊天页，可用“看守当前聊天页”或安全门通过时用“看守所有闲鱼页”。
+- 当前真实内测单仍为 `manual_delivery_ready/pending_rescue=1`；Chrome 当前没有打开买家闲鱼聊天页，不能假装已发货或闭环完成。
+### 文件变更
+- `packages/openclaw-npm/assets/chrome-extension/background.js` — 修复目标标签预检，新增全局看守、安全门和多闲鱼页扫描。
+- `packages/openclaw-npm/assets/chrome-extension/popup.html` / `popup.js` — 新增“看守所有闲鱼页”按钮和状态显示。
+- `packages/openclaw-npm/assets/chrome-extension/test/popup-static.test.mjs` — 增加全局看守和目标标签预检防回归断言。
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 更新老板下一步操作提示。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步本次能力边界和当前阻断状态。
+### 验证
+- `cd packages/openclaw-npm/assets/chrome-extension && node --check background.js && node --check popup.js && node --test test/social-page-runner.test.mjs test/popup-static.test.mjs` → `43` 项通过。
+- `cd packages/clawbot && .venv312/bin/python -m py_compile src/xianyu/xianyu_admin.py && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py::test_operator_next_action_points_manual_ready_to_chrome_watch tests/test_api_routes_regression.py -q` → `42` 项通过。
+- `make test` → 跑到 `[100%]` 且退出码 `0`。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --mode=read_only --json` → `ok=false`，正确阻断仍是 `pendingRescue=1`；Oracle、公网、New-API、库存正常。
+
+## [2026-07-06] CC中转闲鱼发货看守模式与开源调研复核
+> 领域: `xianyu` | `frontend` | `docs`
+> 影响模块: `Chrome Extension`, `Xianyu Delivery Watch`, `Open Source Intake`
+> 关联问题: HI-907
+### 变更内容
+- 复核闲鱼自动发货开源轮子：`zhinianboke/xianyu-auto-reply` 当前约 5.5k⭐、AGPL-3.0，`GuDong2003/xianyu-auto-reply-fix` 当前约 1.6k⭐、AGPL-3.0，`23Star/xianyu-super-butler` 是二开 UI 版但许可证信息不清。结论是不整套替换现有 CC中转/New-API 链路，只搬运“订单看守、幂等、防重复、卡券队列”能力。
+- 真实调用当前闲鱼卖家待发货订单接口返回 `PERMISSION_EXCEPTION::无权限访问`；同类开源项目也存在公开 Issue 报告该错误，因此全自动不能押宝卖家订单列表 API。
+- Chrome 插件“CC中转发货助手”新增“看守当前聊天页”：老板在对应闲鱼买家聊天页开启后，插件锁定该标签页定时检查；只有页面可见“已付款/待发货”且本机存在已分配待发送话术时才自动发送，成功一次后自动关闭看守，避免重复发货。
+- 针对用户手机截图继续补强插件识别：新增 `m.tb.cn/tb.cn` 闲鱼短链权限与平台识别，付款信号覆盖“提醒发货/记得及时发货”，聊天输入框覆盖“想跟TA说点什么”。
+- 本机状态中心/操作台下一步提示已按 `manual_delivery_ready` 特化：补救队列里是“已分配待发送话术”时，明确提示打开对应买家聊天页并使用 Chrome 插件检测/看守发送，不再泛化成“等待后台自动补发”。
+- 当前真实内测单仍为 `manual_delivery_ready/pending_rescue=1`，因为 Chrome 当前未打开对应闲鱼聊天页且未执行真实发送；正式售卖仍需实际发出该单并完成买家兑换、API Key、CC Switch 导入和调模型严格门。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 补救队列为 `manual_delivery_ready` 时，把老板下一步动作指向 Chrome 插件聊天页看守。
+- `packages/openclaw-npm/assets/chrome-extension/background.js` — 新增闲鱼当前聊天页看守状态、定时检查、锁定标签页、成功一次自动关闭。
+- `packages/openclaw-npm/assets/chrome-extension/manifest.json` / `social-core.js` / `social-page-runner.js` — 补充闲鱼短链识别、手机端付款提示和聊天输入框选择器。
+- `packages/openclaw-npm/assets/chrome-extension/popup.html` / `popup.js` — 新增“看守当前聊天页”按钮和状态渲染。
+- `packages/openclaw-npm/assets/chrome-extension/test/popup-static.test.mjs` / `test/social-page-runner.test.mjs` — 增加插件看守入口、短链权限和手机端付款页断言。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步本次开源调研、权限阻断和运营口径。
+### 验证
+- `gh repo view zhinianboke/xianyu-auto-reply GuDong2003/xianyu-auto-reply-fix 23Star/xianyu-super-butler` → 已记录星数、许可证、更新时间；`GuDong2003/xianyu-auto-reply-fix#64` 与当前 `PERMISSION_EXCEPTION::无权限访问` 问题一致。
+- 当前 Cookie 只读调用闲鱼卖家 `NOT_SHIP` 待发货订单页 → `PERMISSION_EXCEPTION::无权限访问`。
+- `cd packages/openclaw-npm/assets/chrome-extension && node --check background.js && node --check popup.js && node --check social-core.js && node --check social-page-runner.js && node --test test/social-page-runner.test.mjs test/popup-static.test.mjs` → `43` 项通过。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py::test_operator_next_action_points_manual_ready_to_chrome_watch tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_browser_delivery_next_reuses_pending_message tests/test_api_routes_regression.py -q` → 跑到 `[100%]` 且退出码 `0`。
+- 重启本机 `ai.openclaw.xianyu` 后，`/api/cc-operator-mode` 与 `/api/cc-operator-next-action` 均提示“打开对应闲鱼买家聊天页 + Chrome 插件检测/看守发送”。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --mode=read_only --json` → `ok=false`，正确阻断原因仍是 `pendingRescue=1`；Oracle 服务、公网入口、New-API 渠道和库存正常。
+
+## [2026-07-06] CC中转闲鱼浏览器发货助手闭环切片
+> 领域: `xianyu` | `frontend` | `backend` | `docs`
+> 影响模块: `XianyuAdmin`, `Chrome Extension`, `CC Browser Delivery`
+> 关联问题: HI-907
+### 变更内容
+- 横向检查闲鱼自动发货开源轮子：`zhinianboke/xianyu-auto-reply` 及二开版具备多账号、订单、卡券、自动发货等能力，但同样依赖 WebSocket/订单接口/页面自动化；当前不整套替换，优先搬运“待发货队列 + 幂等补发 + 浏览器兜底”思路。
+- 新增 `GET /api/cc-browser-delivery/next`：Chrome 发货助手可读取下一条已分配但待发送的话术；接口受本机 Token 保护，只复用 `manual_delivery_ready/message_send_failed`，不会重新分配卡密。
+- 扩展现有 Chrome 社媒插件为“CC中转发货助手”：在闲鱼页显示“检测当前聊天 / 发送待发货卡密”，只有当前页可见“已付款/待发货”等信号且找到输入框时，才会填入话术并点击发送，随后调用本机 `mark-sent`。
+- 当前真实测试单仍保持 `manual_delivery_ready/pending_rescue=1`，未在没有闲鱼聊天页的情况下擅自标记已发；已完成无外发模拟，确认当前待发货记录可被插件填入并点击发送。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增浏览器发货助手取件接口。
+- `packages/openclaw-npm/assets/chrome-extension/background.js` / `popup.html` / `popup.js` / `social-page-runner.js` — 新增闲鱼当前聊天检测与发货按钮。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` / `packages/openclaw-npm/assets/chrome-extension/test/*.mjs` — 增加后端接口、插件桥接和页面填发测试。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步生产内测闭环口径。
+### 验证
+- `python3 -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/src/xianyu/xianyu_live.py packages/clawbot/src/xianyu/xianyu_context.py packages/clawbot/tests/test_xianyu_cc_auto_ship.py` → 通过。
+- `node --check packages/openclaw-npm/assets/chrome-extension/background.js && node --check packages/openclaw-npm/assets/chrome-extension/popup.js && node --check packages/openclaw-npm/assets/chrome-extension/social-page-runner.js` → 通过。
+- `cd packages/openclaw-npm/assets/chrome-extension && node --test test/social-page-runner.test.mjs test/popup-static.test.mjs` → `41` 项通过。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_api_routes_regression.py -q` → 跑到 `[100%]` 且退出码 `0`。
+- 重启 `ai.openclaw.xianyu` 后，`/api/cc-browser-delivery/next` 返回当前待发送记录 `id=1`（输出已隐藏完整卡密）；无外发模拟返回 `ok=true / clickedSend=true / leakedSecret=false`。
+- 只读生产巡检仍 `ok=false`，原因是当前真实内测单还在 `pending_rescue=1`；Oracle 服务、公网入口、New-API 渠道和库存正常。正式售卖仍需打开真实闲鱼聊天页发出本单，并让买家完成兑换、API Key、CC Switch 和模型调用严格门。
+
+## [2026-07-06] Intel Brief Phase B 目标节点真实验证起步
+> 领域: `backend` | `infra` | `docs` | `social`
+> 影响模块: `Intel Brief`, `Phase B Evidence`, `Yanhuoyun`, `Oracle Fallback`, `Worker Probe`
+> 关联问题: HI-912
+### 变更内容
+- 新增 `packages/clawbot/scripts/intel_worker_probe.py` 和回归测试，统一 Phase B 证据 JSON 字段，后续数据源验证不再散落在终端输出。
+- 炎火云真实远端验证：微博公开页 HTTP 200、小红书公开页 HTTP 200、东方财富行情 API HTTP 200、AKShare `stock_lhb_detail_em` 在 `/tmp` 临时 venv + 国内镜像安装后真实返回 637 行。
+- Oracle SGW 从当前 Mac 直连 SSH 超时，未把 Mac 本地或 fallback 结果冒充 SGW 验证；同时生成 SGW Beszel 只读状态证据。
+- Oracle Ashburn `oracle-arm1` 作为海外 fallback 验证 SEC 13F、OpenAI RSS、Anthropic News、Senate raw GitHub、GitHub API 均可真实返回。
+- 本轮无部署、无服务重启、无生产配置变更、无密钥/Cookie 明文输出。
+### 文件变更
+- `packages/clawbot/scripts/intel_worker_probe.py`
+- `packages/clawbot/tests/test_intel_worker_probe.py`
+- `packages/clawbot/data/intel_evidence/phaseb/*.jsonl`
+- `packages/clawbot/data/intel_evidence/phaseb/20260706T225200Z-phaseb-summary.md`
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/009-health.md`
+- `/Users/blackdj/Documents/VPS-Config/docs/indexes/intel-brief-runtime-placement.public.md`
+- `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md`
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_intel_worker_probe.py -q` → `3 passed`。
+- 炎火云 SSH 真实命令返回 `node=yanhuoyun`、Python `3.10.12`，证据见 `packages/clawbot/data/intel_evidence/phaseb/20260706T224401Z-yanhuoyun-domestic-probes.jsonl` 和 `20260706T225123Z-yanhuoyun-akshare-call-retry.jsonl`。
+- Oracle fallback 证据见 `packages/clawbot/data/intel_evidence/phaseb/20260706T224830Z-oracle-arm1-overseas-fallback-probes.jsonl` 和 `20260706T224857Z-oracle-arm1-overseas-fallback-retry.jsonl`。
+
+## [2026-07-06] Intel Brief 总体方案与开源搬运规划
+> 领域: `docs` | `infra` | `backend` | `social`
+> 影响模块: `Intel Brief`, `Open Source Intake`, `Runtime Placement`, `VPS-Config Baseline`
+> 关联问题: HI-911
+### 变更内容
+- 新增 `docs/052-intel-brief-master-plan.md`，冻结 Intel Brief 先规划、先调研、再生产变更的总体路线。
+- 按 GitHub 实时调研整理高星轮子搬运清单：MediaCrawler、AKShare、edgartools、RSSHub、LiteLLM、APScheduler、OpenBB、Qlib、Senate watcher data 等。
+- 明确多服务器基线：国内源优先炎火云 worker，海外源优先低负载 Oracle 新加坡西 worker，OpenEverything 作为 controller。
+- 在 VPS-Config 新增公开 runtime placement 基线文档，仅记录节点角色和维护护栏，不写入任何凭证明文。
+- 本轮只做方案和文档，无部署、无重启、无 Cookie/Token 写入。
+### 文件变更
+- `docs/052-intel-brief-master-plan.md`
+- `docs/003-docs-index.md`
+- `docs/002-changelog.md`
+- `docs/009-health.md`
+- `/Users/blackdj/Documents/VPS-Config/docs/indexes/intel-brief-runtime-placement.public.md`
+- `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md`
+### 验证
+- `agent-reach doctor --json` → GitHub active_backend 为 `gh CLI`，RSS/web/exa_search 可用。
+- `gh search repos` / `gh repo view` 已返回候选仓库、星数、license 和更新时间快照。
+- `python3 - <<'PY' ... pathlib read_text ...` 文档存在性检查通过。
+
+## [2026-07-06] Intel Brief 多服务器路由与社媒无人值守优先策略
+> 领域: `backend` | `infra` | `social` | `docs`
+> 影响模块: `Intel Brief`, `Runtime Policy`, `Social Auth Strategy`
+> 关联问题: HI-910
+### 变更内容
+- 新增 Intel Brief runtime policy，把“国内业务优先国内 worker、海外数据源走海外 worker、未知源留在 controller”的多服务器架构决策落为可测试策略。
+- 新增微博/小红书社媒登录策略描述：优先 `cdp_cookie` / `cookie` 等持久登录态无人值守运行，二维码仅作为风控失效后的人工兜底。
+- 明确不承诺“永不扫码”：平台风控可能强制二次验证，工程目标是减少人工介入并在登录态失效时告警。
+- 本轮未部署、未购买/创建国内服务器、未保存 Cookie、未触发扫码登录。
+### 文件变更
+- `packages/clawbot/src/intel/runtime_policy.py`
+- `packages/clawbot/tests/test_intel_runtime_policy.py`
+- `docs/084-intel-brief-implementation-report.md`
+### 验证
+- 已先运行新增测试得到 RED：`ModuleNotFoundError: No module named 'src.intel.runtime_policy'`。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_intel_runtime_policy.py -q` → `4 passed`。
+
+
+## [2026-07-06] Intel Brief 开放追踪与内容过滤基础切片
+> 领域: `backend` | `docs`
+> 影响模块: `Intel Brief`, `SQLite Schema`, `Content Moderation`, `Congress Trading`
+> 关联问题: HI-909
+### 变更内容
+- 按补充决策取消 `celebrity_watchlist` 白名单模型，新增开放输入姓名追踪 schema：`tracking_targets`、`tracking_subscriptions`、`tracking_audit_log`。
+- 新增 Intel Brief 内容过滤基础模块，支持关键词预过滤、可注入 LLM/规则二次判断、过滤占位和 SQLite 过滤日志。
+- 新增 Senate 国会持仓 raw GitHub fallback 模块；Oracle Phase 0 真实验证显示 S3 House 裸文件仍 403，但 Senate raw GitHub `master/aggregate/all_transactions.json` HTTP 200 可用。
+- 本轮未部署、未重启服务、未处理 Telegram 第 8 Bot Token、MediaCrawler 登录态、X/Reddit 或定价。
+### 文件变更
+- `packages/clawbot/src/intel/db/intel_brief_schema.sql`
+- `packages/clawbot/src/intel/db/store.py`
+- `packages/clawbot/src/intel/quality/content_moderation.py`
+- `packages/clawbot/src/intel/sources/congress_trading.py`
+- `packages/clawbot/tests/test_intel_schema_and_tracking.py`
+- `packages/clawbot/tests/test_intel_content_moderation.py`
+- `packages/clawbot/tests/test_intel_congress_trading.py`
+- `docs/superpowers/plans/2026-07-06-intel-brief-supplement.md`
+- `docs/084-intel-brief-implementation-report.md`
+### 验证
+- Oracle `2026-07-06T21:50:40Z`：House S3 裸文件 HTTP 403 + `AccessDenied`；Senate raw GitHub HTTP 200，样本含 `BYND` / `Ron L Wyden`。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_intel_schema_and_tracking.py tests/test_intel_content_moderation.py tests/test_intel_congress_trading.py -q` → `8 passed`。
+
+## [2026-07-06] CC中转闲鱼已付款漏单兜底发货
+> 领域: `xianyu` | `backend` | `frontend` | `docs`
+> 影响模块: `XianyuAdmin`, `XianyuContext`, `CC Manual Dispatch`, `Readiness Audit`
+> 关联问题: HI-910
+### 变更内容
+- 真实内测发现：买家手机端显示“我已付款，等待你发货”，但本机闲鱼 WebSocket 未收到任何消息事件，`messages/orders/cc_shipments` 均为空，说明不能只依赖推送作为唯一发货触发源。
+- 新增受保护的漏单兜底接口 `POST /api/cc-manual-paid-order/dispatch`：仅在老板已经看到闲鱼“已付款/待发货”后使用，调用 CC中转低权限 webhook 分配真实兑换码，返回可复制的发货话术，并把本机记录标记为 `manual_delivery_ready`。
+- 新增 `POST /api/cc-shipments/{id}/mark-sent`：老板把话术粘贴到闲鱼聊天并发送后，显式标记为 `message_sent`；只有这一步完成后，本机真实订单门才会把该订单算作“已发货”。
+- 本机操作台新增“已付款漏单兜底”卡片，支持生成话术、复制话术、标记已手动发送；补救队列支持从 `manual_delivery_ready` 记录重新填入话术，避免刷新后丢失。
+- `manual_delivery_ready` 已纳入补救队列和只读巡检 pending rescue 统计，避免“卡密已分配但还没发给买家”被误判为闭环完成。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增漏单兜底发货 API、标记已发送 API 和操作台按钮。
+- `packages/clawbot/src/xianyu/xianyu_context.py` — 将 `manual_delivery_ready` 纳入补救队列/正式门禁统计。
+- `scripts/cc_zhongzhuan_readiness_audit.mjs` — 只读巡检 pending rescue 纳入 `manual_delivery_ready`。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 增加漏单兜底分配、幂等和手动标记已发送回归测试。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步真实内测故障和操作口径。
+### 验证
+- 新增测试先红后绿：`/api/cc-manual-paid-order/dispatch` 原先 404，补实现后返回 `manual_delivery_ready`；重复点击同一证明不会重复分配卡密。
+- `python3 -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/src/xianyu/xianyu_context.py packages/clawbot/src/xianyu/xianyu_live.py` → 通过。
+- `node --check scripts/cc_zhongzhuan_readiness_audit.mjs` → 通过。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_api_routes_regression.py -q` → 跑到 `[100%]` 且退出码 `0`。
+- `make test` → 跑到 `[100%]` 且退出码 `0`。
+- 真实内测漏单已生成 `manual_delivery_ready` 记录，当前补救队列为 1；等待老板把剪贴板发货话术粘贴到闲鱼聊天并确认发送后再标记 `message_sent`。
+
+## [2026-07-06] CC中转闲鱼测试商品绑定预备检查
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuAdmin`, `CC Item Mapping`, `Xianyu Auto Ship`
+> 关联问题: HI-909
+### 变更内容
+- 商品绑定接口新增闲鱼完整分享文本规整：老板可直接粘贴 `【闲鱼】[短链接](短链接) CZ007 「标题」点击链接直接打开`，后台会自动保存为 `短链接 + 分享码`，不再需要手动删除前后文案。
+- 本机操作台商品链接输入框提示已更新为可直接粘贴完整闲鱼分享文本。
+- 预备检查发现测试商品原绑定套餐为 `1`，发货接口会按无效套餐处理；已将当前测试商品绑定修正为有库存的 `codex-30-day`。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增商品绑定输入规整函数，保存映射前统一清洗商品键。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 新增完整闲鱼分享文本绑定回归测试。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步本次内测预备检查结果。
+### 验证
+- 新增测试先红后绿：完整分享文本从整段原文规整为 `https://m.tb.cn/h.RC4QcXM?tk=DxWwgNjrfdQ CZ007`。
+- `python3 -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/src/xianyu/xianyu_context.py packages/clawbot/src/xianyu/xianyu_live.py` → 通过。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_api_routes_regression.py -q` → 跑到 `[100%]` 且退出码 `0`。
+- `make test` → 跑到 `[100%]` 且退出码 `0`。
+- 重启 `ai.openclaw.xianyu` 后：`/api/cc-operator-mode` 返回 `auto_ship_paused=false`、`webhook_configured=true`、`can_auto_ship_paid_orders=true`、`pending_rescue=0`、`enabled_item_mappings=1`。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --mode=read_only --json` → `ok=true`，本机闲鱼 WebSocket/Cookie/自动发货、Oracle 服务、公网主站、兑换码库存、New-API 渠道均通过；仍等待真实小额付款订单作为正式售卖门槛。
+
+## [2026-07-06] CC中转状态中心与操作台 Apple 风格重构
+> 领域: `xianyu` | `frontend` | `backend` | `docs`
+> 影响模块: `XianyuAdmin`, `XianyuLive`, `CC Operator State`, `Ops Links`
+> 关联问题: HI-908
+### 变更内容
+- 按老板反馈把本机 `http://127.0.0.1:18800/ops-links` 重做为 Apple 风格“状态中心”：大卡片、圆环进度、少量状态灯和一句下一步；默认隐藏工程排障信息，不再展示密集闭环清单。
+- 把本机 `http://127.0.0.1:18800/` 重做为“操作台”：只保留四个日常动作（确认闲鱼在线、绑定商品、暂停/恢复自动发货、处理补救队列），商品模板和巡检放在次级区域，高级排障默认折叠。
+- 新增本机运行时运营状态模块 `cc_operator_state.py` 和 `GET/POST /api/cc-operator-mode`，支持在操作台一键暂停/恢复自动发货；暂停后 `XianyuLive` 不再自动发卡，补救循环也会跳过。
+- 自动发货状态新增 `paused/operational/pause_reason` 字段；售卖锁、运营水位和统一快照会把“人工暂停”识别为独立状态，而不是误报成配置坏了。
+- 回归测试新增暂停/恢复 API 和暂停后不触发 webhook 的覆盖；页面测试更新为检查“状态中心/四步使用/暂停自动发货/高级排障”新结构。
+### 文件变更
+- `packages/clawbot/src/xianyu/cc_operator_state.py` — 新增本机操作台暂停状态文件读写，不保存卡密、Token、Cookie 或买家信息。
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 重构 `/ops-links` 和 `/` 两个页面，新增 `/api/cc-operator-mode`，接入人工暂停状态。
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 自动发货和失败补发循环尊重本机暂停状态，暂停时只记录 `operator_paused`，不调用 CC中转 webhook。
+- `packages/clawbot/tests/test_api_routes_regression.py` / `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 增加新页面结构与暂停链路回归。
+- `.gitignore` — 忽略 `.openclaw/cc-zhongzhuan-operator-state.json` 本机运行状态文件。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步日常运营口径。
+### 验证
+- `python3 -m py_compile packages/clawbot/src/xianyu/cc_operator_state.py packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/src/xianyu/xianyu_live.py` → 通过。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py tests/test_xianyu_cc_auto_ship.py -q` → 通过。
+- `make test` → 跑到 `[100%]` 且退出码 `0`。
+- 重启 `ai.openclaw.xianyu` 后：`/ops-links=200`、`/=200`、`/api/cc-operator-mode` 返回 `auto_ship_paused=false`、`webhook_configured=true`、`can_auto_ship_paid_orders=true`、`pending_rescue=0`。
+- Playwright 截图验证：`output/playwright/cc-status-center-apple.png`、`output/playwright/cc-operator-console-apple.png`；页面 `hasDenseOldText=false`，操作台包含暂停按钮和四步使用。
+
+## [2026-07-06] CC中转运营入口收敛为暗色状态中心
+> 领域: `xianyu` | `frontend` | `infra` | `docs`
+> 影响模块: `XianyuAdmin`, `Ops Links`, `Chrome Bookmarks`, `New-API Production`
+> 关联问题: HI-907
+### 变更内容
+- 将本机 `/ops-links` 从工程链接堆叠页重做为暗色“CC中转状态中心”，首屏只保留售卖状态、自动发货、库存与渠道、买家链路、下一步和 3 个常用入口。
+- 将本机完整 GUI `/` 改为暗色“CC中转高级控制台”，明确它是排障/补救用，不再作为老板日常入口。
+- Chrome `CC中转运营` 书签文件夹从 7 个入口收敛为 3 个：状态中心、用户主站、高级控制台；不再收藏 `/admin.html`、`/v1`、`/v1/models` 这类错误或程序接口入口。
+- 生产 New-API 将 `SelfUseModeEnabled` 从 `true` 调整为 `false`，公网主站不再显示“自用模式”；Oracle 已备份数据库并重启 `openclaw-newapi.service`。
+- Oracle Apache 为 `https://jiyu.245334.xyz/admin.html` 增加 302 到 `/console`，旧后台误点不会再落到 SPA “页面未找到”。
+- 修复全量测试暴露的社媒插件测试隔离问题：`test_social_extension_status.py` 现在自动隔离 `social_scheduler` 与 `x_auto_ops` 状态文件，避免读取本机真实草稿导致测试计数漂移。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 重做 `/ops-links` 暗色状态中心，暗色化 `/` 高级控制台，更新老板可见地址清单。
+- `scripts/cc_zhongzhuan_chrome_bookmarks.mjs` / `scripts/cc_zhongzhuan_readiness_audit.mjs` — Chrome 运营入口清单收敛为 3 项。
+- `packages/new-api-upstream/web/classic/src/components/layout/headerbar/HeaderLogo.jsx` — 上游源码层隐藏“自用模式”顶部徽标展示。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 更新状态中心和暗色高级控制台断言。
+- `packages/clawbot/tests/test_social_extension_status.py` — 增加社媒草稿状态自动隔离 fixture。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步运营入口和生产状态口径。
+### 验证
+- `python3 -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py && node --check scripts/cc_zhongzhuan_chrome_bookmarks.mjs && node --check scripts/cc_zhongzhuan_readiness_audit.mjs` → 通过。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py tests/test_xianyu_cc_auto_ship.py -q` → 通过。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_social_extension_status.py -q` → 通过。
+- `make test` → 跑到 `[100%]` 且退出码 `0`。
+- `cd packages/new-api-upstream/web/classic && bun install --frozen-lockfile && bun run build` → 通过（仅有上游依赖/大 chunk warning）。
+- `node scripts/cc_zhongzhuan_chrome_bookmarks.mjs --json` → 4 个 Chrome Profile 均 `urlCount=3`、`bookmarkBarVisible=true`。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --json` → `ok=true`、`chromeBookmarks.ok=true`。
+- Playwright 截图：`output/cc-ops-status-center-dark-20260706.png`、`output/cc-advanced-console-dark-20260706.png`、`output/jiyu-public-no-selfuse-20260706.png`；公网渲染 `hasSelfUse=false`。
+- 公网验证：`https://jiyu.245334.xyz/admin.html` → `302 https://jiyu.245334.xyz/console`；`/api/status` → `system_name=CC中转`、`self_use_mode_enabled=false`、`setup=true`。
+
+## [2026-07-05] 站内烟测计划与全自动闭环看板收口
+> 领域: `xianyu` | `backend` | `frontend` | `docs`
+> 影响模块: `XianyuAdmin`, `Ops Links`, `Automation Coverage`, `Chrome Bookmarks`
+> 关联问题: HI-907
+### 变更内容
+- 新增只读 `GET /api/cc-buyer-site-smoke-plan`，展示站内买家烟测是否可准备、会写入哪些生产数据、需要哪些清理动作；默认 `executes_now=false`，不会擅自创建用户、兑换、创建 API Key 或调模型。
+- `GET /api/cc-operator-next-action`、`GET /api/cc-real-order-test-pack`、`GET /api/cc-automation-coverage`、`GET /api/cc-ops-snapshot` 都返回同一份 `buyer_site_smoke_plan`，避免运营台和文档口径漂移。
+- `/ops-links` 与本机闲鱼 GUI 新增“站内烟测计划”卡片；Chrome 书签脚本已再次重建 4 个本机 Profile 的 `CC中转运营` 文件夹，若 Chrome 运行中不刷新，直接打开 `http://127.0.0.1:18800/ops-links` 兜底。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增站内烟测计划 API、快照字段和两个 GUI 渲染。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖新 API、页面标记和 `executes_now=false` 安全边界。
+- `scripts/cc_zhongzhuan_chrome_bookmarks.mjs` — 复用现有脚本重建 Chrome 运营书签文件夹。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步当前全自动闭环口径。
+### 验证
+- `node scripts/cc_zhongzhuan_chrome_bookmarks.mjs --json` → 4 个 Chrome Profile 均 `ok=true`、`urlCount=7`、`bookmarkBarVisible=true`。
+- `python3 -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/src/xianyu/xianyu_live.py packages/clawbot/src/xianyu/xianyu_context.py` → 通过。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py -q` → `40 passed / 0 failed`。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py -q` → `54 passed / 0 failed`。
+- `make test` → 跑到 `[100%]` 且退出码 `0`。
+- 重启 `ai.openclaw.xianyu` 后 live `/api/cc-buyer-site-smoke-plan` → `state=ready_requires_confirmation`、`can_prepare=true`、`executes_now=false`；live `/api/cc-automation-coverage` → `completed=10/11`、`internal_automation_ready=true`、`public_sale_ready=false`、唯一缺口 `real_order_strict_gate`；只读审计 → `ok=true`、`chromeBookmarks_ok=true`、`gui_ok=true`、`oracle_ok=true`。
+
+## [2026-07-05] 实单验收包补齐站内买家烟测检查项
+> 领域: `xianyu` | `backend` | `frontend` | `docs`
+> 影响模块: `XianyuAdmin`, `Real Order Test Pack`, `Operator Next Action`
+> 关联问题: HI-907
+### 变更内容
+- `GET /api/cc-operator-next-action` 的 checklist 新增 `buyer_site_smoke`，让“当前要做什么”同时显示站内兑换/API Key/调模型烟测是否完整。
+- `GET /api/cc-real-order-test-pack` 的 checkpoints 新增“站内买家烟测”，并返回同一份 `buyer_site_smoke` 摘要。
+- `/ops-links` 和完整 GUI 的实单验收包会展示站内买家烟测状态；当前 live 是 partial，仍需真实小额单完成同单严格门。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 当前行动建议、实单验收包和两个 GUI 渲染接入 `buyer_site_smoke`。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖页面标记、行动建议 checklist、实单验收包 checkpoints。
+- `docs/002-changelog.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步验收包口径。
+### 验证
+- `packages/clawbot/.venv312/bin/python -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py` → 通过。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py tests/test_xianyu_cc_auto_ship.py -q` → `94 passed / 0 failed`。
+- 重启 `ai.openclaw.xianyu` 后 live `/api/cc-real-order-test-pack` → HTTP 200，checkpoints 包含 `buyer_site_smoke=false`，`state=run_real_small_order`。
+- live `/api/cc-operator-next-action` → HTTP 200，checklist 包含 `buyer_site_smoke=false`，下一步仍是跑真实小额单。
+
+## [2026-07-05] 买家站内烟测证据接入运营快照
+> 领域: `xianyu` | `backend` | `frontend` | `docs`
+> 影响模块: `XianyuAdmin`, `Ops Snapshot`, `Automation Coverage`
+> 关联问题: HI-907
+### 变更内容
+- 新增 `buyer_site_smoke` 只读摘要，展示从最近一次生产只读巡检得到的买家站内链路证据：兑换增量、API Key 增量、模型调用日志增量。
+- `GET /api/cc-ops-snapshot` 与 `GET /api/cc-automation-coverage` 都返回该摘要；`/ops-links` 和完整 GUI 的“闭环覆盖清单”会显示站内烟测状态。
+- 当前 live 为 `state=partial`：模型调用日志增量为正，但兑换增量和 API Key 增量为 0；这不替代真实闲鱼同单严格门，只是避免把“页面可访问”误读成“最近完整站内烟测已跑过”。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 缓存买家站内烟测增量，接入统一快照、覆盖清单和两个 GUI。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖只读巡检缓存、统一快照和覆盖清单里的 `buyer_site_smoke`。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步字段和 live 结论。
+### 验证
+- `packages/clawbot/.venv312/bin/python -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py` → 通过。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py tests/test_xianyu_cc_auto_ship.py -q` → `94 passed / 0 failed`。
+- 重启 `ai.openclaw.xianyu` 后 live `/api/cc-ops-snapshot` 与 `/api/cc-automation-coverage` → HTTP 200，`buyer_site_smoke.state=partial`、`redeemed_delta=0`、`active_token_delta=0`、`model_log_delta=99`。
+
+## [2026-07-05] 统一运营快照接入严格门自动观察状态
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuAdmin`, `Ops Snapshot`, `Strict Audit`
+> 关联问题: HI-907
+### 变更内容
+- 新增 `_cc_auto_strict_audit_status()` 只读摘要，统一描述严格门自动观察是否开启、是否等待真实付款、是否已检测到真实订单后 armed、是否刚运行或已通过。
+- `GET /api/cc-ops-snapshot` 现在直接返回 `auto_strict_audit_status`，后续本机提醒/外部看板读取统一快照时不用再额外拼覆盖清单接口。
+- `GET /api/cc-automation-coverage` 复用同一个摘要，避免覆盖清单和统一快照对“严格门是否开启/为什么未运行”的口径漂移。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 抽出严格门自动观察摘要，并接入统一运营快照。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖统一快照返回 `auto_strict_audit_status.state=armed` 的真实订单后观察态。
+- `docs/002-changelog.md` / `docs/007-operations.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步快照字段口径。
+### 验证
+- `packages/clawbot/.venv312/bin/python -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py` → 通过。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py tests/test_xianyu_cc_auto_ship.py -q` → `94 passed / 0 failed`。
+- 重启 `ai.openclaw.xianyu` 后 live `/api/cc-ops-snapshot` → HTTP 200，刷新证据后返回 `sale_lock_state=internal_test_ready`、`loop_stage=waiting_paid_order`、`auto_strict_state=waiting_paid_order`。
+- live `/api/cc-automation-coverage` → HTTP 200，`completed=10/11`、`internal_automation_ready=true`、唯一缺口 `real_order_strict_gate`。
+
+## [2026-07-05] 运营总页补齐书签可见提示与严格门等待原因
+> 领域: `xianyu` | `backend` | `frontend` | `docs`
+> 影响模块: `XianyuAdmin`, `Ops Links`, `Automation Coverage`
+> 关联问题: HI-907
+### 变更内容
+- `/ops-links` 顶部新增极简运维提示：如果 Chrome 书签栏暂时没显示 `CC中转运营`，先直接收藏/打开本机运营总页；Chrome 运行中可能需要重启后才刷新本地书签文件。
+- `GET /api/cc-automation-coverage` 新增 `auto_strict_audit_status`，明确显示严格门自动观察是否开启、当前状态、等待原因和节流间隔。
+- `/ops-links` 和本机闲鱼 GUI 的“闭环覆盖清单”会展示“严格门自动观察：已开启，正在等待真实已付款订单”，避免把 `auto_strict_audit={}` 误解成自动化没启动。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增严格门自动观察状态摘要，并在两个 GUI 渲染。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖书签提示、严格门状态字段和真实订单后自动观察状态。
+- `docs/002-changelog.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步当前 live 口径。
+### 验证
+- `packages/clawbot/.venv312/bin/python -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py` → 通过。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py tests/test_xianyu_cc_auto_ship.py -q` → `94 passed / 0 failed`。
+- `make test` → 跑到 `[100%]`，退出码 `0`。
+- 重启 `ai.openclaw.xianyu` 后 live `/api/cc-automation-coverage` → HTTP 200，`completed=10/11`、`internal_automation_ready=true`、`auto_strict_audit_status.state=waiting_paid_order`、`label=严格门自动观察已开启，正在等待真实已付款订单`。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --mode=read_only --json` → `ok=true`，Chrome 书签、本机闲鱼 GUI、Oracle、库存、兑换码、渠道、公网入口和 CC Switch 入口均通过。
+
+## [2026-07-05] 覆盖清单真实单后自动严格门观察
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuAdmin`, `Automation Coverage`, `Strict Audit`
+> 关联问题: HI-907
+### 变更内容
+- 覆盖清单在检测到真实闲鱼订单已自动发货、自动发货链路可用、无补救队列且节流允许时，会调用现有后台严格门只读观察。
+- 该观察只运行 `strict` 审计，不调用 webhook 冒烟、不分配卡密、不发送闲鱼消息、不修改库存；用于真实付款后自动刷新买家兑换/API Key/调模型证据。
+- 当前 live 没有真实订单，`auto_strict_audit={}`，不会误触发严格门；真实订单出现后才会自动观察。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 覆盖清单接入 `_should_run_background_strict_audit()` 与 `_run_background_strict_audit_once()`。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖真实订单后自动触发严格门只读观察，以及无真实订单不误触发。
+- `docs/002-changelog.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步自动观察口径。
+### 验证
+- `packages/clawbot/.venv312/bin/python -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/tests/test_api_routes_regression.py` → 通过。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py tests/test_xianyu_cc_auto_ship.py -q` → `94 passed / 0 failed`。
+- `make test` → 跑到 `[100%]`，退出码 `0`。
+- 重启 `ai.openclaw.xianyu` 后 live `/api/cc-automation-coverage` → HTTP 200，`completed=10/11`、`internal_automation_ready=true`、`auto_strict_audit={}`、唯一缺口仍是 `real_order_strict_gate`。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --mode=read_only --json` → `ok=true`。
+
+
+## [2026-07-05] 闭环覆盖清单冷启动只读刷新
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuAdmin`, `Automation Coverage`, `Readiness Audit`
+> 关联问题: HI-907
+### 变更内容
+- `GET /api/cc-automation-coverage` 在服务刚重启、库存/书签/公网入口证据尚未写入缓存时，会自动运行一次只读巡检刷新证据。
+- 该刷新不发货、不分配卡密、不发送闲鱼消息、不修改库存，只用于避免覆盖清单冷启动误判为“内部自动化未 ready”。
+- live 重启后直接请求覆盖清单，无需先点“刷新上架锁”，返回 `completed=10/11`、`internal_automation_ready=true`、唯一缺口 `real_order_strict_gate`。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 覆盖清单缺证据时自动只读刷新，并返回 `audit_error`。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖冷启动自动刷新路径。
+- `docs/002-changelog.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步冷启动刷新口径。
+### 验证
+- `packages/clawbot/.venv312/bin/python -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/tests/test_api_routes_regression.py` → 通过。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py tests/test_xianyu_cc_auto_ship.py -q` → `93 passed / 0 failed`。
+- `make test` → 跑到 `[100%]`，退出码 `0`。
+- 重启 `ai.openclaw.xianyu` 后直接请求 live `/api/cc-automation-coverage` → HTTP 200，`completed=10`、`total=11`、`internal_automation_ready=true`、`public_sale_ready=false`、`missing_keys=[real_order_strict_gate]`。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --mode=read_only --json` → `ok=true`。
+
+
+## [2026-07-05] CC中转全自动闭环覆盖清单
+> 领域: `xianyu` | `backend` | `frontend` | `docs`
+> 影响模块: `XianyuAdmin`, `Ops Links`, `Automation Coverage`
+> 关联问题: HI-907
+### 变更内容
+- 新增只读 `GET /api/cc-automation-coverage`，把目标闭环拆成 11 项证据：Chrome 书签、已付款检测、卡密分配、发货话术发送、履约回写、买家注册兑换、API Key、CC Switch、模型调用、合规边界、真实小额单严格门。
+- `/ops-links` 和本机闲鱼 GUI 新增“闭环覆盖清单”卡片，直接显示 `已满足/总项数`、内部自动化是否 ready、正式售卖是否放行，以及下一步。
+- live 当前覆盖清单显示 `10/11`，`internal_automation_ready=true`、`public_sale_ready=false`、`external_blocker=true`；唯一未满足项是必须由真实闲鱼小额付款触发的严格门。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增覆盖清单摘要、API 路由、运营入口和完整 GUI 渲染。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖 API 状态、外部门槛不误判、两个 GUI 页面入口。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步闭环覆盖清单和当前 live 结论。
+### 验证
+- `packages/clawbot/.venv312/bin/python -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/tests/test_api_routes_regression.py` → 通过。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py tests/test_xianyu_cc_auto_ship.py -q` → `92 passed / 0 failed`。
+- `make test` → 跑到 `[100%]`，退出码 `0`。
+- 重启 `ai.openclaw.xianyu` 后 live `/api/cc-automation-coverage` 返回 HTTP 200，`completed=10`、`total=11`、`internal_automation_ready=true`、`public_sale_ready=false`、`external_blocker=true`。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --mode=read_only --json` → `ok=true`，Chrome 书签、本机闲鱼 GUI、Oracle 服务、库存、兑换码、渠道、公网安全门均通过。
+
+
+## [2026-07-05] 买家闭环严格门进度恢复修复
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuAdmin`, `Buyer Chain Progress`, `Ops Notify`
+> 关联问题: HI-907
+### 变更内容
+- 修复严格门通过后，内存态/SQLite 恢复的买家进度可能缺少 `same_order_latest` 明细，导致 GUI 误显示“买家尚未兑换/尚未创建 API Key/尚未调模型”的问题。
+- 严格门摘要现在会保留脱敏后的同单分阶段信息：订单前缀/哈希、履约状态、卡密状态、New-API 兑换状态、API Key 数量、兑换后模型调用数和 ready 标记；不会保存卡密、Token 或 API Key。
+- 即使读取到旧格式严格门缓存，只要 `same_order_ready>0`，买家进度也会按“已闭环”显示，避免正式售卖前误判。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增严格门摘要脱敏保留逻辑，并修正买家进度 verified 状态。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖严格门摘要恢复、敏感字段过滤、完整闭环进度和旧缓存兼容。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步闭环进度恢复口径。
+### 验证
+- `packages/clawbot/.venv312/bin/python -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/tests/test_api_routes_regression.py` → 通过。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py tests/test_xianyu_cc_auto_ship.py -q` → `92 passed / 0 failed`。
+- `make test` → 跑到 `[100%]`，退出码 `0`。
+- 重启 `ai.openclaw.xianyu` 后 live `/api/status`、`/api/cc-loop-watch`、`/api/cc-buyer-chain-progress`、`/api/cc-ops-snapshot`、`/api/cc-public-sale-lock?refresh=true` 均为 HTTP 200；当前仍为 `waiting_paid_order/internal_test_ready`。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --mode=read_only --json` → `ok=true`，Chrome 书签、本机闲鱼 GUI、Oracle 服务、库存、兑换码、渠道、公网安全门均通过。
+
+
+## [2026-07-05] 闲鱼已付款订单商品 ID 优先识别
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuLive`, `CC Auto Ship`, `Chrome Ops`
+> 关联问题: HI-907
+### 变更内容
+- 已付款订单自动发货现在会优先从订单结构字段或闲鱼 URL/query 参数里的 `itemId`、`item_id`、`itemIdStr`、`item_id_str` 提取商品 ID，再回退最近聊天商品，最后才走默认套餐。
+- 该识别只读取订单字段和 URL 类字段，不扫描普通聊天文本，避免买家聊天里复制 `itemId=xxx` 时污染商品套餐映射。
+- 重新执行 Chrome 运营入口修复：4 个 Chrome Profile 的 `CC中转运营` 书签文件夹均为 7 个入口，并打开本机运营入口总页；Chrome 内部书签管理页因安全策略不能由自动化打开。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 新增商品 ID 提取器，并在 paid 分支优先使用订单自带商品 ID。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 覆盖 URL 参数、结构化商品字段、普通聊天误污染保护和 paid 分支优先级。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步全自动发货商品路由口径。
+### 验证
+- `packages/clawbot/.venv312/bin/python -m py_compile packages/clawbot/src/xianyu/xianyu_live.py packages/clawbot/tests/test_xianyu_cc_auto_ship.py` → 通过。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py -q` → `54 passed / 0 failed`。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py tests/test_xianyu_cc_auto_ship.py -q` → `90 passed / 0 failed`。
+- `make test` → 跑到 `[100%]`，退出码 `0`。
+- 重启 `ai.openclaw.xianyu` 后 live `/api/status` 返回 `ws_connected=true`、`cookie_ok=true`、CC自动发货已配置、补救队列 0；`/api/cc-real-order-test-pack` 返回 `state=run_real_small_order`、`can_start_real_order_test=true`，`/api/cc-public-sale-lock?refresh=true` 返回 `internal_test_ready`、正式售卖仍因真实小额单严格门未过而锁定。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --mode=read_only --json` → `ok=true`；Chrome 4 个 Profile 书签 OK，本机闲鱼 GUI/API OK，Oracle 服务 active，未售卡密 5、New-API 启用兑换码 5、启用渠道 3，公网主站 200、未授权模型/发货接口 401。
+
+
+## [2026-07-05] 闲鱼订单状态字段位置识别补强
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuLive`, `CC Auto Ship`
+> 关联问题: HI-907
+### 变更内容
+- 已付款订单识别不再只依赖 `message["3"].redReminder`，现在会从 `orderInfo/statusText`、`tradeInfo/tradeStatusText`、`bizOrderInfo/payStatusText`、`3/reminderContent` 等订单相关结构化字段提取状态。
+- 为避免误发卡，识别范围刻意不扫描普通聊天文本，也不把商品 `title/subTitle` 当状态字段；聊天里出现“我已付款了吗”不会触发自动发货。
+- 新逻辑已随本机 `ai.openclaw.xianyu` 重启加载，当前生产内测仍为 `run_real_small_order`，等待真实小额单。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 新增订单状态候选字段提取器和单条状态分类函数。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 覆盖字段位置变化和普通聊天误触发保护。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步状态字段识别口径。
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py -q` → `50 passed / 0 failed`。
+- `packages/clawbot/.venv312/bin/python -m py_compile packages/clawbot/src/xianyu/xianyu_live.py packages/clawbot/tests/test_xianyu_cc_auto_ship.py packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/tests/test_api_routes_regression.py && cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py tests/test_xianyu_cc_auto_ship.py -q` → `86 passed / 0 failed`。
+- 重启 `ai.openclaw.xianyu` 后 live `/api/status` 返回 `ws_connected=true`、`cookie_ok=true`、自动发货已配置、补救队列 0；`/api/cc-real-order-test-pack` 返回 `run_real_small_order`。
+
+
+## [2026-07-05] 闲鱼已付款状态识别变体补强
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuLive`, `CC Auto Ship`
+> 关联问题: HI-907
+### 变更内容
+- 闲鱼订单状态识别从单一“等待卖家发货”扩展为支持“待发货 / 等待发货 / 买家已付款 / 已支付 / 已付款等待卖家发货”等常见变体，降低真实小额单漏发风险。
+- 增加安全优先判断：`待付款 / 未付款 / 等待买家付款 / 退款 / 交易关闭` 等状态绝不会进入自动发货，避免未付款误发卡。
+- 新状态识别已随本机 `ai.openclaw.xianyu` 重启加载，当前生产内测仍保持自动发货可用、正式售卖锁定。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 增加订单状态规整和付款/未付款保护判断。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 覆盖已付款变体和未付款/退款/关闭误发保护。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步状态识别口径。
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py -q` → `48 passed / 0 failed`。
+- `packages/clawbot/.venv312/bin/python -m py_compile packages/clawbot/src/xianyu/xianyu_live.py packages/clawbot/tests/test_xianyu_cc_auto_ship.py packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/tests/test_api_routes_regression.py && cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py tests/test_xianyu_cc_auto_ship.py -q` → `84 passed / 0 failed`。
+- 重启 `ai.openclaw.xianyu` 后 live `/api/status` 返回 `ws_connected=true`、`cookie_ok=true`、`auto_ship_configured=true`、`pending_rescue=0`；`/api/cc-real-order-test-pack` 返回 `run_real_small_order`。
+
+
+## [2026-07-05] CC中转真实小额单验收包
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuAdmin`, `Ops Links`, `Public Sale Lock`
+> 关联问题: HI-907
+### 变更内容
+- 新增 `GET /api/cc-real-order-test-pack`，把真实小额单验收所需的状态、步骤、入口、商品模板和安全边界聚合成一份只读“实单验收包”。
+- `/ops-links` 和本机闲鱼 GUI 新增“实单验收包”卡片，显示从发布小额测试商品、自动发货、买家兑换、创建 API Key、CC Switch 导入、调模型到严格门的逐步状态。
+- 服务刚重启且库存/渠道证据为空时，验收包会自动触发一次只读巡检刷新证据；不发货、不分配卡密、不发送闲鱼消息、不修改库存。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增实单验收包摘要、API 路由和两处 GUI 渲染。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖实单验收包页面入口、API 字段、步骤和安全边界。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步运营口径。
+### 验证
+- `packages/clawbot/.venv312/bin/python -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/tests/test_api_routes_regression.py && cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py tests/test_xianyu_cc_auto_ship.py -q` → `62 passed / 0 failed`。
+- 重启 `ai.openclaw.xianyu` 后 live `/api/cc-real-order-test-pack` 返回 `state=run_real_small_order`、`can_start_real_order_test=true`、`can_public_sale=false`，上架锁保持 `internal_test_ready`、未售卡密 5、`ccswitch_import_ready=true`。
+
+
+## [2026-07-05] CC中转 CC Switch 导入入口纳入上架锁
+> 领域: `xianyu` | `backend` | `infra` | `docs`
+> 影响模块: `Readiness Audit`, `XianyuAdmin`, `Public Sale Lock`, `Ops GUI`
+> 关联问题: HI-907
+### 变更内容
+- 生产闭环只读巡检新增 Frist 公开首页的 CC Switch 导入入口检查：页面必须 HTTP 200，并包含 CC Switch 文案、`ccswitch` 标记和 `data-import-link` 导入按钮标记。
+- `/api/cc-sale-readiness`、`/api/cc-public-sale-lock` 和本机 GUI 新增 `ccswitch_import` / `ccswitch_import_ready` 门槛；导入入口异常时内测发货和正式售卖都会被上架锁拦住。
+- Chrome 已重新打开可见 `📌 CC中转运营入口` 标签组，包含 7 个运营入口，解决用户看不到书签组的问题；书签文件夹仍保留为长期入口。
+### 文件变更
+- `scripts/cc_zhongzhuan_readiness_audit.mjs` — 新增 CC Switch 导入入口公网探测，并纳入 Oracle/public 只读巡检结果。
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 上架锁、自动化水位和 GUI 展示新增 CC Switch 导入入口状态。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖导入入口通过、刷新缓存、导入入口异常阻断上架锁。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步生产内测闭环口径。
+### 验证
+- `node --check scripts/cc_zhongzhuan_readiness_audit.mjs && packages/clawbot/.venv312/bin/python -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/tests/test_api_routes_regression.py && cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py tests/test_xianyu_cc_auto_ship.py -q` → `62 passed / 0 failed`。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --mode=read_only --json` → `ok=true`，`ccswitch_entry.http=200`，`ccswitch_entry.ok=true`，导入标记齐全。
+
+
+## [2026-07-05] CC中转买家自助入口健康纳入上架锁
+> 领域: `xianyu` | `backend` | `infra` | `docs`
+> 影响模块: `XianyuAdmin`, `Readiness Audit`, `Public Sale Lock`
+> 关联问题: HI-907
+### 变更内容
+- 闭环审计摘要现在保留买家自助入口健康：用户主站 HTTP、`/v1/models` 未授权 HTTP、闲鱼发货 webhook 未授权 HTTP。
+- 上架锁新增 `buyer_self_service_ready` 和 `webhook_public_locked` 两个门槛；如果买家主站/API 网关异常，或 webhook 未授权访问没有被拦截，内测/正式售卖都会被锁住。
+- `/api/cc-sale-readiness` 和 GUI 自动化水位新增 `buyer_self_service`，直接展示买家入口是否可用，避免真实订单后买家打不开页面才发现问题。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 摘要、上架锁、自动化水位和 GUI 展示增加买家入口健康门槛。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖买家入口健康通过与异常阻断上架锁。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步买家入口健康口径。
+### 验证
+- `packages/clawbot/.venv312/bin/python -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/tests/test_api_routes_regression.py && cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py tests/test_xianyu_cc_auto_ship.py -q` → `61 passed / 0 failed`。
+- 重启 `ai.openclaw.xianyu` 并刷新上架锁后 live 返回：买家主站 `200`、`/v1/models` 未授权 `401`、webhook 未授权 `401`、`buyer_self_service_ready=true`、`webhook_public_locked=true`；当前唯一 blocker 仍是真实小额单严格门未过。
+- `make test` → 跑到 `[100%]`，退出码 `0`。
+
+## [2026-07-05] CC中转自动发货套餐路由预判
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuAdmin`, `CC Auto Ship`, `Ops GUI`
+> 关联问题: HI-907
+### 变更内容
+- 新增 `cc_auto_plan_routing` / `plan_routing` 状态摘要，明确无商品映射订单会按商品映射、默认套餐还是库存兜底发货，并给出风险等级。
+- 当前生产内测 live 已显示 `mode=default_plan`、`default_plan_id_present=true`、`risk=low`，表示单商品真实小额单会按当前默认日卡套餐发货，不再需要老板理解 planId。
+- `/api/cc-sale-readiness` 的 `human_required` 不再把“单商品默认套餐”误提示成必须介入事项；当前只剩真实小额单严格门和上游续费/补货。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增自动发货套餐路由摘要，并接入 `/api/status`、`/api/cc-sale-readiness` 和 GUI 展示。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖默认套餐路由和商品映射优先路由。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步套餐路由预判口径。
+### 验证
+- `packages/clawbot/.venv312/bin/python -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/tests/test_api_routes_regression.py && cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py tests/test_xianyu_cc_auto_ship.py -q` → `60 passed / 0 failed`。
+- 重启 `ai.openclaw.xianyu` 后 live `/api/status` 与 `/api/cc-sale-readiness` 均返回 `plan_routing.mode=default_plan`、`risk=low`、`can_ship_unmapped_order=true`；`human_required` 只剩真实小额单严格门和上游续费/补货。
+- `make test` → 跑到 `[100%]`，退出码 `0`。
+
+## [2026-07-05] CC中转后台严格门观察状态可视化
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuAdmin`, `Strict Audit`, `Ops GUI`
+> 关联问题: HI-907
+### 变更内容
+- 本机闲鱼助手新增 `cc_background_strict_audit` 状态摘要，展示后台严格门观察是否启用、节流间隔、最近运行时间和最近运行结果。
+- `/api/cc-loop-watch` 现在返回 `last_background_strict_audit`，GUI 的“实单闭环观察”卡片会展示后台严格门观察最近是否运行、结果和原因，避免真实订单后老板不知道后台是否在值守。
+- 不改变发货、不分配卡密、不发送闲鱼消息；该状态只读，仅用于确认真实订单后的自动严格门观察是否工作。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 记录并暴露后台严格门最近运行结果，GUI 显示后台观察状态。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖状态接口和 loop-watch 返回后台严格门最近结果。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步后台严格门观察状态口径。
+### 验证
+- `packages/clawbot/.venv312/bin/python -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/tests/test_api_routes_regression.py && cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py tests/test_xianyu_cc_auto_ship.py -q` → `60 passed / 0 failed`。
+- 重启 `ai.openclaw.xianyu` 后 live `/api/status` 返回 `cc_background_strict_audit.enabled=true`，`/api/cc-loop-watch` 返回 `background_strict_audit_enabled=true`；当前 `last_background_strict_audit={}` 属于正常状态，因为尚未出现真实已付款订单。
+- `make test` → 跑到 `[100%]`，退出码 `0`。
+
+## [2026-07-05] CC中转闲鱼默认发货套餐固定
+> 领域: `xianyu` | `infra` | `docs`
+> 影响模块: `XianyuLive`, `Xianyu Config`, `CC Auto Ship`
+> 关联问题: HI-907
+### 变更内容
+- 本机闲鱼助手生产内测配置已固定 `CC_XIANYU_DEFAULT_PLAN_ID` 为当前唯一未售库存对应的日卡 planId，避免真实小额单无商品映射时靠服务端兜底随机分配。
+- 重启 `ai.openclaw.xianyu` 后 live `/api/status` 显示 `default_plan_id_present=true`，自动发货仍配置正常、WebSocket/Cookie 正常、补救队列为 0。
+- 文档同步“一个商品可用默认套餐，多商品正式上架前仍优先配置 item_id → planId 映射”的运营口径。
+### 文件变更
+- `packages/clawbot/config/.env.example` — 增加默认 planId 配置说明。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步默认发货套餐已固定。
+### 验证
+- 只读审计确认当前唯一未售库存：`unused_by_plan={"day|quotaUsd=30|source=xianyu":5}`。
+- 重启本机助手后 live `/api/status` → `cc_auto_ship.configured=true`、`default_plan_id_present=true`、`ws_connected=true`、`cookie_ok=true`；live `/api/cc-public-sale-lock?refresh=true` → `state=internal_test_ready`、`unused_cards=5`、`enabled_redemptions=5`、`enabled_channels=3`、`can_public_sale=false`，唯一 blocker 仍为真实小额单严格门未过。
+
+## [2026-07-05] CC中转全自动闭环复验与订单 URL 幂等补强
+> 领域: `xianyu` | `backend` | `infra` | `docs`
+> 影响模块: `XianyuLive`, `Chrome Bookmarks`, `WorldMonitor`, `CC Auto Ship`
+> 关联问题: HI-907
+### 变更内容
+- `XianyuLive` 的稳定订单号提取继续补强：除字段名包含 order/trade/bizOrder 外，现在也会从闲鱼 URL/query 参数里的 `orderId`、`tradeId`、`bizOrderId`、`biz_order_id` 提取真实订单号并哈希成 `xy_oid_*`，避免同一已付款订单因重复推送或消息里有时间戳变化而二次分配卡密。
+- 重新修复并复验 Chrome `CC中转运营` 书签文件夹：`Default`、`Profile 1`、`Profile 2`、`Profile 3` 均为 7 个入口且书签栏开启；只读生产闭环审计里的 `chromeBookmarks` 已转绿。
+- 重启本机 `ai.openclaw.xianyu` 后复验生产内测状态：WebSocket/Cookie 正常、CC自动发货已配置、补救队列为 0、未售卡密 5、启用兑换码 5、启用渠道 3；当前仍锁在“等待真实闲鱼小额单”阶段，未放开正式售卖。
+- 修复 `WorldMonitor` 风险等级偶发测试红灯：风险等级现在按最终展示分数计算，并改用稳定哈希种子，避免 49.96 显示为 50.0 但等级仍为 `moderate` 的边界不一致。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_live.py` — URL/query 参数订单号提取、稳定 orderId 幂等保护补强。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 增加 URL 参数订单号在 volatile 字段变化时仍稳定的回归测试。
+- `packages/clawbot/src/monitoring/world_monitor.py` — 修复风险等级与展示分数边界不一致。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步生产内测闭环状态。
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_api_routes_regression.py tests/test_world_monitor.py -q` → `85 passed / 0 failed`。
+- `make test` → 跑到 `[100%]`，退出码 `0`。
+- `node scripts/cc_zhongzhuan_chrome_bookmarks.mjs --json && node scripts/cc_zhongzhuan_readiness_audit.mjs --mode=read_only --json` → `chromeBookmarks.ok=true`。
+- live `/api/cc-public-sale-lock?refresh=true` → `state=internal_test_ready`、`can_internal_test=true`、`can_public_sale=false`、唯一 blocker 为尚未通过真实闲鱼小额单兑换/API/调模型严格门。
+
+
+
+
+
+
+## [2026-07-05] CC中转闲鱼自动发货幂等保护
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuLive`, `XianyuContext`, `CC Auto Ship`
+> 关联问题: HI-907
+### 变更内容
+- 闲鱼已付款订单不再使用随机 UUID 作为 `orderId`；优先从消息中抽取真实订单/交易 ID 并哈希成稳定 `xy_oid_*`，抽不到时用消息指纹生成稳定 `xy_msg_*`。
+- 自动发货前会先按 `orderId` 查询本机 `cc_shipments`：已发货直接跳过，已分配但发送失败则只补发旧话术，异常/人工处理记录不再重新分配卡密。
+- SQLite 增加 `get_cc_shipment_by_order_id()`，用于重复订单事件的幂等保护。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 新增稳定订单号生成、真实订单号提取、重复履约记录复用和失败话术补发分支。
+- `packages/clawbot/src/xianyu/xianyu_context.py` — 新增按 `order_id` 读取 CC中转履约记录。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 覆盖稳定订单号、重复已发货跳过 webhook、重复发送失败只补发旧话术和 SQLite 按订单号读取。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步幂等发货口径。
+### 验证
+- `packages/clawbot/.venv312/bin/python -m py_compile packages/clawbot/src/xianyu/xianyu_live.py packages/clawbot/src/xianyu/xianyu_context.py packages/clawbot/tests/test_xianyu_cc_auto_ship.py && cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py -q` → `25 passed / 0 failed`。
+
+## [2026-07-05] CC中转真实订单买家卡点提醒
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuAdmin`, `Ops Notify`, `Buyer Chain`
+> 关联问题: HI-907
+### 变更内容
+- 本机运营提醒现在能在真实订单已发货后识别买家侧卡点：等待严格门、未兑换、未创建 API Key、未调模型、同单匹配待确认、已闭环。
+- 买家卡点提醒优先级高于低库存，避免真实订单发生后通知仍只提示“库存偏低”。
+- 严格门转绿时会提醒“真实单买家闭环已通过”；提醒只发给本机运营者，不自动催买家、不批量私信、不触发发货或库存写入。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增 `_buyer_chain_notification_override()`，并把 `buyer_attention_stage` 纳入提醒签名和返回 payload。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 覆盖买家未调模型优先于低库存、严格门通过提醒两条分支。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步买家卡点提醒口径。
+### 验证
+- `packages/clawbot/.venv312/bin/python -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/tests/test_xianyu_cc_auto_ship.py && cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py -q` → `21 passed / 0 failed`。
+
+## [2026-07-05] CC中转本机运营提醒与 Chrome 可见标签组
+> 领域: `xianyu` | `backend` | `infra` | `docs`
+> 影响模块: `XianyuAdmin`, `Ops Links`, `Chrome Bookmarks`
+> 关联问题: HI-907
+### 变更内容
+- Chrome 已创建可见标签组 `📌 CC中转运营入口`，包含本机运营入口、闲鱼 GUI、用户主站、New-API 后台、Frist 运营台和模型检查入口；同时继续保留 `CC中转运营` 书签文件夹。
+- 本机闲鱼管理服务新增后台运营提醒线程：状态变化、WebSocket/Cookie 异常、发货补救队列、低库存、真实单闭环状态变化时弹 macOS 本机通知。
+- 新增 `POST /api/cc-ops-notify/check`，供 `/ops-links` 的“本机提醒”卡片手动发送当前状态提醒；该接口只读，不发货、不分配卡密、不改库存。
+- `/ops-links` 增加“本机提醒”卡片，展示后台值守状态、提醒间隔、低库存阈值和最近提醒摘要。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增本机运营提醒配置、通知 payload、macOS 通知发送、后台线程、手动检查接口和 `/ops-links` 提醒卡片。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` / `packages/clawbot/tests/test_api_routes_regression.py` — 增加提醒 payload、dry-run 路由和全局状态隔离测试。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步全自动运营提醒口径。
+### 验证
+- `packages/clawbot/.venv312/bin/python -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/tests/test_xianyu_cc_auto_ship.py packages/clawbot/tests/test_api_routes_regression.py && cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_api_routes_regression.py -q` → `52 passed / 0 failed`。
+- 本机助手已重启，live `POST /api/cc-ops-notify/check?force=true` 返回 `sent=true`、`state=run_real_small_order`、`unused_cards=5`；live `/api/cc-ops-snapshot` 返回 `ok=true`、`sale_lock.state=internal_test_ready`、`loop_stage=waiting_paid_order`。
+- Chrome openTabs 验证 5 个入口位于 `📌 CC中转运营入口` 标签组；总控页截图保存到 `output/cc-ops-links-status.png`。
+
+## [2026-07-05] 新增 CC中转运营统一快照接口
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuAdmin`, `Ops Links`, `Xianyu GUI`
+> 关联问题: HI-907
+### 变更内容
+- 新增 `GET /api/cc-ops-snapshot`，一次性返回当前行动建议、上架锁、自动发货状态、实单闭环和买家进度。
+- `/ops-links` 与本机 GUI 已读取该快照，为后续通知/看板复用同一份安全状态做准备。
+- 该接口只读，不触发审计、不发货、不分配卡密、不修改库存。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增 `_cc_ops_snapshot_summary()` 和 `/api/cc-ops-snapshot`。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖快照接口、页面标记和关键字段。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步运营快照口径。
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m py_compile src/xianyu/xianyu_admin.py && .venv312/bin/python -m pytest tests/test_api_routes_regression.py tests/test_xianyu_cc_auto_ship.py -q` → `50 passed / 0 failed`。
+- 重启 `ai.openclaw.xianyu` 并只读刷新上架锁后，live `/api/cc-ops-snapshot` 返回 `ok=true`、`next_action.state=run_real_small_order`、`sale_lock.state=internal_test_ready`、`loop_stage=waiting_paid_order`。
+
+## [2026-07-05] 统一下一步行动建议接口
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuAdmin`, `Ops Links`, `Xianyu GUI`
+> 关联问题: HI-907
+### 变更内容
+- 新增 `GET /api/cc-operator-next-action`，把上架锁、自动发货、补救队列、真实订单和买家链路汇总为统一“下一步行动”。
+- `/ops-links` 和本机闲鱼 GUI 改用同一套建议，避免一个页面提示“可以测试”，另一个页面仍提示“库存证据未刷新”。
+- 服务刚重启且库存/渠道证据未刷新时，接口会优先提示刷新上架锁；证据刷新后才提示发布 1 单小额闲鱼测试商品。
+- 该接口只读，不触发审计、不发货、不分配卡密、不修改库存。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增 `_cc_operator_next_action_summary()`、`/api/cc-operator-next-action`，并接入 `/ops-links` 与 GUI。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖统一建议接口、库存证据未刷新分支、页面标记和 checklist。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步运营口径。
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m py_compile src/xianyu/xianyu_admin.py && .venv312/bin/python -m pytest tests/test_api_routes_regression.py tests/test_xianyu_cc_auto_ship.py -q` → `50 passed / 0 failed`。
+- 重启 `ai.openclaw.xianyu` 后，刷新证据前 live 接口返回 `state=locked`、`primary_action=库存/渠道证据未刷新，请点“刷新上架锁”`；刷新后返回 `state=run_real_small_order`、`primary_action=发布 1 个小额闲鱼测试商品，完成真实付款；系统会自动发卡。`
+
+## [2026-07-05] 买家自助链路进度增加只读接口
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuAdmin`, `Ops Links`, `Readiness Audit`
+> 关联问题: HI-907
+### 变更内容
+- 新增 `GET /api/cc-buyer-chain-progress`，把真实订单买家侧进度聚合成“已发货、已兑换、API Key、调模型、同单闭环”五步。
+- Chrome 书签第一入口 `/ops-links` 增加“买家进度”卡片；本机闲鱼 GUI 增加“买家自助链路进度”卡片。
+- 该接口只读，不触发严格门、不发货、不分配卡密、不修改库存；用于真实订单后判断买家卡在兑换、创建 API Key 还是模型调用。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增 `_cc_buyer_chain_progress_summary()`、`/api/cc-buyer-chain-progress` 和两处 GUI 渲染。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖新接口、运营入口和 GUI 标记。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步买家自助链路进度口径。
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m py_compile src/xianyu/xianyu_admin.py && .venv312/bin/python -m pytest tests/test_api_routes_regression.py tests/test_xianyu_cc_auto_ship.py -q` → `49 passed / 0 failed`。
+- 重启 `ai.openclaw.xianyu` 后，live `/api/cc-buyer-chain-progress` 返回 `stage=waiting_paid_order`、五步均未完成、下一步为发布闲鱼商品并跑 1 单小额真实付款；`/ops-links` 包含“买家进度”和新接口调用。
+
+## [2026-07-05] 实单买家闭环结果回写到发货记录
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuContext`, `XianyuAdmin`, `Readiness Audit`
+> 关联问题: HI-907
+### 变更内容
+- `cc_shipments` 增加 `buyer_chain_status`、`buyer_chain_verified_at`、`buyer_chain_note`，用于记录某条真实闲鱼发货是否已完成买家兑换、创建 API Key 和调模型闭环。
+- 正式售卖严格门通过后，`record_cc_strict_audit()` 会按订单哈希把同一真实订单标记为 `buyer_chain_status=verified`；审计摘要不保存完整订单号。
+- 本机 GUI/运营入口的实单闭环卡片会显示“已闭环订单数”，让老板能区分“已发货”和“买家已经完整跑通”。
+- 老 SQLite 表会在启动时自动补列，避免当前生产内测本机库因缺列启动失败。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_context.py` — 新增买家闭环字段、老库补列、哈希匹配回写和统计字段。
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 状态接口和 GUI 增加已闭环订单数。
+- `scripts/cc_zhongzhuan_readiness_audit.mjs` — 同单严格门摘要增加订单哈希，供本机安全匹配回写。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 覆盖严格门回写和老 SQLite 表迁移。
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py -q` → `17 passed / 0 failed`。
+- `cd packages/clawbot && .venv312/bin/python -m py_compile src/xianyu/xianyu_context.py src/xianyu/xianyu_admin.py && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_api_routes_regression.py -q && node --check scripts/cc_zhongzhuan_readiness_audit.mjs` → `48 passed / 0 failed`。
+
+## [2026-07-05] 运营入口总页增加实时状态看板
+> 领域: `xianyu` | `backend` | `infra` | `docs`
+> 影响模块: `XianyuAdmin`, `Ops Links`, `Readiness Audit`
+> 关联问题: HI-907
+### 变更内容
+- `/ops-links` 从纯链接页升级为本机运营总控入口，打开后可输入本机 `OPENCLAW_API_TOKEN` 并只读查看上架前安全锁、自动发货、实单闭环和当前下一步。
+- 页面会读取 `/api/status`、`/api/cc-loop-watch` 和 `/api/cc-public-sale-lock`，明确区分“生产内测可发货”和“正式售卖已放行”。
+- 新入口不提供发货、分配卡密或 webhook 冒烟按钮，只读刷新状态；正式售卖仍必须通过真实闲鱼小额单兑换/API/调模型严格门。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — `/ops-links` 增加三张状态卡、Token 输入、本机 GUI 跳转和只读状态刷新。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖运营入口状态看板、API 调用脚本和正式售卖门槛提示。
+- `docs/002-changelog.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步老板收藏入口的新口径。
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m py_compile src/xianyu/xianyu_admin.py && .venv312/bin/python -m pytest tests/test_api_routes_regression.py tests/test_xianyu_cc_auto_ship.py -q` → `48 passed / 0 failed`。
+- 重启 `ai.openclaw.xianyu` 后，`http://127.0.0.1:18800/ops-links` 包含“上架前安全锁 / 自动发货 / 实单闭环 / 当前你要做什么 / OPENCLAW_API_TOKEN”。
+- 只读刷新 `/api/cc-public-sale-lock?refresh=true` 后返回 `state=internal_test_ready`、未售卡密 5、New-API 兑换码 5、渠道 3，正式售卖仍因真实小额单严格门未过而锁定。
+
+## [2026-07-05] 后台自动刷新上架锁只读证据
+> 领域: `xianyu` | `backend` | `infra` | `docs`
+> 影响模块: `XianyuAdmin`, `Chrome Bookmarks`, `Readiness Audit`
+> 关联问题: HI-907
+### 变更内容
+- 本机闲鱼助手启动时新增后台只读巡检线程，默认每 15 分钟自动刷新未售卡密库存、New-API 启用兑换码和启用渠道数量。
+- `/api/status` 和“上架前安全锁”现在能看到 `cc_readiness_audit` / `auto_readiness_audit` 的自动刷新状态，减少人工点“刷新上架锁”的依赖。
+- Chrome 入口脚本新增 `--visible-bookmark-folder` / `--visible-bookmark-group`，用于老板看不到书签栏文件夹时，直接通过 Chrome 自带“收藏所有标签页”流程创建可见的 `CC中转运营` 文件夹。
+- 安全边界不变：后台只读巡检不调用 `--webhook-smoke`，不发送闲鱼消息，不分配卡密，不修改库存；正式售卖仍必须通过真实闲鱼小额单的兑换/API/调模型严格门。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增后台只读巡检配置、节流、守护线程和状态字段。
+- `packages/clawbot/config/.env.example` — 增加 `CC_XIANYU_AUTO_READINESS_AUDIT_*` 与严格门自动观察配置样例。
+- `scripts/cc_zhongzhuan_chrome_bookmarks.mjs` — 增加可见书签文件夹创建参数。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步生产内测运营口径。
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m py_compile src/xianyu/xianyu_admin.py && .venv312/bin/python -m pytest tests/test_api_routes_regression.py tests/test_xianyu_cc_auto_ship.py -q` → `48 passed / 0 failed`。
+- 真实 Chrome 已用可见收藏流程创建 `CC中转运营` 书签栏文件夹，Default 资料读取到 7 个运营入口；`node scripts/cc_zhongzhuan_chrome_bookmarks.mjs --open-window --json` 返回 `ok=true`、`openedWindow.tabCount=7`。
+- 重启 `ai.openclaw.xianyu` 后，`/api/status` 显示 `cc_readiness_audit.auto_enabled=true`、`auto_interval_ms=900000`、`auto_scan_seconds=60`，后台自动刷新后上架锁保持 `internal_test_ready`，正式售卖仍因真实小额单严格门未过而锁定。
+
+
+
+
+
+
+## [2026-07-05] 闲鱼 GUI 增加上架前安全锁
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuAdmin`, `Xianyu GUI`, `Readiness Audit`
+> 关联问题: HI-907
+### 变更内容
+- 本机闲鱼 GUI 新增“上架前安全锁”卡片和 `GET /api/cc-public-sale-lock`。
+- 默认接口只读取本机缓存状态；点击“刷新上架锁（只读）”时才运行一次只读巡检，刷新库存、New-API 启用兑换码和渠道证据。
+- 安全锁把状态明确分为 `locked`、`internal_test_ready`、`public_sale_unlocked`，防止把“生产内测可发货”误解为“正式售卖已放行”。
+- 放行正式售卖必须同时满足：自动发货就绪、补救队列清零、未售卡密库存 > 0、New-API 启用兑换码 > 0、New-API 启用渠道 > 0、真实闲鱼小额单兑换/API/调模型严格门通过。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增 `_cc_public_sale_lock_summary()`、`/api/cc-public-sale-lock` 和 GUI 上架锁渲染/刷新按钮。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖页面入口、接口状态、只读刷新和正式售卖锁定/放行判断。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步操作口径。
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m py_compile src/xianyu/xianyu_admin.py && .venv312/bin/python -m pytest tests/test_api_routes_regression.py tests/test_xianyu_cc_auto_ship.py -q` → `46 passed / 0 failed`。
+- 重启 `ai.openclaw.xianyu` 后，`/api/cc-public-sale-lock?refresh=true` 返回 `state=internal_test_ready`、`can_internal_test=true`、`can_public_sale=false`、库存 `unused_cards=5`、兑换码 `5`、渠道 `3`；唯一锁定原因是尚未通过真实闲鱼小额单严格门。
+
+## [2026-07-05] Chrome 运营入口支持一键打开窗口
+> 领域: `infra` | `xianyu` | `docs`
+> 影响模块: `Chrome Bookmarks`, `Ops Links`, `Readiness Audit`
+> 关联问题: HI-907
+### 变更内容
+- `scripts/cc_zhongzhuan_chrome_bookmarks.mjs` 新增 `--open-window` / `--open` 参数。
+- 脚本仍会修复 4 个 Chrome Profile 的 `CC中转运营` 书签文件夹；额外参数会在当前 macOS Chrome 中直接打开一个包含 7 个运营入口的新窗口。
+- 解决 Chrome 正在运行时书签文件已写入但当前 UI 未即时刷新的问题；老板找不到书签时可以直接运行一条命令打开运营窗口。
+### 文件变更
+- `scripts/cc_zhongzhuan_chrome_bookmarks.mjs` — 增加 macOS AppleScript 打开运营窗口逻辑，支持 JSON 输出 `openedWindow` 摘要。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步 Chrome 入口操作口径。
+### 验证
+- `node --check scripts/cc_zhongzhuan_chrome_bookmarks.mjs` → exit 0。
+- 临时 Chrome Profile dry-run：`--dry-run --open-window --json` 返回 `ok=true` 且跳过真实打开。
+- 真实 Chrome：`node scripts/cc_zhongzhuan_chrome_bookmarks.mjs --open-window --json` 返回 `ok=true`、`openedWindow.tabCount=7`，4 个 Profile 均 `urlCount=7`、`bookmarkBarVisible=true`。
+
+## [2026-07-05] 严格门审计结果落盘保存
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuContext`, `XianyuAdmin`, `Readiness Audit`
+> 关联问题: HI-907
+### 变更内容
+- 本机闲鱼 SQLite 新增 `cc_strict_audits` 表，保存最近正式售卖严格门的脱敏摘要。
+- `XianyuAdmin` 的严格门缓存现在支持从 SQLite 恢复；真实订单闭环一旦通过，闲鱼助手进程重启后仍可在 GUI/API 看到最近严格门证据。
+- 持久化内容只包含 `ok/exit_code/real_orders/same_order_ready/same_order_matched/redeemed_delta/active_token_delta/model_log_delta/same_order_latest` 等摘要，不保存 stdout、stderr、完整订单号、卡密、Token 或 API Key。
+- `/api/status` 增加 `cc_strict_audit`，`/api/cc-loop-watch` 的“最近严格门”展示会标记已落盘。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_context.py` — 新增严格门审计表和 `record_cc_strict_audit()` / `latest_cc_strict_audit()`。
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 严格门结果写入 SQLite、从 SQLite 恢复，并在状态接口/GUI 展示。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` / `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖严格门摘要落盘、不保存原始输出、重启后恢复判断。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步闭环证据持久化口径。
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m py_compile src/xianyu/xianyu_admin.py src/xianyu/xianyu_context.py && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_api_routes_regression.py -q` → `45 passed / 0 failed`。
+- 重启 `ai.openclaw.xianyu` 后，`/api/cc-loop-watch` 返回 `stage=waiting_paid_order`、`can_auto_ship_paid_orders=true`、`background_strict_audit_enabled=true`、`pending_rescue=0`，当前 `last_strict_audit={}` 符合尚无真实订单现状。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --json` → `ok=true`；`--require-real-order` → `ok=false`、`realOrders=0`、`sameOrderReady=0`，继续作为正式售卖前真实小额订单门禁。
+
+## [2026-07-05] 后台自动严格门观察接管 GUI 轮询
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuAdmin`, `Readiness Audit`, `Xianyu GUI`
+> 关联问题: HI-907
+### 变更内容
+- 本机闲鱼助手启动时新增后台守护线程：即使浏览器没有打开 GUI，也会定时观察实单闭环阶段。
+- 只有在真实闲鱼订单已自动发货、无补救队列、WebSocket/Cookie/webhook 均可用且阶段为 `waiting_buyer_chain` 时，才按 `CC_XIANYU_AUTO_STRICT_AUDIT_INTERVAL_MS` 节流运行正式售卖严格门只读审计。
+- 后台严格门不调用 `--webhook-smoke`，不会发送闲鱼消息、不会分配卡密、不会改库存；只是刷新“同一真实订单是否已完成兑换/API Key/调模型”的证据。
+- `/api/cc-loop-watch` 增加后台观察状态字段，GUI 仍保留页面打开时的辅助自动观察。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增 `_auto_strict_audit_config()`、后台严格门判断/单次执行/守护线程，并在 `start_admin_server()` 启动。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖后台严格门触发条件、节流和单次执行。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 清理新增环境变量，避免测试串扰。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步全自动运营口径。
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m py_compile src/xianyu/xianyu_admin.py && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_api_routes_regression.py -q` → `44 passed / 0 failed`。
+- 重启 `ai.openclaw.xianyu` 后，带 token 查询 `/api/cc-loop-watch` 返回 `stage=waiting_paid_order`、`can_auto_ship_paid_orders=true`、`background_strict_audit_enabled=true`、`background_strict_audit_scan_seconds=60`、`pending_rescue=0`。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --json` → `ok=true`，Chrome / 本机闲鱼 / GUI / Oracle 均通过，库存 `unused=5`、New-API 启用兑换码 `5`、渠道 `3`；`--require-real-order` 仍按预期失败，因真实闲鱼实单数为 `0`。
+
+## [2026-07-05] GUI 在真实发货后自动轮询正式售卖严格门
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuAdmin`, `Xianyu GUI`, `Readiness Audit`
+> 关联问题: HI-907
+### 变更内容
+- 本机闲鱼助手 GUI 新增自动严格门观察：当“实单闭环观察”进入 `waiting_buyer_chain`（已自动发货，等待买家完成兑换/API/调模型）时，页面会按 10 分钟节流自动运行一次“正式售卖严格门”只读审计。
+- 自动观察只调用现有 `GET /api/cc-readiness-audit?mode=strict`，不会触发 `--webhook-smoke`，不会发送闲鱼消息，不会分配卡密，不会修改库存。
+- 无真实订单时不自动跑严格门；当前 live 状态仍为 `waiting_paid_order`。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增前端 `maybeAutoRunStrictAudit()`、自动严格门节流和 `CC_XIANYU_AUTO_STRICT_AUDIT_*` 只读配置。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖自动观察静态逻辑和接口返回的开关/节流参数。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步运营口径。
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m py_compile src/xianyu/xianyu_admin.py && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_api_routes_regression.py -q` → `42 passed / 0 failed`。
+- 本机 `ai.openclaw.xianyu` 重启后，GUI 首页包含 `maybeAutoRunStrictAudit`、`ccLastAutoStrictAuditAt` 和“自动运行正式售卖严格门”。
+- `/api/cc-loop-watch` 返回 `stage=waiting_paid_order`、`auto_strict_audit_enabled=true`、`auto_strict_audit_interval_ms=600000`、`ready_for_public_sale=false`。
+
+## [2026-07-05] 闲鱼 GUI 增加实单闭环观察并收紧正式可售判断
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuAdmin`, `Xianyu GUI`, `Readiness Audit`
+> 关联问题: HI-907
+### 变更内容
+- 本机闲鱼助手 GUI 新增“实单闭环观察”卡片和 `GET /api/cc-loop-watch`，轻量展示自动发货当前卡在 webhook、WebSocket、Cookie、补救队列、等待真实付款、等待买家兑换/API/调模型或已闭环哪一步。
+- 修复 GUI 前端 Promise 解包漏接 `/api/items` 的问题，“最近捕获到的闲鱼商品”现在会真正拿到缓存商品数据。
+- 收紧 `ready_for_public_sale` 判断：不再因为本机出现 `xy_* / message_sent` 就显示正式可售；只有最近一次“正式售卖严格门”通过且同一真实订单完成买家兑换、API Key、模型调用后才会转绿。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增严格审计结果缓存、`/api/cc-loop-watch`、GUI 实单闭环观察卡片，并修复 `/api/items` 前端解包。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖新卡片、新接口和“本机已发货但买家闭环未通过时仍不可正式售卖”的安全判断。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步当前运营口径。
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m py_compile src/xianyu/xianyu_admin.py && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_api_routes_regression.py -q` → `42 passed / 0 failed`。
+- 本机 `ai.openclaw.xianyu` 重启后，GUI 首页包含“实单闭环观察 / renderLoopWatch / /api/cc-loop-watch / 最近捕获到的闲鱼商品”。
+- 带 token 调用 `/api/cc-loop-watch` 返回 `stage=waiting_paid_order`、`can_auto_ship_paid_orders=true`、`ready_for_public_sale=false`、`pending_rescue=0`。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs` → `PASS`；`--require-real-order` 仍按预期 `FAIL`，原因是尚未发生真实闲鱼小额付款订单。
+
+## [2026-07-05] 闲鱼 GUI 补齐捕获商品映射与 Chrome 运营入口总页
+> 领域: `xianyu` | `infra` | `docs`
+> 影响模块: `XianyuAdmin`, `Chrome Bookmarks`, `Readiness Audit`
+> 关联问题: HI-907
+### 变更内容
+- 本机闲鱼助手 GUI 的“闲鱼商品套餐映射”新增“最近捕获到的闲鱼商品”列表，读取 `/api/items` 缓存商品，点击“填入映射”即可把 `item_id`、标题和价格带入映射表单/商品模板，减少手动查商品 ID。
+- 新增本机运营入口总页 `http://127.0.0.1:18800/ops-links`，集中放用户主站、New-API 后台、Frist 运营台、本机闲鱼 GUI、模型检查和 API 网关 Base URL。
+- Chrome 书签修复脚本把 `CC中转运营` 文件夹升级为 7 个入口，并清理废弃 `file://cc_zhongzhuan_ops_links.html` 链接；真实 Chrome 标签组已打开 `CC中转运营入口` 总页。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增 `/ops-links` 页面、最近捕获商品渲染和 `fillMappingFromItem()`。
+- `packages/clawbot/tests/test_api_routes_regression.py` / `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 覆盖 `/ops-links`、`/api/items` 和 GUI 映射入口。
+- `scripts/cc_zhongzhuan_chrome_bookmarks.mjs` / `scripts/cc_zhongzhuan_readiness_audit.mjs` — Chrome 入口清单升级为 7 项。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步运营口径。
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m py_compile src/xianyu/xianyu_admin.py && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_api_routes_regression.py -q` → `42 passed / 0 failed`。
+- `node --check scripts/cc_zhongzhuan_chrome_bookmarks.mjs && node --check scripts/cc_zhongzhuan_readiness_audit.mjs && node scripts/cc_zhongzhuan_chrome_bookmarks.mjs --json` → 4 个 Chrome Profile 均 `urlCount=7`、`bookmarkBarVisible=true`。
+- 本机 `ai.openclaw.xianyu` 重启后，`/ops-links` 包含 6 个运营入口，GUI 首页包含“最近捕获到的闲鱼商品 / 填入映射 / /api/items”。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs` → `PASS`；`--require-real-order` 仍按预期失败，原因是尚未发生真实闲鱼小额付款订单。
+
+## [2026-07-05] GUI 审计卡片显示同单买家闭环明细
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuAdmin`, `Readiness Audit`
+> 关联问题: HI-907
+### 变更内容
+- 本机闲鱼助手“一键闭环审计”卡片新增同一真实订单分阶段明细渲染：订单前缀、履约状态、卡密状态、New-API 兑换、API Key 数量、兑换后模型调用数和最终结论。
+- `_summarize_cc_readiness_payload()` 保留 `real_order_chain_proof.latestMatches` 的前 5 条，GUI 可直接展示真实订单卡在“已发货 / 已兑换 / API Key / 调模型”哪一步。
+- 当前无真实订单时，GUI 明确显示“暂无同一真实订单明细”，避免把严格门失败误解成系统故障。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增 `same_order_latest` 摘要和 `renderOrderChainMatches()` 前端渲染。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖页面函数和同单明细摘要字段。
+- `docs/002-changelog.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步 GUI 验收说明。
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py::test_xianyu_admin_page_escapes_dynamic_fields tests/test_api_routes_regression.py::test_xianyu_admin_runs_readonly_cc_readiness_audit -q` → `2 passed / 0 failed`。
+- `cd packages/clawbot && .venv312/bin/python -m py_compile src/xianyu/xianyu_admin.py && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_api_routes_regression.py -q` → `42 passed / 0 failed`。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs` → `PASS`；当前 `latestMatches=[]`、`readyOrders=0`，符合“尚无真实小额订单”的现状。
+- 本机 `ai.openclaw.xianyu` 重启后，GUI 首页 HTTP 200，页面包含 `renderOrderChainMatches` 和“分阶段状态”提示；`/api/cc-readiness-audit?mode=read_only` 返回 `ok=true`、`same_order_latest=[]`。
+
+## [2026-07-05] CC中转 Chrome 书签文件夹可重复修复脚本
+> 领域: `infra` | `xianyu` | `docs`
+> 影响模块: `Chrome Bookmarks`, `Readiness Audit`
+> 关联问题: HI-907
+### 变更内容
+- 新增 `scripts/cc_zhongzhuan_chrome_bookmarks.mjs`，可重复修复/重建 Chrome 里的「CC中转运营」书签文件夹。
+- 脚本会遍历本机 Chrome Profile，把 6 个运营入口写入书签栏并开启书签栏显示；写入前在原 Chrome Profile 目录生成 `.codex-backup-*` 备份。
+- 支持 `CHROME_USER_DATA_DIR` / `CC_CHROME_USER_DATA_DIR` 指向临时目录做测试，也支持 `--dry-run` 和 `--json`。
+### 文件变更
+- `scripts/cc_zhongzhuan_chrome_bookmarks.mjs` — 新增 Chrome 书签修复脚本。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步操作说明。
+### 验证
+- 临时 Chrome Profile 冒烟：脚本成功重建 `CC中转运营` 文件夹、保留旧入口、打开书签栏并生成备份。
+- 真实 Chrome Profile 修复：`Default`、`Profile 1`、`Profile 2`、`Profile 3` 均返回 `ok=true`、`urlCount=7`、`bookmarkBarVisible=true`。
+- `node scripts/cc_zhongzhuan_chrome_bookmarks.mjs --json && node scripts/cc_zhongzhuan_readiness_audit.mjs` → 书签修复成功，闭环审计 `PASS`。
+- `node --check scripts/cc_zhongzhuan_chrome_bookmarks.mjs && git diff --check` → exit 0。
+
+## [2026-07-05] 闲鱼助手增加自动化运营水位和商品模板
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuAdmin`, `Xianyu GUI`
+> 关联问题: HI-907
+### 变更内容
+- 本机闲鱼助手 GUI 新增“自动化运营水位”卡片，直接展示 CC中转自动发货是否可用、正式售卖是否仍缺真实小额单验收、webhook/ws/cookie/补救队列/商品映射状态，以及老板仍需介入的事项。
+- 新增 `GET /api/cc-sale-readiness`，供 GUI 汇总自动化运营水位；不输出 token、卡密或 API Key。
+- 新增“闲鱼商品模板”卡片和 `GET /api/cc-product-template`，生成只含履约说明的极简商品模板：付款后自动发送兑换入口和一次性兑换码、注册/登录、兑换到账、创建 API Key、CC Switch 导入和模型测试；不写额外营销话术，不暴露 `/v1` 网关。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增自动化水位 API、商品模板 API 和 GUI 卡片。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖 GUI 文案、自动化水位 API 和商品模板内容边界。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步操作入口。
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py::test_xianyu_admin_page_escapes_dynamic_fields tests/test_api_routes_regression.py::test_xianyu_admin_sale_readiness_and_product_template tests/test_xianyu_cc_auto_ship.py -q` → `18 passed / 0 failed`。
+- `cd packages/clawbot && .venv312/bin/python -m py_compile src/xianyu/xianyu_admin.py src/xianyu/xianyu_context.py src/xianyu/xianyu_live.py && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_api_routes_regression.py -q` → `42 passed / 0 failed`。
+- 本机 `ai.openclaw.xianyu` 重启后，GUI 首页 HTTP 200 且包含“自动化运营水位 / 闲鱼商品模板”；带 token 调用 `/api/cc-sale-readiness` 返回 `can_auto_ship_paid_orders=true`、`ready_for_public_sale=false`、`pending_rescue=0`；模板接口包含注册/登录和 CC Switch 步骤，且不包含 `/v1`。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs && git diff --check` → `PASS` / exit 0。
+
+## [2026-07-05] 闲鱼自动发货增加商品套餐映射
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuLive`, `XianyuAdmin`, `XianyuContext`
+> 关联问题: HI-907
+### 变更内容
+- 本机闲鱼助手新增“闲鱼商品套餐映射”：可在 GUI 里配置 `item_id → planId`，多商品/多套餐上架后优先按商品映射发对应兑换码，避免只走默认套餐导致错发。
+- `XianyuLive` 调用 CC中转低权限 webhook 时，会优先读取已启用映射；没有映射时继续回退 `CC_XIANYU_DEFAULT_PLAN_ID` 或无套餐任意未售卡密。
+- CC中转自动发货接管时，不再同时发送旧 OpenClaw 部署包 License 话术，避免买家收到两套无关发货内容。
+- 本机 GUI 新增映射表单、列表和删除按钮；`/api/status` 增加映射数量摘要。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_context.py` — 新增 `cc_item_mappings` 表和增删查改方法。
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 自动发货 payload 增加商品映射 planId 解析，并在 CC中转接管时关闭旧 License 话术。
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增 `/api/cc-item-mappings` API、GUI 表单和状态摘要。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 覆盖映射优先级、SQLite CRUD 和 GUI API。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步自动发货运营说明。
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_api_routes_regression.py -q` → `41 passed / 0 failed`。
+- `cd packages/clawbot && .venv312/bin/python -m py_compile src/xianyu/xianyu_context.py src/xianyu/xianyu_live.py src/xianyu/xianyu_admin.py` → exit 0。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs` → `PASS`，本机 GUI 显示 `ws=true`、`cookie=true`、`autoShip=true`、`pendingRescue=0`。
+- 本机 `http://127.0.0.1:18800/` 重启后首页包含“闲鱼商品套餐映射”，真实 API 冒烟完成“新增映射 → 查询 → 删除”，测试映射已清理。
+- `make test` → exit 0（全量 pytest 进度到 `[100%]`，仅保留既有 `js2py` deprecation warning）。
+- `cd apps/frist-api && node --test tests/*.test.mjs` → `182 passed / 0 failed`。
+
+## [2026-07-05] 闲鱼助手 GUI 增加一键闭环审计按钮
+> 领域: `xianyu` | `infra` | `docs`
+> 影响模块: `XianyuAdmin`, `Readiness Audit`
+> 关联问题: HI-907
+### 变更内容
+- 本机闲鱼助手 GUI 新增“一键闭环审计”卡片，提供“运行内测巡检”和“运行正式售卖严格门”两个按钮，老板不需要手敲 CLI 命令也能看到生产闭环状态。
+- 新增 `GET /api/cc-readiness-audit?mode=read_only|strict`，只允许只读巡检和严格验收，不提供 `--webhook-smoke` 写入冒烟按钮，避免误点造成生产写操作。
+- GUI 摘要展示 Chrome 入口、本机闲鱼、GUI、Oracle、库存、New-API 兑换码/渠道、补救队列、真实订单、同单闭环和买家站内增量。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增审计 API、页面按钮和审计摘要渲染。
+- `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖页面按钮、只读审计 API 和严格模式参数，断言不会调用 `--webhook-smoke`。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步 GUI 操作入口。
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py::test_xianyu_admin_page_escapes_dynamic_fields tests/test_api_routes_regression.py::test_xianyu_admin_runs_readonly_cc_readiness_audit -q` → `2 passed / 0 failed`。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_api_routes_regression.py -q` → `38 passed / 0 failed`。
+- 本机 `ai.openclaw.xianyu` 重启后，`/api/status` 返回 `ws=true`、`cookie=true`、`cc=true`。
+- `GET http://127.0.0.1:18800/api/cc-readiness-audit?mode=read_only` → `ok=true`、`exit=0`。
+- `GET http://127.0.0.1:18800/api/cc-readiness-audit?mode=strict` → `ok=false`、`exit=1`，原因仍是尚无真实小额闲鱼订单，属于预期售卖前门禁。
+
+## [2026-07-05] CC中转补齐 New-API 原生兑换回写与同单严格验收
+> 领域: `backend` | `xianyu` | `infra` | `deploy` | `docs`
+> 影响模块: `Frist-API`, `Readiness Audit`, `XianyuAdmin`
+> 关联问题: HI-907
+### 变更内容
+- Frist-API 新增 New-API 原生兑换状态回写器：服务启动后默认每 60 秒读取 New-API SQLite `redemptions`，用卡密哈希匹配 Frist 兑换卡，自动把已发出的闲鱼卡密和履约记录从 `sold/delivered` 回写为 `redeemed`。
+- 新增后台手动同步接口 `/api/admin/redemption-cards/sync-newapi-status`，便于运营台立即刷新兑换状态；同步过程不打印、不落库完整卡密，只保存哈希、预览和 New-API 用户 ID 摘要。
+- 一键审计严格模式升级为“同一真实订单闭环证明”：本机闲鱼助手只提供 `xy_*` 真实订单哈希，Oracle 端用该哈希匹配同一笔履约，再要求对应卡密已兑换、买家有启用 API Key 且兑换后有模型调用日志。
+- 本机闲鱼 GUI 的正式售卖验收门同步增加 `same_xy_order_redeemed` 要求，避免把 webhook 冒烟或无关模型日志误判成正式可售。
+- 已部署到 Oracle `/opt/frist-api/apps/frist-api/server/server.js`，并在 `/etc/frist-api/frist-api.env` 打开 `FRIST_API_NEWAPI_REDEMPTION_STATUS_SYNC_ENABLED=1`。
+### 文件变更
+- `apps/frist-api/server/server.js` — 新增 New-API 兑换状态同步器、后台手动同步接口和定时任务。
+- `apps/frist-api/tests/server.test.mjs` — 新增“New-API 原生兑换后回写 Frist 闲鱼履约”的回归测试。
+- `apps/frist-api/deploy/production.env.example` — 增加兑换状态同步开关和间隔示例。
+- `scripts/cc_zhongzhuan_readiness_audit.mjs` — 严格门增加同一 `xy_*` 订单哈希关联证明。
+- `packages/clawbot/src/xianyu/xianyu_context.py` — GUI 正式售卖验收门增加同单兑换要求。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步生产闭环和验收口径。
+### 验证
+- `node --test --test-name-pattern="New-API native redemption status|New-API topup succeeds|newly generated CC cards" apps/frist-api/tests/server.test.mjs` → `3 pass / 0 fail`。
+- `cd apps/frist-api && node --test tests/*.test.mjs` → `182 passed / 0 failed`。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_api_routes_regression.py -q` → `37 passed / 0 failed`。
+- Oracle 部署后 `systemctl restart frist-api.service && systemctl is-active frist-api.service` → `active`。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs` → `PASS`；默认模式显示 `同一真实订单闭环证明: localOrderHashes=0, matchedOrders=0, readyOrders=0（默认不强制）`。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --webhook-smoke` → `PASS`，`fulfillment=delivered`、`cleanup=true`、`unused_after=5`。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --require-real-order` → 预期 `FAIL` 且退出码 `1`，因为当前尚未发布闲鱼商品并跑真实小额订单。
+
+## [2026-07-05] 闲鱼发货话术补齐买家自助使用步骤
+> 领域: `backend` | `xianyu` | `docs`
+> 影响模块: `Frist-API`, `Xianyu Fulfillment`
+> 关联问题: HI-907
+### 变更内容
+- 闲鱼自动发货话术从“兑换入口 + 卡密”补齐为完整买家自助路径：注册/登录、进入兑换码到账、进入 API Key 创建 Key、进入 CC Switch 导入并选择模型测试。
+- 话术仍保持操作说明口径，不新增营销文案，不暴露上游信息，也不把 `/v1` 网关直接写进闲鱼消息。
+- 已将单文件部署到 Oracle `/opt/frist-api/apps/frist-api/server/server.js`，重启 `frist-api.service` 生效。
+### 文件变更
+- `apps/frist-api/server/server.js` — `buildXianyuDeliveryMessage()` 增加买家自助步骤。
+- `apps/frist-api/tests/server.test.mjs` — 覆盖发货话术包含注册/登录、兑换码、API Key、CC Switch 和模型测试，并继续断言不出现 `jiyu.245334.xyz/v1`。
+- `docs/002-changelog.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步话术变更和生产验证。
+### 验证
+- `node --check apps/frist-api/server/server.js` → exit 0。
+- `cd apps/frist-api && node --test --test-name-pattern 'marks local CC card and Xianyu fulfillment redeemed|allocates a redemption card for a Xianyu order|low-scope auto-ship webhook' tests/server.test.mjs` → `3 pass / 0 fail`。
+- Oracle 单文件部署后：`node --check /opt/frist-api/apps/frist-api/server/server.js && systemctl restart frist-api.service` → `active`。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --webhook-smoke` → `PASS`，`fulfillment=delivered`、`cleanup=true`、`unused_after=5`。
+- 生产内网 webhook 话术检查 → `has_register=true`、`has_redeem=true`、`has_api_key=true`、`has_cc_switch=true`、`has_model_test=true`、`leaks_v1=false`、`cleanup=true`、`unused_after=5`。
+
+## [2026-07-05] 闲鱼助手 GUI 增加正式售卖验收门
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuAdmin`, `XianyuContext`, `Readiness Audit`
+> 关联问题: HI-907
+### 变更内容
+- 本机闲鱼助手首页新增“正式售卖验收门”卡片，直接展示真实闲鱼发货是否已发生、真实订单数、补救待处理数，以及正式开卖前要跑的严格命令。
+- `XianyuContextManager` 新增 `cc_final_sale_gate_summary()`，从本机 SQLite 汇总 `xy_* / message_sent` 真实发货记录，不显示完整卡密或买家信息。
+- `/api/status` 新增 `cc_final_sale_gate`，GUI 可直接看到“真实实单 + 买家兑换/API/调模型”验收仍未完成，不再需要老板记 CLI 命令。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_context.py` — 新增正式售卖本地实单门汇总。
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — `/api/status` 返回 `cc_final_sale_gate`，首页新增“正式售卖验收门”卡片。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` / `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖 GUI 文案、API 字段和本地实单门状态。
+- `docs/002-changelog.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步 GUI 入口和验证结果。
+### 验证
+- `packages/clawbot/.venv312/bin/python -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/src/xianyu/xianyu_context.py` → exit 0。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_api_routes_regression.py -q` → `37 passed / 0 failed`。
+- 本机 `ai.openclaw.xianyu` 重启后，`http://127.0.0.1:18800/` 首页包含 `正式售卖验收门`、严格命令和买家站内闭环说明。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs` 与 `--webhook-smoke` 均 `PASS`；`--require-real-order` 按预期 `FAIL`，因为尚未有真实闲鱼小额订单。
+
+## [2026-07-05] CC中转正式售卖前真实闲鱼实单与买家闭环验收门
+> 领域: `xianyu` | `infra` | `docs`
+> 影响模块: `Readiness Audit`, `Xianyu Auto Fulfillment`
+> 关联问题: HI-907
+### 变更内容
+- `scripts/cc_zhongzhuan_readiness_audit.mjs` 新增 `--require-real-order` 严格模式：默认只读审计仍用于生产内测日常巡检；正式开卖前可强制要求本机 `cc_shipments` 出现真实闲鱼助手产生的 `xy_* / message_sent` 自动发货记录。
+- 严格模式同时要求生产 New-API 买家站内链路超过当前验收基线：已兑换兑换码数、活跃 API Key 数和模型调用日志数都必须增长，避免只证明“已发货”但没证明“买家能兑换、创建 Key 并调模型”。
+- 严格模式不会把生产 webhook 冒烟当成真实实单证明；当前没有真实订单时会明确失败并提示“发布闲鱼商品后跑 1 单小额实单再复验”。
+- CLI 输出新增“真实闲鱼实单证明”和“买家站内闭环证明”摘要，显示是否发现真实发货、`sentRealOrders`、`pendingRescue`、兑换增量、Key 增量和模型日志增量，避免把系统内自测误判成外部平台已验证。
+### 文件变更
+- `scripts/cc_zhongzhuan_readiness_audit.mjs` — 新增 `--require-real-order`、本机 SQLite `cc_shipments` 真实订单检查、生产 New-API 买家站内闭环基线增量检查和输出摘要。
+- `docs/002-changelog.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步正式售卖前实单验收命令。
+### 验证
+- `node --check scripts/cc_zhongzhuan_readiness_audit.mjs && node scripts/cc_zhongzhuan_readiness_audit.mjs` → `PASS`，默认模式显示 `真实闲鱼实单证明: 未发现（默认不强制）`，买家站内闭环增量为 `0/0/0`。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --webhook-smoke && git diff --check` → `PASS`，webhook 冒烟仍不满足严格实单门。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --require-real-order` → 预期 `FAIL` 且退出码 `1`，失败原因是当前尚未发布闲鱼商品并完成真实小额付款/买家站内兑换/API/调模型。
+
+## [2026-07-05] CC中转闲鱼失败发货自动补发
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuLive`, `XianyuAdmin`, `XianyuContext`, `Readiness Audit`
+> 关联问题: HI-907
+### 变更内容
+- 本机闲鱼助手新增失败发货自动补发循环：默认每 60 秒扫描 `message_send_failed` 队列，只有在卡密已分配且本机保存了完整发货话术时才重发同一条消息，不重新分配卡密、不处理未付款订单。
+- 新增 `POST /api/cc-shipments/{id}/resend`，本机 GUI 的补救队列表格增加“重试发送”按钮；按钮会复用已分配发货话术，成功后把记录改回 `message_sent`。
+- `XianyuContextManager` 新增 `get_cc_shipment()`，支持按 ID 安全读取单条发货记录；默认不返回完整话术，只有补发路径显式要求时才读取。
+- 一键审计脚本的 Chrome 书签校验改为按 URL 校验，并把 `http://127.0.0.1:18800/` 本机闲鱼助手 GUI 加入 `CC中转运营` 入口清单。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 新增 `resend_cc_shipment()` 和 `_cc_shipment_rescue_loop()`，并接入主 WebSocket 生命周期。
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增补发 API 和 GUI“重试发送”按钮。
+- `packages/clawbot/src/xianyu/xianyu_context.py` — 新增单条发货记录读取方法。
+- `packages/clawbot/config/.env.example` / `docs/006-registries.md` — 新增自动补发循环配置项。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` / `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖补发成功、无话术拒绝补发和管理 API。
+- `scripts/cc_zhongzhuan_readiness_audit.mjs` — 运营入口清单加入本机闲鱼 GUI，并按 URL 校验 Chrome 书签。
+### 验证
+- `packages/clawbot/.venv312/bin/python -m py_compile packages/clawbot/src/xianyu/xianyu_context.py packages/clawbot/src/xianyu/xianyu_live.py packages/clawbot/src/xianyu/xianyu_admin.py` → exit 0。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_api_routes_regression.py -q` → `37 passed / 0 failed`。
+- `node --check scripts/cc_zhongzhuan_readiness_audit.mjs && node scripts/cc_zhongzhuan_readiness_audit.mjs` → `PASS`，Chrome 书签、本机闲鱼、本机 GUI、Oracle 均通过；当前补救待处理为 `0`。
+
+## [2026-07-05] CC中转一键审计纳入闲鱼 GUI 状态
+> 领域: `infra` | `xianyu` | `docs`
+> 影响模块: `Readiness Audit`, `XianyuAdmin`, `Auto Fulfillment`
+> 关联问题: HI-907
+### 变更内容
+- `scripts/cc_zhongzhuan_readiness_audit.mjs` 新增 `localXianyuGui` 检查：读取本机 `OPENCLAW_API_TOKEN` 后访问 `127.0.0.1:18800`，验证 GUI 首页可打开、API 无 token 返回 401、带 token 返回 200。
+- 一键审计现在会同时判断本机闲鱼 WebSocket、Cookie、CC自动发货 webhook 配置和补救队列待处理数量；补救队列不为 0 时会让审计失败，避免正式售卖时存在“卡已分配但消息没发出”的黑洞。
+- CLI 输出新增本机闲鱼 GUI 摘要：`ws=true, cookie=true, autoShip=true, pendingRescue=0`。
+### 文件变更
+- `scripts/cc_zhongzhuan_readiness_audit.mjs` — 新增本机 GUI HTTP 审计、`.env` 解析和脱敏状态输出。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步一键审计覆盖范围。
+### 验证
+- `node --check scripts/cc_zhongzhuan_readiness_audit.mjs` → exit 0。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs` → `PASS`，新增 `localXianyuGui: PASS`，输出 `ws=true, cookie=true, autoShip=true, pendingRescue=0`。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --webhook-smoke` → `PASS`，新增 `localXianyuGui: PASS`，webhook 冒烟 `fulfillment=delivered`、`cleanup=true`、`unused_after=5`。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --json` → `ok=true`，`localXianyuGui.rootHttp=200`、`apiNoTokenHttp=401`、`apiWithTokenHttp=200`、`ccAutoShip.configured=true`、`ccShipments.pendingRescue=0`。
+
+## [2026-07-05] CC中转闲鱼助手运营状态看板
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuAdmin`, `XianyuContext`, `XianyuLive`
+> 关联问题: HI-907
+### 变更内容
+- 本机闲鱼助手 `/api/status` 新增 `cc_auto_ship` 和 `cc_shipments` 摘要：展示 CC中转自动发货是否启用、webhook 是否配置、token 是否存在、延迟秒数、补救队列总数、已发送数、待人工补救数和已处理数。
+- 闲鱼管理面板首页“系统状态”新增 CC 自动发货状态行：老板打开 `http://127.0.0.1:18800/` 输入本机 token 后，可直接看到“CC自动发货: 已配置 / 补救待处理: 0 / Webhook 地址”，不用查日志。
+- `XianyuContextManager` 新增 `cc_shipment_summary()`，从本机 SQLite 汇总 `cc_shipments` 状态，补救队列不再只是表格明细。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_context.py` — 新增 `cc_shipment_summary()`。
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — `/api/status` 返回自动发货配置和补救队列摘要，首页展示状态。
+- `packages/clawbot/tests/test_api_routes_regression.py` / `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 覆盖状态摘要、页面文案和补救队列汇总。
+- `docs/002-changelog.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步 GUI 看板和验证结果。
+### 验证
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs` → `PASS`。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --webhook-smoke` → `PASS`，webhook 冒烟 `fulfillment=delivered`、`cleanup=true`、`unused_after=5`。
+- `python3 -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/src/xianyu/xianyu_context.py packages/clawbot/tests/test_api_routes_regression.py packages/clawbot/tests/test_xianyu_cc_auto_ship.py && git diff --check` → exit 0。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py tests/test_xianyu_cc_auto_ship.py -q` → `34 passed / 0 failed`。
+- `make test` → exit 0，进度到 `[100%]`，仅保留第三方 `js2py` DeprecationWarning。
+- 本机 `ai.openclaw.xianyu` 重启后，`/api/status` 显示 `ws_connected=true`、`cookie_ok=true`、`cc_auto_ship.configured=true`、`cc_shipments.pending_rescue=0`；首页包含 `CC自动发货` 和 `CC中转发货补救队列`。
+
+## [2026-07-05] CC中转闲鱼自动发货补救队列
+> 领域: `xianyu` | `backend` | `docs`
+> 影响模块: `XianyuLive`, `XianyuAdmin`, `XianyuContext`
+> 关联问题: HI-907
+### 变更内容
+- 新增本机闲鱼 SQLite 表 `cc_shipments`，记录 CC中转低权限 webhook 发货状态：`message_sent`、`message_send_failed`、`webhook_failed`、`missing_delivery_message`、`exception`、`manually_resolved`。
+- 修复自动发货最危险的黑洞场景：当 CC中转 webhook 已经分配兑换码但闲鱼 WebSocket 消息发送失败时，不再只写日志；系统会把完整发货话术写入本机受鉴权管理面板的补救队列，并触发健康告警，方便人工复制补发。
+- 本机闲鱼管理面板新增 `GET /api/cc-shipments` 和 `POST /api/cc-shipments/{id}/resolve`，首页增加“CC中转发货补救队列”卡片；失败记录可标记已处理。
+- 管理面板首页改为浏览器可直接打开的 token 输入页，API 仍要求 `X-API-Token`；已重启本机 `ai.openclaw.xianyu`，确认首页无 token HTTP 200、API 无 token HTTP 401、正确 token 下 `/api/status` 和 `/api/cc-shipments` HTTP 200。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_context.py` — 新增 CC中转发货审计表和查询/处理方法。
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 自动发货成功、webhook 失败、话术缺失、发送失败和异常均记录到本机补救队列。
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增发货补救队列 API 和首页 GUI 卡片。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` / `packages/clawbot/tests/test_api_routes_regression.py` — 覆盖发送失败落队列、上下文持久化和管理 API。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步补救队列和验证结果。
+### 验证
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs` → `PASS`。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --webhook-smoke` → `PASS`，webhook 冒烟 `fulfillment=delivered`、`cleanup=true`、`unused_after=5`。
+- `python3 -m py_compile packages/clawbot/src/xianyu/xianyu_context.py packages/clawbot/src/xianyu/xianyu_live.py packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/tests/test_xianyu_cc_auto_ship.py packages/clawbot/tests/test_api_routes_regression.py` → exit 0。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py -q` → `11 passed / 0 failed`。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py -q` → `21 passed / 0 failed`。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_api_routes_regression.py -q` → `33 passed / 0 failed`。
+- `make test` → exit 0，进度到 `[100%]`，仅保留第三方 `js2py` DeprecationWarning。
+- 本机管理面板：`/` 无 token HTTP 200；`/api/status` 无 token HTTP 401；`/api/status`、`/api/cc-shipments?limit=5` 在正确 `X-API-Token` 下均 HTTP 200。
+
+## [2026-07-05] CC中转书签入口修复与全自动闭环审计脚本复验
+> 领域: `infra` | `xianyu` | `deploy` | `docs`
+> 影响模块: `Chrome Bookmarks`, `Readiness Audit`, `Xianyu Auto Fulfillment`, `Frist-API`
+> 关联问题: HI-907
+### 变更内容
+- 修复本机 Chrome 入口不可见问题：在 `Default`、`Profile 1`、`Profile 2`、`Profile 3` 真实 Profile 的书签栏写入并去重 `CC中转运营` 文件夹，每个文件夹包含用户主站、New-API 后台、Frist 运营台、`/v1` 网关和 `/v1/models` 检查入口；同时开启书签栏显示，并打开一个普通 Chrome 窗口承载 5 个运营入口。
+- 修复 `scripts/cc_zhongzhuan_readiness_audit.mjs` 两个审计问题：正确遍历 Chrome `Bookmarks.roots.bookmark_bar`，避免误判书签不存在；替换残留模板变量并给公网审计请求加 UA，避免 Cloudflare 把 Python urllib 默认请求误判为 403。
+- 复跑生产闭环审计：只读模式和 `--webhook-smoke` 模式均通过；带写冒烟会临时分配 1 张卡密、调用低权限闲鱼已付款 webhook、生成发货履约，再清理测试履约并恢复库存。
+### 文件变更
+- `scripts/cc_zhongzhuan_readiness_audit.mjs` — 修正 Chrome 书签遍历、webhook smoke 模板变量和公网审计请求头。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步一键审计命令、验证结果和当前自动化边界。
+### 验证
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs` → `PASS`，Chrome 书签、本机闲鱼助手、本机配置、Oracle 服务/库存/公网安全门均通过；生产库存 `unused=5`、New-API enabled redemptions `5`、channels `3`。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --webhook-smoke` → `PASS`，webhook 冒烟 `fulfillment=delivered`、`cleanup=true`、`unused_after=5`。
+- `node --check scripts/cc_zhongzhuan_readiness_audit.mjs && git diff --check` → exit 0。
+- `cd apps/frist-api && node --test tests/*.test.mjs` → `181 passed / 0 failed`。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_auto_shipper.py tests/test_xianyu_cc_auto_ship.py -q` → `20 passed / 0 failed`。
+- `make test` → exit 0，进度到 `[100%]`，仅保留第三方 `js2py` DeprecationWarning。
+
+## [2026-07-05] CC中转闲鱼全自动发货低权限闭环
+> 领域: `backend` | `xianyu` | `deploy` | `docs`
+> 影响模块: `Frist-API`, `XianyuLive`, `Auto Fulfillment`, `Chrome Bookmarks/Tab Group`
+> 关联问题: HI-907
+### 变更内容
+- 新增低权限自动发货 webhook：`POST /api/ops/xianyu/paid-order`，只接受 `x-cc-xianyu-token`，不复用管理员令牌；未配置 token 返回 503，无 token 返回 401。
+- webhook 只接受“等待卖家发货/买家已付款/已付款/待发货/paid”等已付款状态；未付款订单返回 409，防止误发卡。
+- OpenClaw `XianyuLive` 已接入 CC中转：检测到“等待卖家发货”后优先调用 CC中转 webhook，拿到发货话术后通过闲鱼消息发给买家；失败时只告警，不回退乱发旧卡券。
+- 管理台“闲鱼自动发货”区域新增“全自动接单”状态卡，展示 endpoint、认证头、token 预览和可接受订单状态；不回显完整 token。
+- Chrome 已打开可见标签组「📌 CC中转运营」，包含用户主站、New-API 后台、运营台和模型网关地址；此前写入的「CC中转运营」书签文件夹作为备用入口保留。
+- 补齐 OpenClaw `XianyuLive` 到 CC中转 webhook 的单元测试，覆盖未配置回退、已付款 payload、发送返回话术、HTTP 失败不发卡、无话术不发卡、CC 失败不回退旧卡券。
+- 闲鱼助手已重启加载最新 CC webhook 配置；同时将 `httpx/httpcore` 日志降到 WARNING，并脱敏本地旧日志中的 Telegram Bot URL，避免第三方通知 token 继续落盘。
+- 修复“买家不聊天直接付款”可能漏发的问题：当闲鱼订单没有最近商品上下文但 CC webhook 已配置时，仍进入 CC中转自动发货，由运营台按默认/任意未售兑换码分配；可选 `CC_XIANYU_DEFAULT_ITEM_ID` 用于指定默认商品映射。
+- 修复 Frist-API webhook 无套餐/无 SKU 订单误判“没有可发货兑换码”的生产 Bug：只有明确传入套餐或额度时才过滤库存，否则从任意未售卡密发货。
+- 生产内测已准备 5 张 `day|quotaUsd=30|source=xianyu` 可售卡密，并同步为 5 条 New-API 启用兑换码；测试冒烟占用已回滚，库存仍为 5。
+### 文件变更
+- `apps/frist-api/server/server.js` — 新增 `/api/ops/xianyu/paid-order`、低权限 token 校验、已付款订单规范化和自动发卡响应；无套餐订单不再错误过滤到 `balance` 套餐。
+- `apps/frist-api/admin.html` / `apps/frist-api/src/admin.js` / `apps/frist-api/src/styles.css` — 管理台展示全自动接单状态。
+- `apps/frist-api/deploy/production.env.example` — 增加 `FRIST_API_XIANYU_WEBHOOK_TOKEN`。
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 已付款订单自动调用 CC中转 webhook 并发送返回话术。
+- `packages/clawbot/scripts/xianyu_main.py` — 降低第三方 HTTP 客户端日志级别，避免敏感通知 URL 落盘。
+- `packages/clawbot/config/.env.example` — 增加 `CC_XIANYU_*` 自动发货配置项和直接付款兜底商品映射。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 新增 CC中转闲鱼自动发货独立回归测试。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `docs/080-new-api-capability-roadmap.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步全自动发货闭环和边界。
+### 验证
+- 本地新增回归：`node --test --test-name-pattern 'paid-order webhook has no plan id|low-scope auto-ship webhook' tests/server.test.mjs` → `2 pass / 0 fail`。
+- OpenClaw 闲鱼发货回归：`cd packages/clawbot && .venv312/bin/python -m pytest tests/test_auto_shipper.py tests/test_xianyu_cc_auto_ship.py -q` → `20 passed / 0 failed`。
+- Frist-API 全量回归：`cd apps/frist-api && node --test tests/*.test.mjs` → `181 passed / 0 failed`。
+- Python 语法：`python3 -m py_compile packages/clawbot/src/xianyu/xianyu_live.py packages/clawbot/scripts/xianyu_main.py packages/clawbot/tests/test_xianyu_cc_auto_ship.py` → exit 0。
+- 本机助手运行态：`ai.openclaw.xianyu` 重启后 PID 存在，日志显示“闲鱼管理面板启动 / Token 刷新成功 / WebSocket 连接注册完成”，本地日志 Telegram Bot URL 泄露计数为 `0`。
+- 项目级回归：`make test` → exit 0，进度跑到 `[100%]`，仅保留第三方 `js2py` DeprecationWarning。
+- 本机助手二次运行态：加载直接付款兜底逻辑后重启 `ai.openclaw.xianyu`，日志显示“Token 刷新成功 / WebSocket 连接注册完成”。
+- Oracle 部署：`frist-api.service` 重启后 `active`，`FRIST_API_XIANYU_WEBHOOK_TOKEN` 已配置且只显示脱敏。
+- 公网安全冒烟：无 token 调用 `https://frist-api-oracle.245334.xyz/api/ops/xianyu/paid-order` 返回 401；带 token 但未付款返回 409。
+- 生产库存：Oracle 真实 runtime `/opt/frist-api/data/frist-api/runtime/runtime.json` 显示 `unused=5`，New-API `redemptions.status=1` 为 `5`，启用渠道为 `3`。
+- 生产无套餐自动发货冒烟：调用内网 webhook 返回 HTTP 200、`ok=true`、`fulfillmentStatus=delivered`、`cardPlan=day`、`messageGenerated=true`；随后清理测试履约并恢复卡密为 `unused`，`unused_after_cleanup=5`。
+- 生产自动发货 E2E：临时卡密 + 已付款 webhook 返回 HTTP 200、`ok=true`、`fulfillmentStatus=delivered`、`messageGenerated=true`，测试后 runtime 和 New-API redemptions 残留均为 0。
+
+
+
+## [2026-07-05] CC中转生产内测闭环与运营台入口复验
+> 领域: `deploy` | `backend` | `xianyu` | `docs`
+> 影响模块: `New-API`, `Frist-API`, `CC Switch`, `Xianyu Fulfillment`, `Oracle Apache`
+> 关联问题: HI-907
+### 变更内容
+- 将 `frist-api-oracle.245334.xyz` 从 Frist-API 跳转名单中移除，作为兑换码与闲鱼自动发货助手的公网运营入口；`frist-api.245334.xyz` 继续 301 到用户主站 `jiyu.245334.xyz`。
+- 在 Cloudflare `245334.xyz` 区域新增/确认 `frist-api-oracle.245334.xyz` proxied A 到 Oracle `150.136.73.15`，复用已有覆盖该主机名的 Cloudflare Origin CA 证书；公网访问需要后台入口 Cookie 或入口码，未授权仍不暴露管理台。
+- 修复 Frist-API 在 Cloudflare/Apache 链式代理下 `X-Forwarded-Proto/Host` 逗号列表导致 `new URL()` 崩溃的问题；新增原始 HTTP 回归测试覆盖 origin-form 请求和 chained forwarded headers。
+- 管理台已同步“售卖闭环 / 闲鱼自动发货助手”GUI：生成可售卡密、粘贴已付款订单、分配卡密并复制话术、复制商品模板、刷新渠道与倍率；Plus/RT/补号等非当前售卖主线能力继续折叠在高级区域。
+- 明确闲鱼边界：当前只做“人工确认已付款后一键发货”的安全闭环；自动砍价、批量私信、刷单暂停/隐藏；后续浏览器插件仅可作为已付款订单读取和话术回填助手。
+- 生产 E2E 已覆盖 New-API 原生注册/登录/兑换/API Key/模型调用成功路径（受控临时关闭 Turnstile/邮箱验证后立即恢复）、公网 Turnstile/邮箱验证恢复、Frist 运营台兑换码与闲鱼履约、CC Switch `ccswitch:` 导入链接、Key 删除后网关阻断、渠道检测和倍率。
+- 将 Oracle `/etc/frist-api/frist-api.env` 和生产配置模板显式固定 `FRIST_API_RATE_MARKUP=0.1`，不再只依赖代码默认值；渠道倍率同步确认只在上游倍率基础上加 `0.1`。
+### 文件变更
+- `apps/frist-api/server/server.js` — 规整 chained forwarded headers，避免代理请求触发 URL 解析崩溃。
+- `apps/frist-api/tests/server.test.mjs` — 新增原始 HTTP/代理头回归测试。
+- `apps/frist-api/deploy/production.env.example` — 补充 `FRIST_API_RATE_MARKUP=0.1` 生产模板。
+- Oracle `/etc/frist-api/frist-api.env` — 移除 `frist-api-oracle.245334.xyz` 跳转项，变更前已备份到 `/root/codex-backups/`。
+- Oracle `/opt/frist-api/apps/frist-api/*` — 同步管理台 GUI 和服务端修复。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `docs/080-new-api-capability-roadmap.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步入口、验证和运营边界。
+### 验证
+- 运营入口：`https://frist-api-oracle.245334.xyz/admin.html` 经 Cloudflare 返回 HTTP 200（带后台 Cookie），页面包含 `CC中转`、`闲鱼自动发货助手`、`售卖闭环`、`生成可售卡密`、`复制商品模板`；无入口码/Cookie 时返回 404。 Playwright 截图：`output/playwright/cc-ops-admin-xianyu-20260705.png`。
+- New-API 受控 E2E：`CC_NEWAPI_BASE=http://127.0.0.1:13000 node /tmp/cc-newapi-prod-e2e-v2.mjs` 在临时关闭 Turnstile/邮箱验证后通过，覆盖注册、登录、兑换码到账、API Key 创建/更新/禁用/恢复/删除、`/v1/models`、OpenAI/Claude 真实调用、渠道测试；跑完已恢复 `TurnstileCheckEnabled=true`、`EmailVerificationEnabled=true`，并确认临时用户/Token/兑换码残留为 `0`。
+- 公网安全门：`https://jiyu.245334.xyz/api/status` 显示 `turnstile_check=true`、`email_verification=true`、`hasCcSwitch=true`；无 Turnstile 的注册/登录返回 `success=false` / `Turnstile token 为空`。
+- Frist 生产 E2E：`node /tmp/cc-production-e2e.mjs` 返回 OpenAI/Claude 调用 `200`、卡密同步 New-API、闲鱼履约 `delivered`、readiness `ready=true` 且 `failedChecks=[]`。
+- CC Switch E2E：`node /tmp/cc-ccswitch-e2e.mjs` 生成 `ccswitch:` provider 导入链接，确认 endpoint 为 `https://jiyu.245334.xyz/v1`、模型 `gpt-5.4-mini`、Key 匹配；同 Key 调模型 `200`，删除后网关 `401`。
+- New-API 原生配置：渠道自动检测每 10 分钟开启，自动禁用/恢复开启，模型请求限流开启；当前 3 个渠道启用，15 个模型倍率写入 `ModelRatio`，典型值为 `gpt-5.4-mini=0.475`、`gpt-5.4=1.35`、`claude-haiku-4-5=0.6`、`claude-sonnet=1.6`。
+- 最终复验（2026-07-05 17:08Z）：`FRIST_API_RATE_MARKUP=0.1` 写入 Oracle 后重启 Frist-API，`node --test tests/*.test.mjs` 为 `179 passed / 0 failed`，生产 E2E 返回 OpenAI/Claude 调用 `200`、闲鱼履约 `delivered`、`rateMarkup=0.1`、`healthy=3`、`readiness.ready=true`。
+
+## [2026-07-05] CC中转复用 Frist 旧配置补齐 New-API 安全入口
+> 领域: `deploy` | `infra` | `docs`
+> 影响模块: `New-API`, `Frist-API`, `Turnstile`, `SMTP`, `Admin 2FA`
+> 关联问题: HI-907
+### 变更内容
+- 在 Oracle 生产环境只读扫描旧 Frist-API 配置，确认 `/etc/frist-api/frist-api.env` 和兼容 `/opt/frist-api/.env` 已存在 Turnstile、SMTP 和管理员 TOTP 配置；输出只包含存在性、长度和 SHA 指纹，不回显密钥。
+- 复用旧 Frist 配置写入 New-API 原生 `options`：`TurnstileSiteKey`、`TurnstileSecretKey`、`TurnstileCheckEnabled=true`、SMTP 相关配置、`EmailVerificationEnabled=true`。
+- 复用旧 Frist 管理员 TOTP secret，给 New-API 管理员/root 账户启用原生 2FA；当前 `two_fas=2`。
+- 写入前已备份 New-API SQLite: `one-api.db.bak-before-newapi-option-reuse-20260705T155235Z`；写入后重启 `openclaw-newapi.service`。
+- 剩余正式售卖前 P0：模型请求限流、可售兑换码库存、老板真人浏览器 Turnstile 注册/登录/兑换验收。
+### 文件变更
+- Oracle `/opt/frist-api/data/newapi/one-api.db` — 写入 New-API 原生安全/邮箱/2FA配置，变更前已备份。
+- `docs/080-new-api-capability-roadmap.md` — 将 Turnstile、SMTP/邮箱验证、管理员 2FA 状态从“待启用”更新为“已复用 Frist 配置并启用”。
+- `docs/009-health.md` — 同步当前生产内测健康状态和剩余 P0 技术债。
+- `docs/002-changelog.md` — 记录本次生产配置复用。
+- `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步 VPS-Config 侧源头文档，避免域名/Oracle/安全配置状态漂移。
+### 验证
+- 旧配置扫描：Frist 生产环境 `turnstile_enabled=True`、`smtp_present=True`、`totp_present=True`，Turnstile 允许域名包含 `jiyu.245334.xyz`。
+- New-API 状态：内网 `/api/status` 返回 `turnstile_check=true`、`email_verification=true`；公网 `/api/status` 同样返回 `turnstile_check=true`、`email_verification=true`。
+- 安全门验证：公网无 Turnstile 的注册/登录请求返回 `success=false`，消息为 `Turnstile token 为空`。
+- SMTP 网络验证：Oracle 到 SMTP 服务器 TLS 握手成功，`cipher_ok=True`；未发送测试邮件，未打印邮箱密码。
+- 服务验证：`openclaw-newapi.service` 重启后为 `active`；公网首页 HTTP 200 且包含 `CC中转`。
+
+## [2026-07-05] CC中转 New-API 原生能力盘点与补齐路线
+> 领域: `docs` | `deploy`
+> 影响模块: `New-API`, `CC中转`, `Production Beta`
+> 关联问题: HI-907
+### 变更内容
+- 新增 New-API 原生能力盘点，明确用户认证、API Key、兑换码/钱包、渠道/模型、网关协议、日志监控、安全风控等能力优先使用 New-API 已有实现。
+- 明确 CC Switch、86Game 上游导入、闲鱼履约和生产 readiness 的定位：作为 New-API 主业务流之上的轻集成/补强层，不替换 New-API 主流程和主数据表。
+- 记录当前生产状态：3 个启用渠道、15 个模型、22 条能力映射，Turnstile/邮箱验证/Passkey/OAuth/签到等 New-API 原生配置尚未启用，后续按 P0 → P1 → P2 补齐。
+- 追加生产只读审计：确认 CC Switch 入口、API Key、渠道、模型、能力映射、兑换/充值、日志统计等可继续沿用 New-API 原生能力；Turnstile、SMTP/邮箱验证、管理员 2FA、模型请求限流和可售兑换码库存列为正式售卖前 P0。
+- 补齐 New-API 原生配置键清单：Turnstile、SMTP、邮箱验证、模型请求限流和渠道自动测试后续均走 `/api/option`/管理端系统设置，不改源码、不新建配置表。
+### 文件变更
+- `docs/080-new-api-capability-roadmap.md` — 新增 New-API 原生能力盘点、补齐路线和生产只读审计结果。
+- `docs/009-health.md` — 登记 New-API 原生 P0 技术债和当前生产只读审计结论。
+- `docs/003-docs-index.md` — 登记 080 报告。
+- `docs/002-changelog.md` — 记录本次盘点文档。
+### 验证
+- 源码盘点：读取 `packages/new-api-upstream/router/api-router.go`、`relay-router.go`、`web/default/src/features/*`、`web/default/src/routes/*`。
+- 生产状态盘点（当时状态，已被上方“复用 Frist 旧配置补齐 New-API 安全入口”覆盖）：`/api/status` 显示 `system_name=CC中转`、`hasCcSwitch=true`、`turnstile_check=false`、`email_verification=false`；SQLite 摘要显示 `enabled_channels=3`、`models_meta=15`、`abilities=22`。
+- 追加只读审计（当时状态，已被上方“复用 Frist 旧配置补齐 New-API 安全入口”覆盖）：`openclaw-newapi.service`、`frist-api.service`、`apache2` 均为 `active`；New-API SQLite 显示 `channels=3`、`models=15`、`abilities=22`、`tokens=6`、`redemptions=2`、`top_ups=4`、`logs=192`、`two_fas=0`、`subscription_plans=0`。
+
+## [2026-07-05] CC中转公网主入口切到 New-API 成熟面板
+> 领域: `deploy` | `infra` | `docs`
+> 影响模块: `New-API`, `CC中转`, `Oracle Apache`, `Production Beta`
+> 关联问题: HI-907
+### 变更内容
+- 已把 `https://jiyu.245334.xyz/` 公网主入口从旧 Frist 自研页面切到 `openclaw-newapi.service`，也就是成熟开源 New-API 面板；Frist-API 继续在 `127.0.0.1:3180` 运行，作为 CC Switch/旧桥接能力来源和内部兼容服务。
+- Apache 已备份旧配置后改为：主站 `jiyu.245334.xyz` 反代 `127.0.0.1:13000`；旧 `frist-api.245334.xyz` 继续 301 到主站；`frist-api-oracle.245334.xyz` 仅作为旧 Frist 内部排障别名预留。
+- 为避免官方镜像静态 HTML 首屏残留默认品牌，Apache 仅对 `text/html` 做最小品牌替换和浏览器标题修正；未对 New-API JS 包做中文全局替换，避免影响请求头和业务逻辑。
+- CC Switch 继续走 New-API 原生聊天/客户端入口配置，`/api/status` 的 `chats` 已包含 `CC Switch`，后续再做轻集成，不魔改 New-API 核心。
+- 当前仍按“生产内测，暂未正式售卖”口径运行；当时 New-API 原生 `turnstile_check=false`、`email_verification=false`，后续已在同日复用 Frist 旧配置启用。
+### 文件变更
+- Oracle `/etc/apache2/sites-available/frist-api.conf` — 公网主站反代切到 New-API，保留旧 Frist 内部兼容入口；配置变更前已在服务器同目录生成时间戳备份。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步 New-API 主入口、验证结果和内测边界。
+### 验证
+- 内网生产 E2E：`CC_NEWAPI_BASE=http://127.0.0.1:13000 node /tmp/cc-newapi-prod-e2e-v2.mjs` → 原生注册、登录、兑换码创建/兑换到账、API Key 创建/列表/详情/取 Key/更新/禁用/恢复/删除、`/v1/models`、OpenAI `gpt-5.4-mini`、Claude `claude-haiku-4-5-20251001`、渠道刷新均通过，清理后 `users=0/tokens=0/redemptions=0`。
+- 外网生产 E2E：`CC_NEWAPI_BASE=https://jiyu.245334.xyz node /tmp/cc-newapi-prod-e2e-v2.mjs` → 同一套链路全部通过；模型数 `15`，启用渠道 `3`，OpenAI/Claude 真实调用均 `200`，禁用/删除 Key 后 `/v1/models` 均 `401`。
+- 公网冒烟：`https://jiyu.245334.xyz/api/status` 返回 `system_name=CC中转`、`server_address=https://jiyu.245334.xyz`、`setup=true`、`hasCcSwitch=true`；未授权 `/v1/models` 返回 `401`；旧 `https://frist-api.245334.xyz/` 返回 `301` 到主站。
+- 浏览器验证：Playwright 打开首页、登录页、注册页均无前端 error/warning，页面可见 `CC中转`，浏览器标题最终为 `CC中转`；截图 `output/playwright/cc-newapi-public-home-20260705.png`。
+- 服务/数据检查：`frist-api.service`、`openclaw-newapi.service`、`apache2`、`frist-api-r2-backup.timer` 均 `active`；New-API SQLite 查询 `e2e_users=0`、`e2e_tokens=0`、`e2e_redemptions=0`、`enabled_channels=3`、`models=15`；`apache2ctl configtest` 为 `Syntax OK`。
+
+## [2026-07-05] CC中转改为 New-API 成熟面板优先底座
+> 领域: `deploy` | `backend` | `docs`
+> 影响模块: `New-API`, `CC中转`, `Local Beta`
+> 关联问题: HI-907
+### 变更内容
+- 按用户最新要求，停止继续把 Frist-API 自研页面作为主面板优先方向，改为以高星开源项目 `QuantumNous/new-api` 作为成熟面板底座。
+- 本地 `openclaw-newapi` 已保持官方稳定镜像运行，配置项 `SystemName=CC中转`，未新增公告、页脚、免责声明、Logo 或营销文案。
+- 从已验证的 Oracle New-API 数据库只同步渠道、模型和能力表到本地，形成可运行本地底座：3 个启用渠道、15 个启用模型、22 条能力映射。
+- 本地 root 用户已重置为随机强密码，密码只保存到 `/tmp/cc-newapi-admin-password`，不写入仓库。
+- 保留极小源码品牌补丁：仅把 New-API 默认系统名、HTML title 和 SVG title 改为 `CC中转`；当前品牌镜像构建因上游 Dockerfile `bun install` tarball 完整性校验失败暂未替换官方镜像，后续网络稳定后继续构建。
+### 文件变更
+- `packages/new-api-upstream/common/constants.go` — 默认系统名改为 `CC中转`。
+- `packages/new-api-upstream/web/default/index.html` / `web/classic/index.html` / `web/default/src/assets/logo.tsx` — 静态 title 改为 `CC中转`。
+- `docs/002-changelog.md` — 记录 New-API 底座优先方向和本地验证结果。
+### 验证
+- GitHub 调研：`QuantumNous/new-api` 当前约 41k Star，2026-07-05 仍活跃更新；`Wei-Shaw/sub2api` 约 30k Star，但“订阅拼车/共享”方向与既定边界冲突风险更高，因此不作为第一底座。
+- 本地服务：`openclaw-newapi` 运行 `calciumion/new-api:v1.0.0-rc.4`，监听 `127.0.0.1:3000`，容器 healthy。
+- 状态接口：`/api/status` 返回 `system_name=CC中转`、`setup=true`、`footer_html=""`。
+- 管理登录：`POST /api/user/login` 使用本地 root 用户返回 200；带 `New-Api-User: 1` 查询 `/api/channel/` 返回 3 个渠道。
+- API 验证：本地测试 Key 调用 `/v1/models` 返回 15 个模型；`gpt-5.4-mini` 和 `claude-haiku-4-5-20251001` 真实 Chat 调用均返回 200。
+- 浏览器验证：Playwright 打开 `http://127.0.0.1:3000/`，页面可见品牌为 `CC中转`，截图 `output/playwright/cc-newapi-local-home-20260705.png`。
+
+## [2026-07-05] CC中转生产内测上游补货与全链路 E2E 闭环
+> 领域: `backend` | `deploy` | `ai-pool` | `docs`
+> 影响模块: `Frist-API`, `New-API Bridge`, `API Key Management`, `Production Beta`
+> 关联问题: HI-907
+### 变更内容
+- 对用户提供的 3 条 86Game 上游 Key 做脱敏探测：`/v1/models` 与真实 Chat 调用均通过，未在仓库、日志或文档中回显完整 Key。
+- 已将可用库存接入生产内测：New-API 当前有 3 个可用渠道、15 个模型；OpenAI/Codex 与 Claude 真实模型调用均返回 200；`/api/admin/production-readiness` 返回 `ready=true`。
+- 修复 New-API Token 删除后的测试垃圾残留：New-API 删除接口可能只做软删除或让详情接口查不到但 SQLite `tokens` 表仍残留；Frist-API 现在在配置 `FRIST_API_NEWAPI_SQLITE_DB` 时会对被删 Token 做一次幂等硬删除，避免生产 E2E 临时 Key 越积越多。
+- 生产内测 E2E 已覆盖：公网首页、Turnstile 安全拦截、登录态 Dashboard、API Key 创建、模型列表、OpenAI/Claude 真实调用、Key 禁用、兑换码生成并同步 New-API、闲鱼发货话术、渠道状态刷新、readiness、测试数据清理。
+- 当前口径保持“生产环境内测，暂未正式售卖”；公网自动化不会绕过 Turnstile，真实注册/登录/兑换的最后一跳仍建议由老板在浏览器点一次人机验证做人工验收。
+### 文件变更
+- `apps/frist-api/server/newApiBridge.js` — 删除 New-API Token 后按 SQLite 配置做幂等硬删除兜底。
+- `apps/frist-api/tests/server.test.mjs` — 新增 New-API 软删除后 SQLite 残留必须清理的回归测试。
+- `docs/002-changelog.md` / `docs/009-health.md` — 同步生产内测上游恢复、E2E 验证结果和售卖前边界。
+### 验证
+- 本地语法与全量测试：`cd apps/frist-api && node --check server/newApiBridge.js server/server.js && node --test tests/*.test.mjs` → `177 passed / 0 failed / 0 skipped`。
+- Oracle 部署：`rsync` 同步 `apps/frist-api` 后重启；`frist-api.service`、`openclaw-newapi.service`、`apache2` 均为 `active`。
+- 生产 E2E：`node /tmp/cc-production-e2e.mjs` → 首页 200；无 Turnstile 的注册/登录/兑换均被拦截；临时 API Key 创建成功；`/v1/models` 返回 10 个用户可见模型样本；OpenAI `gpt-5.4-mini` 与 Claude `claude-haiku-4-5-20251001` 真实调用均 200；禁用 Key 后网关 401；卡密同步 New-API 成功；闲鱼履约 `delivered`；readiness `ready=true` 且 `failedChecks=[]`。
+- 清理验证：New-API SQLite 查询 `e2e_tokens=0`、`active_e2e_tokens=0`、`e2e_redemptions=0`。
+- 公网冒烟：`https://jiyu.245334.xyz/` → HTTP 200；未授权 `/v1/models` → HTTP 401；旧 `https://frist-api.245334.xyz/` 最终跳转到 `https://jiyu.245334.xyz/`。
+
+## [2026-07-05] CC中转健康上游库存纳入生产就绪门槛
+> 领域: `backend` | `deploy` | `docs`
+> 影响模块: `Frist-API`, `Production Readiness`, `New-API Inventory`
+> 关联问题: HI-907
+### 变更内容
+- 修正生产内测 readiness 的误导风险：以前只要域名、New-API 数据库、备份、2FA、Turnstile、兑换码和 SLA 事件齐全，即使当前健康上游库存为 0，`/api/admin/production-readiness` 仍可能返回 `ready=true`。
+- 新增 `healthy_upstream_inventory` 检查项：同时统计 Frist 本地健康可路由库存和 New-API SQLite 中可用渠道/模型；两边都为 0 时 readiness 必须返回 `ready=false`。
+- 管理端 readiness 响应新增 `upstreamInventory` 摘要，明确展示本地健康库存数、New-API 可用渠道数、模型数和 SQLite 可读状态。
+- 当前 Oracle 生产内测环境按新规则应保持 `ready=false`，直到补入真实健康上游并完成模型调用复验；这能防止“站点安全项全绿但没有货也开卖”的误判。
+### 文件变更
+- `apps/frist-api/server/server.js` — production readiness 增加健康上游库存门槛和 New-API SQLite 只读库存统计。
+- `apps/frist-api/tests/server.test.mjs` — 新增无健康上游时 readiness 必须阻断的回归测试，以及兼容当前 New-API SQLite schema 的库存统计测试。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步 8 项 readiness 检查与当前不可售判断。
+### 验证
+- TDD 失败复现：`cd apps/frist-api && node --test --test-name-pattern 'keeps production readiness blocked' tests/server.test.mjs` 修复前为 `true !== false`。
+- 单点验证：同一命令修复后通过。
+- 本地全量验证：`cd apps/frist-api && node --check server/server.js server/newApiBridge.js && node --test tests/*.test.mjs` → `176 passed / 0 failed / 0 skipped`。
+
+## [2026-07-05] CC中转 New-API Key 禁用生产修复与售卖前复验
+> 领域: `backend` | `deploy` | `docs`
+> 影响模块: `Frist-API`, `New-API Bridge`, `API Key Management`, `Production Beta`
+> 关联问题: HI-907
+### 变更内容
+- 生产内测复验发现 New-API 创建的 API Key 可创建、可删除，但“禁用”只返回 200，New-API SQLite `tokens.status` 仍保持 `1`，禁用后 Key 仍可访问网关。
+- 根因定位为 QuantumNous/new-api 的普通 `PUT /api/token/` 不更新 `status` 字段，官方前端启停 Key 使用的是 `PUT /api/token/?status_only=true`。
+- Frist-API New-API 桥接层已改为：名称/额度等元数据走普通 PUT，启用/禁用走 `status_only=true`，随后重新读取 Token 最新状态再返回给前端。
+- 已同步到 Oracle 生产内测环境并重启 `frist-api.service`；生产复验显示 API Key 禁用后数据库 `status=2`，禁用 Key 访问 `/v1/models` 返回 401，删除后 `deleted_at` 正常写入。
+- 继续确认当前不是正式售卖状态：New-API `channels=0/models=0`，Frist 本地库存仅有 `failed/exhausted`，可售健康上游仍为 0；`/Users/blackdj/Documents/VPS-Config` 未发现可导入的明文 AI 上游，Oracle 旧 healthy runtime 虽有 2 条历史记录但 `enc:v1` 字段无法用现存历史数据密钥解开，不能直接恢复售卖库存。
+### 文件变更
+- `apps/frist-api/server/newApiBridge.js` — API Key 启用/禁用改用 New-API `status_only=true` 状态接口。
+- `apps/frist-api/tests/server.test.mjs` — New-API 业务端到端测试增加 `status_only=true` 断言，并用可变 Token 状态验证禁用返回。
+- `docs/002-changelog.md` / `docs/009-health.md` — 登记生产复验结果和正式售卖阻塞项。
+### 验证
+- TDD 失败复现：`cd apps/frist-api && node --test --test-name-pattern 'uses New-API business endpoints' tests/server.test.mjs` 修复前为 `500 !== 200`，原因是请求未携带 `status_only=true`。
+- 单点修复验证：同一命令修复后通过。
+- 本地全量验证：`cd apps/frist-api && node --check server/newApiBridge.js server/server.js && node --test tests/*.test.mjs` → `174 passed / 0 failed / 0 skipped`；`git diff --check` → exit 0。
+- 生产闭环复验：管理员 2FA/readiness 200 且 `7/7`；临时卡密生成同步 New-API `synced=1`，闲鱼履约 `delivered/sold`，测试卡/测试用户/测试兑换码均清理；临时 API Key 创建 200、禁用 200 且 New-API DB `status=2`、禁用后 `/v1/models` 401、删除 200。
+- 公网复验：`https://jiyu.245334.xyz/` HTTP 200，标题 `CC中转`，页面包含“生产环境内测/暂未正式售卖”；无 Turnstile 的注册/登录/兑换均 HTTP 400；旧 `frist-api.245334.xyz` 最终跳转到主入口；Oracle 四个关键服务 active，failed units 为 0。
+- 上游恢复排查：VPS-Config 仅找到路由/审计记录，未找到可导入明文上游；Oracle 旧 runtime 2 条 healthy 记录为旧 `enc:v1`，现存 `FRIST_API_DATA_ENCRYPTION_KEY` 历史值可解字段数均为 0。
+
+## [2026-07-05] CC中转生产内测品牌收口与售卖前验收
+> 领域: `frontend` | `backend` | `deploy` | `docs` | `xianyu`
+> 影响模块: `Frist-API`, `CC中转`, `Redemption Cards`, `Production Beta`
+> 关联问题: HI-906
+### 变更内容
+- 将生产内测可见品牌从「极域 JiYu」收口为「CC中转」，域名暂不变，继续使用 `https://jiyu.245334.xyz/` 作为生产内测入口。
+- 页面、管理端、邮件配置示例、静态 SVG 资产和 smoke test 文案补齐 CC中转品牌，并在登录页、仪表盘、充值/兑换、管理端加入“生产环境内测，暂未正式售卖”提示。
+- 新生成卡密默认前缀改为 `CC`，新增 `CC-DAY-001` / `CC-MONTH-001` / `CC-BOOST-100` 测试兼容码；历史 `JIYU-*` 仅保留为兼容别名，避免旧测试卡密失效。
+- 生产 readiness 的兑换码闭环说明从“售卖兑换码”改为“生产内测人工发放 + 站内核销”，避免在正式开卖前误导。
+- 修复 New-API 生产桥接下的两个售卖前断点：后台生成/闲鱼发货的 CC 卡密经 New-API 到账后会同步回写本地卡密和履约状态；New-API 创建的用户 API Key 访问 `GET /v1/models` 时改为代理到 New-API，避免客户端拉模型列表时 401。
+- 生产 Oracle 环境修正 New-API access token、`FRIST_API_NEWAPI_GATEWAY_ENABLED=1` 和 `FRIST_API_NEWAPI_GATEWAY_BASE_URL=http://127.0.0.1:13000/v1`；同时确认 New-API `channels=0/models=0`、Frist 本地库存 `0` 个健康 Key，当前仍是生产内测，不能正式售卖。
+### 文件变更
+- `apps/frist-api/index.html` / `admin.html` / `src/styles.css` — CC中转品牌和生产内测提示。
+- `apps/frist-api/server/server.js` / `server/shared.js` / `src/businessFlow.js` — 默认 CC 卡密前缀、CC 测试兑换码、内测 readiness、New-API 兑换回写和 `/v1/models` 代理。
+- `apps/frist-api/server/newApiBridge.js` — GET/HEAD 代理请求不携带 body，兼容 `GET /v1/models`。
+- `apps/frist-api/assets/*.svg` / `favicon.svg` / `deploy/*` — 静态资产、部署示例品牌和 Oracle New-API 网关地址同步。
+- `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `docs/051-jiyu-brand-production-plan.md` — 文档改为 CC中转生产内测口径。
+### 验证
+- TDD 失败复现：`node --test --test-name-pattern 'marks local CC card|uses New-API business endpoints' tests/server.test.mjs` 修复前分别暴露“本地履约未回写”和 `GET /v1/models` 401。
+- 语法检查：`cd apps/frist-api && node --check server/server.js src/app.js src/admin.js src/core.js src/businessFlow.js server/shared.js server/catalog.js server/email.js server/newApiBridge.js server/payments.js src/serverClient.js` → exit 0。
+- Frist-API 全量测试：`cd apps/frist-api && node --test tests/*.test.mjs` → `174 passed / 0 failed / 0 skipped`。
+- 格式检查：`git diff --check` → exit 0。
+- Oracle 生产烟测：管理员 2FA/readiness 返回 `ready=true`；卡密生成同步 New-API 成功并完成闲鱼履约分配，测试卡已禁用且 New-API 兑换行已删除；临时测试用户创建 API Key、禁用、删除均返回 200；`GET /v1/models` 经配置修复后返回 200 但模型数为 0，暴露“上游渠道为空”阻塞项。
+
+
+## [2026-07-04] 极域 JiYu 生产强制模式与安全闭环验收
+> 领域: `backend` | `deploy` | `infra` | `docs`
+> 影响模块: `Frist-API`, `JiYu Production`, `Turnstile`, `Admin 2FA`, `R2 Backup`
+> 关联问题: HI-905
+
+### 变更内容
+- 生产环境正式开启 `FRIST_API_PUBLIC_MODE=1` 与 `FRIST_API_ENFORCE_PRODUCTION_READINESS=1`，关闭临时公网 HTTP 例外和验证码答案回显。
+- Cloudflare Turnstile 已保护注册、登录、兑换三个高风险入口；不带 token 的公网请求会返回“请先完成人机验证”。
+- 管理端启用 TOTP 二次验证，TOTP secret 和数据加密 key 仅保存在 Oracle root-only 环境文件/安全文件中，未写入仓库或终端输出。
+- 触发一次 R2 备份并完成恢复演练：备份包 `frist-api-20260705T000508Z.tar.gz` 解包后 `runtime.json` 可读、`one-api.db` `pragma integrity_check` 为 `ok`，并登记到 `/api/admin/backups/status`。
+- 修复生产发现的历史 runtime 加密兼容问题：旧数据已带 `__encryption` 标记但旧加密 key 不可恢复时，无法解密的 `enc:v1:` 敏感字段会被隔离为“需重新生成”，不再让管理接口整体 500。
+- `/api/admin/production-readiness` 已返回 `ready=true`，7 个检查项（固定品牌域名、New-API 数据库、备份监控、管理员 2FA、Turnstile、兑换码收款闭环、渠道 SLA）全部通过。
+
+### 文件变更
+- `apps/frist-api/server/server.js` — runtime 旧加密字段隔离兼容，避免生产新 key 启用后整站 500。
+- `apps/frist-api/tests/server.test.mjs` — 新增带 `__encryption` 标记的旧加密 runtime 回归测试。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `docs/051-jiyu-brand-production-plan.md` — 同步生产强制模式、2FA、备份恢复演练和 readiness 结果。
+
+### 验证
+- 新增失败复现：`cd apps/frist-api && node --test --test-name-pattern 'marked encrypted runtime fields' tests/server.test.mjs` 修复前为 `500 !== 200`，修复后通过。
+- 语法检查：`cd apps/frist-api && node --check server/server.js src/app.js src/serverClient.js` → exit 0。
+- Frist-API 全量测试：`cd apps/frist-api && node --test tests/*.test.mjs` → `172 passed / 0 failed / 0 skipped`。
+- 格式检查：`git diff --check` → exit 0。
+- Oracle 服务：`frist-api.service`、`openclaw-newapi.service`、`apache2.service`、`frist-api-r2-backup.timer` → 全部 `active`；`systemctl --failed` → `0`。
+- 公网冒烟：`https://jiyu.245334.xyz/` → HTTP 200；`/api/frist/dashboard` → HTTP 200；未授权 `/v1/models` → HTTP 401；旧 `https://frist-api.245334.xyz/` 最终跳转 `https://jiyu.245334.xyz/`。
+- Turnstile 防护：不带 Turnstile token 的 `register/login/redeem` → HTTP 400，错误文案为“请先完成人机验证”。
+- 生产 readiness：`/api/admin/production-readiness` → `ready=true`；备份登记时间 `2026-07-05T00:05:09.000Z`，SLA 探测事件 `21` 条。
+- 浏览器验收：Playwright 打开线上首页，标题 `极域 JiYu`，截图保存为 `output/playwright/jiyu-production-home-20260704.png`；控制台噪音来自 Cloudflare Turnstile PAT/预加载挑战，不是本站脚本错误。
+
+
+## [2026-07-04] 极域 JiYu Cloudflare 子域名与 Oracle 生产闭环
+> 领域: `deploy` | `infra` | `docs`
+> 影响模块: `JiYu Domain`, `Cloudflare DNS`, `Oracle ARM`, `Frist-API`
+> 关联问题: HI-904, TD-007
+
+### 变更内容
+- 按“优先用 xyz 或免费域名”的上线要求，确定当前正式入口为 `https://jiyu.245334.xyz/`，不等待新域名购买。
+- 在 Cloudflare `245334.xyz` 区域新增 `jiyu.245334.xyz` proxied A 记录，指向 Oracle ARM `150.136.73.15`。
+- 在 Oracle 安装覆盖 `jiyu.245334.xyz`、`frist-api.245334.xyz`、`frist-api-oracle.245334.xyz` 的 Cloudflare Origin CA 证书，并让 Apache 以 JiYu 主机名反代到 `127.0.0.1:3180`。
+- 生产环境变量切到 `FRIST_API_PUBLIC_GATEWAY_BASE_URL=https://jiyu.245334.xyz/v1`、`FRIST_API_CANONICAL_HOST=jiyu.245334.xyz`；旧 `frist-api.245334.xyz` 保留为 301 跳转和冷回滚排障别名。
+- 仓库默认生产模板、Nginx 示例、测试断言和运维文档从未购买的 `jiyu.gg` 收口到当前真实可用的 `jiyu.245334.xyz`；后续若购买独立品牌域名，再按同一流程替换。
+- 同步 `/Users/blackdj/Documents/VPS-Config` 的公开路由、Cloudflare 资产和业务故障切换契约，登记 JiYu 子域名、证书、回滚路径和健康门槛。
+
+### 文件变更
+- `apps/frist-api/server/server.js` / `src/app.js` / `index.html` — 默认 JiYu 公网入口改为 `jiyu.245334.xyz`。
+- `apps/frist-api/deploy/production.env.example` / `deploy/nginx.conf` — 生产环境变量和反代示例改为当前真实域名。
+- `apps/frist-api/tests/*.test.mjs` — 更新品牌域名、跳转和生产边界断言。
+- `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `docs/051-jiyu-brand-production-plan.md` — 登记当前生产入口、验证步骤和后续独立域名替换边界。
+- `/Users/blackdj/Documents/VPS-Config/config/domain-routing.public.json` / `config/cloudflare-assets.public.json` / `config/business-failover.public.json` — 登记 Cloudflare DNS、Oracle 入口和回滚说明。
+
+### 验证
+- 语法检查：`cd apps/frist-api && node --check server/server.js src/app.js src/admin.js src/core.js src/businessFlow.js server/shared.js server/catalog.js server/email.js` → exit 0。
+- Frist-API 全量测试：`cd apps/frist-api && node --test tests/*.test.mjs` → `166 passed / 0 failed / 0 skipped`。
+- 配置格式：`python3 -m json.tool` 校验 VPS-Config 三个公开 JSON（`domain-routing.public.json`、`cloudflare-assets.public.json`、`business-failover.public.json`）→ exit 0。
+- 格式检查：`git diff --check` → exit 0。
+- 公网冒烟：`https://jiyu.245334.xyz/` → HTTP 200 且页面包含 `极域 JiYu`；`/api/frist/dashboard` → HTTP 200；未授权 `/v1/models` → HTTP 401；`https://frist-api.245334.xyz/` 最终跳转到 `https://jiyu.245334.xyz/`。
+- Oracle 同步：已用 `rsync` 增量同步 `apps/frist-api` 到 `/opt/frist-api/apps/frist-api/`，排除 `node_modules/`、`data/`、`.env`、`.playwright-cli/`；同步前远端备份到 `/root/codex-backups/*-jiyu-app-before-domain-template-sync/`。
+- Oracle 服务：`frist-api.service`、`openclaw-newapi.service`、`apache2`、`frist-api-r2-backup.timer` → 全部 `active`；`systemctl --failed` → `0 loaded units listed`。
+- 重启后复验：JiYu 首页 HTTP 200，页面不再包含 `jiyu.gg`；Dashboard HTTP 200；未授权 `/v1/models` HTTP 401；旧 Frist 域名最终跳转到 JiYu 主站。
+
+
+## [2026-07-04] 极域 JiYu 品牌重塑与兑换码生产安全收口
+> 领域: `frontend` | `backend` | `deploy` | `docs` | `xianyu`
+> 影响模块: `Frist-API`, `JiYu Brand`, `Redemption Cards`, `Xianyu Fulfillment`, `Production Config`
+> 关联问题: HI-904
+
+### 变更内容
+- 将 Frist-API 对外品牌升级为「极域 JiYu」：用户端、管理端、CC Switch 导入名、邮件模板、默认网关示例和生产配置模板统一使用 JiYu 品牌与 `jiyu.245334.xyz`。
+- 新增原创 JiYu SVG 资产：favicon、Logo、闲鱼头像、闲鱼横幅；主色统一为 `#7F77DD` 紫色浅色商业后台。
+- 用户可见文案新增服务说明、服务条款、售后/退款规则、隐私说明四个页面，并从首页、兑换页和页脚直达；禁用“官方合作/官方授权/平台直营/第三方”等高风险表述。
+- 模型价格展示从“官方价格”改成“参考标价”，默认示例卡密从 `FRIST-*` 改为 `JIYU-*`，避免用户误解为厂商直营或旧品牌残留。
+- 渠道同步默认来源 ID 从目标站名称改为中性 `reference-channel`，测试示例域名也改为 `metered-supplier.example.com`。
+- 兑换码安全升级：新生成卡密只在创建响应/导出文本里出现明文，运行数据改存 `codeHash + codeCipher + codePreview`；闲鱼履约话术按需解密生成，不长期保存完整卡密话术。
+- 兑换接口新增 IP + 登录账号双维度频率限制，降低暴力猜码风险；测试覆盖同 IP 和同账号换 IP 两种枚举场景。
+- 生产模板改为 `jiyu.245334.xyz` 唯一品牌入口，旧数字域名和历史测试域名只作为跳转/排障来源。
+- 快速开源复用检查未发现 86GameStore 本身公开仓库；MIT 卡密商城 `34892002/edgeKey` 为 Cloudflare Workers/Vike 技术栈，和当前已打通的 JiYu/Frist-API 链路不一致，本轮不迁移，避免推倒重来。
+
+### 文件变更
+- `apps/frist-api/index.html` / `admin.html` / `src/styles.css` / `src/app.js` / `src/core.js` — JiYu 品牌、紫色视觉、合规页面和导入文案。
+- `apps/frist-api/server/server.js` / `server/email.js` / `server/payments.js` / `server/newApiBridge.js` — JiYu 默认品牌、卡密哈希/加密、兑换限流和邮件文案。
+- `apps/frist-api/assets/*.svg` / `favicon.svg` — JiYu Logo、闲鱼头像、闲鱼横幅和 favicon。
+- `apps/frist-api/deploy/production.env.example` / `deploy/nginx.conf` / `deploy/smoke-test.sh` — `jiyu.245334.xyz` 生产入口、旧域名跳转和 smoke 文案。
+- `apps/frist-api/tests/*.test.mjs` — 更新品牌断言、卡密不明文落库、闲鱼履约不保存完整卡密话术和兑换限流回归。
+- `docs/051-jiyu-brand-production-plan.md` / `docs/003-docs-index.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 登记 JiYu 生产上线方案、配置项和健康状态。
+
+### 验证
+- 语法检查：`cd apps/frist-api && node --check server/server.js src/app.js src/admin.js src/core.js src/businessFlow.js server/shared.js server/catalog.js server/email.js` → exit 0。
+- Frist-API 全量测试：`cd apps/frist-api && node --test tests/*.test.mjs` → `166 passed / 0 failed / 0 skipped`。
+- 格式检查：`git diff --check` → exit 0。
+
+## [2026-07-04] QuantumNous/new-api 本机直连栈与 Frist-API 全面桥接
+> 领域: `backend` | `infra` | `docs`
+> 影响模块: `QuantumNous/new-api`, `Frist-API`, `New-API Bridge`, `Docker Compose`, `Makefile`
+> 关联问题: HI-903
+
+### 变更内容
+- 将本机 New-API 运行栈收敛为固定上游 `QuantumNous/new-api` release：submodule `packages/new-api-upstream` 和 Docker 镜像均固定在 `v1.0.0-rc.4`，避免 `latest` 自动升级影响数据。
+- 新增一键本机启动路径：`make new-api-up` 先备份 `data/newapi` 再启动 New-API；`make frist-api-newapi-setup` 从本机 SQLite 读取已生成 access token 并写入 `.env`，不在终端打印密钥；`make frist-api-up` 同时启动 New-API 与 Frist-API。
+- Frist-API Docker 内部默认通过 `http://new-api:3000` 和 `http://new-api:3000/v1` 访问 New-API，宿主机调试继续用 `http://127.0.0.1:3000`。
+- Frist-API 服务端 New-API 适配器已覆盖原 Frist 用户侧核心业务：看板、API Key 创建/改名/删除、日志/用量、兑换码核销、订阅/充值/邀请读取，以及可选 `/v1` 网关代理。
+- 保留 Frist-API 自研差异能力：86GameStore 风格工作台、CC Switch/Codex/OpenCode/Claude/Gemini/Hermes 导入、兑换码售卖、闲鱼发货履约、补号助手、余额预警和 JSON 兜底。
+
+### 文件变更
+- `Makefile` — 新增 `new-api-up`、`new-api-down`、`frist-api-newapi-setup`，并让 `frist-api-up/down` 管理 New-API + Frist-API 全链路。
+- `docker-compose.frist-api.yml` / `docker-compose.newapi.yml` — 固定 New-API 镜像与 Docker 内部服务地址，Frist-API 默认桥接 `new-api` 服务名。
+- `scripts/setup_local_newapi_bridge.mjs` — 从 `data/newapi/one-api.db` 读取可用用户 access token，写入本机 `.env` 且不回显密钥。
+- `apps/frist-api/server/newApiBridge.js` / `apps/frist-api/server/server.js` — 接管 New-API 用户看板、Token、用量、兑换和可选网关代理。
+- `apps/frist-api/tests/new-api-adapter.test.mjs` / `apps/frist-api/tests/server.test.mjs` — 覆盖 New-API 业务桥接、wildcard 模型限制、网关代理和生产边界。
+- `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 登记本机 New-API 直连启动、环境变量、验证结果和运维边界。
+
+### 验证
+- 语法检查：`node --check scripts/setup_local_newapi_bridge.mjs apps/frist-api/server/server.js apps/frist-api/server/newApiBridge.js` → exit 0。
+- Frist-API 全量测试：`cd apps/frist-api && node --test tests/*.test.mjs` → `165 passed / 0 failed / 0 skipped`。
+- 本机容器：`openclaw-newapi` 使用 `calciumion/new-api:v1.0.0-rc.4` 监听 `127.0.0.1:3000`，`frist-api-server` 监听 `127.0.0.1:3180`，两个容器均 healthy。
+- 接口冒烟：`curl http://127.0.0.1:3000/api/status` 返回 `success=true`、`version=v1.0.0-rc.4`、`setup=true`；`curl http://127.0.0.1:3180/api/frist/dashboard` 返回 HTTP 200，游客态 `5` 个充值套餐且不暴露渠道细节。
+- 浏览器审计：Playwright 打开 `http://127.0.0.1:3180/`，页面标题 `Frist-API`，控制台 `0 error / 0 warning`；截图为 `output/playwright/frist-api-newapi-login-20260704.png`。
+
+## [2026-07-04] Frist-API 86GameStore 风格后台与兑换/闲鱼履约闭环
+> 领域: `frontend` | `backend` | `xianyu` | `docs`
+> 影响模块: `Frist-API`, `86GameStore Downstream`, `Redemption Cards`, `Upstream Channel Sync`, `Xianyu Fulfillment`, `CC Switch`
+> 关联问题: HI-902
+
+### 变更内容
+- 追加按 GitHub 高星克隆方案复核后的高保真外壳：参考 `abi/screenshot-to-code` 的截图转代码工作流，并借鉴 `ColorlibHQ/AdminLTE` 的后台左侧导航骨架；未复制上游私有源码，只复刻公开登录页结构和管理后台信息架构。
+- 将 Frist-API 未登录首屏改为更接近 86GameStore 公开登录页的蓝紫渐变、居中白色登录卡、Logo/副标题、邮箱/密码、忘记密码、注册入口和条款提示；登录后仍进入 Frist 工作台。
+- 将 Frist-API 用户端和管理端切到 86GameStore 风格浅色后台骨架：左侧工作台导航、白底卡片、青绿色主色，并保留 CC Switch、API Key、测试、使用记录、可用渠道、兑换码和套餐订阅入口。
+- 打通兑换码售卖链路：管理端可批量生成卡密，卡密支持 `unused/sold/redeemed/disabled` 状态，用户端兑换后自动到账并防重复兑换。
+- 新增 86GameStore 上游渠道同步接口和管理区块：只保存脱敏渠道状态、模型、延迟和倍率；默认下游售卖倍率在上游倍率基础上 `+0.1`，例如 Plus `0.18 → 0.28`，并修复刷新后倍率回退的问题。
+- 新增闲鱼自动发货雏形：后台输入闲鱼订单号和商品套餐后自动分配未售出卡密、标记已发货并生成发货话术；买家完成兑换后履约记录自动标记已兑换。
+- 补充本轮产品规格文档，明确当前可实现的是“第三方平台卖兑换码 + Frist-API 核销到账 + 后台履约提醒”，真实闲鱼下单检测仍需后续用户授权登录态后接入。
+
+### 文件变更
+- `apps/frist-api/index.html` / `apps/frist-api/admin.html` / `apps/frist-api/src/styles.css` — 86GameStore 公开登录页风格复刻、AdminLTE 式管理端左侧导航、兑换/渠道/闲鱼管理区块和 CC Switch 新皮肤防溢出样式。
+- `apps/frist-api/src/app.js` — 增加登录态数据属性和登录表单镜像同步，保证未登录登录页与原账户弹窗共用同一套登录/注册逻辑。
+- `apps/frist-api/src/core.js` / `apps/frist-api/server/server.js` — 上游渠道倍率加价、脱敏同步、兑换码状态、闲鱼履约分配和兑换反写逻辑。
+- `apps/frist-api/src/admin.js` — 管理端接入渠道同步、卡密生成、闲鱼履约和新状态展示。
+- `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/server.test.mjs` / `apps/frist-api/tests/business-flow.test.mjs` — 补齐倍率、渠道同步、兑换/闲鱼闭环和新皮肤回归。
+- `docs/050-frist-api-86game-clone-commerce-plan.md` / `docs/003-docs-index.md` — 新增并注册本轮产品规格。
+- `docs/002-changelog.md` / `docs/009-health.md` — 同步本轮交付和验证状态。
+
+### 验证
+- 语法检查：`cd apps/frist-api && node --check src/admin.js && node --check src/app.js && node --check src/core.js && node --check server/server.js` → exit 0。
+- Frist-API 全量测试：`cd apps/frist-api && node --test tests/*.test.mjs` → `165 passed / 0 failed / 0 skipped`。
+- 本地浏览器审计：`FRIST_API_PORT=3186 ... npm start` 后，Playwright 打开 `http://127.0.0.1:3186/` 和 `http://127.0.0.1:3186/admin.html?code=local-audit`；用户页控制台 `Errors: 0, Warnings: 0`，管理页预置本地令牌后控制台 `Errors: 0, Warnings: 0`。
+- 截图证据：`output/playwright/frist-api-clone-login-20260704.png`、`output/playwright/frist-api-admin-clone-shell-20260704.png`；上一轮工作台截图仍保留在 `output/playwright/frist-api-user-dashboard.png`、`output/playwright/frist-api-admin-clean-authenticated.png`。
 
 ## [2026-07-03] Frist-API Oracle 生产迁移与域名/R2 收口
 > 领域: `backend` | `deploy` | `infra` | `docs`
@@ -2196,7 +4802,839 @@
 
 ---
 
+## [2026-07-07] CC中转方案 B 本机卖家桥接器常驻
+> 领域: `xianyu` | `infra` | `frontend`
+> 影响模块: `CC中转`, `XianyuAdmin`, `Seller Bridge`, `Chrome Social Pilot`
+> 关联问题: HI-cc-xianyu-auto-ops
+### 变更内容
+- 老板已确认方案 B：六档套餐、库存自动补、每日上游余额同步、低余额预警和自动化发货路线继续推进。
+- 修复 18800 操作台 CORS，允许本项目 Chrome 扩展来源访问本机操作台，同时继续拒绝任意外部网页来源。
+- 发现 Chromium 扩展 Service Worker 访问 localhost 在新版 Local Network Access 下不稳定，新增 `cc_zhongzhuan_seller_bridge.mjs` 本机卖家桥接器：本机进程读取 18800 队列，通过 DevTools 注入既有闲鱼页面执行器，接管自动发卡、点击发送、确认发货和恢复可售巡检。
+- 已安装 `ai.openclaw.cc-seller-bridge` LaunchAgent 常驻；老板日常只需打开卖家专用 Chromium 并登录闲鱼，桥接器每 15 秒巡检一次。
+- 卖家专用浏览器启动器默认使用 `cc-zhongzhuan-seller-chromium-v2` Profile，并增加 Local Network Access 兼容参数；若本机 Playwright Chromium 缓存缺失，会降级到普通 Google Chrome 并提示安装 Chromium。
+### 文件变更
+- `scripts/cc_zhongzhuan_seller_bridge.mjs` — 新增本机 DevTools 桥接器。
+- `scripts/cc_zhongzhuan_launch_seller_chrome.mjs` / `scripts/cc_zhongzhuan_launch_seller_chrome.test.mjs` — 默认新 Profile、Local Network Access 参数和降级测试。
+- `packages/clawbot/src/xianyu/xianyu_admin.py` / `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 18800 CORS 与桥接器状态提示。
+- `Makefile` — 新增 `cc-seller-bridge`、`cc-seller-auto` 入口。
+- `~/Library/LaunchAgents/ai.openclaw.cc-seller-bridge.plist` — 本机运行资产，已安装并运行。
+### 验证
+- `node --check scripts/cc_zhongzhuan_seller_bridge.mjs`：exit 0。
+- `node scripts/cc_zhongzhuan_seller_bridge.mjs --dry-run --json`：`ok=true`，找到卖家浏览器和闲鱼标签页。
+- `node scripts/cc_zhongzhuan_seller_bridge.mjs --once --json`：`ok=true`，当前闲鱼首页无已付款信号，因此安全跳过，不发送消息。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_cors_allows_chrome_extension_origin tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_cors_rejects_unlisted_web_origin tests/test_xianyu_cc_auto_ship.py::test_xianyu_status_reports_local_bridge_next_action -q`：`3 passed`。
+- 运行态：`ai.openclaw.cc-seller-bridge` 为 `running`，本机 `/api/status.cc_chrome_extension` 显示 `manifest_version=bridge`、`supports_paid_page_dispatch=true`、`supports_relist_queue=true`、`needs_refresh_for_global_watch=false`。
+### 当前边界
+- 当前仍是生产环境内测；正式售卖严格门不放宽，必须等待新的 `xy_oid_*` 真实闲鱼付款订单，并完成买家兑换、创建 API Key、CC Switch 导入和调模型。
+- 如果卖家专用 Chromium 窗口关闭，桥接器会继续运行但只能等待浏览器重新打开；若打开后未登录闲鱼，不会自动读取订单或发货。
+
 
 ...
 
 2026-04 以前的详细审计附件和截图已在 2026-05-03 文档清理中移除，核心变更记录保留在本文。
+
+## [2026-07-06] Intel Brief Phase C/D 支架 — Source Adapter 与 plan-only 派发
+> 领域: `intel-brief` | `execution` | `docs`
+> 影响模块: `src/intel/sources/base.py`, `src/intel/sources/congress_trading.py`, `src/execution/intel_brief.py`
+
+### 变更内容
+- 新增 Intel Brief Source Adapter 统一契约：`IntelSourceResult` / `IntelSourceAdapter`。
+- 将 Senate raw GitHub fallback 封装为 `SenateTransactionsAdapter`，保留 Phase B 真实调用 evidence_path。
+- 新增独立执行场景 `src/execution/intel_brief.py`，当前只输出多服务器派发计划，不进行远程执行、部署、调度注册或 Telegram 推送。
+- 新增 Phase C/D evidence JSON，记录 controller 本地支架验证结果和明确边界。
+- 回归：Intel Brief 相关测试 20 passed。
+
+## [2026-07-06] Intel Brief Worker Contract 与 Source Health helper
+> 领域: `intel-brief` | `execution` | `observability`
+> 影响模块: `src/intel/worker_contract.py`, `src/execution/intel_brief.py`, `src/intel/db/store.py`
+
+### 变更内容
+- 新增 `IntelWorkerRequest` / `IntelWorkerResponse`，作为 controller↔worker JSON-safe 契约。
+- `dispatch_source_job` 保持 `plan_only`，但新增 `worker_request` 字段，后续可直接作为远程 worker 输入。
+- 新增 `record_source_health` / `get_source_health`，为每个数据源接入真实 `source_health` 更新链路。
+- 生成 Phase D/E evidence JSON：worker contract 派发计划、临时 SQLite source_health 写入证明。
+- 只读排查 SGW 管理路径：发现现有 SOP 支持“management-path mismatch”分类，但未找到当前 Mac 可用 SGW SSH alias；未修改任何安全组或凭证。
+
+## [2026-07-06] Intel Brief Worker Runner 与 SGW read-only preflight
+> 领域: `intel-brief` | `worker` | `infra-evidence`
+> 影响模块: `src/intel/worker_runner.py`, `src/intel/sources/registry.py`, VPS-Config SGW evidence
+
+### 变更内容
+- 新增 worker 本地执行器：request JSON → adapter → response JSON → source_health。
+- 新增默认 adapter registry：当前只注册已有 Phase B 证据的 `senate_trading`。
+- 生成 worker-runner 本地契约 evidence：`packages/clawbot/data/intel_evidence/phasee/20260706T232159Z-worker-runner-local-contract.json`。
+- 运行 VPS-Config SGW read-only preflight：OCI 只读 run 完成但处于 launch prerequisites blocker；无生产动作。
+
+## [2026-07-06] Intel Brief Worker CLI 入口
+> 领域: `intel-brief` | `worker` | `ops-evidence`
+> 影响模块: `scripts/intel_worker_cli.py`, `src/intel/worker_runner.py`, `src/intel/sources/registry.py`
+
+### 变更内容
+- 新增 worker CLI：stdin/文件读取 request JSON，输出 response JSON，可选写 source_health DB。
+- CLI 错误码边界：success=0，业务失败=2，JSON parse error=1。
+- 本地 CLI 真实调用 `senate_trading` 成功，生成 evidence。
+- 只读检查 `oracle-arm1` fallback：SSH/Python 可用，但未发现现成 OpenEverything 项目路径，暂不能直接运行新 CLI。
+
+## [2026-07-06] Intel Brief Worker Bundle 与 oracle-arm1 fallback 远程执行
+> 领域: `intel-brief` | `worker` | `infra-evidence`
+> 影响模块: `scripts/intel_worker_bundle.py`, `scripts/intel_worker_cli.py`, `src/intel/*`
+
+### 变更内容
+- 新增 worker bundle builder，输出最小可回滚 bundle 与 manifest。
+- 本地 bundle smoke 通过，bundle 不含密钥/服务文件/生产配置。
+- 将 bundle 临时 staging 到 `oracle-arm1:/tmp`，真实执行 `senate_trading` worker CLI 成功，返回 BYND / Ron L Wyden 样本，并写入远程临时 SQLite source_health。
+- 已清理远程 staging 并验证目录不存在；不涉及 systemd、cron、生产配置、Token/Cookie。
+
+## [2026-07-06] Intel Brief 炎火云 AKShare worker CLI 真实执行
+> 领域: `intel-brief` | `worker` | `domestic-source`
+> 影响模块: `src/intel/sources/astock_flow.py`, `src/intel/sources/registry.py`, `scripts/intel_worker_bundle.py`, `src/intel/worker_runner.py`
+
+### 变更内容
+- 新增 AKShare 龙虎榜 adapter，并加入默认 registry 与 worker bundle。
+- 修复 worker bundle Python 3.10 兼容：`datetime.UTC` → `timezone.utc`。
+- 修复 adapter stdout 噪声污染问题，确保 worker CLI stdout 为单个 response JSON。
+- 炎火云 `/tmp` 临时 staging + 临时 venv 安装 `akshare==1.18.64` 后真实执行成功，返回 `000021` / `深科技`，执行后清理并验证目录不存在。
+
+## [2026-07-07] Intel Brief Remote Runner 固化
+> 领域: `intel-brief` | `worker` | `remote-execution`
+> 影响模块: `scripts/intel_worker_remote_run.py`, `scripts/intel_worker_bundle.py`, `scripts/intel_worker_cli.py`
+
+### 变更内容
+- 新增 remote runner：构建 bundle → SSH 临时 staging → 执行 worker CLI → 查询 source_health → cleanup → evidence。
+- 用 remote runner 复核 oracle-arm1 fallback `senate_trading` 成功。
+- 用 remote runner 复核炎火云 domestic `akshare` 成功，支持临时 pip 依赖安装。
+- 两条远程复核均完成 cleanup 并验证 staging 目录不存在。
+
+## [2026-07-07] Intel Brief Collect-once 多源远程采集
+> 领域: `intel-brief` | `collector` | `remote-execution`
+> 影响模块: `scripts/intel_collect_once.py`, `scripts/intel_worker_remote_run.py`
+
+### 变更内容
+- 新增 collect-once controller 编排脚本，按 source 调用 remote runner 并聚合 child evidence。
+- 真实执行 `senate_trading` + `akshare` 两源采集成功，覆盖海外 fallback 与国内 worker。
+- 聚合 evidence 记录 child response、source_health、cleanup 状态。
+- 仍未注册 scheduler、未部署服务、未推送 Telegram。
+
+## [2026-07-07] Intel Brief Dry-run 简报生成
+
+> 影响模块: `Intel Brief`, `Brief Builder`, `Content Moderation`, `Evidence`
+
+- 新增 `packages/clawbot/src/intel/brief_builder.py`，把真实 collect-once evidence 转为规范化、去重、内容过滤后的 Markdown/JSON dry-run 简报。
+- 新增 `packages/clawbot/scripts/intel_brief_dry_run.py`，提供本地 CLI 生成 dry-run evidence；明确不调用 LLM、不推送 Telegram、不注册 scheduler。
+- 新增 `packages/clawbot/tests/test_intel_brief_dry_run.py`，覆盖规范化、stable-key 去重、过滤占位与 CLI 输出。
+- 真实 dry-run evidence：`packages/clawbot/data/intel_evidence/phasef/20260707T003755Z-brief-dry-run.md` 与 `.json`，summary 为 `source_count=2 / rendered_count=2 / deduped_count=0 / moderated_count=0`。
+- 边界：该阶段只把已有真实采集证据生成草稿，不代表 LLM 摘要、Telegram 推送、生产调度或自然日演练已闭合。
+
+## [2026-07-07] Intel Brief Dry-run 验证基线
+
+> 影响模块: `Intel Brief`, `Verification`, `Docs Baseline`
+
+- Dry-run 简报生成最终验证 evidence：`packages/clawbot/data/intel_evidence/phasef/20260707T004119Z-brief-dry-run-verification.json`。
+- 验证结果：`ruff` 通过，Intel Brief 相关 pytest `54 passed`，OpenEverything/VPS-Config `git diff --check` 均通过。
+- 边界：仍未调用 LLM、未推送 Telegram、未注册 scheduler、未创建常驻服务或写入密钥。
+
+## [2026-07-07] Intel Brief LLM 摘要 dry-run
+
+> 影响模块: `Intel Brief`, `LLM Routing`, `Ollama Local`, `Evidence`
+
+- 新增 `routing_profiles.intel_brief`，为 Intel Brief 摘要层建立专属 LLM routing profile。
+- 新增本地 dry-run family `intel_local`，通过现有 LiteLLM routing 指向 Ollama `qwen2.5:1.5b`，且无外部 fallback。
+- 新增 `src/intel/llm_summary.py` 与 `scripts/intel_llm_summary_dry_run.py`，把 Phase F dry-run evidence 转为 LLM summary dry-run evidence。
+- 首次 `gemma` 调用超时并降级，失败证据：`packages/clawbot/data/intel_evidence/phaseg/20260707T005033Z-llm-summary-dry-run.json`。
+- 成功证据：`packages/clawbot/data/intel_evidence/phaseg/20260707T005640Z-llm-summary-dry-run-intel-local.json`，`intel_local` 调用成功，token usage 为 `353/159/512`。
+- 边界：未推送 Telegram、未注册 scheduler、未调用外部付费 LLM、未写入生产 DB 或密钥。
+
+## [2026-07-07] CC中转闲鱼付款系统卡片漏单修复
+> 领域: `xianyu` | `commerce` | `qa`
+> 影响模块: `XianyuLive`, `Chrome Social Pilot`, `CC中转`
+> 关联问题: HI-cc-xianyu-plain-paid-card
+
+### 变更内容
+- 修复闲鱼 WebSocket 明文 JSON 系统卡片被直接跳过的问题：现在“我已付款，等待你发货”这类系统卡片会进入订单状态识别。
+- 新增买家 ID 提取兜底：订单消息 `1` 字段为对象时，从系统卡片 meta 中读取 `senderUserId/senderId/userId/buyerId`，缺失买家 ID 时阻止自动发货。
+- 增加安全门：只信“付款系统卡片标题”，普通聊天内容里照抄“我已付款，等待你发货”不会触发发货，避免买家假话术导致误发卡。
+- 复核开源轮子后继续选择“搬能力不整套替换”：`zhinianboke/xianyu-auto-reply`、`GuDong2003/xianyu-auto-reply-fix` 为 AGPL-3.0，`23Star/xianyu-super-butler` 许可证不明确；短期不替换 New-API/CC中转主链路。
+
+### 验证结果
+- `cd packages/clawbot && .venv312/bin/python -m py_compile src/xianyu/xianyu_live.py` 通过。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py::test_detects_paid_status_from_xianyu_system_chat_title tests/test_xianyu_cc_auto_ship.py::test_paid_text_in_normal_chat_content_does_not_trigger tests/test_xianyu_cc_auto_ship.py::test_decode_sync_payload_accepts_plain_json_system_card tests/test_xianyu_cc_auto_ship.py::test_plain_json_paid_system_card_starts_auto_ship tests/test_xianyu_cc_auto_ship.py::test_paid_order_uses_message_item_id_before_recent_item -q`：`5 passed`。
+- 根目录 `make test`：后端全量 pytest 到 `[100%]`，exit code `0`。
+- `cd packages/openclaw-npm/assets/chrome-extension && node --check background.js && node --check popup.js && node --check social-page-runner.js && node --test test/social-page-runner.test.mjs test/popup-static.test.mjs`：`43 passed / 0 failed`。
+- `cd apps/frist-api && node --test tests/*.test.mjs`：`182 passed / 0 failed`。
+- `node scripts/cc_zhongzhuan_readiness_audit.mjs --mode=read_only --json` 仍正确返回 `ok=false`，原因是当前真实内测单 `pendingRescue=1` 尚未发到买家聊天，不允许误报闭环。
+
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_live.py` — 兼容明文付款系统卡片、提取买家 ID、保护普通聊天不误触发。
+- `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 增加明文系统卡片、普通聊天防误发、买家 ID 提取和自动发货任务启动回归测试。
+
+## [2026-07-07] Intel Brief LLM 摘要验证基线
+
+> 影响模块: `Intel Brief`, `LLM Routing`, `Verification`, `Docs Baseline`
+
+- 最终验证 evidence：`packages/clawbot/data/intel_evidence/phaseg/20260707T010034Z-llm-summary-postdocs-verification.json`。
+- 验证结果：`llm_routing.json` JSON 校验通过，变更范围 `ruff` 通过，Intel Brief + LLM routing 相关 pytest `148 passed`，OpenEverything/VPS-Config diff check 均通过。
+- 边界：仍未推送 Telegram、未注册 scheduler/cron/systemd、未创建常驻服务或写入密钥。
+
+## [2026-07-07] Intel Brief 订阅者与 fake Telegram 投递沙盒
+
+> 影响模块: `Intel Brief`, `Subscribers`, `Delivery Log`, `Telegram Sandbox`, `Evidence`
+
+- 新增 `src/intel/delivery.py`，验证 sandbox subscriber、active subscription、source preference、delivery_log 和 fake Telegram outbox。
+- 新增 `scripts/intel_delivery_sandbox.py`，从 LLM summary evidence 生成投递沙盒 evidence。
+- 新增 `tests/test_intel_delivery_sandbox.py`，覆盖订阅者写入、消息渲染、fake sender、delivery_log、CLI。
+- 真实 sandbox evidence：`packages/clawbot/data/intel_evidence/phaseh/20260707T010624Z-delivery-sandbox.json`，结果 `eligible=1 / sent=1 / failed=0 / network_calls=0`。
+- 边界：未调用真实 Telegram Bot API，未写生产 DB，未注册 scheduler/cron/systemd，未写入 Token/Cookie/API Key。
+
+## [2026-07-07] Intel Brief 投递沙盒验证基线
+
+> 影响模块: `Intel Brief`, `Delivery Sandbox`, `Verification`, `Docs Baseline`
+
+- 最终验证 evidence：`packages/clawbot/data/intel_evidence/phaseh/20260707T010821Z-delivery-sandbox-verification.json`。
+- 验证结果：`llm_routing.json` JSON 校验通过，变更范围 `ruff` 通过，Intel Brief + LLM routing 相关 pytest `154 passed`，OpenEverything/VPS-Config diff check 均通过。
+- 边界：仍未调用真实 Telegram Bot API、未注册 scheduler/cron/systemd、未创建常驻服务或写入密钥。
+
+## [2026-07-07] Intel Brief Scheduled Sandbox 排练
+
+> 影响模块: `Intel Brief`, `Scheduler Rehearsal`, `Evidence`, `Telegram Sandbox`
+
+- 新增 `src/intel/scheduled_pipeline.py`，提供 scheduled decision 与本地 scheduled sandbox pipeline。
+- 新增 `scripts/intel_scheduled_sandbox.py`，从既有 collect evidence 串联 dry-run brief、LLM summary dry-run、delivery sandbox，并写统一 Phase I evidence。
+- 新增 `tests/test_intel_scheduled_pipeline.py`，覆盖未到点 skip、到点执行、同日去重、fallback-only LLM、fake Telegram delivery 和 CLI。
+- 真实 scheduled sandbox evidence：`packages/clawbot/data/intel_evidence/phasei/20260707T011556Z-scheduled-sandbox.json`，结果 `brief rendered=2 / llm_attempted=false / eligible=1 / sent=1 / failed=0 / network_calls=0`。
+- 最终验证 evidence：`packages/clawbot/data/intel_evidence/phasei/20260707T011701Z-scheduled-sandbox-verification.json`。
+- 边界：未注册 scheduler/cron/systemd，未调用真实 Telegram Bot API，未写生产 DB，未远程抓取新数据，未写入 Token/Cookie/API Key。
+
+## [2026-07-07] Intel Brief ExecutionScheduler 安全闸门接入
+
+> 影响模块: `Intel Brief`, `ExecutionScheduler`, `Scheduler Gate`, `Evidence`
+
+- 新增 `build_intel_brief_scheduler_gate()`，为 `INTEL_BRIEF_ENABLED` / `INTEL_BRIEF_TIME` / `INTEL_BRIEF_MODE` 建立独立调度闸门。
+- `ExecutionScheduler` 新增 `_run_intel_brief()`，默认只允许 sandbox runner；生产模式缺少完整硬闸门时不执行。
+- 修复 async scheduler context 调用 scheduled sandbox pipeline 的嵌套 event loop 问题：默认 runner 改由 `asyncio.to_thread()` 执行。
+- 新增 `scripts/intel_scheduler_gate_probe.py`，输出脱敏 gate evidence。
+- `.env.example` 新增 Intel Brief 独立调度变量；控制面板静态任务表登记 `intel_brief`，默认 disabled。
+- 真实 evidence：`packages/clawbot/data/intel_evidence/phasej/20260707T012933Z-production-hard-gate-blocked.json` 与 `packages/clawbot/data/intel_evidence/phasej/20260707T013200Z-execution-scheduler-sandbox-invocation.json`。
+- 边界：未启用生产 scheduler/cron/systemd，未调用真实 Telegram Bot API，未写生产 DB，未远程抓取新数据，未输出任何密钥明文。
+
+## [2026-07-07] Intel Brief Scheduler Gate 验证基线
+
+> 影响模块: `Intel Brief`, `Verification`, `Docs Baseline`
+
+- 最终验证 evidence：`packages/clawbot/data/intel_evidence/phasej/20260707T013304Z-scheduler-gate-verification.json`。
+- 验证结果：Phase J evidence JSON 校验通过，`llm_routing.json` JSON 校验通过，变更范围 `ruff` 通过，Intel Brief + LLM routing + Execution facade 相关 pytest 通过，fake secret 泄漏检查通过，OpenEverything/VPS-Config diff check 均通过。
+- 边界：仍未启用生产 scheduler/cron/systemd、未调用真实 Telegram Bot API、未创建常驻 worker 或写入密钥。
+
+## [2026-07-07] Intel Brief Telegram sandbox sender 合同层
+
+> 影响模块: `Intel Brief`, `Telegram`, `Delivery`, `Evidence`
+
+- 新增 `src/intel/telegram_delivery.py`，包含 Telegram sandbox gate、`TelegramBotApiSender` 和 evidence probe。
+- 新增 `scripts/intel_telegram_sandbox_probe.py`，默认只读 gate-only；真实网络必须显式 `--allow-real-network` 且 gate ready。
+- 新增 `tests/test_intel_telegram_delivery.py`，覆盖脱敏 gate、注入 transport 合同、probe evidence 与 CLI blocked evidence。
+- `.env.example` 新增 `INTEL_BRIEF_TELEGRAM_SANDBOX_SEND_ACK`，默认空。
+- 证据：`packages/clawbot/data/intel_evidence/phasek/20260707T014112Z-telegram-sandbox-gate-blocked.json` 与 `packages/clawbot/data/intel_evidence/phasek/20260707T014112Z-telegram-sandbox-contract-injected.json`。
+- 边界：未调用真实 Telegram Bot API，未写 token/chat id 明文，未注册 scheduler/cron/systemd，未写生产 DB。
+
+## [2026-07-07] Intel Brief Telegram sender 合同验证基线
+
+> 影响模块: `Intel Brief`, `Telegram`, `Verification`, `Docs Baseline`
+
+- 最终验证 evidence：`packages/clawbot/data/intel_evidence/phasek/20260707T014408Z-telegram-contract-verification.json`。
+- 验证结果：Phase K evidence JSON 校验通过，Telegram 合同层 ruff 通过，`.env.example` ack 变量存在，Phase K/Intel Brief/LLM routing 相关 pytest 通过，token/chat/fake secret 泄漏检查通过，OpenEverything/VPS-Config diff check 均通过。
+- 边界：仍未调用真实 Telegram Bot API、未验证真实 bot token/chat id、未启用生产 scheduler/cron/systemd、未创建常驻 worker。
+
+## [2026-07-07] Intel Brief Telegram summary delivery 集成预演
+
+> 影响模块: `Intel Brief`, `Telegram`, `Delivery`, `Evidence`
+
+- 新增 `build_telegram_summary_delivery_probe()`，把真实 LLM summary evidence 渲染为 Telegram 消息并进入 Telegram sender 合同层。
+- 新增 `scripts/intel_telegram_summary_probe.py`，默认不真实联网。
+- 扩展 `tests/test_intel_telegram_delivery.py`，覆盖 summary evidence 输入、gate blocked、注入 transport 合同成功和 CLI。
+- 证据：`packages/clawbot/data/intel_evidence/phasel/20260707T015241Z-telegram-summary-gate-blocked.json` 与 `packages/clawbot/data/intel_evidence/phasel/20260707T015241Z-telegram-summary-contract-injected.json`。
+- 边界：未调用真实 Telegram Bot API，未写 token/chat id 明文，未注册 scheduler/cron/systemd，未写生产 DB，未抓取新数据。
+
+## [2026-07-07] Intel Brief Telegram summary delivery 验证基线
+
+> 影响模块: `Intel Brief`, `Telegram`, `Delivery`, `Verification`
+
+- 最终验证 evidence：`packages/clawbot/data/intel_evidence/phasel/20260707T015419Z-telegram-summary-delivery-verification.json`。
+- 验证结果：Phase L-pre evidence JSON 校验通过，Telegram summary delivery ruff 通过，Phase L-pre/Intel Brief/LLM routing 相关 pytest 通过，token/chat/fake secret 泄漏检查通过，OpenEverything/VPS-Config diff check 均通过。
+- 边界：仍未调用真实 Telegram Bot API、未验证真实 bot token/chat id、未启用生产 scheduler/cron/systemd、未创建常驻 worker。
+
+## [2026-07-07] Intel Brief production-once 真实 Telegram 投递
+
+> 影响模块: `Intel Brief`, `Telegram`, `Production Gate`, `Private Env`, `Evidence`
+
+- 私有 env `.openclaw/intel-brief.production.env` 已写入并保持 `0600` / gitignored；证据仅记录 key presence，不含 token/chat id。
+- 修复 production-once runner 未把 private env 合并后传给 Telegram delivery runner 的问题，并补回归测试。
+- 不带 production ack 时 production-once 仍 blocked，`network_calls=0`。
+- 临时命令环境变量注入 production ack 后，一次性 production runner 真实调用 Telegram Bot API `sendMessage` 成功，证据：`packages/clawbot/data/intel_evidence/phaser/20260707T032645Z-production-once-real-delivery.json`。
+- 边界：未安装/加载 launchd，未注册 cron/systemd，未创建常驻 worker，未完成自然日调度观察，production ack 未持久化。
+
+## [2026-07-07] Intel Brief fresh production cycle 真实投递
+
+> 影响模块: `Intel Brief`, `Production Cycle`, `Launch Package`, `Telegram`, `Evidence`
+
+- 新增 `intel_production_cycle.py`：每次运行先做 production preflight，再重新远程采集 SGW Senate 与炎火云 AKShare，生成新简报/摘要，最后走 gated production-once 真实 Telegram 投递。
+- 无 production ack 时在采集前阻断，避免 Token 已配置后误跑远程采集或误发 Telegram。
+- launchd dry-run package 已改为指向 fresh production cycle，不再固定旧 summary evidence。
+- 真实 run evidence：`packages/clawbot/data/intel_evidence/phases/20260707T034621Z-production-cycle-real-delivery.json`，结果 fresh collect `success=2/failed=0`、Telegram `network_calls=1`、发送成功。
+- 边界：未安装/加载 launchd，未注册 cron/systemd，未完成自然日定时观察，production ack 未持久化。
+
+## [2026-07-07] Intel Brief LaunchAgent 已安装加载
+
+> 影响模块: `Intel Brief`, `launchd`, `Production Cycle`, `Evidence`
+
+- Launch package 支持显式 production ack、stdout/stderr log path，并把相对路径解析为 project_root 下绝对路径。
+- 已安装并加载 `~/Library/LaunchAgents/ai.openclaw.intel-brief.scheduler.plist`，目标为 fresh `intel_production_cycle.py`。
+- 安装/加载证据：`packages/clawbot/data/intel_evidence/phaset/20260707T040135Z-launchd-production-cycle-reinstall-load-absolute.json`。
+- 边界：未 kickstart，安装步骤 `network_calls=0`；自然日自动运行仍待下一次 08:30 触发观察。
+
+## [2026-07-07] Intel Brief LaunchAgent post-run 审计工具
+
+> 影响模块: `Intel Brief`, `launchd`, `Evidence`, `Verification`
+
+- 新增 `intel_launchagent_audit.py`，用于下一次 08:30 后自动判断 LaunchAgent 是否真实完成 fresh production cycle。
+- 当前真实审计 evidence：`packages/clawbot/data/intel_evidence/phaseu/20260707T041950Z-launchagent-post-run-audit-pending.json`，状态为 `pending_calendar_trigger`，原因是 `runs=0` 且 run evidence 尚未生成。
+- 边界：审计工具只读，不 kickstart、不发送 Telegram、不远程采集。
+
+## [2026-07-07] Intel Brief Telegram Bot API 复核通过
+
+> 影响模块: `Intel Brief`, `Telegram`, `Private Env`, `Evidence`
+
+- 复核 `.openclaw/intel-brief.production.env`：存在、`0600`、必需 key 均为存在态；证据不包含明文 token/chat id。
+- 真实调用 Telegram Bot API `sendMessage` 成功，证据：`packages/clawbot/data/intel_evidence/phasetelegram/20260707T123350Z-telegram-bot-api-real-send-probe.json`。
+- 真实调用 Telegram Bot API `getMe` 成功，返回 username `carven_Jianbao_bot`，证据：`packages/clawbot/data/intel_evidence/phasetelegram/20260707T123424Z-telegram-bot-api-getme-probe.json`。
+- 边界：无需再接管本机 Telegram 点击 Copy；仍需继续处理自然日 LaunchAgent 生产调度观察与 SGW 间歇 SSH timeout 容错。
+
+## [2026-07-07] Intel Brief SGW fallback 容错与 LaunchAgent canary 验证
+
+> 影响模块: `Intel Brief`, `Remote Worker`, `LaunchAgent`, `Evidence`
+
+- `senate_trading` collect 现在保留 SGW preferred worker，同时新增 `oracle-arm1-overseas-fallback`；collect evidence 会记录 `attempts[]` 与 `fallback` 字段。
+- SGW SSH profile 增加 `BatchMode=yes` 与 `ConnectTimeout=12`，降低间歇 SSH timeout 对生产周期的影响。
+- remote worker runner 在初始 staging/mkdir SSH 失败时 fail-fast，避免后续 health/cleanup/verify 重复超时。
+- 回归测试：`test_intel_collect_once.py` 覆盖 SGW failed → oracle-arm1 fallback success；`test_intel_worker_remote_runner.py` 覆盖 staging 失败 fail-fast。
+- 真实 fallback 证据：`packages/clawbot/data/intel_evidence/phasew/20260707T124408Z-forced-senate-fallback/collect-once.json`。
+- 真实 production cycle 证据：`packages/clawbot/data/intel_evidence/phasew/20260707T124152Z-production-cycle-with-sgw-fallback/latest-production-cycle.json`。
+- 真实 LaunchAgent calendar canary 证据：`packages/clawbot/data/intel_evidence/phasew/20260707T125003Z-launchd-calendar-canary-verified/post-run-audit.json`，结果 `verified_success`；临时 canary rollback 证据：`packages/clawbot/data/intel_evidence/phasew/20260707T125003Z-launchd-calendar-canary-verified/rollback-evidence.json`。
+- 边界：正式 daily LaunchAgent 未 kickstart，仍待下一次 08:30 自然触发；没有创建 VPS 常驻 worker/systemd/cron；无 token/chat id 明文写入。
+
+## [2026-07-07] Intel Brief Phase W 最终验证基线
+
+> 影响模块: `Intel Brief`, `Verification`, `Docs Baseline`
+
+- 最终验证 evidence：`packages/clawbot/data/intel_evidence/phasew/20260707T125656Z-phase-w-final-verification.json`。
+- 验证结果：Phase V/W evidence JSON 校验通过，ruff 通过，相关 pytest 15 项通过，OpenEverything/VPS-Config diff check 通过，Token 片段扫描 0 命中。
+- 状态：临时 canary 已移除；正式 daily LaunchAgent 仍 loaded，等待自然日 08:30 运行。
+
+## [2026-07-07] Intel Brief 正式 daily LaunchAgent 预触发审计
+
+> 影响模块: `Intel Brief`, `LaunchAgent`, `Evidence`, `Automation Follow-up`
+
+- 在本地 06:58 MDT 做正式 label `ai.openclaw.intel-brief.scheduler` 只读审计，结果仍为 `pending_calendar_trigger`，符合尚未到 08:30 的状态。
+- 证据：`packages/clawbot/data/intel_evidence/phasex/20260707T125904Z-daily-launchagent-pre-trigger-pending-audit.json`。
+- 已创建一次性 heartbeat，在本地 08:40 左右回到当前线程继续正式 daily post-run audit。
+- 边界：未 kickstart，未发送 Telegram，未远程采集，未修改 LaunchAgent 或 VPS。
+
+## [2026-07-07] Intel Brief Phase X 预触发等待阶段验证
+
+> 影响模块: `Intel Brief`, `LaunchAgent`, `Evidence`, `Verification`
+
+- Heartbeat creation evidence：`packages/clawbot/data/intel_evidence/phasex/20260707T130014Z-daily-audit-heartbeat-created.json`。
+- 最终验证 evidence：`packages/clawbot/data/intel_evidence/phasex/20260707T130040Z-phase-x-pretrigger-final-verification.json`。
+- 验证结果：phasex JSON、diff check、Token 片段扫描均通过；正式 daily LaunchAgent loaded 且仍未到点运行。
+
+## [2026-07-07] Intel Brief 正式 daily LaunchAgent 自然触发成功
+
+> 影响模块: `Intel Brief`, `LaunchAgent`, `Production Cycle`, `Telegram`, `Evidence`
+
+- 正式 macOS LaunchAgent `ai.openclaw.intel-brief.scheduler` 于本地 08:30 自然触发，`launchctl.runs=1`、`last_exit_code=0`。
+- 正式 run evidence：`packages/clawbot/data/intel_evidence/phaset/20260707T040135Z-launchd-production-cycle-install-package-absolute/runs/latest-production-cycle.json`，结果 `status=success`、collect `success=2/failed=0`、Telegram `sendMessage` 成功。
+- 正式 post-run audit：`packages/clawbot/data/intel_evidence/phasex/20260707T144102Z-daily-launchagent-post-run-audit.json`，结果 `verified_success`。
+- 一次性 heartbeat 已清理，证据：`packages/clawbot/data/intel_evidence/phasex/20260707T145534Z-heartbeat-cleanup-after-daily-success.json`。
+- 边界：正式 daily LaunchAgent 继续保留；没有创建 VPS 常驻服务；证据不包含 token/chat id 明文。
+
+## [2026-07-07] Intel Brief Phase X 最终验证与闭环基线
+
+> 影响模块: `Intel Brief`, `Verification`, `Docs Baseline`
+
+- 最终验证 evidence：`packages/clawbot/data/intel_evidence/phasex/20260707T145702Z-daily-launchagent-closure-final-verification.json`。
+- 验证结果：JSON、ruff、pytest 28 项、OpenEverything/VPS-Config diff check、Token 片段扫描均通过。
+- 生产闭环状态：正式 daily LaunchAgent 自然触发成功，collect `success=2/failed=0`，Telegram delivery success，post-run audit `verified_success`。
+
+## [2026-07-07] Intel Brief 商业订阅 MVP 数据层
+
+> 影响模块: `Intel Brief`, `Subscription`, `Telegram Menu`, `SQLite`, `Evidence`
+
+- 新增 `delivery_preferences` 与 `subscription_audit_log` schema，支撑推送频率/时间与订阅授权审计。
+- 新增 `src/intel/subscriptions.py`：套餐、Telegram 订阅者、订阅授权、分类偏好、推送偏好、eligible recipient 筛选、Telegram 菜单合同。
+- 新增 `tests/test_intel_commercial_mvp.py`，覆盖 active/expired、偏好筛选、菜单命令合同。
+- sandbox 证据：`packages/clawbot/data/intel_evidence/phasey/20260707T152655Z-commercial-mvp-subscription-contract/evidence.json`。
+- 边界：未调用 Telegram/支付/闲鱼；未写生产 DB；未输出 chat id/token 明文。
+
+## [2026-07-07] Intel Brief Phase Y 最终验证基线
+
+> 影响模块: `Intel Brief`, `Subscription`, `Verification`
+
+- 最终验证 evidence：`packages/clawbot/data/intel_evidence/phasey/20260707T153329Z-commercial-mvp-subscription-final-verification.json`。
+- 验证结果：JSON、ruff、pytest 14 项、OpenEverything/VPS-Config diff check、Token 片段扫描均通过。
+- 边界：已完成商业 MVP 数据层/菜单合同；尚未接入真实 Telegram handler 或生产 delivery recipient filtering。
+
+## [2026-07-07] Intel Brief Telegram 用户菜单 handler contract
+
+> 影响模块: `Intel Brief`, `Telegram Menu`, `Subscription`, `Evidence`
+
+- 新增 `src/intel/telegram_menu.py`，提供不联网的 Telegram 命令 handler contract：`/start`、`/status`、`/sources`、`/schedule`、`/custom`、`/help`。
+- `/custom` 走开放输入人物追踪数据层，只写 tracking target/subscription/audit log，不触发社媒抓取。
+- 新增 sandbox evidence 脚本 `scripts/intel_telegram_menu_sandbox.py`，演练 `/start → grant → /sources → /schedule → /custom → /status`。
+- sandbox 证据：`packages/clawbot/data/intel_evidence/phasez/20260707T155448Z-telegram-menu-handler-contract/evidence.json`，结果 `status=success`、`network_calls=0`、final profile active。
+- 边界：未调用 Telegram Bot API，未注册真实 bot handler/setMyCommands，未触发社媒抓取，未调用支付/闲鱼，未修改 production LaunchAgent 或正式 DB。
+
+## [2026-07-07] Intel Brief Phase Z 最终验证基线
+
+> 影响模块: `Intel Brief`, `Telegram Menu`, `Verification`
+
+- 最终验证 evidence：`packages/clawbot/data/intel_evidence/phasez/20260707T155805Z-telegram-menu-handler-final-verification.json`。
+- 验证结果：Phase Z JSON、ruff、pytest 12 项、OpenEverything/VPS-Config diff check、Telegram token 形态扫描均通过。
+- 边界：handler contract 仍未接入真实 Telegram runtime；production delivery 仍未按订阅/偏好筛选真实用户。
+
+## [2026-07-07] Intel Brief Telegram runtime adapter sandbox
+
+> 影响模块: `Intel Brief`, `Telegram Runtime`, `Subscription`, `Evidence`
+
+- 新增 `src/intel/telegram_runtime.py`，把 Telegram update 形状接入 Phase Z menu handler，并调用注入式 reply sender。
+- 新增 `scripts/intel_telegram_runtime_sandbox.py`，用 fake sender 演练 `/start → grant → /sources → /schedule → /custom → /status`。
+- sandbox 证据：`packages/clawbot/data/intel_evidence/phaseaa/20260707T160334Z-telegram-runtime-adapter-sandbox/evidence.json`，结果 `status=success`、updates `handled=5`、reply success `5`、`network_calls=0`。
+- 边界：未调用 Telegram Bot API，未启动 long-polling/webhook，未设置真实 bot commands，未写 production DB，未触发社媒抓取/支付/闲鱼。
+
+## [2026-07-07] Intel Brief Phase AA 最终验证基线
+
+> 影响模块: `Intel Brief`, `Telegram Runtime`, `Verification`
+
+- 最终验证 evidence：`packages/clawbot/data/intel_evidence/phaseaa/20260707T160655Z-telegram-runtime-adapter-final-verification.json`。
+- 验证结果：Phase AA JSON、ruff、pytest 15 项、OpenEverything/VPS-Config diff check、Telegram token 形态扫描均通过。
+- 边界：runtime adapter 仍未接入真实 Bot API getUpdates/webhook；production delivery 仍未按订阅/偏好筛选真实用户。
+
+## [2026-07-07] Intel Brief Telegram Bot API runtime probe
+
+> 影响模块: `Intel Brief`, `Telegram Bot API`, `Runtime Gate`, `Evidence`
+
+- 新增 `src/intel/telegram_bot_runtime.py`，提供 Bot API runtime gate、`setMyCommands`、`getUpdates` 与 redacted probe evidence。
+- 新增 `scripts/intel_telegram_bot_runtime_probe.py`，从私有 env 读取 token/ack 并执行受控 probe。
+- 注入式证据：`packages/clawbot/data/intel_evidence/phaseab/20260707T161200Z-telegram-bot-runtime-injected-contract/evidence.json`。
+- 真实 Bot API 证据：`packages/clawbot/data/intel_evidence/phaseab/20260707T161129Z-telegram-bot-runtime-real-probe.json`，结果 gate ready、`setMyCommands` success、`getUpdates` success、`network_calls=2`。
+- 边界：未 `sendMessage`，未启动 long-polling/webhook，未写 production DB，未持久化 raw updates/chat id/user id/message text。
+
+## [2026-07-07] Intel Brief Phase AB 最终验证基线
+
+> 影响模块: `Intel Brief`, `Telegram Bot API`, `Verification`
+
+- 最终验证 evidence：`packages/clawbot/data/intel_evidence/phaseab/20260707T161357Z-telegram-bot-runtime-final-verification.json`。
+- 验证结果：注入式/真实 Bot API JSON、ruff、pytest 19 项、OpenEverything/VPS-Config diff check、token/raw-update 扫描均通过。
+- 边界：真实 Bot API 只调用 `setMyCommands` 与 `getUpdates`；未 `sendMessage`，未写 production DB，未启动 long-polling/webhook。
+
+## [2026-07-07] Intel Brief Telegram update offset sandbox
+
+> 影响模块: `Intel Brief`, `Telegram Runtime`, `SQLite`, `Evidence`
+
+- 新增 `telegram_runtime_state` schema，按 bot profile 持久化 Telegram `last_update_id`。
+- 新增 `src/intel/telegram_update_processor.py`，读取 offset、过滤重复 updates、调用 runtime adapter，并在成功后推进 offset。
+- 新增 `scripts/intel_telegram_update_processor_sandbox.py`，用 fake Bot API client/sender 演练 offset 防重复。
+- sandbox 证据：`packages/clawbot/data/intel_evidence/phaseac/20260707T161820Z-telegram-update-processor-offset-sandbox/evidence.json`，结果 offset `0→100→103`，重复 replay `handled_count=0`，`network_calls=0`。
+- 边界：未调用 Telegram Bot API，未 `sendMessage`，未写 production DB，未启动 long-polling/webhook。
+
+## [2026-07-07] Intel Brief Phase AC 最终验证基线
+
+> 影响模块: `Intel Brief`, `Telegram Runtime`, `SQLite`, `Verification`
+
+- 最终验证 evidence：`packages/clawbot/data/intel_evidence/phaseac/20260707T162038Z-telegram-update-processor-final-verification.json`。
+- 验证结果：Phase AC JSON、ruff、pytest 23 项、OpenEverything/VPS-Config diff check、token/raw-chat scan 均通过。
+- 边界：本阶段仍未真实 `sendMessage` 或写 production DB；下一步需要 baseline offset/ack 后处理真实新 updates。
+
+## [2026-07-07] Intel Brief Telegram baseline offset real gate
+
+> 影响模块: `Intel Brief`, `Telegram Bot API`, `SQLite`, `Evidence`
+
+- 新增 `src/intel/telegram_baseline_offset.py` 与 `scripts/intel_telegram_baseline_offset.py`，用于自动回复前设置历史 update baseline。
+- sandbox 证据：`packages/clawbot/data/intel_evidence/phasead/20260707T162500Z-telegram-baseline-offset-sandbox/evidence.json`。
+- 真实 Bot API 证据：`packages/clawbot/data/intel_evidence/phasead/20260707T162505Z-telegram-baseline-offset-real.json`，结果真实 `getUpdates` 成功，正式 DB offset 写为 `684746897`，`reply_sent=false`。
+- 边界：未 `sendMessage`，未写用户订阅/偏好，未启动 long-polling/webhook，未持久化 raw updates/chat id/user id/message text。
+
+## [2026-07-07] Intel Brief Phase AD 最终验证基线
+
+> 影响模块: `Intel Brief`, `Telegram Bot API`, `SQLite`, `Verification`
+
+- 最终验证 evidence：`packages/clawbot/data/intel_evidence/phasead/20260707T162726Z-telegram-baseline-offset-final-verification.json`。
+- 验证结果：sandbox/real baseline JSON、production DB offset、ruff、pytest 27 项、OpenEverything/VPS-Config diff check、token/raw-update scan 均通过。
+- 边界：真实 Bot API 只调用 `getUpdates`；未 `sendMessage`，未写用户订阅/偏好。
+
+## [2026-07-07] Intel Brief Telegram real update runner one-shot
+
+> 影响模块: `Intel Brief`, `Telegram Bot API`, `Runtime Gate`, `Evidence`
+
+- 新增 `src/intel/telegram_real_update_runner.py` 与 `scripts/intel_telegram_real_update_runner.py`，把真实 Bot API client/sender 接入 offset-safe processor。
+- runner 必须显式满足 token、runtime ack、`--allow-real-network`、`--allow-send-message` 四项 gate。
+- 真实 one-shot 证据：`packages/clawbot/data/intel_evidence/phaseae/20260707T163143Z-telegram-real-update-runner-one-shot.json`，结果 `no_new_updates`，request offset `684746898`，`send_message_attempted=false`。
+- 边界：没有新 update，因此未 `sendMessage`，未写用户订阅/偏好；下一步需用户发送新命令后重跑。
+
+## [2026-07-07] Intel Brief Phase AE 最终验证基线
+
+> 影响模块: `Intel Brief`, `Telegram Runtime`, `Verification`
+
+- 最终验证 evidence：`packages/clawbot/data/intel_evidence/phaseae/20260707T163352Z-telegram-real-update-runner-final-verification.json`。
+- 验证结果：real runner evidence、production DB offset、ruff、pytest 32 项、OpenEverything/VPS-Config diff check、token/raw-update scan 均通过。
+- 边界：本次无新 update，未 `sendMessage`，未写用户订阅/偏好；真实用户交互验收仍待新命令。
+
+
+## [2026-07-07] Intel Brief subscription-filtered delivery sandbox
+
+> 影响模块: `Intel Brief`, `Subscription`, `Delivery`, `SQLite`, `Evidence`
+
+- 新增 `packages/clawbot/src/intel/subscription_delivery.py`，把 summary evidence 的来源分类映射到 active/non-expired Telegram 订阅者与 source preferences，只对命中的订阅者投递。
+- 新增 `packages/clawbot/scripts/intel_subscription_delivery_sandbox.py` 与 `packages/clawbot/tests/test_intel_subscription_filtered_delivery.py`，验证 eligible=2、sent=2、failed=0，排除未命中分类和过期订阅。
+- sandbox 证据：`packages/clawbot/data/intel_evidence/phaseaf/20260707T164449Z-subscription-filtered-delivery-sandbox/evidence.json`。
+- 最终验证 evidence：`packages/clawbot/data/intel_evidence/phaseaf/20260707T165346Z-subscription-filtered-delivery-final-verification.json`。
+- 边界：sandbox-only，fake sender，`network_calls=0`，未调用 Telegram API，未修改正式 `intel_brief.db` 或 daily LaunchAgent；生产周期仍未接入订阅过滤投递。
+
+
+## [2026-07-07] Intel Brief production-once subscription delivery switch
+
+> 影响模块: `Intel Brief`, `ProductionOnce`, `Subscription Delivery`, `Runtime Gate`
+
+- `packages/clawbot/src/intel/production_once.py` 新增 `INTEL_BRIEF_SUBSCRIPTION_DELIVERY_ENABLED` feature flag。
+- 默认不开关时继续使用已验证 fixed-chat Telegram delivery；开关开启时要求 `INTEL_BRIEF_DB_PATH` 并进入 subscription-filtered delivery。
+- 新增/更新 `packages/clawbot/tests/test_intel_production_once.py` 覆盖默认兼容、订阅投递接线、缺 DB 阻断。
+- sandbox evidence：`packages/clawbot/data/intel_evidence/phaseag/20260707T165951Z-production-once-subscription-delivery-switch-sandbox/evidence.json`；最终验证：`packages/clawbot/data/intel_evidence/phaseag/20260707T170034Z-production-once-subscription-switch-final-verification.json`。
+- 边界：未修改正式 private env、daily LaunchAgent 或生产 DB；未调用真实 Telegram API。
+
+
+## [2026-07-07] Intel Brief Telegram inline keyboard menu correction
+
+> 影响模块: `Intel Brief`, `Telegram Menu`, `Callback Query`, `Bot UX`
+
+- 按用户截图要求，将 `/start` 菜单从底部 reply keyboard/纯文本说明改为消息内 `inline_keyboard` 按钮矩阵。
+- inline 菜单结构：5 行 22 个按钮，覆盖 Github/OpenAI/Claude/Deepseek、微博/小红书/抖音/知乎/B站、天气类、投行/科技/股市/加密、设置/自定义/定时。
+- `getUpdates` 现在接收 `callback_query`；runtime 可把按钮点击回调映射回已有 handler；sender 支持 `answerCallbackQuery`。
+- 真实发送 evidence：`packages/clawbot/data/intel_evidence/phaseai/20260707T172324Z-real-telegram-inline-keyboard-menu-send/evidence.json`。
+- 最终验证 evidence：`packages/clawbot/data/intel_evidence/phaseai/20260707T172410Z-inline-keyboard-menu-final-verification.json`。
+- 边界：只修正 Telegram UI/交互层；未授予订阅、未改生产调度、未触发支付/闲鱼/爬虫/远程 worker。
+
+## [2026-07-07] Intel Brief Telegram reference-style menu grid correction
+
+> 影响模块: `Intel Brief`, `Telegram Menu`, `Bot UX`
+
+- 按用户截图要求，继续收敛 `/start` 菜单视觉形态：正文改成短标题/短说明，移除旧的 `命令：/sources...` 文本提示。
+- inline keyboard 调整为 4 列优先矩阵：6 行、22 个按钮，最后一行 2 个宽按钮，更接近 Telegram 消息内灰色按钮网格。
+- 真实发送 evidence：`packages/clawbot/data/intel_evidence/phaseak/20260707T174008Z-reference-style-telegram-menu-send/evidence.json`。
+- 边界：只修正 Telegram UI；未修改订阅授权、daily LaunchAgent、private env、VPS、支付/闲鱼、爬虫或远程 worker。
+
+## [2026-07-07] Intel Brief real subscription-filtered Telegram delivery
+
+> 影响模块: `Intel Brief`, `Subscription Delivery`, `Telegram`, `SQLite`, `Evidence`
+
+- 正式 `intel_brief.db` 中的真实 Telegram subscriber 已获得内部测试订阅授权并配置 `akshare/senate_trading` 偏好。
+- 使用真实 daily summary evidence 执行 subscription-filtered delivery：只发送给 active、未过期、偏好命中的 Telegram subscriber。
+- 真实发送 evidence：`packages/clawbot/data/intel_evidence/phaseaj/20260707T174622Z-real-subscription-filtered-delivery/evidence.json`，结果 `eligible=1/sent=1/failed=0`，`delivery_log_delta=1`。
+- `subscription_delivery` evidence 脱敏加强：不再持久化 `tg:<Telegram user id>`，只记录 `user_id_present`。
+- 边界：未修改 LaunchAgent/private env/VPS；daily natural run 尚未切换为订阅投递；闲鱼/支付授权自动化未接入。
+
+## [2026-07-07] Intel Brief daily production delivery switched to subscription-filtered mode
+
+> 影响模块: `Intel Brief`, `ProductionOnce`, `LaunchAgent Runtime Env`, `Subscription Delivery`, `Telegram`
+
+- 私有 env `.openclaw/intel-brief.production.env` 已启用 `INTEL_BRIEF_SUBSCRIPTION_DELIVERY_ENABLED=true` 并配置正式 `INTEL_BRIEF_DB_PATH`；不打印、不提交密钥或 chat id。
+- 未重装 LaunchAgent；现有 `ai.openclaw.intel-brief.scheduler` 已通过 `INTEL_BRIEF_PRIVATE_ENV` 读取该私有 env，下一次自然 08:30 daily cycle 将使用订阅/偏好/到期过滤投递。
+- `production_once` 订阅投递 gate 加固：DB path 缺失、DB 文件不存在、token 缺失均 blocked，避免误配创建空 DB。
+- 受控真实验证 evidence：`packages/clawbot/data/intel_evidence/phaseal/20260707T175654Z-daily-subscription-mode-production-once/evidence.json`，结果 `delivery_mode=subscription_filtered`、`eligible=1/sent=1/failed=0`、`delivery_log_delta=1`。
+- 边界：自然 08:30 订阅投递仍需下一次 LaunchAgent 定时触发后审计；支付/闲鱼授权自动化未接入。
+
+## [2026-07-07] Intel Brief controlled production_cycle subscription-mode full path
+
+> 影响模块: `Intel Brief`, `ProductionCycle`, `Subscription Delivery`, `LaunchAgent Script Path`, `Evidence`
+
+- 使用 LaunchAgent 实际调用的同一脚本 `packages/clawbot/scripts/intel_production_cycle.py` 做受控全链路验证。
+- 结果：collect `success=2/failed=0`，summary 2 items，production_once `delivery_mode=subscription_filtered`，Telegram delivery `eligible=1/sent=1/failed=0`，`delivery_log` 增至 3 条 success。
+- Evidence：`packages/clawbot/data/intel_evidence/phaseam/20260707T180242Z-controlled-production-cycle-subscription-mode/latest-production-cycle.json`。
+- 边界：未重装/重启 LaunchAgent；这不是自然 08:30 触发。下一步需等待 natural schedule 后审计。
+
+## [2026-07-07] Intel Brief subscription lifecycle audit/reminder contract
+
+> 影响模块: `Intel Brief`, `Subscription`, `SQLite`, `Evidence`, `Commercial MVP`
+
+- 新增 `packages/clawbot/src/intel/subscription_lifecycle.py`，提供订阅到期审计、过期标记与到期提醒去重能力。
+- 默认只读；只有显式 `apply_expiry=True` 才把 active 过期订阅标记为 `expired`；只有显式 `send_reminders=True` 且提供 sender 才发送提醒。
+- 新增 `packages/clawbot/scripts/intel_subscription_lifecycle_sandbox.py` 与 `packages/clawbot/tests/test_intel_subscription_lifecycle.py`。
+- sandbox evidence：`packages/clawbot/data/intel_evidence/phasean/20260707T181146Z-subscription-lifecycle-sandbox/evidence.json`。
+- 正式 DB 只读审计 evidence：`packages/clawbot/data/intel_evidence/phasean/20260707T181219Z-production-db-subscription-lifecycle-readonly-audit/evidence.json`。
+- 边界：未真实发送提醒，未修改正式订阅状态，未改 LaunchAgent/private env/VPS。
+
+## [2026-07-07] Intel Brief production_cycle now records subscription lifecycle read-only audit
+
+> 影响模块: `Intel Brief`, `ProductionCycle`, `Subscription Lifecycle`, `Evidence`
+
+- `packages/clawbot/src/intel/production_cycle.py` 已接入订阅生命周期只读审计。
+- daily production evidence 现在会包含顶层 `subscription_lifecycle` 字段。
+- 审计默认 `apply_expiry=false`、`send_reminders=false`，不会改订阅状态、不会发送到期提醒。
+- 若 `INTEL_BRIEF_DB_PATH` 缺失或文件不存在，只记录 `skipped`，不阻断主采集/投递链路。
+- 受控集成 evidence：`packages/clawbot/data/intel_evidence/phaseao/20260707T182041Z-production-cycle-lifecycle-readonly-integration/wrapper.json`。
+- 边界：使用 injected delivery 避免重复 Telegram 发送；真实投递链路已在 Phase AM 验证。
+
+## [2026-07-07] Intel Brief manual order-to-entitlement bridge
+
+> 影响模块: `Intel Brief`, `Subscription`, `Commercial MVP`, `SQLite`, `Evidence`
+
+- 新增 `packages/clawbot/src/intel/manual_entitlement.py`，作为支付/闲鱼自动化前的人工核单授权入口。
+- 新增 `packages/clawbot/scripts/intel_manual_entitlement.py`：默认 dry-run，必须 `--apply` 才写 DB。
+- 新增 `packages/clawbot/scripts/intel_manual_entitlement_sandbox.py` 与 `packages/clawbot/tests/test_intel_manual_entitlement.py`。
+- 支持续费从现有 active `expires_at` 顺延；订单号只以短哈希进入 audit source，evidence 不含 raw order/chat/user id。
+- Sandbox evidence：`packages/clawbot/data/intel_evidence/phaseap/20260707T182938Z-manual-entitlement-sandbox/evidence.json`。
+- 正式 DB dry-run evidence：`packages/clawbot/data/intel_evidence/phaseap/20260707T183007Z-production-db-manual-entitlement-dry-run/evidence.json`。
+- 边界：未接入支付回调/闲鱼自动化，未修改正式 DB，未发送 Telegram。
+
+## [2026-07-07] Intel Brief Telegram menu adjusted to provided reference screenshot
+
+> 影响模块: `Intel Brief`, `Telegram Menu`, `Bot UX`
+
+- 按用户最新参考图，把 `/start` 菜单进一步改成“热搜入口 + 灰色按钮矩阵”的视觉：正文只保留 `🔥 热搜排行`、高价值情报入口说明、关键词搜索提示，不再在首屏输出 `inactive_or_expired`、已启用分类或 `/sources` 命令说明。
+- inline keyboard 当前基线：6 行、23 个按钮、最大 4 列，前 5 行保持 4 列，最后一行为 `⚙️ 设置 / 🔎 自定义 / ⏰ 定时` 快捷入口；按钮 `callback_data` 改为稳定内部值，避免展示文本变化影响回调路由。
+- 真实发送 evidence：`packages/clawbot/data/intel_evidence/phasear/20260707T185237Z-reference-screenshot-style-menu-real-send/evidence.json`；sandbox contract evidence：`packages/clawbot/data/intel_evidence/phasear/20260707T185209Z-reference-screenshot-style-menu-contract-v2/evidence.json`；最终验证：`packages/clawbot/data/intel_evidence/phasear/20260707T185522Z-reference-screenshot-menu-final-verification/evidence.json`。
+- 边界：只修改 OpenEverything Telegram 菜单合同/测试/证据记录；未修改订阅授权、daily LaunchAgent、private env、VPS、支付/闲鱼、爬虫或远程 worker。
+
+## [2026-07-07] Intel Brief GitHub Trending source production verification
+
+> 影响模块: `Intel Brief`, `Source Adapters`, `Remote Workers`, `Production Cycle`, `Telegram Delivery`
+
+- 新增并验证 `github_trending` 高价值数据源：从 GitHub Trending daily HTML 抽取 repo、url、description、language、stars_today，无需 API token。
+- 发现并修复真实页面解析问题：GitHub Trending article 中可能先出现 `/sponsors/...` 链接，旧解析会误识别为仓库；已新增回归测试，限定只从 repo heading 的 `<h2><a>` 提取仓库。
+- 修正 `intel_collect_once.py` 的 GitHub fallback profile：`github_trending` 的 oracle-arm1 fallback 不再误标为 `senate_trading`。
+- 真实 Oracle SG West worker 证据：`packages/clawbot/data/intel_evidence/phaseaq/20260707T190500Z-github-trending-oracle-sg-worker-parser-fixed.json`，结果 `raw_count=3`，返回 top repos 包含 `Zackriya-Solutions/meetily`、`addyosmani/agent-skills`、`ruvnet/RuView`。
+- 受控三源 production cycle 证据：`packages/clawbot/data/intel_evidence/phaseaq/20260707T190718Z-controlled-production-cycle-three-sources/latest-production-cycle.json`，结果 collect `success=3/failed=0`，sources=`senate_trading/akshare/github_trending`，subscription-filtered Telegram delivery 成功。
+- 最终验证 evidence：`packages/clawbot/data/intel_evidence/phaseaq/20260707T191656Z-github-trending-final-verification/evidence.json`。
+- 边界：未安装服务、未重装 LaunchAgent、未创建长期 worker、未写密钥；远端 worker 仍是 `/tmp` 临时 staging 并 cleanup。
+
+## [2026-07-07] Intel Brief AI model updates source and per-recipient filtered delivery
+
+> 影响模块: `Intel Brief`, `Source Adapters`, `Remote Workers`, `Subscription Delivery`, `Telegram Delivery`
+
+- 新增 `ai_model_updates` 高价值数据源：官方 OpenAI RSS + Anthropic News HTML + DeepSeek 官方首页公告 HTML，输出 `provider/title/url/published_at/summary`，无 API token。
+- 目标环境验证：Oracle SG West 真实 worker 调用成功，返回 OpenAI、Anthropic、DeepSeek 三家真实条目。证据：`packages/clawbot/data/intel_evidence/phaseau/20260707T193548Z-ai-model-updates-oracle-sg-worker-final.json`。
+- 修复 DeepSeek 目标环境差异：Oracle SG West 访问 `https://www.deepseek.com/news` 返回 404，因此 DeepSeek 源改用目标环境可访问且含官方公告的 `https://www.deepseek.com/`。
+- 修复 AI 源截断策略：按 provider/feed 轮询合并，避免 OpenAI RSS 条目过多挤掉 Anthropic/DeepSeek。
+- `intel_collect_once.py` 新增 per-source limit：`github_trending=3`，`ai_model_updates=6`，满足 GitHub Top 3 与 AI 三家动态的 MVP 口径。
+- 修复 subscription delivery 定制化缺陷：不再只按偏好筛收件人，而是每个 recipient 发送前按 `matched_categories` 裁剪 summary items 和 message 正文；delivery_log 也写入过滤后的内容。
+- 四源受控 production cycle：`packages/clawbot/data/intel_evidence/phaseau/20260707T194551Z-controlled-production-cycle-four-sources-source-limits/latest-production-cycle.json`，collect `success=4/failed=0`，GitHub raw_count=3，AI raw_count=6，真实 Telegram subscription-filtered delivery 成功，当前真实订阅者 filtered_item_count=2。
+- per-recipient filter sandbox：`packages/clawbot/data/intel_evidence/phaseav/20260707T194902Z-subscription-delivery-per-recipient-filter-sandbox/evidence.json`。
+- 最终验证 evidence：`packages/clawbot/data/intel_evidence/phaseau/20260707T195140Z-ai-model-and-recipient-filter-final-verification/evidence.json`。
+- 边界：未安装/重装 LaunchAgent，未创建常驻 worker，未修改 VPS 服务或密钥；远端执行仍为临时 `/tmp` staging 并 cleanup。
+
+## [2026-07-07] Intel Brief Telegram menu closer to reference screenshot wide-button layout
+
+> 影响模块: `Intel Brief`, `Telegram Menu`, `Bot UX`, `Evidence`
+
+- 在 Phase AR 截图风格菜单基础上，新增最后一行 2 个宽按钮：`🔍 备用搜索` 与 `👥 设置导航`，更贴近用户参考图中底部两个宽入口的视觉结构。
+- `search` callback 现在返回关键词搜索提示；`👥 设置导航` 复用 settings/status 入口，不在首屏展示订阅状态噪音。
+- 当前 `/start` inline keyboard 基线：7 行、25 个按钮，前 6 行保留情报分类/设置入口，最后一行为两列宽入口。
+- Sandbox evidence：`packages/clawbot/data/intel_evidence/phasear/20260707T200639Z-reference-screenshot-style-menu-with-wide-row-sandbox/evidence.json`；真实 Telegram send evidence：`packages/clawbot/data/intel_evidence/phasear/20260707T200700Z-reference-screenshot-style-menu-with-wide-row-real-send/evidence.json`。
+- 边界：只改 Telegram 菜单合同和测试；未修改订阅授权、production DB、LaunchAgent、private env、VPS、支付/闲鱼、爬虫或远程 worker。
+
+## [2026-07-07] Intel Brief institutional 13F source aggregation and five-source production cycle
+
+> 影响模块: `Intel Brief`, `Source Adapters`, `SEC EDGAR`, `Remote Workers`, `Production Cycle`, `Subscription Delivery`
+
+- 完成 `institutional_13f` 数据源质量修复：SEC 13F information table 里同一 `(issuer, class, cusip)` 多行现在会聚合，`value_thousands_usd` 与 `shares` 可解析为整数时求和，并按持仓价值降序输出，避免 Berkshire 最新 13F 前 10 条被同一发行人拆分行占满。
+- `registry.py` 的 `institutional_13f` evidence path 已从 pending 更新为 Oracle SG West 真实聚合验证证据。
+- Oracle SG West 真实 worker 调用成功：`raw_count=10`，返回 Apple、American Express、Coca Cola、Bank of America、Chevron 等聚合后持仓，远端 `/tmp` staging cleanup 成功。
+- 五源受控 production cycle 成功：`senate_trading / akshare / github_trending / ai_model_updates / institutional_13f` 全部成功，collect `success=5/failed=0`，summary 21 items，subscription-filtered Telegram delivery `eligible=1/sent=1/failed=0`。
+- Evidence：13F real worker `packages/clawbot/data/intel_evidence/phaseaw/20260707T201214Z-institutional-13f-oracle-sg-worker-aggregated.json`；五源 cycle `packages/clawbot/data/intel_evidence/phaseaw/20260707T201455Z-controlled-production-cycle-five-sources-13f-aggregated/latest-production-cycle.json`。
+- 边界：未安装/重装 LaunchAgent，未创建常驻 worker，未新增密钥；远端执行仍为临时 `/tmp` staging 并 cleanup。当前真实 subscriber 偏好仍只命中 `akshare/senate_trading`，因此本次真实推送正文按偏好过滤为 2 条。
+
+## [2026-07-07] Intel Brief Telegram category buttons no longer overwrite preferences
+
+> 影响模块: `Intel Brief`, `Telegram Menu`, `Source Preferences`, `Subscription UX`
+
+- 修正商业化订阅菜单交互：点击分类按钮不再把已有 source preferences 全量覆盖为单一分类。
+- 新行为：菜单分类按钮为“未全选则追加 / 已全选再点则取消该按钮对应分类”；显式 `/sources ...` 命令仍保留替换语义，方便运营或高级用户一次性重置偏好。
+- 例子：先点 `股市` 得到 `akshare / institutional_13f / senate_trading`；再点 `Github` 会追加 `github_trending`；再点一次 `Github` 只取消 `github_trending`，不影响股市组合。
+- Sandbox evidence：`packages/clawbot/data/intel_evidence/phaseax/20260707T202835Z-telegram-menu-button-preference-toggle-sandbox/evidence.json`。
+- 真实 Telegram update runner evidence：`packages/clawbot/data/intel_evidence/phaseax/20260707T202846Z-telegram-real-update-runner-button-preference-cycle.json`，本次处理 1 条真实 `/start` update 并成功回发新版 inline keyboard，未持久化 raw update/chat id。
+- 边界：未修改订阅授权、套餐、支付/闲鱼、LaunchAgent、VPS 或采集 worker；正式 DB 仅因真实 `/start` 处理而 upsert 同一 Telegram subscriber/chat 映射，当前偏好仍为 `akshare/senate_trading`。
+
+## [2026-07-07] Intel Brief Telegram preferences use user-facing category labels
+
+> 影响模块: `Intel Brief`, `Telegram Menu`, `Subscription UX`, `Evidence`
+
+- Telegram `/sources`、分类按钮回包与 `/status` 不再向用户展示 `akshare`、`senate_trading`、`github_trending` 等内部 category id。
+- 新增用户可读展示名：如 `A股资金流向`、`国会持仓`、`GitHub趋势`、`机构13F持仓`、`AI模型动态` 等；内部 `enabled_categories` 字段仍保留原始 id，便于投递过滤和审计。
+- Sandbox evidence：`packages/clawbot/data/intel_evidence/phaseay/20260707T203616Z-telegram-menu-user-facing-category-labels-sandbox/evidence.json`，同时记录内部 flow 与 `button_preference_flow_display` 中文展示 flow。
+- 边界：只改 Telegram 文案/证据，不改 DB schema、订阅授权、LaunchAgent、VPS、支付/闲鱼或采集 worker。
+
+## [2026-07-07] Intel Brief weather/air/alert source verified and added to default cycle
+
+> 影响模块: `Intel Brief`, `Source Adapters`, `Weather`, `Remote Workers`, `Production Cycle`, `Subscription Delivery`
+
+- 新增 `weather` 数据源，覆盖菜单里的 `天气 / 空气 / 降雨 / 温度 / 湿度 / 灾害` 子类。
+- 数据源实现：美国 NWS `api.weather.gov` 负责 hourly weather、temperature、rainfall probability、humidity、active alerts；Open-Meteo Air Quality 无 Key endpoint 负责 `air_quality` MVP 数据。
+- `weather` item 同时保留 `source=weather` 和具体 `category` / `category_aliases`；subscription delivery 已支持按 alias 匹配，因此订阅 `weather` 可收到全部天气子类，订阅 `temperature` 只收到温度类 item。
+- `DEFAULT_MVP_CATEGORIES` 已加入天气子类，人工授权默认覆盖天气菜单能力。
+- Oracle SG West real worker evidence：`packages/clawbot/data/intel_evidence/phaseaz/20260707T204803Z-weather-oracle-sg-worker.json`，`raw_count=6`，样本包含 Denver weather/temperature/rainfall/humidity/active alert/air quality。
+- 六源受控 production cycle evidence：`packages/clawbot/data/intel_evidence/phaseaz/20260707T205021Z-controlled-production-cycle-six-sources-weather/latest-production-cycle.json`，collect `success=6/failed=0`，summary 27 items，subscription-filtered Telegram delivery success。
+- 商业边界：NWS API 要求自定义 User-Agent；Open-Meteo 文档显示无 Key 免费/非商业使用与商业使用边界，付费订阅正式商业化前需复核/替换为空气质量合规来源或购买商业访问，不把该免费 endpoint 当成最终商业合规结论。
+- 边界：未重装 LaunchAgent，未创建常驻 worker，未新增密钥；远端执行仍为 `/tmp` 临时 staging 并 cleanup。
+
+## [2026-07-07] Intel Brief Telegram menu aligned to user screenshot wording
+
+> 影响模块: `Intel Brief`, `Telegram Menu`, `Bot UX`, `Evidence`
+
+- 按用户最新截图将 `/start` 菜单继续收敛为“热搜排行卡片 + 多列灰色按钮矩阵”的 Telegram inline keyboard 风格。
+- 首屏正文改为：`🔥 热搜排行`、`🔥 近期高价值情报排行榜`、`发送关键词🔍搜索你感兴趣的内容`；不展示订阅状态、内部 category id 或 `/sources` 帮助噪音。
+- 第 6 行按钮改为无额外图标的 `设置 / 自定义 / 定时`，更接近截图中的纯文本分类按钮；最后一行改为 `🔍 情报搜索 / 👥 功能导航` 两个宽入口。
+- 新增/保留回调兼容：`🔍 情报搜索` 进入关键词搜索提示，`👥 功能导航` 进入 status/settings；旧 `备用搜索/设置导航` callback 仍作为兼容别名。
+- Sandbox evidence：`packages/clawbot/data/intel_evidence/phaseba/20260707T210354Z-screenshot-style-telegram-menu-v3/evidence.json`；真实 Telegram send evidence：`packages/clawbot/data/intel_evidence/phaseba/20260707T210719Z-screenshot-style-menu-v3-real-send/evidence.json`。
+- 边界：只改 Telegram 菜单合同、handler 文案映射、测试和文档；未改 production DB、LaunchAgent、private env、VPS、支付/闲鱼、爬虫或远程 worker。
+
+## [2026-07-07] Intel Brief LaunchAgent natural 08:30 audit verified via artifact evidence
+
+> 影响模块: `Intel Brief`, `LaunchAgent`, `Production Audit`, `Evidence`
+
+- 修正 `intel_launchagent_audit.py` 的判定逻辑：当 `launchctl print` 的 `runs/last exit code` 计数没有更新，但正式 LaunchAgent 仍加载、日历触发配置存在、stdout 与 `latest-production-cycle.json` 均显示成功时，审计可标记为 `verified_success`，并显式记录 `launchctl.counter_mismatch=true`。
+- 复核正式 daily LaunchAgent `ai.openclaw.intel-brief.scheduler` 的自然 08:30 运行：`latest-production-cycle.json` 时间戳为 `2026-07-07T14:30:05Z`，collect `success=2/failed=0`，production_once success，真实 Telegram send success 且 message_id present。
+- Read-only audit evidence：`packages/clawbot/data/intel_evidence/phaset/20260707T211424Z-launchagent-natural-0830-verified-with-artifact/evidence.json`。
+- 边界：本次只是只读审计和审计脚本修复；没有执行 `launchctl kickstart/bootstrap/bootout`，没有重装 plist，没有改 private env/VPS/远程 worker/生产 DB/支付/闲鱼。该自然运行发生在后续 GitHub/AI/13F/weather 接入前，因此它证明“正式 LaunchAgent 自然 08:30 可触发并真实投递”，但不证明“六源默认链路已经自然触发”；六源链路已有受控 production cycle 证据，下一次自然 08:30 仍需复审。
+
+## [2026-07-07] Intel Brief subscription lifecycle production-safe maintenance CLI
+
+> 影响模块: `Intel Brief`, `Subscriptions`, `Lifecycle`, `Telegram Reminder`, `Evidence`
+
+- 新增 `packages/clawbot/scripts/intel_subscription_lifecycle.py`，为订阅到期管理提供生产安全入口。
+- 默认模式只读：审计正式 `intel_brief.db` 中 active 订阅是否已过期、是否 7 天内到期，不改库、不发 Telegram。
+- `--apply-expiry` 只有在提供 `INTEL_BRIEF_SUBSCRIPTION_LIFECYCLE_APPLY_ACK=I_UNDERSTAND_INTEL_BRIEF_LIFECYCLE_APPLY` 或 `--apply-ack` 时才会把已过期 active 订阅标记为 expired 并写 audit。
+- `--send-reminders` 只有在 Telegram token 存在、既有 Telegram runtime ack 存在、且显式 `--allow-real-network` 时才会发送到期提醒；提醒 audit 仍按 subscriber/plan/day 去重。
+- Sandbox evidence：`packages/clawbot/data/intel_evidence/phasebc/20260707T212320Z-subscription-lifecycle-maintenance-sandbox/evidence.json`，覆盖 readonly、缺 ack 阻断、apply、注入 transport reminder。
+- Production read-only evidence：`packages/clawbot/data/intel_evidence/phasebc/20260707T212337Z-subscription-lifecycle-production-readonly/evidence.json`，当前正式 DB 无已过期 active 订阅、无 7 天内到期候选，`network_calls=0`。
+- 边界：本阶段没有对正式 DB 执行 apply，没有真实发送提醒；没有改 LaunchAgent/private env/VPS/远程 worker/支付/闲鱼/爬虫。证据不含 Telegram token/chat id/user id。
+
+## [2026-07-07] Intel Brief LaunchAgent next-run six-source readiness audit
+
+> 影响模块: `Intel Brief`, `LaunchAgent`, `Production Cycle`, `Evidence`
+
+- 新增只读 readiness 审计：`packages/clawbot/src/intel/launchagent_readiness.py` 与 `packages/clawbot/scripts/intel_launchagent_next_run_readiness.py`。
+- 审计 installed LaunchAgent plist 的 `ProgramArguments`，确认它调用 `intel_production_cycle.py` 且没有固定旧 `--source` 参数，因此下一次自然触发会读取当前 `DEFAULT_PRODUCTION_CYCLE_SOURCES`。
+- 当前默认源为六源：`senate_trading / akshare / github_trending / ai_model_updates / institutional_13f / weather`。
+- 同时读取六源 controlled cycle evidence，确认 controlled collect `success=6/failed=0`，并关联上一条自然 08:30 verified audit。
+- Evidence：`packages/clawbot/data/intel_evidence/phasebd/20260707T213012Z-launchagent-next-run-six-source-readiness/evidence.json`，结果 `status=ready`、`missing=[]`、`network_calls=0`。
+- 边界：只读审计；未执行 `launchctl kickstart/bootstrap/bootout`，未重装 plist，未改 private env/VPS/远程 worker/生产 DB/支付/闲鱼/爬虫，也未调用 Telegram。该 evidence 证明“下一次自然运行将使用六源默认链路”的 readiness，不替代下一次自然 08:30 后的真实审计。
+
+## [2026-07-07] Intel Brief user-facing delivery copy and E2E status audit
+
+> 影响模块: `Intel Brief`, `Telegram Delivery`, `Subscription Delivery`, `Commercial MVP Evidence`
+
+- 修复真实 Telegram 投递正文误用 sandbox 文案的问题：`build_delivery_message()` 默认改为生产可见文案，末尾显示“内容来自公开来源自动汇总，不构成投资建议”；sandbox fake sender 调用显式传 `delivery_context="sandbox"`，仍保留测试边界。
+- 通过 gated `production_once` 对真实订阅者发送一次修正文案后的 subscription-filtered 消息：`eligible=1/sent=1/failed=0`，matched categories=`akshare/senate_trading`，filtered item count=2，真实 Telegram send success。
+- 新增 E2E 状态审计：`packages/clawbot/src/intel/e2e_status_audit.py` 与 `packages/clawbot/scripts/intel_e2e_status_audit.py`，只读汇总正式 DB 的真实 subscriber、订阅/偏好、最新 delivery_log、六源 next-run readiness 和最近 production delivery evidence。
+- E2E evidence：`packages/clawbot/data/intel_evidence/phasebe/20260707T213933Z-commercial-mvp-e2e-status-audit/evidence.json`，结果 `status=verified`，active eligible subscriber=1，latest delivery success，latest delivery 不含 sandbox/fake 文案，按偏好过滤且无未订阅源标记。
+- Real delivery evidence：`packages/clawbot/data/intel_evidence/phasebe/20260707T213634Z-production-once-user-facing-delivery-copy/evidence.json`。
+- 边界：本次真实发送 1 条 Telegram 用于文案修复验收；未修改 LaunchAgent/private env/VPS/远程 worker/支付/闲鱼/爬虫。E2E audit 本身只读，证据不写 token/chat id/user id/raw message content。
+
+## [2026-07-07] Intel Brief Telegram menu v4 matches reference with persistent shortcuts
+
+> 影响模块: `Intel Brief`, `Telegram Menu`, `Bot UX`, `Telegram Bot API`, `Evidence`
+
+- 修正用户指出的菜单问题：`/start` 不再输出“订阅状态 / 已启用分类 / 命令提示”这类状态页噪音，而是发送截图式“热搜排行”菜单卡片。
+- 菜单正文改为 `CARVEN 情报简报`、`🔥 热搜排行`、`🔥 近期高价值情报排行榜`、`发送关键词🔍搜索你感兴趣的内容`。
+- inline keyboard 调整为 4 列优先的矩阵：`Github/OpenAI/Claude/Deepseek`、社媒、天气、财经、设置区；底部宽入口为 `🔍 备用搜索 / 👥 功能导航`。
+- 新增 persistent bottom shortcut keyboard：`👥 功能导航 / 🔥 热搜排行`，因此真实 Telegram 中会先发一条快捷入口安装消息，再发一条 inline 菜单卡片；这是为了接近用户截图中“消息内按钮 + 输入框上方快捷按钮”的组合效果。
+- 修正 `👥 功能导航` 行为：不再跳到 status/settings 状态文本，而是回到菜单卡片；普通关键词文本会进入搜索提示，不再直接报未知命令。
+- 注册 Telegram native commands 已通过 `setMyCommands` 真实调用验证。
+- Sandbox evidence：`packages/clawbot/data/intel_evidence/phasebf/20260707T215214Z-screenshot-like-telegram-menu-v4/evidence.json`。
+- Telegram command registration evidence：`packages/clawbot/data/intel_evidence/phasebf/20260707T215248Z-telegram-command-menu-registration-v4.json`。
+- Real Telegram send evidence：`packages/clawbot/data/intel_evidence/phasebf/20260707T215317Z-screenshot-like-menu-v4-real-send/evidence.json`，真实发送 2 条消息，均成功，证据只记录 token/chat id 存在性与脱敏发送结果。
+- 边界：只改 Telegram 菜单合同、runtime 多消息发送支持、测试和文档；未修改 LaunchAgent/private env/VPS/远程 worker/生产订阅授权/支付/闲鱼/爬虫。证据不写 Telegram token、chat id、user id 或 raw update payload。
+
+## [2026-07-07] Intel Brief LaunchAgent audit now requires expected six-source proof
+
+> 影响模块: `Intel Brief`, `LaunchAgent`, `Production Audit`, `Evidence`
+
+- 强化 `intel_launchagent_audit.py`：新增重复参数 `--expected-source`，用于要求 `latest-production-cycle.json` 中指定数据源全部出现且 collect 成功。
+- `build_launchagent_post_run_audit()` 现在会记录 `sources`、`expected_sources`、`sources_match_expected`、`collect_success_matches_expected`、`missing_expected_sources`、`unexpected_sources` 与 `failed_sources`。
+- 当提供 expected sources 时，`verified_success` 不再只依赖 run artifact 成功和 Telegram send 成功；还必须满足源列表与 expected sources 一致、collect success 数等于 expected 数、failed=0、每个 expected source 都有 success run。
+- 回归证据：使用旧自然 08:30 两源 artifact 运行六源 expected audit，正确返回 `failed_or_incomplete`，缺失 `github_trending / ai_model_updates / institutional_13f / weather`。
+- Evidence：`packages/clawbot/data/intel_evidence/phasebg/20260707T220027Z-launchagent-six-source-expected-regression/evidence.json`。
+- 边界：只读审计和测试增强；未执行 `launchctl kickstart/bootstrap/bootout`，未重装 plist，未修改 private env/VPS/远程 worker/生产 DB/订阅授权/支付/闲鱼/爬虫，也未调用 Telegram 或数据源网络。
+
+## [2026-07-07] Intel Brief E2E status audit now gates on natural six-source LaunchAgent proof
+
+> 影响模块: `Intel Brief`, `Commercial MVP Audit`, `LaunchAgent`, `Evidence`
+
+- 强化 `intel_e2e_status_audit.py`：新增 `--launchagent-audit-evidence`，商业 MVP E2E `verified` 现在必须引用一份自然 08:30 LaunchAgent post-run audit，并且该 audit 必须为 `verified_success`、`expected_sources_checked=true`、六源匹配且 collect 全部成功。
+- E2E checks 新增 `natural_six_source_launchagent_verified`；缺失或失败时即使 subscriber、偏好、最新投递和 next-run readiness 都正常，整体 status 也只能是 `needs_attention`。
+- 当前生产状态 evidence：`packages/clawbot/data/intel_evidence/phasebh/20260707T220524Z-commercial-mvp-e2e-requires-natural-six-source/evidence.json`。
+- 当前结果：active eligible subscriber=1，latest delivery success，next-run readiness=ready，但引用的自然 LaunchAgent audit 为 `failed_or_incomplete`，缺失 `github_trending / ai_model_updates / institutional_13f / weather`，所以 E2E status 正确保持 `needs_attention`。
+- 边界：只读审计和测试增强；未执行 `launchctl kickstart/bootstrap/bootout`，未修改 LaunchAgent/private env/VPS/远程 worker/生产 DB/订阅授权/支付/闲鱼/爬虫，也未调用 Telegram 或数据源网络。
+
+## [2026-07-10] Intel Brief 每日推送改为用户可读的稳定降级简报
+> 领域: `backend`
+> 影响模块: `Intel Brief`, `Subscription Delivery`, `Telegram UX`
+> 关联问题: `Daily Brief fallback UX`
+### 变更内容
+- 生产简报不再暴露 `partial_fallback`、模型家族和 Token 数；降级时改为普通用户看得懂的稳定整理提示。
+- 订阅筛选后按每位用户实际命中的条目生成专属“今日重点”，展示来源分布和前三条重点，不再覆盖成“查看输入条目”的空文案。
+- 精选情报从固定前 5 条提升为最多 8 条；超过 8 条时明确提示剩余数量，修复计数与明细不一致。
+- 清理摘要中的 Markdown 标题符号，并对 Telegram HTML 敏感字符做转义，降低消息格式错误风险。
+- 点击“今日简报”时复用最新成品简报，不再叠加重复标题；零符合订阅者场景返回空成功结果。
+### 文件变更
+- `packages/clawbot/src/intel/delivery.py` — 重做生产简报排版、稳定降级提示、8 条展示和 HTML 安全处理。
+- `packages/clawbot/src/intel/subscription_delivery.py` — 增加订阅者专属总览和零订阅者安全返回。
+- `packages/clawbot/src/intel/channel_menu.py` — 避免“今日简报”重复标题。
+- `packages/clawbot/tests/test_intel_delivery_sandbox.py` — 增加降级隐藏、8 条展示和 HTML 转义回归。
+- `packages/clawbot/tests/test_intel_subscription_filtered_delivery.py` — 增加专属总览与零订阅者回归。
+- `packages/clawbot/tests/test_intel_telegram_menu_handlers.py` — 增加今日简报单标题回归。
+- `docs/009-health.md` — 登记问题根因、修复范围和验证证据。
+
+## [2026-07-10] 每日简报 / CC中转最终审计补齐文档治理硬门
+> 领域: `docs` | `infra`
+> 影响模块: `Intel Brief`, `CC中转`, `文档治理`, `CI`
+> 关联问题: HI-docs-governance-final-audit
+### 变更内容
+- 修复项目文档治理漂移：把根目录 Intel Brief 历史验收报告移动到 `docs/084-intel-brief-implementation-report.md`，并明确它是历史阶段证据，不代表当前生产状态。
+- 删除违反 `docs/` 禁止子目录规则、且任务已经完成的 `docs/superpowers/` 补充执行计划；现有有效内容继续由 `docs/052-intel-brief-master-plan.md` 和 `docs/084-intel-brief-implementation-report.md` 承接。
+- 新增 `scripts/check_docs_layout.sh` 和 `make docs-check`，自动拦截根目录散落文档、`docs/` 子目录、非编号命名、索引漏登记和陈旧索引引用。
+- 将文档治理检查接入 `make ci-local`，避免后续 AI 或人工再次制造同类漂移。
+- 完整 CI 首轮发现 `src/intel/wechat_bridge_runtime.py` 使用 `datetime.UTC`，会破坏 Intel worker 的 Python 3.10 兼容门；已改回 `timezone.utc` 并用行级 Ruff 说明保留兼容性。
+### 文件变更
+- `docs/084-intel-brief-implementation-report.md` — 归档 Intel Brief 历史阶段验收报告并标注时效边界。
+- `docs/003-docs-index.md` — 删除违规子目录入口并登记 084 报告。
+- `scripts/check_docs_layout.sh` / `Makefile` — 新增文档治理硬门并接入本地 CI。
+- `packages/clawbot/src/intel/wechat_bridge_runtime.py` — 修复 Python 3.10 worker 不支持 `datetime.UTC` 的兼容问题。
+- `docs/006-registries.md` / `docs/009-health.md` — 登记新命令和最终审计结论。
+### 验证
+- `bash -n scripts/check_docs_layout.sh`：通过。
+- `make docs-check`：`22 个文档，目录扁平、命名合规、索引完整`。
+- `cd apps/frist-api && npm test`：`187 passed / 0 failed`。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_intel_brief_dry_run.py tests/test_intel_delivery_sandbox.py tests/test_intel_subscription_filtered_delivery.py tests/test_intel_telegram_menu_handlers.py tests/test_intel_wechat_bridge_runtime_acceptance.py tests/test_wechat_numbered_commands.py tests/test_social_extension_status.py -q --maxfail=5`：`96 passed`。
+- `make ci-local`：Ruff、Python 全量测试、Python 语法、前端 TypeScript、docs-check 全部通过。
+
+## [2026-07-10] 全量工作区提交与维护基线确立
+> 领域: `infra` | `docs` | `backend` | `frontend`
+> 影响模块: `Intel Brief`, `CC中转`, `New-API`, `Xianyu`, `Social Pilot`, `维护基线`
+> 关联问题: HI-maintenance-baseline-20260710
+### 变更内容
+- 将当前每日简报、CC中转、闲鱼自动发货、微信桥、浏览器扩展、运营脚本、测试与治理文档作为一个完整维护基线提交，不再保留散落的未提交源码。
+- 把 New-API submodule 的 CC中转品牌修改保存为 `scripts/patches/new-api-cc-brand.patch`，submodule 恢复到可从官方上游获取的干净 `v1.0.0-rc.4`，避免提交无法推送到 `QuantumNous/new-api` 的本地 detached commit。
+- 新增 `scripts/apply_new_api_brand_patch.sh` / `make new-api-brand-patch`；`new-api-check` 和 `new-api-sync` 会检查品牌补丁与上游版本的兼容性，升级后再显式应用补丁。
+- 将 `output/` 和 `packages/clawbot/relative-launch/` 标记为本地可再生成验收产物，不提交 PID、浏览器快照或临时 LaunchAgent 包。
+- 基线使用本地 annotated tag `baseline-2026-07-10` 标记，便于以后比较、回滚和继续维护。
+### 文件变更
+- `scripts/patches/new-api-cc-brand.patch` — 保存 New-API CC中转品牌差异。
+- `scripts/apply_new_api_brand_patch.sh` / `scripts/sync_new_api_upstream.sh` / `Makefile` — 增加品牌补丁应用与升级兼容门。
+- `.gitignore` — 排除本地验收输出和可再生成 LaunchAgent 包。
+- `docs/002-changelog.md` / `docs/006-registries.md` / `docs/009-health.md` — 登记维护基线和后续升级方式。
+### 验证
+- `make ci-local`：Ruff、Python 全量测试、Python 语法、前端 TypeScript、docs-check 全部通过。
+- `cd apps/frist-api && npm test`：`187 passed / 0 failed`。
+- `node --test scripts/*.test.mjs`：`8 passed / 0 failed`。
+- `node --test packages/openclaw-npm/assets/chrome-extension/test/*.test.mjs`：`85 passed / 0 failed`。
+- `bash -n scripts/apply_new_api_brand_patch.sh scripts/sync_new_api_upstream.sh scripts/check_docs_layout.sh`：通过。
+- New-API submodule：`git status --short` 为空；品牌补丁 `git apply --check` 通过。
+- `git diff --check`：通过。
+- staged snapshot `gitleaks dir`：扫描约 `24.26 MB`，`no leaks found`.

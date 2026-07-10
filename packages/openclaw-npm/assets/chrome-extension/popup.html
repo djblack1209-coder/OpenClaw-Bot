@@ -59,7 +59,7 @@
       .section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
       .ghost-button { border-color: var(--border); background: transparent; color: canvasText; padding: 7px 9px; font-size: 12px; }
       .trend-list, .schedule-list, .sample-list, .interaction-list, .performance-panel, .growth-panel, .page-context-panel { display: none; gap: 8px; margin-top: 10px; }
-      .trend-list[data-visible="true"], .schedule-list[data-visible="true"], .sample-list[data-visible="true"], .interaction-list[data-visible="true"], .performance-panel[data-visible="true"], .growth-panel[data-visible="true"], .page-context-panel[data-visible="true"] { display: grid; }
+      .trend-list[data-visible="true"], .schedule-list[data-visible="true"], .sample-list[data-visible="true"], .interaction-list[data-visible="true"], .performance-panel[data-visible="true"], .growth-panel[data-visible="true"], .page-context-panel[data-visible="true"], .delivery-panel[data-visible="true"] { display: grid; }
       .trend-card, .schedule-card, .sample-card, .interaction-card, .performance-card, .growth-card, .page-context-card { border: 1px solid var(--border); border-radius: 13px; background: var(--panel-2); padding: 9px; cursor: pointer; text-align: left; color: canvasText; }
       .trend-card:hover, .trend-card:focus-visible, .schedule-card:hover, .schedule-card:focus-visible, .sample-card:hover, .sample-card:focus-visible, .interaction-card:hover, .interaction-card:focus-visible, .page-context-card:hover, .page-context-card:focus-visible { border-color: color-mix(in oklab, var(--accent) 55%, var(--border)); box-shadow: 0 8px 20px color-mix(in oklab, var(--accent) 13%, transparent); }
       .trend-card strong, .schedule-card strong, .sample-card strong, .interaction-card strong, .performance-card strong, .growth-card strong, .page-context-card strong { display: block; font-size: 12px; line-height: 1.35; }
@@ -83,6 +83,9 @@
       .web-model-prompt { max-height: 118px; overflow: auto; border: 1px dashed var(--border); border-radius: 12px; padding: 8px; background: color-mix(in oklab, canvas 82%, canvasText 18%); color: var(--muted); font-size: 11px; line-height: 1.45; white-space: pre-wrap; }
       .persona-panel { display: none; margin-top: 10px; border: 1px solid var(--border); border-radius: 14px; padding: 10px; background: var(--panel-2); }
       .persona-panel[data-visible="true"] { display: block; }
+      .delivery-panel { display: none; gap: 8px; }
+      .delivery-row { display: flex; gap: 8px; flex-wrap: wrap; }
+      .delivery-state { border: 1px solid var(--border); border-radius: 12px; background: var(--panel-2); padding: 9px; color: var(--muted); font-size: 12px; line-height: 1.45; white-space: pre-wrap; }
       .persona-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 800; }
       .persona-body { color: var(--muted); font-size: 12px; line-height: 1.45; margin-top: 6px; }
       .persona-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 9px; }
@@ -116,6 +119,24 @@
           <button id="stop" class="danger">紧急停止</button>
         </div>
         <button id="draft" class="primary-action">根据当前页生成待审草稿</button>
+      </section>
+
+      <section class="card" id="xianyu-delivery-card">
+        <div class="section-head">
+          <b style="font-size: 13px">CC中转发货助手</b>
+          <span class="tag">仅闲鱼已付款</span>
+        </div>
+        <div class="delivery-panel" id="xianyu-delivery-panel" data-visible="false">
+          <div class="delivery-row">
+            <button id="xianyu-delivery-scan" class="ghost-button">检测当前聊天</button>
+            <button id="xianyu-delivery-send">发送待发货卡密</button>
+            <button id="xianyu-delivery-watch" class="secondary">看守当前聊天页</button>
+          </div>
+          <div class="delivery-state" id="xianyu-delivery-state">切到闲鱼买家聊天页后使用。</div>
+          <div class="safe">只处理本机已分配的待发货记录；页面看不到“已付款/待发货”时会阻止发送。看守模式成功发一次后会自动关闭。</div>
+        </div>
+        <div class="safe" id="xianyu-delivery-hint">打开闲鱼聊天页后，这里会出现发货按钮。</div>
+        <button id="xianyu-delivery-watch-all" class="secondary primary-action">看守所有闲鱼页</button>
       </section>
 
       <section class="card">

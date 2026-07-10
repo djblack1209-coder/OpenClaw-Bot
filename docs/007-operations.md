@@ -1,29 +1,46 @@
+
 # 运维操作手册
 
 > 合并自原 024-frist-api-operator-runbook.md + 025-frist-api-quickstart.md + 026-xianyu-cookie-guide.md + 029-deployment-checklist.md
 
 ---
 
-## 一、Frist-API 运营操作清单
+## 0.1 老板统一入口与一键排障
 
-# Frist-API 运营操作清单
+- 日常只收藏 `http://127.0.0.1:18800/dashboard`。该入口聚合首页总览、闲鱼售卖、每日简报、系统维护和帮助中心；红色/黄色状态旁边直接显示下一步。
+- 技术支持报告：访问 `http://127.0.0.1:18800/export-status`，返回脱敏 JSON，不包含卡密、Token、买家昵称或 API Key。
+- 当前买家号不可用时，访问 `/api/cc-simulation-gate`、`/api/cc-replacement-mode-test-pack` 或在 Dashboard 展开“替换模式模拟验收”；严格模拟门会逐步显示真实发卡、商品模板/重新上架、注册兑换、创建 API、导入 CC Switch、终端调用、渠道/服务器状态。它只用于闭环演练，`can_unlock_public_sale` 固定为 `false`，不替代 `xy_oid_*` 真实小额订单严格门。
+- 本机健康检查：`scripts/auto_health_check.sh --json`，默认只读，最多等待 20 秒生产内测审计，避免健康检查卡死。
+- 本机恢复预演：`scripts/auto_recovery.sh --dry-run`；确认后再去掉 `--dry-run`。恢复脚本会检查 LaunchAgent、卖家 Chrome/桥接器、旧日志和健康检查。
+- 本机备份：`scripts/local_backup.sh`，默认备份到 iCloud 或桌面 `OpenEverything-backups`，排除 `.env`、虚拟环境、node_modules、日志和输出目录，保留 30 天。
+- 灾备恢复：先 `scripts/disaster_recovery.sh --dry-run`，真正恢复必须加 `--confirm`。
 
-> 日期: 2026-07-03
+## 一、CC中转 / Frist-API 运营操作清单
+
+# CC中转 / Frist-API 运营操作清单
+
+> 日期: 2026-07-04
 > 范围: 管理员首登、人工入账、支付接口、固定域名、邮箱、验证码、New-API 迁移和 R2 备份
 
 ## 当前可运营边界
 
-Frist-API 现在不是只会展示页面的 MVP，已经能跑小范围真实验收: 用户注册登录、闲鱼/平台购买兑换码、用户兑换自动到账、管理员批量生成卡密、创建用户 Key、导出 Codex/OpenCode/Claude/OpenClaw/Hermes 配置，并通过 `/v1` 网关转发请求。
+CC中转当前沿用 Frist-API 内部服务名，处于生产环境内测，暂未正式售卖；已经能跑小范围真实验收: 用户注册登录、闲鱼已付款自动发货、用户兑换自动到账、管理员批量生成卡密、创建用户 Key、导出 Codex/OpenCode/Claude/OpenClaw/Hermes 配置，并通过 `/v1` 网关转发请求。
 
-当前商业化主路径按“闲鱼等第三方平台 C2C 售卖兑换码 + Frist-API 站内核销”运营；自动支付只作为未来备用能力，不是当前上线必需项。域名、Cloudflare、R2/备份目标不新购，统一复用 `/Users/blackdj/Documents/VPS-Config` 中已治理的公共资产与配置模块，避免两套文档各说各话。
+当前处于生产环境内测，暂未正式售卖；正式售卖前先按“内测卡密库存 + 闲鱼已付款自动发货 + CC中转站内核销”验收，商业化仍走闲鱼等外部交易平台 C2C 卡密销售。自动支付只作为未来备用能力，不是当前上线必需项。现阶段生产内测用户入口先使用现有 `245334.xyz` 的品牌子域名 `jiyu.245334.xyz`；运营入口使用 `frist-api-oracle.245334.xyz` 访问 Frist 自研兑换码/闲鱼自动发货助手；旧 `frist-api.245334.xyz` 只保留跳转和冷回滚排障。Cloudflare、R2/备份目标优先复用 `/Users/blackdj/Documents/VPS-Config` 中已治理的公共资产与配置模块，避免两套文档各说各话。
+
+2026-07-07 最新内测口径：老板日常只收藏 2 个入口：`http://127.0.0.1:18800/` 本机操作台、`https://jiyu.245334.xyz/` 用户主站；`/ops-links` 只作为兼容状态页保留，不再默认加入 Chrome 书签。操作台负责确认闲鱼在线、绑定商品、暂停/恢复自动发货、处理补救队列和只读巡检。`GET/POST /api/cc-operator-mode` 可一键暂停/恢复自动发货；暂停只影响本机发货动作，不改卡密、不改订单、不改闲鱼商品。当前仍处于生产环境内测，正式售卖仍只差真实闲鱼小额付款同单严格门。
+
+2026-07-07 追加：仓库内 Chrome 插件与本机卖家桥接器共同组成“CC中转发货助手”。如果闲鱼 WebSocket/订单接口漏掉真实已付款单，但本机已经生成 `manual_delivery_ready` 话术，桥接器会在卖家专用 Chromium 的已打开闲鱼页中检测“已付款/待发货”信号；命中后自动填入并发送已分配话术，然后本机自动标记 `message_sent`。桥接器同样负责确认发货和恢复可售队列：只有页面真的出现“去发货/无需物流/确认发货”或“已下架/已售罄 + 重新上架”按钮才点击。它不会重新分配卡密，不会自动砍价、批量私信、刷单或绕过平台风控。
+
+2026-07-07 追加：新版 Chromium 对扩展访问 `127.0.0.1` 有 Local Network Access 限制，所以生产内测默认不再依赖“插件直接 fetch 本机接口”，而是由 `ai.openclaw.cc-seller-bridge` 本机 LaunchAgent 常驻接管。老板日常先运行 `make cc-seller-chrome` 打开卖家专用 Chromium，然后在该窗口登录闲鱼并保持打开；桥接器每 15 秒自动巡检已打开闲鱼页。操作台显示 `manifest_version=bridge`、`needs_refresh_for_global_watch=false` 就代表桥接器已接管。
 
 | 模块 | 当前状态 | 生产要求 |
 |------|------|------|
-| 访问入口 | 正式入口 `https://frist-api.245334.xyz` 已切到 Oracle ARM `150.136.73.15`，通过 Cloudflare proxied A + Apache/Origin CA 闭环，外网 Dashboard 冒烟返回 HTTP 200；旧腾讯云/nip.io 只保留冷回滚，不再作为生产兜底入口 | 固定 HTTPS 入口已冒烟；冷回滚入口只有回滚时才启用 |
-| 充值 | 主路径为管理端生成兑换码、闲鱼等平台售卖、用户端核销自动到账；商户支付代码保留但当前不要求开通 | 平台售卖链接、自动发货规则、兑换码对账和库存告警 |
-| 价格 | 管理端可直接编辑套餐和模型价格 JSON | 兑换码售卖前人工确认价格；若未来恢复自动支付，再增加价格版本审计和生效审批 |
-| 邮箱 | 已支持余额预警、注册验证码和找回密码 SMTP 邮件 | 企业邮箱或稳定邮件服务商 + 发信监控 |
-| 防刷 | 轻量验证码 + 登录限流；单实例下内存态可接受 | 若水平扩展再接 Turnstile + Redis/SQLite 限流 |
+| 访问入口 | 生产内测入口 `https://jiyu.245334.xyz` 已接入 Cloudflare proxied A → Oracle ARM `150.136.73.15` → Apache/Origin CA → New-API `127.0.0.1:13000`，外网首页、登录页、注册页和 `/v1` 网关冒烟通过；旧 `frist-api.245334.xyz` 已 301 跳转到 CC中转主站；`frist-api-oracle.245334.xyz` 反代 Frist-API `127.0.0.1:3180`，作为兑换码与闲鱼自动发货助手运营台 | 后续若购买 `jiyu.gg` / `jiyu.cc`，按同一流程替换主域名；旧入口只做跳转/排障，冷回滚入口只有回滚时才启用 |
+| 充值 | 当前不正式售卖；主路径为管理端生成内测兑换码、闲鱼已付款订单自动发货、用户端核销自动到账；站内烟测只读计划已上线但不会自动写生产数据；商户支付代码保留但当前不要求开通 | 平台售卖链接、自动发货规则、兑换码对账、库存告警和真实小额单严格门 |
+| 价格 | 管理端可直接编辑套餐和模型价格 JSON | 正式售卖前人工确认价格；若未来恢复自动支付，再增加价格版本审计和生效审批 |
+| 邮箱 | Frist-API 旧 SMTP 已复用到 New-API，`email_verification=true`；余额预警、注册验证码和找回密码 SMTP 邮件可共用同一套服务器环境配置 | 企业邮箱或稳定邮件服务商 + 发信监控 |
+| 防刷 | New-API 原生 Turnstile 已复用 Frist 旧配置启用，公网注册/登录无 token 会被拦截；模型请求限流已开启，正式售卖前只需确认阈值适合当前套餐 | 若水平扩展再接 Redis/SQLite 限流 |
 | 数据 | 生产 New-API 迁移已按授权执行：用户/余额/订单/兑换码/日志已迁入 Oracle 本机 New-API，历史 `enc:v1:` 用户 Key 因旧加密密钥缺失未伪造迁移；R2 定时备份已在 Oracle 启用，腾讯旧 timer 已禁用 | New-API 数据库 + VPS-Config 既有 R2/备份体系 |
 | 管理员 | 一次性身份码 + 管理登录态 | 管理员 2FA + 审计 |
 | 模型列表 | 客户可见模型只来自健康上游 `/v1/models` / 真实探测；内置目录仅做后台审计排序参考 | 定期审计上游真实模型和价格 |
@@ -39,32 +56,220 @@ Frist-API 生产流量已从国内腾讯云迁到 Oracle ARM Always Free，目�
 | 运行目录 | Oracle `/opt/frist-api` |
 | Frist-API | `frist-api.service`，监听 `http://127.0.0.1:3180` |
 | New-API | `openclaw-newapi.service`，监听 `http://127.0.0.1:13000`；使用 New-API v1.0.0-rc.4 ARM64 release 二进制，不在 Oracle 上安装 Docker |
-| 公网入口 | `https://frist-api.245334.xyz` → Cloudflare proxied A → Oracle Apache 443/Origin CA → `127.0.0.1:3180` |
+| 公网入口 | 用户主站 `https://jiyu.245334.xyz` → Cloudflare proxied A → Oracle Apache 443/Origin CA → New-API `127.0.0.1:13000`；运营台 `https://frist-api-oracle.245334.xyz/admin.html` → Frist-API `127.0.0.1:3180`；旧 `https://frist-api.245334.xyz` 301 到 CC中转主站 |
 | 备份 | `frist-api-r2-backup.timer` 在 Oracle active；最近手动上传日志为 `backup_ok ... http=200` |
 | 冷回滚 | 腾讯云 `101.43.41.96:/opt/frist-api` 保留旧数据和备份，旧 `frist-api-server` / `openclaw-newapi` 容器已停止，旧 R2 timer 已禁用 |
-| 运行数据 | `data/frist-api/runtime/runtime.json` 和 New-API 数据库均只在服务器环境中保存，含用户 Key 和上游 Key，禁止提交 Git |
-| 环境变量 | 只放服务器本机环境文件，禁止写入仓库；SMTP 密码必须无回显输入，不能放进命令历史 |
+| 运行数据 | Oracle 生产真实路径为 `/opt/frist-api/data/frist-api/runtime/runtime.json`，New-API 数据库为 `/opt/frist-api/data/newapi/one-api.db`；两者均只在服务器环境中保存，含用户 Key、上游 Key 和卡密密文，禁止提交 Git |
+| 环境变量 | 只放服务器本机环境文件，禁止写入仓库；SMTP 密码必须无回显输入，不能放进命令历史；`FRIST_API_NEWAPI_REDEMPTION_STATUS_SYNC_ENABLED=1` 用于把 New-API 原生兑换状态回写到 Frist 闲鱼履约 |
 
 上线或重启后按下面顺序验收:
 
 1. `ssh oracle-arm1 'systemctl is-active frist-api.service openclaw-newapi.service apache2 frist-api-r2-backup.timer'` 必须全部为 `active`。
 2. `ssh oracle-arm1 'curl -sS -o /dev/null -w "%{http_code}" http://127.0.0.1:3180/api/frist/dashboard'` 应返回 `200`。
 3. `ssh oracle-arm1 'curl -sS -o /dev/null -w "%{http_code}" http://127.0.0.1:13000/api/status'` 应返回 `200`。
-4. 本机访问 `https://frist-api.245334.xyz/api/frist/dashboard` 应返回 `200`；未授权访问 `https://frist-api.245334.xyz/v1/models` 应返回 `401`。
+4. 本机访问 `https://jiyu.245334.xyz/api/status` 应返回 `system_name=CC中转` 且 `hasCcSwitch=true`；未授权访问 `https://jiyu.245334.xyz/v1/models` 应返回 `401`；访问 `https://frist-api.245334.xyz/` 应 301 到 CC中转主站。
 5. `ssh oracle-arm1 'systemctl --failed --no-pager'` 应显示 `0 loaded units listed`。
 6. 旧腾讯云只做冷回滚；除非执行回滚，不要同时启动旧 Frist-API 和旧 R2 timer，避免双源探测、重复备份或上游渠道状态漂移。
 
-SMTP 密码已通过隐藏输入方式写入 Oracle 环境变量，并已用 Gmail 465/TLS 跑通生产测试邮件；New-API 数据库、R2 备份和 Cloudflare DNS 代码侧已落地。支付当前走闲鱼兑换码，不把微信/支付宝/Stripe 商户自动支付作为上线必备。
+### 多 VPS 故障转移方案（给老板的大白话版）
+
+当前不是“没有备份服务器”，而是“主业务还没正式做一键切换”。现在用户真正访问的 CC中转在 Oracle ARM-1 `150.136.73.15`；`/Users/blackdj/Documents/VPS-Config` 里已经有 Oracle ARM-2 / Oracle 3055 `129.213.33.101`，并且它已经跑过多种 loopback-only 状态探针和温备脚本，适合做下一台备用机。
+
+推荐先做 **主备温备**，不要一开始就做双活：
+
+1. **主站**：Oracle ARM-1 `150.136.73.15`，继续承接 `https://jiyu.245334.xyz` 的真实用户流量。
+2. **备站**：Oracle ARM-2 `129.213.33.101`，预装同版本 New-API、Frist-API、Apache、健康检查和备份恢复脚本，默认不接真实用户写入。
+3. **数据**：`runtime.json`、New-API `one-api.db`、卡密密文、兑换/订单状态按 R2 备份 + 定时只读同步预热；故障切换前先冻结主站写入，避免两边同时卖同一张卡密。
+4. **切入口**：优先使用 Cloudflare Load Balancer；如果暂时不买 LB，就用低 TTL DNS + 一键脚本把 `jiyu.245334.xyz` 从 ARM-1 切到 ARM-2。
+5. **切换按钮**：18800 后续增加“故障切换到备用服务器”按钮，按钮内部做三步：健康检查 → 恢复最近备份 → Cloudflare 切流；老板不需要记 SSH 命令。
+6. **回切**：ARM-1 修好后先把 ARM-2 的新数据备份回 R2，再恢复到 ARM-1，最后切回域名；禁止直接两边同时写。
+
+为什么不做“双活同时卖”？CC中转有卡密、余额、订单、API Key 这类“只能扣一次”的数据，双活容易出现一张卡密发给两个人、余额不同步、订单状态打架。等温备切换稳定后，再考虑数据库层主从复制或托管数据库。
+
+Telegram/微信每日简报的多端方案也按同一原则：**双入口单数据库**。用户可以同时用 Telegram 和微信，但订阅状态、推送时间、暂停状态、追踪名单只存一份；不做 Telegram 聊天和微信聊天的流式互传，避免两边菜单互相覆盖。
+
+### 每日简报微信入口怎么验收
+
+微信不像 Telegram 那样有可点击命令菜单，所以微信端使用数字编号。老板只要记住一句话：**看到菜单后回复数字即可**。
+
+当前本机有三层：
+
+1. **本项目处理器**：`POST http://127.0.0.1:18790/wechat/incoming`，输入 `700` 会返回每日简报菜单；兼容新路径 `/api/v1/wechat/incoming`。
+2. **OpenClaw Weixin 插件桥**：授权微信会话发 `700-708`、`菜单`、`今日简报`、`我的订阅`、`推送时间`、`添加追踪` 等快捷词时，插件先调用本项目处理器并直接回微信，避免被普通 AI 聊天误答。
+3. **真实微信通道**：`openclaw channels status --channel openclaw-weixin --probe` 应显示 `enabled, configured, running`。
+
+本地只读验收命令：
+
+```bash
+cd packages/clawbot
+.venv312/bin/python scripts/intel_wechat_user_journey_acceptance.py
+```
+
+看到 `verified=true` 表示微信编号菜单的“普通用户路径”已通过：打开菜单、今日简报、我的订阅、设置时间、添加追踪、暂停、恢复都能走通。这个脚本不调用真实微信网络，不会给任何联系人发消息。
+
+真实微信验收方式：在微信里打开「Global Intelligence AI」或当前绑定的 ClawBot 会话，发送 `今日简报` 或 `700`。正常应回复“🧭 今日简报”以及 `700-708` 菜单。发送后运行：
+
+```bash
+cd packages/clawbot
+.venv312/bin/python scripts/intel_wechat_bridge_runtime_acceptance.py
+```
+
+看到 `verified=true` 表示真实微信消息已经命中 OpenClaw Weixin 插件桥、本机 `/wechat/incoming` 返回 200、插件已把回复发回微信，并且没有落入普通 LLM 闲聊。该证据只保存脱敏 sender hash、快捷词类型、HTTP 状态和回复特征，不保存微信聊天原文、用户 ID 或 Token。如果脚本提示“未找到微信桥接证据文件”，说明还没有新的真实微信入站消息触发桥接。
+
+如果希望 Codex/技术支持开着等你发微信，可以用等待模式：
+
+```bash
+cd packages/clawbot
+.venv312/bin/python scripts/intel_wechat_bridge_runtime_acceptance.py --wait-seconds 120 --poll-seconds 2
+```
+
+你在 2 分钟内发 `今日简报` 或 `700` 即可；脚本会自动轮询，看到 `verified=true` 就算这一步过关。如果超时，会明确显示“等待 120 秒后仍未看到新的真实微信桥接成功证据”。
+
+如果回复变成闲聊解释“700 是什么数字”，说明 OpenClaw 插件桥没生效，先执行：
+
+```bash
+openclaw gateway restart
+openclaw channels status --channel openclaw-weixin --probe
+```
+
+如果仍失败，再看 OpenClaw 日志里是否有 `Intel Brief bridge failed`。
+
+### Codex 能不能直接接管微信窗口
+
+先跑这个只读诊断，不会发微信消息：
+
+```bash
+scripts/wechat_control_doctor.sh --json --deep
+```
+
+老板只看这 3 个字段：
+
+| 字段 | 绿色含义 | 当前实机结果 |
+|------|----------|--------------|
+| `fullscreen_capture_ok` | 系统允许截图 | `1`，说明系统截图能力可用 |
+| `window_capture_ok` | 微信窗口可以被单独截图 | `0`，微信拒绝被单窗口读取 |
+| `ax_editable_count` | 辅助功能能找到微信输入框 | `0`，微信没有把聊天输入框暴露给 Codex |
+
+如果看到 `status=blocked_by_wechat_capture_protection`，意思是：**Codex 不是完全没权限，而是微信窗口本身不让自动化工具看见聊天内容。** 这时不要让 Codex 坐标盲点发消息，避免误发到别的联系人或重复发卡。
+
+可以先打开系统权限页补齐授权：
+
+```bash
+scripts/wechat_control_doctor.sh --open-permissions
+```
+
+手动确认：
+
+1. **屏幕录制**：勾选 Codex、OpenAI/CUAService（如果列表里出现）、WeChat（微信）、Terminal/iTerm。
+2. **辅助功能**：勾选 Codex。
+3. **自动化**：允许 Codex 控制 System Events / WeChat。
+4. 退出并重新打开 Codex 和微信，再重跑 `scripts/wechat_control_doctor.sh --json --deep`。
+
+如果重跑后仍是 `blocked_by_wechat_capture_protection`，就不要继续折腾视觉接管；每日简报微信闭环改走 OpenClaw Weixin 插件桥证据：在微信里发 `今日简报` 或 `700`，再跑 `packages/clawbot/scripts/intel_wechat_bridge_runtime_acceptance.py` 验收。
+
+### 运营入口怎么用（给老板收藏）
+
+- 本机操作台：`http://127.0.0.1:18800/`。老板日常唯一控制面板：确认闲鱼在线、绑定商品、暂停/恢复自动发货、处理补救队列、运行只读巡检。
+- 用户主站：`https://jiyu.245334.xyz/`。买家注册、登录、兑换、创建 API Key、导入 CC Switch 都从这里走。
+- 兼容状态页：`http://127.0.0.1:18800/ops-links`。只读状态看板，保留给排障，不再默认收藏。
+- 用户注册、登录、兑换、创建 API Key、查看用量：`https://jiyu.245334.xyz`。
+- New-API 管理从用户主站登录后进 `/console`；旧 `https://jiyu.245334.xyz/admin.html` 已 302 到 `/console`，不要再收藏。
+- `https://frist-api-oracle.245334.xyz/admin.html` 是 Frist 隐藏运营入口，普通打开返回 404 属于门禁伪装；不要当老板日常入口，也不要把入口码写进聊天、文档或命令历史。
+- 卖家自动发货助手：先运行 `make cc-seller-chrome` 打开卖家专用 Chromium，再在这个窗口登录闲鱼并保持打开；本机 `ai.openclaw.cc-seller-bridge` 服务会每 15 秒巡检一次。需要手动确认运行态时执行 `node scripts/cc_zhongzhuan_seller_bridge.mjs --once --json`，看到 `ok=true` 且 `xianyuTabs>=1` 即可。
+- 闲鱼当前主路径已切到合规全自动发货：OpenClaw `XianyuLive` 检测到订单状态“等待卖家发货/待发货/买家已付款/已支付”等已付款变体后（支持 `redReminder`、`statusText`、`tradeStatusText`、`payStatusText` 等订单结构化字段），调用 CC中转低权限 webhook 自动分配兑换码，并通过闲鱼消息发送返回的话术；`待付款/未付款/退款/交易关闭` 会被保护性排除，普通聊天文本不会作为付款状态扫描，避免误发卡；手工粘贴已付款订单只作为兜底。`XianyuLive` 会优先从订单结构字段或闲鱼 URL/query 参数提取商品 ID 用于 `item_id → planId` 套餐路由，找不到再回退最近聊天商品/默认套餐；同时会从字段或闲鱼 URL/query 参数提取真实订单/交易 ID 并生成稳定 `orderId`，同一订单重复推送或消息里时间戳变化时不会重复分配卡密；商品 ID 识别不扫描普通聊天文本，避免买家聊天复制链接时发错套餐；如果已经分配但闲鱼消息失败，只补发旧话术。砍价、批量私信、刷单、绕风控相关能力暂停并隐藏到高级区，不作为当前运营主线。
+
+
+- 2026-07-07 追加方案 B 收口：卖家订单列表 API 当前仍可能返回 `PERMISSION_EXCEPTION::无权限访问`，所以不能把“自动运营”押在该接口上。新版本机卖家桥接器增加 `paid_page_dispatch`：当卖家专用 Chromium 中的真实买家聊天/订单页可见“已付款/待发货”且本机没有待发送话术时，桥接器会先调用本机 `/api/cc-manual-paid-order/dispatch` 生成话术，再注入页面填入并发送；该路径订单号为 `xy_browser_*`，适合生产内测自动补救，但正式售卖严格门仍只认卖家订单接口/WebSocket 真实订单脱敏后的 `xy_oid_*`。恢复上架也改为队列式：`/api/cc-xianyu-relist/next` 只返回已确认发货的记录，桥接器只有在商品页明确显示“已下架/已售罄 + 重新上架按钮”时才点击。
+- 2026-07-07 追加：闲鱼卖家工作台/订单列表 API 当前会返回无权限，不能作为自动发货主通道。系统已补齐 WebSocket 明文付款系统卡片识别：如果闲鱼推送的系统标题是“我已付款，等待你发货/待发货/提醒发货”一类，会进入自动发货；普通买家聊天内容即使照抄这句话也不会触发。若已发生真实付款但系统没有自动发出，说明当前单可能进入 `manual_delivery_ready` 补救队列；此时打开卖家专用 Chromium 的买家聊天页并保持页面可见，桥接器会自动检测并发送。若桥接器仍识别不到已付款信号，才人工复制后点“已手动发送”。
+- 漏单兜底：如果买家手机端已经显示“我已付款，等待你发货”，但本机 `messages/orders/cc_shipments` 没有新增，说明闲鱼 WebSocket 推送漏掉或助手重启期间错过事件。此时先在 `http://127.0.0.1:18800/` 操作台使用“已付款漏单兜底”生成话术，状态会变成 `manual_delivery_ready` 并进入补救队列；随后优先刷新 Chrome 插件并打开对应买家的闲鱼聊天页，用 Chrome 插件“CC中转发货助手”检测并发送待发货卡密，或在只有 1 条待发货时开启“看守所有闲鱼页”。插件会自动调用 `mark-sent`。如果插件没有识别到已付款/待发货信号，才手动复制到闲鱼聊天发送，再点“已手动发送”。未发送并标记前不算真实订单已发货。
+- 自动发货话术已覆盖买家自助完整路径：注册/登录、兑换码到账、创建 API Key、进入 CC Switch 导入、选择模型测试；话术不包含上游信息，也不直接暴露 `/v1` 网关地址。
+
+- 2026-07-07 开源轮子复核：`xianyu-auto-reply` 系列、`xianyu-super-butler`、`xianyu-auto-ship`、`autofishing` 等项目均确认有自动回复/卡券池、防重复、补发、确认发货能力；本项目不整套替换，只搬能力模式。后端真实订单号确认发货仍默认关闭，只有已成功发送兑换码、订单号是闲鱼真实数字订单号且显式开启时才调用；`xy_manual_*` / `xy_browser_*` 不计入正式售卖严格门。若旧内测单已经发了卡密但还没点闲鱼发货，走“当前页面补救确认发货”：老板打开对应闲鱼已付款/待发货页面并保持卖家 Chromium 可见，桥接器只有在页面可见“已付款/待发货/等待发货”信号时才点击“去发货/无需物流/确认发货”，没有付款信号就安全跳过。
+- Frist-API 已启用 New-API 原生兑换状态回写：买家如果直接在 New-API 主站兑换卡密，后台会按卡密哈希把 Frist 卡密和闲鱼履约状态自动更新为 `redeemed`；也可在运营台通过 `/api/admin/redemption-cards/sync-newapi-status` 手动触发。
+- 2026-07-05 生产已准备 5 张 `day|quotaUsd=30|source=xianyu` 内测可售卡密，并同步为 5 条 New-API 启用兑换码；无套餐/无 SKU 的已付款订单也已修复为“从任意未售卡密发货”，避免买家不聊天直接付款时漏单。
+- 本机 Chrome 书签栏已写入并复验 `CC中转运营` 文件夹（`Default`、`Profile 1`、`Profile 2`、`Profile 3` 均有 2 个入口：本机操作台、用户主站；`scripts/cc_zhongzhuan_readiness_audit.mjs --json` 已显示 `chromeBookmarks.ok=true`）。如果 Chrome 没即时刷新书签栏，直接访问 `http://127.0.0.1:18800/` 即可操作。`/v1` 和 `/v1/models` 是程序接口，旧 `/admin.html` 是错误入口，不再放入老板标签页。
+- 本机操作台：`http://127.0.0.1:18800/`。首页可直接打开，会提示输入 `packages/clawbot/config/.env` 里的 `OPENCLAW_API_TOKEN`；API 仍受 `X-API-Token` 保护。操作台已改为 Apple 风格深色状态面板，老板首屏只看 6 张状态卡：当前能不能卖、自动发货是否开着、库存是否够、上游余额是否够、是否有待处理订单、是否需要介入/是否有正式售卖资格。商品绑定、漏单兜底、补救队列、巡检和高级排障默认折叠；旧 `message_sent` 补救单如果待点闲鱼发货，会提示“打开已付款测试单页面”，不要求重新下单。
+
+上架前安全锁只读刷新：
+
+```bash
+curl -H "X-API-Token: $OPENCLAW_API_TOKEN" "http://127.0.0.1:18800/api/cc-public-sale-lock?refresh=true"
+```
+
+该接口只读刷新库存、兑换码、渠道、买家入口、CC Switch 导入入口和本机自动发货状态，不分配卡密、不发闲鱼消息。 刷新后可看 `/ops-links` 或 GUI 的“当前行动建议”：它来自 `GET /api/cc-operator-next-action`，会先检查自动发货、补救队列和库存证据，再决定是否提示跑真实小额单；不会因为服务刚重启、库存证据为空就误提示上架。 如果后续要接通知或外部看板，优先读取 `GET /api/cc-ops-snapshot`，它一次性返回行动建议、上架锁、自动发货、实单闭环、买家进度、`auto_strict_audit_status` 和 `buyer_site_smoke`，仍然是只读。`auto_strict_audit_status.state=waiting_paid_order` 表示严格门自动观察已开启但正在等待真实付款；`armed` 表示真实订单已发货，后台会自动观察兑换/API Key/调模型严格门。`buyer_site_smoke` 是最近一次只读巡检里的站内买家烟测计数：`redeemed_delta / active_token_delta / model_log_delta`，只证明站内链路活动，不替代真实闲鱼同单严格门。真实小额单验收时可读取 `GET /api/cc-real-order-test-pack`，它会在证据缺失时只读刷新一次库存/渠道/入口状态，并返回可复制测试商品模板和逐步验收状态。 本机后台提醒读取同一份快照，状态变化时通过 macOS 通知提醒，不单独产生新的业务状态源。
+
+一键闭环审计（默认只读，不打印 token、卡密或用户 Key）：
+
+```bash
+node scripts/cc_zhongzhuan_readiness_audit.mjs
+```
+
+该命令会检查 Chrome 书签、本机闲鱼 LaunchAgent、本机 `.env`、本机闲鱼 GUI、Oracle 服务/库存和公网安全门。本机闲鱼 GUI 必须满足：首页可打开、API 无 token 为 401、带 token 为 200、WebSocket 已连接、Cookie 正常、CC自动发货已配置、补救待处理为 0；如果出现 `message_send_failed`，本机后台会优先自动补发同一条已分配话术，不会重新分配卡密；如果出现 `manual_delivery_ready`，优先打开卖家专用 Chromium 的对应买家聊天页，让本机桥接器发送并标记。2026-07-06 当前只读巡检因真实测试单 `pending_rescue=1` 仍为 `ok=false`，这是正确阻断，不代表 Oracle/New-API 坏；正式售卖仍等待真实小额单严格门。
+
+Chrome 运营入口修复（看不到书签文件夹时使用）：
+
+```bash
+node scripts/cc_zhongzhuan_chrome_bookmarks.mjs
+```
+
+修复后再跑 `node scripts/cc_zhongzhuan_readiness_audit.mjs`，确认 `chromeBookmarks: PASS`。
+
+带生产 webhook 冒烟（会临时分配 1 张卡密，随后清理履约并恢复库存）：
+
+```bash
+node scripts/cc_zhongzhuan_readiness_audit.mjs --webhook-smoke
+```
+
+2026-07-05 复验结果：只读模式和 webhook 冒烟模式均 `PASS`；冒烟返回 `fulfillment=delivered`、`cleanup=true`、`unused_after=5`；默认审计显示同一真实订单闭环为 `localOrderHashes=0, matchedOrders=0, readyOrders=0（默认不强制）`。
+
+正式开卖前真实闲鱼实单 + 买家站内闭环验收（只有发布商品并跑过 1 单小额真实付款，且买家完成兑换、创建 API Key、调模型后才应通过）：
+
+```bash
+node scripts/cc_zhongzhuan_readiness_audit.mjs --require-real-order
+```
+
+这个严格模式会读取两类证据：
+
+1. 本机闲鱼助手 `cc_shipments`：正式售卖严格门只接受由 `XianyuLive`/卖家订单接口真实检测到已付款订单后产生的 `xy_oid_* / message_sent` 自动发货记录；`xy_manual_*`、`xy_browser_*` 和生产 webhook 冒烟不再算作真实自动订单证明。
+2. Oracle 生产 New-API 数据库 + Frist runtime：用本机 `xy_oid_*` 订单哈希匹配同一笔闲鱼履约，要求该订单对应卡密已兑换、履约已回写 `redeemed`、兑换用户有启用 API Key，且兑换后有模型调用日志。
+
+当前未发布商品时该命令预期失败，失败不代表系统坏，而是提醒“还没做外部平台实单 + 买家站内闭环验证”。
+
+如果不想敲命令，也可以打开 `http://127.0.0.1:18800/`，在“一键闭环审计”里点击“运行内测巡检”或“运行正式售卖严格门”。这两个按钮只运行只读审计；生产 webhook 冒烟仍必须由开发/运维在终端显式执行，避免误点。真实小额订单发生后，审计卡片会显示同一订单的分阶段状态：已发货、卡密已兑换、New-API 已兑换、API Key 数量、兑换后模型调用数和“闭环完成/继续观察”。注意：GUI 的“正式售卖”状态只有在最近一次严格门通过且同一真实订单完成买家兑换、创建 API Key、调模型后才会转绿；仅出现已发货记录不会放行正式售卖。
+
+本机闲鱼助手后台还会默认每 15 分钟运行一次只读“内测巡检”，自动刷新上架锁里的未售卡密库存、New-API 启用兑换码和启用渠道数量；这个线程随 `ai.openclaw.xianyu` 启动，不要求浏览器一直打开。它只运行 `read_only` 审计，不调用 `--webhook-smoke`，不会发送闲鱼消息、分配卡密或修改库存。对应开关是 `CC_XIANYU_AUTO_READINESS_AUDIT_ENABLED`，间隔为 `CC_XIANYU_AUTO_READINESS_AUDIT_INTERVAL_MS`，扫描频率为 `CC_XIANYU_AUTO_READINESS_AUDIT_SCAN_SECONDS`。
+
+GUI 和后台现在都会做安全的自动观察：当“实单闭环观察”显示“已自动发货，等待买家完成兑换/API/调模型”时，页面和后台守护线程都会按 10 分钟节流自动运行一次“正式售卖严格门”只读审计。后台线程随 `ai.openclaw.xianyu` 启动，不要求浏览器一直打开；它不会调用 `--webhook-smoke`，不会重新发货，不会分配新卡密，不会改库存；只是把“买家是否已经完成兑换、创建 API Key、调模型”的证据刷新到缓存和 GUI。没有真实订单、存在补救队列或自动发货未就绪时不会自动跑严格门。 严格门结果会以脱敏摘要写入本机 SQLite 的 `cc_strict_audits` 表，保留订单前缀/哈希、履约状态、兑换状态、API Key 数量、模型调用数和 ready 标记，不保存卡密、Token 或 API Key；所以真实订单闭环通过后，即使闲鱼助手重启，GUI 也能恢复最近一次严格门结果和买家进度。 严格门通过后，还会按订单哈希把本机 `cc_shipments` 对应记录标记为 `buyer_chain_status=verified`，因此发货/补救列表能区分“已发送兑换码”和“买家已经完成兑换、API Key、调模型闭环”；该回写不保存完整订单号到审计摘要。
+
+本机闲鱼助手后台还会默认启动“运营提醒”线程，不要求浏览器一直打开。它每 30 秒检查一次运营快照，状态真正变化且超过 120 秒节流时，会通过 macOS 通知提醒 WebSocket/Cookie 异常、补救队列、低库存、等待真实小额单、买家链路卡点或正式售卖严格门通过。真实订单发货后，提醒会优先告诉你买家卡在哪一步：等待严格门、未兑换、未创建 API Key、未调模型、同单待确认或已闭环；该提醒优先级高于低库存，避免真单发生后只看到库存提醒。提醒只读，不自动催买家、不批量私信、不触发审计、不发货、不分配卡密、不改库存；手动发送当前状态提醒可在 `/ops-links` 的“本机提醒”卡片点击，也可调用：
+
+```bash
+curl -X POST -H "X-API-Token: $OPENCLAW_API_TOKEN" "http://127.0.0.1:18800/api/cc-ops-notify/check?force=true"
+```
+
+相关开关：`CC_XIANYU_OPS_NOTIFY_ENABLED`、`CC_XIANYU_OPS_NOTIFY_INTERVAL_MS`、`CC_XIANYU_OPS_NOTIFY_SCAN_SECONDS`、`CC_XIANYU_LOW_INVENTORY_THRESHOLD`。
+
+闲鱼商品发布前建议顺序：
+1. 打开状态中心确认补救队列为 0、库存和渠道正常，再打开操作台确认“自动发货”不是暂停。
+2. 在“闲鱼商品模板”生成极简模板，复制到闲鱼商品详情；模板只写付款后自动发卡和买家自助使用步骤，不加额外营销话术。
+3. 商品发布后，把闲鱼商品链接或商品 ID 填进操作台“商品绑定”，补上对应 `planId` 并保存；多商品正式上架前必须绑定，避免错发套餐。当前只有一个商品时，本机助手仍有默认套餐兜底，但操作台会明确提示“商品绑定 0”。 支持直接粘贴完整闲鱼分享文本、短链接本体或 `短链接 CZ007` 格式，后台会统一匹配同一商品绑定。
+4. 如果临时不想卖，先在操作台点“暂停自动发货”，再去闲鱼下架商品；恢复时先确认库存，再上架闲鱼，再点“恢复自动发货”。
+5. 用真实小额订单跑一次“付款 → 自动发卡 → 买家兑换 → 创建 API Key → CC Switch 导入 → 调模型”，再点“运行正式售卖严格门”或等待后台严格门自动观察。
+
+如果真实订单已经在手机闲鱼里显示“我已付款，等待你发货”，但本机状态中心出现补救队列，则走浏览器兜底：先在 Chrome 里打开对应买家的闲鱼聊天页，确认页面能看到“已付款/待发货/等待你发货/记得及时发货”等提示；刷新已安装的 OpenEverything Social Pilot 插件后，打开插件的“CC中转发货助手”，可选择“检测当前聊天”做只读预检，也可点“看守当前聊天页”。看守模式会锁定当前聊天标签页，每 30 秒检查一次；只有页面可见付款信号、找到输入框且本机有 `manual_delivery_ready` 话术时才自动发送，成功一次后自动关闭。本机状态中心/操作台在这种状态下也会把下一步写成“打开聊天页 + 插件检测/看守发送”，不要再等待闲鱼订单 API 自动补发。手机分享短链 `m.tb.cn` 已纳入插件权限，但因为 Chrome manifest 改过，首次使用前需要在 `chrome://extensions` 点一次插件刷新。不要同时开启多个聊天页看守；多笔订单并发时，先清空补救队列再继续上架。
+
+
+SMTP 密码已通过隐藏输入方式写入 Oracle 环境变量，并已用 Gmail 465/TLS 跑通生产测试邮件；2026-07-05 已把同一套 SMTP 配置复用到 New-API 原生邮箱验证。New-API 数据库、R2 备份和 Cloudflare DNS 代码侧已落地。生产内测当前走人工发放内测兑换码，不把微信/支付宝/Stripe 商户自动支付作为上线必备。
 
 ## 你需要人工开通的服务
 
 | 优先级 | 服务 | 你要准备的字段 | 我接入后的接口 |
 |------|------|------|------|
-| P0 | 域名和 Cloudflare / 免费 DNS | 已复用 `/Users/blackdj/Documents/VPS-Config` 的 `config/domain-routing.public.json`、`config/cloudflare-assets.public.json`，不新购域名；正式主机名为 `frist-api.245334.xyz` | `https://frist-api.245334.xyz/` 和 `https://frist-api.245334.xyz/v1`；nip.io 只作为历史/冷回滚排障，不再对用户宣称兜底 |
-| P0 | 兑换码售卖平台 | 闲鱼商品/SKU、自动发货规则、兑换码库存和对账表 | Frist-API `#redeem` 核销；不需要自动支付商户资质 |
+| P0 | 域名和 Cloudflare / 免费 DNS | 已用现有 `245334.xyz` 区域开通 `jiyu.245334.xyz` 并指向 Oracle `150.136.73.15`；`frist-api.245334.xyz` 仅保留跳转排障 | `https://jiyu.245334.xyz/` 和 `https://jiyu.245334.xyz/v1` 作为当前用户入口；nip.io 只作为历史/冷回滚排障，不再对用户宣称兜底 |
+| P0 | 兑换码内测/未来售卖平台 | 内测卡密批次、未来闲鱼商品/SKU、自动发货规则、兑换码库存和对账表 | CC中转 `#redeem` 核销；内测期不需要自动支付商户资质 |
 | P0 | 备份目标 | 已复用 VPS-Config 既有 R2/对象存储备份资产；密钥只在服务器环境文件和私有凭据仓，未写入仓库 | 每日 R2 timer 已启用，最近一次手动上传返回 HTTP 200 |
-| P1 | SMTP 邮箱 | 主机、端口、用户名、应用密码、发件邮箱；Gmail 只作为短期测试，密码只能写服务器环境变量 | 余额预警、注册验证、找回密码已接入 |
-| P1 | Turnstile | 复用 VPS-Config / Cloudflare 账号申请的 Site Key、Secret Key、允许域名；Secret 只进服务器环境变量 | 注册登录真实人机校验 |
+| P1 | SMTP 邮箱 | 主机、端口、用户名、应用密码、发件邮箱；Gmail 只作为短期测试，密码只能写服务器环境变量 | Frist-API 与 New-API 已共用，New-API `email_verification=true` |
+| P1 | Turnstile | 复用 VPS-Config / Cloudflare 账号申请的 Site Key、Secret Key、允许域名；Secret 只进服务器环境变量 | New-API `turnstile_check=true`，注册/登录无 token 已被拦截 |
 | P1 | 告警 Webhook | Telegram、企业微信、飞书或 OpenClaw 通知地址 | 低库存、5xx、支付失败、异常扣费告警 |
 | P2 | 合规文档 | 服务条款、退款规则、隐私政策、AGPL 源码入口 | 页面页脚和订单确认页展示 |
 
@@ -140,7 +345,7 @@ Frist-API 管理端现在可以登记自用 ChatGPT Plus 账号资产，但它�
 
 推荐走一次性管理员身份码，不要把账号密码发给开发者。
 
-1. 打开 Frist-API 用户端，按普通用户流程注册和登录。
+1. 打开 CC中转用户端，按普通用户流程注册和登录。
 2. 先完成一次用户链路测试: 创建 Key、选择模型分组、生成 CC Switch 导入链接。
 3. 回到右上角账户菜单，在身份码输入框粘贴一次性管理员身份码。
 4. 点击激活。成功后当前账号变成管理员，身份码立即作废。
@@ -149,27 +354,27 @@ Frist-API 管理端现在可以登记自用 ChatGPT Plus 账号资产，但它�
 
 如果身份码输错，页面会提示身份码无效；如果已经使用过，会提示身份码已失效。需要新码时，只在服务器环境变量 `FRIST_API_ADMIN_CLAIM_CODES` 追加新的一次性码，然后重启 Frist-API 容器。
 
-## 今晚可用的收款方式
+## 生产内测验收方式
 
-当前最稳的公开测试方式是第三方平台售卖兑换码 + 用户端自动核销。
+当前最稳的验收方式是生产环境内测，暂未正式售卖；先由管理员人工生成内测兑换码，再由用户端自动核销。
 
 1. 管理员进入运营入口，在“卡密生成与闲鱼发货”里选择套餐和数量，生成一次性兑换码。
-2. 复制本批卡密清单，导入闲鱼自动发货或客服系统。
-3. 用户在闲鱼等平台下单，平台完成收款、售后和自动发货。
-4. 用户回到 Frist-API 的兑换码页面输入卡密。
+2. 复制本批卡密清单，保存到内测发放清单，未来可导入闲鱼自动发货或客服系统。
+3. 内测用户拿到人工发放的卡密；正式售卖后再由外部交易平台完成收款、售后和自动发货。
+4. 用户回到 CC中转的兑换码页面输入卡密。
 5. 系统校验卡密未使用后立即到账，并把卡密标记为已兑换。
 
-这种方式不需要商户支付资质，也不需要用户上传付款截图，适合个人阶段把交易放到有保障的平台上完成。
+这种方式不需要商户支付资质，也不需要用户上传付款截图，适合正式售卖前先验证全链路。
 
 人工入账只作为异常兜底。正常订单以兑换码核销记录为准，至少保留: 卡密批次、闲鱼订单号、卡密、套餐、售出平台、核销用户和核销时间。
 
-### 闲鱼兑换码售卖
+### 闲鱼兑换码内测/未来售卖
 
-推荐把每个套餐作为一个闲鱼商品或 SKU，自动发货内容只放一条兑换码。
+内测期先把每个套餐作为后台卡密批次；正式售卖后，再把每个套餐作为一个闲鱼商品或 SKU，自动发货内容只放一条兑换码。
 
 1. 在管理端生成本批卡密，复制 `卡密 + 套餐 + 额度 + 时限` 文本。
 2. 将卡密导入闲鱼自动发货库或 OpenClaw 闲鱼客服系统。
-3. 用户下单后收到卡密，回 Frist-API `#redeem` 页面兑换。
+3. 内测用户收到人工发放卡密后，回 CC中转 `#redeem` 页面兑换。
 4. 兑换成功后，卡密状态变成 `redeemed`，不能再次使用。
 5. 售后退款时，先查卡密是否已核销；已核销则按平台规则处理，未核销可在后续后台停用。
 
@@ -215,7 +420,7 @@ Frist-API 管理端现在可以登记自用 ChatGPT Plus 账号资产，但它�
 
 ## 自动支付备用说明（当前不推进）
 
-当前正式收款主路径是闲鱼等第三方平台 C2C 售卖兑换码，再由 Frist-API `#redeem` 页面自动核销。微信支付、支付宝、Stripe 或聚合支付只作为未来备用能力；本阶段不要求开户注册、不要求支付回调上线，也不要为了“看起来完整”伪造支付成功。
+当前处于生产环境内测，暂未正式售卖；正式收款主路径未来才会切到外部交易平台 C2C 卡密销售，再由 CC中转 `#redeem` 页面自动核销。微信支付、支付宝、Stripe 或聚合支付只作为未来备用能力；本阶段不要求开户注册、不要求支付回调上线，也不要为了“看起来完整”伪造支付成功。
 
 如果以后决定恢复自动支付，仍必须先由账号所有者在对应平台完成主体实名、商户号、应用 AppID、签名密钥、公钥、回调域名、订单号规则和退款规则配置。不要把密钥发到聊天里，写入服务器环境文件后再接代码。
 
@@ -313,40 +518,41 @@ Stripe 的 API Secret Key、Webhook Signing Secret 和账号实名审核只能�
 
 ## 固定域名和证书
 
-长期方案不新购域名，复用 `/Users/blackdj/Documents/VPS-Config` 已有域名、Cloudflare DNS 和 R2/备份资产；OpenClaw 只记录变量名和验证步骤，不复制该项目的私有凭据。2026-07-03 生产已从腾讯云切到 Oracle ARM：Cloudflare proxied A 指向 `150.136.73.15`，Oracle Apache 使用 Cloudflare Origin CA 反代 Frist-API；专用 Tunnel 曾短暂验证但因 systemd 日志会暴露 token 已停用并删除。
+品牌上线方案已按“先用现有 xyz 子域名闭环”的路线落地：当前正式入口为 `jiyu.245334.xyz`，复用 `/Users/blackdj/Documents/VPS-Config` 已有 Cloudflare DNS、R2/备份资产和服务器配置方式；OpenClaw 只记录变量名和验证步骤，不复制该项目的私有凭据。2026-07-03 生产已从腾讯云切到 Oracle ARM；2026-07-04 新增 `jiyu.245334.xyz` Cloudflare proxied A 指向 `150.136.73.15`，Oracle Apache 使用覆盖 JiYu/Frist 别名的 Cloudflare Origin CA 证书反代 Frist-API。专用 Tunnel 曾短暂验证但因 systemd 日志会暴露 token 已停用并删除。`frist-api.245334.xyz` 只做跳转/排障/冷回滚别名，不再作为用户宣传入口。
 
-历史免费方案曾使用 `nip.io` wildcard DNS，例如 `frist-api.101-43-41-96.nip.io` 会解析到腾讯云 `101.43.41.96`。现在正式入口已经是 `https://frist-api.245334.xyz`，旧 nip.io 只保留冷回滚排障语境；如果腾讯云旧容器保持停止，旧 nip.io 返回 502 属于预期，不应再发给用户。
+历史免费方案曾使用 `nip.io` wildcard DNS，例如 `frist-api.101-43-41-96.nip.io` 会解析到腾讯云 `101.43.41.96`。现在正式入口是 `https://jiyu.245334.xyz`；旧 `frist-api.245334.xyz` 会跳转到 CC中转主站，旧 nip.io 只保留冷回滚排障语境，如果腾讯云旧容器保持停止，旧 nip.io 返回 502 属于预期，不应再发给用户。
 
 旧 nip.io 冷回滚排障步骤（非当前生产入口）:
 
 1. 在服务器检查 80/443 是否已被其他项目占用，避免影响共享项目。
 2. 新增 Nginx server block: `server_name frist-api.101-43-41-96.nip.io` 反代到 `http://127.0.0.1:3180`；`server_name 101-43-41-96.nip.io` 只返回 301 到品牌域名。
 3. 使用 certbot 给 `frist-api.101-43-41-96.nip.io` 申请证书；本轮证书机构访问 80 端口 ACME challenge 返回 connection reset，免费域名 HTTPS 未签发成功。
-4. 只有执行腾讯云冷回滚时才临时配置旧 HTTP 入口；正常 Oracle 生产必须保持 `FRIST_API_PUBLIC_GATEWAY_BASE_URL` 填 `https://frist-api.245334.xyz/v1`、`FRIST_API_CANONICAL_HOST` 填 `frist-api.245334.xyz`，并保持 `FRIST_API_ALLOW_INSECURE_PUBLIC_HTTP` 关闭。
+4. 只有执行腾讯云冷回滚时才临时配置旧 HTTP 入口；正常 Oracle 生产必须保持 `FRIST_API_PUBLIC_GATEWAY_BASE_URL=https://jiyu.245334.xyz/v1`、`FRIST_API_CANONICAL_HOST=jiyu.245334.xyz`，并保持 `FRIST_API_ALLOW_INSECURE_PUBLIC_HTTP` 关闭。
 5. 重启容器后跑首页、看板、`/v1/models` 未授权 401、管理员入口隐藏和支付回调 URL 冒烟。
 
-免费域名只适合历史排障。正式投放使用 VPS-Config 里已存在的域名/Cloudflare 资产，不在本项目另买新域名。
+免费域名只适合历史排障。正式投放使用 CC中转品牌入口，并沿用 VPS-Config 的 Cloudflare/R2 配置治理方式。
 
-2026-07-03 当前入口状态：
+2026-07-04 当前入口状态：
 
-1. `https://frist-api.245334.xyz/`：Cloudflare DNS proxied A 指向 Oracle ARM `150.136.73.15`，Oracle Apache 使用 Origin CA 证书反代；外网 Dashboard 冒烟返回 HTTP 200。
-2. Oracle 生产服务已启用 New-API adapter；`FRIST_API_NEWAPI_ENABLED=1` 与 `FRIST_API_REQUIRE_NEWAPI_DATABASE=1` 已生效。
-3. R2 定时备份已在 Oracle 启用；最近一次手动上传 HTTP 200。
-4. 腾讯云旧入口和 `http://frist-api.101-43-41-96.nip.io/` 只保留冷回滚，不再作为用户入口；旧容器停止时该地址不可用是预期。
-5. SMTP 密码已通过隐藏输入方式落地；生产测试邮件已返回 `smtp_test=sent`。
+1. `https://jiyu.245334.xyz/`：当前正式用户入口，Cloudflare DNS proxied A 指向 Oracle ARM `150.136.73.15`，Oracle Apache 使用 Cloudflare Origin CA 证书反代；外网首页和 Dashboard 冒烟返回 HTTP 200。
+2. `https://frist-api.245334.xyz/`：旧入口，保留为 301 跳转和冷回滚排障别名，正常对外投放不再使用。
+3. Oracle 生产服务已启用 New-API adapter；`FRIST_API_NEWAPI_ENABLED=1` 与 `FRIST_API_REQUIRE_NEWAPI_DATABASE=1` 已生效。
+4. R2 定时备份已在 Oracle 启用；最近一次手动上传 HTTP 200。
+5. 腾讯云旧入口和 `http://frist-api.101-43-41-96.nip.io/` 只保留冷回滚，不再作为用户入口；旧容器停止时该地址不可用是预期。
+6. SMTP 密码已通过隐藏输入方式落地；生产测试邮件已返回 `smtp_test=sent`。
 
-当前采用 Cloudflare DNS 代理，不依赖长期 `cloudflared` 服务。2026-07-03 Oracle 源站已安装 Cloudflare Origin CA 证书并让 Apache 监听 `frist-api.245334.xyz:443`，解决 Cloudflare 526。若未来重新启用 Tunnel，必须把 Tunnel token 放在 root-only 环境文件，且禁止通过 `systemctl status` / 服务日志输出 token。
+当前采用 Cloudflare DNS 代理，不依赖长期 `cloudflared` 服务。2026-07-04 Oracle 源站已安装 Cloudflare Origin CA 证书并让 Apache 监听 `jiyu.245334.xyz:443`，证书同时覆盖旧 Frist 别名，解决 Cloudflare 526 风险。若未来重新启用 Tunnel，必须把 Tunnel token 放在 root-only 环境文件，且禁止通过 `systemctl status` / 服务日志输出 token。
 
 参考官方文档：
 
 - Cloudflare DNS: https://developers.cloudflare.com/dns/manage-dns-records/how-to/create-dns-records/
 - Cloudflare Proxy status: https://developers.cloudflare.com/dns/proxy-status/
 
-域名切换后需要同步修改服务器环境变量 `FRIST_API_PUBLIC_GATEWAY_BASE_URL=https://frist-api.245334.xyz/v1`。否则用户导出的 Codex/OpenCode 配置仍可能指向旧测试入口。
+域名切换后需要同步修改服务器环境变量，例如 `FRIST_API_PUBLIC_GATEWAY_BASE_URL=https://jiyu.245334.xyz/v1`、`FRIST_API_CANONICAL_HOST=jiyu.245334.xyz`。否则用户导出的 Codex/OpenCode 配置仍可能指向旧测试入口。
 
 ## 邮箱和防刷
 
-当前已有轻量验证码和登录频率限制，余额预警、注册验证和找回密码邮件都可以走 SMTP；正式开放陌生用户还需要继续接 Turnstile 和更稳定的外部限流存储。
+当前已有轻量验证码、登录频率限制和 New-API 原生 Turnstile；余额预警、注册验证和找回密码邮件都可以走 SMTP。正式开放陌生用户前需要维持可售兑换码库存、确认模型请求限流阈值，并跑一单真人小额实单。
 
 你需要人工准备:
 
@@ -365,7 +571,7 @@ Stripe 的 API Secret Key、Webhook Signing Secret 和账号实名审核只能�
 
 如果本机或云厂商出口限制 SMTP，可能出现 465/587 端口 TCP 可连但 TLS 或 SMTP greeting 阶段无响应。遇到这种情况，不要反复换代码，先在正式服务器网络上跑测试邮件，再决定是否改用企业邮箱、邮件服务商或放行 SMTP 出口。Oracle 实测 Gmail 465/TLS 可用；默认 `FRIST_API_SMTP_FAMILY=auto` 会按 DNS 地址逐个尝试。如某台服务器 IPv4 长期超时，可临时设为 `6`。
 
-Turnstile 接入后，前端只保存 Site Key，Secret Key 只能放在服务器。服务端必须校验 Cloudflare 返回结果，不能只检查前端传了一个 token。
+Turnstile 已复用 Frist 旧配置接入 New-API：前端只保存 Site Key，Secret Key 只能放在服务器。服务端必须校验 Cloudflare 返回结果，不能只检查前端传了一个 token。
 
 ## 模型列表和默认最强模型规则
 
@@ -432,17 +638,18 @@ Frist-API 是独立公开网站，放在 `apps/frist-api/`，不改 OpenClaw APP
 
 当前公网验收入口:
 
-- 正式用户端: `https://frist-api.245334.xyz/`
-- 正式 API 网关: `https://frist-api.245334.xyz/v1`
+- 正式用户端: `https://jiyu.245334.xyz/`
+- 正式 API 网关: `https://jiyu.245334.xyz/v1`
+- 旧 Frist 入口: `https://frist-api.245334.xyz/`，只做 301 跳转和冷回滚排障。
 - 旧 `http://frist-api.101-43-41-96.nip.io/` 和裸 `http://101-43-41-96.nip.io/` 只保留腾讯云冷回滚排障，不再作为生产入口。
 
-当前固定品牌域名和 HTTPS 证书已闭环；生产 `FRIST_API_PUBLIC_GATEWAY_BASE_URL` 应保持 `https://frist-api.245334.xyz/v1`。
+当前 CC中转子域名和 HTTPS 证书已闭环；生产 `FRIST_API_PUBLIC_GATEWAY_BASE_URL` 为 `https://jiyu.245334.xyz/v1`。后续若老板购买独立品牌域名，再按同一流程替换主域名。
 
 管理端不公开展示。普通 `/admin.html` 在公网会返回 404。日常用法是先注册/登录自己的用户账号，在右上角账户区域输入一次性管理员身份码，当前账号会升级为管理员，身份码随即作废；升级后账户区域会出现运营入口，管理 API 也会直接识别当前登录态。隐藏入口码和管理员令牌仍保留为服务器后备方案，不给普通用户展示。
 
 人工收款、固定域名、SMTP、Turnstile 和正式支付接口的操作清单见本文件上方的 Frist-API 运营操作清单。
 
-无域名阶段这是临时 HTTP 验收地址。正式开放陌生付费用户前，必须绑定固定 HTTPS 入口、SMTP 注册验证/找回密码、Turnstile、管理员 2FA、New-API 数据库和备份恢复；收款主路径继续走闲鱼兑换码，不把真实支付回调作为本阶段上线门槛。
+无域名阶段这是临时 HTTP 验收地址。当前固定 HTTPS 入口、SMTP 注册验证/找回密码、Turnstile、管理员 2FA、New-API 数据库、备份恢复和 5 张内测可售兑换码库存均已接入；正式开放陌生付费用户前需要确认模型请求限流阈值，并完成一次真人浏览器注册/登录/兑换 + 小额闲鱼实单验收。收款主路径继续走闲鱼兑换码，不把真实支付回调作为本阶段上线门槛。
 
 ## 用户端能看到什么
 
@@ -468,6 +675,7 @@ Frist-API 是独立公开网站，放在 `apps/frist-api/`，不改 OpenClaw APP
 管理端独立在隐藏入口后。推荐方式是用一次性管理员身份码把你的账号升级为管理员，然后通过右上角“管理”快捷入口进入；管理员令牌只作为后备方式保留在服务器环境变量里，不写入仓库和公开文档。
 
 - 人工入账: 按用户邮箱确认日卡、月卡或余额充值。
+- 闲鱼自动发货助手: 支持 OpenClaw `XianyuLive` 全自动 webhook，也支持手工粘贴已付款订单兜底；只要订单确认已付款，就会分配未使用兑换码、生成发货话术、发送给买家并把履约状态标记为已发货；多商品/多套餐时先在本机 GUI 配置 `item_id → planId`，自动发货会优先按映射选择套餐；无映射、无套餐或无 SKU 订单才会回退默认套餐/任意未售兑换码；如果卡已分配但闲鱼消息发送失败，本机 GUI 的“CC中转发货补救队列”会保留待补发话术，后台默认自动重试发送，页面也可一键“重试发送”；当闲鱼订单 API 返回无权限或 WebSocket 漏掉付款卡片时，可在 Chrome 插件里对当前买家聊天页开启“看守当前聊天页”，也可在只有 1 条待发货时开启“看守所有闲鱼页”；插件只复用已分配待发送话术并成功一次后自动关闭；当前不做自动砍价、批量私信或刷单。
 - 补号助手: 可直接粘贴订单详情，也可手动输入请求地址、可选代理地址、池子、模型、价格文本和一批上游 Key。
 - 备用渠道: CPA JSON、chong 和其他人工备用渠道只能在管理端登记；默认进入隔离态，必须人工核验并勾选确认后才会进入路由。
 - 订单清洗: 自动识别请求地址、卡密、日卡/月卡/不限时、额度、数量、创建时间、到期时间、模型、认证字段、认证前缀和额外请求头。
@@ -486,7 +694,7 @@ Frist-API 是独立公开网站，放在 `apps/frist-api/`，不改 OpenClaw APP
 
 用户链路:
 
-1. 用户打开 Frist-API，右上角注册或登录，并完成轻量验证码挑战。
+1. 用户打开 CC中转，右上角注册或登录，并完成轻量验证码挑战。
 2. 用户选择日卡、月卡或余额，提交充值申请；公开环境默认不会自动给用户加钱。
 3. 管理员通过隐藏入口进入管理端，按邮箱人工确认入账，或用户使用一次性兑换码。
 4. 用户进入 API 页面选择模型分组并创建 `fk-live-*` Key。
@@ -534,7 +742,53 @@ http://127.0.0.1:3180/admin.html
 make frist-api-test
 ```
 
-当前回归覆盖 104 条，包括:
+### 本机 QuantumNous/new-api 直连运行
+
+如果老板要“直接跑 New-API 本体，再让 Frist-API 接上去”，走这条路径：
+
+```bash
+# 1. 启动 QuantumNous/new-api；启动前会自动备份 data/newapi
+make new-api-up
+
+# 2. 首次使用时打开 New-API，完成初始化并在个人资料页生成 access token
+open http://127.0.0.1:3000
+
+# 3. 把 New-API access token / user id 写入本机 .env；脚本不会打印密钥
+make frist-api-newapi-setup
+
+# 4. 启动 Frist-API + New-API 全链路
+make frist-api-up
+```
+
+打开：
+
+```text
+New-API 管理页: http://127.0.0.1:3000
+CC中转用户页: http://127.0.0.1:3180
+Frist-API 网关:   http://127.0.0.1:3180/v1
+```
+
+快速验收：
+
+```bash
+docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'
+curl -sS http://127.0.0.1:3000/api/status
+curl -sS http://127.0.0.1:3180/api/frist/dashboard
+```
+
+当前本机已验证：`openclaw-newapi` 使用 `calciumion/new-api:v1.0.0-rc.4` 监听 `127.0.0.1:3000`；`frist-api-server` 监听 `127.0.0.1:3180`；New-API `/api/status` 返回 `success=true`、`setup=true`；Frist-API Dashboard 返回 HTTP 200。停止全链路：
+
+```bash
+make frist-api-down
+```
+
+注意事项：
+
+- `.env`、`data/newapi/`、`data/frist-api/runtime/` 都可能包含 token、用户 Key 或上游 Key，禁止提交 Git。
+- `scripts/setup_local_newapi_bridge.mjs` 只读取本机 `data/newapi/one-api.db`，找不到 access token 时会要求先去 New-API 个人资料页生成。
+- Docker 内部访问 New-API 用 `http://new-api:3000`；宿主机浏览器和 curl 用 `http://127.0.0.1:3000`。
+
+当前回归覆盖 165 条，包括:
 
 - 用户注册、登录、改密、验证码挑战、认证限流、充值申请、管理员入账、兑换码、创建 Key、开启/关闭 Key 和 CC Switch 导入。
 - 广场模型对话、`5.5` / `image2` 别名清洗、广场连通实测、图片生成模型路由、图片模型补号探测、模型消耗分布、服务可用性、模型广场和使用教程页面接线。
@@ -558,10 +812,10 @@ make frist-api-test
 ## Docker 原型
 
 ```bash
-docker compose -f docker-compose.frist-api.yml up -d
+make frist-api-up
 ```
 
-当前 Docker 原型使用 `node:22-alpine` 跑轻量 Frist-API 后端，内存限制 256MB，适配 2 核 2GB 的小服务器。运行数据默认写入 `data/frist-api/runtime/runtime.json`，该文件可能包含用户 Key 和上游 Key，不能提交到 Git。
+当前 Docker 原型使用 `node:22-alpine` 跑轻量 Frist-API 后端，同时复用 `calciumion/new-api:v1.0.0-rc.4` 作为底层业务网关。Frist-API 内存限制 256MB，New-API 内存限制 512MB，适配 2 核 2GB 的小服务器。运行数据默认写入 `data/frist-api/runtime/runtime.json` 与 `data/newapi/`，这些文件可能包含用户 Key、access token 和上游 Key，不能提交到 Git。
 
 生产环境必须设置:
 
@@ -578,7 +832,7 @@ docker compose -f docker-compose.frist-api.yml up -d
 - `FRIST_API_EXPOSE_VERIFICATION_CODE=0`
 - `FRIST_API_REQUIRE_CSRF=1`
 - `FRIST_API_REQUIRE_ADMIN_2FA=1`
-- `FRIST_API_ADMIN_TOTP_SECRETS`: 管理员 TOTP Base32 Secret，多个用逗号分隔，只放服务器环境变量
+- `FRIST_API_ADMIN_TOTP_SECRETS`: 管理员 TOTP Base32 Secret，多个用逗号分隔，只放服务器环境变量或 root-only 安全文件，不能写进仓库或聊天
 - `FRIST_API_REQUIRE_CAPTCHA=1`，仅用于注册挑战；登录不再要求验证码
 - `FRIST_API_CAPTCHA_MAX_ATTEMPTS=3`
 - `FRIST_API_AUTH_RATE_LIMIT_MAX=20`
@@ -593,7 +847,7 @@ docker compose -f docker-compose.frist-api.yml up -d
 - `FRIST_API_TELEGRAM_BOT_TOKEN` / `FRIST_API_TELEGRAM_CHAT_ID`: 可选，Key 异常一次性补号提醒 Telegram 通知
 - `FRIST_API_SMTP_HOST` / `FRIST_API_SMTP_PORT` / `FRIST_API_SMTP_SECURE` / `FRIST_API_SMTP_FAMILY`: 可选，余额预警邮件 SMTP 连接配置
 - `FRIST_API_SMTP_USER` / `FRIST_API_SMTP_PASSWORD` / `FRIST_API_SMTP_FROM`: 可选，余额预警邮件登录和发件配置
-- `FRIST_API_BALANCE_ALERT_FROM_NAME`: 可选，余额预警邮件发件人名称
+- `FRIST_API_BALANCE_ALERT_FROM_NAME`: 可选，余额预警邮件发件人名称；Oracle 生产当前使用 `CC-Billing`，避免 shell source 类脚本被空格绊倒
 - `FRIST_API_NEWAPI_ENABLED`: 生产设为 `1`，Frist-API 服务端通过 New-API 接管用户看板、API Key、日志、订阅、兑换和邀请数据
 - `FRIST_API_REQUIRE_NEWAPI_DATABASE=1`: 生产硬门槛，防止继续把 JSON runtime 当数据库使用
 - `FRIST_API_NEWAPI_BASE_URL` / `FRIST_API_NEWAPI_ACCESS_TOKEN` / `FRIST_API_NEWAPI_USER_ID`: 可选，New-API 内网地址、用户 access token 和对应用户 ID，只能放服务器环境变量
@@ -601,20 +855,40 @@ docker compose -f docker-compose.frist-api.yml up -d
 
 无域名公网 IP 验收时可临时设置 `FRIST_API_ALLOW_INSECURE_PUBLIC_HTTP=1`。当前 Cloudflare HTTPS 入口已关闭这个临时开关。
 
-生产边界验收:
+生产边界验收（生产已开启管理员 2FA，管理接口需要先拿二次验证会话；不要在终端打印 token/secret）:
 
 ```bash
-curl -fsS -H "x-admin-token: $FRIST_API_ADMIN_TOKEN" \
+# 1) 先用 TOTP 验证，保存 Set-Cookie 里的 frist_admin_2fa，或把返回 cookie 写入临时 cookie jar。
+curl -fsS -X POST \
+  -H "x-admin-token: $FRIST_API_ADMIN_TOKEN" \
+  -H "content-type: application/json" \
+  --data '{"code":"<你的 6 位 TOTP>"}' \
+  https://你的域名/api/admin/2fa/verify
+
+# 2) 再带 x-admin-2fa-session 或 cookie 读取 readiness。
+curl -fsS \
+  -H "x-admin-token: $FRIST_API_ADMIN_TOKEN" \
+  -H "x-admin-2fa-session: $FRIST_ADMIN_2FA_SESSION" \
   https://你的域名/api/admin/production-readiness
 ```
 
-备份任务完成后登记一次状态，恢复演练建议至少每月跑一次:
+备份任务完成后登记一次状态，恢复演练建议至少每月跑一次。注意：服务器 env 文件按 key/value 解析，不要直接 `source /etc/frist-api/frist-api.env`，避免包含空格或特殊字符的值被 shell 误执行。
 
 ```bash
-curl -fsS -X POST -H "x-admin-token: $FRIST_API_ADMIN_TOKEN" -H "content-type: application/json" \
-  --data '{"provider":"rclone","target":"s3://frist-api-prod/runtime","lastBackupAt":"2026-05-07T11:30:00.000Z","lastRestoreTestAt":"2026-05-07T11:40:00.000Z","status":"ok","artifact":"runtime-20260507.tgz","checksum":"sha256:..."}' \
+curl -fsS -X POST \
+  -H "x-admin-token: $FRIST_API_ADMIN_TOKEN" \
+  -H "x-admin-2fa-session: $FRIST_ADMIN_2FA_SESSION" \
+  -H "content-type: application/json" \
+  --data '{"provider":"rclone-r2","target":"r2://frist-api-prod/runtime","lastBackupAt":"2026-07-05T00:05:09.000Z","lastRestoreTestAt":"2026-07-05T00:05:09.000Z","status":"ok","artifact":"frist-api-20260705T000508Z.tar.gz","checksum":"sha256:..."}' \
   https://你的域名/api/admin/backups/status
 ```
+
+2026-07-04 生产验收记录（UTC 时间为 2026-07-05T00:05:09Z）：
+
+- `FRIST_API_PUBLIC_MODE=1`、`FRIST_API_ENFORCE_PRODUCTION_READINESS=1`、`FRIST_API_ALLOW_INSECURE_PUBLIC_HTTP=0` 已在 Oracle 生产启用。
+- 管理员 TOTP 2FA 已启用，secret 保存在 Oracle root-only 环境文件/安全文件中。
+- R2 备份 `frist-api-20260705T000508Z.tar.gz` 已解包恢复演练，`runtime.json` 可读，`one-api.db` 完整性检查为 `ok`。
+- `/api/admin/production-readiness` 当时返回 `ready=true`，7 项检查全部通过；2026-07-05 起已追加第 8 项“健康上游库存”，若 New-API `channels/models` 和 Frist 健康库存均为 0，则必须返回 `ready=false`，禁止正式售卖。
 
 冒烟检查:
 
@@ -644,7 +918,7 @@ apps/frist-api/deploy/smoke-test.sh http://127.0.0.1:3180 "$FRIST_API_ADMIN_PAGE
 ## 当前限制
 
 - JSON runtime 仍作为兜底和本地小范围验收可用；生产已启用 `FRIST_API_NEWAPI_ENABLED=1` 和 `FRIST_API_REQUIRE_NEWAPI_DATABASE=1`。2026-07-03 已按授权执行 New-API 迁移：用户、余额、订单、兑换码和日志已迁入 New-API；16 个历史 `enc:v1:` 用户 Key 因旧加密密钥缺失未迁移，避免把密文伪造成可用 Key。
-- 已有轻量验证码、认证限流、一次性管理员身份码、管理员 TOTP 2FA、余额预警 SMTP 邮件、兑换码核销和备用真实支付回调代码；当前收款走闲鱼兑换码，商户自动支付不是必需项。正式域名/Cloudflare/R2 已复用 VPS-Config 既有资产落地，SMTP 密码已隐藏输入并通过生产测试邮件验证。
+- 已有轻量验证码、认证限流、一次性管理员身份码、管理员 TOTP 2FA、余额预警 SMTP 邮件、兑换码核销和备用真实支付回调代码；当前收款走闲鱼兑换码，商户自动支付不是必需项。正式域名/Cloudflare/R2 已复用 VPS-Config 既有资产落地，SMTP 密码已隐藏输入并通过生产测试邮件验证；2026-07-05 已复用 Frist 旧配置启用 New-API 原生 Turnstile、邮箱验证和管理员 2FA。
 - 补号探测已做低成本可用性判断、Responses fallback、直连/代理择优和认证字段清洗，但未做完整上下文上限、工具调用、流式能力和模型质量评分。
 - CPA JSON/chong 入口只做人工登记和放行，不包含 OAuth Session 提取、Refresh Token 刷新、账号池规避风控或自动化批量获取逻辑。
 - `QuantumNous/new-api` 是 AGPL-3.0；Frist-API 页面页脚已提供现有 OpenClaw-Bot 源码入口。若后续二开 New-API 本体并公开运营，仍需确保复用的 GitHub 仓库/fork 可公开访问。
@@ -672,6 +946,8 @@ node scripts/frist_api_newapi_migration_dry_run.mjs \
 ## New-API 上游同步 SOP
 
 New-API 不再从旧本地目录复制代码。项目用 `packages/new-api-upstream` submodule 固定上游 release，用 `docker-compose.newapi.yml` 固定同版本 Docker 镜像，Frist-API 和 ClawBot 通过接口代理复用业务逻辑。
+
+当前生产内测的渠道倍率策略已显式固定为 `FRIST_API_RATE_MARKUP=0.1`：同步上游渠道倍率时，只在上游倍率基础上加 `0.1`，不额外改写其余价格口径。
 
 日常检查:
 

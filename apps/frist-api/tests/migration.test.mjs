@@ -8,7 +8,7 @@ import { describe, it } from 'node:test';
 
 import { applyMigrationToSqlite, buildMigrationPackage, buildMigrationReport } from '../../../scripts/frist_api_newapi_migration_dry_run.mjs';
 
-describe('Frist-API New-API migration package', () => {
+describe('CC中转 New-API migration package', () => {
   it('creates timestamped backup, rollback script and idempotent migration plan without applying production writes', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'frist-migration-'));
     const runtimeFile = join(dir, 'runtime.json');

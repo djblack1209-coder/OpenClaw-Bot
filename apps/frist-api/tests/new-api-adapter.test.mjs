@@ -30,8 +30,8 @@ const previousDashboard = {
   modelUsage: [{ model: 'Claude', amount: '$2.56', percent: 100, calls: '18 次', tokens: '1.00M' }],
 };
 
-describe('Frist-API New-API adapter', () => {
-  it('normalizes lightweight Frist-API dashboard billing counters instead of keeping stale totals', () => {
+describe('CC中转 New-API adapter', () => {
+  it('normalizes lightweight CC中转 dashboard billing counters instead of keeping stale totals', () => {
     const dashboard = normalizeFristDashboard(
       {
         authenticated: false,
@@ -70,6 +70,36 @@ describe('Frist-API New-API adapter', () => {
     assert.equal(dashboard.apiKeys.length, 0);
     assert.equal(dashboard.channelChecks.length, 0);
     assert.equal(dashboard.modelUsage.length, 0);
+  });
+
+  it('preserves public Turnstile security config for browser flows', () => {
+    const dashboard = normalizeFristDashboard({
+      authenticated: false,
+      account: {},
+      user: {},
+      apiKeys: [],
+      channelChecks: [],
+      modelUsage: [],
+      security: {
+        turnstile: {
+          enabled: true,
+          siteKey: '1x00000000000000000000AA',
+          actions: {
+            register: 'register',
+            login: 'login',
+            redeem: 'redeem',
+          },
+        },
+      },
+    });
+
+    assert.equal(dashboard.security.turnstile.enabled, true);
+    assert.equal(dashboard.security.turnstile.siteKey, '1x00000000000000000000AA');
+    assert.deepEqual(dashboard.security.turnstile.actions, {
+      register: 'register',
+      login: 'login',
+      redeem: 'redeem',
+    });
   });
 
   it('preserves authenticated dashboard billing counters when the server provides them', () => {
@@ -193,7 +223,7 @@ describe('Frist-API New-API adapter', () => {
           name: 'Codex Pro',
           model: 'gpt-5.5',
           base_url: 'https://supplier.example.com/v1',
-          endpoint: 'https://api.frist.example.com/openai/pro',
+          endpoint: 'https://jiyu.245334.xyz/openai/pro',
           response_time_ms: 1771,
           ping_ms: 91,
           success_rate: 0.9924,
@@ -208,7 +238,7 @@ describe('Frist-API New-API adapter', () => {
     assert.equal(channels[0].provider, 'OpenAI');
     assert.equal(channels[0].channel, '卡商1');
     assert.equal(channels[0].poolLabel, 'Codex Pro');
-    assert.equal(channels[0].endpoint, 'https://api.frist.example.com/openai/pro');
+    assert.equal(channels[0].endpoint, 'https://jiyu.245334.xyz/openai/pro');
     assert.equal(channels[0].availability, '99.24%');
     assert.equal(channels[0].successLabel, '9994/10071 成功');
     assert.equal(channels[0].monitorIntervalSeconds, 60);

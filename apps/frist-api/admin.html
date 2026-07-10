@@ -3,14 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Frist-API 管理工作台</title>
+    <title>CC中转 管理工作台</title>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <link rel="stylesheet" href="./src/styles.css?v=20260505-dark-console" />
   </head>
-  <body data-design-system="tabcode-console">
+  <body data-design-system="game-store-console">
     <main class="admin-shell">
       <header class="admin-topbar">
-        <a class="brand" href="./admin.html" aria-label="Frist-API 管理端">
+        <a class="brand" href="./admin.html" aria-label="CC中转 管理端">
           <span class="brand-mark" aria-hidden="true">
             <i></i>
             <b></b>
@@ -21,13 +21,31 @@
       </header>
 
       <section class="admin-hero">
-        <span class="eyebrow">库存 / 卡密 / 路由</span>
-        <h1>运营</h1>
-        <p>卡密、库存、订单。</p>
+        <span class="eyebrow">CC中转控制台</span>
+        <h1>运营管理后台</h1>
+        <p>当前为生产环境内测，暂未正式售卖；后台先用于验证注册、登录、兑换码、渠道同步、API 管理和人工履约闭环。</p>
       </section>
 
-      <div class="admin-grid">
-        <section class="plain-section">
+      <div class="admin-layout-shell">
+        <aside class="admin-sidebar" aria-label="管理端导航">
+          <div class="admin-sidebar__head">
+            <strong>CC中转控制台</strong>
+            <span>下游运营面板</span>
+          </div>
+          <nav>
+            <a href="#admin-overview">总览</a>
+            <a href="#admin-sync">渠道同步</a>
+            <a href="#admin-redemption">兑换码</a>
+            <a href="#admin-xianyu">闲鱼发货</a>
+            <a href="#admin-pricing">价格套餐</a>
+            <a href="#admin-inventory">库存</a>
+            <a href="#admin-audit">审计</a>
+          </nav>
+          <div class="admin-sidebar__foot">倍率策略 <strong>上游 +0.1</strong></div>
+        </aside>
+
+        <div class="admin-grid">
+        <section class="plain-section" id="admin-overview">
           <div class="section-head">
             <div>
               <span class="eyebrow">身份</span>
@@ -52,14 +70,36 @@
           <div class="section-head">
             <div>
               <span class="eyebrow">上线边界</span>
-              <h2>生产检查</h2>
+              <h2>生产内测检查</h2>
             </div>
             <button class="secondary-action" data-admin-readiness-refresh type="button">刷新</button>
           </div>
           <div class="admin-readiness" data-admin-readiness></div>
         </section>
 
-        <section class="plain-section admin-span" data-admin-pricing>
+        <section class="plain-section admin-span" id="admin-sales-console" data-admin-sales-console>
+          <div class="section-head">
+            <div>
+              <span class="eyebrow">售卖闭环</span>
+              <h2>闲鱼自动发货助手</h2>
+            </div>
+            <button class="secondary-action" data-admin-copy-listing-template type="button">复制商品模板</button>
+          </div>
+          <div class="admin-flow-actions" aria-label="售卖闭环操作按钮">
+            <a class="primary-action" href="#admin-redemption">1. 生成可售卡密</a>
+            <a class="secondary-action" href="#admin-xianyu">2. 粘贴已付款订单</a>
+            <a class="secondary-action" href="#admin-xianyu">3. 分配卡密并复制话术</a>
+            <a class="secondary-action" href="#admin-sync">4. 刷新渠道与倍率</a>
+            <a class="ghost-action" href="https://jiyu.245334.xyz" target="_blank" rel="noreferrer">5. 打开用户兑换页</a>
+          </div>
+          <textarea class="admin-card-export" data-admin-listing-template rows="7" spellcheck="false" readonly>商品：CC中转 API 额度卡
+发货：付款后发送兑换码和兑换网址
+使用：注册/登录 https://jiyu.245334.xyz 后，在充值/兑换处输入兑换码到账
+导入：到账后创建 API Key，再在 CC Switch 区复制导入链接
+售后：未兑换卡密可处理，已兑换以后台记录为准</textarea>
+        </section>
+
+        <section class="plain-section admin-span" id="admin-pricing" data-admin-pricing>
           <div class="section-head">
             <div>
               <span class="eyebrow">价格</span>
@@ -76,6 +116,27 @@
               模型价格 JSON
               <textarea data-admin-model-prices rows="12" spellcheck="false" placeholder='[{"model":"gpt-5.5","inputSaleCnyPerMillion":8,"outputSaleCnyPerMillion":48}]'></textarea>
             </label>
+          </div>
+        </section>
+
+        <section class="plain-section admin-span" id="admin-sync" data-admin-upstream-sync>
+          <div class="section-head">
+            <div>
+              <span class="eyebrow">渠道来源</span>
+              <h2>渠道同步</h2>
+            </div>
+            <button class="primary-action" data-admin-upstream-sync-run type="button">同步</button>
+          </div>
+          <p class="admin-channel-hint">粘贴上游渠道 JSON，只保存脱敏状态和倍率；默认所有倍率 +0.1，例如 0.18 会变成 0.28。</p>
+          <div class="admin-two-col">
+            <label>
+              上游渠道 JSON
+              <textarea data-admin-upstream-json rows="8" spellcheck="false" placeholder='[{"provider":"参考渠道","platform":"Plus","model":"gpt-5.5","status":"healthy","multiplier":0.18,"latencyMs":900}]'></textarea>
+            </label>
+            <div>
+              <div class="admin-sync-summary" data-admin-upstream-summary></div>
+              <div class="admin-upstream-list" data-admin-upstream-list></div>
+            </div>
           </div>
         </section>
 
@@ -127,7 +188,7 @@
           </div>
         </section>
 
-        <section class="plain-section admin-span" data-admin-redemption-cards>
+        <section class="plain-section admin-span" id="admin-redemption" data-admin-redemption-cards>
           <div class="section-head">
             <div>
               <span class="eyebrow">兑换码</span>
@@ -146,7 +207,7 @@
             </label>
             <label>
               前缀
-              <input type="text" data-admin-card-prefix value="FRIST" maxlength="10" />
+              <input type="text" data-admin-card-prefix value="CC" maxlength="10" />
             </label>
             <label>
               备注
@@ -161,6 +222,54 @@
           <div class="admin-card-list" data-admin-card-list></div>
         </section>
 
+        <section class="plain-section admin-span" id="admin-xianyu" data-admin-xianyu-fulfillment>
+          <div class="section-head">
+            <div>
+              <span class="eyebrow">闲鱼客服</span>
+              <h2>自动发货</h2>
+            </div>
+            <button class="primary-action" data-admin-xianyu-create type="button">分配卡密</button>
+          </div>
+          <p class="admin-channel-hint">先把闲鱼订单号和商品套餐粘进来，系统会占用一张未售出卡密并生成发货话术；买家兑换后会自动标记已兑换。</p>
+          <div class="admin-automation-box" data-admin-xianyu-automation>
+            <strong>全自动接单</strong>
+            <p>等待配置。启用后，闲鱼监听器检测到“等待卖家发货/已付款”订单，会自动调用低权限接口分配卡密。</p>
+          </div>
+          <div class="admin-card-grid">
+            <label>
+              订单号
+              <input type="text" data-admin-xianyu-order-id placeholder="闲鱼订单号" />
+            </label>
+            <label>
+              买家备注
+              <input type="text" data-admin-xianyu-buyer placeholder="买家昵称/尾号，可留空" />
+            </label>
+            <label>
+              商品标题
+              <input type="text" data-admin-xianyu-product placeholder="Codex API 30刀额度/日卡" />
+            </label>
+            <label>
+              套餐
+              <select data-admin-xianyu-plan></select>
+            </label>
+          </div>
+          <div class="admin-card-actions">
+            <button class="secondary-action" data-admin-xianyu-copy type="button">复制发货话术</button>
+            <span>只发兑换码和网址</span>
+          </div>
+          <textarea class="admin-card-export" data-admin-xianyu-message rows="6" spellcheck="false" readonly placeholder="自动生成的闲鱼发货话术"></textarea>
+          <div class="admin-sync-summary" data-admin-xianyu-summary></div>
+          <div class="admin-card-list" data-admin-xianyu-list></div>
+        </section>
+
+        <details class="plain-section admin-span admin-advanced-panel" data-admin-paused-ops>
+          <summary>
+            <span>
+              <span class="eyebrow">高级/暂停</span>
+              <strong>上游补号、Plus/RT 台账</strong>
+            </span>
+            <small>当前售卖只用自动发货主线；这里默认收起。</small>
+          </summary>
         <section class="plain-section admin-span" data-admin-plus-accounts>
           <div class="section-head">
             <div>
@@ -323,7 +432,7 @@
             <label>
               渠道类型
               <select data-admin-source-type>
-                <option value="authorized">授权供应商 / 自有额度</option>
+                <option value="authorized">合规供应商 / 自有额度</option>
                 <option value="cpa_json_backup">CPA JSON 备用渠道</option>
                 <option value="chong_backup">chong 备用渠道</option>
                 <option value="manual_backup">其他人工备用渠道</option>
@@ -414,7 +523,9 @@
           </div>
         </section>
 
-        <section class="plain-section admin-span">
+        </details>
+
+        <section class="plain-section admin-span" id="admin-inventory">
           <div class="section-head">
             <div>
               <span class="eyebrow">库存</span>
@@ -426,7 +537,7 @@
           <div class="admin-inventory" data-admin-inventory></div>
         </section>
 
-        <section class="plain-section admin-span">
+        <section class="plain-section admin-span" id="admin-audit">
           <div class="section-head">
             <div>
               <span class="eyebrow">审计</span>
@@ -435,9 +546,10 @@
           </div>
           <div class="admin-audit" data-admin-audit></div>
         </section>
+        </div>
       </div>
     </main>
 
-    <script type="module" src="./src/admin.js?v=20260505-dark-console"></script>
+    <script type="module" src="./src/admin.js?v=20260704-86game-commerce"></script>
   </body>
 </html>
