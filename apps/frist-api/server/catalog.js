@@ -229,7 +229,7 @@ export function buildModelCatalog(data) {
       model, family: live?.provider || auditCatalogByModel.get(model)?.family || providerFromModel(model),
       tagline: auditCatalogByModel.get(model)?.tagline || taglineForModel(model),
       context: auditCatalogByModel.get(model)?.context || contextForModel(model),
-      price: price ? priceLabel(price) : auditCatalogByModel.get(model)?.price || '官方价格待同步',
+      price: price ? priceLabel(price) : auditCatalogByModel.get(model)?.price || '参考标价待同步',
       available: Boolean(live?.ok),
     });
   }

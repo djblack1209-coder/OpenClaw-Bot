@@ -21,7 +21,7 @@ export function createBalanceAlertEmailSender(options = {}) {
       ? options.secure
       : String(process.env.FRIST_API_SMTP_SECURE ?? '1') !== '0';
   const fromName = String(
-    options.fromName ?? process.env.FRIST_API_BALANCE_ALERT_FROM_NAME ?? 'Frist-API Billing',
+    options.fromName ?? process.env.FRIST_API_BALANCE_ALERT_FROM_NAME ?? 'CC-Relay-Billing',
   ).trim();
   const family = normalizeSmtpAddressFamily(options.family ?? process.env.FRIST_API_SMTP_FAMILY ?? 'auto');
 
@@ -231,9 +231,9 @@ export function buildBalanceAlertEmail({
   model, quotaCost, publicGatewayBaseUrl, at, isTest = false,
 }) {
   const subject = isTest
-    ? 'Frist-API 余额预警测试'
-    : `Frist-API 余额预警：当前 ${formatUsdFromCnyCents(balanceCents)}`;
-  const accountEmail = user.email || 'Frist-API 用户';
+    ? 'CC中转 余额预警测试'
+    : `CC中转 余额预警：当前 ${formatUsdFromCnyCents(balanceCents)}`;
+  const accountEmail = user.email || 'CC中转 用户';
   const dashboardUrl = publicGatewayBaseUrl
     ? String(publicGatewayBaseUrl).replace(/\/v1\/?$/i, '').replace(/\/+$/, '')
     : '';
@@ -285,7 +285,7 @@ export function buildBalanceAlertEmail({
                       <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                         <tr>
                           <td valign="middle">
-                            <div style="font-size:12px;line-height:1.2;letter-spacing:1.6px;text-transform:uppercase;color:#93c5fd;font-weight:800;">Frist-API Balance Guard</div>
+                            <div style="font-size:12px;line-height:1.2;letter-spacing:1.6px;text-transform:uppercase;color:#93c5fd;font-weight:800;">CC中转 Balance Guard</div>
                             <div style="margin-top:8px;color:#ffffff;font-size:25px;font-weight:800;line-height:1.22;">余额进入预警区间</div>
                           </td>
                           <td align="right" valign="middle">
@@ -365,7 +365,7 @@ export function buildBalanceAlertEmail({
                     ? `<table role="presentation" cellspacing="0" cellpadding="0" style="margin-top:18px;">
                         <tr>
                           <td bgcolor="#111827" style="border-radius:999px;">
-                            <a href="${escapeAttribute(dashboardUrl)}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;border-radius:999px;padding:13px 20px;font-size:14px;font-weight:900;">打开 Frist-API</a>
+                            <a href="${escapeAttribute(dashboardUrl)}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;border-radius:999px;padding:13px 20px;font-size:14px;font-weight:900;">打开 CC中转</a>
                           </td>
                           <td class="email-muted" style="padding-left:14px;color:#64748b;font-size:13px;line-height:1.45;">查看余额、充值或调整预警设置</td>
                         </tr>
@@ -375,7 +375,7 @@ export function buildBalanceAlertEmail({
               </td>
             </tr>
           </table>
-          <div style="max-width:680px;margin-top:18px;color:#64748b;font-size:12px;line-height:1.65;text-align:left;">这是一封 Frist-API 余额预警通知。你可以在仪表盘关闭提醒、调整阈值或更换通知邮箱。</div>
+          <div style="max-width:680px;margin-top:18px;color:#64748b;font-size:12px;line-height:1.65;text-align:left;">这是一封 CC中转 余额预警通知。你可以在仪表盘关闭提醒、调整阈值或更换通知邮箱。</div>
         </td>
       </tr>
     </table>
@@ -385,7 +385,7 @@ export function buildBalanceAlertEmail({
     subject, '', `账户: ${accountEmail}`, `当前余额: ${currentBalanceText}`,
     `预警阈值: ${thresholdText}`, `触发模型: ${modelText}`, `上次余额: ${previousBalanceText}`,
     `本次扣费: ${quotaCostText}`, `触发时间: ${alertTimeText}`,
-    dashboardUrl ? `打开 Frist-API: ${dashboardUrl}` : '',
+    dashboardUrl ? `打开 CC中转: ${dashboardUrl}` : '',
   ].filter(Boolean).join('\n');
   return { to, subject, html, text };
 }
@@ -423,85 +423,148 @@ export async function scheduleEmailDelivery({
   }
 }
 
-export function buildVerificationEmail({ user, code, publicGatewayBaseUrl, at }) {
+function buildAccountCodeEmail({
+  user, code, publicGatewayBaseUrl, at, subject, eyebrow, title, intro, tone = 'blue', expiresMinutes = 10,
+}) {
   const dashboardUrl = publicGatewayBaseUrl
     ? String(publicGatewayBaseUrl).replace(/\/v1\/?$/i, '').replace(/\/+$/, '')
     : '';
-  const subject = 'Frist-API 注册验证码';
+  const accountEmail = String(user?.email || '').trim();
   const timeText = formatEmailTime(at);
+  const accent = tone === 'red'
+    ? { main: '#dc2626', soft: '#fef2f2', border: '#fecaca', badge: '#991b1b', badgeBg: '#fee2e2' }
+    : { main: '#2563eb', soft: '#eff6ff', border: '#bfdbfe', badge: '#1d4ed8', badgeBg: '#dbeafe' };
+  const preheader = `${accountEmail} 的验证码是 ${code}，${Number(expiresMinutes)} 分钟内有效。`;
+  const cta = dashboardUrl
+    ? `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:24px auto 0;">
+        <tr>
+          <td bgcolor="#111827" style="border-radius:999px;">
+            <a href="${escapeAttribute(dashboardUrl)}" style="display:inline-block;background:#111827;border-radius:999px;color:#ffffff;font-size:14px;font-weight:800;line-height:1;text-decoration:none;padding:15px 22px;">打开 CC中转</a>
+          </td>
+        </tr>
+      </table>`
+    : '';
   const html = `<!doctype html>
 <html lang="zh-CN">
-  <body style="margin:0;background:#f3f4f6;color:#111827;font-family:Arial,'PingFang SC','Microsoft YaHei',sans-serif;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:28px 12px;background:#f3f4f6;">
-      <tr><td align="center">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
-          <tr><td style="background:#111827;color:#ffffff;padding:22px 26px;">
-            <div style="font-size:12px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:#fbbf24;">Frist-API</div>
-            <div style="margin-top:8px;font-size:24px;font-weight:900;">完成邮箱验证</div>
-          </td></tr>
-          <tr><td style="padding:26px;color:#111827;">
-            <p style="margin:0 0 14px;font-size:15px;line-height:1.7;">${escapeHtml(user.email)}，你的注册验证码是：</p>
-            <div style="font-size:36px;letter-spacing:8px;font-weight:900;background:#fef3c7;border:1px solid #f59e0b;border-radius:12px;padding:16px;text-align:center;color:#111827;">${escapeHtml(code)}</div>
-            <p style="margin:18px 0 0;color:#6b7280;font-size:13px;line-height:1.7;">验证码用于激活账户，请不要转发给别人。发送时间：${escapeHtml(timeText)}</p>
-            ${dashboardUrl ? `<p style="margin:18px 0 0;"><a href="${escapeAttribute(dashboardUrl)}" style="color:#111827;font-weight:800;">打开 Frist-API</a></p>` : ''}
-          </td></tr>
-        </table>
-      </td></tr>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="supported-color-schemes" content="light dark" />
+    <title>${escapeHtml(subject)}</title>
+    <style>
+      @media (prefers-color-scheme: dark) {
+        .mail-shell { background:#020617 !important; }
+        .brand-card { background:#0f172a !important; border-color:#1e293b !important; }
+        .mail-text { color:#f8fafc !important; }
+        .mail-muted { color:#cbd5e1 !important; }
+        .security-note { background:#111827 !important; border-color:#334155 !important; }
+      }
+      @media screen and (max-width: 600px) {
+        .mail-shell { padding:20px 10px !important; }
+        .brand-card { border-radius:22px !important; }
+        .mail-pad { padding-left:22px !important; padding-right:22px !important; }
+        .code-box { font-size:38px !important; letter-spacing:7px !important; }
+      }
+    </style>
+  </head>
+  <body style="margin:0;background:#eef2ff;color:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,'PingFang SC','Microsoft YaHei',sans-serif;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${escapeHtml(preheader)}</div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" class="mail-shell" style="background:#eef2ff;padding:34px 14px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" class="brand-card" style="max-width:620px;background:#ffffff;border:1px solid #dbe3ef;border-radius:28px;overflow:hidden;box-shadow:0 24px 80px rgba(15,23,42,.16);">
+            <tr>
+              <td class="mail-pad" style="padding:30px 34px 20px;background:linear-gradient(135deg,#0f172a 0%,#1e293b 58%,${accent.main} 100%);">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                  <tr>
+                    <td>
+                      <div style="display:inline-block;width:42px;height:42px;border-radius:14px;background:#ffffff;color:#111827;font-size:16px;font-weight:900;line-height:42px;text-align:center;">CC</div>
+                      <div style="margin-top:16px;color:#bfdbfe;font-size:12px;font-weight:900;letter-spacing:1.8px;text-transform:uppercase;">${escapeHtml(eyebrow)}</div>
+                      <div style="margin-top:8px;color:#ffffff;font-size:28px;font-weight:900;line-height:1.2;">${escapeHtml(title)}</div>
+                    </td>
+                    <td align="right" valign="top">
+                      <span class="security-badge" style="display:inline-block;background:${accent.badgeBg};color:${accent.badge};border-radius:999px;padding:8px 12px;font-size:12px;font-weight:900;white-space:nowrap;">安全验证</span>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td class="mail-pad mail-text" style="padding:30px 34px 8px;color:#0f172a;">
+                <p style="margin:0;color:#475569;font-size:15px;line-height:1.75;">${escapeHtml(intro)}</p>
+                <p style="margin:12px 0 0;color:#64748b;font-size:13px;line-height:1.7;">账户：<strong class="mail-text" style="color:#0f172a;">${escapeHtml(accountEmail)}</strong></p>
+              </td>
+            </tr>
+            <tr>
+              <td class="mail-pad" style="padding:18px 34px 8px;">
+                <div class="code-box" style="background:${accent.soft};border:1px solid ${accent.border};border-radius:22px;color:#0f172a;font-size:44px;font-weight:950;letter-spacing:10px;line-height:1;text-align:center;padding:24px 16px;">${escapeHtml(code)}</div>
+                <div class="mail-muted" style="margin-top:12px;color:#64748b;font-size:13px;line-height:1.7;text-align:center;">${Number(expiresMinutes)} 分钟内有效 · 发送时间 ${escapeHtml(timeText)}</div>
+                ${cta}
+              </td>
+            </tr>
+            <tr>
+              <td class="mail-pad" style="padding:22px 34px 34px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" class="security-note" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:18px;">
+                  <tr>
+                    <td style="padding:17px 18px;">
+                      <div class="mail-text" style="color:#0f172a;font-size:14px;font-weight:900;">如果不是你本人操作</div>
+                      <div class="mail-muted" style="margin-top:7px;color:#64748b;font-size:13px;line-height:1.7;">请忽略这封邮件，不要把验证码发给任何人。CC中转工作人员也不会向你索要验证码。</div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+          <div class="mail-muted" style="max-width:620px;margin-top:18px;color:#64748b;font-size:12px;line-height:1.7;text-align:center;">CC中转 · 模型访问中转与兑换码工作台</div>
+        </td>
+      </tr>
     </table>
   </body>
 </html>`;
   const text = [
     subject,
     '',
-    `账户: ${user.email}`,
+    `账户: ${accountEmail}`,
     `验证码: ${code}`,
+    `有效期: ${Number(expiresMinutes)} 分钟`,
     `发送时间: ${timeText}`,
-    dashboardUrl ? `打开 Frist-API: ${dashboardUrl}` : '',
+    '如果不是你本人操作，请忽略这封邮件。',
+    dashboardUrl ? `打开 CC中转: ${dashboardUrl}` : '',
   ]
     .filter(Boolean)
     .join('\n');
   return { subject, html, text };
 }
 
+export function buildVerificationEmail({ user, code, publicGatewayBaseUrl, at }) {
+  return buildAccountCodeEmail({
+    user,
+    code,
+    publicGatewayBaseUrl,
+    at,
+    subject: 'CC中转 注册验证码',
+    eyebrow: 'CC Relay Verification',
+    title: '完成邮箱验证',
+    intro: '欢迎使用 CC中转。请输入下面的验证码完成注册，验证后即可兑换卡密并创建自己的 API Key。',
+    tone: 'blue',
+    expiresMinutes: 10,
+  });
+}
+
 export function buildPasswordResetEmail({ user, code, publicGatewayBaseUrl, expiresMinutes, at }) {
-  const dashboardUrl = publicGatewayBaseUrl
-    ? String(publicGatewayBaseUrl).replace(/\/v1\/?$/i, '').replace(/\/+$/, '')
-    : '';
-  const subject = 'Frist-API 密码重置验证码';
-  const timeText = formatEmailTime(at);
-  const html = `<!doctype html>
-<html lang="zh-CN">
-  <body style="margin:0;background:#f3f4f6;color:#111827;font-family:Arial,'PingFang SC','Microsoft YaHei',sans-serif;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:28px 12px;background:#f3f4f6;">
-      <tr><td align="center">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
-          <tr><td style="background:#7f1d1d;color:#ffffff;padding:22px 26px;">
-            <div style="font-size:12px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:#fecaca;">Frist-API Security</div>
-            <div style="margin-top:8px;font-size:24px;font-weight:900;">重置登录密码</div>
-          </td></tr>
-          <tr><td style="padding:26px;color:#111827;">
-            <p style="margin:0 0 14px;font-size:15px;line-height:1.7;">${escapeHtml(user.email)}，你的密码重置验证码是：</p>
-            <div style="font-size:36px;letter-spacing:8px;font-weight:900;background:#fee2e2;border:1px solid #ef4444;border-radius:12px;padding:16px;text-align:center;color:#111827;">${escapeHtml(code)}</div>
-            <p style="margin:18px 0 0;color:#6b7280;font-size:13px;line-height:1.7;">${Number(expiresMinutes)} 分钟内有效。如果不是你本人操作，可以忽略这封邮件。发送时间：${escapeHtml(timeText)}</p>
-            ${dashboardUrl ? `<p style="margin:18px 0 0;"><a href="${escapeAttribute(dashboardUrl)}" style="color:#111827;font-weight:800;">打开 Frist-API</a></p>` : ''}
-          </td></tr>
-        </table>
-      </td></tr>
-    </table>
-  </body>
-</html>`;
-  const text = [
-    subject,
-    '',
-    `账户: ${user.email}`,
-    `重置验证码: ${code}`,
-    `有效期: ${Number(expiresMinutes)} 分钟`,
-    `发送时间: ${timeText}`,
-    dashboardUrl ? `打开 Frist-API: ${dashboardUrl}` : '',
-  ]
-    .filter(Boolean)
-    .join('\n');
-  return { subject, html, text };
+  return buildAccountCodeEmail({
+    user,
+    code,
+    publicGatewayBaseUrl,
+    at,
+    subject: 'CC中转 密码重置验证码',
+    eyebrow: 'CC Relay Security',
+    title: '重置登录密码',
+    intro: '你正在重置 CC中转 登录密码。请输入下面的验证码确认身份，再设置新密码。',
+    tone: 'red',
+    expiresMinutes,
+  });
 }
 
 export function defaultBalanceAlert(email = '') {

@@ -16,7 +16,7 @@ import { createFristApiBrowserClient, normalizeFristDashboard } from './serverCl
 
 const emptyDashboard = {
   accountSummary: {
-    userInitials: 'FA',
+    userInitials: 'CC',
     plan: '未登录',
     renewalDate: '-',
     balance: '$0.00',
@@ -56,6 +56,17 @@ const emptyDashboard = {
     email: '',
     lastAlertAt: '',
   },
+  security: {
+    turnstile: {
+      enabled: false,
+      siteKey: '',
+      actions: {
+        register: 'register',
+        login: 'login',
+        redeem: 'redeem',
+      },
+    },
+  },
 };
 
 const dashboardData = structuredClone(emptyDashboard);
@@ -65,20 +76,31 @@ const revealedApiKeys = new Map();
 const serverClient = createFristApiBrowserClient({
   baseUrl: window.FRIST_API_SERVER_BASE_URL || window.location.origin,
 });
+const TURNSTILE_SCRIPT_URL = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+const TURNSTILE_ACTIONS = {
+  register: 'register',
+  login: 'login',
+  redeem: 'redeem',
+};
+const turnstileState = {
+  scriptPromise: null,
+  widgets: new Map(),
+  tokens: new Map(),
+};
 
 const catalogTemplate = [
-  { model: 'gpt-5.5', family: 'OpenAI', tagline: '推理和代码主力', context: '1M 上下文', price: '官方 输入 $5.00 / 缓存 $0.50 / 输出 $30.00 每 1M', available: false },
-  { model: 'gpt-5.4', family: 'OpenAI', tagline: '日常问答和代码补全', context: '1M 上下文', price: '官方 输入 $2.50 / 缓存 $0.25 / 输出 $15.00 每 1M', available: false },
-  { model: 'gpt-5.4-mini', family: 'OpenAI', tagline: '轻量代码和快速问答', context: '400K 上下文', price: '官方 输入 $0.75 / 缓存 $0.075 / 输出 $4.50 每 1M', available: false },
-  { model: 'gpt-image-2', family: 'OpenAI', tagline: '图片生成', context: '图像输入/输出', price: '官方 文字入 $5 / 文字缓存 $1.25 / 图入 $8 / 图缓存 $2 / 图出 $30 每 1M', available: false },
-  { model: 'gpt-image-1.5', family: 'OpenAI', tagline: '图片生成', context: '图像输入/输出', price: '官方 文字入 $5 / 文字缓存 $1.25 / 文字出 $10 / 图入 $8 / 图缓存 $2 / 图出 $32 每 1M', available: false },
-  { model: 'gpt-5.3-codex', family: 'OpenAI', tagline: 'Codex 专用代码模型', context: '400K 上下文', price: '官方 输入 $1.75 / 缓存 $0.175 / 输出 $14.00 每 1M', available: false },
-  { model: 'gpt-5-codex', family: 'OpenAI', tagline: 'Codex 代码模型', context: '400K 上下文', price: '官方 输入 $1.25 / 缓存 $0.125 / 输出 $10.00 每 1M', available: false },
-  { model: 'gpt-4o', family: 'OpenAI', tagline: '通用多模态', context: '128K 上下文', price: '官方 输入 $2.50 / 缓存 $1.25 / 输出 $10.00 每 1M', available: false },
-  { model: 'claude-opus-4-6-thinking-c', family: 'Claude', tagline: '复杂开发和长链路推理', context: '长上下文', price: '官方 输入 $5.00 / 缓存写 $6.25 / 缓存读 $0.50 / 输出 $25.00 每 1M', available: false },
-  { model: 'gemini-2.5-flash', family: 'Gemini', tagline: '多模态和轻量任务', context: '1M 上下文', price: '官方 ≤200K 输入 $0.30 / 缓存 $0.03 / 输出 $2.50 每 1M', available: false },
-  { model: 'deepseek-v4-flash', family: 'DeepSeek', tagline: 'Codex 桌面版官方兼容网关', context: 'OpenAI v1 兼容', price: '官方 缓存命中 $0.014 / 输入 $0.14 / 输出 $0.28 每 1M', available: false },
-  { model: 'deepseek-v4-pro', family: 'DeepSeek', tagline: '推理模型别名', context: 'OpenAI v1 兼容', price: '官方 缓存命中 $0.035 / 输入 $0.435 / 输出 $0.87 每 1M', available: false },
+  { model: 'gpt-5.5', family: 'OpenAI', tagline: '推理和代码主力', context: '1M 上下文', price: '参考标价 输入 $5.00 / 缓存 $0.50 / 输出 $30.00 每 1M', available: false },
+  { model: 'gpt-5.4', family: 'OpenAI', tagline: '日常问答和代码补全', context: '1M 上下文', price: '参考标价 输入 $2.50 / 缓存 $0.25 / 输出 $15.00 每 1M', available: false },
+  { model: 'gpt-5.4-mini', family: 'OpenAI', tagline: '轻量代码和快速问答', context: '400K 上下文', price: '参考标价 输入 $0.75 / 缓存 $0.075 / 输出 $4.50 每 1M', available: false },
+  { model: 'gpt-image-2', family: 'OpenAI', tagline: '图片生成', context: '图像输入/输出', price: '参考标价 文字入 $5 / 文字缓存 $1.25 / 图入 $8 / 图缓存 $2 / 图出 $30 每 1M', available: false },
+  { model: 'gpt-image-1.5', family: 'OpenAI', tagline: '图片生成', context: '图像输入/输出', price: '参考标价 文字入 $5 / 文字缓存 $1.25 / 文字出 $10 / 图入 $8 / 图缓存 $2 / 图出 $32 每 1M', available: false },
+  { model: 'gpt-5.3-codex', family: 'OpenAI', tagline: 'Codex 专用代码模型', context: '400K 上下文', price: '参考标价 输入 $1.75 / 缓存 $0.175 / 输出 $14.00 每 1M', available: false },
+  { model: 'gpt-5-codex', family: 'OpenAI', tagline: 'Codex 代码模型', context: '400K 上下文', price: '参考标价 输入 $1.25 / 缓存 $0.125 / 输出 $10.00 每 1M', available: false },
+  { model: 'gpt-4o', family: 'OpenAI', tagline: '通用多模态', context: '128K 上下文', price: '参考标价 输入 $2.50 / 缓存 $1.25 / 输出 $10.00 每 1M', available: false },
+  { model: 'claude-opus-4-6-thinking-c', family: 'Claude', tagline: '复杂开发和长链路推理', context: '长上下文', price: '参考标价 输入 $5.00 / 缓存写 $6.25 / 缓存读 $0.50 / 输出 $25.00 每 1M', available: false },
+  { model: 'gemini-2.5-flash', family: 'Gemini', tagline: '多模态和轻量任务', context: '1M 上下文', price: '参考标价 ≤200K 输入 $0.30 / 缓存 $0.03 / 输出 $2.50 每 1M', available: false },
+  { model: 'deepseek-v4-flash', family: 'DeepSeek', tagline: 'Codex 桌面版兼容网关', context: 'OpenAI v1 兼容', price: '参考标价 缓存命中 $0.014 / 输入 $0.14 / 输出 $0.28 每 1M', available: false },
+  { model: 'deepseek-v4-pro', family: 'DeepSeek', tagline: '推理模型别名', context: 'OpenAI v1 兼容', price: '参考标价 缓存命中 $0.035 / 输入 $0.435 / 输出 $0.87 每 1M', available: false },
 ];
 const officialModelTemplateByGroup = Object.freeze({
   OpenAI: Object.freeze(['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-image-2', 'gpt-image-1.5', 'gpt-5.3-codex', 'gpt-5-codex', 'gpt-4o']),
@@ -153,6 +175,26 @@ const viewMeta = {
     title: '配置',
     desc: '',
   },
+  about: {
+    kicker: 'About',
+    title: '服务说明',
+    desc: '',
+  },
+  terms: {
+    kicker: 'Terms',
+    title: '服务条款',
+    desc: '',
+  },
+  refund: {
+    kicker: 'After-sales',
+    title: '售后规则',
+    desc: '',
+  },
+  privacy: {
+    kicker: 'Privacy',
+    title: '隐私说明',
+    desc: '',
+  },
 };
 
 const state = {
@@ -161,7 +203,7 @@ const state = {
   target: 'Codex',
   authMode: 'login',
   keyEnabled: true,
-  baseUrl: 'https://api.frist.example.com/v1',
+  baseUrl: 'https://jiyu.245334.xyz/v1',
   model: 'gpt-5.5',
   playgroundModel: 'gpt-5.5',
   modelGroup: 'OpenAI',
@@ -238,6 +280,7 @@ function render() {
   renderSetupGuides();
   renderCcSwitchUsageGuide();
   renderHelpLinks();
+  renderTurnstileWidgets();
   routeFromHash();
 }
 
@@ -280,6 +323,7 @@ function emptyServerPayload() {
     recentLogs: [],
     rechargeOptions: [],
     balanceAlert: {},
+    security: {},
   };
 }
 
@@ -305,7 +349,28 @@ function renderAccountSummary() {
   renderProfileAvatar();
 }
 
+function syncAuthMirrorValues(sourceForm) {
+  const primaryEmail = document.querySelector('[data-register-email]');
+  const primaryPassword = document.querySelector('[data-register-password]');
+  const mirrorEmail = sourceForm?.querySelector('[data-register-email-mirror]');
+  const mirrorPassword = sourceForm?.querySelector('[data-register-password-mirror]');
+  if (mirrorEmail && primaryEmail) primaryEmail.value = mirrorEmail.value;
+  if (mirrorPassword && primaryPassword) primaryPassword.value = mirrorPassword.value;
+}
+
+function syncAuthMirrorDisplay() {
+  const primaryEmail = document.querySelector('[data-register-email]');
+  const primaryPassword = document.querySelector('[data-register-password]');
+  for (const mirrorEmail of document.querySelectorAll('[data-register-email-mirror]')) {
+    if (document.activeElement !== mirrorEmail) mirrorEmail.value = primaryEmail?.value || businessState.customer.email || '';
+  }
+  for (const mirrorPassword of document.querySelectorAll('[data-register-password-mirror]')) {
+    if (document.activeElement !== mirrorPassword) mirrorPassword.value = primaryPassword?.value || '';
+  }
+}
+
 function renderAuthPanel() {
+  document.body.dataset.authenticated = state.hasServerSession ? 'true' : 'false';
   const emailInput = document.querySelector('[data-register-email]');
   const isAdmin = Boolean(businessState.customer.isAdmin);
   const status = businessState.customer.email
@@ -314,9 +379,10 @@ function renderAuthPanel() {
       : '已登录'
     : '登录创建 Key';
 
-  if (emailInput && document.activeElement !== emailInput) {
+  if (emailInput && document.activeElement !== emailInput && businessState.customer.email) {
     emailInput.value = businessState.customer.email;
   }
+  syncAuthMirrorDisplay();
   for (const hiddenEmail of document.querySelectorAll('[data-auth-form-email]')) {
     hiddenEmail.value = emailInput?.value || businessState.customer.email || '';
   }
@@ -373,6 +439,134 @@ function renderAuthPanel() {
   for (const button of document.querySelectorAll('[data-auth-submit]')) {
     button.hidden = button.dataset.authSubmit !== state.authMode;
   }
+}
+
+function turnstileConfig() {
+  return dashboardData.security?.turnstile || emptyDashboard.security.turnstile;
+}
+
+function turnstileActionForScope(scope) {
+  const actions = turnstileConfig().actions || TURNSTILE_ACTIONS;
+  if (scope === 'auth') {
+    return state.authMode === 'register'
+      ? actions.register || TURNSTILE_ACTIONS.register
+      : actions.login || TURNSTILE_ACTIONS.login;
+  }
+  return actions.redeem || TURNSTILE_ACTIONS.redeem;
+}
+
+function ensureTurnstileScript() {
+  if (window.turnstile?.render) {
+    return Promise.resolve(window.turnstile);
+  }
+  if (turnstileState.scriptPromise) {
+    return turnstileState.scriptPromise;
+  }
+  turnstileState.scriptPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[data-turnstile-script]');
+    if (existing) {
+      existing.addEventListener('load', () => resolve(window.turnstile), { once: true });
+      existing.addEventListener('error', reject, { once: true });
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = TURNSTILE_SCRIPT_URL;
+    script.async = true;
+    script.defer = true;
+    script.dataset.turnstileScript = 'true';
+    script.addEventListener('load', () => resolve(window.turnstile), { once: true });
+    script.addEventListener('error', reject, { once: true });
+    document.head.appendChild(script);
+  });
+  return turnstileState.scriptPromise;
+}
+
+function renderTurnstileWidgets() {
+  const config = turnstileConfig();
+  const enabled = Boolean(config.enabled && config.siteKey);
+  const containers = [...document.querySelectorAll('[data-turnstile-scope]')];
+  for (const container of containers) {
+    container.hidden = !enabled;
+    if (!enabled) {
+      container.innerHTML = '';
+      turnstileState.widgets.delete(container);
+    }
+  }
+  if (!enabled || containers.length === 0) {
+    turnstileState.tokens.clear();
+    return;
+  }
+
+  ensureTurnstileScript()
+    .then((turnstile) => {
+      if (!turnstile?.render) return;
+      for (const container of containers) {
+        const scope = container.dataset.turnstileScope || 'auth';
+        const action = turnstileActionForScope(scope);
+        const current = turnstileState.widgets.get(container);
+        if (current && current.siteKey === config.siteKey && current.action === action) {
+          continue;
+        }
+        if (current?.id && turnstile.remove) {
+          turnstile.remove(current.id);
+        }
+        container.innerHTML = '';
+        turnstileState.tokens.delete(scope);
+        const widgetId = turnstile.render(container, {
+          sitekey: config.siteKey,
+          action,
+          callback: (token) => {
+            turnstileState.tokens.set(scope, token);
+          },
+          'expired-callback': () => {
+            turnstileState.tokens.delete(scope);
+          },
+          'error-callback': () => {
+            turnstileState.tokens.delete(scope);
+          },
+        });
+        turnstileState.widgets.set(container, { id: widgetId, siteKey: config.siteKey, action, scope });
+      }
+    })
+    .catch(() => {
+      for (const container of containers) {
+        container.hidden = true;
+      }
+    });
+}
+
+async function getTurnstileToken(scope, action) {
+  const config = turnstileConfig();
+  if (!config.enabled || !config.siteKey) {
+    return '';
+  }
+  const expectedAction = typeof action === 'object' ? action.action : action;
+  if (expectedAction && expectedAction !== turnstileActionForScope(scope)) {
+    resetTurnstileToken(scope);
+  }
+  renderTurnstileWidgets();
+  const token = turnstileState.tokens.get(scope);
+  if (!token) {
+    const error = new Error('请先完成人机验证');
+    error.localValidation = true;
+    throw error;
+  }
+  return token;
+}
+
+function resetTurnstileToken(scope) {
+  turnstileState.tokens.delete(scope);
+  const turnstile = window.turnstile;
+  for (const [container, widget] of turnstileState.widgets) {
+    if (widget.scope !== scope) continue;
+    if (turnstile?.reset && widget.id) {
+      turnstile.reset(widget.id);
+    } else {
+      container.innerHTML = '';
+      turnstileState.widgets.delete(container);
+    }
+  }
+  renderTurnstileWidgets();
 }
 
 function renderDashboard() {
@@ -1174,7 +1368,7 @@ function modelCatalogRows() {
       family: item.provider || inferUiFamily(item.model),
       tagline: '当前可用',
       context: '按模型能力',
-      price: '官方价格待同步',
+      price: '参考标价待同步',
       endpointType: endpointTypeForModel(item.model),
       available: Boolean(item.ok),
     }));
@@ -1205,7 +1399,7 @@ function fallbackModelRow(model) {
     family: inferUiFamily(model),
     tagline: isImageModel(model) ? '图片生成' : '文本 / 代码',
     context: '模型能力',
-    price: '官方价格待同步',
+    price: '参考标价待同步',
     endpointType: endpointTypeForModel(model),
     available: false,
   };
@@ -1556,7 +1750,7 @@ function renderCrossImportGuide() {
     guide.innerHTML = [
       '<li data-claude-guide-step><strong>Developer</strong> → Third-Party Inference。</li>',
       '<li data-claude-guide-step><strong class="danger-text">Base URL 不带 /v1</strong>，认证方式选 bearer。</li>',
-      '<li data-claude-guide-step>导入后新会话选择 Frist-API Gateway，再在 CC Switch 卡片测试用量查询。</li>',
+      '<li data-claude-guide-step>导入后新会话选择 CC中转 Gateway，再在 CC Switch 卡片测试用量查询。</li>',
     ].join('');
     setActiveWalkthrough('openai-to-claude');
     return;
@@ -1575,9 +1769,9 @@ function renderCrossImportGuide() {
   }
 
   if (state.target === 'Codex') {
-    title.textContent = state.modelGroup === 'DeepSeek' ? 'Codex DeepSeek 官方网关' : 'Codex 最强开发配置';
+    title.textContent = state.modelGroup === 'DeepSeek' ? 'Codex DeepSeek 兼容网关' : 'Codex 最强开发配置';
     copy.textContent = state.modelGroup === 'DeepSeek'
-      ? 'DeepSeek 官方入口'
+      ? 'DeepSeek 兼容入口'
       : 'Responses + MCP';
     guide.innerHTML = [
       '<li data-claude-guide-step>目标客户端选 <strong>Codex</strong>。</li>',
@@ -1608,7 +1802,7 @@ function renderCcSwitchUsageGuide() {
   const paragraph = usageGuide.querySelector('p');
   if (paragraph) {
     paragraph.textContent = hasServerKey
-      ? '一键导入会写入 CC Switch 用量查询脚本，卡片启用后可刷新 Frist-API 余额、已用额度和调用统计。'
+      ? '一键导入会写入 CC Switch 用量查询脚本，卡片启用后可刷新 CC中转 余额、已用额度和调用统计。'
       : '本地预览会展示用量查询步骤；登录并创建 Key 后，一键导入会自动带上可测试的用量查询脚本。';
   }
 }
@@ -1874,6 +2068,7 @@ function bindStaticActions() {
     authForm.addEventListener('submit', (event) => {
       event.preventDefault();
       const formKind = authForm.dataset.authFormKind || 'primary';
+      syncAuthMirrorValues(authForm);
       if (formKind === 'password') {
         handleChangePassword(authForm.querySelector('[data-change-password]'));
         return;
@@ -1932,7 +2127,9 @@ function bindStaticActions() {
         const answerInput = document.querySelector('[data-captcha-answer]');
         if (answerInput) answerInput.value = '';
       }
+      resetTurnstileToken('auth');
       renderAuthPanel();
+      renderTurnstileWidgets();
       return;
     }
 
@@ -2364,8 +2561,12 @@ async function prepareCaptchaChallenge(options = {}) {
   return state.captcha;
 }
 
-async function buildAuthPayload({ email, password, requireCaptcha = false }) {
+async function buildAuthPayload({ email, password, requireCaptcha = false, action = 'login' }) {
   const payload = { email, password };
+  const turnstileToken = await getTurnstileToken('auth', action);
+  if (turnstileToken) {
+    payload.turnstileToken = turnstileToken;
+  }
   if (!requireCaptcha) {
     return payload;
   }
@@ -2629,7 +2830,7 @@ async function handlePlaygroundConnectivityTest() {
     if (isImageModel(state.playgroundModel)) {
       const result = await serverClient.generateImage({
         apiKey: key.secret,
-        body: buildImageRequestBody(state.playgroundModel, prompt || 'Frist-API 测试'),
+        body: buildImageRequestBody(state.playgroundModel, prompt || 'CC中转 测试'),
       });
       state.generatedImage = firstImageSource(result);
       resultText = state.generatedImage ? '图片已返回' : '成功，无图片';
@@ -2758,7 +2959,7 @@ async function handleCreateKey(createKey) {
   setButtonBusy(createKey, true, '');
   try {
     const created = await serverClient.createKey({
-      name: `Frist Key ${dashboardData.apiKeys.length + 1}`,
+      name: `CC Key ${dashboardData.apiKeys.length + 1}`,
       modelGroup: state.modelGroup,
     });
     if (created.key?.id && created.key?.secret) {
@@ -2775,6 +2976,7 @@ async function handleCreateKey(createKey) {
 }
 
 async function handleRegisterAccount(register) {
+  syncAuthMirrorValues(register?.closest('[data-auth-form]'));
   const email = document.querySelector('[data-register-email]').value;
   const password = document.querySelector('[data-register-password]').value;
 
@@ -2782,8 +2984,9 @@ async function handleRegisterAccount(register) {
   signalScoped('[data-auth-feedback]', 'info');
   setButtonBusy(register, true, '');
   try {
-    const payload = await buildAuthPayload({ email, password, requireCaptcha: true });
+    const payload = await buildAuthPayload({ email, password, requireCaptcha: true, action: 'register' });
     await serverClient.register(payload);
+    resetTurnstileToken('auth');
     state.serverAvailable = true;
     state.hasServerSession = true;
     setText('[data-verification-hint]', '可创建 Key');
@@ -2794,6 +2997,7 @@ async function handleRegisterAccount(register) {
     const message = readableErrorMessage(serverError, '注册失败');
     signalAction(message, 'error');
     setScopedFeedback('[data-auth-feedback]', message, 'error');
+    resetTurnstileToken('auth');
     await refreshCaptchaAfterAuthError(serverError);
   } finally {
     setButtonBusy(register, false);
@@ -2801,6 +3005,7 @@ async function handleRegisterAccount(register) {
 }
 
 async function handleLoginAccount(login) {
+  syncAuthMirrorValues(login?.closest('[data-auth-form]'));
   const email = document.querySelector('[data-register-email]').value;
   const password = document.querySelector('[data-register-password]').value;
 
@@ -2808,8 +3013,9 @@ async function handleLoginAccount(login) {
   signalScoped('[data-auth-feedback]', 'info');
   setButtonBusy(login, true, '');
   try {
-    const payload = await buildAuthPayload({ email, password });
+    const payload = await buildAuthPayload({ email, password, action: 'login' });
     await serverClient.login(payload);
+    resetTurnstileToken('auth');
     state.serverAvailable = true;
     state.hasServerSession = true;
     setText('[data-verification-hint]', '已登录');
@@ -2821,6 +3027,7 @@ async function handleLoginAccount(login) {
     const message = readableErrorMessage(serverError, '登录失败');
     signalAction(message, 'error');
     setScopedFeedback('[data-auth-feedback]', message, 'error');
+    resetTurnstileToken('auth');
     await refreshCaptchaAfterAuthError(serverError);
   } finally {
     setButtonBusy(login, false);
@@ -3014,7 +3221,9 @@ async function handleRedeemCode(button) {
   if (!input) return;
   setButtonBusy(button, true, '');
   try {
-    const result = await serverClient.redeem({ code: input.value || '' });
+    const turnstileToken = await getTurnstileToken('redeem', { action: 'redeem' });
+    const result = await serverClient.redeem({ code: input.value || '', ...(turnstileToken ? { turnstileToken } : {}) });
+    resetTurnstileToken('redeem');
     input.value = '';
     const message = result.redemption?.credit
       ? `到账 ${result.redemption.credit}`
@@ -3024,6 +3233,7 @@ async function handleRedeemCode(button) {
   } catch (serverError) {
     signalAction('error');
     signalScoped('[data-payment-feedback]', 'error');
+    resetTurnstileToken('redeem');
   } finally {
     setButtonBusy(button, false);
   }

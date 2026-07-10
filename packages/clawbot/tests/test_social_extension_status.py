@@ -1,6 +1,15 @@
 from pathlib import Path
 
+import pytest
+
 from src.api.rpc import ClawBotRPC
+
+
+@pytest.fixture(autouse=True)
+def isolate_social_review_state(tmp_path, monkeypatch):
+    """隔离社媒草稿状态，避免本机真实草稿污染单元测试。"""
+    monkeypatch.setattr("src.social_scheduler._STATE_FILE", tmp_path / "social_autopilot_state.json")
+    monkeypatch.setattr("src.execution.social.x_auto_ops._STATE_FILE", tmp_path / "x_auto_ops_state.json")
 
 
 def test_social_extension_status_defaults_to_safe_offline(tmp_path, monkeypatch):
@@ -47,6 +56,84 @@ def test_social_extension_status_update_persists_safe_fields(tmp_path, monkeypat
     assert loaded["external_actions_locked"] is True
     assert "unsafe" not in loaded
     assert state_file.exists()
+
+
+def test_social_extension_status_update_persists_cc_delivery_capabilities(tmp_path, monkeypatch):
+    state_file = tmp_path / "social_extension_status.json"
+    monkeypatch.setattr("src.api.rpc._SOCIAL_EXTENSION_STATUS_FILE", state_file)
+
+    result = ClawBotRPC._rpc_social_extension_status_update(
+        {
+            "platform": "xianyu",
+            "url": "https://www.goofish.com/",
+            "extension": {
+                "manifest_version": "0.2.1",
+                "cc_delivery_helper_version": "2026-07-06-global-watch",
+                "capabilities": {
+                    "xianyu_delivery_scan": True,
+                    "xianyu_delivery_send": True,
+                    "current_chat_watch": True,
+                    "all_open_xianyu_tabs_watch": True,
+                    "target_tab_preflight": True,
+                    "single_pending_global_gate": True,
+                    "unsafe_extra": "drop-me",
+                },
+                "token": "must-not-persist",
+            },
+        }
+    )
+
+    assert result["success"] is True
+    loaded = ClawBotRPC._rpc_social_extension_status()
+    extension = loaded["extension"]
+    assert extension["manifest_version"] == "0.2.1"
+    assert extension["cc_delivery_helper_version"] == "2026-07-06-global-watch"
+    assert extension["capabilities"]["all_open_xianyu_tabs_watch"] is True
+    assert extension["capabilities"]["target_tab_preflight"] is True
+    assert extension["capabilities"]["background_heartbeat"] is False
+    assert "unsafe_extra" not in extension["capabilities"]
+    assert "token" not in extension
+
+
+def test_social_extension_status_preserves_known_cc_capabilities_when_old_payload_arrives(tmp_path, monkeypatch):
+    """旧插件动作不带 extension 字段时，不应冲掉已知的新版发货能力。"""
+    state_file = tmp_path / "social_extension_status.json"
+    monkeypatch.setattr("src.api.rpc._SOCIAL_EXTENSION_STATUS_FILE", state_file)
+
+    ClawBotRPC._rpc_social_extension_status_update(
+        {
+            "platform": "xianyu",
+            "extension": {
+                "manifest_version": "0.2.1",
+                "cc_delivery_helper_version": "2026-07-07-background-heartbeat",
+                "capabilities": {
+                    "all_open_xianyu_tabs_watch": True,
+                    "target_tab_preflight": True,
+                    "single_pending_global_gate": True,
+                    "background_heartbeat": True,
+                    "xianyu_confirm_shipment": True,
+                    "xianyu_relist_item": True,
+                    "relist_queue_watch": True,
+                    "paid_page_dispatch": True,
+                },
+            },
+        }
+    )
+    ClawBotRPC._rpc_social_extension_status_update(
+        {
+            "platform": "x",
+            "running": True,
+            "settings": {"personaTags": ["热点"]},
+        }
+    )
+
+    loaded = ClawBotRPC._rpc_social_extension_status()
+    extension = loaded["extension"]
+    assert extension["cc_delivery_helper_version"] == "2026-07-07-background-heartbeat"
+    assert extension["capabilities"]["all_open_xianyu_tabs_watch"] is True
+    assert extension["capabilities"]["background_heartbeat"] is True
+    assert extension["capabilities"]["relist_queue_watch"] is True
+    assert extension["capabilities"]["paid_page_dispatch"] is True
 
 
 def test_social_extension_status_update_clamps_invalid_platform(tmp_path, monkeypatch):

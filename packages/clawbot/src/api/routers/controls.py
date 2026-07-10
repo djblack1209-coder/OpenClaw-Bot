@@ -158,6 +158,7 @@ def get_scheduler_status():
     #     如果调度器正在运行，补充 last_run 等运行时字段。
     static_tasks = [
         {"id": "daily_brief", "name": "每日运营简报", "cron": "08:00 ET", "enabled": True},
+        {"id": "intel_brief", "name": "Intel Brief 沙盒闸门", "cron": "08:30 ET", "enabled": False},
         {"id": "morning_news", "name": "科技早报推送", "cron": "08:00 ET", "enabled": True},
         {"id": "monitors", "name": "监控巡检", "cron": "每15分钟", "enabled": True},
         {"id": "social_operator", "name": "社媒自动驾驶", "cron": "可配间隔", "enabled": True},
@@ -184,6 +185,7 @@ def get_scheduler_status():
     }
     _date_field_map: dict[str, str] = {
         "daily_brief": "_last_brief_date",
+        "intel_brief": "_last_intel_brief_date",
         "morning_news": "_last_news_date",
     }
 

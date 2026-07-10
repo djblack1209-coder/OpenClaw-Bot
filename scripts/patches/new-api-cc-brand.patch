@@ -1,0 +1,84 @@
+diff --git a/common/constants.go b/common/constants.go
+index c4d2511ef..129b989e1 100644
+--- a/common/constants.go
++++ b/common/constants.go
+@@ -13,7 +13,7 @@ import (
+
+ var StartTime = time.Now().Unix() // unit: second
+ var Version = "v0.0.0"            // this hard coding will be replaced automatically when building, no need to manually change
+-var SystemName = "New API"
++var SystemName = "CC中转"
+ var Footer = ""
+ var Logo = ""
+ var TopUpLink = ""
+diff --git a/web/classic/index.html b/web/classic/index.html
+index d6bd2433e..b404a9fd3 100644
+--- a/web/classic/index.html
++++ b/web/classic/index.html
+@@ -16,7 +16,7 @@
+       content="A unified AI model hub for aggregation & distribution. It supports cross-converting various LLMs into OpenAI-compatible, Claude-compatible, or Gemini-compatible formats. A centralized gateway for personal and enterprise model management."
+     />
+     <meta name="generator" content="new-api" />
+-    <title>New API</title>
++    <title>CC中转</title>
+     <!--umami-->
+     <!--Google Analytics-->
+   </head>
+diff --git a/web/classic/src/components/layout/headerbar/HeaderLogo.jsx b/web/classic/src/components/layout/headerbar/HeaderLogo.jsx
+index 73be0516b..a37e1171d 100644
+--- a/web/classic/src/components/layout/headerbar/HeaderLogo.jsx
++++ b/web/classic/src/components/layout/headerbar/HeaderLogo.jsx
+@@ -29,7 +29,6 @@ const HeaderLogo = ({
+   logoLoaded,
+   isLoading,
+   systemName,
+-  isSelfUseMode,
+   isDemoSiteMode,
+   t,
+ }) => {
+@@ -62,14 +61,14 @@ const HeaderLogo = ({
+               {systemName}
+             </Typography.Title>
+           </SkeletonWrapper>
+-          {(isSelfUseMode || isDemoSiteMode) && !isLoading && (
++          {isDemoSiteMode && !isLoading && (
+             <Tag
+-              color={isSelfUseMode ? 'purple' : 'blue'}
++              color='blue'
+               className='text-xs px-1.5 py-0.5 rounded whitespace-nowrap shadow-sm'
+               size='small'
+               shape='circle'
+             >
+-              {isSelfUseMode ? t('自用模式') : t('演示站点')}
++              {t('演示站点')}
+             </Tag>
+           )}
+         </div>
+diff --git a/web/default/index.html b/web/default/index.html
+index ed041d27f..66ccb3826 100644
+--- a/web/default/index.html
++++ b/web/default/index.html
+@@ -6,8 +6,8 @@
+     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+     <!-- Primary Meta Tags -->
+-    <title>New API</title>
+-    <meta name="title" content="New API" />
++    <title>CC中转</title>
++    <meta name="title" content="CC中转" />
+     <meta
+       name="description"
+       content="Unified AI API gateway and admin dashboard."
+diff --git a/web/default/src/assets/logo.tsx b/web/default/src/assets/logo.tsx
+index a4e638480..abd609498 100644
+--- a/web/default/src/assets/logo.tsx
++++ b/web/default/src/assets/logo.tsx
+@@ -17,7 +17,7 @@ export function Logo({ className, ...props }: SVGProps<SVGSVGElement>) {
+       className={cn('size-6', className)}
+       {...props}
+     >
+-      <title>New API</title>
++      <title>CC中转</title>
+       <path d='M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3' />
+     </svg>
+   )

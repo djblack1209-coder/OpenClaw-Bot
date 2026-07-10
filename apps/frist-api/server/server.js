@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { createCipheriv, createDecipheriv, createHash, createHmac, pbkdf2Sync, randomBytes, timingSafeEqual } from 'node:crypto';
 import { lookup as lookupDns } from 'node:dns/promises';
 import { createServer } from 'node:http';
@@ -40,6 +41,7 @@ import {
   normalizeModelGroup,
   normalizeOfficialModelList,
   normalizeOfficialModelName,
+  normalizeUpstreamChannelSnapshot,
   parsePriceText,
   parseSupplierOrderText,
   poolPriority,
@@ -65,46 +67,63 @@ const PLUS_ACCOUNT_REGIONS = new Set(['Türkiye', 'United States', 'China', 'Oth
 const RT_ACCOUNT_STATUSES = new Set(['ready_for_refresh', 'active', 'needs_refresh', 'blocked', 'retired']);
 const RT_ACCOUNT_PLATFORMS = new Set(['codex', 'openai', 'claude', 'gemini', 'other']);
 const DEFAULT_RECHARGE_PLANS = Object.freeze([
-  Object.freeze({ id: 'codex-30-day', label: 'Codex API 30刀额度/日卡', quotaUsd: 30, priceCny: 5.88, durationDays: 1, plan: 'day' }),
-  Object.freeze({ id: 'codex-30-unlimited', label: 'Codex API 30刀额度/不限时', quotaUsd: 30, priceCny: 8.88, durationDays: 0, plan: 'balance' }),
-  Object.freeze({ id: 'codex-100-unlimited', label: 'Codex API 100刀额度/不限时', quotaUsd: 100, priceCny: 28.88, durationDays: 0, plan: 'balance' }),
-  Object.freeze({ id: 'codex-500-unlimited', label: 'Codex API 500刀额度/不限时', quotaUsd: 500, priceCny: 68.88, durationDays: 0, plan: 'balance' }),
-  Object.freeze({ id: 'codex-1000-unlimited', label: 'Codex API 1000刀额度/不限时', quotaUsd: 1000, priceCny: 118.88, durationDays: 0, plan: 'balance' }),
+  Object.freeze({ id: 'xianyu-test-1', label: 'CC中转 1元测试档', quotaUsd: 1, priceCny: 1, durationDays: 0, plan: 'balance' }),
+  Object.freeze({ id: 'xianyu-5', label: 'CC中转 5元档', quotaUsd: 5, priceCny: 5, durationDays: 0, plan: 'balance' }),
+  Object.freeze({ id: 'xianyu-15', label: 'CC中转 15元档', quotaUsd: 15, priceCny: 15, durationDays: 0, plan: 'balance' }),
+  Object.freeze({ id: 'xianyu-50', label: 'CC中转 50元档', quotaUsd: 50, priceCny: 50, durationDays: 0, plan: 'balance' }),
+  Object.freeze({ id: 'xianyu-100', label: 'CC中转 100元档', quotaUsd: 100, priceCny: 100, durationDays: 0, plan: 'balance' }),
+  Object.freeze({ id: 'xianyu-500', label: 'CC中转 500元档', quotaUsd: 500, priceCny: 500, durationDays: 0, plan: 'balance' }),
 ]);
-const DEFAULT_CARD_BATCH_PREFIX = 'FRIST';
+const DEFAULT_CARD_AUTOREPLENISH_SAFETY_STOCK = Object.freeze({
+  'xianyu-test-1': 3,
+  'xianyu-5': 10,
+  'xianyu-15': 10,
+  'xianyu-50': 5,
+  'xianyu-100': 3,
+  'xianyu-500': 1,
+});
+const DEFAULT_CARD_AUTOREPLENISH_DAILY_CAP = 50;
+const LEGACY_RECHARGE_PLAN_ALIASES = new Map([
+  ['codex-30-day', Object.freeze({ id: 'codex-30-day', label: 'Codex API 30刀额度/日卡', quotaUsd: 30, priceCny: 5.88, durationDays: 1, plan: 'day' })],
+  ['codex-30-unlimited', Object.freeze({ id: 'codex-30-unlimited', label: 'Codex API 30刀额度/不限时', quotaUsd: 30, priceCny: 8.88, durationDays: 0, plan: 'balance' })],
+  ['codex-100-unlimited', Object.freeze({ id: 'codex-100-unlimited', label: 'Codex API 100刀额度/不限时', quotaUsd: 100, priceCny: 28.88, durationDays: 0, plan: 'balance' })],
+  ['codex-500-unlimited', Object.freeze({ id: 'codex-500-unlimited', label: 'Codex API 500刀额度/不限时', quotaUsd: 500, priceCny: 68.88, durationDays: 0, plan: 'balance' })],
+  ['codex-1000-unlimited', Object.freeze({ id: 'codex-1000-unlimited', label: 'Codex API 1000刀额度/不限时', quotaUsd: 1000, priceCny: 118.88, durationDays: 0, plan: 'balance' })],
+]);
+const DEFAULT_CARD_BATCH_PREFIX = 'CC';
 const DEFAULT_MODEL_PRICES = Object.freeze([
-  Object.freeze({ model: 'gpt-5.5', currency: 'CNY', inputCostCnyPerMillion: 36, outputCostCnyPerMillion: 216, inputSaleCnyPerMillion: 36, outputSaleCnyPerMillion: 216, source: 'official', displayPrice: '官方 输入 $5.00 / 缓存 $0.50 / 输出 $30.00 每 1M' }),
-  Object.freeze({ model: 'gpt-5.5-c', currency: 'CNY', inputCostCnyPerMillion: 36, outputCostCnyPerMillion: 216, inputSaleCnyPerMillion: 36, outputSaleCnyPerMillion: 216, source: 'official', displayPrice: '官方 输入 $5.00 / 缓存 $0.50 / 输出 $30.00 每 1M' }),
-  Object.freeze({ model: 'gpt-5.4', currency: 'CNY', inputCostCnyPerMillion: 18, outputCostCnyPerMillion: 108, inputSaleCnyPerMillion: 18, outputSaleCnyPerMillion: 108, source: 'official', displayPrice: '官方 输入 $2.50 / 缓存 $0.25 / 输出 $15.00 每 1M' }),
-  Object.freeze({ model: 'gpt-5.4-mini', currency: 'CNY', inputCostCnyPerMillion: 5.4, outputCostCnyPerMillion: 32.4, inputSaleCnyPerMillion: 5.4, outputSaleCnyPerMillion: 32.4, source: 'official', displayPrice: '官方 输入 $0.75 / 缓存 $0.075 / 输出 $4.50 每 1M' }),
-  Object.freeze({ model: 'gpt-5.3-codex', currency: 'CNY', inputCostCnyPerMillion: 12.6, outputCostCnyPerMillion: 100.8, inputSaleCnyPerMillion: 12.6, outputSaleCnyPerMillion: 100.8, source: 'official', displayPrice: '官方 输入 $1.75 / 缓存 $0.175 / 输出 $14.00 每 1M' }),
-  Object.freeze({ model: 'gpt-5-codex', currency: 'CNY', inputCostCnyPerMillion: 9, outputCostCnyPerMillion: 72, inputSaleCnyPerMillion: 9, outputSaleCnyPerMillion: 72, source: 'official', displayPrice: '官方 输入 $1.25 / 缓存 $0.125 / 输出 $10.00 每 1M' }),
-  Object.freeze({ model: 'gpt-4o', currency: 'CNY', inputCostCnyPerMillion: 18, outputCostCnyPerMillion: 72, inputSaleCnyPerMillion: 18, outputSaleCnyPerMillion: 72, source: 'official', displayPrice: '官方 输入 $2.50 / 缓存 $1.25 / 输出 $10.00 每 1M' }),
-  Object.freeze({ model: 'gpt-image-2', currency: 'CNY', inputCostCnyPerMillion: 36, outputCostCnyPerMillion: 216, inputSaleCnyPerMillion: 36, outputSaleCnyPerMillion: 216, source: 'official', displayPrice: '官方 文字入 $5 / 文字缓存 $1.25 / 图入 $8 / 图缓存 $2 / 图出 $30 每 1M' }),
-  Object.freeze({ model: 'gpt-image-1.5', currency: 'CNY', inputCostCnyPerMillion: 36, outputCostCnyPerMillion: 230.4, inputSaleCnyPerMillion: 36, outputSaleCnyPerMillion: 230.4, source: 'official', displayPrice: '官方 文字入 $5 / 文字缓存 $1.25 / 文字出 $10 / 图入 $8 / 图缓存 $2 / 图出 $32 每 1M' }),
-  Object.freeze({ model: 'claude-opus-4-6-thinking-c', currency: 'CNY', inputCostCnyPerMillion: 36, outputCostCnyPerMillion: 180, inputSaleCnyPerMillion: 36, outputSaleCnyPerMillion: 180, source: 'official', displayPrice: '官方 输入 $5.00 / 缓存写 $6.25 / 缓存读 $0.50 / 输出 $25.00 每 1M' }),
-  Object.freeze({ model: 'claude-opus-4-6-c', currency: 'CNY', inputCostCnyPerMillion: 36, outputCostCnyPerMillion: 180, inputSaleCnyPerMillion: 36, outputSaleCnyPerMillion: 180, source: 'official', displayPrice: '官方 输入 $5.00 / 缓存写 $6.25 / 缓存读 $0.50 / 输出 $25.00 每 1M' }),
-  Object.freeze({ model: 'claude-sonnet-4-5-c', currency: 'CNY', inputCostCnyPerMillion: 21.6, outputCostCnyPerMillion: 108, inputSaleCnyPerMillion: 21.6, outputSaleCnyPerMillion: 108, source: 'official', displayPrice: '官方 输入 $3.00 / 缓存写 $3.75 / 缓存读 $0.30 / 输出 $15.00 每 1M' }),
-  Object.freeze({ model: 'gemini-2.5-flash', currency: 'CNY', inputCostCnyPerMillion: 2.16, outputCostCnyPerMillion: 18, inputSaleCnyPerMillion: 2.16, outputSaleCnyPerMillion: 18, source: 'official', displayPrice: '官方 ≤200K 输入 $0.30 / 缓存 $0.03 / 输出 $2.50 每 1M' }),
-  Object.freeze({ model: 'deepseek-v4-flash', currency: 'CNY', inputCostCnyPerMillion: 1.01, outputCostCnyPerMillion: 2.02, inputSaleCnyPerMillion: 1.01, outputSaleCnyPerMillion: 2.02, source: 'official', displayPrice: '官方 缓存命中 $0.014 / 输入 $0.14 / 输出 $0.28 每 1M' }),
-  Object.freeze({ model: 'deepseek-v4-pro', currency: 'CNY', inputCostCnyPerMillion: 3.13, outputCostCnyPerMillion: 6.26, inputSaleCnyPerMillion: 3.13, outputSaleCnyPerMillion: 6.26, source: 'official', displayPrice: '官方 缓存命中 $0.035 / 输入 $0.435 / 输出 $0.87 每 1M' }),
+  Object.freeze({ model: 'gpt-5.5', currency: 'CNY', inputCostCnyPerMillion: 36, outputCostCnyPerMillion: 216, inputSaleCnyPerMillion: 36, outputSaleCnyPerMillion: 216, source: 'official', displayPrice: '参考标价 输入 $5.00 / 缓存 $0.50 / 输出 $30.00 每 1M' }),
+  Object.freeze({ model: 'gpt-5.5-c', currency: 'CNY', inputCostCnyPerMillion: 36, outputCostCnyPerMillion: 216, inputSaleCnyPerMillion: 36, outputSaleCnyPerMillion: 216, source: 'official', displayPrice: '参考标价 输入 $5.00 / 缓存 $0.50 / 输出 $30.00 每 1M' }),
+  Object.freeze({ model: 'gpt-5.4', currency: 'CNY', inputCostCnyPerMillion: 18, outputCostCnyPerMillion: 108, inputSaleCnyPerMillion: 18, outputSaleCnyPerMillion: 108, source: 'official', displayPrice: '参考标价 输入 $2.50 / 缓存 $0.25 / 输出 $15.00 每 1M' }),
+  Object.freeze({ model: 'gpt-5.4-mini', currency: 'CNY', inputCostCnyPerMillion: 5.4, outputCostCnyPerMillion: 32.4, inputSaleCnyPerMillion: 5.4, outputSaleCnyPerMillion: 32.4, source: 'official', displayPrice: '参考标价 输入 $0.75 / 缓存 $0.075 / 输出 $4.50 每 1M' }),
+  Object.freeze({ model: 'gpt-5.3-codex', currency: 'CNY', inputCostCnyPerMillion: 12.6, outputCostCnyPerMillion: 100.8, inputSaleCnyPerMillion: 12.6, outputSaleCnyPerMillion: 100.8, source: 'official', displayPrice: '参考标价 输入 $1.75 / 缓存 $0.175 / 输出 $14.00 每 1M' }),
+  Object.freeze({ model: 'gpt-5-codex', currency: 'CNY', inputCostCnyPerMillion: 9, outputCostCnyPerMillion: 72, inputSaleCnyPerMillion: 9, outputSaleCnyPerMillion: 72, source: 'official', displayPrice: '参考标价 输入 $1.25 / 缓存 $0.125 / 输出 $10.00 每 1M' }),
+  Object.freeze({ model: 'gpt-4o', currency: 'CNY', inputCostCnyPerMillion: 18, outputCostCnyPerMillion: 72, inputSaleCnyPerMillion: 18, outputSaleCnyPerMillion: 72, source: 'official', displayPrice: '参考标价 输入 $2.50 / 缓存 $1.25 / 输出 $10.00 每 1M' }),
+  Object.freeze({ model: 'gpt-image-2', currency: 'CNY', inputCostCnyPerMillion: 36, outputCostCnyPerMillion: 216, inputSaleCnyPerMillion: 36, outputSaleCnyPerMillion: 216, source: 'official', displayPrice: '参考标价 文字入 $5 / 文字缓存 $1.25 / 图入 $8 / 图缓存 $2 / 图出 $30 每 1M' }),
+  Object.freeze({ model: 'gpt-image-1.5', currency: 'CNY', inputCostCnyPerMillion: 36, outputCostCnyPerMillion: 230.4, inputSaleCnyPerMillion: 36, outputSaleCnyPerMillion: 230.4, source: 'official', displayPrice: '参考标价 文字入 $5 / 文字缓存 $1.25 / 文字出 $10 / 图入 $8 / 图缓存 $2 / 图出 $32 每 1M' }),
+  Object.freeze({ model: 'claude-opus-4-6-thinking-c', currency: 'CNY', inputCostCnyPerMillion: 36, outputCostCnyPerMillion: 180, inputSaleCnyPerMillion: 36, outputSaleCnyPerMillion: 180, source: 'official', displayPrice: '参考标价 输入 $5.00 / 缓存写 $6.25 / 缓存读 $0.50 / 输出 $25.00 每 1M' }),
+  Object.freeze({ model: 'claude-opus-4-6-c', currency: 'CNY', inputCostCnyPerMillion: 36, outputCostCnyPerMillion: 180, inputSaleCnyPerMillion: 36, outputSaleCnyPerMillion: 180, source: 'official', displayPrice: '参考标价 输入 $5.00 / 缓存写 $6.25 / 缓存读 $0.50 / 输出 $25.00 每 1M' }),
+  Object.freeze({ model: 'claude-sonnet-4-5-c', currency: 'CNY', inputCostCnyPerMillion: 21.6, outputCostCnyPerMillion: 108, inputSaleCnyPerMillion: 21.6, outputSaleCnyPerMillion: 108, source: 'official', displayPrice: '参考标价 输入 $3.00 / 缓存写 $3.75 / 缓存读 $0.30 / 输出 $15.00 每 1M' }),
+  Object.freeze({ model: 'gemini-2.5-flash', currency: 'CNY', inputCostCnyPerMillion: 2.16, outputCostCnyPerMillion: 18, inputSaleCnyPerMillion: 2.16, outputSaleCnyPerMillion: 18, source: 'official', displayPrice: '参考标价 ≤200K 输入 $0.30 / 缓存 $0.03 / 输出 $2.50 每 1M' }),
+  Object.freeze({ model: 'deepseek-v4-flash', currency: 'CNY', inputCostCnyPerMillion: 1.01, outputCostCnyPerMillion: 2.02, inputSaleCnyPerMillion: 1.01, outputSaleCnyPerMillion: 2.02, source: 'official', displayPrice: '参考标价 缓存命中 $0.014 / 输入 $0.14 / 输出 $0.28 每 1M' }),
+  Object.freeze({ model: 'deepseek-v4-pro', currency: 'CNY', inputCostCnyPerMillion: 3.13, outputCostCnyPerMillion: 6.26, inputSaleCnyPerMillion: 3.13, outputSaleCnyPerMillion: 6.26, source: 'official', displayPrice: '参考标价 缓存命中 $0.035 / 输入 $0.435 / 输出 $0.87 每 1M' }),
 ]);
 const DEFAULT_MODEL_PRICE_BY_MODEL = new Map(
   DEFAULT_MODEL_PRICES.map((price) => [normalizeOfficialModelName(price.model), price]),
 );
 const DEFAULT_MODEL_CATALOG = [
-  { model: 'gpt-5.5', family: 'OpenAI', tagline: '推理和代码主力', context: '1M 上下文', price: '官方 输入 $5.00 / 缓存 $0.50 / 输出 $30.00 每 1M', available: true },
-  { model: 'gpt-5.4', family: 'OpenAI', tagline: '日常问答和代码补全', context: '1M 上下文', price: '官方 输入 $2.50 / 缓存 $0.25 / 输出 $15.00 每 1M', available: true },
-  { model: 'gpt-5.4-mini', family: 'OpenAI', tagline: '轻量代码和快速问答', context: '400K 上下文', price: '官方 输入 $0.75 / 缓存 $0.075 / 输出 $4.50 每 1M', available: true },
-  { model: 'gpt-image-2', family: 'OpenAI', tagline: '图片生成', context: '图像输入/输出', price: '官方 文字入 $5 / 文字缓存 $1.25 / 图入 $8 / 图缓存 $2 / 图出 $30 每 1M', available: true },
-  { model: 'gpt-image-1.5', family: 'OpenAI', tagline: '图片生成', context: '图像输入/输出', price: '官方 文字入 $5 / 文字缓存 $1.25 / 文字出 $10 / 图入 $8 / 图缓存 $2 / 图出 $32 每 1M', available: true },
-  { model: 'gpt-5.3-codex', family: 'OpenAI', tagline: 'Codex 专用代码模型', context: '400K 上下文', price: '官方 输入 $1.75 / 缓存 $0.175 / 输出 $14.00 每 1M', available: true },
-  { model: 'gpt-5-codex', family: 'OpenAI', tagline: 'Codex 代码模型', context: '400K 上下文', price: '官方 输入 $1.25 / 缓存 $0.125 / 输出 $10.00 每 1M', available: true },
-  { model: 'gpt-4o', family: 'OpenAI', tagline: '通用多模态', context: '128K 上下文', price: '官方 输入 $2.50 / 缓存 $1.25 / 输出 $10.00 每 1M', available: true },
-  { model: 'deepseek-v4-flash', family: 'DeepSeek', tagline: 'Codex 桌面版官方兼容网关', context: 'OpenAI v1 兼容', price: '官方 缓存命中 $0.014 / 输入 $0.14 / 输出 $0.28 每 1M', available: true },
-  { model: 'deepseek-v4-pro', family: 'DeepSeek', tagline: '推理模型别名', context: 'OpenAI v1 兼容', price: '官方 缓存命中 $0.035 / 输入 $0.435 / 输出 $0.87 每 1M', available: true },
-  { model: 'gemini-2.5-flash', family: 'Gemini', tagline: '多模态和轻量任务', context: '1M 上下文', price: '官方 ≤200K 输入 $0.30 / 缓存 $0.03 / 输出 $2.50 每 1M', available: true },
-  { model: DEFAULT_MODEL, family: 'Claude', tagline: '复杂开发和长链路推理', context: '长上下文', price: '官方 输入 $5.00 / 缓存写 $6.25 / 缓存读 $0.50 / 输出 $25.00 每 1M', available: true },
+  { model: 'gpt-5.5', family: 'OpenAI', tagline: '推理和代码主力', context: '1M 上下文', price: '参考标价 输入 $5.00 / 缓存 $0.50 / 输出 $30.00 每 1M', available: true },
+  { model: 'gpt-5.4', family: 'OpenAI', tagline: '日常问答和代码补全', context: '1M 上下文', price: '参考标价 输入 $2.50 / 缓存 $0.25 / 输出 $15.00 每 1M', available: true },
+  { model: 'gpt-5.4-mini', family: 'OpenAI', tagline: '轻量代码和快速问答', context: '400K 上下文', price: '参考标价 输入 $0.75 / 缓存 $0.075 / 输出 $4.50 每 1M', available: true },
+  { model: 'gpt-image-2', family: 'OpenAI', tagline: '图片生成', context: '图像输入/输出', price: '参考标价 文字入 $5 / 文字缓存 $1.25 / 图入 $8 / 图缓存 $2 / 图出 $30 每 1M', available: true },
+  { model: 'gpt-image-1.5', family: 'OpenAI', tagline: '图片生成', context: '图像输入/输出', price: '参考标价 文字入 $5 / 文字缓存 $1.25 / 文字出 $10 / 图入 $8 / 图缓存 $2 / 图出 $32 每 1M', available: true },
+  { model: 'gpt-5.3-codex', family: 'OpenAI', tagline: 'Codex 专用代码模型', context: '400K 上下文', price: '参考标价 输入 $1.75 / 缓存 $0.175 / 输出 $14.00 每 1M', available: true },
+  { model: 'gpt-5-codex', family: 'OpenAI', tagline: 'Codex 代码模型', context: '400K 上下文', price: '参考标价 输入 $1.25 / 缓存 $0.125 / 输出 $10.00 每 1M', available: true },
+  { model: 'gpt-4o', family: 'OpenAI', tagline: '通用多模态', context: '128K 上下文', price: '参考标价 输入 $2.50 / 缓存 $1.25 / 输出 $10.00 每 1M', available: true },
+  { model: 'deepseek-v4-flash', family: 'DeepSeek', tagline: 'Codex 桌面版兼容网关', context: 'OpenAI v1 兼容', price: '参考标价 缓存命中 $0.014 / 输入 $0.14 / 输出 $0.28 每 1M', available: true },
+  { model: 'deepseek-v4-pro', family: 'DeepSeek', tagline: '推理模型别名', context: 'OpenAI v1 兼容', price: '参考标价 缓存命中 $0.035 / 输入 $0.435 / 输出 $0.87 每 1M', available: true },
+  { model: 'gemini-2.5-flash', family: 'Gemini', tagline: '多模态和轻量任务', context: '1M 上下文', price: '参考标价 ≤200K 输入 $0.30 / 缓存 $0.03 / 输出 $2.50 每 1M', available: true },
+  { model: DEFAULT_MODEL, family: 'Claude', tagline: '复杂开发和长链路推理', context: '长上下文', price: '参考标价 输入 $5.00 / 缓存写 $6.25 / 缓存读 $0.50 / 输出 $25.00 每 1M', available: true },
 ];
 const SESSION_COOKIE = 'frist_session';
 const CSRF_COOKIE = 'frist_csrf';
@@ -113,9 +132,12 @@ const TOTP_STEP_SECONDS = 30;
 const TOTP_DIGITS = 6;
 const DEFAULT_SLA_RETENTION_DAYS = 30;
 const LEGACY_CARD_CODES = new Map([
-  ['FRIST-DAY-001', { label: 'Codex API 30刀额度/日卡', plan: 'day', days: 1, packageCents: 800, quotaUsd: 30, priceCny: 5.88 }],
-  ['FRIST-MONTH-001', { label: 'Codex API 月卡 Pro', plan: 'month', days: 30, packageCents: 8000, quotaUsd: 300, priceCny: 58.88 }],
-  ['FRIST-BOOST-100', { label: 'Codex API 100刀加油包', plan: 'balance', days: 0, boosterCents: 10000, quotaUsd: 100, priceCny: 28.88 }],
+  ['CC-DAY-001', { label: 'Codex API 30刀额度/日卡', plan: 'day', days: 1, packageCents: 800, quotaUsd: 30, priceCny: 5.88 }],
+  ['CC-MONTH-001', { label: 'Codex API 月卡 Pro', plan: 'month', days: 30, packageCents: 8000, quotaUsd: 300, priceCny: 58.88 }],
+  ['CC-BOOST-100', { label: 'Codex API 100刀加油包', plan: 'balance', days: 0, boosterCents: 10000, quotaUsd: 100, priceCny: 28.88 }],
+  ['JIYU-DAY-001', { label: 'Codex API 30刀额度/日卡', plan: 'day', days: 1, packageCents: 800, quotaUsd: 30, priceCny: 5.88 }],
+  ['JIYU-MONTH-001', { label: 'Codex API 月卡 Pro', plan: 'month', days: 30, packageCents: 8000, quotaUsd: 300, priceCny: 58.88 }],
+  ['JIYU-BOOST-100', { label: 'Codex API 100刀加油包', plan: 'balance', days: 0, boosterCents: 10000, quotaUsd: 100, priceCny: 28.88 }],
 ]);
 const CONTENT_TYPES = new Map([
   ['.css', 'text/css; charset=utf-8'], ['.html', 'text/html; charset=utf-8'],
@@ -126,12 +148,18 @@ const ROOT_GATEWAY_PATHS = new Set([
   '/chat/completions', '/openai/chat/completions', '/responses', '/openai/responses',
   '/images/generations', '/openai/images/generations', '/messages',
 ]);
-const DEFAULT_CANONICAL_HOST = 'frist-api.101-43-41-96.nip.io';
-const DEFAULT_REDIRECT_HOSTS = Object.freeze(['101-43-41-96.nip.io']);
+const DEFAULT_CANONICAL_HOST = 'jiyu.245334.xyz';
+const DEFAULT_REDIRECT_HOSTS = Object.freeze([
+  '245334.xyz',
+  'frist-api.245334.xyz',
+  '101-43-41-96.nip.io',
+  'frist-api.101-43-41-96.nip.io',
+]);
 const DEFAULT_CHANNEL_MONITOR_INTERVAL_MS = 60_000;
 const DEFAULT_CHANNEL_MONITOR_BATCH_SIZE = 4;
 const DEFAULT_CHANNEL_MONITOR_COOLDOWN_MS = 55_000;
 const DEFAULT_GATEWAY_SLOW_LATENCY_MS = 5_000;
+const DEFAULT_NEWAPI_REDEMPTION_STATUS_SYNC_INTERVAL_MS = 60_000;
 
 export function createFristApiServer(options = {}) {
   const serverOptions = normalizeServerOptions(options);
@@ -139,6 +167,9 @@ export function createFristApiServer(options = {}) {
   const store = createRuntimeStore(serverOptions.dataFile, serverOptions.dataEncryptionKey);
   const securityState = createSecurityState();
   let stopChannelMonitor = null;
+  let stopRedemptionStatusSync = null;
+  let stopUpstreamBalanceSync = null;
+  let stopCardAutoreplenish = null;
 
   const server = createServer(async (request, response) => {
     try {
@@ -156,7 +187,11 @@ export function createFristApiServer(options = {}) {
         return;
       }
       if (url.pathname.startsWith('/api/admin/')) {
-        await handleAdminApi({ request, response, url, store, serverOptions });
+        await handleAdminApi({ request, response, url, store, serverOptions, newApiBridge });
+        return;
+      }
+      if (url.pathname.startsWith('/api/ops/')) {
+        await handleOpsApi({ request, response, url, store, serverOptions });
         return;
       }
       if (url.pathname.startsWith('/v1/') || ROOT_GATEWAY_PATHS.has(url.pathname)) {
@@ -191,6 +226,48 @@ export function createFristApiServer(options = {}) {
       }
     });
   }
+  if (serverOptions.newApiEnabled && serverOptions.newApiRedemptionStatusSyncEnabled) {
+    server.on('listening', () => {
+      if (stopRedemptionStatusSync) {
+        stopRedemptionStatusSync();
+      }
+      stopRedemptionStatusSync = startNewApiRedemptionStatusSync({ store, serverOptions });
+    });
+    server.on('close', () => {
+      if (stopRedemptionStatusSync) {
+        stopRedemptionStatusSync();
+        stopRedemptionStatusSync = null;
+      }
+    });
+  }
+  if (serverOptions.upstreamBalanceSyncEnabled && newApiBridge) {
+    server.on('listening', () => {
+      if (stopUpstreamBalanceSync) {
+        stopUpstreamBalanceSync();
+      }
+      stopUpstreamBalanceSync = startUpstreamBalanceSync({ store, serverOptions, newApiBridge });
+    });
+    server.on('close', () => {
+      if (stopUpstreamBalanceSync) {
+        stopUpstreamBalanceSync();
+        stopUpstreamBalanceSync = null;
+      }
+    });
+  }
+  if (serverOptions.cardAutoreplenishEnabled) {
+    server.on('listening', () => {
+      if (stopCardAutoreplenish) {
+        stopCardAutoreplenish();
+      }
+      stopCardAutoreplenish = startCardAutoreplenish({ store, serverOptions });
+    });
+    server.on('close', () => {
+      if (stopCardAutoreplenish) {
+        stopCardAutoreplenish();
+        stopCardAutoreplenish = null;
+      }
+    });
+  }
   return server;
 }
 
@@ -204,6 +281,7 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
   if (request.method === 'POST' && url.pathname === '/api/frist/register') {
     const body = await readJsonBody(request);
     assertAuthRateLimit(securityState, request, serverOptions);
+    await verifyTurnstileToken({ request, body, serverOptions, action: 'register' });
     requireCaptchaIfEnabled(securityState, body, serverOptions);
     const result = await store.mutate((data) => registerCustomer(data, body, serverOptions));
     writeJson(response, 200, result.body, {
@@ -215,6 +293,7 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
   if (request.method === 'POST' && url.pathname === '/api/frist/login') {
     const body = await readJsonBody(request);
     assertAuthRateLimit(securityState, request, serverOptions);
+    await verifyTurnstileToken({ request, body, serverOptions, action: 'login' });
     const result = await store.mutate((data) => loginCustomer(data, body, serverOptions));
     writeJson(response, 200, result.body, {
       'set-cookie': sessionCookies(result.sessionToken, result.csrfToken, request, serverOptions),
@@ -319,18 +398,25 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
 
   if (request.method === 'POST' && url.pathname === '/api/frist/redeem') {
     const body = await readJsonBody(request);
+    assertRedeemRateLimit(securityState, request, serverOptions);
+    await verifyTurnstileToken({ request, body, serverOptions, action: 'redeem' });
     if (newApiBridge) {
       const data = await store.load();
       requireCsrfIfEnabled(data, request, serverOptions);
       const { user } = requireSession(data, request);
+      assertRedeemUserRateLimit(securityState, serverOptions, user.id);
       const result = await newApiBridge.redeemCode(body);
-      result.user = sanitizeUser(user);
+      const localResult = await store.mutate((currentData) =>
+        recordLocalRedemptionAfterNewApiTopup(currentData, request, body, serverOptions),
+      );
+      result.user = localResult.user || sanitizeUser(user);
+      result.localRedemption = localResult.redemption;
       writeJson(response, 200, result);
       return;
     }
     const result = await store.mutate((data) => {
       requireCsrfIfEnabled(data, request, serverOptions);
-      return redeemCustomerCode(data, request, body, serverOptions);
+      return redeemCustomerCode(data, request, body, serverOptions, securityState);
     });
     writeJson(response, 200, result);
     return;
@@ -446,7 +532,7 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
       writeJson(response, 200, await newApiBridge.buildDashboard(data, user, serverOptions));
       return;
     }
-    writeJson(response, 200, user ? buildDashboard(data, user, serverOptions) : buildGuestDashboard(data));
+    writeJson(response, 200, user ? buildDashboard(data, user, serverOptions) : buildGuestDashboard(data, serverOptions));
     return;
   }
 
@@ -463,7 +549,7 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
   writeJson(response, 404, { error: '接口不存在' });
 }
 
-async function handleAdminApi({ request, response, url, store, serverOptions }) {
+async function handleAdminApi({ request, response, url, store, serverOptions, newApiBridge }) {
   if (request.method === 'POST' && url.pathname === '/api/admin/2fa/verify') {
     const body = await readJsonBody(request);
     const result = await store.mutate((data) => verifyAdminSecondFactor(data, request, body, serverOptions));
@@ -529,6 +615,12 @@ async function handleAdminApi({ request, response, url, store, serverOptions }) 
       plusAccountSummary: buildPlusAccountSummary(data.plusAccounts, serverOptions),
       rtAccounts: data.rtAccounts.map(sanitizeRtAccount),
       rtAccountSummary: buildRtAccountSummary(data.rtAccounts),
+      upstreamChannels: data.upstreamChannelSnapshots.map(sanitizeUpstreamChannel),
+      upstreamBalance: sanitizeUpstreamBalance(data.upstreamBalance, serverOptions),
+      channelSyncSummary: buildChannelSyncSummary(data, serverOptions),
+      xianyuFulfillments: data.xianyuFulfillments.map(sanitizeXianyuFulfillment),
+      xianyuSummary: buildXianyuFulfillmentSummary(data),
+      xianyuAutomation: buildXianyuAutomationConfig(serverOptions),
       inventorySummary: buildInventorySummary(data),
       productionReadiness: await buildProductionReadiness(data, serverOptions),
       events: sanitizeAdminEvents(data.events),
@@ -590,12 +682,103 @@ async function handleAdminApi({ request, response, url, store, serverOptions }) 
     return;
   }
 
+  if (request.method === 'POST' && url.pathname === '/api/admin/redemption-cards/sync-newapi-status') {
+    const result = await store.mutate((data) => {
+      requireAdmin(data, request, serverOptions);
+      requireCsrfIfEnabled(data, request, serverOptions, { allowAdminToken: true });
+      return syncNewApiRedemptionStatuses(data, serverOptions);
+    });
+    writeJson(response, 200, result);
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/admin/redemption-cards/autoreplenish') {
+    const body = await readJsonBody(request);
+    const result = await store.mutate((data) => {
+      requireAdmin(data, request, serverOptions);
+      requireCsrfIfEnabled(data, request, serverOptions, { allowAdminToken: true });
+      return autoReplenishRedemptionCards(data, body, serverOptions);
+    });
+    writeJson(response, 200, result);
+    return;
+  }
+
   if (request.method === 'POST' && url.pathname === '/api/admin/redemption-cards') {
     const body = await readJsonBody(request);
     const result = await store.mutate((data) => {
       requireAdmin(data, request, serverOptions);
       requireCsrfIfEnabled(data, request, serverOptions, { allowAdminToken: true });
-      return createRedemptionCards(data, body);
+      return createRedemptionCards(data, body, serverOptions);
+    });
+    writeJson(response, 200, result);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/admin/upstream-balance') {
+    const data = await store.load();
+    requireAdmin(data, request, serverOptions);
+    writeJson(response, 200, {
+      ok: true,
+      balance: sanitizeUpstreamBalance(data.upstreamBalance, serverOptions),
+      events: sanitizeAdminEvents(data.events),
+    });
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/admin/upstream-balance/sync') {
+    if (!newApiBridge?.syncUpstreamBalance) {
+      throw publicError(409, 'New-API 未启用，无法同步上游余额');
+    }
+    const result = await store.mutate(async (data) => {
+      requireAdmin(data, request, serverOptions);
+      requireCsrfIfEnabled(data, request, serverOptions, { allowAdminToken: true });
+      return syncUpstreamBalance(data, serverOptions, newApiBridge);
+    });
+    writeJson(response, 200, result);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/admin/upstream-sync') {
+    const data = await store.load();
+    requireAdmin(data, request, serverOptions);
+    writeJson(response, 200, {
+      rateMarkup: serverOptions.rateMarkup,
+      channels: data.upstreamChannelSnapshots.map(sanitizeUpstreamChannel),
+      summary: buildChannelSyncSummary(data, serverOptions),
+      events: sanitizeAdminEvents(data.events),
+    });
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/admin/upstream-sync') {
+    const body = await readJsonBody(request);
+    const result = await store.mutate((data) => {
+      requireAdmin(data, request, serverOptions);
+      requireCsrfIfEnabled(data, request, serverOptions, { allowAdminToken: true });
+      return syncUpstreamChannels(data, body, serverOptions);
+    });
+    writeJson(response, 200, result);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/admin/xianyu/fulfillments') {
+    const data = await store.load();
+    requireAdmin(data, request, serverOptions);
+    writeJson(response, 200, {
+      fulfillments: data.xianyuFulfillments.map(sanitizeXianyuFulfillment),
+      summary: buildXianyuFulfillmentSummary(data),
+      availableCards: data.redemptionCards.filter((card) => card.status === 'unused').map(sanitizeRedemptionCard),
+      events: sanitizeAdminEvents(data.events),
+    });
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/admin/xianyu/fulfillments') {
+    const body = await readJsonBody(request);
+    const result = await store.mutate((data) => {
+      requireAdmin(data, request, serverOptions);
+      requireCsrfIfEnabled(data, request, serverOptions, { allowAdminToken: true });
+      return createXianyuFulfillment(data, body, serverOptions);
     });
     writeJson(response, 200, result);
     return;
@@ -658,15 +841,39 @@ async function recordAdminAuthFailure(store, request, url) {
       });
     });
   } catch (error) {
-    process.emitWarning(`Frist-API 管理认证失败审计写入失败: ${error.message}`, {
+    process.emitWarning(`CC中转 管理认证失败审计写入失败: ${error.message}`, {
       code: 'FRIST_API_ADMIN_AUDIT_WRITE_FAILED',
     });
   }
 }
 
+async function handleOpsApi({ request, response, url, store, serverOptions }) {
+  if (request.method === 'POST' && url.pathname === '/api/ops/xianyu/paid-order') {
+    const body = await readJsonBody(request);
+    const result = await store.mutate((data) => {
+      requireXianyuWebhook(request, serverOptions);
+      return fulfillPaidXianyuOrder(data, body, serverOptions);
+    });
+    writeJson(response, 200, result);
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/ops/xianyu/remap-order') {
+    const body = await readJsonBody(request);
+    const result = await store.mutate((data) => {
+      requireXianyuWebhook(request, serverOptions);
+      return remapXianyuFulfillmentOrder(data, body, serverOptions);
+    });
+    writeJson(response, 200, result);
+    return;
+  }
+
+  writeJson(response, 404, { error: '接口不存在' });
+}
+
 async function handleGatewayApi({ request, response, url, store, serverOptions, newApiBridge }) {
-  if (newApiBridge && serverOptions.newApiGatewayEnabled && request.method === 'POST') {
-    if (![
+  if (newApiBridge && serverOptions.newApiGatewayEnabled) {
+    const newApiPostPaths = [
       '/v1/chat/completions',
       '/v1/openai/chat/completions',
       '/chat/completions',
@@ -681,12 +888,18 @@ async function handleGatewayApi({ request, response, url, store, serverOptions, 
       '/openai/images/generations',
       '/v1/messages',
       '/messages',
-    ].includes(url.pathname)) {
-      writeJson(response, 404, { error: '接口不存在' });
-      return;
+    ];
+    const canProxyNewApiGateway =
+      (request.method === 'POST' && newApiPostPaths.includes(url.pathname)) ||
+      (request.method === 'GET' && url.pathname === '/v1/models');
+    if (canProxyNewApiGateway) {
+      const bodyText = request.method === 'POST' ? await readRequestText(request) : '';
+      if (await newApiBridge.proxyGateway({ request, response, url, bodyText })) {
+        return;
+      }
     }
-    const bodyText = await readRequestText(request);
-    if (await newApiBridge.proxyGateway({ request, response, url, bodyText })) {
+    if (request.method === 'POST') {
+      writeJson(response, 404, { error: '接口不存在' });
       return;
     }
   }
@@ -1565,7 +1778,7 @@ function buildRedemptionBillingStatus() {
   return {
     ready: true,
     mode: 'redemption_code',
-    detail: '当前收款主路径为闲鱼等第三方平台售卖兑换码，Frist-API 站内核销到账；自动支付商户仅作为未来备用。',
+    detail: '当前处于生产环境内测，暂未正式售卖；兑换码仅用于内测验证和人工发放，CC中转站内核销到账；自动支付商户仅作为未来备用。',
   };
 }
 
@@ -1617,7 +1830,7 @@ function findRechargePlan(data, body = {}) {
   const plans = normalizePricingConfig(data.pricing || {}).rechargePlans;
   const requestedId = String(body.planId || '').trim();
   if (requestedId) {
-    return plans.find((plan) => plan.id === requestedId) || null;
+    return plans.find((plan) => plan.id === requestedId) || LEGACY_RECHARGE_PLAN_ALIASES.get(requestedId) || null;
   }
   const requestedPlan = String(body.plan || '').trim().toLowerCase();
   const amountCny = Number(body.amountCny || 0);
@@ -1633,6 +1846,9 @@ function findRechargePlan(data, body = {}) {
 }
 
 function planCreditCents(plan) {
+  if (String(plan?.id || '').startsWith('xianyu-')) {
+    return planPriceCents(plan);
+  }
   return Math.round(Number(plan.quotaUsd || 0) * DEFAULT_USD_TO_CNY * 100);
 }
 
@@ -1654,7 +1870,7 @@ function buildRechargeOptions(data) {
   }));
 }
 
-function createRedemptionCards(data, body) {
+async function createRedemptionCards(data, body, serverOptions = {}) {
   const selectedPlan = findRechargePlan(data, body);
   const planType = selectedPlan ? normalizeRechargePlan(selectedPlan.plan) : normalizeRechargePlan(body.plan);
   const quantity = clampInteger(body.quantity, 1, 200);
@@ -1683,26 +1899,37 @@ function createRedemptionCards(data, body) {
 
   const batchId = createId('batch');
   const cards = [];
-  const existingCodes = new Set([
-    ...data.redemptionCards.map((card) => card.code),
-    ...data.redemptions.map((item) => item.code),
+  const existingPlainCodes = new Set([
+    ...data.redemptionCards.map((card) => normalizeCardCode(card.code)).filter(Boolean),
+    ...data.redemptions.map((item) => normalizeCardCode(item.code)).filter(Boolean),
     ...LEGACY_CARD_CODES.keys(),
+  ]);
+  const existingCodeHashes = new Set([
+    ...data.redemptionCards.map((card) => card.codeHash).filter(Boolean),
+    ...data.redemptions.map((item) => item.codeHash).filter(Boolean),
+    ...[...LEGACY_CARD_CODES.keys()].map(hashRedemptionCode),
   ]);
   for (let index = 0; index < quantity; index += 1) {
     let code = '';
+    let codeHash = '';
     for (let attempt = 0; attempt < 20; attempt += 1) {
       code = `${prefix}-${randomCardCodeSegment()}-${randomCardCodeSegment()}`;
-      if (!existingCodes.has(code)) break;
+      codeHash = hashRedemptionCode(code);
+      if (!existingPlainCodes.has(code) && !existingCodeHashes.has(codeHash)) break;
     }
-    if (!code || existingCodes.has(code)) {
+    if (!code || existingPlainCodes.has(code) || existingCodeHashes.has(codeHash)) {
       throw publicError(500, '卡密生成失败，请重试');
     }
-    existingCodes.add(code);
+    existingPlainCodes.add(code);
+    existingCodeHashes.add(codeHash);
     const card = {
       id: createId('card'),
       batchId,
-      code,
+      codeHash,
+      codeCipher: encryptCardCode(code, serverOptions),
+      codePreview: maskCardCode(code),
       label,
+      planId: selectedPlan?.id || '',
       plan: planType,
       durationDays,
       quotaUsd,
@@ -1718,7 +1945,7 @@ function createRedemptionCards(data, body) {
       redeemedEmail: '',
     };
     data.redemptionCards.unshift(card);
-    cards.push(card);
+    cards.push({ ...card, code });
   }
 
   data.events.push({
@@ -1729,26 +1956,599 @@ function createRedemptionCards(data, body) {
     creditCents,
     at: now,
   });
+  const newApiSync = syncNewApiRedemptionCards(cards, serverOptions);
+  if (newApiSync.synced > 0) {
+    data.events.push({
+      type: 'newapi_redemption_cards_synced',
+      batchId,
+      count: newApiSync.synced,
+      at: now,
+    });
+  }
   return {
     batchId,
     cards: cards.map(sanitizeRedemptionCard),
     exportText: buildRedemptionCardExport(cards),
     events: sanitizeAdminEvents(data.events),
+    newApiSync,
   };
 }
 
-function redeemCustomerCode(data, request, body, serverOptions) {
+function buildCardAutoreplenishPlanRows(data, serverOptions = {}) {
+  const pricing = normalizePricingConfig(data.pricing || {});
+  const safetyStock = serverOptions.cardAutoreplenishSafetyStock || DEFAULT_CARD_AUTOREPLENISH_SAFETY_STOCK;
+  return pricing.rechargePlans
+    .map((plan) => {
+      const currentUnused = data.redemptionCards.filter((card) => {
+        if (card.status !== 'unused') return false;
+        if (String(card.planId || '') === plan.id) return true;
+        return Math.abs(Number(card.quotaUsd || 0) - Number(plan.quotaUsd || 0)) < 0.001 &&
+          normalizeRechargePlan(card.plan) === normalizeRechargePlan(plan.plan);
+      }).length;
+      const safeCount = Math.max(0, Number(safetyStock[plan.id] ?? 0));
+      return {
+        planId: plan.id,
+        label: plan.label,
+        quotaUsd: Number(plan.quotaUsd || 0),
+        priceCny: Number(plan.priceCny || 0),
+        plan: normalizeRechargePlan(plan.plan),
+        safetyStock: safeCount,
+        currentUnused,
+        toCreate: Math.max(0, safeCount - currentUnused),
+        created: 0,
+      };
+    })
+    .filter((row) => row.safetyStock > 0);
+}
+
+async function autoReplenishRedemptionCards(data, body = {}, serverOptions = {}) {
+  const now = currentDate(serverOptions).toISOString();
+  const dryRun = body.dryRun === true;
+  const enabled = body.enabled === true || serverOptions.cardAutoreplenishEnabled || !dryRun;
+  const dailyCap = Math.max(0, Number(serverOptions.cardAutoreplenishDailyCap || 0));
+  const today = now.slice(0, 10);
+  const dailyCreated = data.events
+    .filter((event) => event.type === 'redemption_cards_autoreplenished' && String(event.at || '').startsWith(today))
+    .reduce((sum, event) => sum + Number(event.created || 0), 0);
+  let remainingDaily = Math.max(0, dailyCap - dailyCreated);
+  const plans = buildCardAutoreplenishPlanRows(data, serverOptions);
+  let totalCreated = 0;
+  const batches = [];
+
+  for (const row of plans) {
+    row.toCreate = Math.min(row.toCreate, remainingDaily);
+    if (!enabled || dryRun || row.toCreate <= 0) {
+      continue;
+    }
+    const created = await createRedemptionCards(data, {
+      planId: row.planId,
+      quantity: row.toCreate,
+      prefix: DEFAULT_CARD_BATCH_PREFIX,
+      note: `auto-replenish ${today}`,
+    }, serverOptions);
+    row.created = created.cards.length;
+    totalCreated += row.created;
+    remainingDaily -= row.created;
+    batches.push({
+      planId: row.planId,
+      batchId: created.batchId,
+      count: row.created,
+      newApiSync: created.newApiSync,
+    });
+  }
+
+  data.events.push({
+    type: 'redemption_cards_autoreplenished',
+    created: totalCreated,
+    dryRun,
+    dailyCap,
+    dailyCreatedBefore: dailyCreated,
+    at: now,
+  });
+  return {
+    enabled,
+    dryRun,
+    created: totalCreated,
+    dailyCap,
+    dailyCreated: dailyCreated + totalCreated,
+    remainingDailyCap: Math.max(0, dailyCap - dailyCreated - totalCreated),
+    plans,
+    batches,
+    summary: buildXianyuFulfillmentSummary(data),
+    events: sanitizeAdminEvents(data.events),
+  };
+}
+
+function syncNewApiRedemptionCards(cards, serverOptions = {}) {
+  if (!serverOptions.newApiEnabled) {
+    return { enabled: false, synced: 0 };
+  }
+  const sqliteDb = String(serverOptions.newApiSqliteDb || '').trim();
+  if (!sqliteDb) {
+    if (serverOptions.requireNewApiDatabase || serverOptions.enforceProductionReadiness) {
+      throw publicError(500, 'New-API 兑换码数据库路径未配置，无法同步生产卡密');
+    }
+    return { enabled: true, synced: 0, skipped: 'missing_sqlite_db' };
+  }
+  const rows = cards
+    .map((card) => ({
+      key: normalizeCardCode(card.code),
+      name: String(card.label || card.plan || 'CC中转内测兑换码').slice(0, 80),
+      quota: newApiQuotaFromCents(card.creditCents),
+      createdTime: unixTimeSeconds(card.createdAt),
+      expiredTime: card.durationDays > 0 ? unixTimeSeconds(addDays(new Date(card.createdAt || Date.now()), card.durationDays)) : 0,
+    }))
+    .filter((row) => row.key && row.quota > 0);
+  if (rows.length === 0) {
+    return { enabled: true, synced: 0, sqliteDbConfigured: true };
+  }
+  const statements = [
+    'PRAGMA foreign_keys=OFF;',
+    'BEGIN IMMEDIATE;',
+    ...rows.map((row) => `INSERT INTO redemptions (user_id, \`key\`, status, name, quota, created_time, redeemed_time, used_user_id, expired_time) VALUES (0, ${sqlQuote(row.key)}, 1, ${sqlQuote(row.name)}, ${row.quota}, ${row.createdTime}, 0, 0, ${row.expiredTime}) ON CONFLICT(\`key\`) DO UPDATE SET name=excluded.name, quota=excluded.quota, expired_time=excluded.expired_time;`),
+    'COMMIT;',
+  ];
+  const result = spawnSync('sqlite3', [sqliteDb], {
+    input: `${statements.join('\n')}\n`,
+    encoding: 'utf8',
+    maxBuffer: 1024 * 1024,
+  });
+  if (result.status !== 0) {
+    const detail = String(result.stderr || result.stdout || 'sqlite3 写入失败').split('\n')[0].slice(0, 160);
+    throw publicError(500, `New-API 兑换码同步失败: ${detail}`);
+  }
+  return { enabled: true, synced: rows.length, sqliteDbConfigured: true };
+}
+
+function syncNewApiRedemptionStatuses(data, serverOptions = {}) {
+  const snapshot = readNewApiRedemptionStatusSnapshot(serverOptions);
+  if (!snapshot.enabled || !snapshot.sqliteDbConfigured || !snapshot.readable) {
+    return snapshot;
+  }
+  const now = currentDate(serverOptions).toISOString();
+  let syncedCards = 0;
+  let syncedFulfillments = 0;
+  let backfilledRedemptions = 0;
+  for (const card of data.redemptionCards || []) {
+    const codeHash = String(card.codeHash || '').trim();
+    if (!codeHash) continue;
+    const redeemed = snapshot.byCodeHash.get(codeHash);
+    if (!redeemed) continue;
+    const redeemedAt = redeemed.redeemedAt || now;
+    const changedCard = card.status !== 'redeemed' || !card.redeemedAt || !card.redeemedBy;
+    if (changedCard) {
+      card.status = 'redeemed';
+      card.redeemedAt = card.redeemedAt || redeemedAt;
+      card.redeemedBy = card.redeemedBy || `newapi:${redeemed.usedUserId || 'unknown'}`;
+      card.redeemedEmail = card.redeemedEmail || '';
+      card.updatedAt = now;
+      syncedCards += 1;
+    }
+    const fulfillment = (data.xianyuFulfillments || []).find(
+      (item) => item.cardId === card.id && item.status !== 'cancelled',
+    );
+    if (fulfillment && fulfillment.status !== 'redeemed') {
+      fulfillment.status = 'redeemed';
+      fulfillment.redeemedAt = fulfillment.redeemedAt || redeemedAt;
+      fulfillment.redeemedEmail = fulfillment.redeemedEmail || '';
+      fulfillment.updatedAt = now;
+      syncedFulfillments += 1;
+    }
+    const alreadyRecorded = (data.redemptions || []).some((item) => item.cardId === card.id || item.codeHash === codeHash);
+    if (!alreadyRecorded) {
+      data.redemptions.unshift({
+        code: card.codePreview || '',
+        codeHash,
+        codePreview: card.codePreview || '',
+        userId: `newapi:${redeemed.usedUserId || 'unknown'}`,
+        plan: card.label || card.plan || '兑换码',
+        cardId: card.id,
+        batchId: card.batchId || '',
+        creditCents: Number(card.creditCents || 0),
+        source: 'new-api-status-sync',
+        at: redeemedAt,
+      });
+      backfilledRedemptions += 1;
+    }
+  }
+  if (syncedCards || syncedFulfillments || backfilledRedemptions) {
+    data.events.unshift({
+      type: 'newapi_redemption_status_synced',
+      cards: syncedCards,
+      fulfillments: syncedFulfillments,
+      redemptions: backfilledRedemptions,
+      at: now,
+    });
+  }
+  return {
+    enabled: true,
+    sqliteDbConfigured: true,
+    readable: true,
+    scanned: snapshot.scanned,
+    redeemedRows: snapshot.redeemedRows,
+    syncedCards,
+    syncedFulfillments,
+    backfilledRedemptions,
+  };
+}
+
+function readNewApiRedemptionStatusSnapshot(serverOptions = {}) {
+  if (!serverOptions.newApiEnabled) {
+    return { enabled: false, sqliteDbConfigured: false, readable: false, scanned: 0, redeemedRows: 0, byCodeHash: new Map() };
+  }
+  const sqliteDb = String(serverOptions.newApiSqliteDb || '').trim();
+  if (!sqliteDb) {
+    return { enabled: true, sqliteDbConfigured: false, readable: false, scanned: 0, redeemedRows: 0, byCodeHash: new Map() };
+  }
+  const sql = [
+    'SELECT',
+    "  coalesce(`key`, ''),",
+    '  coalesce(redeemed_time, 0),',
+    '  coalesce(used_user_id, 0),',
+    '  coalesce(status, 1)',
+    'FROM redemptions',
+    'WHERE coalesce(redeemed_time, 0) > 0 OR coalesce(used_user_id, 0) > 0 OR coalesce(status, 1) <> 1;',
+  ].join('\n');
+  const result = spawnSync('sqlite3', ['-separator', '\t', sqliteDb, sql], {
+    encoding: 'utf8',
+    maxBuffer: 1024 * 1024,
+  });
+  if (result.status !== 0) {
+    return {
+      enabled: true,
+      sqliteDbConfigured: true,
+      readable: false,
+      scanned: 0,
+      redeemedRows: 0,
+      byCodeHash: new Map(),
+      error: String(result.stderr || result.stdout || 'sqlite3_failed').split('\n')[0].slice(0, 120),
+    };
+  }
+  const byCodeHash = new Map();
+  let scanned = 0;
+  for (const line of String(result.stdout || '').split('\n').filter(Boolean)) {
+    scanned += 1;
+    const [rawKey, rawRedeemedTime, rawUsedUserId, rawStatus] = line.split('\t');
+    const code = normalizeCardCode(rawKey || '');
+    const codeHash = hashRedemptionCode(code);
+    if (!codeHash) continue;
+    const redeemedTime = Number(rawRedeemedTime || 0);
+    byCodeHash.set(codeHash, {
+      redeemedAt: redeemedTime > 0 ? new Date(redeemedTime * 1000).toISOString() : '',
+      usedUserId: Number(rawUsedUserId || 0),
+      status: Number(rawStatus || 0),
+    });
+  }
+  return {
+    enabled: true,
+    sqliteDbConfigured: true,
+    readable: true,
+    scanned,
+    redeemedRows: byCodeHash.size,
+    byCodeHash,
+  };
+}
+
+function newApiQuotaFromCents(cents) {
+  return Math.max(0, Math.round((Number(cents || 0) / 100) * 500000));
+}
+
+function unixTimeSeconds(value) {
+  const time = value instanceof Date ? value.getTime() : Date.parse(value || '');
+  const fallback = Date.now();
+  return Math.floor((Number.isFinite(time) ? time : fallback) / 1000);
+}
+
+function sqlQuote(value) {
+  return `'${String(value ?? '').replace(/'/g, "''")}'`;
+}
+
+
+function syncUpstreamChannels(data, body, serverOptions) {
+  const now = currentDate(serverOptions).toISOString();
+  const channels = normalizeUpstreamChannelSnapshot(body.channels || body.items || [], {
+    markup: serverOptions.rateMarkup,
+  }).map((channel) => ({
+    ...channel,
+    source: String(body.source || 'reference-channel').trim() || 'reference-channel',
+    syncedAt: now,
+  }));
+  data.upstreamChannelSnapshots = channels;
+  data.events.push({
+    type: 'upstream_channels_synced',
+    count: channels.length,
+    rateMarkup: serverOptions.rateMarkup,
+    at: now,
+  });
+  return {
+    rateMarkup: serverOptions.rateMarkup,
+    channels: channels.map(sanitizeUpstreamChannel),
+    summary: buildChannelSyncSummary(data, serverOptions),
+    events: sanitizeAdminEvents(data.events),
+  };
+}
+
+async function syncUpstreamBalance(data, serverOptions, newApiBridge) {
+  const now = currentDate(serverOptions).toISOString();
+  const raw = await newApiBridge.syncUpstreamBalance();
+  const warningCny = Number(serverOptions.upstreamBalanceWarningCny || 50);
+  const criticalCny = Number(serverOptions.upstreamBalanceCriticalCny || 20);
+  const remainingCny = round2(Number(raw.remainingCny || 0));
+  const level = normalizeUpstreamBalanceLevel('', remainingCny, warningCny, criticalCny);
+  const balance = normalizeUpstreamBalanceRecord({
+    ...raw,
+    remainingCny,
+    warningCny,
+    criticalCny,
+    level,
+    pauseRecommended: level === 'critical',
+    checkedAt: now,
+    lastError: '',
+  });
+  data.upstreamBalance = balance;
+  data.events.push({
+    type: 'upstream_balance_synced',
+    provider: balance.provider || 'New-API',
+    remainingCny: balance.remainingCny,
+    level: balance.level,
+    at: now,
+  });
+  const notifier = serverOptions.notifyUpstreamBalance;
+  if (typeof notifier === 'function' && (balance.level === 'warning' || balance.level === 'critical')) {
+    await notifier(balance);
+  }
+  return {
+    ok: true,
+    balance: sanitizeUpstreamBalance(balance, serverOptions),
+    events: sanitizeAdminEvents(data.events),
+  };
+}
+
+function createXianyuFulfillment(data, body, serverOptions) {
+  const now = currentDate(serverOptions).toISOString();
+  const orderId = String(body.orderId || '').trim();
+  if (!orderId) {
+    throw publicError(400, '闲鱼订单号不能为空');
+  }
+  const platform = String(body.platform || 'xianyu').trim().toLowerCase();
+  const existing = data.xianyuFulfillments.find(
+    (item) => item.platform === platform && item.orderId === orderId && item.status !== 'cancelled',
+  );
+  if (existing) {
+    const existingCard = data.redemptionCards.find((card) => card.id === existing.cardId) || {};
+    const deliveryMessage = existing.deliveryMessage || buildXianyuDeliveryMessage(existingCard, existing, serverOptions);
+    return {
+      fulfillment: sanitizeXianyuFulfillment(existing),
+      card: sanitizeRedemptionCard(existingCard),
+      deliveryMessage,
+      summary: buildXianyuFulfillmentSummary(data),
+      events: sanitizeAdminEvents(data.events),
+      idempotent: true,
+    };
+  }
+
+  const card = pickRedemptionCardForFulfillment(data, body, serverOptions);
+  if (!card) {
+    throw publicError(409, '没有可发货的兑换码，请先生成卡密');
+  }
+  const deliveryMessage = buildXianyuDeliveryMessage(card, body, serverOptions);
+
+  const fulfillment = {
+    id: createId('fulfill'),
+    platform,
+    orderId,
+    productTitle: String(body.productTitle || card.label || 'CC中转 兑换码').trim().slice(0, 160),
+    buyerHint: String(body.buyerHint || body.buyerName || '').trim().slice(0, 120),
+    planId: String(body.planId || '').trim(),
+    cardId: card.id,
+    cardCode: card.codePreview || maskCardCode(cardCodePlain(card, serverOptions)),
+    status: 'delivered',
+    deliveryMessage: '',
+    note: String(body.note || '').trim().slice(0, 500),
+    createdAt: now,
+    updatedAt: now,
+    deliveredAt: now,
+    redeemedAt: '',
+    redeemedEmail: '',
+  };
+
+  card.status = 'sold';
+  card.soldAt = now;
+  card.soldOrderId = orderId;
+  card.soldPlatform = platform;
+  card.soldBuyerHint = fulfillment.buyerHint;
+  card.fulfillmentId = fulfillment.id;
+  card.deliveredAt = now;
+  card.updatedAt = now;
+  data.xianyuFulfillments.unshift(fulfillment);
+  data.events.push({
+    type: 'xianyu_card_delivered',
+    orderId,
+    cardId: card.id,
+    codePreview: card.codePreview || maskCardCode(cardCodePlain(card, serverOptions)),
+    at: now,
+  });
+
+  return {
+    fulfillment: sanitizeXianyuFulfillment(fulfillment),
+    card: sanitizeRedemptionCard(card),
+    deliveryMessage,
+    summary: buildXianyuFulfillmentSummary(data),
+    events: sanitizeAdminEvents(data.events),
+  };
+}
+
+function remapXianyuFulfillmentOrder(data, body, serverOptions) {
+  const now = currentDate(serverOptions).toISOString();
+  const platform = String(body.platform || 'xianyu').trim().toLowerCase();
+  const oldOrderId = String(body.oldOrderId || body.fromOrderId || '').trim();
+  const newOrderId = String(body.newOrderId || body.toOrderId || '').trim();
+  if (!oldOrderId || !newOrderId) {
+    throw publicError(400, '原订单号和新订单号不能为空');
+  }
+  if (oldOrderId === newOrderId) {
+    const same = data.xianyuFulfillments.find(
+      (item) => item.platform === platform && item.orderId === newOrderId && item.status !== 'cancelled',
+    );
+    if (!same) throw publicError(404, '没有找到可接管的闲鱼发货记录');
+    const sameCard = data.redemptionCards.find((card) => card.id === same.cardId) || {};
+    return {
+      ok: true,
+      idempotent: true,
+      fulfillment: sanitizeXianyuFulfillment(same),
+      card: sanitizeRedemptionCard(sameCard),
+      summary: buildXianyuFulfillmentSummary(data),
+      events: sanitizeAdminEvents(data.events),
+    };
+  }
+  const conflict = data.xianyuFulfillments.find(
+    (item) => item.platform === platform && item.orderId === newOrderId && item.status !== 'cancelled',
+  );
+  if (conflict) {
+    throw publicError(409, '新订单号已经存在，未重复接管');
+  }
+  const fulfillment = data.xianyuFulfillments.find(
+    (item) => item.platform === platform && item.orderId === oldOrderId && item.status !== 'cancelled',
+  );
+  if (!fulfillment) {
+    throw publicError(404, '没有找到可接管的闲鱼发货记录');
+  }
+  fulfillment.orderId = newOrderId;
+  fulfillment.updatedAt = now;
+  fulfillment.note = [fulfillment.note, `remapped_from:${oldOrderId}`].filter(Boolean).join(' ').slice(0, 500);
+  const card = data.redemptionCards.find((item) => item.id === fulfillment.cardId) || null;
+  if (card) {
+    card.soldOrderId = newOrderId;
+    card.updatedAt = now;
+  }
+  data.events.push({
+    type: 'xianyu_order_remapped',
+    oldOrderId,
+    newOrderId,
+    fulfillmentId: fulfillment.id,
+    cardId: fulfillment.cardId,
+    at: now,
+  });
+  return {
+    ok: true,
+    fulfillment: sanitizeXianyuFulfillment(fulfillment),
+    card: sanitizeRedemptionCard(card || {}),
+    summary: buildXianyuFulfillmentSummary(data),
+    events: sanitizeAdminEvents(data.events),
+  };
+}
+
+function fulfillPaidXianyuOrder(data, body, serverOptions) {
+  const normalized = normalizePaidXianyuOrder(body);
+  if (!normalized.paid) {
+    throw publicError(409, '订单未确认已付款，自动发货已阻断');
+  }
+  const result = createXianyuFulfillment(data, {
+    ...body,
+    orderId: normalized.orderId,
+    buyerHint: normalized.buyerHint,
+    productTitle: normalized.productTitle,
+    planId: normalized.planId,
+    platform: 'xianyu',
+    note: normalized.note,
+  }, serverOptions);
+  return {
+    ok: true,
+    autoShip: true,
+    order: normalized,
+    ...result,
+  };
+}
+
+function normalizePaidXianyuOrder(body = {}) {
+  const statusText = [
+    body.status,
+    body.orderStatus,
+    body.payStatus,
+    body.tradeStatus,
+    body.redReminder,
+  ].map((value) => String(value || '').trim()).filter(Boolean).join(' ');
+  const paid = body.paid === true || /等待卖家发货|买家已付款|已付款|待发货|paid|seller.*ship/i.test(statusText);
+  const orderId = String(body.orderId || body.orderNo || body.tradeId || body.id || '').trim();
+  if (!orderId) {
+    throw publicError(400, '闲鱼订单号不能为空');
+  }
+  const productTitle = String(body.productTitle || body.itemTitle || body.title || 'CC中转 兑换码').trim().slice(0, 160);
+  const buyerHint = String(body.buyerHint || body.buyerName || body.buyerId || body.userId || '').trim().slice(0, 120);
+  const planId = String(body.planId || body.skuId || body.spec || '').trim().slice(0, 120);
+  return {
+    orderId,
+    paid,
+    status: statusText || (paid ? 'paid' : 'unknown'),
+    productTitle,
+    buyerHint,
+    planId,
+    note: String(body.note || 'xianyu-auto-webhook').trim().slice(0, 500),
+  };
+}
+
+function pickRedemptionCardForFulfillment(data, body, serverOptions = {}) {
+  const requestedCode = String(body.cardCode || '').trim().toUpperCase();
+  if (requestedCode) {
+    const card = data.redemptionCards.find((item) => cardMatchesCode(item, requestedCode, serverOptions));
+    return card && card.status === 'unused' ? card : null;
+  }
+  const selectedPlan = findRechargePlan(data, body);
+  const hasExplicitPlan = Boolean(selectedPlan || String(body.plan || body.planId || '').trim());
+  const hasExplicitQuota = body.quotaUsd !== undefined || body.creditUsd !== undefined;
+  const requestedPlan = selectedPlan
+    ? normalizeRechargePlan(selectedPlan.plan)
+    : hasExplicitPlan
+      ? normalizeRechargePlan(body.plan || '')
+      : '';
+  const requestedQuotaUsd = selectedPlan
+    ? Number(selectedPlan.quotaUsd || 0)
+    : hasExplicitQuota
+      ? Number(body.quotaUsd || body.creditUsd || 0)
+      : 0;
+  return data.redemptionCards.find((card) => {
+    if (card.status !== 'unused') return false;
+    if (requestedPlan && normalizeRechargePlan(card.plan) !== requestedPlan) return false;
+    if (requestedQuotaUsd > 0 && Math.abs(Number(card.quotaUsd || 0) - requestedQuotaUsd) > 0.001) return false;
+    return true;
+  }) || null;
+}
+
+function buildXianyuDeliveryMessage(card, body, serverOptions) {
+  const gateway = String(serverOptions.publicGatewayBaseUrl || 'https://jiyu.245334.xyz')
+    .replace(/\/v1\/?$/i, '')
+    .replace(/\/$/, '');
+  const title = String(body.productTitle || card.label || 'CC中转 兑换码').trim();
+  const code = cardCodePlain(card, serverOptions);
+  if (!code) {
+    throw publicError(500, '卡密明文已加密保存，但当前服务无法解密，请检查生产密钥');
+  }
+  return [
+    `您好，您购买的 ${title} 已自动发货。`,
+    `兑换码：${code}`,
+    `兑换入口：${gateway}`,
+    '使用步骤：',
+    '1. 打开兑换入口，注册或登录账号。',
+    '2. 进入“兑换码”，粘贴上面的兑换码，兑换成功后额度会到账。',
+    '3. 进入“API Key”，创建自己的 API Key。',
+    '4. 进入“CC Switch”，复制导入链接，导入后选择模型测试。',
+    '兑换成功后后台会记录到账状态，麻烦确认收货；如遇问题请直接回复订单消息。',
+  ].join('\n');
+}
+
+function redeemCustomerCode(data, request, body, serverOptions, securityState) {
   const { user } = requireSession(data, request);
-  const code = String(body.code || '').trim().toUpperCase();
-  const card = data.redemptionCards.find((item) => item.code === code);
+  assertRedeemUserRateLimit(securityState, serverOptions, user.id);
+  const code = normalizeCardCode(body.code);
+  const card = data.redemptionCards.find((item) => cardMatchesCode(item, code, serverOptions));
   const rule = card ? redemptionRuleFromCard(card) : LEGACY_CARD_CODES.get(code);
   if (!rule) {
     throw publicError(400, '兑换码无效');
   }
-  if (data.redemptions.some((item) => item.code === code)) {
+  if (data.redemptions.some((item) => redemptionMatchesCode(item, code))) {
     throw publicError(409, '兑换码已使用');
   }
-  if (card && card.status !== 'unused') {
+  if (card && !['unused', 'sold'].includes(card.status)) {
     throw publicError(409, '兑换码已使用');
   }
 
@@ -1766,7 +2566,9 @@ function redeemCustomerCode(data, request, body, serverOptions) {
   reconcileUserBalance(user);
   user.updatedAt = now.toISOString();
   data.redemptions.push({
-    code,
+    code: maskCardCode(code),
+    codeHash: hashRedemptionCode(code),
+    codePreview: maskCardCode(code),
     userId: user.id,
     plan: rule.displayPlan || rule.label || (planType === 'balance' ? '加油包' : planType),
     cardId: card?.id || '',
@@ -1780,13 +2582,82 @@ function redeemCustomerCode(data, request, body, serverOptions) {
     card.redeemedBy = user.id;
     card.redeemedEmail = user.email;
     card.updatedAt = user.updatedAt;
+    const fulfillment = data.xianyuFulfillments.find((item) => item.cardId === card.id && item.status !== 'cancelled');
+    if (fulfillment) {
+      fulfillment.status = 'redeemed';
+      fulfillment.redeemedAt = user.updatedAt;
+      fulfillment.redeemedEmail = user.email;
+      fulfillment.updatedAt = user.updatedAt;
+    }
   }
-  data.events.push({ type: 'redeemed', userId: user.id, code, at: user.updatedAt });
+  data.events.push({ type: 'redeemed', userId: user.id, codePreview: maskCardCode(code), at: user.updatedAt });
   return {
     account: accountFromUser(data, user),
     user: sanitizeUser(user),
     redemption: {
-      code,
+      code: maskCardCode(code),
+      label: rule.label || '兑换码',
+      plan: rule.displayPlan || rule.plan || 'balance',
+      credit: formatUsdFromCnyCents(Number(rule.packageCents || 0) + Number(rule.boosterCents || 0)),
+    },
+  };
+}
+
+function recordLocalRedemptionAfterNewApiTopup(data, request, body, serverOptions) {
+  const { user } = requireSession(data, request);
+  const code = normalizeCardCode(body.code);
+  const card = data.redemptionCards.find((item) => cardMatchesCode(item, code, serverOptions));
+  if (!card) {
+    return {
+      user: sanitizeUser(user),
+      redemption: null,
+    };
+  }
+
+  const now = currentDate(serverOptions).toISOString();
+  const rule = redemptionRuleFromCard(card);
+  if (!data.redemptions.some((item) => redemptionMatchesCode(item, code))) {
+    data.redemptions.push({
+      code: maskCardCode(code),
+      codeHash: hashRedemptionCode(code),
+      codePreview: maskCardCode(code),
+      userId: user.id,
+      plan: rule.displayPlan || rule.label || rule.plan || 'balance',
+      cardId: card.id,
+      batchId: card.batchId || '',
+      creditCents: Number(rule.packageCents || 0) + Number(rule.boosterCents || 0),
+      source: 'new-api',
+      at: now,
+    });
+  }
+
+  if (['unused', 'sold', 'redeemed'].includes(card.status)) {
+    card.status = 'redeemed';
+    card.redeemedAt = card.redeemedAt || now;
+    card.redeemedBy = card.redeemedBy || user.id;
+    card.redeemedEmail = card.redeemedEmail || user.email;
+    card.updatedAt = now;
+  }
+  const fulfillment = data.xianyuFulfillments.find((item) => item.cardId === card.id && item.status !== 'cancelled');
+  if (fulfillment) {
+    fulfillment.status = 'redeemed';
+    fulfillment.redeemedAt = fulfillment.redeemedAt || now;
+    fulfillment.redeemedEmail = fulfillment.redeemedEmail || user.email;
+    fulfillment.updatedAt = now;
+  }
+  user.updatedAt = now;
+  data.events.push({
+    type: 'newapi_redeemed',
+    userId: user.id,
+    cardId: card.id,
+    codePreview: maskCardCode(code),
+    at: now,
+  });
+
+  return {
+    user: sanitizeUser(user),
+    redemption: {
+      code: maskCardCode(code),
       label: rule.label || '兑换码',
       plan: rule.displayPlan || rule.plan || 'balance',
       credit: formatUsdFromCnyCents(Number(rule.packageCents || 0) + Number(rule.boosterCents || 0)),
@@ -1798,7 +2669,7 @@ function redemptionRuleFromCard(card) {
   const planType = normalizeRechargePlan(card.plan);
   const creditCents = Number(card.creditCents || 0);
   return {
-    label: card.label || 'Frist-API 兑换码',
+    label: card.label || 'CC中转 兑换码',
     plan: planType,
     displayPlan: planType === 'day' ? '日卡' : planType === 'month' ? '月卡' : '',
     days: Number(card.durationDays || (planType === 'month' ? 30 : planType === 'day' ? 1 : 0)),
@@ -2106,10 +2977,11 @@ function buildDashboard(data, user, serverOptions) {
     usageRecords: buildUsageRecords(data, user),
     usageAnomalies: buildUsageAnomalies(data, user),
     recentLogs: buildRecentLogs(data, user),
+    security: buildPublicSecurityConfig(serverOptions),
   };
 }
 
-function buildGuestDashboard(data) {
+function buildGuestDashboard(data, serverOptions = {}) {
   return {
     authenticated: false,
     account: {
@@ -2141,6 +3013,21 @@ function buildGuestDashboard(data) {
     usageRecords: [],
     usageAnomalies: [],
     recentLogs: [],
+    security: buildPublicSecurityConfig(serverOptions),
+  };
+}
+
+function buildPublicSecurityConfig(serverOptions = {}) {
+  return {
+    turnstile: {
+      enabled: Boolean(serverOptions.requireTurnstile && serverOptions.turnstileSiteKey),
+      siteKey: serverOptions.requireTurnstile ? serverOptions.turnstileSiteKey || '' : '',
+      actions: {
+        register: 'register',
+        login: 'login',
+        redeem: 'redeem',
+      },
+    },
   };
 }
 
@@ -3599,7 +4486,7 @@ function isCostSensitiveSupplierCredential(credential) {
     credential.supplierName,
     credential.sourceLabel,
   ].join(' ').toLowerCase();
-  return Boolean(credential.costSensitive || /86\s*game|86gamestore|inroi/.test(text));
+  return Boolean(credential.costSensitive || /cost-sensitive|metered|slow-tier|reference-channel/.test(text));
 }
 
 function isSlowGatewayCredential(data, credential, serverOptions = {}) {
@@ -3849,6 +4736,107 @@ function startChannelMonitor({ store, serverOptions }) {
   };
 }
 
+function startNewApiRedemptionStatusSync({ store, serverOptions }) {
+  const intervalMs = Math.max(
+    1000,
+    Number(serverOptions.newApiRedemptionStatusSyncIntervalMs || DEFAULT_NEWAPI_REDEMPTION_STATUS_SYNC_INTERVAL_MS),
+  );
+  let stopped = false;
+  let running = false;
+  const runOnce = async () => {
+    if (stopped || running) {
+      return;
+    }
+    running = true;
+    try {
+      await store.mutate((data) => syncNewApiRedemptionStatuses(data, serverOptions));
+    } catch {
+      // New-API 回写失败只影响运营台状态刷新，不阻断注册、兑换和调用链路。
+    } finally {
+      running = false;
+    }
+  };
+  const timer = setInterval(() => {
+    void runOnce();
+  }, intervalMs);
+  if (typeof timer.unref === 'function') {
+    timer.unref();
+  }
+  void runOnce();
+  return () => {
+    stopped = true;
+    clearInterval(timer);
+  };
+}
+
+function startUpstreamBalanceSync({ store, serverOptions, newApiBridge }) {
+  const intervalMs = Math.max(60_000, Number(serverOptions.upstreamBalanceSyncIntervalMs || 86_400_000));
+  let stopped = false;
+  let running = false;
+  const runOnce = async () => {
+    if (stopped || running || !newApiBridge?.syncUpstreamBalance) {
+      return;
+    }
+    running = true;
+    try {
+      await store.mutate((data) => syncUpstreamBalance(data, serverOptions, newApiBridge));
+    } catch (error) {
+      await store.mutate((data) => {
+        data.upstreamBalance = normalizeUpstreamBalanceRecord({
+          ...data.upstreamBalance,
+          provider: data.upstreamBalance?.provider || 'New-API',
+          checkedAt: currentDate(serverOptions).toISOString(),
+          lastError: String(error?.message || '同步失败').slice(0, 160),
+          level: 'unknown',
+        });
+      });
+    } finally {
+      running = false;
+    }
+  };
+  const timer = setInterval(() => {
+    void runOnce();
+  }, intervalMs);
+  if (typeof timer.unref === 'function') {
+    timer.unref();
+  }
+  void runOnce();
+  return () => {
+    stopped = true;
+    clearInterval(timer);
+  };
+}
+
+function startCardAutoreplenish({ store, serverOptions }) {
+  const intervalMs = Math.max(60_000, Number(serverOptions.cardAutoreplenishIntervalMs || 86_400_000));
+  let stopped = false;
+  let running = false;
+  const runOnce = async () => {
+    if (stopped || running) {
+      return;
+    }
+    running = true;
+    try {
+      await store.mutate((data) => autoReplenishRedemptionCards(data, { dryRun: false, enabled: true }, serverOptions));
+    } catch {
+      // 自动补卡失败只影响库存水位，不阻断注册、兑换和模型调用；管理端仍可手动补卡。
+    } finally {
+      running = false;
+    }
+  };
+  const timer = setInterval(() => {
+    void runOnce();
+  }, intervalMs);
+  if (typeof timer.unref === 'function') {
+    timer.unref();
+  }
+  void runOnce();
+  return () => {
+    stopped = true;
+    clearInterval(timer);
+  };
+}
+
 async function maybeNotifyCustomerLowBalance(data, user, serverOptions, context = {}) {
   const alert = normalizeBalanceAlertRecord(user.balanceAlert, user.email);
   user.balanceAlert = alert;
@@ -4009,6 +4997,55 @@ function requireCaptchaIfEnabled(securityState, body, serverOptions) {
   securityState.captchas.delete(id);
 }
 
+async function verifyTurnstileToken({ request, body, serverOptions, action }) {
+  if (!serverOptions.requireTurnstile) {
+    return;
+  }
+  const token = String(body.turnstileToken || body.cfTurnstileResponse || body['cf-turnstile-response'] || '').trim();
+  if (!token) {
+    throw publicError(400, '请先完成人机验证');
+  }
+  if (!serverOptions.turnstileSecret) {
+    throw publicError(503, '安全验证暂时不可用，请稍后再试');
+  }
+  const fetchImpl = serverOptions.fetchImpl || globalThis.fetch;
+  if (typeof fetchImpl !== 'function') {
+    throw publicError(503, '安全验证暂时不可用，请稍后再试');
+  }
+
+  const payload = new URLSearchParams({
+    secret: serverOptions.turnstileSecret,
+    response: token,
+  });
+  const remoteIp = clientIp(request);
+  if (remoteIp && remoteIp !== 'unknown') {
+    payload.set('remoteip', remoteIp);
+  }
+
+  let result;
+  try {
+    const verification = await fetchImpl(serverOptions.turnstileVerifyUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: payload.toString(),
+    });
+    result = typeof verification.json === 'function' ? await verification.json() : {};
+  } catch {
+    throw publicError(503, '安全验证暂时不可用，请稍后再试');
+  }
+
+  if (!result?.success) {
+    throw publicError(403, '人机验证失败，请刷新后重试');
+  }
+  if (action && result.action && result.action !== action) {
+    throw publicError(403, '人机验证已过期，请刷新后重试');
+  }
+  const hostname = normalizeCanonicalHost(result.hostname || '');
+  if (serverOptions.turnstileAllowedHostnames.size > 0 && !serverOptions.turnstileAllowedHostnames.has(hostname)) {
+    throw publicError(403, '人机验证已过期，请刷新后重试');
+  }
+}
+
 function cleanupCaptchas(securityState) {
   const now = Date.now();
   for (const [id, challenge] of securityState.captchas) {
@@ -4083,10 +5120,29 @@ function randomInt(max) {
 function assertAuthRateLimit(securityState, request, serverOptions) {
   const max = Number(serverOptions.authRateLimitMax || 20);
   const windowMs = Number(serverOptions.authRateLimitWindowMs || 60_000);
+  assertRateLimit(securityState, `auth:${clientIp(request)}`, max, windowMs);
+}
+
+function assertRedeemRateLimit(securityState, request, serverOptions, userId = '') {
+  const max = Number(serverOptions.redemptionRateLimitMax || 12);
+  const windowMs = Number(serverOptions.redemptionRateLimitWindowMs || 60_000);
+  assertRateLimit(securityState, `redeem:ip:${clientIp(request)}`, max, windowMs);
+  if (userId) {
+    assertRedeemUserRateLimit(securityState, serverOptions, userId);
+  }
+}
+
+function assertRedeemUserRateLimit(securityState, serverOptions, userId = '') {
+  if (!userId) return;
+  const max = Number(serverOptions.redemptionRateLimitMax || 12);
+  const windowMs = Number(serverOptions.redemptionRateLimitWindowMs || 60_000);
+  assertRateLimit(securityState, `redeem:user:${userId}`, max, windowMs);
+}
+
+function assertRateLimit(securityState, key, max, windowMs) {
   if (!Number.isFinite(max) || max <= 0 || !Number.isFinite(windowMs) || windowMs <= 0) {
     return;
   }
-  const key = `auth:${clientIp(request)}`;
   const now = Date.now();
   const bucket = securityState.rateLimits.get(key) || { count: 0, resetAt: now + windowMs };
   if (bucket.resetAt <= now) {
@@ -4208,7 +5264,7 @@ function createRuntimeStore(dataFile, encryptionKey = '') {
       try {
         await save(data);
       } catch (error) {
-        process.emitWarning(`Frist-API runtime 写入失败: ${error.message}`, {
+        process.emitWarning(`CC中转 runtime 写入失败: ${error.message}`, {
           code: 'FRIST_API_RUNTIME_WRITE_FAILED',
         });
         throw error;
@@ -4239,6 +5295,13 @@ function normalizeRuntimeData(data) {
     redemptionCards: Array.isArray(data.redemptionCards) ? data.redemptionCards.map(normalizeRedemptionCardRecord) : [],
     plusAccounts: Array.isArray(data.plusAccounts) ? data.plusAccounts.map(normalizePlusAccountRecord) : [],
     rtAccounts: Array.isArray(data.rtAccounts) ? data.rtAccounts.map(normalizeRtAccountRecord) : [],
+    upstreamChannelSnapshots: Array.isArray(data.upstreamChannelSnapshots)
+      ? data.upstreamChannelSnapshots.map(normalizeUpstreamChannelRecord).filter(Boolean)
+      : [],
+    upstreamBalance: normalizeUpstreamBalanceRecord(data.upstreamBalance),
+    xianyuFulfillments: Array.isArray(data.xianyuFulfillments)
+      ? data.xianyuFulfillments.map(normalizeXianyuFulfillmentRecord).filter(Boolean)
+      : [],
     routeAffinities: data.routeAffinities && typeof data.routeAffinities === 'object' ? data.routeAffinities : {},
     lowInventoryAlerts: data.lowInventoryAlerts && typeof data.lowInventoryAlerts === 'object' ? data.lowInventoryAlerts : {},
     upstreamKeyAlerts: data.upstreamKeyAlerts && typeof data.upstreamKeyAlerts === 'object' ? data.upstreamKeyAlerts : {},
@@ -4287,23 +5350,39 @@ function decryptRuntimeData(data, encryption) {
   if (!encryption) {
     return copy;
   }
+  const hasEncryptionMarker = Boolean(copy.__encryption);
+  const decryptRuntimeSecret = (value) =>
+    decryptRuntimeSecretField(value, encryption, { allowUnreadableEncrypted: true, allowLegacyOrphan: !hasEncryptionMarker });
   try {
     copy.userKeys = Array.isArray(copy.userKeys)
-      ? copy.userKeys.map((key) => ({ ...key, secret: decryptSecretField(key.secret, encryption) }))
+      ? copy.userKeys.map((key) => ({ ...key, secret: decryptRuntimeSecret(key.secret) }))
       : [];
     copy.credentials = Array.isArray(copy.credentials)
-      ? copy.credentials.map((credential) => ({ ...credential, rawKey: decryptSecretField(credential.rawKey, encryption) }))
+      ? copy.credentials.map((credential) => ({ ...credential, rawKey: decryptRuntimeSecret(credential.rawKey) }))
       : [];
     copy.plusAccounts = Array.isArray(copy.plusAccounts)
-      ? copy.plusAccounts.map((account) => ({ ...account, secrets: decryptSecretField(account.secrets, encryption) }))
+      ? copy.plusAccounts.map((account) => ({ ...account, secrets: decryptRuntimeSecret(account.secrets) }))
       : [];
     copy.rtAccounts = Array.isArray(copy.rtAccounts)
-      ? copy.rtAccounts.map((account) => ({ ...account, refreshToken: decryptSecretField(account.refreshToken, encryption) }))
+      ? copy.rtAccounts.map((account) => ({ ...account, refreshToken: decryptRuntimeSecret(account.refreshToken) }))
       : [];
     delete copy.__encryption;
     return copy;
   } catch (error) {
     throw normalizePublicError(error);
+  }
+}
+
+function decryptRuntimeSecretField(value, encryption, options = {}) {
+  try {
+    return decryptSecretField(value, encryption);
+  } catch (error) {
+    // 历史生产数据可能已经带 __encryption 标记，但旧加密密钥不可恢复。
+    // 这类字段不能解明文时保留密文，让后续脱敏逻辑标记为“需重新生成”，避免整站 500。
+    if ((options.allowUnreadableEncrypted || options.allowLegacyOrphan) && isEncryptedRuntimeSecret(value)) {
+      return String(value || '');
+    }
+    throw error;
   }
 }
 
@@ -4389,24 +5468,97 @@ function normalizeSupplierProfileRecord(profile) {
 
 function normalizeRedemptionCardRecord(card) {
   const plan = normalizeRechargePlan(card?.plan || 'balance');
+  const code = normalizeCardCode(card?.code || '');
+  const codeHash = String(card?.codeHash || (code ? hashRedemptionCode(code) : '')).trim();
+  const codePreview = String(card?.codePreview || maskCardCode(code)).trim();
   return {
     id: String(card?.id || createId('card')),
     batchId: String(card?.batchId || ''),
-    code: String(card?.code || '').trim().toUpperCase(),
-    label: String(card?.label || 'Frist-API 兑换码').trim(),
+    code,
+    codeHash,
+    codeCipher: String(card?.codeCipher || '').trim(),
+    codePreview,
+    label: String(card?.label || 'CC中转 兑换码').trim(),
+    planId: String(card?.planId || '').trim(),
     plan,
     durationDays: Math.max(0, Number(card?.durationDays || (plan === 'month' ? 30 : plan === 'day' ? 1 : 0))),
     quotaUsd: Math.max(0, Number(card?.quotaUsd || 0)),
     priceCny: round2(Number(card?.priceCny || 0)),
     creditCents: Math.max(0, Number(card?.creditCents || 0)),
-    status: ['unused', 'redeemed', 'disabled'].includes(String(card?.status || 'unused')) ? String(card.status) : 'unused',
+    status: ['unused', 'sold', 'redeemed', 'disabled'].includes(String(card?.status || 'unused')) ? String(card.status || 'unused') : 'unused',
     source: String(card?.source || 'xianyu'),
     note: String(card?.note || ''),
     createdAt: String(card?.createdAt || ''),
     updatedAt: String(card?.updatedAt || card?.createdAt || ''),
+    soldAt: String(card?.soldAt || ''),
+    soldOrderId: String(card?.soldOrderId || ''),
+    soldPlatform: String(card?.soldPlatform || ''),
+    soldBuyerHint: String(card?.soldBuyerHint || ''),
+    fulfillmentId: String(card?.fulfillmentId || ''),
+    deliveredAt: String(card?.deliveredAt || ''),
     redeemedAt: String(card?.redeemedAt || ''),
     redeemedBy: String(card?.redeemedBy || ''),
     redeemedEmail: String(card?.redeemedEmail || ''),
+  };
+}
+
+function normalizeUpstreamChannelRecord(channel) {
+  const normalized = normalizeUpstreamChannelSnapshot([channel], { markup: channel?.markup ?? 0 })[0];
+  if (!normalized) return null;
+  const upstreamMultiplier = Number(channel?.upstreamMultiplier);
+  const saleMultiplier = Number(channel?.saleMultiplier);
+  return {
+    ...normalized,
+    upstreamMultiplier: Number.isFinite(upstreamMultiplier) ? round2(upstreamMultiplier) : normalized.upstreamMultiplier,
+    saleMultiplier: Number.isFinite(saleMultiplier) ? round2(saleMultiplier) : normalized.saleMultiplier,
+    source: String(channel?.source || 'reference-channel').trim(),
+    syncedAt: String(channel?.syncedAt || channel?.checkedAt || ''),
+  };
+}
+
+function normalizeUpstreamBalanceRecord(record = {}) {
+  const remainingCny = Number(record?.remainingCny || 0);
+  const warningCny = Number(record?.warningCny || 50);
+  const criticalCny = Number(record?.criticalCny || 20);
+  return {
+    provider: String(record?.provider || '').slice(0, 80),
+    userId: String(record?.userId || '').slice(0, 80),
+    username: String(record?.username || '').slice(0, 80),
+    emailMasked: maskEmail(record?.emailMasked || ''),
+    group: String(record?.group || '').slice(0, 80),
+    remainingQuota: Math.max(0, Number(record?.remainingQuota || 0)),
+    usedQuota: Math.max(0, Number(record?.usedQuota || 0)),
+    remainingCny: round2(Math.max(0, remainingCny)),
+    usedCny: round2(Math.max(0, Number(record?.usedCny || 0))),
+    remainingUsd: round2(Math.max(0, Number(record?.remainingUsd || 0))),
+    warningCny: round2(Math.max(0, warningCny)),
+    criticalCny: round2(Math.max(0, criticalCny)),
+    level: normalizeUpstreamBalanceLevel(record?.level, remainingCny, warningCny, criticalCny),
+    pauseRecommended: Boolean(record?.pauseRecommended),
+    checkedAt: String(record?.checkedAt || ''),
+    lastError: String(record?.lastError || '').slice(0, 200),
+  };
+}
+
+function normalizeXianyuFulfillmentRecord(item) {
+  const status = String(item?.status || 'draft').trim().toLowerCase();
+  return {
+    id: String(item?.id || createId('fulfill')),
+    platform: String(item?.platform || 'xianyu').trim().toLowerCase(),
+    orderId: String(item?.orderId || '').trim(),
+    productTitle: String(item?.productTitle || '').trim().slice(0, 160),
+    buyerHint: String(item?.buyerHint || '').trim().slice(0, 120),
+    planId: String(item?.planId || '').trim(),
+    cardId: String(item?.cardId || '').trim(),
+    cardCode: String(item?.cardCode || item?.cardCodePreview || '').trim().toUpperCase(),
+    status: ['draft', 'sold', 'delivered', 'redeemed', 'cancelled'].includes(status) ? status : 'draft',
+    deliveryMessage: String(item?.deliveryMessage || '').trim().slice(0, 2000),
+    note: String(item?.note || '').trim().slice(0, 500),
+    createdAt: String(item?.createdAt || ''),
+    updatedAt: String(item?.updatedAt || item?.createdAt || ''),
+    deliveredAt: String(item?.deliveredAt || ''),
+    redeemedAt: String(item?.redeemedAt || ''),
+    redeemedEmail: String(item?.redeemedEmail || ''),
   };
 }
 
@@ -4577,6 +5729,29 @@ function normalizeModelPrices(prices) {
   return [...merged.values()];
 }
 
+function normalizeCardAutoreplenishSafetyStock(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return Object.fromEntries(
+      Object.entries({ ...DEFAULT_CARD_AUTOREPLENISH_SAFETY_STOCK, ...value })
+        .map(([key, count]) => [String(key), Math.max(0, Math.round(Number(count || 0)))]),
+    );
+  }
+  const text = String(value || '').trim();
+  if (!text) return { ...DEFAULT_CARD_AUTOREPLENISH_SAFETY_STOCK };
+  try {
+    return normalizeCardAutoreplenishSafetyStock(JSON.parse(text));
+  } catch {
+    const parsed = {};
+    for (const part of text.split(/[,\n;]/)) {
+      const [rawKey, rawValue] = part.split(/[:=]/);
+      const key = String(rawKey || '').trim();
+      if (!key) continue;
+      parsed[key] = Math.max(0, Math.round(Number(rawValue || 0)));
+    }
+    return normalizeCardAutoreplenishSafetyStock(parsed);
+  }
+}
+
 function mergeModelPrices(existing, configured) {
   const merged = new Map();
   for (const price of normalizeModelPrices(configured)) {
@@ -4612,6 +5787,10 @@ function normalizeServerOptions(options) {
     typeof options.requireCaptcha === 'boolean'
       ? options.requireCaptcha
       : process.env.FRIST_API_REQUIRE_CAPTCHA === '1';
+  const requireTurnstile =
+    typeof options.requireTurnstile === 'boolean'
+      ? options.requireTurnstile
+      : process.env.FRIST_API_REQUIRE_TURNSTILE === '1';
   const normalized = {
     adminToken: options.adminToken || process.env.FRIST_API_ADMIN_TOKEN || 'frist-api-dev-admin-token',
     adminPageCode: options.adminPageCode || process.env.FRIST_API_ADMIN_PAGE_CODE || '',
@@ -4625,8 +5804,22 @@ function normalizeServerOptions(options) {
     authRateLimitWindowMs: Number(
       options.authRateLimitWindowMs ?? process.env.FRIST_API_AUTH_RATE_LIMIT_WINDOW_MS ?? 60_000,
     ),
+    redemptionRateLimitMax: Number(options.redemptionRateLimitMax ?? process.env.FRIST_API_REDEEM_RATE_LIMIT_MAX ?? 12),
+    redemptionRateLimitWindowMs: Number(
+      options.redemptionRateLimitWindowMs ?? process.env.FRIST_API_REDEEM_RATE_LIMIT_WINDOW_MS ?? 60_000,
+    ),
     captchaTtlMs: Number(options.captchaTtlMs ?? process.env.FRIST_API_CAPTCHA_TTL_MS ?? 600_000),
     captchaMaxAttempts: Number(options.captchaMaxAttempts ?? process.env.FRIST_API_CAPTCHA_MAX_ATTEMPTS ?? 3),
+    requireTurnstile,
+    turnstileSiteKey: options.turnstileSiteKey || process.env.FRIST_API_TURNSTILE_SITE_KEY || '',
+    turnstileSecret: options.turnstileSecret || process.env.FRIST_API_TURNSTILE_SECRET || '',
+    turnstileVerifyUrl:
+      options.turnstileVerifyUrl ||
+      process.env.FRIST_API_TURNSTILE_VERIFY_URL ||
+      'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+    turnstileAllowedHostnames: parseRedirectHosts(
+      options.turnstileAllowedHostnames ?? process.env.FRIST_API_TURNSTILE_ALLOWED_HOSTNAMES ?? '',
+    ),
     passwordResetTtlMs: Number(options.passwordResetTtlMs ?? process.env.FRIST_API_PASSWORD_RESET_TTL_MS ?? 900_000),
     keepAliveTimeoutMs:
       options.keepAliveTimeoutMs === undefined && process.env.FRIST_API_KEEP_ALIVE_TIMEOUT_MS === undefined
@@ -4663,6 +5856,9 @@ function normalizeServerOptions(options) {
     newApiBaseUrl: options.newApiBaseUrl || process.env.FRIST_API_NEWAPI_BASE_URL || '',
     newApiAccessToken: options.newApiAccessToken || process.env.FRIST_API_NEWAPI_ACCESS_TOKEN || '',
     newApiUserId: options.newApiUserId || process.env.FRIST_API_NEWAPI_USER_ID || '',
+    newApiSqliteDb: Object.hasOwn(options, 'newApiSqliteDb')
+      ? options.newApiSqliteDb
+      : process.env.FRIST_API_NEWAPI_SQLITE_DB || resolve(root, '../../../data/newapi/one-api.db'),
     newApiDefaultGroup: options.newApiDefaultGroup || process.env.FRIST_API_NEWAPI_DEFAULT_GROUP || 'default',
     newApiDefaultTokenQuota: Number(
       options.newApiDefaultTokenQuota ?? process.env.FRIST_API_NEWAPI_DEFAULT_TOKEN_QUOTA ?? 0,
@@ -4673,6 +5869,15 @@ function normalizeServerOptions(options) {
       typeof options.newApiGatewayEnabled === 'boolean'
         ? options.newApiGatewayEnabled
         : process.env.FRIST_API_NEWAPI_GATEWAY_ENABLED === '1',
+    newApiRedemptionStatusSyncEnabled:
+      typeof options.newApiRedemptionStatusSyncEnabled === 'boolean'
+        ? options.newApiRedemptionStatusSyncEnabled
+        : process.env.FRIST_API_NEWAPI_REDEMPTION_STATUS_SYNC_ENABLED !== '0',
+    newApiRedemptionStatusSyncIntervalMs: Number(
+      options.newApiRedemptionStatusSyncIntervalMs ??
+        process.env.FRIST_API_NEWAPI_REDEMPTION_STATUS_SYNC_INTERVAL_MS ??
+        DEFAULT_NEWAPI_REDEMPTION_STATUS_SYNC_INTERVAL_MS,
+    ),
     requireNewApiDatabase:
       typeof options.requireNewApiDatabase === 'boolean'
         ? options.requireNewApiDatabase
@@ -4737,6 +5942,49 @@ function normalizeServerOptions(options) {
     gatewaySlowLatencyThresholdMs: Number(
       options.gatewaySlowLatencyThresholdMs ?? process.env.FRIST_API_GATEWAY_SLOW_LATENCY_MS ?? DEFAULT_GATEWAY_SLOW_LATENCY_MS,
     ),
+    rateMarkup: Number.isFinite(Number(options.rateMarkup ?? process.env.FRIST_API_RATE_MARKUP ?? 0.1))
+      ? Number(options.rateMarkup ?? process.env.FRIST_API_RATE_MARKUP ?? 0.1)
+      : 0.1,
+    xianyuWebhookToken: String(options.xianyuWebhookToken ?? process.env.FRIST_API_XIANYU_WEBHOOK_TOKEN ?? '').trim(),
+    cardAutoreplenishEnabled:
+      typeof options.cardAutoreplenishEnabled === 'boolean'
+        ? options.cardAutoreplenishEnabled
+        : process.env.FRIST_API_CARD_AUTOREPLENISH_ENABLED === '1',
+    cardAutoreplenishDailyCap: Number(
+      options.cardAutoreplenishDailyCap ??
+        process.env.FRIST_API_CARD_AUTOREPLENISH_DAILY_CAP ??
+        DEFAULT_CARD_AUTOREPLENISH_DAILY_CAP,
+    ),
+    cardAutoreplenishIntervalMs: Number(
+      options.cardAutoreplenishIntervalMs ??
+        process.env.FRIST_API_CARD_AUTOREPLENISH_INTERVAL_MS ??
+        86_400_000,
+    ),
+    cardAutoreplenishSafetyStock: normalizeCardAutoreplenishSafetyStock(
+      options.cardAutoreplenishSafetyStock ?? process.env.FRIST_API_CARD_AUTOREPLENISH_SAFETY_STOCK ?? '',
+    ),
+    upstreamBalanceSyncEnabled:
+      typeof options.upstreamBalanceSyncEnabled === 'boolean'
+        ? options.upstreamBalanceSyncEnabled
+        : process.env.FRIST_API_UPSTREAM_BALANCE_SYNC_ENABLED === '1',
+    upstreamBalanceSyncIntervalMs: Number(
+      options.upstreamBalanceSyncIntervalMs ??
+        process.env.FRIST_API_UPSTREAM_BALANCE_SYNC_INTERVAL_MS ??
+        86_400_000,
+    ),
+    upstreamBalanceWarningCny: Number(
+      options.upstreamBalanceWarningCny ?? process.env.FRIST_API_UPSTREAM_BALANCE_WARNING_CNY ?? 50,
+    ),
+    upstreamBalanceCriticalCny: Number(
+      options.upstreamBalanceCriticalCny ?? process.env.FRIST_API_UPSTREAM_BALANCE_CRITICAL_CNY ?? 20,
+    ),
+    upstreamBalanceStaleHours: Number(
+      options.upstreamBalanceStaleHours ?? process.env.FRIST_API_UPSTREAM_BALANCE_STALE_HOURS ?? 26,
+    ),
+    notifyUpstreamBalance:
+      typeof options.notifyUpstreamBalance === 'function'
+        ? options.notifyUpstreamBalance
+        : createUpstreamBalanceNotifier(options.fetchImpl || globalThis.fetch),
     balanceAlertEmailSender:
       typeof options.balanceAlertEmailSender === 'function'
         ? options.balanceAlertEmailSender
@@ -4758,6 +6006,9 @@ function normalizeServerOptions(options) {
   ].filter((secret, index, list) => secret && list.indexOf(secret) === index);
   normalized.accountEmailSender =
     typeof options.accountEmailSender === 'function' ? options.accountEmailSender : normalized.balanceAlertEmailSender;
+  if (normalized.turnstileAllowedHostnames.size === 0 && normalized.canonicalHost) {
+    normalized.turnstileAllowedHostnames.add(normalized.canonicalHost);
+  }
   normalized.paymentConfig = paymentConfigFromOptions({
     ...options,
     publicGatewayBaseUrl: normalized.publicGatewayBaseUrl,
@@ -4793,6 +6044,9 @@ function validatePublicModeOptions(serverOptions) {
   if (!serverOptions.requireCsrf) {
     problems.push('公开模式必须开启 CSRF 防护');
   }
+  if (serverOptions.requireTurnstile && (!serverOptions.turnstileSiteKey || !serverOptions.turnstileSecret)) {
+    problems.push('人机验证必须同时配置站点 Key 和服务端密钥');
+  }
   if (
     !isPublicHttpsGateway(serverOptions.publicGatewayBaseUrl) &&
     !(serverOptions.allowInsecurePublicHttp && isPublicHttpGateway(serverOptions.publicGatewayBaseUrl))
@@ -4812,7 +6066,10 @@ function validatePublicModeOptions(serverOptions) {
     if (!serverOptions.requireAdmin2fa || serverOptions.adminTotpSecrets.length === 0) {
       problems.push('生产强制模式必须启用管理员 2FA');
     }
-    // 参考本项目 Frist-API 运营 SOP（2026-07-02 复核）：当前收款主路径是第三方平台售卖兑换码 + 站内核销，自动支付商户只作为备用能力。
+    if (!serverOptions.requireTurnstile || !serverOptions.turnstileSiteKey || !serverOptions.turnstileSecret) {
+      problems.push('生产强制模式必须启用登录/注册/兑换人机验证');
+    }
+    // 参考本项目 CC中转 运营 SOP（2026-07-02 复核）：当前先走生产环境内测，兑换码只用于内测验证和人工发放，自动支付商户只作为备用能力。
     const redemptionStatus = buildRedemptionBillingStatus();
     if (!redemptionStatus.ready) {
       problems.push('生产强制模式必须保留兑换码售卖与站内核销闭环');
@@ -4836,7 +6093,7 @@ function createLowInventoryWebhookNotifier(fetchImpl) {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          source: 'Frist-API',
+          source: 'CC中转',
           type: 'low_inventory',
           ...payload,
         }),
@@ -4860,7 +6117,7 @@ function createCredentialIssueNotifier(fetchImpl) {
 
   return async (payload) => {
     const message = [
-      `[Frist-API] ${payload.issueType === 'quota' ? 'Key 额度异常' : 'Key 认证异常'}`,
+      `[CC中转] ${payload.issueType === 'quota' ? 'Key 额度异常' : 'Key 认证异常'}`,
       `渠道: ${payload.pool || 'default'} / ${payload.providerGroup || 'Unknown'}`,
       `Key: ${payload.keyPreview || 'unknown'}`,
       `状态: ${payload.status || 'unknown'}`,
@@ -4887,7 +6144,7 @@ function createCredentialIssueNotifier(fetchImpl) {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            source: 'Frist-API',
+            source: 'CC中转',
             type: 'upstream_key_issue',
             message,
             payload,
@@ -4896,6 +6153,46 @@ function createCredentialIssueNotifier(fetchImpl) {
       }
     } catch {
       // 告警失败不阻断主流程，等待下一次巡检或请求重试。
+    }
+  };
+}
+
+function createUpstreamBalanceNotifier(fetchImpl) {
+  if (typeof fetchImpl !== 'function') {
+    return null;
+  }
+  const telegramToken = String(process.env.FRIST_API_TELEGRAM_BOT_TOKEN || '').trim();
+  const telegramChatId = String(process.env.FRIST_API_TELEGRAM_CHAT_ID || '').trim();
+  const webhookUrl = String(process.env.FRIST_API_UPSTREAM_BALANCE_WEBHOOK || process.env.FRIST_API_LOW_INVENTORY_WEBHOOK || '').trim();
+  if (!telegramToken && !webhookUrl) {
+    return null;
+  }
+  return async (balance) => {
+    const message = [
+      `[CC中转] 上游余额${balance.level === 'critical' ? '严重不足' : '偏低'}`,
+      `剩余: ¥${Number(balance.remainingCny || 0).toFixed(2)}`,
+      `提醒线: ¥${Number(balance.warningCny || 50).toFixed(2)} / 严重线: ¥${Number(balance.criticalCny || 20).toFixed(2)}`,
+      `状态: ${balance.level || 'unknown'}`,
+      `时间: ${balance.checkedAt || ''}`,
+      balance.level === 'critical' ? '动作: 建议暂停新发货并尽快充值' : '动作: 请安排充值',
+    ].join('\n');
+    try {
+      if (telegramToken && telegramChatId) {
+        await fetchImpl(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ chat_id: telegramChatId, text: message, disable_web_page_preview: true }),
+        });
+      }
+      if (webhookUrl) {
+        await fetchImpl(webhookUrl, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ source: 'CC中转', type: 'upstream_balance_low', message, payload: balance }),
+        });
+      }
+    } catch {
+      // 余额预警发送失败不能影响主链路，下一次同步会继续提醒。
     }
   };
 }
@@ -5099,6 +6396,18 @@ function requireAdmin(data, request, serverOptions, options = {}) {
   throw publicError(401, '管理员身份无效');
 }
 
+function requireXianyuWebhook(request, serverOptions) {
+  const expected = String(serverOptions.xianyuWebhookToken || '').trim();
+  if (!expected) {
+    throw publicError(503, '闲鱼自动发货 webhook 未配置');
+  }
+  const bearer = String(request.headers.authorization || '').match(/^Bearer\s+(.+)$/i)?.[1] || '';
+  const actual = String(headerValue(request, 'x-cc-xianyu-token') || bearer || '').trim();
+  if (!actual || !safeEqual(expected, actual)) {
+    throw publicError(401, '闲鱼自动发货 token 无效');
+  }
+}
+
 function requireAdminSecondFactorIfEnabled(data, request, serverOptions, options = {}) {
   if (!serverOptions.requireAdmin2fa || options.allowPendingSecondFactor) {
     return;
@@ -5245,6 +6554,9 @@ function isSourceRouteApproved({ sourceType, riskStatus, backupRiskAccepted }) {
 }
 
 function isCredentialRouteApproved(credential) {
+  if (isEncryptedRuntimeSecret(credential.rawKey)) {
+    return false;
+  }
   return isSourceRouteApproved({
     sourceType: credential.sourceType || PRIMARY_SOURCE_TYPE,
     riskStatus: credential.riskStatus || 'approved',
@@ -5491,7 +6803,7 @@ function writeJson(response, status, payload, headers = {}) {
   response.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
     'access-control-allow-origin': '*',
-    'access-control-allow-headers': 'content-type, authorization, x-api-key, anthropic-auth-token, x-admin-token, x-csrf-token, x-frist-session-id, x-conversation-id',
+    'access-control-allow-headers': 'content-type, authorization, x-api-key, anthropic-auth-token, x-admin-token, x-csrf-token, x-frist-session-id, x-conversation-id, x-cc-xianyu-token',
     'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
     ...headers,
   });
@@ -5501,7 +6813,7 @@ function writeJson(response, status, payload, headers = {}) {
 function writeNoContent(response) {
   response.writeHead(204, {
     'access-control-allow-origin': '*',
-    'access-control-allow-headers': 'content-type, authorization, x-api-key, anthropic-auth-token, x-admin-token, x-csrf-token, x-frist-session-id, x-conversation-id',
+    'access-control-allow-headers': 'content-type, authorization, x-api-key, anthropic-auth-token, x-admin-token, x-csrf-token, x-frist-session-id, x-conversation-id, x-cc-xianyu-token',
     'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
   });
   response.end();
@@ -5522,9 +6834,31 @@ function normalizePublicError(error) {
 }
 
 function requestOrigin(request) {
-  const protocol = request.headers['x-forwarded-proto'] || 'http';
-  const host = request.headers['x-forwarded-host'] || request.headers.host || '127.0.0.1';
-  return `${protocol}://${host}`;
+  const forwardedProtocol = firstHeaderToken(request.headers['x-forwarded-proto']);
+  const protocol = forwardedProtocol.toLowerCase().replace(/:$/, '') === 'https' ? 'https' : 'http';
+  const forwardedHost = firstHeaderToken(request.headers['x-forwarded-host']);
+  const hostHeader = firstHeaderToken(request.headers.host);
+  const host = normalizeOriginHost(forwardedHost || hostHeader) || '127.0.0.1';
+  const origin = `${protocol}://${host}`;
+  try {
+    new URL(origin);
+    return origin;
+  } catch {
+    return 'http://127.0.0.1';
+  }
+}
+
+function firstHeaderToken(value) {
+  const raw = Array.isArray(value) ? value[0] : String(value || '');
+  return raw.split(',')[0].trim();
+}
+
+function normalizeOriginHost(value) {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return '';
+  }
+  return raw.replace(/^https?:\/\//i, '').split('/')[0].trim();
 }
 
 function parseCookies(header) {
@@ -6316,7 +7650,7 @@ function buildModelCatalog(data) {
       family: live?.provider || auditCatalogByModel.get(model)?.family || providerFromModel(model),
       tagline: auditCatalogByModel.get(model)?.tagline || taglineForModel(model),
       context: auditCatalogByModel.get(model)?.context || contextForModel(model),
-      price: price ? priceLabel(price) : auditCatalogByModel.get(model)?.price || '官方价格待同步',
+      price: price ? priceLabel(price) : auditCatalogByModel.get(model)?.price || '参考标价待同步',
       available: Boolean(live?.ok),
     });
   }
@@ -6377,7 +7711,7 @@ function priceLabel(price) {
   const input = Number(price.inputSaleCnyPerMillion || 0);
   const output = Number(price.outputSaleCnyPerMillion || 0);
   if (input <= 0 && output <= 0) {
-    return '官方价格待同步';
+    return '参考标价待同步';
   }
   return `${formatUsdPriceFromCny(input)}/${formatUsdPriceFromCny(output)} 每 1M`;
 }
@@ -6427,6 +7761,8 @@ async function buildProductionReadiness(data, serverOptions) {
   const backup = buildBackupReadiness(data, serverOptions);
   const payment = buildPaymentClosureStatus(serverOptions);
   const redemptionBilling = buildRedemptionBillingStatus();
+  const turnstile = buildTurnstileReadiness(serverOptions);
+  const upstreamInventory = buildHealthyUpstreamInventoryReadiness(data, serverOptions);
   const checks = [
     {
       id: 'brand_domain',
@@ -6441,6 +7777,12 @@ async function buildProductionReadiness(data, serverOptions) {
       detail: serverOptions.newApiEnabled ? 'New-API 桥接已启用' : '仍在 JSON runtime 模式',
     },
     {
+      id: 'healthy_upstream_inventory',
+      label: '健康上游库存',
+      ok: upstreamInventory.ready,
+      detail: upstreamInventory.message,
+    },
+    {
       id: 'backup_monitoring',
       label: '备份监控',
       ok: backup.ready,
@@ -6451,6 +7793,12 @@ async function buildProductionReadiness(data, serverOptions) {
       label: '管理员 2FA',
       ok: Boolean(serverOptions.requireAdmin2fa && serverOptions.adminTotpSecrets.length > 0),
       detail: serverOptions.requireAdmin2fa ? '已要求 TOTP 二次验证' : '未启用',
+    },
+    {
+      id: 'turnstile',
+      label: '登录/注册/兑换人机验证',
+      ok: turnstile.ready,
+      detail: turnstile.message,
     },
     {
       id: 'redemption_billing',
@@ -6471,12 +7819,96 @@ async function buildProductionReadiness(data, serverOptions) {
     checks,
     payment,
     redemptionBilling,
+    turnstile,
     backup,
+    upstreamInventory,
     sla: {
       retentionDays: Number(serverOptions.slaRetentionDays || DEFAULT_SLA_RETENTION_DAYS),
       eventCount: (data.channelProbeEvents || []).length,
       models: uniqueStrings((data.channelProbeEvents || []).map((event) => event.model)).length,
     },
+  };
+}
+
+function buildHealthyUpstreamInventoryReadiness(data, serverOptions) {
+  const localHealthyCredentials = (data.credentials || []).filter(
+    (credential) =>
+      credential.enabled &&
+      credential.status === 'healthy' &&
+      isCredentialRouteApproved(credential) &&
+      Number(credential.quotaRemaining || 0) > 0 &&
+      (credential.models || []).length > 0,
+  );
+  const newApi = readNewApiInventoryCounts(serverOptions);
+  const ready = localHealthyCredentials.length > 0 || newApi.enabledChannelsWithModels > 0;
+  const modelCount = uniqueStrings(localHealthyCredentials.flatMap((credential) => credential.models || [])).length + newApi.enabledModels;
+  return {
+    ready,
+    localHealthyCredentials: localHealthyCredentials.length,
+    localHealthyModels: uniqueStrings(localHealthyCredentials.flatMap((credential) => credential.models || [])).length,
+    newApiEnabledChannels: newApi.enabledChannelsWithModels,
+    newApiModels: newApi.enabledModels,
+    sqliteDbConfigured: Boolean(String(serverOptions.newApiSqliteDb || '').trim()),
+    sqliteDbReadable: newApi.readable,
+    message: ready
+      ? `本地健康库存 ${localHealthyCredentials.length} 条，New-API 可用渠道 ${newApi.enabledChannelsWithModels} 个，模型 ${modelCount} 个`
+      : `暂无健康上游库存：本地 ${localHealthyCredentials.length} 条，New-API 可用渠道 ${newApi.enabledChannelsWithModels} 个 / 模型 ${newApi.enabledModels} 个`,
+    ...(newApi.error ? { error: newApi.error } : {}),
+  };
+}
+
+function readNewApiInventoryCounts(serverOptions) {
+  if (!serverOptions.newApiEnabled) {
+    return { readable: false, enabledChannelsWithModels: 0, enabledModels: 0 };
+  }
+  const sqliteDb = String(serverOptions.newApiSqliteDb || '').trim();
+  if (!sqliteDb) {
+    return { readable: false, enabledChannelsWithModels: 0, enabledModels: 0, error: 'missing_sqlite_db' };
+  }
+  const sql = [
+    "select 'channels', count(*) from channels where coalesce(status, 1) = 1 and trim(coalesce(models, '')) <> '';",
+    "select 'models', count(*) from models where coalesce(status, 1) = 1;",
+  ].join('\n');
+  const result = spawnSync('sqlite3', [sqliteDb], {
+    input: `${sql}\n`,
+    encoding: 'utf8',
+    maxBuffer: 1024 * 1024,
+  });
+  if (result.status !== 0) {
+    return {
+      readable: false,
+      enabledChannelsWithModels: 0,
+      enabledModels: 0,
+      error: String(result.stderr || result.stdout || 'sqlite3_failed').split('\n')[0].slice(0, 120),
+    };
+  }
+  const counts = Object.fromEntries(
+    String(result.stdout || '')
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => {
+        const [name, count] = line.split('|');
+        return [name, Number(count || 0)];
+      }),
+  );
+  return {
+    readable: true,
+    enabledChannelsWithModels: Number(counts.channels || 0),
+    enabledModels: Number(counts.models || 0),
+  };
+}
+
+function buildTurnstileReadiness(serverOptions) {
+  const allowedHostnames = [...(serverOptions.turnstileAllowedHostnames || new Set())];
+  const ready = Boolean(serverOptions.requireTurnstile && serverOptions.turnstileSiteKey && serverOptions.turnstileSecret);
+  return {
+    ready,
+    enabled: Boolean(serverOptions.requireTurnstile),
+    siteKeyConfigured: Boolean(serverOptions.turnstileSiteKey),
+    secretConfigured: Boolean(serverOptions.turnstileSecret),
+    allowedHostnames,
+    message: ready ? `已保护登录、注册、兑换；允许域名 ${allowedHostnames.join(', ') || '未限制'}` : '未完整启用人机验证',
   };
 }
 
@@ -6659,10 +8091,11 @@ function publicUserKeyPreview(value) {
 }
 
 function sanitizeCredential(credential) {
+  const encryptedSecret = isEncryptedRuntimeSecret(credential.rawKey);
   return {
     id: credential.id,
     sourceId: credential.sourceId,
-    keyPreview: credential.keyPreview || maskKey(credential.rawKey),
+    keyPreview: encryptedSecret ? '需重新生成' : credential.keyPreview || maskKey(credential.rawKey),
     pool: credential.pool,
     modelGroup: credential.modelGroup || 'All',
     cardType: credential.cardType || credential.pool,
@@ -6674,7 +8107,8 @@ function sanitizeCredential(credential) {
     connectionPath: credential.connectionPath || 'direct',
     models: credential.models,
     status: credential.status,
-    enabled: Boolean(credential.enabled),
+    enabled: Boolean(credential.enabled) && !encryptedSecret,
+    requiresRotation: encryptedSecret,
     quotaRemaining: credential.quotaRemaining,
     quotaTotal: credential.quotaTotal || credential.quotaRemaining,
     expiresAt: credential.expiresAt || '',
@@ -6714,8 +8148,11 @@ function sanitizeRedemptionCard(card) {
   return {
     id: card.id,
     batchId: card.batchId || '',
-    code: card.code,
-    label: card.label || 'Frist-API 兑换码',
+    code: card.code || card.codePreview || maskCardCode(cardCodePlain(card)),
+    codePreview: card.codePreview || maskCardCode(card.code || ''),
+    codeHash: card.codeHash || '',
+    label: card.label || 'CC中转 兑换码',
+    planId: card.planId || '',
     plan: card.plan || 'balance',
     durationDays: Number(card.durationDays || 0),
     quotaUsd: Number(card.quotaUsd || 0),
@@ -6728,9 +8165,149 @@ function sanitizeRedemptionCard(card) {
     note: card.note || '',
     createdAt: card.createdAt || '',
     updatedAt: card.updatedAt || '',
+    soldAt: card.soldAt || '',
+    soldOrderId: card.soldOrderId || '',
+    soldPlatform: card.soldPlatform || '',
+    soldBuyerHint: card.soldBuyerHint || '',
+    fulfillmentId: card.fulfillmentId || '',
+    deliveredAt: card.deliveredAt || '',
     redeemedAt: card.redeemedAt || '',
     redeemedEmail: maskEmail(card.redeemedEmail || ''),
   };
+}
+
+function sanitizeUpstreamChannel(channel) {
+  return {
+    id: channel.id,
+    source: channel.source || 'reference-channel',
+    provider: channel.provider || '参考渠道',
+    platform: channel.platform || 'Other',
+    model: channel.model || '',
+    status: channel.status || 'unknown',
+    upstreamMultiplier: Number(channel.upstreamMultiplier || 0),
+    saleMultiplier: Number(channel.saleMultiplier || 0),
+    latencyMs: Number(channel.latencyMs || 0),
+    checkedAt: channel.checkedAt || '',
+    syncedAt: channel.syncedAt || channel.checkedAt || '',
+  };
+}
+
+function sanitizeUpstreamBalance(balance, serverOptions = {}) {
+  const record = normalizeUpstreamBalanceRecord(balance || {});
+  const warningCny = Number(serverOptions.upstreamBalanceWarningCny || record.warningCny || 50);
+  const criticalCny = Number(serverOptions.upstreamBalanceCriticalCny || record.criticalCny || 20);
+  const level = normalizeUpstreamBalanceLevel(record.level, record.remainingCny, warningCny, criticalCny);
+  return {
+    provider: record.provider || (serverOptions.newApiEnabled ? 'New-API' : ''),
+    userId: record.userId,
+    username: record.username,
+    emailMasked: maskEmail(record.emailMasked || ''),
+    group: record.group,
+    remainingCny: round2(record.remainingCny),
+    usedCny: round2(record.usedCny),
+    remainingUsd: round2(record.remainingUsd),
+    warningCny: round2(warningCny),
+    criticalCny: round2(criticalCny),
+    level,
+    pauseRecommended: level === 'critical',
+    checkedAt: record.checkedAt,
+    stale: !record.checkedAt || Date.now() - Date.parse(record.checkedAt) > Math.max(1, Number(serverOptions.upstreamBalanceStaleHours || 26)) * 3_600_000,
+    lastError: record.lastError,
+  };
+}
+
+function normalizeUpstreamBalanceLevel(value, remainingCny, warningCny = 50, criticalCny = 20) {
+  const explicit = String(value || '').trim().toLowerCase();
+  if (['ok', 'warning', 'critical', 'unknown'].includes(explicit)) return explicit;
+  const remaining = Number(remainingCny || 0);
+  if (!Number.isFinite(remaining) || remaining <= 0) return 'unknown';
+  if (remaining <= Number(criticalCny || 20)) return 'critical';
+  if (remaining <= Number(warningCny || 50)) return 'warning';
+  return 'ok';
+}
+
+function sanitizeXianyuFulfillment(item) {
+  return {
+    id: item.id,
+    platform: item.platform || 'xianyu',
+    orderId: item.orderId || '',
+    productTitle: item.productTitle || '',
+    buyerHint: item.buyerHint || '',
+    planId: item.planId || '',
+    cardId: item.cardId || '',
+    cardCode: item.cardCode || '',
+    status: item.status || 'draft',
+    deliveryMessage: item.deliveryMessage || '',
+    note: item.note || '',
+    createdAt: item.createdAt || '',
+    updatedAt: item.updatedAt || '',
+    deliveredAt: item.deliveredAt || '',
+    redeemedAt: item.redeemedAt || '',
+    redeemedEmail: maskEmail(item.redeemedEmail || ''),
+  };
+}
+
+function buildChannelSyncSummary(data, serverOptions = {}) {
+  const channels = data.upstreamChannelSnapshots || [];
+  const healthy = channels.filter((item) => item.status === 'healthy').length;
+  const slow = channels.filter((item) => item.status === 'slow').length;
+  const down = channels.filter((item) => item.status === 'down').length;
+  const models = new Set(channels.map((item) => item.model).filter(Boolean));
+  const averageSaleMultiplier = channels.length
+    ? round2(channels.reduce((sum, item) => sum + Number(item.saleMultiplier || 0), 0) / channels.length)
+    : 0;
+  return {
+    total: channels.length,
+    healthy,
+    slow,
+    down,
+    modelCount: models.size,
+    rateMarkup: Number(serverOptions.rateMarkup ?? 0.1),
+    averageSaleMultiplier,
+    lastSyncedAt: channels.map((item) => item.syncedAt || item.checkedAt || '').filter(Boolean).sort().at(-1) || '',
+  };
+}
+
+function buildXianyuFulfillmentSummary(data) {
+  const items = data.xianyuFulfillments || [];
+  return {
+    total: items.length,
+    delivered: items.filter((item) => item.status === 'delivered').length,
+    redeemed: items.filter((item) => item.status === 'redeemed').length,
+    cancelled: items.filter((item) => item.status === 'cancelled').length,
+    availableCards: (data.redemptionCards || []).filter((card) => card.status === 'unused').length,
+    soldCards: (data.redemptionCards || []).filter((card) => card.status === 'sold').length,
+  };
+}
+
+function buildXianyuAutomationConfig(serverOptions) {
+  const base = String(serverOptions.publicGatewayBaseUrl || 'https://jiyu.245334.xyz/v1')
+    .replace(/\/v1\/?$/i, '')
+    .replace(/\/$/, '');
+  return {
+    enabled: Boolean(String(serverOptions.xianyuWebhookToken || '').trim()),
+    endpoint: `${base}/api/ops/xianyu/paid-order`,
+    method: 'POST',
+    authHeader: 'x-cc-xianyu-token',
+    tokenPreview: maskSecretPreview(serverOptions.xianyuWebhookToken),
+    acceptsOnlyPaid: true,
+    paidStatuses: ['等待卖家发货', '买家已付款', '已付款', '待发货', 'paid'],
+    samplePayload: {
+      orderId: '闲鱼订单号',
+      status: '等待卖家发货',
+      paid: true,
+      productTitle: 'CC中转 兑换码',
+      buyerHint: '买家昵称/尾号',
+      planId: '套餐ID，可留空',
+    },
+  };
+}
+
+function maskSecretPreview(value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  if (text.length <= 10) return '••••';
+  return `${text.slice(0, 4)}••••${text.slice(-4)}`;
 }
 
 function sanitizePlusAccount(account, serverOptions = {}) {
@@ -6945,6 +8522,10 @@ function adminEventDetail(event) {
   if (event.type === 'logged_in') return '用户登录';
   if (event.type === 'redeemed') return `兑换码 ${event.code || ''} 已生效`;
   if (event.type === 'redemption_cards_created') return `生成兑换卡 ${event.count || 0} 张`;
+  if (event.type === 'redemption_cards_autoreplenished') return `自动补卡 ${event.created || 0} 张`;
+  if (event.type === 'upstream_channels_synced') return `同步上游渠道 ${event.count || 0} 条，倍率加价 ${event.rateMarkup || 0}`;
+  if (event.type === 'upstream_balance_synced') return `上游余额 ¥${Number(event.remainingCny || 0).toFixed(2)} · ${event.level || 'unknown'}`;
+  if (event.type === 'xianyu_card_delivered') return `闲鱼订单 ${event.orderId || ''} 已发卡 ${event.code || ''}`;
   if (event.type === 'plus_account_upserted') return `Plus 账号台账已更新: ${event.status || 'warming'}`;
   if (event.type === 'rt_accounts_imported') return `RT 账号导入 ${event.count || 0} 个，跳过 ${event.skipped || 0} 个`;
   if (event.type === 'admin_auth_failed') return `管理认证失败: ${event.path || '/api/admin/*'} · ${event.ipHash || 'unknown'}`;
@@ -6956,6 +8537,78 @@ function adminEventDetail(event) {
 
 function createId(prefix) {
   return `${prefix}-${randomBytes(12).toString('base64url')}`;
+}
+
+function normalizeCardCode(value) {
+  return String(value || '').trim().toUpperCase();
+}
+
+function hashRedemptionCode(value) {
+  const code = normalizeCardCode(value);
+  return code ? `sha256:${createHash('sha256').update(code).digest('hex')}` : '';
+}
+
+function redemptionMatchesCode(redemption, code) {
+  const normalized = normalizeCardCode(code);
+  if (!normalized) return false;
+  if (normalizeCardCode(redemption?.code) === normalized) return true;
+  return Boolean(redemption?.codeHash && redemption.codeHash === hashRedemptionCode(normalized));
+}
+
+function cardMatchesCode(card, code, serverOptions = {}) {
+  const normalized = normalizeCardCode(code);
+  if (!normalized) return false;
+  if (normalizeCardCode(card?.code) === normalized) return true;
+  if (card?.codeHash && card.codeHash === hashRedemptionCode(normalized)) return true;
+  if (!card?.codeHash) {
+    const plain = cardCodePlain(card, serverOptions);
+    return Boolean(plain && plain === normalized);
+  }
+  return false;
+}
+
+function cardCodePlain(card, serverOptions = {}) {
+  const direct = normalizeCardCode(card?.code);
+  if (direct) return direct;
+  const cipher = String(card?.codeCipher || '').trim();
+  if (!cipher) return '';
+  try {
+    return decryptCardCode(cipher, serverOptions);
+  } catch {
+    return '';
+  }
+}
+
+function encryptCardCode(code, serverOptions = {}) {
+  const normalized = normalizeCardCode(code);
+  if (!normalized) return '';
+  return encryptSecretField(normalized, redemptionCodeEncryptionKey(serverOptions)).replace(/^enc:v1:/, 'enc-card:v1:');
+}
+
+function decryptCardCode(value, serverOptions = {}) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  return normalizeCardCode(
+    decryptSecretField(text.replace(/^enc-card:v1:/, 'enc:v1:'), redemptionCodeEncryptionKey(serverOptions)),
+  );
+}
+
+function redemptionCodeEncryptionKey(serverOptions = {}) {
+  const secret =
+    serverOptions.dataEncryptionKey ||
+    serverOptions.passwordHashSecret ||
+    serverOptions.sessionSecret ||
+    'jiyu-redemption-code-dev-secret';
+  return createHash('sha256').update(`jiyu-redemption-code:${secret}`).digest();
+}
+
+function maskCardCode(value) {
+  const code = normalizeCardCode(value);
+  if (!code) return '';
+  const parts = code.split('-').filter(Boolean);
+  if (parts.length >= 3) return `${parts[0]}-••••-${parts.at(-1)}`;
+  if (code.length <= 8) return `${code.slice(0, 2)}••••`;
+  return `${code.slice(0, 5)}••••${code.slice(-4)}`;
 }
 
 function randomCardCodeSegment() {
@@ -7239,21 +8892,21 @@ if (isCli) {
     exposeVerificationCode: process.env.FRIST_API_EXPOSE_VERIFICATION_CODE === '1',
   });
   server.listen(port, host, () => {
-    console.log(`Frist-API server listening on http://${host}:${port}`);
+    console.log(`CC中转 server listening on http://${host}:${port}`);
   });
   let closing = false;
   const closeGracefully = (signal) => {
     if (closing) return;
     closing = true;
-    console.log(`Frist-API server received ${signal}, closing...`);
+    console.log(`CC中转 server received ${signal}, closing...`);
     const forceTimer = setTimeout(() => {
-      console.error('Frist-API server close timeout, exiting.');
+      console.error('CC中转 server close timeout, exiting.');
       process.exit(1);
     }, 8_000);
     forceTimer.unref();
     server.close((error) => {
       if (error) {
-        console.error(`Frist-API server close failed: ${error.message}`);
+        console.error(`CC中转 server close failed: ${error.message}`);
         process.exit(1);
       }
       process.exit(0);

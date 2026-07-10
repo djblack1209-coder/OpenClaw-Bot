@@ -7,6 +7,8 @@ const state = {
   plusAccounts: [],
   editingPlusAccountId: '',
   rtAccounts: [],
+  upstreamChannels: [],
+  xianyuFulfillments: [],
 };
 
 function init() {
@@ -22,6 +24,10 @@ function init() {
   document.querySelector('[data-admin-pricing-save]').addEventListener('click', savePricing);
   document.querySelector('[data-admin-card-create]').addEventListener('click', createRedemptionCards);
   document.querySelector('[data-admin-card-copy]').addEventListener('click', copyLatestCardExport);
+  document.querySelector('[data-admin-copy-listing-template]')?.addEventListener('click', copyListingTemplate);
+  document.querySelector('[data-admin-upstream-sync-run]')?.addEventListener('click', syncUpstreamChannels);
+  document.querySelector('[data-admin-xianyu-create]')?.addEventListener('click', createXianyuFulfillment);
+  document.querySelector('[data-admin-xianyu-copy]')?.addEventListener('click', copyXianyuDeliveryMessage);
   document.querySelector('[data-admin-plus-save]').addEventListener('click', savePlusAccount);
   document.querySelector('[data-admin-plus-clear]').addEventListener('click', clearPlusAccountForm);
   document.querySelector('[data-admin-plus-list]').addEventListener('click', handlePlusAccountListClick);
@@ -149,6 +155,9 @@ async function loadInventory() {
   renderRedemptionCards(result.redemptionCards || []);
   renderPlusAccounts(result.plusAccounts || [], result.plusAccountSummary || {});
   renderRtAccounts(result.rtAccounts || [], result.rtAccountSummary || {});
+  renderUpstreamChannels(result.upstreamChannels || [], result.channelSyncSummary || {});
+  renderXianyuFulfillments(result.xianyuFulfillments || [], result.xianyuSummary || {});
+  renderXianyuAutomation(result.xianyuAutomation || {});
   renderAudit(result.events || []);
   setMessage(`库存 ${result.credentials?.length || 0} 枚`);
 }
@@ -191,15 +200,58 @@ function renderPricing(pricing) {
   renderCardPlanOptions();
 }
 
+async function syncUpstreamChannels() {
+  state.adminToken = document.querySelector('[data-admin-token]').value.trim();
+  window.localStorage.setItem(STORAGE_KEY, state.adminToken);
+  try {
+    const raw = document.querySelector('[data-admin-upstream-json]')?.value || '[]';
+    const parsed = JSON.parse(raw);
+    const channels = Array.isArray(parsed) ? parsed : parsed.channels || parsed.items || [];
+    const result = await adminRequest('/api/admin/upstream-sync', {
+      method: 'POST',
+      body: { source: 'reference-channel', channels },
+    });
+    renderUpstreamChannels(result.channels || [], result.summary || {});
+    renderAudit(result.events || []);
+    setMessage(`同步 ${result.channels?.length || 0} 条，上调倍率 ${result.rateMarkup}`);
+  } catch (error) {
+    setMessage(error.message);
+  }
+}
+
+async function createXianyuFulfillment() {
+  state.adminToken = document.querySelector('[data-admin-token]').value.trim();
+  window.localStorage.setItem(STORAGE_KEY, state.adminToken);
+  try {
+    const result = await adminRequest('/api/admin/xianyu/fulfillments', {
+      method: 'POST',
+      body: {
+        orderId: document.querySelector('[data-admin-xianyu-order-id]')?.value || '',
+        buyerHint: document.querySelector('[data-admin-xianyu-buyer]')?.value || '',
+        productTitle: document.querySelector('[data-admin-xianyu-product]')?.value || '',
+        planId: document.querySelector('[data-admin-xianyu-plan]')?.value || '',
+      },
+    });
+    document.querySelector('[data-admin-xianyu-message]').value = result.deliveryMessage || '';
+    await loadInventory();
+    setMessage(result.idempotent ? '订单已发过卡，已显示原话术' : '已分配卡密并生成发货话术');
+  } catch (error) {
+    setMessage(error.message);
+  }
+}
+
+
 function renderCardPlanOptions() {
-  const select = document.querySelector('[data-admin-card-plan]');
-  if (!select) return;
-  const current = select.value;
-  select.innerHTML = state.rechargePlans
-    .map((plan) => `<option value="${escapeHtml(plan.id)}">${escapeHtml(plan.label)} · $${Number(plan.quotaUsd || 0).toFixed(0)}</option>`)
-    .join('');
-  if (current && state.rechargePlans.some((plan) => plan.id === current)) {
-    select.value = current;
+  for (const selector of ['[data-admin-card-plan]', '[data-admin-xianyu-plan]']) {
+    const select = document.querySelector(selector);
+    if (!select) continue;
+    const current = select.value;
+    select.innerHTML = state.rechargePlans
+      .map((plan) => `<option value="${escapeHtml(plan.id)}">${escapeHtml(plan.label)} · $${Number(plan.quotaUsd || 0).toFixed(0)}</option>`)
+      .join('');
+    if (current && state.rechargePlans.some((plan) => plan.id === current)) {
+      select.value = current;
+    }
   }
 }
 
@@ -239,6 +291,26 @@ async function copyLatestCardExport() {
   }
   await navigator.clipboard.writeText(text);
   setMessage('已复制');
+}
+
+async function copyListingTemplate() {
+  const text = document.querySelector('[data-admin-listing-template]')?.value || '';
+  if (!text.trim()) {
+    setMessage('商品模板为空');
+    return;
+  }
+  await navigator.clipboard.writeText(text);
+  setMessage('商品模板已复制');
+}
+
+async function copyXianyuDeliveryMessage() {
+  const text = document.querySelector('[data-admin-xianyu-message]')?.value || '';
+  if (!text.trim()) {
+    setMessage('请先分配卡密');
+    return;
+  }
+  await navigator.clipboard.writeText(text);
+  setMessage('发货话术已复制');
 }
 
 async function savePlusAccount() {
@@ -560,8 +632,8 @@ function renderRedemptionCards(cards) {
             <strong>${escapeHtml(card.code)}</strong>
             <span>${escapeHtml(card.label)}</span>
           </div>
-          <span class="status-pill status-pill--${card.status === 'unused' ? 'healthy' : 'down'}">
-            ${card.status === 'unused' ? '未售出' : card.status === 'redeemed' ? '已兑换' : '已停用'}
+          <span class="status-pill status-pill--${card.status === 'unused' ? 'healthy' : card.status === 'sold' ? 'pending' : 'down'}">
+            ${redemptionCardStatusText(card.status)}
           </span>
           <div>
             <b>${escapeHtml(card.credit)}</b>
@@ -572,6 +644,88 @@ function renderRedemptionCards(cards) {
       `,
     )
     .join('');
+}
+
+
+function renderUpstreamChannels(channels = [], summary = {}) {
+  const summaryContainer = document.querySelector('[data-admin-upstream-summary]');
+  const list = document.querySelector('[data-admin-upstream-list]');
+  state.upstreamChannels = channels.filter(Boolean);
+  if (summaryContainer) {
+    summaryContainer.innerHTML = `
+      <article><span>渠道</span><strong>${escapeHtml(summary.total ?? channels.length)}</strong></article>
+      <article><span>正常</span><strong>${escapeHtml(summary.healthy ?? 0)}</strong></article>
+      <article><span>倍率加价</span><strong>+${escapeHtml(summary.rateMarkup ?? 0.1)}</strong></article>
+      <article><span>均值</span><strong>${escapeHtml(summary.averageSaleMultiplier ?? 0)}</strong></article>
+    `;
+  }
+  if (!list) return;
+  if (!channels.length) {
+    list.innerHTML = '<p>未同步上游渠道；可先粘贴 渠道快照 JSON。</p>';
+    return;
+  }
+  list.innerHTML = channels
+    .slice(0, 80)
+    .map((channel) => `
+      <article class="admin-channel-card">
+        <div>
+          <strong>${escapeHtml(channel.model || channel.platform)}</strong>
+          <span>${escapeHtml(channel.provider)} · ${escapeHtml(channel.platform)}</span>
+        </div>
+        <span class="status-pill status-pill--${channel.status === 'healthy' ? 'healthy' : channel.status === 'slow' ? 'pending' : 'down'}">${upstreamStatusText(channel.status)}</span>
+        <small>上游 ${escapeHtml(channel.upstreamMultiplier)} → 下游 ${escapeHtml(channel.saleMultiplier)} · ${escapeHtml(channel.latencyMs || '-')}ms</small>
+      </article>
+    `)
+    .join('');
+}
+
+function renderXianyuFulfillments(items = [], summary = {}) {
+  const summaryContainer = document.querySelector('[data-admin-xianyu-summary]');
+  const list = document.querySelector('[data-admin-xianyu-list]');
+  state.xianyuFulfillments = items.filter(Boolean);
+  if (summaryContainer) {
+    summaryContainer.innerHTML = `
+      <article><span>履约</span><strong>${escapeHtml(summary.total ?? items.length)}</strong></article>
+      <article><span>已发货</span><strong>${escapeHtml(summary.delivered ?? 0)}</strong></article>
+      <article><span>已兑换</span><strong>${escapeHtml(summary.redeemed ?? 0)}</strong></article>
+      <article><span>可售卡密</span><strong>${escapeHtml(summary.availableCards ?? 0)}</strong></article>
+    `;
+  }
+  if (!list) return;
+  if (!items.length) {
+    list.innerHTML = '<p>暂无闲鱼发货记录。</p>';
+    return;
+  }
+  list.innerHTML = items
+    .slice(0, 80)
+    .map((item) => `
+      <article class="redemption-card-row">
+        <div>
+          <strong>${escapeHtml(item.orderId)}</strong>
+          <span>${escapeHtml(item.productTitle || '闲鱼订单')}</span>
+        </div>
+        <span class="status-pill status-pill--${item.status === 'redeemed' ? 'healthy' : item.status === 'delivered' ? 'pending' : 'down'}">${xianyuStatusText(item.status)}</span>
+        <div>
+          <b>${escapeHtml(item.cardCode)}</b>
+          <small>${escapeHtml(item.buyerHint || '买家未备注')}</small>
+        </div>
+        <small>${escapeHtml(item.redeemedEmail || item.deliveredAt || item.createdAt || '-')}</small>
+      </article>
+    `)
+    .join('');
+}
+
+function renderXianyuAutomation(config = {}) {
+  const container = document.querySelector('[data-admin-xianyu-automation]');
+  if (!container) return;
+  const enabled = Boolean(config.enabled);
+  container.innerHTML = `
+    <strong>全自动接单：${enabled ? '已启用' : '未启用'}</strong>
+    <p>${enabled ? '监听器检测到已付款订单后，可自动分配卡密并返回发货话术。' : '需要在服务器配置 FRIST_API_XIANYU_WEBHOOK_TOKEN 后启用。'}</p>
+    <code>${escapeHtml(config.method || 'POST')} ${escapeHtml(config.endpoint || '/api/ops/xianyu/paid-order')}</code>
+    <p>认证头：${escapeHtml(config.authHeader || 'x-cc-xianyu-token')} · token：${escapeHtml(config.tokenPreview || '未配置')}</p>
+    <p>只接受状态：${escapeHtml((config.paidStatuses || ['等待卖家发货']).join(' / '))}</p>
+  `;
 }
 
 function renderPlusAccounts(accounts, summary = {}) {
@@ -625,7 +779,7 @@ function renderRtAccounts(accounts, summary = {}) {
       <article><span>总数</span><strong>${escapeHtml(summary.total ?? accounts.length)}</strong></article>
       <article><span>可用</span><strong>${escapeHtml(summary.active ?? 0)}</strong></article>
       <article><span>待刷新</span><strong>${escapeHtml(summary.ready ?? 0)}</strong></article>
-      <article><span>需重授权</span><strong>${escapeHtml(summary.needsRefresh ?? 0)}</strong></article>
+      <article><span>需复核</span><strong>${escapeHtml(summary.needsRefresh ?? 0)}</strong></article>
       <article><span>停用</span><strong>${escapeHtml(summary.blocked ?? 0)}</strong></article>
     `;
   }
@@ -714,6 +868,28 @@ function linesFrom(selector) {
     .split(/[,\n]/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+
+function redemptionCardStatusText(status) {
+  if (status === 'unused') return '未售出';
+  if (status === 'sold') return '已发货';
+  if (status === 'redeemed') return '已兑换';
+  return '已停用';
+}
+
+function upstreamStatusText(status) {
+  if (status === 'healthy') return '正常';
+  if (status === 'slow') return '降级';
+  if (status === 'down') return '断开';
+  return '未知';
+}
+
+function xianyuStatusText(status) {
+  if (status === 'delivered') return '已发货';
+  if (status === 'redeemed') return '已兑换';
+  if (status === 'cancelled') return '已取消';
+  return '待处理';
 }
 
 function statusText(status) {
@@ -814,7 +990,7 @@ function rtPlatformText(platform) {
 
 function rtStatusText(status) {
   if (status === 'active') return '可用';
-  if (status === 'needs_refresh') return '需重授权';
+  if (status === 'needs_refresh') return '需复核';
   if (status === 'blocked') return '已停用';
   if (status === 'retired') return '已退役';
   return '待刷新';

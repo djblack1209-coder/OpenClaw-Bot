@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" role="img" aria-label="CC中转 闲鱼横幅">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="360" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1E1B4B"/>
+      <stop offset="0.55" stop-color="#7F77DD"/>
+      <stop offset="1" stop-color="#A78BFA"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="80%" cy="20%" r="60%">
+      <stop stop-color="#FFFFFF" stop-opacity="0.38"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="360" rx="48" fill="url(#bg)"/>
+  <rect width="1200" height="360" rx="48" fill="url(#halo)"/>
+  <path d="M88 246c50-102 119-155 205-161-32 39-51 85-57 140 34-13 63-34 89-63-21 78-79 127-176 146l31-96c-33 12-64 24-92 34Z" fill="#fff" opacity="0.95"/>
+  <circle cx="254" cy="107" r="18" fill="#EDE9FE"/>
+  <text x="360" y="145" font-family="Inter, Arial, sans-serif" font-size="56" font-weight="900" fill="#fff">CC中转</text>
+  <text x="362" y="205" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="760" fill="#F5F3FF">兑换码 · 模型访问 · 额度到账</text>
+  <text x="362" y="256" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#EDE9FE">非厂商官方渠道｜购买前请阅读服务条款和售后规则</text>
+</svg>

@@ -1,8 +1,10 @@
 """闲鱼对话上下文管理 — SQLite 持久化"""
 
+import hashlib
 import json
 import logging
 import os
+import re
 from contextlib import contextmanager
 from datetime import timedelta
 from typing import Any
@@ -108,6 +110,78 @@ class XianyuContextManager:
                 created_at REAL DEFAULT (strftime('%s','now')),
                 UNIQUE(config_type, key)
             )""")
+            # CC中转自动发货审计表：记录已付款 webhook、消息发送和人工补发状态。
+            c.execute("""CREATE TABLE IF NOT EXISTS cc_shipments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id TEXT NOT NULL,
+                chat_id TEXT DEFAULT '',
+                buyer_id TEXT DEFAULT '',
+                item_id TEXT DEFAULT '',
+                status TEXT NOT NULL,
+                delivery_message TEXT DEFAULT '',
+                error TEXT DEFAULT '',
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now')),
+                resolved_at TEXT DEFAULT '',
+                resolve_note TEXT DEFAULT '',
+                buyer_chain_status TEXT DEFAULT '',
+                buyer_chain_verified_at TEXT DEFAULT '',
+                buyer_chain_note TEXT DEFAULT '',
+                xianyu_confirm_status TEXT DEFAULT '',
+                xianyu_confirm_at TEXT DEFAULT '',
+                xianyu_confirm_error TEXT DEFAULT '',
+                xianyu_relist_status TEXT DEFAULT '',
+                xianyu_relist_at TEXT DEFAULT '',
+                xianyu_relist_error TEXT DEFAULT '',
+                UNIQUE(order_id)
+            )""")
+            self._ensure_columns(
+                c,
+                "cc_shipments",
+                {
+                    "buyer_chain_status": "TEXT DEFAULT ''",
+                    "buyer_chain_verified_at": "TEXT DEFAULT ''",
+                    "buyer_chain_note": "TEXT DEFAULT ''",
+                    "xianyu_confirm_status": "TEXT DEFAULT ''",
+                    "xianyu_confirm_at": "TEXT DEFAULT ''",
+                    "xianyu_confirm_error": "TEXT DEFAULT ''",
+                    "xianyu_relist_status": "TEXT DEFAULT ''",
+                    "xianyu_relist_at": "TEXT DEFAULT ''",
+                    "xianyu_relist_error": "TEXT DEFAULT ''",
+                },
+            )
+            # CC中转商品映射表：闲鱼 item_id → CC中转套餐/plan_id，避免多商品上架后错发卡密。
+            c.execute("""CREATE TABLE IF NOT EXISTS cc_item_mappings (
+                item_id TEXT PRIMARY KEY,
+                plan_id TEXT NOT NULL,
+                title TEXT DEFAULT '',
+                enabled INTEGER DEFAULT 1,
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            )""")
+            # CC中转严格门审计摘要表：只保存脱敏后的同单闭环证据，避免进程重启丢失验收状态。
+            c.execute("""CREATE TABLE IF NOT EXISTS cc_strict_audits (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mode TEXT DEFAULT 'strict',
+                ok INTEGER DEFAULT 0,
+                exit_code INTEGER DEFAULT 0,
+                same_order_ready INTEGER DEFAULT 0,
+                same_order_matched INTEGER DEFAULT 0,
+                real_orders INTEGER DEFAULT 0,
+                summary_json TEXT DEFAULT '{}',
+                created_at TEXT DEFAULT (datetime('now'))
+            )""")
+
+    @staticmethod
+    def _ensure_columns(conn, table: str, columns: dict[str, str]) -> None:
+        """给已存在的 SQLite 表补列，保证老库平滑升级。"""
+        existing = {
+            str(row[1])
+            for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        for name, ddl in columns.items():
+            if name not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
 
     # ---- messages ----
     def add_message(self, chat_id: str, user_id: str, item_id: str, role: str, content: str):
@@ -184,6 +258,836 @@ class XianyuContextManager:
     def mark_notified(self, order_id: int):
         with self._conn() as c:
             c.execute("UPDATE orders SET notified=? WHERE id=?", (NOTIFY_ORDER, order_id))
+
+    def upsert_cc_item_mapping(
+        self,
+        item_id: str,
+        plan_id: str,
+        title: str = "",
+        enabled: bool = True,
+    ) -> dict[str, Any]:
+        """保存闲鱼商品到 CC中转套餐的映射，返回脱敏后的配置行。"""
+        normalized_item_id = (item_id or "").strip()
+        normalized_plan_id = (plan_id or "").strip()
+        if not normalized_item_id:
+            raise ValueError("商品 ID 不能为空")
+        if not normalized_plan_id:
+            raise ValueError("套餐/planId 不能为空")
+        safe_title = (title or "").strip()[:120]
+        enabled_int = 1 if enabled else 0
+        with self._conn() as c:
+            c.execute(
+                """
+                INSERT INTO cc_item_mappings(item_id,plan_id,title,enabled)
+                VALUES(?,?,?,?)
+                ON CONFLICT(item_id) DO UPDATE SET
+                    plan_id=excluded.plan_id,
+                    title=excluded.title,
+                    enabled=excluded.enabled,
+                    updated_at=datetime('now')
+                """,
+                (normalized_item_id, normalized_plan_id, safe_title, enabled_int),
+            )
+        return self.get_cc_item_mapping(normalized_item_id, enabled_only=False) or {
+            "item_id": normalized_item_id,
+            "plan_id": normalized_plan_id,
+            "title": safe_title,
+            "enabled": bool(enabled_int),
+        }
+
+    @staticmethod
+    def _cc_item_mapping_lookup_keys(item_id: str) -> list[str]:
+        """生成商品映射查询键，兼容闲鱼短链后缀分享码。"""
+        raw = (item_id or "").strip()
+        if not raw:
+            return []
+        keys = [raw]
+        first_token = raw.split()[0].strip() if raw.split() else ""
+        if first_token and first_token not in keys:
+            keys.append(first_token)
+        # Markdown 分享文本可能保留括号里的第二个链接，这里提取可见 URL 作为兜底键。
+        for match in re.finditer(r"https?://[^\s\]\)「」<>\"']+", raw, re.IGNORECASE):
+            candidate = match.group(0).rstrip("，。；;,.")
+            if candidate and candidate not in keys:
+                keys.append(candidate)
+        return keys
+
+    @staticmethod
+    def _escape_sql_like(value: str) -> str:
+        """转义 SQLite LIKE 通配符，避免短链中的特殊字符扩大匹配范围。"""
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+    def _row_to_cc_item_mapping(self, row) -> dict[str, Any] | None:
+        """把 SQLite 行转成商品映射字典。"""
+        if not row:
+            return None
+        return {
+            "item_id": row[0],
+            "plan_id": row[1],
+            "title": row[2] or "",
+            "enabled": bool(row[3]),
+            "created_at": row[4],
+            "updated_at": row[5],
+        }
+
+    def get_cc_item_mapping(self, item_id: str, enabled_only: bool = True) -> dict[str, Any] | None:
+        """读取单个闲鱼商品映射；短链接有分享码/无分享码都能命中。"""
+        lookup_keys = self._cc_item_mapping_lookup_keys(item_id)
+        if not lookup_keys:
+            return None
+        enabled_sql = "AND enabled=1" if enabled_only else ""
+        with self._conn() as c:
+            for lookup_key in lookup_keys:
+                row = c.execute(
+                    f"""
+                    SELECT item_id,plan_id,title,enabled,created_at,updated_at
+                    FROM cc_item_mappings
+                    WHERE item_id=? {enabled_sql}
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                    """,
+                    (lookup_key,),
+                ).fetchone()
+                mapped = self._row_to_cc_item_mapping(row)
+                if mapped:
+                    return mapped
+
+            for lookup_key in lookup_keys:
+                if not lookup_key.lower().startswith(("http://", "https://")):
+                    continue
+                like_key = self._escape_sql_like(lookup_key)
+                row = c.execute(
+                    f"""
+                    SELECT item_id,plan_id,title,enabled,created_at,updated_at
+                    FROM cc_item_mappings
+                    WHERE (item_id LIKE ? ESCAPE '\\' OR item_id LIKE ? ESCAPE '\\') {enabled_sql}
+                    ORDER BY enabled DESC, updated_at DESC
+                    LIMIT 1
+                    """,
+                    (f"{like_key} %", f"%({like_key})%"),
+                ).fetchone()
+                mapped = self._row_to_cc_item_mapping(row)
+                if mapped:
+                    return mapped
+        return None
+
+    def list_cc_item_mappings(self, include_disabled: bool = True) -> list[dict[str, Any]]:
+        """列出闲鱼商品到 CC中转套餐的映射，用于本机 GUI 管理。"""
+        with self._conn() as c:
+            if include_disabled:
+                rows = c.execute(
+                    """
+                    SELECT item_id,plan_id,title,enabled,created_at,updated_at
+                    FROM cc_item_mappings
+                    ORDER BY updated_at DESC, item_id ASC
+                    """
+                ).fetchall()
+            else:
+                rows = c.execute(
+                    """
+                    SELECT item_id,plan_id,title,enabled,created_at,updated_at
+                    FROM cc_item_mappings
+                    WHERE enabled=1
+                    ORDER BY updated_at DESC, item_id ASC
+                    """
+                ).fetchall()
+        return [
+            {
+                "item_id": row[0],
+                "plan_id": row[1],
+                "title": row[2] or "",
+                "enabled": bool(row[3]),
+                "created_at": row[4],
+                "updated_at": row[5],
+            }
+            for row in rows
+        ]
+
+    def delete_cc_item_mapping(self, item_id: str) -> bool:
+        """删除闲鱼商品映射，返回是否命中记录。"""
+        normalized_item_id = (item_id or "").strip()
+        if not normalized_item_id:
+            return False
+        with self._conn() as c:
+            cur = c.execute("DELETE FROM cc_item_mappings WHERE item_id=?", (normalized_item_id,))
+        return cur.rowcount > 0
+
+    def record_cc_shipment(
+        self,
+        order_id: str,
+        buyer_id: str = "",
+        item_id: str = "",
+        chat_id: str = "",
+        status: str = "",
+        delivery_message: str = "",
+        error: str = "",
+    ) -> None:
+        """记录 CC中转自动发货状态，供本机管理面板排查和人工补发。"""
+        safe_error = (error or "")[:500]
+        safe_message = delivery_message or ""
+        with self._conn() as c:
+            c.execute(
+                """
+                INSERT INTO cc_shipments(order_id,buyer_id,item_id,chat_id,status,delivery_message,error)
+                VALUES(?,?,?,?,?,?,?)
+                ON CONFLICT(order_id) DO UPDATE SET
+                    buyer_id=excluded.buyer_id,
+                    item_id=excluded.item_id,
+                    chat_id=excluded.chat_id,
+                    status=excluded.status,
+                    delivery_message=excluded.delivery_message,
+                    error=excluded.error,
+                    updated_at=datetime('now')
+                """,
+                (order_id, buyer_id, item_id, chat_id, status, safe_message, safe_error),
+            )
+
+    @staticmethod
+    def _mask_delivery_preview(message: str) -> str:
+        """生成脱敏话术预览，避免列表/状态接口展示完整兑换码。"""
+        text = (message or "")[:160]
+        return re.sub(r"\b(CC-[A-Z0-9][A-Z0-9-]{4,40})\b", "CC-****-****", text)
+
+    def list_cc_shipments(
+        self,
+        status: str = "",
+        limit: int = 50,
+        include_message: bool = False,
+    ) -> list[dict[str, Any]]:
+        """列出 CC中转自动发货记录；默认只返回话术预览，避免无意展示完整卡密。"""
+        limit = max(1, min(int(limit), 200))
+        with self._conn() as c:
+            if status:
+                rows = c.execute(
+                    """
+                    SELECT id,order_id,chat_id,buyer_id,item_id,status,delivery_message,error,
+                           created_at,updated_at,resolved_at,resolve_note,
+                           buyer_chain_status,buyer_chain_verified_at,buyer_chain_note,
+                           xianyu_confirm_status,xianyu_confirm_at,xianyu_confirm_error,
+                           xianyu_relist_status,xianyu_relist_at,xianyu_relist_error
+                    FROM cc_shipments WHERE status=? ORDER BY id DESC LIMIT ?
+                    """,
+                    (status, limit),
+                ).fetchall()
+            else:
+                rows = c.execute(
+                    """
+                    SELECT id,order_id,chat_id,buyer_id,item_id,status,delivery_message,error,
+                           created_at,updated_at,resolved_at,resolve_note,
+                           buyer_chain_status,buyer_chain_verified_at,buyer_chain_note,
+                           xianyu_confirm_status,xianyu_confirm_at,xianyu_confirm_error,
+                           xianyu_relist_status,xianyu_relist_at,xianyu_relist_error
+                    FROM cc_shipments ORDER BY id DESC LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+        result = []
+        for row in rows:
+            message = row[6] or ""
+            item = {
+                "id": row[0],
+                "order_id": row[1],
+                "chat_id": row[2],
+                "buyer_id": row[3],
+                "item_id": row[4],
+                "status": row[5],
+                "delivery_preview": self._mask_delivery_preview(message),
+                "error": row[7],
+                "created_at": row[8],
+                "updated_at": row[9],
+                "resolved_at": row[10],
+                "resolve_note": row[11],
+                "buyer_chain_status": row[12],
+                "buyer_chain_verified_at": row[13],
+                "buyer_chain_note": row[14],
+                "xianyu_confirm_status": row[15],
+                "xianyu_confirm_at": row[16],
+                "xianyu_confirm_error": row[17],
+                "xianyu_relist_status": row[18],
+                "xianyu_relist_at": row[19],
+                "xianyu_relist_error": row[20],
+            }
+            if include_message:
+                item["delivery_message"] = message
+            result.append(item)
+        return result
+
+    def get_cc_shipment(self, shipment_id: int, include_message: bool = False) -> dict[str, Any] | None:
+        """按 ID 读取一条 CC中转发货记录；默认不返回完整卡密话术。"""
+        with self._conn() as c:
+            row = c.execute(
+                """
+                SELECT id,order_id,chat_id,buyer_id,item_id,status,delivery_message,error,
+                       created_at,updated_at,resolved_at,resolve_note,
+                       buyer_chain_status,buyer_chain_verified_at,buyer_chain_note,
+                       xianyu_confirm_status,xianyu_confirm_at,xianyu_confirm_error,
+                       xianyu_relist_status,xianyu_relist_at,xianyu_relist_error
+                FROM cc_shipments WHERE id=?
+                """,
+                (int(shipment_id),),
+            ).fetchone()
+        if not row:
+            return None
+        message = row[6] or ""
+        item = {
+            "id": row[0],
+            "order_id": row[1],
+            "chat_id": row[2],
+            "buyer_id": row[3],
+            "item_id": row[4],
+            "status": row[5],
+            "delivery_preview": self._mask_delivery_preview(message),
+            "error": row[7],
+            "created_at": row[8],
+            "updated_at": row[9],
+            "resolved_at": row[10],
+            "resolve_note": row[11],
+            "buyer_chain_status": row[12],
+            "buyer_chain_verified_at": row[13],
+            "buyer_chain_note": row[14],
+            "xianyu_confirm_status": row[15],
+            "xianyu_confirm_at": row[16],
+            "xianyu_confirm_error": row[17],
+            "xianyu_relist_status": row[18],
+            "xianyu_relist_at": row[19],
+            "xianyu_relist_error": row[20],
+        }
+        if include_message:
+            item["delivery_message"] = message
+        return item
+
+    def get_cc_shipment_by_order_id(self, order_id: str, include_message: bool = False) -> dict[str, Any] | None:
+        """按闲鱼订单号读取履约记录；用于重复订单事件幂等保护。"""
+        normalized_order_id = (order_id or "").strip()
+        if not normalized_order_id:
+            return None
+        with self._conn() as c:
+            row = c.execute(
+                """
+                SELECT id,order_id,chat_id,buyer_id,item_id,status,delivery_message,error,
+                       created_at,updated_at,resolved_at,resolve_note,
+                       buyer_chain_status,buyer_chain_verified_at,buyer_chain_note,
+                       xianyu_confirm_status,xianyu_confirm_at,xianyu_confirm_error,
+                       xianyu_relist_status,xianyu_relist_at,xianyu_relist_error
+                FROM cc_shipments WHERE order_id=?
+                """,
+                (normalized_order_id,),
+            ).fetchone()
+        if not row:
+            return None
+        message = row[6] or ""
+        item = {
+            "id": row[0],
+            "order_id": row[1],
+            "chat_id": row[2],
+            "buyer_id": row[3],
+            "item_id": row[4],
+            "status": row[5],
+            "delivery_preview": self._mask_delivery_preview(message),
+            "error": row[7],
+            "created_at": row[8],
+            "updated_at": row[9],
+            "resolved_at": row[10],
+            "resolve_note": row[11],
+            "buyer_chain_status": row[12],
+            "buyer_chain_verified_at": row[13],
+            "buyer_chain_note": row[14],
+            "xianyu_confirm_status": row[15],
+            "xianyu_confirm_at": row[16],
+            "xianyu_confirm_error": row[17],
+            "xianyu_relist_status": row[18],
+            "xianyu_relist_at": row[19],
+            "xianyu_relist_error": row[20],
+        }
+        if include_message:
+            item["delivery_message"] = message
+        return item
+
+    def claim_next_cc_browser_delivery(
+        self,
+        statuses: tuple[str, ...] = ("manual_delivery_ready", "message_send_failed"),
+        timeout_seconds: int = 300,
+    ) -> dict[str, Any] | None:
+        """原子领取一条浏览器待发送话术，避免多个发送器重复发同一张卡密。"""
+        safe_statuses = tuple(str(status or "").strip() for status in statuses if str(status or "").strip())
+        if not safe_statuses:
+            return None
+        safe_timeout = max(30, min(int(timeout_seconds or 300), 3600))
+        placeholders = ",".join("?" for _ in safe_statuses)
+        delivery_columns = """
+            id,order_id,chat_id,buyer_id,item_id,status,delivery_message,error,
+            created_at,updated_at,resolved_at,resolve_note,
+            buyer_chain_status,buyer_chain_verified_at,buyer_chain_note,
+            xianyu_confirm_status,xianyu_confirm_at,xianyu_confirm_error,
+            xianyu_relist_status,xianyu_relist_at,xianyu_relist_error
+        """
+        with self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            c.execute(
+                """
+                UPDATE cc_shipments
+                SET status='message_send_failed',
+                    error=CASE
+                        WHEN COALESCE(error,'')='' THEN '浏览器发送超时，已自动退回重试队列'
+                        ELSE error
+                    END,
+                    updated_at=datetime('now')
+                WHERE status='browser_delivery_claimed'
+                  AND updated_at <= datetime('now', ?)
+                """,
+                (f"-{safe_timeout} seconds",),
+            )
+            row = c.execute(
+                f"""
+                SELECT {delivery_columns}
+                FROM cc_shipments
+                WHERE status IN ({placeholders})
+                  AND TRIM(COALESCE(delivery_message,'')) != ''
+                ORDER BY
+                  CASE status
+                    WHEN 'manual_delivery_ready' THEN 0
+                    WHEN 'message_send_failed' THEN 1
+                    ELSE 2
+                  END,
+                  id DESC
+                LIMIT 1
+                """,
+                safe_statuses,
+            ).fetchone()
+            if not row:
+                return None
+            shipment_id = int(row[0])
+            cur = c.execute(
+                f"""
+                UPDATE cc_shipments
+                SET status='browser_delivery_claimed',
+                    error='',
+                    updated_at=datetime('now')
+                WHERE id=?
+                  AND status IN ({placeholders})
+                """,
+                (shipment_id, *safe_statuses),
+            )
+            if cur.rowcount <= 0:
+                return None
+            row = c.execute(
+                f"""
+                SELECT {delivery_columns}
+                FROM cc_shipments
+                WHERE id=?
+                """,
+                (shipment_id,),
+            ).fetchone()
+        if not row:
+            return None
+        message = row[6] or ""
+        item = {
+            "id": row[0],
+            "order_id": row[1],
+            "chat_id": row[2],
+            "buyer_id": row[3],
+            "item_id": row[4],
+            "status": row[5],
+            "delivery_preview": self._mask_delivery_preview(message),
+            "error": row[7],
+            "created_at": row[8],
+            "updated_at": row[9],
+            "resolved_at": row[10],
+            "resolve_note": row[11],
+            "buyer_chain_status": row[12],
+            "buyer_chain_verified_at": row[13],
+            "buyer_chain_note": row[14],
+            "xianyu_confirm_status": row[15],
+            "xianyu_confirm_at": row[16],
+            "xianyu_confirm_error": row[17],
+            "xianyu_relist_status": row[18],
+            "xianyu_relist_at": row[19],
+            "xianyu_relist_error": row[20],
+            "delivery_message": message,
+        }
+        return item
+
+    def mark_cc_shipment_xianyu_confirm(
+        self,
+        order_id: str,
+        status: str,
+        error: str = "",
+    ) -> bool:
+        """记录闲鱼侧“确认发货/去发货”的结果，不改变卡密发货状态。"""
+        normalized_order_id = (order_id or "").strip()
+        if not normalized_order_id:
+            return False
+        safe_status = (status or "")[:80]
+        safe_error = (error or "")[:500]
+        confirmed_at = "datetime('now')" if safe_status == "confirmed" else "xianyu_confirm_at"
+        with self._conn() as c:
+            cur = c.execute(
+                f"""
+                UPDATE cc_shipments
+                SET xianyu_confirm_status=?,
+                    xianyu_confirm_at={confirmed_at},
+                    xianyu_confirm_error=?,
+                    updated_at=datetime('now')
+                WHERE order_id=?
+                """,
+                (safe_status, safe_error, normalized_order_id),
+            )
+        return cur.rowcount > 0
+
+    def mark_cc_shipment_xianyu_relist(
+        self,
+        order_id: str,
+        status: str,
+        error: str = "",
+    ) -> bool:
+        """记录闲鱼商品恢复上架结果，不修改发货和兑换状态。"""
+        normalized_order_id = (order_id or "").strip()
+        if not normalized_order_id:
+            return False
+        safe_status = (status or "")[:80]
+        safe_error = (error or "")[:500]
+        relisted_at = "datetime('now')" if safe_status == "relisted" else "xianyu_relist_at"
+        with self._conn() as c:
+            cur = c.execute(
+                f"""
+                UPDATE cc_shipments
+                SET xianyu_relist_status=?,
+                    xianyu_relist_at={relisted_at},
+                    xianyu_relist_error=?,
+                    updated_at=datetime('now')
+                WHERE order_id=?
+                """,
+                (safe_status, safe_error, normalized_order_id),
+            )
+        return cur.rowcount > 0
+
+    def update_cc_shipment_delivery_state(
+        self,
+        shipment_id: int,
+        order_id: str,
+        buyer_id: str,
+        item_id: str,
+        chat_id: str,
+        status: str,
+        error: str = "",
+    ) -> bool:
+        """把已分配待发送记录绑定到真实订单并更新状态。"""
+        safe_error = (error or "")[:500]
+        with self._conn() as c:
+            try:
+                cur = c.execute(
+                    """
+                    UPDATE cc_shipments
+                    SET order_id=?, buyer_id=?, item_id=?, chat_id=?, status=?,
+                        error=?, updated_at=datetime('now')
+                    WHERE id=?
+                    """,
+                    (
+                        (order_id or "").strip(),
+                        buyer_id or "",
+                        item_id or "",
+                        chat_id or "",
+                        status or "",
+                        safe_error,
+                        int(shipment_id),
+                    ),
+                )
+                return cur.rowcount > 0
+            except Exception as e:
+                logger.warning("更新 CC中转履约记录状态失败: %s", e)
+                return False
+
+    def adopt_cc_shipment_real_order(
+        self,
+        old_order_id: str,
+        new_order_id: str,
+        buyer_id: str = "",
+        item_id: str = "",
+        chat_id: str = "",
+    ) -> bool:
+        """把已发卡的浏览器临时订单接管为真实闲鱼订单哈希。"""
+        safe_old = (old_order_id or "").strip()
+        safe_new = (new_order_id or "").strip()
+        if not safe_old or not safe_new or safe_old == safe_new:
+            return False
+        with self._conn() as c:
+            try:
+                cur = c.execute(
+                    """
+                    UPDATE cc_shipments
+                    SET order_id=?,
+                        buyer_id=CASE WHEN ?<>'' THEN ? ELSE buyer_id END,
+                        item_id=CASE WHEN ?<>'' THEN ? ELSE item_id END,
+                        chat_id=CASE WHEN ?<>'' THEN ? ELSE chat_id END,
+                        updated_at=datetime('now')
+                    WHERE order_id=?
+                      AND status='message_sent'
+                    """,
+                    (
+                        safe_new,
+                        buyer_id or "",
+                        buyer_id or "",
+                        item_id or "",
+                        item_id or "",
+                        chat_id or "",
+                        chat_id or "",
+                        safe_old,
+                    ),
+                )
+                return cur.rowcount > 0
+            except Exception as e:
+                logger.warning("接管 CC中转真实订单号失败: %s", e)
+                return False
+
+    def mark_cc_shipment_send_failed(self, shipment_id: int, error: str = "") -> bool:
+        """浏览器领取话术后未能发送时，退回失败队列供后续人工或自动重试。"""
+        safe_error = (error or "浏览器助手未能发送发货话术")[:500]
+        with self._conn() as c:
+            cur = c.execute(
+                """
+                UPDATE cc_shipments
+                SET status='message_send_failed',
+                    error=?,
+                    updated_at=datetime('now')
+                WHERE id=?
+                  AND status IN ('browser_delivery_claimed','manual_delivery_ready','message_send_failed')
+                """,
+                (safe_error, int(shipment_id)),
+            )
+        return cur.rowcount > 0
+
+    def cc_shipment_summary(self) -> dict[str, Any]:
+        """汇总 CC中转自动发货状态，用于老板首页看板。"""
+        failure_statuses = {
+            "browser_delivery_claimed",
+            "message_send_failed",
+            "webhook_failed",
+            "missing_delivery_message",
+            "exception",
+            "manual_delivery_ready",
+        }
+        with self._conn() as c:
+            rows = c.execute("SELECT status, COUNT(*) FROM cc_shipments GROUP BY status").fetchall()
+            verified = c.execute(
+                "SELECT COUNT(*) FROM cc_shipments WHERE buyer_chain_status='verified'"
+            ).fetchone()[0]
+            xianyu_confirmed = c.execute(
+                "SELECT COUNT(*) FROM cc_shipments WHERE xianyu_confirm_status='confirmed'"
+            ).fetchone()[0]
+            xianyu_confirm_failed = c.execute(
+                "SELECT COUNT(*) FROM cc_shipments WHERE xianyu_confirm_status='failed'"
+            ).fetchone()[0]
+            xianyu_confirm_pending = c.execute(
+                """
+                SELECT COUNT(*) FROM cc_shipments
+                WHERE status='message_sent'
+                  AND COALESCE(xianyu_confirm_status,'') NOT IN ('confirmed','skipped')
+                """
+            ).fetchone()[0]
+            xianyu_confirm_page_pending = c.execute(
+                """
+                SELECT COUNT(*) FROM cc_shipments
+                WHERE status='message_sent'
+                  AND (order_id LIKE 'xy_manual_%' OR order_id LIKE 'xy_browser_%')
+                  AND COALESCE(xianyu_confirm_status,'') NOT IN ('confirmed','skipped')
+                """
+            ).fetchone()[0]
+        by_status = {str(row[0]): int(row[1]) for row in rows}
+        pending_rescue = sum(by_status.get(status, 0) for status in failure_statuses)
+        return {
+            "total": sum(by_status.values()),
+            "sent": by_status.get("message_sent", 0),
+            "browser_delivery_claimed": by_status.get("browser_delivery_claimed", 0),
+            "pending_rescue": pending_rescue,
+            "resolved": by_status.get("manually_resolved", 0),
+            "buyer_chain_verified": int(verified or 0),
+            "xianyu_confirm_pending": int(xianyu_confirm_pending or 0),
+            "xianyu_confirm_page_pending": int(xianyu_confirm_page_pending or 0),
+            "xianyu_confirmed": int(xianyu_confirmed or 0),
+            "xianyu_confirm_failed": int(xianyu_confirm_failed or 0),
+            "by_status": by_status,
+            "latest": self.list_cc_shipments(limit=5, include_message=False),
+        }
+
+    def cc_final_sale_gate_summary(self) -> dict[str, Any]:
+        """汇总正式售卖前真实闲鱼实单验收门，不泄露卡密和买家完整信息。"""
+        failure_statuses = (
+            "browser_delivery_claimed",
+            "message_send_failed",
+            "webhook_failed",
+            "missing_delivery_message",
+            "exception",
+            "manual_delivery_ready",
+        )
+        with self._conn() as c:
+            sent_real_orders = c.execute(
+                "SELECT COUNT(*) FROM cc_shipments WHERE status='message_sent' AND order_id LIKE 'xy_oid_%'"
+            ).fetchone()[0]
+            buyer_chain_verified = c.execute(
+                "SELECT COUNT(*) FROM cc_shipments WHERE buyer_chain_status='verified' AND order_id LIKE 'xy_oid_%'"
+            ).fetchone()[0]
+            pending_rescue = c.execute(
+                f"SELECT COUNT(*) FROM cc_shipments WHERE status IN ({','.join('?' for _ in failure_statuses)})",
+                failure_statuses,
+            ).fetchone()[0]
+            latest = c.execute(
+                """
+                SELECT id, order_id, status, created_at, updated_at
+                FROM cc_shipments
+                ORDER BY id DESC
+                LIMIT 5
+                """
+            ).fetchall()
+        local_ready = int(sent_real_orders or 0) > 0 and int(pending_rescue or 0) == 0
+        return {
+            "local_ready": local_ready,
+            "sent_real_orders": int(sent_real_orders or 0),
+            "buyer_chain_verified_orders": int(buyer_chain_verified or 0),
+            "pending_rescue": int(pending_rescue or 0),
+            "strict_audit_command": "node scripts/cc_zhongzhuan_readiness_audit.mjs --require-real-order",
+            "buyer_chain_required": {
+                "same_xy_order_redeemed": True,
+                "redeemed_redemptions_delta_gt_0": True,
+                "active_api_tokens_delta_gt_0": True,
+                "model_call_logs_delta_gt_0": True,
+            },
+            "latest": [
+                {
+                    "id": row[0],
+                    "order_id_prefix": str(row[1] or "")[:10],
+                    "status": row[2],
+                    "created_at": row[3],
+                    "updated_at": row[4],
+                }
+                for row in latest
+            ],
+        }
+
+    def mark_cc_shipments_buyer_chain_verified(self, matches: list[dict[str, Any]]) -> int:
+        """按订单哈希把已完成兑换/API/调模型的闲鱼发货记录标记为闭环完成。"""
+        wanted_hashes = {
+            str(item.get("orderIdHash") or "").strip()
+            for item in matches
+            if isinstance(item, dict) and item.get("ready") and item.get("orderIdHash")
+        }
+        wanted_hashes.discard("")
+        if not wanted_hashes:
+            return 0
+
+        with self._conn() as c:
+            rows = c.execute(
+                "SELECT id, order_id FROM cc_shipments WHERE order_id LIKE 'xy_oid_%'"
+            ).fetchall()
+            matched_ids = [
+                int(row[0])
+                for row in rows
+                if hashlib.sha256(str(row[1] or "").encode()).hexdigest() in wanted_hashes
+            ]
+            if not matched_ids:
+                return 0
+            placeholders = ",".join("?" for _ in matched_ids)
+            cur = c.execute(
+                f"""
+                UPDATE cc_shipments
+                SET buyer_chain_status='verified',
+                    buyer_chain_verified_at=datetime('now'),
+                    buyer_chain_note='strict_audit_ready',
+                    updated_at=datetime('now')
+                WHERE id IN ({placeholders})
+                """,
+                matched_ids,
+            )
+        return int(cur.rowcount or 0)
+
+    def record_cc_strict_audit(self, audit: dict[str, Any]) -> dict[str, Any]:
+        """持久化最近一次严格门审计摘要；不保存 stdout、stderr、token、卡密或 API Key。"""
+        summary = audit.get("summary") if isinstance(audit, dict) else {}
+        if not isinstance(summary, dict):
+            summary = {}
+        safe_summary = {
+            "same_order_ready": int(summary.get("same_order_ready") or 0),
+            "same_order_matched": int(summary.get("same_order_matched") or 0),
+            "real_orders": int(summary.get("real_orders") or 0),
+            "redeemed_delta": int(summary.get("redeemed_delta") or 0),
+            "active_token_delta": int(summary.get("active_token_delta") or 0),
+            "model_log_delta": int(summary.get("model_log_delta") or 0),
+            "same_order_latest": summary.get("same_order_latest") or [],
+        }
+        with self._conn() as c:
+            cur = c.execute(
+                """
+                INSERT INTO cc_strict_audits(
+                    mode, ok, exit_code, same_order_ready,
+                    same_order_matched, real_orders, summary_json
+                )
+                VALUES(?,?,?,?,?,?,?)
+                """,
+                (
+                    str(audit.get("mode") or "strict")[:20],
+                    1 if audit.get("ok") else 0,
+                    int(audit.get("exit_code") or 0),
+                    safe_summary["same_order_ready"],
+                    safe_summary["same_order_matched"],
+                    safe_summary["real_orders"],
+                    json.dumps(safe_summary, ensure_ascii=False),
+                ),
+            )
+            audit_id = cur.lastrowid
+        verified_count = self.mark_cc_shipments_buyer_chain_verified(
+            safe_summary.get("same_order_latest") or []
+        )
+        latest = self.latest_cc_strict_audit() or {}
+        latest["id"] = audit_id
+        latest["marked_buyer_chain_verified"] = verified_count
+        return latest
+
+    def latest_cc_strict_audit(self) -> dict[str, Any] | None:
+        """读取最近一次严格门审计摘要，用于 GUI/后台恢复状态。"""
+        with self._conn() as c:
+            row = c.execute(
+                """
+                SELECT id,mode,ok,exit_code,same_order_ready,
+                       same_order_matched,real_orders,summary_json,created_at
+                FROM cc_strict_audits
+                ORDER BY id DESC
+                LIMIT 1
+                """
+            ).fetchone()
+        if not row:
+            return None
+        try:
+            summary = json.loads(row[7] or "{}")
+        except Exception as e:
+            logger.debug("读取严格门摘要 JSON 失败: %s", e)
+            summary = {}
+        return {
+            "id": row[0],
+            "mode": row[1],
+            "ok": bool(row[2]),
+            "exit_code": row[3],
+            "same_order_ready": int(row[4] or 0),
+            "same_order_matched": int(row[5] or 0),
+            "real_orders": int(row[6] or 0),
+            "summary": summary,
+            "updated_at": row[8],
+            "source": "sqlite",
+        }
+
+    def resolve_cc_shipment(self, shipment_id: int, note: str = "") -> bool:
+        """人工确认补发/处理完成，返回是否命中记录。"""
+        with self._conn() as c:
+            cur = c.execute(
+                """
+                UPDATE cc_shipments
+                SET status='manually_resolved',
+                    resolved_at=datetime('now'),
+                    resolve_note=?,
+                    updated_at=datetime('now')
+                WHERE id=?
+                """,
+                ((note or "")[:500], shipment_id),
+            )
+        return cur.rowcount > 0
 
     # ---- consultations ----
     def track_consultation(self, chat_id: str, user_id: str, user_name: str, item_id: str, message: str):

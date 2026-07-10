@@ -255,7 +255,7 @@ function formatAlipayTimestamp(date) {
 }
 
 function paymentDescription(plan) {
-  return String(plan?.label || 'Frist-API 充值').slice(0, 120);
+  return String(plan?.label || 'CC中转 充值').slice(0, 120);
 }
 
 function boolOption(value, envValue) {

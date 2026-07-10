@@ -5,7 +5,6 @@
     "last_updated": "2026-04-20",
     "note": "HI-525: 完全同步硬编码配置 — 新增 fireworks/cloudflare/ollama + 补齐 sambanova/github_models 缺失模型"
   },
-
   "providers": {
     "siliconflow": {
       "env_key": "SILICONFLOW_KEYS",
@@ -16,13 +15,28 @@
       "stream_timeout": 40,
       "note": "SiliconFlow free (timeout 45→25s 性能优化)",
       "models": [
-        {"id": "Qwen/Qwen3-235B-A22B-Instruct-2507", "family": "qwen", "tier": "S"},
-        {"id": "deepseek-ai/DeepSeek-V3.2", "family": "deepseek", "tier": "S"},
-        {"id": "Qwen/Qwen3.5-397B-A17B", "family": "qwen", "tier": "S"},
-        {"id": "Qwen/Qwen3-32B", "family": "qwen", "tier": "A"}
+        {
+          "id": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+          "family": "qwen",
+          "tier": "S"
+        },
+        {
+          "id": "deepseek-ai/DeepSeek-V3.2",
+          "family": "deepseek",
+          "tier": "S"
+        },
+        {
+          "id": "Qwen/Qwen3.5-397B-A17B",
+          "family": "qwen",
+          "tier": "S"
+        },
+        {
+          "id": "Qwen/Qwen3-32B",
+          "family": "qwen",
+          "tier": "A"
+        }
       ]
     },
-
     "groq": {
       "env_key": "GROQ_API_KEY",
       "prefix": "groq/",
@@ -30,91 +44,250 @@
       "stream_timeout": 15,
       "note": "Groq free",
       "models": [
-        {"id": "llama-3.3-70b-versatile", "family": "llama", "tier": "A", "rpm": 30},
-        {"id": "moonshotai/kimi-k2-instruct", "family": "kimi", "tier": "S", "rpm": 60},
-        {"id": "openai/gpt-oss-120b", "family": "gpt-oss", "tier": "A", "rpm": 30},
-        {"id": "qwen/qwen3-32b", "family": "qwen", "tier": "B", "rpm": 60},
-        {"id": "meta-llama/llama-4-scout-17b-16e-instruct", "family": "llama", "tier": "B", "rpm": 30},
-        {"id": "llama-3.1-8b-instant", "family": "llama", "tier": "C", "rpm": 30},
-        {"id": "llama-3.1-8b-instant", "family": "fast", "tier": "A", "rpm": 30, "_comment": "快速推理专用映射"}
+        {
+          "id": "llama-3.3-70b-versatile",
+          "family": "llama",
+          "tier": "A",
+          "rpm": 30
+        },
+        {
+          "id": "moonshotai/kimi-k2-instruct",
+          "family": "kimi",
+          "tier": "S",
+          "rpm": 60
+        },
+        {
+          "id": "openai/gpt-oss-120b",
+          "family": "gpt-oss",
+          "tier": "A",
+          "rpm": 30
+        },
+        {
+          "id": "qwen/qwen3-32b",
+          "family": "qwen",
+          "tier": "B",
+          "rpm": 60
+        },
+        {
+          "id": "meta-llama/llama-4-scout-17b-16e-instruct",
+          "family": "llama",
+          "tier": "B",
+          "rpm": 30
+        },
+        {
+          "id": "llama-3.1-8b-instant",
+          "family": "llama",
+          "tier": "C",
+          "rpm": 30
+        },
+        {
+          "id": "llama-3.1-8b-instant",
+          "family": "fast",
+          "tier": "A",
+          "rpm": 30,
+          "_comment": "快速推理专用映射"
+        }
       ]
     },
-
     "cerebras": {
       "env_key": "CEREBRAS_API_KEY",
       "prefix": "cerebras/",
       "note": "Cerebras free 30RPM",
       "models": [
-        {"id": "gpt-oss-120b", "family": "gpt-oss", "tier": "A", "rpm": 30},
-        {"id": "llama3.1-8b", "family": "llama", "tier": "C", "rpm": 30}
+        {
+          "id": "gpt-oss-120b",
+          "family": "gpt-oss",
+          "tier": "A",
+          "rpm": 30
+        },
+        {
+          "id": "llama3.1-8b",
+          "family": "llama",
+          "tier": "C",
+          "rpm": 30
+        }
       ]
     },
-
     "gemini": {
       "env_key": "GEMINI_API_KEY",
       "prefix": "gemini/",
       "note": "Google AI Studio",
       "models": [
-        {"id": "gemini-2.5-flash", "family": "gemini", "tier": "S", "rpm": 5},
-        {"id": "gemini-2.5-flash-lite", "family": "gemini", "tier": "A", "rpm": 10},
-        {"id": "gemini-3-flash-preview", "family": "gemini", "tier": "A", "rpm": 5}
+        {
+          "id": "gemini-2.5-flash",
+          "family": "gemini",
+          "tier": "S",
+          "rpm": 5
+        },
+        {
+          "id": "gemini-2.5-flash-lite",
+          "family": "gemini",
+          "tier": "A",
+          "rpm": 10
+        },
+        {
+          "id": "gemini-3-flash-preview",
+          "family": "gemini",
+          "tier": "A",
+          "rpm": 5
+        }
       ]
     },
-
     "openrouter": {
       "env_key": "OPENROUTER_API_KEY",
       "prefix": "openrouter/",
       "note": "OpenRouter free",
       "models": [
-        {"id": "nousresearch/hermes-3-llama-3.1-405b:free", "family": "llama", "tier": "S", "rpm": 20},
-        {"id": "nvidia/nemotron-3-super-120b-a12b:free", "family": "llama", "tier": "S", "rpm": 20},
-        {"id": "minimax/minimax-m2.5:free", "family": "minimax", "tier": "S", "rpm": 20},
-        {"id": "openai/gpt-oss-120b:free", "family": "gpt-oss", "tier": "A", "rpm": 20},
-        {"id": "qwen/qwen3-coder:free", "family": "qwen", "tier": "A", "rpm": 20},
-        {"id": "qwen/qwen3-next-80b-a3b-instruct:free", "family": "qwen", "tier": "A", "rpm": 20},
-        {"id": "meta-llama/llama-3.3-70b-instruct:free", "family": "llama", "tier": "A", "rpm": 20},
-        {"id": "mistralai/mistral-small-3.1-24b-instruct:free", "family": "mistral", "tier": "B", "rpm": 20},
-        {"id": "google/gemma-3-27b-it:free", "family": "gemma", "tier": "B", "rpm": 20},
-        {"id": "stepfun/step-3.5-flash:free", "family": "stepfun", "tier": "B", "rpm": 20}
+        {
+          "id": "nousresearch/hermes-3-llama-3.1-405b:free",
+          "family": "llama",
+          "tier": "S",
+          "rpm": 20
+        },
+        {
+          "id": "nvidia/nemotron-3-super-120b-a12b:free",
+          "family": "llama",
+          "tier": "S",
+          "rpm": 20
+        },
+        {
+          "id": "minimax/minimax-m2.5:free",
+          "family": "minimax",
+          "tier": "S",
+          "rpm": 20
+        },
+        {
+          "id": "openai/gpt-oss-120b:free",
+          "family": "gpt-oss",
+          "tier": "A",
+          "rpm": 20
+        },
+        {
+          "id": "qwen/qwen3-coder:free",
+          "family": "qwen",
+          "tier": "A",
+          "rpm": 20
+        },
+        {
+          "id": "qwen/qwen3-next-80b-a3b-instruct:free",
+          "family": "qwen",
+          "tier": "A",
+          "rpm": 20
+        },
+        {
+          "id": "meta-llama/llama-3.3-70b-instruct:free",
+          "family": "llama",
+          "tier": "A",
+          "rpm": 20
+        },
+        {
+          "id": "mistralai/mistral-small-3.1-24b-instruct:free",
+          "family": "mistral",
+          "tier": "B",
+          "rpm": 20
+        },
+        {
+          "id": "google/gemma-3-27b-it:free",
+          "family": "gemma",
+          "tier": "B",
+          "rpm": 20
+        },
+        {
+          "id": "stepfun/step-3.5-flash:free",
+          "family": "stepfun",
+          "tier": "B",
+          "rpm": 20
+        }
       ]
     },
-
     "mistral": {
       "env_key": "MISTRAL_API_KEY",
       "prefix": "mistral/",
       "note": "Mistral free 1RPM (codestral 30RPM)",
       "models": [
-        {"id": "mistral-small-latest", "family": "mistral", "tier": "B", "rpm": 1},
-        {"id": "mistral-large-latest", "family": "mistral", "tier": "A", "rpm": 1},
-        {"id": "codestral-latest", "family": "mistral", "tier": "A", "rpm": 30}
+        {
+          "id": "mistral-small-latest",
+          "family": "mistral",
+          "tier": "B",
+          "rpm": 1
+        },
+        {
+          "id": "mistral-large-latest",
+          "family": "mistral",
+          "tier": "A",
+          "rpm": 1
+        },
+        {
+          "id": "codestral-latest",
+          "family": "mistral",
+          "tier": "A",
+          "rpm": 30
+        }
       ]
     },
-
     "cohere": {
       "env_key": "COHERE_API_KEY",
       "prefix": "cohere/",
       "note": "Cohere 20RPM/1000次月额度",
       "models": [
-        {"id": "command-a-reasoning-08-2025", "family": "cohere", "tier": "A", "rpm": 20},
-        {"id": "command-a-vision-07-2025", "family": "cohere", "tier": "B", "rpm": 20}
+        {
+          "id": "command-a-reasoning-08-2025",
+          "family": "cohere",
+          "tier": "A",
+          "rpm": 20
+        },
+        {
+          "id": "command-a-vision-07-2025",
+          "family": "cohere",
+          "tier": "B",
+          "rpm": 20
+        }
       ]
     },
-
     "github_models": {
       "env_key": "GITHUB_MODELS_TOKEN",
       "base_url": "https://models.github.ai/inference",
       "prefix": "openai/",
       "note": "GitHub Models free preview",
       "models": [
-        {"id": "gpt-4.1-mini", "family": "gpt", "tier": "A", "rpm": 15},
-        {"id": "o4-mini", "family": "gpt", "tier": "S", "rpm": 15},
-        {"id": "DeepSeek-R1", "family": "deepseek", "tier": "S", "rpm": 15},
-        {"id": "DeepSeek-V3-0324", "family": "deepseek", "tier": "A", "rpm": 15},
-        {"id": "Llama-3.3-70B-Instruct", "family": "llama", "tier": "A", "rpm": 15},
-        {"id": "Mistral-Small-3.1", "family": "mistral", "tier": "B", "rpm": 15}
+        {
+          "id": "gpt-4.1-mini",
+          "family": "gpt",
+          "tier": "A",
+          "rpm": 15
+        },
+        {
+          "id": "o4-mini",
+          "family": "gpt",
+          "tier": "S",
+          "rpm": 15
+        },
+        {
+          "id": "DeepSeek-R1",
+          "family": "deepseek",
+          "tier": "S",
+          "rpm": 15
+        },
+        {
+          "id": "DeepSeek-V3-0324",
+          "family": "deepseek",
+          "tier": "A",
+          "rpm": 15
+        },
+        {
+          "id": "Llama-3.3-70B-Instruct",
+          "family": "llama",
+          "tier": "A",
+          "rpm": 15
+        },
+        {
+          "id": "Mistral-Small-3.1",
+          "family": "mistral",
+          "tier": "B",
+          "rpm": 15
+        }
       ]
     },
-
     "kiro_gateway": {
       "env_key": "KIRO_API_KEY",
       "base_url_env": "KIRO_BASE_URL",
@@ -124,22 +297,45 @@
       "stream_timeout": 60,
       "note": "Kiro Gateway (Claude proxy, 金融分析需30s+)",
       "models": [
-        {"id": "claude-sonnet-4", "family": "claude", "tier": "S", "rpm": 5}
+        {
+          "id": "claude-sonnet-4",
+          "family": "claude",
+          "tier": "S",
+          "rpm": 5
+        }
       ]
     },
-
     "nvidia_nim": {
       "env_key": "NVIDIA_NIM_API_KEY",
       "prefix": "nvidia_nim/",
       "note": "NVIDIA NIM (信用额度制, 60RPM)",
       "models": [
-        {"id": "meta/llama-3.3-70b-instruct", "family": "llama", "tier": "A", "rpm": 60},
-        {"id": "deepseek-ai/deepseek-v3.2", "family": "deepseek", "tier": "S", "rpm": 60},
-        {"id": "qwen/qwen3.5-397b-a17b", "family": "qwen", "tier": "S", "rpm": 60},
-        {"id": "qwen/qwen3-coder-480b-a35b-instruct", "family": "qwen", "tier": "S", "rpm": 60}
+        {
+          "id": "meta/llama-3.3-70b-instruct",
+          "family": "llama",
+          "tier": "A",
+          "rpm": 60
+        },
+        {
+          "id": "deepseek-ai/deepseek-v3.2",
+          "family": "deepseek",
+          "tier": "S",
+          "rpm": 60
+        },
+        {
+          "id": "qwen/qwen3.5-397b-a17b",
+          "family": "qwen",
+          "tier": "S",
+          "rpm": 60
+        },
+        {
+          "id": "qwen/qwen3-coder-480b-a35b-instruct",
+          "family": "qwen",
+          "tier": "S",
+          "rpm": 60
+        }
       ]
     },
-
     "sambanova": {
       "env_key": "SAMBANOVA_API_KEY",
       "base_url": "https://api.sambanova.ai/v1",
@@ -148,13 +344,32 @@
       "stream_timeout": 45,
       "note": "Sambanova free (timeout 90→30s 性能优化，R1推理模型用 stream 模式)",
       "models": [
-        {"id": "DeepSeek-R1", "family": "deepseek", "tier": "S", "rpm": 10},
-        {"id": "DeepSeek-V3.2", "family": "deepseek", "tier": "A", "rpm": 10},
-        {"id": "Meta-Llama-3.3-70B-Instruct", "family": "llama", "tier": "A", "rpm": 10},
-        {"id": "Qwen/Qwen3-235B", "family": "qwen", "tier": "S", "rpm": 10}
+        {
+          "id": "DeepSeek-R1",
+          "family": "deepseek",
+          "tier": "S",
+          "rpm": 10
+        },
+        {
+          "id": "DeepSeek-V3.2",
+          "family": "deepseek",
+          "tier": "A",
+          "rpm": 10
+        },
+        {
+          "id": "Meta-Llama-3.3-70B-Instruct",
+          "family": "llama",
+          "tier": "A",
+          "rpm": 10
+        },
+        {
+          "id": "Qwen/Qwen3-235B",
+          "family": "qwen",
+          "tier": "S",
+          "rpm": 10
+        }
       ]
     },
-
     "iflow_unlimited": {
       "env_key": "SILICONFLOW_UNLIMITED_KEY",
       "base_url_env": "SILICONFLOW_UNLIMITED_URL",
@@ -163,19 +378,68 @@
       "note": "iflow 无限 API (7天有效期，需监控。base_url 默认 apis.iflow.cn，非 api.siliconflow.cn)",
       "has_expiry_check": true,
       "models": [
-        {"id": "qwen3-235b-a22b-instruct", "family": "qwen", "tier": "S", "rpm": 500},
-        {"id": "deepseek-v3.2", "family": "deepseek", "tier": "S", "rpm": 500},
-        {"id": "kimi-k2", "family": "kimi", "tier": "S", "rpm": 500},
-        {"id": "qwen3-max", "family": "qwen", "tier": "S", "rpm": 500},
-        {"id": "qwen3-coder-plus", "family": "qwen", "tier": "S", "rpm": 500},
-        {"id": "deepseek-r1", "family": "deepseek", "tier": "S", "rpm": 500},
-        {"id": "deepseek-v3", "family": "deepseek", "tier": "A", "rpm": 500},
-        {"id": "qwen3-vl-plus", "family": "qwen", "tier": "A", "rpm": 500},
-        {"id": "qwen3-32b", "family": "qwen", "tier": "A", "rpm": 500},
-        {"id": "qwen3-235b", "family": "qwen", "tier": "B", "rpm": 500}
+        {
+          "id": "qwen3-235b-a22b-instruct",
+          "family": "qwen",
+          "tier": "S",
+          "rpm": 500
+        },
+        {
+          "id": "deepseek-v3.2",
+          "family": "deepseek",
+          "tier": "S",
+          "rpm": 500
+        },
+        {
+          "id": "kimi-k2",
+          "family": "kimi",
+          "tier": "S",
+          "rpm": 500
+        },
+        {
+          "id": "qwen3-max",
+          "family": "qwen",
+          "tier": "S",
+          "rpm": 500
+        },
+        {
+          "id": "qwen3-coder-plus",
+          "family": "qwen",
+          "tier": "S",
+          "rpm": 500
+        },
+        {
+          "id": "deepseek-r1",
+          "family": "deepseek",
+          "tier": "S",
+          "rpm": 500
+        },
+        {
+          "id": "deepseek-v3",
+          "family": "deepseek",
+          "tier": "A",
+          "rpm": 500
+        },
+        {
+          "id": "qwen3-vl-plus",
+          "family": "qwen",
+          "tier": "A",
+          "rpm": 500
+        },
+        {
+          "id": "qwen3-32b",
+          "family": "qwen",
+          "tier": "A",
+          "rpm": 500
+        },
+        {
+          "id": "qwen3-235b",
+          "family": "qwen",
+          "tier": "B",
+          "rpm": 500
+        }
       ]
     },
-
     "siliconflow_paid": {
       "env_key": "SILICONFLOW_PAID_KEYS",
       "multi_key": true,
@@ -186,15 +450,44 @@
       "stream_timeout": 40,
       "note": "SiliconFlow paid keys (timeout 45→25s 性能优化)",
       "models": [
-        {"id": "Qwen/Qwen3-235B-A22B-Instruct-2507", "family": "qwen", "tier": "S", "_comment": "免费模型复用"},
-        {"id": "deepseek-ai/DeepSeek-V3.2", "family": "deepseek", "tier": "S", "_comment": "免费模型复用"},
-        {"id": "Qwen/Qwen3.5-397B-A17B", "family": "qwen", "tier": "S", "_comment": "免费模型复用"},
-        {"id": "Qwen/Qwen3-32B", "family": "qwen", "tier": "A", "_comment": "免费模型复用"},
-        {"id": "deepseek-ai/DeepSeek-R1", "family": "deepseek_paid", "tier": "S", "_comment": "扣费模型, gated"},
-        {"id": "deepseek-ai/DeepSeek-V3", "family": "deepseek_paid", "tier": "A", "_comment": "扣费模型, gated"}
+        {
+          "id": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+          "family": "qwen",
+          "tier": "S",
+          "_comment": "免费模型复用"
+        },
+        {
+          "id": "deepseek-ai/DeepSeek-V3.2",
+          "family": "deepseek",
+          "tier": "S",
+          "_comment": "免费模型复用"
+        },
+        {
+          "id": "Qwen/Qwen3.5-397B-A17B",
+          "family": "qwen",
+          "tier": "S",
+          "_comment": "免费模型复用"
+        },
+        {
+          "id": "Qwen/Qwen3-32B",
+          "family": "qwen",
+          "tier": "A",
+          "_comment": "免费模型复用"
+        },
+        {
+          "id": "deepseek-ai/DeepSeek-R1",
+          "family": "deepseek_paid",
+          "tier": "S",
+          "_comment": "扣费模型, gated"
+        },
+        {
+          "id": "deepseek-ai/DeepSeek-V3",
+          "family": "deepseek_paid",
+          "tier": "A",
+          "_comment": "扣费模型, gated"
+        }
       ]
     },
-
     "volcengine": {
       "env_key": "VOLCENGINE_API_KEY",
       "base_url_env": "VOLCENGINE_BASE_URL",
@@ -202,11 +495,20 @@
       "prefix": "openai/",
       "note": "火山引擎 (需 Ark Console 激活模型)",
       "models": [
-        {"id": "doubao-seed-2-0-pro-260215", "family": "doubao", "tier": "S", "rpm": 10},
-        {"id": "doubao-seed-1-6-flash-250828", "family": "doubao", "tier": "A", "rpm": 10}
+        {
+          "id": "doubao-seed-2-0-pro-260215",
+          "family": "doubao",
+          "tier": "S",
+          "rpm": 10
+        },
+        {
+          "id": "doubao-seed-1-6-flash-250828",
+          "family": "doubao",
+          "tier": "A",
+          "rpm": 10
+        }
       ]
     },
-
     "gpt_api_free": {
       "env_key": "GPT_API_FREE_KEY",
       "base_url_env": "GPT_API_FREE_BASE_URL",
@@ -214,13 +516,32 @@
       "prefix": "openai/",
       "note": "GPT API Free (gpt系5次/天, deepseek系30次/天)",
       "models": [
-        {"id": "gpt-4o", "family": "gpt", "tier": "S", "rpm": 2},
-        {"id": "gpt-4o-mini", "family": "gpt", "tier": "A", "rpm": 5},
-        {"id": "deepseek-r1", "family": "deepseek", "tier": "S", "rpm": 2},
-        {"id": "deepseek-v3", "family": "deepseek", "tier": "A", "rpm": 2}
+        {
+          "id": "gpt-4o",
+          "family": "gpt",
+          "tier": "S",
+          "rpm": 2
+        },
+        {
+          "id": "gpt-4o-mini",
+          "family": "gpt",
+          "tier": "A",
+          "rpm": 5
+        },
+        {
+          "id": "deepseek-r1",
+          "family": "deepseek",
+          "tier": "S",
+          "rpm": 2
+        },
+        {
+          "id": "deepseek-v3",
+          "family": "deepseek",
+          "tier": "A",
+          "rpm": 2
+        }
       ]
     },
-
     "fireworks": {
       "env_key": "FIREWORKS_API_KEY",
       "base_url": "https://api.fireworks.ai/inference/v1",
@@ -229,38 +550,80 @@
       "stream_timeout": 30,
       "note": "Fireworks AI (免费 $1 额度, 推理快)",
       "models": [
-        {"id": "accounts/fireworks/models/llama4-scout-instruct-basic", "family": "llama", "tier": "A", "rpm": 10},
-        {"id": "accounts/fireworks/models/llama-v3p3-70b-instruct", "family": "llama", "tier": "A", "rpm": 10},
-        {"id": "accounts/fireworks/models/deepseek-v3", "family": "deepseek", "tier": "A", "rpm": 10}
+        {
+          "id": "accounts/fireworks/models/llama4-scout-instruct-basic",
+          "family": "llama",
+          "tier": "A",
+          "rpm": 10
+        },
+        {
+          "id": "accounts/fireworks/models/llama-v3p3-70b-instruct",
+          "family": "llama",
+          "tier": "A",
+          "rpm": 10
+        },
+        {
+          "id": "accounts/fireworks/models/deepseek-v3",
+          "family": "deepseek",
+          "tier": "A",
+          "rpm": 10
+        }
       ]
     },
-
     "cloudflare": {
       "env_key": "CLOUDFLARE_API_TOKEN",
-      "env_vars_required": ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"],
+      "env_vars_required": [
+        "CLOUDFLARE_API_TOKEN",
+        "CLOUDFLARE_ACCOUNT_ID"
+      ],
       "base_url_template": "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/v1",
       "prefix": "openai/",
       "timeout": 15,
       "stream_timeout": 30,
       "note": "Cloudflare Workers AI (永久免费 10000 neurons/天)",
       "models": [
-        {"id": "@cf/openai/gpt-oss-120b", "family": "gpt", "tier": "S", "rpm": 30},
-        {"id": "@cf/qwen/qwen3-30b-a3b-fp8", "family": "qwen", "tier": "B", "rpm": 30},
-        {"id": "@cf/meta/llama-3.3-70b-instruct-fp8-fast", "family": "llama", "tier": "A", "rpm": 30}
+        {
+          "id": "@cf/openai/gpt-oss-120b",
+          "family": "gpt",
+          "tier": "S",
+          "rpm": 30
+        },
+        {
+          "id": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "family": "qwen",
+          "tier": "B",
+          "rpm": 30
+        },
+        {
+          "id": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+          "family": "llama",
+          "tier": "A",
+          "rpm": 30
+        }
       ]
     },
-
     "ollama_local": {
       "env_key": "LOCAL_HF_MODEL_ENDPOINT",
       "base_url": "http://127.0.0.1:11434",
-      "timeout": 20,
-      "stream_timeout": 40,
+      "timeout": 60,
+      "stream_timeout": 90,
       "note": "本地 Ollama (timeout 30→20s 性能优化)",
       "models": [
-        {"id": "ollama/gemma4:e4b-optimized", "family": "gemma", "tier": "D", "rpm": 999}
+        {
+          "id": "ollama/qwen2.5:1.5b",
+          "family": "intel_local",
+          "tier": "D",
+          "rpm": 30,
+          "_comment": "Local dry-run LLM evidence path; no external API call"
+        },
+        {
+          "id": "ollama/gemma4:e4b-optimized",
+          "family": "gemma",
+          "tier": "D",
+          "rpm": 999
+        }
       ]
     },
-
     "g4f": {
       "env_key_optional": "G4F_API_KEY",
       "base_url_env": "G4F_BASE_URL",
@@ -270,24 +633,63 @@
       "stream_timeout": 45,
       "note": "g4f 兜底 (timeout 90→30s 性能优化，避免长时间卡在慢兜底上)",
       "models": [
-        {"id": "auto", "family": "g4f", "tier": "C"}
+        {
+          "id": "auto",
+          "family": "g4f",
+          "tier": "C"
+        }
       ]
     }
   },
-
   "fallback_chains": {
     "_comment": "每个 family 的降级顺序。default 用于未显式配置的 family",
-    "default": ["qwen", "deepseek", "g4f"],
-    "claude": ["qwen", "deepseek", "g4f"],
-    "gemini": ["qwen", "deepseek", "g4f"],
-    "llama": ["qwen", "deepseek", "g4f"],
-    "gpt": ["qwen", "deepseek", "g4f"],
-    "cohere": ["qwen", "deepseek", "g4f"],
-    "mistral": ["qwen", "deepseek", "g4f"],
-    "doubao": ["qwen", "deepseek", "g4f"],
-    "fast": ["llama", "qwen", "g4f"]
+    "default": [
+      "qwen",
+      "deepseek",
+      "g4f"
+    ],
+    "claude": [
+      "qwen",
+      "deepseek",
+      "g4f"
+    ],
+    "gemini": [
+      "qwen",
+      "deepseek",
+      "g4f"
+    ],
+    "llama": [
+      "qwen",
+      "deepseek",
+      "g4f"
+    ],
+    "gpt": [
+      "qwen",
+      "deepseek",
+      "g4f"
+    ],
+    "cohere": [
+      "qwen",
+      "deepseek",
+      "g4f"
+    ],
+    "mistral": [
+      "qwen",
+      "deepseek",
+      "g4f"
+    ],
+    "doubao": [
+      "qwen",
+      "deepseek",
+      "g4f"
+    ],
+    "fast": [
+      "llama",
+      "qwen",
+      "g4f"
+    ],
+    "intel_local": []
   },
-
   "bot_model_family": {
     "_comment": "Bot ID → 默认 model_family 映射。修改此处即可调整 Bot 使用的模型族，无需改代码",
     "qwen235b": "qwen",
@@ -298,7 +700,6 @@
     "claude_opus": "deepseek",
     "free_llm": null
   },
-
   "router_config": {
     "num_retries": 2,
     "timeout": 15,
@@ -309,7 +710,6 @@
     "routing_strategy": "latency-based-routing",
     "_note": "2026-04-23 性能优化: shuffle→latency-based, retries 3→2, retry_after 5→2s, cooldown 30→60s"
   },
-
   "model_ranking": {
     "_comment": "模型强度评分 (0-100)。分数越高路由优先级越高。修改此处即可调整模型排名，无需改代码",
     "gemini-2.5-pro": 98,
@@ -368,7 +768,6 @@
     "llama-4-scout-17b-16e-instruct": 72,
     "auto": 65
   },
-
   "smart_route_model_to_family": {
     "_comment": "cost_control 返回的模型名 → 路由 family 映射。用于 _smart_route() 将预算建议转为实际路由目标",
     "qwen3-235b": "qwen",
@@ -377,5 +776,29 @@
     "claude-opus-4": "claude",
     "deepseek-v3": "deepseek",
     "gemini-2.5-flash": "gemini"
+  },
+  "routing_profiles": {
+    "intel_brief": {
+      "_comment": "Paid-user Intel Brief summary profile. Keep historically auth/quota-prone providers behind stronger families through family selection and router fallbacks.",
+      "preferred_families": [
+        "qwen",
+        "gemini",
+        "gpt-oss",
+        "deepseek",
+        "llama",
+        "gemma",
+        "g4f"
+      ],
+      "dry_run_families": [
+        "intel_local",
+        "gemma",
+        "g4f",
+        "qwen"
+      ],
+      "max_tokens": 700,
+      "temperature": 0.25,
+      "cache_ttl": 1800,
+      "max_input_items": 15
+    }
   }
 }

@@ -15,7 +15,7 @@ export const SUPPORTED_PLATFORMS = {
     id: 'xianyu',
     label: '闲鱼',
     tone: '客服成交 · 商品优化 · 砍价回复',
-    hosts: ['goofish.com', 'www.goofish.com', '2.taobao.com', 'idlefish'],
+    hosts: ['goofish.com', 'www.goofish.com', '2.taobao.com', 'm.tb.cn', 'tb.cn', 'idlefish'],
   },
 }
 

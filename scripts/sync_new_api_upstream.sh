@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 UPSTREAM_DIR="$ROOT_DIR/packages/new-api-upstream"
 COMPOSE_FILE="$ROOT_DIR/docker-compose.newapi.yml"
 REMOTE_URL="https://github.com/QuantumNous/new-api.git"
+PATCH_FILE="$ROOT_DIR/scripts/patches/new-api-cc-brand.patch"
 API_URL="https://api.github.com/repos/QuantumNous/new-api/releases?per_page=20"
 MODE="${1:-check}"
 
@@ -58,6 +59,23 @@ if [[ ! -d "$UPSTREAM_DIR/.git" && ! -f "$UPSTREAM_DIR/.git" ]]; then
   exit 1
 fi
 
+check_brand_patch_compatibility() {
+  if [[ ! -s "$PATCH_FILE" ]]; then
+    echo "缺少 CC中转品牌补丁: $PATCH_FILE" >&2
+    return 1
+  fi
+  if git -C "$UPSTREAM_DIR" apply --reverse --check "$PATCH_FILE" >/dev/null 2>&1; then
+    echo "CC中转品牌补丁: 已应用"
+    return 0
+  fi
+  if git -C "$UPSTREAM_DIR" apply --check "$PATCH_FILE" >/dev/null 2>&1; then
+    echo "CC中转品牌补丁: 与当前上游兼容，尚未应用"
+    return 0
+  fi
+  echo "CC中转品牌补丁: 与当前 New-API 版本不兼容" >&2
+  return 1
+}
+
 git -C "$UPSTREAM_DIR" fetch --tags origin >/dev/null
 current_ref="$(git -C "$UPSTREAM_DIR" describe --tags --exact-match 2>/dev/null || git -C "$UPSTREAM_DIR" rev-parse --short=12 HEAD)"
 latest_sha="$(git -C "$UPSTREAM_DIR" rev-list -n 1 "$latest_tag")"
@@ -68,6 +86,7 @@ echo "New-API 上游: $REMOTE_URL"
 echo "GitHub 最新: $latest_tag ($latest_sha, $published_at, prerelease=$prerelease)"
 echo "本地源码: $current_ref ($current_sha)"
 echo "Compose 镜像: calciumion/new-api:${compose_tag:-未找到}"
+check_brand_patch_compatibility
 
 if [[ "$MODE" == "check" ]]; then
   if [[ "$current_sha" == "$latest_sha" && "$compose_tag" == "$latest_tag" ]]; then
@@ -80,11 +99,13 @@ if [[ "$MODE" == "check" ]]; then
 fi
 
 git -C "$UPSTREAM_DIR" checkout "$latest_tag" >/dev/null
+check_brand_patch_compatibility
 
 tmp_file="$(mktemp)"
 sed "s#image:[[:space:]]*calciumion/new-api:[^[:space:]]*#image: calciumion/new-api:$latest_tag#" "$COMPOSE_FILE" >"$tmp_file"
 mv "$tmp_file" "$COMPOSE_FILE"
 
 echo "已更新 New-API 到 $latest_tag。"
-echo "后续请运行: docker compose -f docker-compose.newapi.yml config"
+echo "后续请运行: make new-api-brand-patch"
+echo "再运行: docker compose -f docker-compose.newapi.yml config"
 echo "升级运行服务前请先备份 data/newapi。"

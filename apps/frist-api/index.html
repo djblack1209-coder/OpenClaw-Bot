@@ -3,22 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Frist-API</title>
+    <title>CC中转</title>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-    <link rel="stylesheet" href="./src/styles.css?v=20260509-mobile-review-2" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260704-86game-commerce" />
   </head>
-  <body data-design-system="tabcode-console">
+  <body data-design-system="game-store-console">
     <a class="skip-link" href="#main-content">跳到主要内容</a>
 
     <div class="app-shell">
       <header class="topbar">
-        <a class="brand" href="#dashboard" data-route="dashboard" aria-label="Frist-API">
+        <a class="brand" href="#dashboard" data-route="dashboard" aria-label="CC中转">
           <span class="brand-mark" aria-hidden="true">
             <i></i>
             <b></b>
           </span>
           <span class="brand-copy">
-            <strong>Frist-API</strong>
+            <strong>CC中转</strong>
           </span>
         </a>
 
@@ -31,7 +31,7 @@
             <button class="account-chip" data-auth-toggle type="button" aria-expanded="false">
               <span data-plan>未登录</span>
               <strong data-balance>$0.00</strong>
-              <b data-user-initials>FA</b>
+              <b data-user-initials>CC</b>
             </button>
             <section class="auth-panel" data-auth-panel hidden aria-label="账户">
               <div class="auth-panel__scrim" data-auth-close aria-hidden="true"></div>
@@ -42,7 +42,7 @@
                     <h2 id="auth-title" data-auth-title>登录或注册</h2>
                   </div>
                   <div class="auth-dialog__identity" aria-hidden="true">
-                    <span class="profile-avatar profile-avatar--modal" data-profile-avatar-mini>FA</span>
+                    <span class="profile-avatar profile-avatar--modal" data-profile-avatar-mini>CC</span>
                     <p data-email-status>登录创建 Key</p>
                   </div>
                   <button class="icon-action" data-auth-close type="button" aria-label="关闭账户弹窗">×</button>
@@ -53,13 +53,10 @@
                 </div>
                 <form class="auth-form" data-auth-form data-auth-form-kind="primary">
                   <div class="auth-panel__row">
-                    <input type="email" data-register-email placeholder="邮箱" aria-label="邮箱" autocomplete="email" />
-                    <input type="password" data-register-password placeholder="密码" aria-label="密码" autocomplete="current-password" />
+                    <input type="email" data-register-email-mirror placeholder="邮箱" aria-label="邮箱" autocomplete="email" />
+                    <input type="password" data-register-password-mirror placeholder="密码" aria-label="密码" autocomplete="current-password" />
                   </div>
-                  <div class="auth-panel__row captcha-row" data-captcha-row hidden>
-                    <span data-captcha-question>安全验证</span>
-                    <input type="text" autocomplete="off" data-captcha-answer placeholder="答案" aria-label="安全验证答案" />
-                  </div>
+                  <div class="turnstile-slot auth-turnstile-slot" data-turnstile-scope="auth" hidden></div>
                   <div class="auth-panel__actions">
                     <button class="secondary-action" data-auth-submit="login" data-login-account type="submit">登录</button>
                     <button class="ghost-action" data-auth-submit="register" data-register-account type="submit" hidden>注册</button>
@@ -103,6 +100,51 @@
 
       <main class="main" id="main-content" aria-busy="true">
 
+        <section class="clone-login-stage" data-clone-login-stage aria-label="CC中转 登录入口">
+          <div class="clone-login-brand">
+            <span class="clone-login-logo" aria-hidden="true">CC</span>
+            <b>CC中转</b>
+            <span>Model Access Code Commerce</span>
+          </div>
+          <div class="clone-login-card">
+            <div class="beta-notice" data-production-beta-notice>
+              <strong>生产环境内测</strong>
+              <span>当前暂未正式售卖，仅用于注册、登录、兑换、创建 API、渠道状态和管理链路验收。</span>
+            </div>
+            <div class="clone-login-copy">
+              <span class="eyebrow">CC中转控制台</span>
+              <h1>欢迎回来</h1>
+              <p>登录您的账户以继续。这里是 CC中转 工作台，保留 CC Switch、兑换码、套餐和渠道状态同步。</p>
+            </div>
+            <form class="clone-login-form auth-form" data-auth-form data-auth-form-kind="primary">
+              <label>
+                邮箱
+                <input type="email" data-register-email placeholder="请输入您的邮箱" aria-label="邮箱" autocomplete="email" />
+              </label>
+              <label>
+                密码
+                <input type="password" data-register-password placeholder="请输入您的密码" aria-label="密码" autocomplete="current-password" />
+              </label>
+              <div class="auth-panel__row captcha-row" data-captcha-row hidden>
+                <span data-captcha-question>安全验证</span>
+                <input type="text" autocomplete="off" data-captcha-answer placeholder="答案" aria-label="安全验证答案" />
+              </div>
+              <div class="turnstile-slot" data-turnstile-scope="auth" hidden></div>
+              <div class="clone-login-meta">
+                <button class="text-action" data-password-reset-request type="button">忘记密码？</button>
+                <button class="text-action" data-auth-mode="register" type="button">注册账户</button>
+              </div>
+              <button class="primary-action clone-login-submit" data-auth-submit="login" data-login-account type="submit">登录</button>
+              <button class="ghost-action clone-login-submit" data-auth-submit="register" data-register-account type="submit" hidden>注册</button>
+              <p class="field-feedback" data-auth-feedback aria-live="polite"></p>
+            </form>
+            <div class="clone-terms-card">
+              <strong>售前请读</strong>
+              <span>兑换前请确认 <a href="#terms" data-route="terms">服务条款</a>、<a href="#refund" data-route="refund">售后规则</a> 和 <a href="#privacy" data-route="privacy">隐私说明</a>。</span>
+            </div>
+          </div>
+        </section>
+
         <div class="workspace-layout" data-workspace-layout>
             <aside class="workspace-rail" data-workspace-rail aria-label="工作台导航">
               <button class="rail-toggle" data-rail-toggle type="button" aria-expanded="false" aria-controls="workspace-nav">
@@ -111,7 +153,7 @@
               </button>
               <nav id="workspace-nav" class="action-dock workspace-nav" data-action-dock aria-label="快捷操作">
                 <a href="#dashboard" data-route="dashboard">
-                  <strong>首页</strong>
+                  <strong>仪表盘</strong>
                 </a>
                 <a href="#switch" data-route="switch">
                   <strong>CC Switch</strong>
@@ -123,19 +165,19 @@
                   <strong>测试</strong>
                 </a>
                 <a href="#analytics" data-route="analytics">
-                  <strong>趋势</strong>
+                  <strong>使用记录</strong>
                 </a>
                 <a href="#records" data-route="records">
-                  <strong>记录</strong>
+                  <strong>调用明细</strong>
                 </a>
                 <a href="#models" data-route="models">
-                  <strong>模型</strong>
+                  <strong>可用渠道</strong>
                 </a>
                 <a href="#redeem" data-route="redeem">
-                  <strong>兑换</strong>
+                  <strong>兑换码</strong>
                 </a>
                 <a href="#subscription" data-route="subscription">
-                  <strong>订阅</strong>
+                  <strong>套餐订阅</strong>
                 </a>
                 <a href="#profile" data-route="profile">
                   <strong>资料</strong>
@@ -152,8 +194,9 @@
                 <section class="console-board" data-console-board>
               <div class="console-head" data-hero-flow>
                 <div>
-                  <span class="hero-kicker">Frist Gateway</span>
-                  <h1>工作台</h1>
+                  <span class="hero-kicker">CC中转控制台</span>
+                  <h1>仪表盘</h1>
+                  <p class="hero-subnote">生产环境内测中，暂未正式售卖；请先完成注册、登录、兑换、创建 API 和渠道刷新验证。</p>
                 </div>
                 <div class="console-toolbar">
                   <a class="primary-action hero-primary" data-hero-primary-import href="#switch" data-route="switch">导入</a>
@@ -274,9 +317,9 @@
                 </div>
                 <div class="prompt-suggestions" data-playground-suggestions aria-label="快捷测试提示">
                   <button data-playground-suggestion="只回复 OK。" type="button">连通</button>
-                  <button data-playground-suggestion="用三句话总结 Frist-API。" type="button">摘要</button>
+                  <button data-playground-suggestion="用三句话总结 CC中转。" type="button">摘要</button>
                   <button data-playground-suggestion="给出一个 JavaScript fetch 调用 /v1/chat/completions 的最小示例。" type="button">代码</button>
-                  <button data-playground-suggestion="生成一张 Frist-API 导入、检测、自动切换的清晰流程图。" type="button">流程图</button>
+                  <button data-playground-suggestion="生成一张 CC中转 导入、检测、自动切换的清晰流程图。" type="button">流程图</button>
                 </div>
                 <div class="composer">
                   <textarea data-playground-prompt rows="3" placeholder="输入测试内容" aria-label="测试提示词"></textarea>
@@ -434,7 +477,7 @@
             </div>
             <div class="endpoint-note">
               <span>API 端点</span>
-              <b data-base-url>https://api.frist.example.com/v1</b>
+              <b data-base-url>https://jiyu.245334.xyz/v1</b>
             </div>
             <p class="field-feedback" data-key-feedback aria-live="polite"></p>
             <div class="api-list" data-api-keys></div>
@@ -450,19 +493,20 @@
             <details class="plain-section soft-details" open>
               <summary>兑换码</summary>
               <div class="exchange-row">
-                <input type="text" data-billing-exchange-code placeholder="FRIST-DAY-001" aria-label="兑换码" />
+                <input type="text" data-billing-exchange-code placeholder="CC-DAY-001" aria-label="兑换码" />
                 <button class="secondary-action" data-billing-redeem-code type="button">兑换</button>
               </div>
+              <div class="turnstile-slot" data-turnstile-scope="redeem" hidden></div>
             </details>
             <p class="field-feedback" data-payment-feedback aria-live="polite"></p>
             <div class="amount-grid" data-recharge-options></div>
             <article class="xianyu-purchase-card">
               <div>
                 <span class="eyebrow">Xianyu Code</span>
-                <h3>购买卡密</h3>
-                <p>支付在平台完成，本站只核销。</p>
+                <h3>卡密内测兑换</h3>
+                <p>当前生产环境内测，暂未正式售卖。内测卡密由人工发放，本站只核销；未使用卡密按 <a href="#refund" data-route="refund">售后规则</a> 处理。</p>
               </div>
-              <a class="primary-action" data-xianyu-purchase-link href="#" target="_blank" rel="noreferrer" aria-disabled="true">待配置</a>
+              <a class="primary-action" data-xianyu-purchase-link href="#" target="_blank" rel="noreferrer" aria-disabled="true">内测待开放</a>
             </article>
             <article class="config-card balance-alert-card" data-balance-alert-card>
               <div class="section-head">
@@ -531,14 +575,15 @@
               <div>
                 <span class="eyebrow">Redeem</span>
                 <h3>输入卡密</h3>
-                <p>一次性核销，成功到账。</p>
+                <p>当前为生产环境内测，暂未正式售卖。内测卡密一次性核销，成功到账；兑换代表你已阅读 <a href="#terms" data-route="terms">服务条款</a> 与 <a href="#refund" data-route="refund">售后规则</a>。</p>
               </div>
-              <a class="secondary-action" data-xianyu-purchase-link href="#" target="_blank" rel="noreferrer" aria-disabled="true">购买</a>
+              <a class="secondary-action" data-xianyu-purchase-link href="#" target="_blank" rel="noreferrer" aria-disabled="true">内测待开放</a>
             </article>
             <div class="exchange-row">
-              <input type="text" data-exchange-code placeholder="FRIST-DAY-001" aria-label="兑换码" />
+              <input type="text" data-exchange-code placeholder="CC-DAY-001" aria-label="兑换码" />
               <button class="secondary-action" data-redeem-code type="button">兑换</button>
             </div>
+            <div class="turnstile-slot" data-turnstile-scope="redeem" hidden></div>
             <div class="manual-collection-panel">
               <article>
                 <strong>平台</strong>
@@ -588,7 +633,7 @@
             </div>
             <div class="profile-settings-layout">
               <aside class="profile-identity-card" aria-label="账户摘要">
-                <span class="profile-avatar profile-avatar--large" data-profile-avatar>FA</span>
+                <span class="profile-avatar profile-avatar--large" data-profile-avatar>CC</span>
                 <div>
                   <strong data-profile-display-name>未登录</strong>
                   <span data-profile-email>未登录</span>
@@ -664,7 +709,7 @@
               </div>
               <ol data-claude-developer-guide>
                 <li data-claude-guide-step>打开 Claude 配置。</li>
-                <li data-claude-guide-step>允许第三方 API。</li>
+                <li data-claude-guide-step>允许自定义接口。</li>
                 <li data-claude-guide-step>导入并确认模型。</li>
               </ol>
             </section>
@@ -683,7 +728,7 @@
                 <article>
                   <b>2</b>
                   <strong>一键导入供应商</strong>
-                  <span><code data-ccswitch-workflow-base>https://api.frist.example.com/v1</code></span>
+                  <span><code data-ccswitch-workflow-base>https://jiyu.245334.xyz/v1</code></span>
                 </article>
                 <article>
                   <b>3</b>
@@ -693,7 +738,7 @@
                 <article>
                   <b>4</b>
                   <strong>测试用量查询</strong>
-                  <span><em data-ccswitch-workflow-usage>https://api.frist.example.com</em> · <em data-ccswitch-workflow-test>导入后点测试脚本</em></span>
+                  <span><em data-ccswitch-workflow-usage>https://jiyu.245334.xyz</em> · <em data-ccswitch-workflow-test>导入后点测试脚本</em></span>
                 </article>
                 <article>
                   <b>5</b>
@@ -718,7 +763,7 @@
               <div class="verification-steps">
                 <article>
                   <strong>1. 供应商卡片</strong>
-                  <span>CC Switch 里显示 Frist-API，默认模型和页面一致。</span>
+                  <span>CC Switch 里显示 CC中转，默认模型和页面一致。</span>
                 </article>
                 <article>
                   <strong>2. 用量脚本</strong>
@@ -738,7 +783,7 @@
               <div>
                 <span class="eyebrow">用量查询</span>
                 <h2>教程 / 说明</h2>
-                <p>一键导入会写入 CC Switch 用量查询脚本，卡片启用后可刷新 Frist-API 余额、已用额度和调用统计。</p>
+                <p>一键导入会写入 CC Switch 用量查询脚本，卡片启用后可刷新 CC中转 余额、已用额度和调用统计。</p>
               </div>
               <ol>
                 <li>导入确认后，在供应商卡片右侧点击用量查询图标。</li>
@@ -870,9 +915,9 @@ Skill:  ccswitch://v1/import?resource=skill&amp;repo=owner/repo&amp;directory=sk
                 <div class="walkthrough-head">
                   <span class="walkthrough-kicker">Claude</span>
                   <h3>OpenAI 模型以 Claude 名称导入 Claude Code</h3>
-                  <p>Claude 端使用 Claude 模型名称；Frist-API 保留真实上游模型映射。</p>
+                  <p>Claude 端使用 Claude 模型名称；CC中转 保留真实上游模型映射。</p>
                 </div>
-                <div class="walkthrough-diagram walkthrough-diagram--claude" aria-label="Claude 第三方推理配置流程图">
+                <div class="walkthrough-diagram walkthrough-diagram--claude" aria-label="Claude 自定义接口配置流程图">
                   <div class="diagram-window diagram-window--menu">
                     <div class="diagram-titlebar">
                       <span class="hamburger" aria-hidden="true"></span>
@@ -911,7 +956,7 @@ Skill:  ccswitch://v1/import?resource=skill&amp;repo=owner/repo&amp;directory=sk
                       </div>
                       <label class="diagram-field is-marked">
                         <span><i>4</i>Gateway base URL</span>
-                        <code data-flow-claude-base>https://api.frist.example.com</code>
+                        <code data-flow-claude-base>https://jiyu.245334.xyz</code>
                       </label>
                       <label class="diagram-field is-marked">
                         <span><i>5</i>Gateway API key</span>
@@ -947,7 +992,7 @@ Skill:  ccswitch://v1/import?resource=skill&amp;repo=owner/repo&amp;directory=sk
                 <div class="walkthrough-diagram walkthrough-diagram--codex" aria-label="Codex 导入 Claude 模型流程图">
                   <div class="diagram-window diagram-window--frist">
                     <div class="diagram-titlebar">
-                      <strong>Frist-API / CC Switch</strong>
+                      <strong>CC中转 / CC Switch</strong>
                     </div>
                     <div class="switch-choice-grid">
                       <span class="is-marked"><i>1</i>目标客户端: Codex</span>
@@ -965,7 +1010,7 @@ Skill:  ccswitch://v1/import?resource=skill&amp;repo=owner/repo&amp;directory=sk
                       <h4>CC Switch / Codex</h4>
                       <label class="diagram-field is-marked">
                         <span><i>4</i>API 请求地址</span>
-                        <code data-flow-codex-base>https://api.frist.example.com/v1</code>
+                        <code data-flow-codex-base>https://jiyu.245334.xyz/v1</code>
                       </label>
                       <label class="diagram-field is-marked">
                         <span><i>5</i>模型名称</span>
@@ -990,7 +1035,7 @@ model_reasoning_effort = "xhigh"
 
 [model_providers.custom]
 wire_api = "responses"
-base_url = "<b data-flow-codex-base>https://api.frist.example.com/v1</b>"
+base_url = "<b data-flow-codex-base>https://jiyu.245334.xyz/v1</b>"
 
 [mcp_servers.playwright]
 command = "npx"
@@ -1036,11 +1081,109 @@ args = ["-y", "-p", "open-computer-use@latest", "open-codex-computer-use-mcp"]</
             </details>
           </section>
               </section>
+
+              <section class="view-panel" data-view="about" hidden>
+                <button class="back-home" data-back-home data-route="dashboard" type="button">首页</button>
+                <section class="plain-section policy-surface">
+                  <div class="section-head">
+                    <div>
+                      <span class="eyebrow">关于 CC中转</span>
+                      <h2>服务说明</h2>
+                    </div>
+                    <span class="status-pill status-pill--healthy">公开可读</span>
+                  </div>
+                  <div class="policy-grid">
+                    <article>
+                      <strong>CC中转 是什么</strong>
+                      <p>CC中转 提供模型访问中转、额度兑换、Key 管理和使用记录查询。用户通过兑换码入账后，可在本站生成自己的访问 Key。</p>
+                    </article>
+                    <article>
+                      <strong>边界说明</strong>
+                      <p>本站不属于任何模型厂商的官方渠道，也不是厂商直营服务或代理入口。</p>
+                    </article>
+                    <article>
+                      <strong>可用性说明</strong>
+                      <p>服务依赖外部上游资源，可能出现延迟、限流、维护或短时中断。我们会尽力监控和切换可用通道，但不承诺绝对可用。</p>
+                    </article>
+                  </div>
+                </section>
+              </section>
+
+              <section class="view-panel" data-view="terms" hidden>
+                <button class="back-home" data-back-home data-route="dashboard" type="button">首页</button>
+                <section class="plain-section policy-surface">
+                  <div class="section-head">
+                    <div>
+                      <span class="eyebrow">Terms</span>
+                      <h2>服务条款</h2>
+                    </div>
+                    <span class="status-pill status-pill--pending">售前必读</span>
+                  </div>
+                  <ol class="policy-list">
+                    <li>用户需自行保证用途合法合规，不得把本站用于绕过平台规则、滥发内容、攻击、批量注册、撞库或其他违规用途。</li>
+                    <li>兑换码仅用于CC中转 账户额度入账；请在购买后及时兑换并妥善保管，不要公开展示卡密。</li>
+                    <li>模型、价格、速率和可用通道会随上游资源状态调整，页面展示以实际可用状态为准。</li>
+                    <li>因网络、上游维护、限流、余额耗尽或安全风控导致的短时不可用，我们会优先处理恢复或给出替代方案。</li>
+                  </ol>
+                </section>
+              </section>
+
+              <section class="view-panel" data-view="refund" hidden>
+                <button class="back-home" data-back-home data-route="dashboard" type="button">首页</button>
+                <section class="plain-section policy-surface">
+                  <div class="section-head">
+                    <div>
+                      <span class="eyebrow">After-sales</span>
+                      <h2>售后 / 退款规则</h2>
+                    </div>
+                    <span class="status-pill status-pill--healthy">卡密规则</span>
+                  </div>
+                  <div class="policy-grid">
+                    <article>
+                      <strong>未使用卡密</strong>
+                      <p>购买后尚未兑换、未泄露且仍在约定售后时限内的卡密，可按下单平台规则申请退款或换码。</p>
+                    </article>
+                    <article>
+                      <strong>已使用卡密</strong>
+                      <p>卡密一经兑换到账，系统会记录使用状态；已使用卡密不支持退款，但可协助排查到账和使用问题。</p>
+                    </article>
+                    <article>
+                      <strong>异常处理</strong>
+                      <p>如遇无法兑换、重复提示或到账异常，请提供订单号、卡密脱敏截图和注册邮箱，客服会按记录核对。</p>
+                    </article>
+                  </div>
+                </section>
+              </section>
+
+              <section class="view-panel" data-view="privacy" hidden>
+                <button class="back-home" data-back-home data-route="dashboard" type="button">首页</button>
+                <section class="plain-section policy-surface">
+                  <div class="section-head">
+                    <div>
+                      <span class="eyebrow">Privacy</span>
+                      <h2>隐私说明</h2>
+                    </div>
+                    <span class="status-pill status-pill--healthy">最小收集</span>
+                  </div>
+                  <ol class="policy-list">
+                    <li>注册和兑换流程只收集账户邮箱、登录状态、兑换记录、用量记录和必要的售后信息。</li>
+                    <li>后台展示邮箱、Key、卡密和上游信息时默认脱敏；完整密钥不在用户页面持久回显。</li>
+                    <li>日志用于排查故障、核对订单和识别异常兑换频率，不用于公开展示用户隐私。</li>
+                    <li>管理员不得把用户卡密、邮箱、Key、订单号等信息发送到公开渠道。</li>
+                  </ol>
+                </section>
+              </section>
+
             </div>
           </div>
       </main>
       <footer class="source-disclosure" data-source-disclosure aria-label="开源合规入口">
-        <span>Frist-API 桥接 New-API（AGPL-3.0 上游）运行时，公开运营需提供源码入口。</span>
+        <span>CC中转 · 非厂商官方渠道 · 兑换码售后以页面规则为准。</span>
+        <a href="#about" data-route="about">服务说明</a>
+        <a href="#terms" data-route="terms">服务条款</a>
+        <a href="#refund" data-route="refund">售后规则</a>
+        <a href="#privacy" data-route="privacy">隐私说明</a>
+        <span>桥接 New-API（AGPL-3.0 上游）运行时，公开运营需提供源码入口。</span>
         <a
           href="https://github.com/djblack1209-coder/OpenClaw-Bot"
           target="_blank"
@@ -1050,6 +1193,6 @@ args = ["-y", "-p", "open-computer-use@latest", "open-codex-computer-use-mcp"]</
       </footer>
     </div>
 
-    <script type="module" src="./src/app.js?v=20260509-mobile-review-2"></script>
+    <script type="module" src="./src/app.js?v=20260704-86game-commerce"></script>
   </body>
 </html>

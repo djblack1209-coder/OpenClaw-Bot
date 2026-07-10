@@ -161,6 +161,14 @@ def get_bot_model_family(config: dict, bot_id: str) -> str | None:
     return mapping.get(bot_id)
 
 
+
+
+def get_routing_profile(config: dict, profile_name: str) -> dict:
+    """获取业务专属 LLM routing profile；不存在时返回空 dict。"""
+    profiles = config.get("routing_profiles", {}) if isinstance(config, dict) else {}
+    profile = profiles.get(profile_name, {}) if isinstance(profiles, dict) else {}
+    return dict(profile) if isinstance(profile, dict) else {}
+
 def get_router_config(config: dict) -> dict:
     """获取 Router 全局配置参数"""
     return config.get(

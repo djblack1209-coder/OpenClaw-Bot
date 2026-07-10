@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import contextlib
+import hashlib
 import json
 import logging
 import os
@@ -11,15 +12,16 @@ import re
 import secrets
 import sys
 import time
-import uuid
 from collections import OrderedDict
 from datetime import timedelta
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 import websockets
 
 from src.constants import XIANYU_USER_AGENT
 from src.utils import now_et
 
+from .cc_operator_state import consume_auto_resume_canary_after_sent, is_auto_ship_paused
 from .cookie_refresher import (
     build_cookie_str,
     is_cookie_expiring,
@@ -202,6 +204,8 @@ class XianyuLive:
         # 并发状态锁 — 保护 _notified_chats / _msg_timestamps / manual_chats
         # 多个买家同时发消息时 handle_message 并发执行，需要锁保护共享状态
         self._state_lock = asyncio.Lock()
+        # LWP 请求-响应等待表：用于创建/获取闲鱼单聊会话，支撑订单轮询漏单后自动发货。
+        self._pending_mid_futures: dict[str, asyncio.Future] = {}
 
         # License 自动创建
         self._license_mgr = None
@@ -571,6 +575,122 @@ class XianyuLive:
         }
         await ws.send(json.dumps(msg))
 
+    def _dispatch_mid_response(self, message_data: dict) -> bool:
+        """把带 mid 的 LWP 响应交给正在等待的请求；命中则返回 True。"""
+        try:
+            headers = message_data.get("headers") if isinstance(message_data, dict) else {}
+            mid = headers.get("mid") if isinstance(headers, dict) else ""
+            if not mid:
+                return False
+            future = self._pending_mid_futures.pop(mid, None)
+            if future is None:
+                return False
+            if not future.done():
+                future.set_result(message_data)
+            return True
+        except Exception as e:
+            logger.warning("[闲鱼] 分派 LWP 响应失败: %s", e)
+            return False
+
+    async def create_chat_conversation(self, to_user_id: str, item_id: str, timeout: float = 15.0) -> str:
+        """创建或获取与买家的单聊会话 ID。
+
+        该能力来自开源自动发货系统的成熟做法：订单轮询拿到 buyer_id 后，
+        通过闲鱼 LWP 幂等创建会话，再把发货话术发送到正确聊天窗口。
+        """
+        if not self.ws:
+            raise ConnectionError("闲鱼 WebSocket 未连接，无法创建会话")
+        if hasattr(self.ws, "open") and not self.ws.open:
+            raise ConnectionError("闲鱼 WebSocket 已断开，无法创建会话")
+        buyer_id = str(to_user_id or "").strip()
+        normalized_item_id = str(item_id or "").strip()
+        if not buyer_id:
+            raise ValueError("buyer_id 不能为空")
+        if not normalized_item_id:
+            raise ValueError("item_id 不能为空")
+
+        mid = generate_mid()
+        msg = {
+            "lwp": "/r/SingleChatConversation/create",
+            "headers": {"mid": mid},
+            "body": [
+                {
+                    "pairFirst": f"{buyer_id}@goofish",
+                    "pairSecond": f"{self.myid}@goofish",
+                    "bizType": "1",
+                    "extension": {"itemId": normalized_item_id},
+                    "ctx": {"appVersion": "1.0", "platform": "web"},
+                }
+            ],
+        }
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future = loop.create_future()
+        self._pending_mid_futures[mid] = future
+        try:
+            await self.ws.send(json.dumps(msg))
+            response = await asyncio.wait_for(future, timeout=timeout)
+            chat_id = self._extract_cid_from_create_chat_response(response)
+            if not chat_id:
+                raise ValueError("创建会话响应中没有 chat_id")
+            logger.info("[闲鱼] 已获取买家会话: buyer=%s item=%s chat=%s", buyer_id, normalized_item_id, chat_id)
+            return chat_id
+        except TimeoutError as e:
+            self._pending_mid_futures.pop(mid, None)
+            raise TimeoutError(f"创建会话超时（{timeout}秒）") from e
+        except Exception:
+            self._pending_mid_futures.pop(mid, None)
+            raise
+
+    @staticmethod
+    def _extract_cid_from_create_chat_response(response: dict) -> str | None:
+        """从闲鱼创建会话响应中提取 chat_id，兼容多种响应结构。"""
+        try:
+            if not isinstance(response, dict):
+                return None
+            body = response.get("body")
+            first = None
+            if isinstance(body, list) and body and isinstance(body[0], dict):
+                first = body[0]
+            elif isinstance(body, dict):
+                first = body
+            if not isinstance(first, dict):
+                return None
+
+            conv = None
+            candidate = first.get("singleChatConversation")
+            if isinstance(candidate, dict):
+                conv = candidate
+            if conv is None:
+                user_conv = first.get("singleChatUserConversation")
+                if isinstance(user_conv, dict) and isinstance(user_conv.get("singleChatConversation"), dict):
+                    conv = user_conv["singleChatConversation"]
+            if conv is None:
+                data = first.get("data")
+                if isinstance(data, dict) and isinstance(data.get("singleChatConversation"), dict):
+                    conv = data["singleChatConversation"]
+            if conv is None:
+                conv = first
+
+            cid = conv.get("cid") or conv.get("id") or ""
+            if not isinstance(cid, str) or not cid:
+                return None
+            return cid.split("@", 1)[0] if "@" in cid else cid
+        except Exception:
+            return None
+
+    async def _resolve_cc_delivery_chat_id(self, buyer_id: str, item_id: str) -> str:
+        """解析发货会话：优先用历史聊天，没有就通过 LWP 创建会话。"""
+        existing = self.ctx.get_latest_chat_id(buyer_id) if buyer_id else ""
+        if existing:
+            return existing
+        if not item_id:
+            return buyer_id
+        try:
+            return await self.create_chat_conversation(buyer_id, item_id)
+        except Exception as e:
+            logger.warning("[CC中转自动发货] 自动创建买家会话失败，回退 buyer_id: %s", e)
+            return buyer_id
+
     # ---- 初始化连接 ----
     async def init_ws(self, ws):
         if not self.current_token or time.time() - self.token_ts >= self.token_ttl:
@@ -626,22 +746,303 @@ class XianyuLive:
         except Exception as e:  # noqa: F841
             return False
 
+    @staticmethod
+    def _decode_sync_message_payload(raw: str) -> dict | None:
+        """解出闲鱼同步包里的业务消息，兼容加密消息和明文系统卡片。"""
+        if not raw:
+            return None
+        try:
+            decoded = base64.b64decode(raw).decode()
+            message = json.loads(decoded)
+            return message if isinstance(message, dict) else None
+        except Exception:
+            try:
+                message = json.loads(decrypt(raw))
+                return message if isinstance(message, dict) else None
+            except Exception:
+                return None
+
+    @staticmethod
+    def _extract_order_buyer_id(message: dict) -> str:
+        """从订单/系统卡片消息中提取买家 ID，避免明文付款卡片 buyer_id 为空。"""
+        slot = message.get("1") if isinstance(message, dict) else None
+        if isinstance(slot, str):
+            return slot.split("@", 1)[0]
+        if isinstance(slot, dict):
+            meta = slot.get("10") if isinstance(slot.get("10"), dict) else {}
+            for key in ("senderUserId", "senderId", "userId", "buyerId"):
+                value = str(meta.get(key) or "").strip()
+                if value:
+                    return value.split("@", 1)[0]
+        return ""
+
     # ---- 订单状态检测 ----
     ORDER_STATUSES = {
         "等待买家付款": "pending_payment",
+        "待付款": "pending_payment",
+        "等待付款": "pending_payment",
+        "买家未付款": "pending_payment",
+        "未付款": "pending_payment",
         "等待卖家发货": "paid",
+        "待发货": "paid",
+        "等待发货": "paid",
+        "待卖家发货": "paid",
+        "卖家待发货": "paid",
+        "买家已付款": "paid",
+        "已付款": "paid",
+        "买家已支付": "paid",
+        "已支付": "paid",
         "交易关闭": "closed",
+        "订单关闭": "closed",
         "交易成功": "completed",
+        "订单完成": "completed",
         "退款成功": "refunded",
         "退款中": "refunding",
+        "退款处理中": "refunding",
     }
 
+    ORDER_STATUS_NORMALIZED = {
+        "等待买家付款": "pending_payment",
+        "待付款": "pending_payment",
+        "等待付款": "pending_payment",
+        "买家未付款": "pending_payment",
+        "未付款": "pending_payment",
+        "等待卖家发货": "paid",
+        "待发货": "paid",
+        "等待发货": "paid",
+        "待卖家发货": "paid",
+        "卖家待发货": "paid",
+        "买家已付款": "paid",
+        "已付款": "paid",
+        "买家已支付": "paid",
+        "已支付": "paid",
+        "买家已付款等待卖家发货": "paid",
+        "已付款等待卖家发货": "paid",
+        "已支付等待卖家发货": "paid",
+        "交易关闭": "closed",
+        "订单关闭": "closed",
+        "交易成功": "completed",
+        "订单完成": "completed",
+        "退款成功": "refunded",
+        "退款中": "refunding",
+        "退款处理中": "refunding",
+    }
+
+    ORDER_STATUS_FIELD_KEYS = {
+        "redReminder",
+        "reminder",
+        "reminderContent",
+        "status",
+        "statusText",
+        "orderStatus",
+        "orderStatusText",
+        "tradeStatus",
+        "tradeStatusText",
+        "bizStatus",
+        "bizStatusText",
+        "statusTitle",
+        "reminderTitle",
+        "orderStatusTitle",
+        "tradeStatusTitle",
+        "payStatus",
+        "payStatusText",
+    }
+
+    ORDER_STATUS_CONTAINER_KEYS = {
+        "3",
+        "orderInfo",
+        "order",
+        "tradeInfo",
+        "trade",
+        "bizOrder",
+        "bizOrderInfo",
+        "payInfo",
+        "logisticsInfo",
+    }
+
+    @staticmethod
+    def _normalize_order_reminder(reminder: object) -> str:
+        """规整闲鱼订单提醒文案；仅用于状态识别，不进入日志。"""
+        text = str(reminder or "").strip()
+        return re.sub(r"[\s，,。.!！:：;；｜|/\-—_（）()【】\[\]{}<>《》]+", "", text)
+
+    @classmethod
+    def _looks_like_xianyu_paid_system_title(cls, value: object) -> bool:
+        """判断是否像闲鱼系统生成的付款标题；普通买家聊天文本不靠这条触发。"""
+        normalized = cls._normalize_order_reminder(value)
+        if not normalized:
+            return False
+        if any(token in normalized for token in ("未付款", "待付款", "退款", "关闭")):
+            return False
+        paid = "已付款" in normalized or "已支付" in normalized or "付款成功" in normalized
+        ship = any(token in normalized for token in ("待发货", "等待你发货", "等待卖家发货", "提醒发货", "记得及时发货"))
+        return paid and ship
+
+    @classmethod
+    def _iter_order_status_candidates(cls, message: dict) -> list[str]:
+        """只从订单相关结构化字段提取状态候选，避免普通聊天文本误触发发货。"""
+        candidates: list[str] = []
+
+        def add(value: object) -> None:
+            if isinstance(value, (str, int, float)):
+                text = str(value).strip()
+                if text and len(text) <= 80:
+                    candidates.append(text)
+
+        def walk(value: object, depth: int = 0) -> None:
+            if depth > 3:
+                return
+            if isinstance(value, dict):
+                for key, child in value.items():
+                    key_text = str(key)
+                    if key_text in cls.ORDER_STATUS_FIELD_KEYS:
+                        add(child)
+                    if (
+                        key_text in cls.ORDER_STATUS_CONTAINER_KEYS
+                        or "status" in key_text.lower()
+                        or "reminder" in key_text.lower()
+                        or "订单" in key_text
+                        or "交易" in key_text
+                    ):
+                        if isinstance(child, (dict, list, tuple)):
+                            walk(child, depth + 1)
+                        else:
+                            add(child)
+            elif isinstance(value, (list, tuple)):
+                for child in value[:8]:
+                    walk(child, depth + 1)
+
+        root = message if isinstance(message, dict) else {}
+        for key in cls.ORDER_STATUS_CONTAINER_KEYS:
+            if key in root:
+                walk(root.get(key), 0)
+        # 兼容历史主路径：message["3"].redReminder。
+        if isinstance(root.get("3"), dict):
+            add(root["3"].get("redReminder"))
+        # 兼容新版闲鱼明文系统卡片：标题为“我已付款，等待你发货”一类。
+        # 注意：这里只信系统卡片标题，不因普通聊天内容里出现“已付款”就发货。
+        if isinstance(root.get("1"), dict):
+            meta = root["1"].get("10") if isinstance(root["1"].get("10"), dict) else {}
+            title = meta.get("reminderTitle")
+            if cls._looks_like_xianyu_paid_system_title(title):
+                add(title)
+                add(meta.get("reminderContent"))
+        return list(OrderedDict.fromkeys(candidates))
+
+    def _classify_order_status_text(self, reminder: object) -> str | None:
+        """把单条订单状态文案映射为内部状态；保护性状态优先。"""
+        exact = self.ORDER_STATUSES.get(str(reminder or "").strip())
+        if exact:
+            return exact
+        normalized = self._normalize_order_reminder(reminder)
+        if not normalized:
+            return None
+        mapped = self.ORDER_STATUS_NORMALIZED.get(normalized)
+        if mapped:
+            return mapped
+        # 保护优先：含未付款/待付款/退款/关闭时，绝不进入自动发货。
+        if any(token in normalized for token in ("未付款", "待付款", "等待买家付款", "等待付款")):
+            return "pending_payment"
+        if "退款" in normalized:
+            return "refunding"
+        if "关闭" in normalized:
+            return "closed"
+        if "交易成功" in normalized or "订单完成" in normalized:
+            return "completed"
+        # 已付款类变体才进入 paid；只看到“付款”不算，避免误发卡。
+        if ("已付款" in normalized or "已支付" in normalized) and "未付款" not in normalized:
+            return "paid"
+        if "发货" in normalized and any(token in normalized for token in ("等待卖家", "待卖家", "卖家待", "待发货", "等待发货")):
+            return "paid"
+        return None
+
     def _check_order(self, message: dict) -> str | None:
+        """识别闲鱼订单状态；普通聊天文本不触发自动发货。"""
         try:
-            reminder = message.get("3", {}).get("redReminder", "")
-            return self.ORDER_STATUSES.get(reminder)
+            for reminder in self._iter_order_status_candidates(message):
+                status = self._classify_order_status_text(reminder)
+                if status:
+                    return status
+            return None
         except Exception as e:  # noqa: F841
             return None
+
+    def _scrub_paid_order_probe_candidate(self, parsed: dict, status: str, auto_item_id: str | None) -> dict:
+        """生成只读扫单候选；保留内存调试字段，外部接口会再次脱敏。"""
+        order_id = str(parsed.get("order_id") or "").strip()
+        existing = self._get_cc_shipment_by_order_id_safely(order_id) if order_id else None
+        return {
+            "order_id": order_id,
+            "raw_order_id": str(parsed.get("raw_order_id") or "").strip(),
+            "buyer_id": str(parsed.get("buyer_id") or "").strip(),
+            "item_id": str(auto_item_id or parsed.get("item_id") or "").strip(),
+            "source_item_id": str(parsed.get("item_id") or "").strip(),
+            "title": str(parsed.get("title") or "")[:120],
+            "amount": float(parsed.get("amount") or 0.0),
+            "status_text": str(parsed.get("status_text") or "")[:120],
+            "classified_status": status or "unknown",
+            "can_auto_ship_item": auto_item_id is not None,
+            "local_shipment_status": str((existing or {}).get("status") or "none"),
+            "local_shipment_id": (existing or {}).get("id"),
+        }
+
+    async def scan_cc_paid_orders_readonly(self, batch_size: int = 5) -> dict:
+        """只读扫描闲鱼待发货订单；不发卡、不调 webhook、不点击发货。"""
+        safe_batch_size = max(1, min(int(batch_size or 5), 20))
+        if not getattr(self, "cookies_str", ""):
+            return {
+                "ok": False,
+                "read_only": True,
+                "reason": "missing_xianyu_cookie",
+                "processed": 0,
+                "candidates": [],
+                "next_action": "闲鱼登录态不可用，请先打开卖家 Chromium 并确认已登录。",
+            }
+        async with XianyuApis(self.cookies_str) as api:
+            page = await api.get_sold_orders_page(page=1, query_code="NOT_SHIP")
+        if page.get("cookies_str") and page["cookies_str"] != self.cookies_str:
+            self.cookies_str = str(page["cookies_str"])
+            self.cookies = trans_cookies(self.cookies_str)
+            self.myid = self.cookies.get("unb", getattr(self, "myid", ""))
+        if not page.get("success"):
+            return {
+                "ok": False,
+                "read_only": True,
+                "reason": "xianyu_order_api_failed",
+                "error": str(page.get("error") or "")[:120],
+                "processed": 0,
+                "candidates": [],
+                "next_action": "闲鱼卖家订单读取失败，请确认登录态和卖家页面是否正常。",
+            }
+
+        candidates: list[dict] = []
+        skipped = 0
+        for raw_item in list(page.get("items") or [])[:safe_batch_size]:
+            parsed = self._parse_seller_sold_order_item(raw_item)
+            if not parsed:
+                skipped += 1
+                continue
+            status = self._classify_order_status_text(parsed.get("status_text"))
+            if status != "paid":
+                skipped += 1
+                continue
+            source_item_id = str(parsed.get("item_id") or "")
+            auto_item_id = self._resolve_auto_ship_item_id(source_item_id)
+            candidates.append(self._scrub_paid_order_probe_candidate(parsed, status, auto_item_id))
+
+        if candidates:
+            next_action = "已看到真实待发货订单；确认只命中目标买家后，再单次恢复/接管发货。"
+        else:
+            next_action = "暂未看到新的真实待发货订单；请确认买家订单仍是待发货状态，或刷新闲鱼登录态。"
+        return {
+            "ok": True,
+            "read_only": True,
+            "processed": len(candidates),
+            "skipped": skipped,
+            "total_count": int(page.get("total_count") or 0),
+            "candidates": candidates,
+            "next_action": next_action,
+        }
 
     # ---- 商品描述构建 ----
     def _build_item_desc(self, info: dict) -> str:
@@ -687,28 +1088,31 @@ class XianyuLive:
                 return
 
             raw = sync["data"]
-            try:
-                decoded = base64.b64decode(raw).decode()
-                json.loads(decoded)
-                return  # 明文系统消息，跳过
-            except Exception as e:  # noqa: F841
-                message = json.loads(decrypt(raw))
+            message = self._decode_sync_message_payload(raw)
+            if not message:
+                logger.debug("闲鱼 WebSocket 消息无法解码，跳过")
+                return
 
             # 订单检测
             order_status = self._check_order(message)
             if order_status:
-                uid = message.get("1", "").split("@")[0] if isinstance(message.get("1"), str) else ""
+                uid = self._extract_order_buyer_id(message)
+                if not uid:
+                    logger.warning("订单事件缺少买家 ID，已阻止自动处理: %s", order_status)
+                    return
                 logger.info("订单事件: %s (用户: %s)", order_status, uid)
                 if order_status == "paid":
-                    # 先获取上下文，生成 order_id（后续 record_order / process_order 共用）
+                    # 先获取上下文，生成稳定 order_id（后续 record_order / process_order 共用）。
+                    # 这里不能用随机 UUID：闲鱼同一已付款事件可能重复推送，随机 ID 会导致重复分配卡密。
                     recent_item = self.ctx.get_recent_item_id(uid) or ""
-                    order_id = f"xy_{uid}_{uuid.uuid4().hex[:12]}"
+                    paid_item = self._extract_xianyu_item_identifier(message) or recent_item
+                    order_id = self._stable_xianyu_order_id(message, uid, paid_item, order_status)
 
                     # 买家已付款 → 记录订单 + 标记转化 + 通知
                     # 从商品信息中提取价格，用于利润核算
                     order_amount = 0.0
-                    if recent_item:
-                        _item = self.ctx.get_item(recent_item)
+                    if paid_item:
+                        _item = self.ctx.get_item(paid_item)
                         if _item:
                             # 优先从 SKU 列表取价（单位：分，需 /100）
                             for _sku in _item.get("skuList", []):
@@ -722,15 +1126,15 @@ class XianyuLive:
                     self.ctx.record_order(
                         chat_id=str(uid),
                         user_id=uid,
-                        item_id=recent_item or "",
+                        item_id=paid_item or "",
                         status="等待卖家发货",
                         amount=order_amount,
                     )
-                    self.ctx.mark_converted(str(uid), recent_item or "")
+                    self.ctx.mark_converted(str(uid), paid_item or "")
                     self.notifier.notify_order(
                         {
                             "user_id": uid,
-                            "item_id": recent_item,
+                            "item_id": paid_item,
                             "status": "买家已付款，请接手远程部署",
                             "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
                         }
@@ -741,14 +1145,14 @@ class XianyuLive:
                         from src.core.event_bus import EventType, get_event_bus
 
                         _item_title = ""
-                        if recent_item:
-                            _cached = self.ctx.get_item(recent_item)
+                        if paid_item:
+                            _cached = self.ctx.get_item(paid_item)
                             if _cached:
                                 _item_title = _cached.get("title", "")[:50]
                         await get_event_bus().publish(
                             EventType.XIANYU_ORDER_PAID,
                             {
-                                "item_name": _item_title or recent_item or "未知商品",
+                                "item_name": _item_title or paid_item or "未知商品",
                                 "amount": order_amount,
                                 "buyer_id": uid,
                             },
@@ -757,15 +1161,20 @@ class XianyuLive:
                     except Exception as e:
                         logger.warning("[闲鱼] 发射订单事件失败: %s", e)
 
-                    # HI-580: 自动发货拆为后台任务，不阻塞消息处理
-                    if recent_item:
+                    # HI-580: 自动发货拆为后台任务，不阻塞消息处理。
+                    # 买家可能不聊天直接付款，此时 recent_item 为空；只要 CC中转 webhook 已配置，也继续交给
+                    # CC中转按默认套餐/任意未售卡密发货，避免真实运营漏单。
+                    auto_ship_item_id = self._resolve_auto_ship_item_id(paid_item)
+                    if auto_ship_item_id is not None:
                         task = asyncio.create_task(
-                            self._delayed_auto_ship(ws, order_id, recent_item, uid)
+                            self._delayed_auto_ship(ws, order_id, auto_ship_item_id, uid)
                         )
                         task.add_done_callback(self._log_bg_task_error)
 
                     # 自动创建 License 并通知（原有逻辑保留）
-                    await self._auto_create_license(uid, ws)
+                    # CC中转已接管时不再发送旧 OpenClaw 部署包话术，避免一单收到两套无关发货内容。
+                    if auto_ship_item_id is None:
+                        await self._auto_create_license(uid, ws)
                 elif order_status == "refunded":
                     # 退款成功 → 自动吊销 License
                     await self._auto_revoke_license(uid)
@@ -935,6 +1344,10 @@ class XianyuLive:
     async def _delayed_auto_ship(self, ws, order_id: str, item_id: str, buyer_id: str):
         """延时自动发货后台任务（HI-580: 不阻塞消息主路径）"""
         try:
+            cc_ship_result = await self._try_cc_zhongzhuan_auto_ship(ws, order_id, item_id, buyer_id)
+            if cc_ship_result is not None:
+                return
+
             from src.xianyu.auto_shipper import AutoShipper
 
             if not hasattr(self, "_shipper"):
@@ -970,6 +1383,945 @@ class XianyuLive:
                 logger.info("[自动发货] 跳过: %s", ship_result.get("reason", "无卡券"))
         except Exception as e:
             logger.error("[自动发货] 后台任务异常: %s", e)
+
+    @staticmethod
+    def _cc_zhongzhuan_auto_ship_config() -> dict[str, str | bool]:
+        """读取 CC中转自动发货配置，只返回是否可用，不记录敏感 token。"""
+        enabled = os.getenv("CC_XIANYU_AUTO_SHIP_ENABLED", "").strip().lower()
+        endpoint = (
+            os.getenv("CC_XIANYU_WEBHOOK_URL", "").strip()
+            or os.getenv("FRIST_API_XIANYU_WEBHOOK_URL", "").strip()
+        )
+        token = (
+            os.getenv("CC_XIANYU_WEBHOOK_TOKEN", "").strip()
+            or os.getenv("FRIST_API_XIANYU_WEBHOOK_TOKEN", "").strip()
+        )
+        disabled = enabled in {"0", "false", "no", "off"}
+        paused = is_auto_ship_paused()
+        webhook_configured = (not disabled) and bool(endpoint and token)
+        return {
+            "configured": webhook_configured and not paused,
+            "webhook_configured": webhook_configured,
+            "paused": paused,
+            "endpoint": endpoint,
+            "token": token,
+        }
+
+    def _resolve_auto_ship_item_id(self, recent_item: str | None) -> str | None:
+        """决定已付款订单是否应进入自动发货；返回空字符串表示让 CC中转按默认卡密发货。"""
+        item_id = (recent_item or "").strip() or os.getenv("CC_XIANYU_DEFAULT_ITEM_ID", "").strip()
+        if item_id:
+            return item_id
+        if self._cc_zhongzhuan_auto_ship_config().get("configured"):
+            return ""
+        return None
+
+    @staticmethod
+    def _stable_xianyu_order_id(message: dict, buyer_id: str, item_id: str, order_status: str) -> str:
+        """从闲鱼订单消息生成稳定订单号，避免重复推送时重复发卡。"""
+        real_order_id = XianyuLive._extract_xianyu_order_identifier(message)
+        if real_order_id:
+            return XianyuLive._hash_xianyu_order_id(real_order_id)
+        canonical = json.dumps(
+            {
+                "buyer_id": buyer_id or "",
+                "item_id": item_id or "",
+                "order_status": order_status or "",
+                "red_reminder": (message.get("3") or {}).get("redReminder", "") if isinstance(message.get("3"), dict) else "",
+                "message": message,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            default=str,
+        )
+        digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+        return f"xy_msg_{digest}"
+
+    @staticmethod
+    def _hash_xianyu_order_id(raw_order_id: str) -> str:
+        """把真实闲鱼订单号转为脱敏本地订单号，避免日志/数据库暴露原始订单号。"""
+        digest = hashlib.sha256(str(raw_order_id or "").strip().encode("utf-8")).hexdigest()[:16]
+        return f"xy_oid_{digest}"
+
+    @staticmethod
+    def _extract_xianyu_item_identifier(message: dict) -> str:
+        """尽力从闲鱼订单结构中提取商品 ID；不扫描普通聊天文本。"""
+        supported_item_keys = {"itemid", "item_id", "itemidstr", "item_id_str"}
+        url_key_pattern = re.compile(r"(url|link|schema|jump|path|detail|redirect)", re.IGNORECASE)
+        item_param_pattern = re.compile(
+            r"(?:^|[?&#])(?:itemId|item_id|itemIdStr|item_id_str)=([A-Za-z0-9_-]{4,80})(?:$|[&#\s\"'<>])",
+            re.IGNORECASE,
+        )
+
+        def _normalize_key(key: object) -> str:
+            return str(key or "").strip().lower().replace("-", "_")
+
+        def _compact_key(key: object) -> str:
+            return _normalize_key(key).replace("_", "")
+
+        def _clean_candidate(value: object) -> str:
+            candidate = str(value or "").strip()
+            if re.fullmatch(r"[A-Za-z0-9_-]{4,80}", candidate):
+                return candidate
+            return ""
+
+        def _extract_from_url_text(value: object) -> str:
+            """只从 URL / query 字段解析商品参数，避免聊天内容误触发。"""
+            text = str(value or "").strip()
+            if not text or "=" not in text:
+                return ""
+            variants = [text]
+            decoded = unquote(text)
+            if decoded != text:
+                variants.append(decoded)
+
+            for variant in variants:
+                query_candidates = []
+                with contextlib.suppress(Exception):
+                    parsed_query = urlsplit(variant).query
+                    if parsed_query:
+                        query_candidates.append(parsed_query)
+                if "?" in variant:
+                    query_candidates.append(variant.split("?", 1)[1])
+                else:
+                    query_candidates.append(variant)
+
+                for query in query_candidates:
+                    for key, candidate in parse_qsl(query, keep_blank_values=False):
+                        normalized_key = _normalize_key(key)
+                        compact_key = normalized_key.replace("_", "")
+                        if normalized_key not in supported_item_keys and compact_key not in supported_item_keys:
+                            continue
+                        cleaned = _clean_candidate(candidate)
+                        if cleaned:
+                            return cleaned
+
+                for match in item_param_pattern.finditer(variant):
+                    cleaned = _clean_candidate(match.group(1))
+                    if cleaned:
+                        return cleaned
+            return ""
+
+        stack = [message]
+        visited = 0
+        while stack and visited < 200:
+            current = stack.pop()
+            visited += 1
+            if isinstance(current, dict):
+                for key, value in current.items():
+                    normalized_key = _normalize_key(key)
+                    compact_key = _compact_key(key)
+                    if isinstance(value, (dict, list)):
+                        stack.append(value)
+                        continue
+                    if normalized_key in supported_item_keys or compact_key in supported_item_keys:
+                        candidate = _clean_candidate(value)
+                        if candidate:
+                            return candidate
+                    if url_key_pattern.search(str(key)):
+                        url_candidate = _extract_from_url_text(value)
+                        if url_candidate:
+                            return url_candidate
+            elif isinstance(current, list):
+                for child in current[:50]:
+                    if isinstance(child, (dict, list)):
+                        stack.append(child)
+        return ""
+
+    @staticmethod
+    def _extract_xianyu_order_identifier(message: dict) -> str:
+        """尽力从闲鱼消息中提取真实订单/交易 ID；失败返回空字符串。"""
+        order_key_pattern = re.compile(r"(order|trade|bizorder|biz_order|订单|交易)", re.IGNORECASE)
+        url_param_pattern = re.compile(
+            r"(?:^|[?&#])(?:orderId|tradeId|bizOrderId|biz_order_id)=([A-Za-z0-9_-]{6,80})(?:$|[&#\\s\"'<>])",
+            re.IGNORECASE,
+        )
+        supported_param_keys = {"orderid", "tradeid", "bizorderid", "biz_order_id"}
+
+        def _clean_candidate(value: object) -> str:
+            candidate = str(value or "").strip()
+            if re.fullmatch(r"[A-Za-z0-9_-]{6,80}", candidate):
+                return candidate
+            return ""
+
+        def _extract_from_url_text(value: object) -> str:
+            """从任意 URL / query 字符串里解析订单参数。"""
+            text = str(value or "").strip()
+            if not text or "=" not in text:
+                return ""
+            variants = [text]
+            decoded = unquote(text)
+            if decoded != text:
+                variants.append(decoded)
+
+            for variant in variants:
+                query_candidates = []
+                with contextlib.suppress(Exception):
+                    parsed_query = urlsplit(variant).query
+                    if parsed_query:
+                        query_candidates.append(parsed_query)
+                if "?" in variant:
+                    query_candidates.append(variant.split("?", 1)[1])
+                else:
+                    query_candidates.append(variant)
+
+                for query in query_candidates:
+                    for key, candidate in parse_qsl(query, keep_blank_values=False):
+                        normalized_key = key.strip().lower().replace("-", "_")
+                        compact_key = normalized_key.replace("_", "")
+                        if normalized_key not in supported_param_keys and compact_key not in supported_param_keys:
+                            continue
+                        cleaned = _clean_candidate(candidate)
+                        if cleaned:
+                            return cleaned
+
+                for match in url_param_pattern.finditer(variant):
+                    cleaned = _clean_candidate(match.group(1))
+                    if cleaned:
+                        return cleaned
+            return ""
+
+        stack = [message]
+        visited = 0
+        while stack and visited < 200:
+            current = stack.pop()
+            visited += 1
+            if isinstance(current, dict):
+                for key, value in current.items():
+                    key_text = str(key)
+                    if isinstance(value, (dict, list)):
+                        stack.append(value)
+                        continue
+                    url_candidate = _extract_from_url_text(value)
+                    if url_candidate:
+                        return url_candidate
+                    if not order_key_pattern.search(key_text):
+                        continue
+                    candidate = _clean_candidate(value)
+                    if candidate:
+                        return candidate
+            elif isinstance(current, list):
+                stack.extend(current[:50])
+            elif isinstance(current, str):
+                url_candidate = _extract_from_url_text(current)
+                if url_candidate:
+                    return url_candidate
+        return ""
+
+    @classmethod
+    def _parse_seller_sold_order_item(cls, item: dict) -> dict:
+        """解析卖家订单列表里的待发货订单，只提取履约必要字段。"""
+        if not isinstance(item, dict):
+            return {}
+        common = item.get("commonData") or {}
+        buyer_info = item.get("buyerInfoVO") or {}
+        price_vo = item.get("priceVO") or {}
+        raw_order_id = str(
+            common.get("orderId")
+            or common.get("bizOrderId")
+            or common.get("bizOrderIdStr")
+            or ""
+        ).strip()
+        item_id = str(
+            common.get("itemId")
+            or common.get("itemIdStr")
+            or common.get("item_id")
+            or ""
+        ).strip()
+        buyer_id = str(
+            buyer_info.get("buyerId")
+            or buyer_info.get("userId")
+            or buyer_info.get("id")
+            or ""
+        ).strip()
+        status_text = str(common.get("orderStatus") or common.get("status") or "").strip()
+        title = str(common.get("itemTitle") or common.get("title") or "").strip()
+        amount = 0.0
+        try:
+            amount = float(str(price_vo.get("totalPrice") or "0").replace(",", ""))
+        except (TypeError, ValueError):
+            amount = 0.0
+        if not raw_order_id:
+            return {}
+        return {
+            "raw_order_id": raw_order_id,
+            "order_id": cls._hash_xianyu_order_id(raw_order_id),
+            "item_id": item_id,
+            "buyer_id": buyer_id,
+            "status_text": status_text,
+            "title": title,
+            "amount": amount,
+        }
+
+    def _resolve_cc_plan_id(self, item_id: str) -> str:
+        """按闲鱼商品 ID 解析 CC中转套餐；无映射时回退到默认套餐。"""
+        if item_id:
+            getter = getattr(self.ctx, "get_cc_item_mapping", None)
+            if callable(getter):
+                try:
+                    mapping = getter(item_id)
+                    if mapping and mapping.get("plan_id"):
+                        return str(mapping["plan_id"]).strip()
+                except Exception as e:
+                    logger.warning("[CC中转自动发货] 读取商品套餐映射失败: %s", e)
+        return os.getenv("CC_XIANYU_DEFAULT_PLAN_ID", "").strip()
+
+    def _record_cc_shipment_safely(
+        self,
+        order_id: str,
+        buyer_id: str,
+        item_id: str,
+        status: str,
+        chat_id: str = "",
+        delivery_message: str = "",
+        error: str = "",
+    ) -> None:
+        """安全记录 CC中转发货状态；记录失败不影响主发货链路。"""
+        recorder = getattr(self.ctx, "record_cc_shipment", None)
+        if not callable(recorder):
+            return
+        try:
+            recorder(
+                order_id=order_id,
+                buyer_id=buyer_id,
+                item_id=item_id,
+                chat_id=chat_id,
+                status=status,
+                delivery_message=delivery_message,
+                error=error,
+            )
+            if status == "message_sent":
+                consume_auto_resume_canary_after_sent(order_id)
+        except Exception as e:
+            logger.warning("[CC中转自动发货] 记录本地履约状态失败: %s", e)
+
+    def _get_cc_shipment_by_order_id_safely(self, order_id: str) -> dict | None:
+        """按订单号读取本地 CC中转履约记录；读取失败时只记录日志。"""
+        getter = getattr(self.ctx, "get_cc_shipment_by_order_id", None)
+        if not callable(getter):
+            return None
+        try:
+            return getter(order_id, include_message=True)
+        except Exception as e:
+            logger.warning("[CC中转自动发货] 读取本地订单履约记录失败: %s", e)
+            return None
+
+    async def _handle_existing_cc_shipment(self, ws, shipment: dict) -> bool | None:
+        """重复订单事件复用已有履约结果，避免再次分配卡密。"""
+        status = str(shipment.get("status") or "")
+        order_id = str(shipment.get("order_id") or "")
+        if status == "message_sent":
+            logger.info("[CC中转自动发货] 重复订单已发货，跳过再次分配: order=%s", order_id)
+            return True
+        if status == "message_send_failed":
+            shipment_id = shipment.get("id")
+            if shipment_id and shipment.get("delivery_message"):
+                try:
+                    await self.resend_cc_shipment(int(shipment_id))
+                    logger.info("[CC中转自动发货] 重复订单触发已分配话术补发: shipment_id=%s", shipment_id)
+                    return True
+                except Exception as e:
+                    logger.warning("[CC中转自动发货] 重复订单补发失败: %s", e)
+                    return False
+            logger.warning("[CC中转自动发货] 重复订单已有发送失败记录但缺少可补发话术: order=%s", order_id)
+            return False
+        if status in {"missing_delivery_message", "exception", "webhook_failed", "manually_resolved"}:
+            logger.warning("[CC中转自动发货] 重复订单已有异常/人工处理记录，跳过再次分配: order=%s status=%s", order_id, status)
+            return False
+        return None
+
+    async def resend_cc_shipment(self, shipment_id: int) -> dict:
+        """补发已分配但闲鱼消息发送失败的 CC中转发货话术。"""
+        getter = getattr(self.ctx, "get_cc_shipment", None)
+        if not callable(getter):
+            raise RuntimeError("本机发货记录读取能力不可用")
+        shipment = getter(int(shipment_id), include_message=True)
+        if not shipment:
+            raise LookupError("发货记录不存在")
+        if shipment.get("status") != "message_send_failed":
+            raise ValueError("只有消息发送失败的发货记录支持补发")
+        message = str(shipment.get("delivery_message") or "")
+        buyer_id = str(shipment.get("buyer_id") or "")
+        order_id = str(shipment.get("order_id") or "")
+        item_id = str(shipment.get("item_id") or "")
+        if not message:
+            raise ValueError("该记录没有可补发的话术")
+        if not buyer_id:
+            raise ValueError("该记录缺少买家信息")
+        if not self.ws:
+            raise RuntimeError("闲鱼 WebSocket 未连接，暂时不能补发")
+        if hasattr(self.ws, "open") and not self.ws.open:
+            raise RuntimeError("闲鱼 WebSocket 已断开，暂时不能补发")
+
+        chat_id = str(shipment.get("chat_id") or "")
+        if not chat_id:
+            chat_id = await self._resolve_cc_delivery_chat_id(buyer_id, item_id)
+        try:
+            await self.send_msg(self.ws, chat_id, buyer_id, message)
+        except Exception as e:
+            self._record_cc_shipment_safely(
+                order_id,
+                buyer_id,
+                item_id,
+                "message_send_failed",
+                chat_id=chat_id,
+                delivery_message=message,
+                error=str(e),
+            )
+            raise RuntimeError(f"闲鱼消息补发失败: {e}") from e
+
+        self._record_cc_shipment_safely(
+            order_id,
+            buyer_id,
+            item_id,
+            "message_sent",
+            chat_id=chat_id,
+            delivery_message=message,
+        )
+        self.notifier.notify_order({
+            "user_id": buyer_id,
+            "item_id": item_id,
+            "status": "✅ CC中转发货话术已补发",
+            "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+        })
+        await self._maybe_confirm_xianyu_order_shipped(order_id, item_id, buyer_id)
+        return {"ok": True, "id": int(shipment_id), "order_id": order_id, "buyer_id": buyer_id}
+
+    @staticmethod
+    def _cc_auto_confirm_shipment_enabled() -> bool:
+        """判断是否启用闲鱼侧自动确认发货；默认关闭，避免误改订单。"""
+        return os.getenv("CC_XIANYU_AUTO_CONFIRM_SHIPMENT_ENABLED", "0").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+
+    async def _maybe_confirm_xianyu_order_shipped(
+        self,
+        order_id: str,
+        item_id: str = "",
+        buyer_id: str = "",
+        stored_order_id: str = "",
+    ) -> dict:
+        """发码成功后，可选把闲鱼订单确认发货。
+
+        该动作会改变闲鱼订单状态，所以默认关闭；开启后也只接受真实数字订单号，
+        手工兜底生成的 ``xy_manual_*`` 不会触发。
+        """
+        safe_order_id = str(order_id or "").strip()
+        marker_order_id = str(stored_order_id or safe_order_id).strip()
+        if not self._cc_auto_confirm_shipment_enabled():
+            return {"ok": False, "skipped": True, "reason": "disabled"}
+        marker = getattr(self.ctx, "mark_cc_shipment_xianyu_confirm", None)
+        if not re.fullmatch(r"\d{10,}", safe_order_id):
+            if callable(marker):
+                marker(marker_order_id, "skipped", "不是闲鱼数字订单号，未自动确认发货")
+            return {"ok": False, "skipped": True, "reason": "non_numeric_order_id"}
+        try:
+            async with XianyuApis(getattr(self, "cookies_str", "")) as api:
+                result = await api.confirm_dummy_shipment(safe_order_id)
+            if result.get("cookies_str") and result["cookies_str"] != getattr(self, "cookies_str", ""):
+                self.cookies_str = str(result["cookies_str"])
+                self.cookies = trans_cookies(self.cookies_str)
+                self.myid = self.cookies.get("unb", getattr(self, "myid", ""))
+            if result.get("success"):
+                if callable(marker):
+                    marker(marker_order_id, "confirmed", "")
+                self.notifier.notify_order({
+                    "user_id": buyer_id,
+                    "item_id": item_id,
+                    "status": "✅ 闲鱼订单已自动确认发货",
+                    "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+                })
+                return {"ok": True, "status": "confirmed"}
+            error = str(result.get("error") or "确认发货失败")
+            if callable(marker):
+                marker(marker_order_id, "failed", error)
+            self.notifier.notify_health("cc_xianyu_confirm_ship", f"闲鱼确认发货失败: {error}")
+            return {"ok": False, "status": "failed", "error": error}
+        except Exception as e:
+            logger.warning("[CC中转自动发货] 闲鱼确认发货异常: %s", e)
+            if callable(marker):
+                marker(marker_order_id, "failed", str(e))
+            self.notifier.notify_health("cc_xianyu_confirm_ship", f"闲鱼确认发货异常: {e}")
+            return {"ok": False, "status": "failed", "error": str(e)}
+
+    async def send_manual_ready_cc_shipment(
+        self,
+        shipment_id: int,
+        buyer_id: str,
+        item_id: str = "",
+        order_id: str = "",
+        chat_id: str = "",
+    ) -> dict:
+        """把已分配待发送的话术直接发给指定买家，用于浏览器助手兜底。"""
+        getter = getattr(self.ctx, "get_cc_shipment", None)
+        updater = getattr(self.ctx, "update_cc_shipment_delivery_state", None)
+        if not callable(getter) or not callable(updater):
+            raise RuntimeError("本机发货记录能力不可用")
+        shipment = getter(int(shipment_id), include_message=True)
+        if not shipment:
+            raise LookupError("发货记录不存在")
+        if shipment.get("status") != "manual_delivery_ready":
+            raise ValueError("只有已分配待发送的发货记录支持浏览器助手发送")
+        message = str(shipment.get("delivery_message") or "")
+        safe_buyer_id = str(buyer_id or "").strip()
+        safe_item_id = str(item_id or shipment.get("item_id") or "").strip()
+        safe_order_id = str(order_id or "").strip()
+        if not message:
+            raise ValueError("该记录没有可发送的话术")
+        if not safe_buyer_id:
+            raise ValueError("缺少买家信息，不能自动发送")
+        if not self.ws:
+            raise RuntimeError("闲鱼 WebSocket 未连接，暂时不能发送")
+        if hasattr(self.ws, "open") and not self.ws.open:
+            raise RuntimeError("闲鱼 WebSocket 已断开，暂时不能发送")
+
+        if not safe_order_id:
+            basis = f"{int(shipment_id)}|{safe_buyer_id}|{safe_item_id}"
+            safe_order_id = f"xy_browser_{hashlib.sha256(basis.encode('utf-8')).hexdigest()[:16]}"
+        safe_chat_id = str(chat_id or shipment.get("chat_id") or "").strip()
+        if not safe_chat_id:
+            safe_chat_id = await self._resolve_cc_delivery_chat_id(safe_buyer_id, safe_item_id)
+        try:
+            await self.send_msg(self.ws, safe_chat_id, safe_buyer_id, message)
+        except Exception as e:
+            updater(
+                int(shipment_id),
+                safe_order_id,
+                safe_buyer_id,
+                safe_item_id,
+                safe_chat_id,
+                "message_send_failed",
+                str(e),
+            )
+            raise RuntimeError(f"闲鱼消息发送失败: {e}") from e
+
+        updater(
+            int(shipment_id),
+            safe_order_id,
+            safe_buyer_id,
+            safe_item_id,
+            safe_chat_id,
+            "message_sent",
+            "",
+        )
+        self.notifier.notify_order({
+            "user_id": safe_buyer_id,
+            "item_id": safe_item_id,
+            "status": "✅ CC中转浏览器助手已发货",
+            "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+        })
+        await self._maybe_confirm_xianyu_order_shipped(safe_order_id, safe_item_id, safe_buyer_id)
+        return {
+            "ok": True,
+            "id": int(shipment_id),
+            "order_id": safe_order_id,
+            "buyer_id": safe_buyer_id,
+            "status": "message_sent",
+        }
+
+    async def _cc_shipment_rescue_loop(self):
+        """自动补发首次发送失败的 CC中转发货话术，不重新分配卡密。"""
+        enabled = os.getenv("CC_XIANYU_RESCUE_LOOP_ENABLED", "1").strip().lower()
+        if enabled in {"0", "false", "no", "off"}:
+            logger.info("[CC中转自动发货] 失败补发循环已关闭")
+            return
+        interval = max(15, int(os.getenv("CC_XIANYU_RESCUE_INTERVAL_SECONDS", "60") or "60"))
+        batch_size = max(1, min(int(os.getenv("CC_XIANYU_RESCUE_BATCH_SIZE", "5") or "5"), 20))
+        while True:
+            await asyncio.sleep(interval)
+            if is_auto_ship_paused():
+                continue
+            if not self.ws or (hasattr(self.ws, "open") and not self.ws.open):
+                continue
+            lister = getattr(self.ctx, "list_cc_shipments", None)
+            if not callable(lister):
+                continue
+            try:
+                pending = lister(status="message_send_failed", limit=batch_size, include_message=True)
+            except Exception as e:
+                logger.warning("[CC中转自动发货] 读取待补发队列失败: %s", e)
+                continue
+            for shipment in pending:
+                shipment_id = shipment.get("id")
+                if not shipment_id:
+                    continue
+                try:
+                    await self.resend_cc_shipment(int(shipment_id))
+                    logger.info("[CC中转自动发货] 已自动补发失败记录: shipment_id=%s", shipment_id)
+                except Exception as e:
+                    logger.warning("[CC中转自动发货] 自动补发失败 shipment_id=%s: %s", shipment_id, e)
+
+    async def _cc_paid_order_poll_loop(self):
+        """轮询闲鱼待发货订单，弥补 WebSocket 不推送付款卡片的漏单。"""
+        enabled = os.getenv("CC_XIANYU_PAID_ORDER_POLL_ENABLED", "1").strip().lower()
+        if enabled in {"0", "false", "no", "off"}:
+            logger.info("[CC中转自动发货] 待发货订单轮询已关闭")
+            return
+        interval = max(20, int(os.getenv("CC_XIANYU_PAID_ORDER_POLL_INTERVAL_SECONDS", "60") or "60"))
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                await self._poll_cc_paid_orders_once()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.warning("[CC中转自动发货] 待发货订单轮询异常: %s", e)
+
+    async def _poll_cc_paid_orders_once(self, batch_size: int | None = None) -> dict:
+        """执行一次待发货订单轮询；返回脱敏摘要，方便测试和操作台巡检。"""
+        config = self._cc_zhongzhuan_auto_ship_config()
+        if not config.get("configured"):
+            return {"ok": False, "reason": "cc_webhook_not_configured", "processed": 0}
+        if not self.ws or (hasattr(self.ws, "open") and not self.ws.open):
+            return {"ok": False, "reason": "xianyu_ws_unavailable", "processed": 0}
+        pending_rescue = 0
+        manual_ready = 0
+        try:
+            summary = self.ctx.cc_shipment_summary()
+            pending_rescue = int((summary or {}).get("pending_rescue") or 0)
+            by_status = (summary or {}).get("by_status") or {}
+            if isinstance(by_status, dict):
+                manual_ready = int(by_status.get("manual_delivery_ready") or 0)
+            if pending_rescue > 0 and manual_ready <= 0:
+                return {"ok": False, "reason": "pending_rescue_exists", "processed": 0}
+        except Exception as e:
+            logger.debug("[CC中转自动发货] 读取补救队列摘要失败，继续轮询: %s", e)
+
+        safe_batch_size = batch_size
+        if safe_batch_size is None:
+            safe_batch_size = int(os.getenv("CC_XIANYU_PAID_ORDER_POLL_BATCH_SIZE", "5") or "5")
+        safe_batch_size = max(1, min(int(safe_batch_size), 20))
+
+        async with XianyuApis(self.cookies_str) as api:
+            page = await api.get_sold_orders_page(page=1, query_code="NOT_SHIP")
+        if page.get("cookies_str") and page["cookies_str"] != self.cookies_str:
+            self.cookies_str = str(page["cookies_str"])
+            self.cookies = trans_cookies(self.cookies_str)
+            self.myid = self.cookies.get("unb", self.myid)
+        if not page.get("success"):
+            return {
+                "ok": False,
+                "reason": "xianyu_order_api_failed",
+                "error": str(page.get("error") or "")[:120],
+                "processed": 0,
+            }
+
+        processed = 0
+        skipped = 0
+        shipped = 0
+        latest: list[dict] = []
+        for raw_item in list(page.get("items") or [])[:safe_batch_size]:
+            parsed = self._parse_seller_sold_order_item(raw_item)
+            if not parsed:
+                skipped += 1
+                continue
+            status = self._classify_order_status_text(parsed.get("status_text"))
+            if status != "paid":
+                skipped += 1
+                continue
+            buyer_id = str(parsed.get("buyer_id") or "")
+            source_item_id = str(parsed.get("item_id") or "")
+            if not buyer_id:
+                skipped += 1
+                latest.append({"order_id": parsed.get("order_id"), "status": "missing_buyer_id"})
+                continue
+            auto_item_id = self._resolve_auto_ship_item_id(source_item_id)
+            if auto_item_id is None:
+                skipped += 1
+                latest.append({"order_id": parsed.get("order_id"), "status": "no_auto_ship_item"})
+                continue
+
+            try:
+                self.ctx.record_order(
+                    chat_id=buyer_id,
+                    user_id=buyer_id,
+                    item_id=auto_item_id or source_item_id,
+                    status="等待卖家发货",
+                    amount=float(parsed.get("amount") or 0.0),
+                )
+                self.ctx.mark_converted(buyer_id, auto_item_id or source_item_id)
+            except Exception as e:
+                logger.debug("[CC中转自动发货] 轮询订单写入本机订单表失败: %s", e)
+
+            processed += 1
+            handled = await self._try_send_existing_manual_ready_shipment(
+                self.ws,
+                parsed,
+                auto_item_id,
+            )
+            if handled is None:
+                if pending_rescue > 0:
+                    skipped += 1
+                    latest.append({
+                        "order_id": str(parsed["order_id"]),
+                        "item_id": auto_item_id or source_item_id,
+                        "buyer_id": buyer_id,
+                        "handled": False,
+                        "reason": "pending_rescue_exists",
+                    })
+                    continue
+                handled = await self._try_cc_zhongzhuan_auto_ship(
+                    self.ws,
+                    str(parsed["order_id"]),
+                    auto_item_id,
+                    buyer_id,
+                    xianyu_order_id_for_confirm=str(parsed.get("raw_order_id") or ""),
+                )
+            if handled:
+                shipped += 1
+            latest.append({
+                "order_id": str(parsed["order_id"]),
+                "item_id": auto_item_id or source_item_id,
+                "buyer_id": buyer_id,
+                "handled": bool(handled),
+            })
+
+        return {
+            "ok": True,
+            "processed": processed,
+            "shipped": shipped,
+            "skipped": skipped,
+            "total_count": int(page.get("total_count") or 0),
+            "latest": latest[:5],
+        }
+
+    def _find_manual_ready_cc_shipment(self, item_id: str = "") -> dict | None:
+        """查找可复用的“已分配待发送”记录，避免真实付款单重复分配卡密。"""
+        lister = getattr(self.ctx, "list_cc_shipments", None)
+        if not callable(lister):
+            return None
+        try:
+            shipments = lister(status="manual_delivery_ready", limit=10, include_message=True)
+        except Exception as e:
+            logger.warning("[CC中转自动发货] 读取待发送补救记录失败: %s", e)
+            return None
+        if not shipments:
+            return None
+        normalized_item = str(item_id or "").strip()
+        if normalized_item:
+            for shipment in shipments:
+                if str(shipment.get("item_id") or "").strip() == normalized_item:
+                    return shipment
+        if len(shipments) == 1:
+            return shipments[0]
+        logger.warning("[CC中转自动发货] 存在多条待发送补救记录，无法安全自动匹配，暂停本次自动绑定")
+        return None
+
+    async def _try_send_existing_manual_ready_shipment(
+        self,
+        ws,
+        parsed_order: dict,
+        item_id: str,
+    ) -> bool | None:
+        """把已分配但未发送的话术绑定到真实待发货订单并发送。"""
+        order_id = str(parsed_order.get("order_id") or "").strip()
+        buyer_id = str(parsed_order.get("buyer_id") or "").strip()
+        source_item_id = str(parsed_order.get("item_id") or "").strip()
+        resolved_item_id = str(item_id or source_item_id or "").strip()
+        if not order_id or not buyer_id:
+            return None
+
+        existing = self._get_cc_shipment_by_order_id_safely(order_id)
+        if existing:
+            return await self._handle_existing_cc_shipment(ws, existing)
+
+        shipment = self._find_manual_ready_cc_shipment(resolved_item_id or source_item_id)
+        if not shipment:
+            return None
+        shipment_id = shipment.get("id")
+        message = str(shipment.get("delivery_message") or "")
+        if not shipment_id or not message:
+            logger.warning("[CC中转自动发货] 待发送补救记录缺少 ID 或话术，不能自动发送")
+            return False
+
+        chat_id = await self._resolve_cc_delivery_chat_id(buyer_id, resolved_item_id)
+        updater = getattr(self.ctx, "update_cc_shipment_delivery_state", None)
+        try:
+            await self.send_msg(ws, chat_id, buyer_id, message)
+        except Exception as send_error:
+            if callable(updater):
+                updater(
+                    int(shipment_id),
+                    order_id,
+                    buyer_id,
+                    resolved_item_id,
+                    chat_id,
+                    "message_send_failed",
+                    str(send_error),
+                )
+            logger.error("[CC中转自动发货] 已分配话术绑定真实订单后发送失败: %s", send_error)
+            self.notifier.notify_health(
+                "cc_xianyu_auto_ship",
+                "CC中转已找到待发货订单，但闲鱼消息发送失败；请到本机闲鱼管理面板查看待补发记录",
+            )
+            return False
+
+        if callable(updater):
+            updater(int(shipment_id), order_id, buyer_id, resolved_item_id, chat_id, "message_sent", "")
+        else:
+            self._record_cc_shipment_safely(
+                order_id,
+                buyer_id,
+                resolved_item_id,
+                "message_sent",
+                chat_id=chat_id,
+                delivery_message=message,
+            )
+        logger.info("[CC中转自动发货] 已复用待发送话术完成真实订单发货: order=%s buyer=%s", order_id, buyer_id)
+        self.notifier.notify_order({
+            "user_id": buyer_id,
+            "item_id": resolved_item_id,
+            "status": "✅ CC中转已自动补发真实付款单",
+            "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+        })
+        # 本机数据库只保存脱敏订单号；确认闲鱼发货需要真实数字订单号时，只在内存里短暂使用。
+        await self._maybe_confirm_xianyu_order_shipped(
+            str(parsed_order.get("raw_order_id") or order_id),
+            resolved_item_id,
+            buyer_id,
+            stored_order_id=order_id,
+        )
+        return True
+
+    async def _try_cc_zhongzhuan_auto_ship(
+        self,
+        ws,
+        order_id: str,
+        item_id: str,
+        buyer_id: str,
+        xianyu_order_id_for_confirm: str = "",
+    ) -> bool | None:
+        """把已付款订单交给 CC中转低权限 webhook 自动发卡。
+
+        返回 None 表示未配置 CC中转，继续走旧 AutoShipper；返回 bool 表示本次 CC中转链路已接管。
+        """
+        config = self._cc_zhongzhuan_auto_ship_config()
+        if config.get("paused"):
+            logger.info("[CC中转自动发货] 已被本机操作台暂停，跳过订单: %s", order_id)
+            self._record_cc_shipment_safely(
+                order_id,
+                buyer_id,
+                item_id,
+                "operator_paused",
+                error="本机操作台已暂停自动发货",
+            )
+            return False
+        if not config.get("configured"):
+            return None
+        endpoint = str(config["endpoint"])
+        token = str(config["token"])
+
+        existing = self._get_cc_shipment_by_order_id_safely(order_id)
+        if existing:
+            handled = await self._handle_existing_cc_shipment(ws, existing)
+            if handled is not None:
+                return handled
+
+        delay = int(os.getenv("CC_XIANYU_AUTO_SHIP_DELAY_SECONDS", "10") or "10")
+        if delay > 0:
+            await asyncio.sleep(min(delay, 120))
+
+        item = self.ctx.get_item(item_id) if item_id else None
+        product_title = ""
+        if isinstance(item, dict):
+            product_title = str(item.get("title") or item.get("desc") or "")[:120]
+        mapping = None
+        if item_id:
+            getter = getattr(self.ctx, "get_cc_item_mapping", None)
+            if callable(getter):
+                with contextlib.suppress(Exception):
+                    mapping = getter(item_id)
+        if mapping and not product_title:
+            product_title = str(mapping.get("title") or "")[:120]
+        payload = {
+            "orderId": order_id,
+            "status": "等待卖家发货",
+            "paid": True,
+            "itemId": item_id,
+            "productTitle": product_title or "CC中转 兑换码",
+            "buyerHint": buyer_id,
+            "planId": str((mapping or {}).get("plan_id") or self._resolve_cc_plan_id(item_id)).strip(),
+            "note": "openclaw-xianyu-live",
+        }
+
+        try:
+            import httpx
+
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(endpoint, json=payload, headers={"x-cc-xianyu-token": token})
+            if resp.status_code != 200:
+                logger.warning("[CC中转自动发货] webhook 返回 HTTP %s", resp.status_code)
+                self._record_cc_shipment_safely(
+                    order_id,
+                    buyer_id,
+                    item_id,
+                    "webhook_failed",
+                    error=f"HTTP {resp.status_code}",
+                )
+                self.notifier.notify_health("cc_xianyu_auto_ship", f"CC中转自动发货失败 HTTP {resp.status_code}")
+                return False
+            data = resp.json()
+            message = data.get("deliveryMessage") or data.get("message") or ""
+            if not message:
+                logger.warning("[CC中转自动发货] webhook 未返回发货话术")
+                self._record_cc_shipment_safely(
+                    order_id,
+                    buyer_id,
+                    item_id,
+                    "missing_delivery_message",
+                    error="webhook 未返回发货话术",
+                )
+                self.notifier.notify_health("cc_xianyu_auto_ship", "CC中转自动发货失败：未返回发货话术")
+                return False
+            chat_id = await self._resolve_cc_delivery_chat_id(buyer_id, item_id)
+            try:
+                await self.send_msg(ws, chat_id, buyer_id, message)
+            except Exception as send_error:
+                self._record_cc_shipment_safely(
+                    order_id,
+                    buyer_id,
+                    item_id,
+                    "message_send_failed",
+                    chat_id=chat_id,
+                    delivery_message=message,
+                    error=str(send_error),
+                )
+                logger.error("[CC中转自动发货] 已分配卡密但闲鱼消息发送失败: %s", send_error)
+                self.notifier.notify_health(
+                    "cc_xianyu_auto_ship",
+                    "CC中转已分配兑换码，但闲鱼消息发送失败；请到本机闲鱼管理面板查看待补发记录",
+                )
+                return False
+            self._record_cc_shipment_safely(
+                order_id,
+                buyer_id,
+                item_id,
+                "message_sent",
+                chat_id=chat_id,
+                delivery_message=message,
+            )
+            logger.info("[CC中转自动发货] 成功: buyer=%s, item=%s", buyer_id, item_id)
+            self.notifier.notify_order({
+                "user_id": buyer_id,
+                "item_id": item_id,
+                "status": "✅ CC中转已自动发货",
+                "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+            })
+            await self._maybe_confirm_xianyu_order_shipped(
+                xianyu_order_id_for_confirm or order_id,
+                item_id,
+                buyer_id,
+                stored_order_id=order_id,
+            )
+            return True
+        except Exception as e:
+            logger.error("[CC中转自动发货] 异常: %s", e)
+            self._record_cc_shipment_safely(order_id, buyer_id, item_id, "exception", error=str(e))
+            self.notifier.notify_health("cc_xianyu_auto_ship", f"CC中转自动发货异常: {e}")
+            return False
 
     @staticmethod
     def _log_bg_task_error(task: asyncio.Task) -> None:
@@ -1115,12 +2467,18 @@ class XianyuLive:
                     tk_task.add_done_callback(_bg_task_cb)
                     rp_task = asyncio.create_task(self.daily_report_loop())
                     rp_task.add_done_callback(_bg_task_cb)
+                    rescue_task = asyncio.create_task(self._cc_shipment_rescue_loop())
+                    rescue_task.add_done_callback(_bg_task_cb)
+                    paid_poll_task = asyncio.create_task(self._cc_paid_order_poll_loop())
+                    paid_poll_task.add_done_callback(_bg_task_cb)
 
                     async for raw in ws:
                         if self.restart_flag:
                             break
                         try:
                             data = json.loads(raw)
+                            if self._dispatch_mid_response(data):
+                                continue
                             # 心跳响应
                             if data.get("code") == 200 and "headers" in data:
                                 self.last_hb_resp = time.time()
@@ -1132,9 +2490,9 @@ class XianyuLive:
                             logger.error("处理异常: %s", e)
 
                     # 取消 WS 相关后台任务并等待清理完成（cookie_health_loop 不取消，它是独立的）
-                    for task in [hb_task, tk_task, rp_task]:
+                    for task in [hb_task, tk_task, rp_task, rescue_task, paid_poll_task]:
                         task.cancel()
-                    await asyncio.gather(hb_task, tk_task, rp_task, return_exceptions=True)
+                    await asyncio.gather(hb_task, tk_task, rp_task, rescue_task, paid_poll_task, return_exceptions=True)
 
             except websockets.exceptions.ConnectionClosed:
                 logger.warning("WebSocket 连接关闭")

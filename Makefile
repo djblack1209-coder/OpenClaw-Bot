@@ -16,7 +16,7 @@ PYTHON ?= $(shell \
 FRONTEND := apps/openclaw-manager-src
 FRIST_API := apps/frist-api
 
-.PHONY: test lint format typecheck docker clean help ci-local syntax-check frist-api-test frist-api-dev frist-api-static frist-api-up frist-api-down new-api-check new-api-sync
+.PHONY: test lint format typecheck docker clean help ci-local syntax-check docs-check frist-api-test frist-api-dev frist-api-static frist-api-up frist-api-down frist-api-newapi-setup new-api-up new-api-down new-api-check new-api-sync new-api-brand-patch cc-seller-chrome cc-seller-bridge cc-seller-auto
 
 ## ─── 帮助 ───
 help: ## 显示所有可用命令
@@ -43,23 +43,49 @@ typecheck: ## 前端 TypeScript 类型检查
 frist-api-test: ## 运行 Frist-API 原型测试
 	cd $(FRIST_API) && npm test
 
+docs-check: ## 检查 docs 扁平目录、编号命名和索引完整性
+	bash scripts/check_docs_layout.sh
+
 frist-api-dev: ## 启动 Frist-API 本地完整链路 (http://127.0.0.1:3180)
 	cd $(FRIST_API) && FRIST_API_EXPOSE_VERIFICATION_CODE=1 FRIST_API_ALLOW_DEMO_RECHARGE=0 npm start
 
 frist-api-static: ## 仅启动 Frist-API 静态网站预览 (无后端链路)
 	cd $(FRIST_API) && npm run static
 
-frist-api-up: ## Docker 启动 Frist-API 网站 + New-API 核心原型
-	docker compose -f docker-compose.frist-api.yml up -d
+frist-api-newapi-setup: ## 从本机 New-API SQLite 写入 Frist-API 桥接 .env（不打印密钥）
+	node scripts/setup_local_newapi_bridge.mjs
 
-frist-api-down: ## Docker 停止 Frist-API 原型
-	docker compose -f docker-compose.frist-api.yml down
+new-api-up: ## Docker 启动 QuantumNous/new-api（启动前自动备份 data/newapi）
+	@mkdir -p data/backups
+	@if [ -d data/newapi ]; then tar -czf "data/backups/newapi-$$(date +%Y%m%d-%H%M%S).tgz" data/newapi; fi
+	docker compose -f docker-compose.newapi.yml up -d
+
+new-api-down: ## Docker 停止 QuantumNous/new-api
+	docker compose -f docker-compose.newapi.yml down
+
+frist-api-up: frist-api-newapi-setup ## Docker 启动 Frist-API + QuantumNous/new-api 全链路
+	docker compose -f docker-compose.newapi.yml -f docker-compose.frist-api.yml up -d
+
+frist-api-down: ## Docker 停止 Frist-API + New-API 全链路
+	docker compose -f docker-compose.newapi.yml -f docker-compose.frist-api.yml down
 
 new-api-check: ## 检查 New-API 上游源码和镜像是否同步到最新版
 	scripts/sync_new_api_upstream.sh check
 
 new-api-sync: ## 同步 New-API submodule 指针和 docker-compose 镜像 tag 到最新版
 	scripts/sync_new_api_upstream.sh update
+
+new-api-brand-patch: ## 在干净 New-API submodule 上应用 CC中转品牌补丁
+	scripts/apply_new_api_brand_patch.sh
+
+cc-seller-chrome: ## 启动 CC中转闲鱼卖家专用 Chrome，并打开插件加载目录
+	node scripts/cc_zhongzhuan_launch_seller_chrome.mjs --copy-token
+
+cc-seller-bridge: ## 启动 CC中转闲鱼卖家本机桥接器，负责自动发卡/确认发货/恢复可售
+	node scripts/cc_zhongzhuan_seller_bridge.mjs
+
+cc-seller-auto: cc-seller-chrome ## 启动卖家专用浏览器后，运行一次本机桥接巡检
+	node scripts/cc_zhongzhuan_seller_bridge.mjs --once
 
 ## ─── 格式化 ───
 format: ## Ruff 自动格式化
@@ -137,19 +163,22 @@ deep-clean: clean ## 深度清理（释放 GB 级空间，不影响代码）
 
 ## ─── CI 本地验证（和 GitHub Actions 一致） ───
 ci-local: ## 一键本地 CI 验证 (等同 GitHub Actions 全部检查)
-	@echo "══════ [1/4] Python Lint (ruff) ══════"
+	@echo "══════ [1/5] Python Lint (ruff) ══════"
 	cd $(CLAWBOT) && $(PYTHON) -m ruff check src/ --config ruff.toml
 	@echo ""
-	@echo "══════ [2/4] Python Tests (pytest) ══════"
+	@echo "══════ [2/5] Python Tests (pytest) ══════"
 	cd $(CLAWBOT) && $(PYTHON) -m pytest tests/ --tb=short -q \
 		-x --timeout=120
 	@echo ""
-	@echo "══════ [3/4] Python Syntax Check ══════"
+	@echo "══════ [3/5] Python Syntax Check ══════"
 	cd $(CLAWBOT) && $(PYTHON) -m py_compile multi_main.py
 	cd $(CLAWBOT) && find src/ -name "*.py" -exec $(PYTHON) -m py_compile {} +
 	@echo ""
-	@echo "══════ [4/4] Frontend TypeScript Check ══════"
+	@echo "══════ [4/5] Frontend TypeScript Check ══════"
 	cd $(FRONTEND) && npx tsc --noEmit
+	@echo ""
+	@echo "══════ [5/5] Docs Governance Check ══════"
+	bash scripts/check_docs_layout.sh
 	@echo ""
 	@echo "✅ 本地 CI 全部通过"
 

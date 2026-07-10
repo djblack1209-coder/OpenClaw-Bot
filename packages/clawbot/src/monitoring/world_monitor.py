@@ -462,7 +462,8 @@ class RiskScorer:
         # 当前简化实现：基于基线 + 随机波动模拟实时事件
         # 后续接入真实 ACLED/GDELT/USGS 等数据源
         import random
-        random.seed(hash(code + str(int(time.time() / 3600))))  # 每小时变化一次
+        seed_input = f"{code}:{int(time.time() / 3600)}".encode()
+        random.seed(int(hashlib.sha256(seed_input).hexdigest()[:16], 16))  # 每小时稳定变化一次
 
         # 子维度评分 — 基于基线的波动
         unrest = min(100, max(0, baseline * 1.2 + random.gauss(0, 5)))
@@ -481,15 +482,16 @@ class RiskScorer:
 
         # 综合分 = 基线 * 0.4 + 事件分 * 0.6
         composite = min(100, max(0, baseline * 0.4 + event_score * 0.6 + climate * 0.05))
+        composite_score = round(composite, 1)
 
-        # 风险等级
-        if composite >= 85:
+        # 风险等级按最终展示分数计算，避免 49.96 显示为 50.0 但等级仍为 moderate。
+        if composite_score >= 85:
             severity = RiskSeverity.CRITICAL
-        elif composite >= 70:
+        elif composite_score >= 70:
             severity = RiskSeverity.HIGH
-        elif composite >= 50:
+        elif composite_score >= 50:
             severity = RiskSeverity.ELEVATED
-        elif composite >= 30:
+        elif composite_score >= 30:
             severity = RiskSeverity.MODERATE
         else:
             severity = RiskSeverity.LOW
@@ -497,7 +499,7 @@ class RiskScorer:
         return CountryRisk(
             country_code=code,
             country_name=name,
-            composite_score=round(composite, 1),
+            composite_score=composite_score,
             severity=severity,
             unrest_score=round(unrest, 1),
             conflict_score=round(conflict, 1),

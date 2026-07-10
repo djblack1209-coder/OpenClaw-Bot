@@ -149,7 +149,7 @@
 ## 二、命令注册表
 
 
-> 最后更新: 2026-07-02 (全面收口：安全门禁、/cli 注册、微信编号命令、Frist-API 渠道熔断) | Bot 命令总数 105
+> 最后更新: 2026-07-10 (文档治理检查 + 安全门禁 + 微信编号命令 + Frist-API 渠道熔断) | Bot 命令总数 105
 
 ---
 
@@ -170,7 +170,7 @@
 | Key 改名 | `data-key-name` / `data-rename-key` | 修改单个用户 API Key 的显示名称 |
 | Key 删除 | `data-delete-key` | 删除单个用户 API Key |
 | Key 开关 | `data-toggle-key` | 开启或关闭单个用户 API Key |
-| 兑换码购买入口 | `data-xianyu-purchase-link` | 预留闲鱼等第三方平台商品链接，用户购买卡密后回站内兑换 |
+| 兑换码购买入口 | `data-xianyu-purchase-link` | 当前暂未正式售卖；预留未来外部交易平台商品链接，内测/购买卡密后回站内兑换 |
 | 微信支付回调 | `/api/frist/payments/wechat/notify` | 微信支付 APIv3 回调验签、解密和按订单号幂等入账 |
 | 支付宝支付回调 | `/api/frist/payments/alipay/notify` | 支付宝当面付异步通知验签和按订单号幂等入账 |
 | 兑换码 | `data-redeem-code` | 日卡/月卡/加油包兑换 |
@@ -197,6 +197,39 @@
 | CC Switch 用量查询 | `/api/frist/key-usage` / `.usage-import-guide` | 用户 Key Bearer 或 `x-api-key` 只读鉴权，返回余额、已用、总额、今日/本月消费、请求量、Token、延迟和成功率；用量说明下移为教程/说明，不再占据页面前置主操作；移动端单列显示并允许长链接/脚本自动换行 |
 | CC Switch 导入后检测 | `data-import-verification` / `data-refresh-health` / `data-playground-model` | 用户导入后按供应商卡片、用量脚本、真实调用、`gpt-image-2` 流程图和记录页消费逐项验收 |
 | 异常消耗检测 | `data-usage-anomalies` / `data-usage-anomaly-status` / `usageAnomalies` | Dashboard 返回今日消耗偏高、单次调用费用突增和高延迟提醒；前端说明监控余额突增、失败率、慢请求和异常模型消耗，只展示用户可读摘要，不展示上游 Key、供应商原始地址或 raw usage |
+| 闲鱼全自动发货 webhook | `/api/ops/xianyu/paid-order` | 由 OpenClaw `XianyuLive` 或后续浏览器助手在检测到“等待卖家发货/已付款”后调用；低权限 token 鉴权，未付款订单阻断，成功后分配兑换码并返回发货话术；本机传入稳定 `orderId`，服务端按 `orderId` 幂等，重复订单不会重复分配卡密 |
+| 闲鱼发货补救队列 | `127.0.0.1:18800/api/cc-shipments` / `/api/cc-shipments/{id}/resolve` / `/api/cc-shipments/{id}/mark-sent` / `/api/cc-shipments/{id}/mark-send-failed` | 本机受 `X-API-Token` 保护的闲鱼 GUI 接口；记录 CC中转 webhook 已发、消息发送失败、话术缺失、异常、人工已处理、`manual_delivery_ready` 漏单兜底和 `browser_delivery_claimed` 浏览器领取中状态；卡已分配但未确认发给买家时会进入补救队列，老板粘贴发送后必须点 mark-sent 才算真实已发货，浏览器发送失败会 mark-send-failed 退回重试队列 |
+| 闲鱼商品套餐映射 | `127.0.0.1:18800/api/cc-item-mappings` + `127.0.0.1:18800/api/items` | 本机 GUI 配置 `item_id → planId`；GUI 会展示最近捕获到的闲鱼商品并一键填入映射表单；CC中转自动发货优先按商品映射发对应套餐，无映射时才回退默认套餐或任意未售卡密 |
+| 闲鱼已付款漏单兜底 | `127.0.0.1:18800/api/cc-manual-paid-order/dispatch` | 本机受 `X-API-Token` 保护；仅在老板已从闲鱼界面确认“买家已付款/等待发货”但 WebSocket 未触发时使用。接口调用低权限 webhook 分配兑换码并返回可复制话术，状态先记为 `manual_delivery_ready`，不自动标记已发货、不自动点击闲鱼、不绕风控。浏览器/桥接器在暂停状态下若带 `one_shot=true`，必须先消费 `/api/cc-operator-mode/one-shot-delivery` 的单次放行票，否则不会生成并发送卡密 |
+| 闲鱼真实待发货只读扫单 | `127.0.0.1:18800/api/cc-paid-order-probe` + `XianyuLive.scan_cc_paid_orders_readonly()` | 本机受 `X-API-Token` 保护；只读读取闲鱼卖家“待发货”列表，用于老板重新下单后确认系统是否看得到真实候选单。返回订单哈希、买家/商品是否存在、本机履约状态等脱敏摘要；不分配卡密、不调用 webhook、不发送闲鱼消息、不点击“去发货”、不解除 `auto_ship_paused` |
+| 闲鱼浏览器付款页兜底发卡 | `127.0.0.1:18800/api/cc-manual-paid-order/dispatch` + Chrome 插件 `paid_page_dispatch` | 当卖家订单列表 API 无权限且本机没有待发送话术时，Chrome 插件可在当前闲鱼页先确认可见“已付款/待发货”信号，再调用本机受保护接口生成卡密话术并发送；页面能从 URL、可见“订单号/交易号”、白名单订单参数或订单相关 `data-*` / “去发货”链接提取真实订单号时，会以 `xianyu-real:*` 转为 `xy_oid_*`，否则仍生成 `xy_browser_*`，仅用于生产内测补救，不计入正式售卖真实自动订单严格门。暂停状态下插件/桥接器必须带 `one_shot=true` 并消耗单次放行票，避免重复发送 |
+| 闲鱼浏览器发货助手 | `127.0.0.1:18800/api/cc-browser-delivery/next` + Chrome 插件 `xianyuDeliveryScan/xianyuDeliverySend/xianyuDeliveryWatchSet` | 本机受 `X-API-Token` 保护；Chrome 插件在闲鱼聊天页检测“已付款/待发货”等可见信号后，原子领取已分配待发送话术并把状态改为 `browser_delivery_claimed`，防止多个浏览器/桥接器/标签页重复拿同一张卡密；自动发货暂停时默认返回 `operator_paused` 且不返回话术。`one_shot=1` 只有在本机存在有效单次放行票时才允许领取 1 条，领取后放行票立即失效。填入并点击发送成功后调用 `/api/cc-shipments/{id}/mark-sent`，失败调用 `/api/cc-shipments/{id}/mark-send-failed` 退回失败队列。看守模式支持锁定当前聊天页，也支持“看守所有闲鱼页”；全局看守只有本机刚好 1 条待发货时才启用，避免多单场景发错买家。成功发送一次后自动关闭。发送成功后会继续尝试当前页安全点击闲鱼“去发货/无需物流/确认发货”，失败只回写原因，不重复分配卡密、不自动砍价、不批量私信、不绕风控 |
+| 闲鱼浏览器确认发货 | `127.0.0.1:18800/api/cc-xianyu-confirm/next` + `/api/cc-xianyu-confirm/current-page-candidate` + `/api/cc-shipments/{id}/mark-xianyu-confirmed` / `/mark-xianyu-confirm-failed` + Chrome/桥接器 `xianyuShipmentConfirm` | 本机受 `X-API-Token` 保护；正式队列只把 `message_sent`、未确认发货且订单号为 10 位以上数字的真实闲鱼订单交给浏览器助手，`xy_manual_*` / `xy_browser_*` 不进入正式 `xy_oid_*` 严格门。生产内测补救时，`current-page-candidate` 可返回已发卡密的手工/浏览器补救单候选，但浏览器页面执行器仍必须先看到当前页“已付款/待发货”可见信号，才会点击“去发货/无需物流/确认发货”；页面没有付款信号则安全跳过。结果写入 `cc_shipments.xianyu_confirm_status/xianyu_confirm_at/xianyu_confirm_error` |
+| 闲鱼恢复可售兜底 | `127.0.0.1:18800/api/cc-xianyu-relist/next` + `/api/cc-shipments/{id}/mark-relisted` / `/mark-relist-failed` + Chrome 插件 `xianyuItemRelist` / `relist_queue_watch` | 买家确认收货后，如闲鱼商品页明确显示“已下架/已售罄/重新上架”，浏览器助手可点击“重新上架/恢复上架”并回写 `cc_shipments.xianyu_relist_status/xianyu_relist_at/xianyu_relist_error`；页面显示仍在售时不会点击，不改标题、不改价格、不新建商品 |
+| 闲鱼可选后端确认发货 | `127.0.0.1:18800/api/cc-shipments/{id}/confirm-xianyu-backend` + `XianyuApis.confirm_dummy_shipment()` + `CC_XIANYU_AUTO_CONFIRM_SHIPMENT_ENABLED` | 借鉴开源闲鱼管理系统的虚拟商品确认发货做法；默认关闭。只有已成功发送兑换码、订单号是闲鱼真实数字订单号且显式开启时，才调用 `mtop.taobao.idle.logistic.consign.dummy` 尝试把闲鱼订单推进为已发货。18800 补救队列会对真实数字 `message_sent` 订单显示“后端确认发货”按钮；结果只写入 `cc_shipments.xianyu_confirm_status`，失败不回滚卡密发货，不对 `xy_manual_*` / `xy_browser_*` 内测兜底单执行 |
+| 闲鱼自动化运营水位 | `127.0.0.1:18800/api/cc-sale-readiness` / `/api/status.cc_chrome_extension` | 本机 GUI 汇总自动发货可用性、正式售卖门槛、webhook/ws/cookie/补救队列/商品映射状态、自动发货套餐路由预判、买家自助入口健康和仍需人工介入事项；`cc_chrome_extension` 会只读提示 Social Pilot 是否已加载、是否支持 `paid_page_dispatch/relist_queue_watch`，未加载时给出插件目录；不输出 token、卡密或用户 Key |
+| 闲鱼正式售卖上架锁 | `127.0.0.1:18800/api/cc-public-sale-lock` | 本机 GUI 只读上架门禁；默认读取缓存，`refresh=true` 时运行只读巡检刷新库存/兑换码/渠道/买家入口证据；只有自动发货、补救队列、库存、兑换码、渠道、买家主站/API 网关、webhook 未授权拦截、CC Switch 导入入口和真实小额单严格门全部满足才显示 `public_sale_unlocked`。若严格门已通过但老板手动暂停自动发货，会返回 `state=paused_after_strict_gate`、`state_label=严格门已通过，自动发货暂停保护`、`can_public_sale=false`，明确这是防重复发卡保护而非链路故障 |
+| 闲鱼实单闭环观察 | `127.0.0.1:18800/api/cc-loop-watch` | 本机 GUI/后台守护线程轻量观察真实订单闭环阶段：自动发货配置、WebSocket、Cookie、补救队列、真实订单数、商品映射、后台严格门节流状态和严格买家闭环是否通过；展示最近严格门脱敏摘要和后台严格门观察最近运行结果，摘要会落盘到本机 SQLite；不输出卡密 |
+| 闲鱼买家链路进度 | `127.0.0.1:18800/api/cc-buyer-chain-progress` | 只读聚合真实订单买家侧五步：已发货、已兑换、API Key、调模型、同单闭环；供 `/ops-links` 和本机 GUI 判断买家卡在哪一步，不触发审计、不发货、不分配卡密、不改库存 |
+| 闲鱼下一步行动建议 | `127.0.0.1:18800/api/cc-operator-next-action` | 只读聚合上架锁、自动发货、补救队列、真实订单和买家链路，返回 `state/severity/title/primary_action/checklist`，并带 `buyer_site_smoke_plan`；供 Chrome 入口、GUI 和后续通知复用，不触发审计、不发货、不分配卡密、不改库存 |
+| CC中转本机人工控制 | `127.0.0.1:18800/api/cc-operator-mode` + `/api/cc-operator-mode/resume-preflight` | 本机受 `X-API-Token` 保护的操作台开关；`GET` 返回自动发货是否暂停、webhook 是否配置、是否可自动发已付款订单、补救队列和四步操作状态；`POST` 可暂停/恢复自动发货。暂停只写 `.openclaw/cc-zhongzhuan-operator-state.json`，不改卡密、不改订单、不改闲鱼商品；暂停后浏览器待发接口也不会返回卡密话术，防止插件/桥接器绕过暂停继续发送。恢复自动发货前必须通过只读安全预检：补救队列清空、库存/兑换码/渠道、买家入口、webhook 未授权拦截、CC Switch、闲鱼连接/Cookie 和真实小额单严格门均正常，否则返回 409 并保持暂停；`resume-preflight` 只读返回同一份检查结果，不改变开关。恢复成功后会自动武装 `auto_resume_canary` 首单观察票，第 1 条卡密进入 `message_sent` 后自动重新暂停，防止连续发卡 |
+| CC中转单次发卡放行 | `127.0.0.1:18800/api/cc-operator-mode/one-shot-delivery` | 本机受 `X-API-Token` 保护；在保持 `auto_ship_paused=true` 的前提下写入 1 张 3 分钟有效的单次放行票。浏览器助手或 `cc_zhongzhuan_seller_bridge.mjs --one-shot-override` 只能消费 1 次，成功领取/生成一条卡密话术后自动失效；不恢复常驻自动发货、不改库存、不改闲鱼商品 |
+| CC中转一键跑当前页 | `127.0.0.1:18800/api/cc-seller-bridge/one-shot-delivery` | 本机受 `X-API-Token` 保护；18800 操作台按钮调用卖家桥接器 `--delivery-only --one-shot-override --require-single-xianyu-page --require-real-order-id --json`，要求只打开 1 个闲鱼页；只检查当前已打开闲鱼页是否有“已付款/待发货 + 输入框 + 真实订单号/交易号”，最多发送 1 条卡密。不会点击闲鱼发货按钮、不会确认发货、不会恢复上架；当前页不是付款页或识别不到真实订单号时安全跳过且不留下单次放行票；多开闲鱼页会返回 `one_shot_requires_exactly_one_xianyu_page` |
+| CC中转只读检查当前页 | `127.0.0.1:18800/api/cc-seller-bridge/page-scan` | 本机受 `X-API-Token` 保护；18800 操作台按钮调用卖家桥接器 `--scan-only --require-real-order-id --json`，只读返回卖家 Chromium 当前闲鱼页数量、付款信号、聊天输入框、发送按钮、待发货订单卡、去发货入口和订单号提示是否存在。不分配卡密、不调用 webhook、不申请单次放行票、不点击闲鱼、不改本机履约记录；识别不到真实订单号/交易号时只提示老板切到订单详情页，不发卡。只读扫描能跑完但当前页不满足发卡条件时返回 `scanCompleted=true/notReady=true`，不再把正常未命中包装成系统故障；当前页是闲鱼首页时会明确提示从消息或订单列表打开已付款订单，并在 18800 页面提供“打开闲鱼消息 / 打开卖家工作台”快捷入口 |
+| CC中转卖家页面导航 | `127.0.0.1:18800/api/cc-seller-bridge/open-page` | 本机受 `X-API-Token` 保护；18800 按钮调用卖家桥接器 `--open-page=im|seller --json`，通过 DevTools 让卖家专用 Chromium 打开闲鱼消息或卖家工作台。只接受白名单目标，不支持任意 URL；不发卡、不申请单次放行票、不读取/修改订单、不点击闲鱼页面 |
+| CC中转站内烟测计划 | `127.0.0.1:18800/api/cc-buyer-site-smoke-plan` | 只读说明站内买家烟测是否可准备、会写入哪些生产数据、清理要求和安全边界；当前 `executes_now=false`，未获明确确认前不创建用户、不兑换、不创建 API Key、不调模型 |
+| CC中转实单验收包 | `127.0.0.1:18800/api/cc-real-order-test-pack` | 只读聚合真实小额单验收步骤、当前上架锁、自动观察状态、入口地址、商品模板、安全边界和 `buyer_site_smoke_plan`；证据缺失时只跑一次只读巡检刷新，不发货、不分配卡密、不发送闲鱼消息、不修改库存 |
+| CC中转闭环覆盖清单 | `127.0.0.1:18800/api/cc-automation-coverage` | 只读把全自动售卖目标拆成 11 项证据：Chrome 入口、已付款检测、卡密分配、话术发送、履约回写、买家注册兑换、API Key、CC Switch、模型调用、安全边界和真实小额单严格门；同时返回 `auto_strict_audit_status`、`buyer_site_smoke` 与 `buyer_site_smoke_plan`，当前 live 为 10/11，唯一缺真实付款严格门 |
+| CC中转人工预检闭环证据 | `127.0.0.1:18800/api/cc-manual-precheck-evidence` | 本机受 `X-API-Token` 保护的只读证据接口；一次性检查人工预检 6 项：注册/登录 CF 验证是否在组件容器内、邮箱模板是否为品牌卡片、闲鱼重复发卡保护、可控自动发货策略、1 元套餐 1:1 入账、真实小额单严格门。该接口只读源码和当前运行态，不发卡、不点击闲鱼发货、不恢复自动发货；当前 live 为 `passed=6/6`、`state=paused_after_strict_gate`，只剩老板确认是否恢复自动发货 |
+| CC中转运营统一快照 | `127.0.0.1:18800/api/cc-ops-snapshot` | 只读一次性返回 `next_action/status/sale_lock/loop_watch/buyer_progress/auto_strict_audit_status/buyer_site_smoke/buyer_site_smoke_plan`，供 Chrome 入口、GUI、后续通知或看板复用；不触发审计、不发货、不分配卡密、不改库存 |
+| CC中转本机运营提醒 | `127.0.0.1:18800/api/cc-ops-notify/check` | 受 `X-API-Token` 保护的本机提醒检查接口；后台线程默认值守状态变化，WebSocket/Cookie 异常、补救队列、低库存、真实单买家链路阶段变化时弹 macOS 通知；真实订单发货后会用 `buyer_attention_stage` 标记卡点（等待严格门/未兑换/未创建 API Key/未调模型/同单待确认/已闭环）；`force=true` 可从 `/ops-links` 手动发送当前状态提醒；不触发审计、不发货、不分配卡密、不改库存，也不自动催买家 |
+| 闲鱼商品模板生成 | `127.0.0.1:18800/api/cc-product-template` | 生成只含履约说明的极简商品模板，包含付款后自动发卡、注册/登录、兑换到账、创建 API Key、CC Switch 导入和模型测试步骤；不写额外营销话术、不暴露 `/v1` 网关 |
+| GUI 一键闭环审计 | `127.0.0.1:18800/api/cc-readiness-audit?mode=read_only|strict` | 本机受 `X-API-Token` 保护的只读审计接口；GUI 按钮可运行生产内测巡检或正式售卖严格门，不开放 `--webhook-smoke` 写入冒烟按钮；strict 结果会保存脱敏摘要到 `cc_strict_audits` |
+| CC中转状态中心 | `127.0.0.1:18800/ops-links` | 本机免 token 打开的老板日常入口；Apple 风格暗色状态中心只展示一个结论、闭环圆环、自动发货、库存与渠道、买家链路和下一步。输入本机 `OPENCLAW_API_TOKEN` 后只读读取 `/api/cc-ops-snapshot` 与 `/api/cc-operator-mode`，不提供发货/分配卡密/冒烟写入按钮；工程详情默认折叠，`/v1`、`/v1/models` 和旧 `/admin.html` 不再作为人类入口收藏 |
+| CC中转操作台 | `127.0.0.1:18800/` | 本机免 token 打开页面、API 受 `X-API-Token` 保护；Apple 风格深色状态面板 + 本机 `layui@2.13.8` 组件层（`/static/layui/...`，不走 CDN），首屏 6 张老板状态卡只回答：当前能不能卖、自动发货是否开着、库存是否够、上游余额是否够、是否有待处理订单、是否需要介入/是否有正式售卖资格。红/黄告警会通过 `top-alerts` 置顶，并给“怎么办/只读检查/只放行一次”按钮；恢复常驻自动发货前可点“恢复前安全检查”，恢复按钮也会二次确认并由后端预检兜底；恢复成功提示会说明“第 1 单发卡成功后会自动暂停”；商品绑定、漏单兜底、补救队列、只读巡检和高级排障默认折叠；补救队列使用 `layui-table`，确认/提示使用 layui layer；旧 `message_sent` 补救单待点击闲鱼发货时提示打开对应已付款页面，不要求重新下单 |
+| New-API 兑换状态回写 | `/api/admin/redemption-cards/sync-newapi-status` / `FRIST_API_NEWAPI_REDEMPTION_STATUS_SYNC_ENABLED` | Frist-API 默认每 60 秒读取 New-API SQLite 兑换表，按卡密哈希把已发出的闲鱼卡密和履约状态回写为 `redeemed`；后台接口可手动触发，过程不输出完整卡密 |
+| 闲鱼兑换码库存自动补 | `/api/admin/redemption-cards/autoreplenish` / `FRIST_API_CARD_AUTOREPLENISH_ENABLED` | Frist-API 生产可按安全库存自动生成 `1/5/15/50/100/500` 元套餐兑换码，默认日上限 50 张；服务启动后会按 `FRIST_API_CARD_AUTOREPLENISH_INTERVAL_MS` 定时执行，仍受每日上限和套餐安全库存约束 |
+| New-API 上游余额同步 | `/api/admin/upstream-balance` / `/api/admin/upstream-balance/sync` / `FRIST_API_UPSTREAM_BALANCE_SYNC_ENABLED` | Frist-API 可每日同步 New-API 上游余额，低于 50 元 warning、低于 20 元 critical；结果只给管理端展示或告警，不向用户暴露上游 token |
 | 导出模型清单 | `data-export-default-model` / `data-export-model-count` / `data-export-models` | 在 CC Switch 页展示默认模型、可用模型数量和完整模型列表 |
 | CC Switch MCP 增强 | `data-open-ccswitch-mcp` / `data-copy-ccswitch-mcp` / `data-ccswitch-mcp-link` | 生成单独的 `resource=mcp` deep link，默认 apps 为 `claude,codex,gemini,opencode,hermes`，载入 Playwright、Superpowers 和 open-computer-use；OpenClaw 供应商可导入，但当前 CC Switch 会忽略 OpenClaw MCP |
 | 手动配置复制 | `copy-code-box` / `data-copy-auth-json` / `data-copy-config-toml` / `data-copy-usage-script` / `data-copy-test-command` | 复制 Claude/Codex/OpenCode 等客户端 JSON/TOML、CC Switch 用量脚本和不污染用户本机配置的临时 CLI 连通测试命令；复制按钮已改为代码框内图标按钮 |
@@ -217,12 +250,15 @@
 | 教程 Windows 命令 | `data-win-command` / `data-copy-win-command` | 生成并复制 Windows 一键配置命令 |
 | 教程配置复制 | `data-copy-guide-json` / `data-copy-guide-toml` | 复制教程页 JSON/TOML 配置 |
 | 管理端人工入账 | `/admin.html` + `data-admin-credit` | 管理员按用户邮箱确认人工充值入账 |
-| 管理端卡密生成 | `/admin.html` + `data-admin-redemption-cards` / `data-admin-card-create` / `/api/admin/redemption-cards` | 按套餐批量生成一次性兑换码，导出给闲鱼自动发货或客服系统 |
+| 管理端卡密生成 | `/admin.html` + `data-admin-redemption-cards` / `data-admin-card-create` / `/api/admin/redemption-cards` | 按套餐批量生成一次性兑换码；新卡密落库为 `codeHash + codeCipher + codePreview`，明文只在创建响应和导出文本中出现 |
+| 闲鱼自动发货助手 | `/admin.html` + `data-xianyu-*` / `/api/admin/xianyu/fulfillments` / `/api/ops/xianyu/remap-order` | 运营入口 `https://frist-api-oracle.245334.xyz/admin.html`；粘贴已付款订单后一键分配未售卡密、生成发货话术并标记 `sold/delivered`，买家兑换后回写 `redeemed`；低权限 `remap-order` 仅用于把已发卡浏览器临时单接管为真实闲鱼订单号，不分配新卡 |
 | 管理端账号恢复 | `/admin.html` + `data-admin-password-reset` / `/api/admin/customers/password` | SMTP 不可用或用户无法收信时，由管理员重置客户密码；响应和审计不回显明文密码 |
+| CC中转品牌资产 | `apps/frist-api/favicon.svg` / `assets/jiyu-logo.svg` / `assets/jiyu-xianyu-avatar.svg` / `assets/jiyu-xianyu-banner.svg` | 原创紫色品牌图形、站点 favicon 和店铺素材；主色 `#7F77DD` |
+| CC中转合规页面 | `/index.html#about` / `#terms` / `#refund` / `#privacy` | 服务说明、服务条款、售后规则、隐私说明；从首页、兑换页和页脚可达 |
 | 管理端 Plus 账号台账 | `/admin.html` + `data-admin-plus-accounts` / `data-admin-plus-save` / `data-admin-plus-edit` / `/api/admin/plus-accounts` | 登记和更新自用 ChatGPT Plus 账号、Apple ID、到期、TRY 余额、设备/Profile 和合规状态；不进入用户 `/v1` 路由 |
 | 管理端 RT JSON 导入 | `/admin.html` + `data-admin-rt-accounts` / `data-admin-rt-import` / `/api/admin/rt-accounts/import` | 支持 JSON 数组、单个对象和 TXT 行导入 `refresh_token`、邮箱和账号 ID；只做脱敏台账和刷新准备，不减少 New-API 原有管理能力且不进入用户 `/v1` 路由 |
 | 管理员 2FA | `/api/admin/2fa/verify` + `data-admin-2fa-code` | 管理端 TOTP 二次验证；启用 `FRIST_API_REQUIRE_ADMIN_2FA=1` 后，管理 API 除 2FA 验证入口外都必须带有效二次验证会话 |
-| 生产边界检查 | `/api/admin/production-readiness` + `data-admin-readiness` | 汇总固定品牌域名、New-API 数据库、备份监控、管理员 2FA、兑换码收款闭环和长期渠道 SLA 状态；自动支付商户仅作备用 |
+| 生产边界检查 | `/api/admin/production-readiness` + `data-admin-readiness` | 汇总固定品牌域名 `jiyu.245334.xyz`、New-API 数据库、健康上游库存、备份监控、管理员 2FA、Turnstile、兑换码收款闭环和长期渠道 SLA 状态；自动支付商户仅作备用；健康上游库存为 0 时必须 `ready=false` |
 | 备份状态登记 | `/api/admin/backups/status` | 记录最近备份、恢复演练、备份目标、校验值和状态，供生产强制检查使用 |
 | 管理端补号 | `/admin.html` + `data-admin-replenish` | 独立管理端写入号源库存，不出现在用户端 |
 | 管理端代理地址 | `/admin.html` + `data-admin-proxy-url` | 可选填写代理请求地址，补号时自动与直连路径择优 |
@@ -248,29 +284,69 @@
 | `FRIST_API_SMTP_USER` | SMTP 登录用户名 | 只放服务器环境变量 |
 | `FRIST_API_SMTP_PASSWORD` | SMTP 应用专用密码 | 禁止提交到 Git 或写进文档正文 |
 | `FRIST_API_SMTP_FROM` | 余额预警发件邮箱 | 默认可与用户名一致 |
-| `FRIST_API_BALANCE_ALERT_FROM_NAME` | 余额预警发件人名称 | 默认 `Frist-API Billing` |
-| `FRIST_API_PASSWORD_HASH_SECRET` | Frist-API 用户密码哈希密钥 | 生产必须为强随机值；和会话密钥分离，便于轮换登录会话而不锁死旧账号 |
+| `FRIST_API_BALANCE_ALERT_FROM_NAME` | 余额预警发件人名称 | Oracle 生产当前为 `CC-Billing`，避免 shell source 类脚本误把空格拆成命令 |
+| `FRIST_API_PASSWORD_HASH_SECRET` | CC中转用户密码哈希密钥 | 生产必须为强随机值；和会话密钥分离，便于轮换登录会话而不锁死旧账号 |
 | `FRIST_API_LEGACY_PASSWORD_HASH_SECRETS` | 历史密码哈希密钥兼容列表 | 逗号分隔；更换密码哈希密钥后临时保留旧值，用户下次登录成功后自动迁移 |
 | `FRIST_API_REQUIRE_CAPTCHA` | 是否启用注册验证码挑战 | `1` 启用；登录不再要求验证码 |
 | `FRIST_API_CAPTCHA_MAX_ATTEMPTS` | 单个验证码最大错误次数 | 默认 `3`，超过后需刷新挑战 |
 | `FRIST_API_PASSWORD_RESET_TTL_MS` | 忘记密码验证码有效期 | 默认 `900000`，即 15 分钟 |
-| `FRIST_API_DATA_ENCRYPTION_KEY` | runtime 敏感字段加密密钥 | 公开模式必填；用于加密用户 Key 和上游 rawKey |
-| `FRIST_API_PUBLIC_GATEWAY_BASE_URL` | 用户导出和邮件使用的公网 `/v1` 网关地址 | 正式值应为 `https://frist-api.245334.xyz/v1`；旧 nip.io 只保留冷回滚排障，不是当前用户导出入口；`https://www.inroi.shop/v1` 是授权上游请求地址，不是用户导出入口 |
+| `FRIST_API_REDEEM_RATE_LIMIT_MAX` | 兑换接口限流次数 | 默认 `12`；按 IP 和登录账号分别计数，防暴力猜卡密 |
+| `FRIST_API_REDEEM_RATE_LIMIT_WINDOW_MS` | 兑换接口限流窗口 | 默认 `60000`，即 1 分钟 |
+| `FRIST_API_DATA_ENCRYPTION_KEY` | runtime 敏感字段加密密钥 | 公开模式必填；用于加密用户 Key 和上游 rawKey；旧 key 不可恢复的历史 `enc:v1:` 字段会被隔离并提示重新生成 |
+| `FRIST_API_PUBLIC_GATEWAY_BASE_URL` | 用户导出和邮件使用的公网 `/v1` 网关地址 | 当前 CC中转生产内测值为 `https://jiyu.245334.xyz/v1`；旧数字域名和 nip.io 只保留跳转/冷回滚排障，不是当前用户导出入口；`https://www.inroi.shop/v1` 是上游请求地址，不是用户导出入口 |
 | `FRIST_API_REQUIRE_CSRF` | Cookie 登录态非幂等接口 CSRF 校验开关 | 生产建议 `1`；公开模式和 `NODE_ENV=production` 会自动启用 |
-| `FRIST_API_REQUIRE_ADMIN_2FA` | 是否强制管理端 TOTP 二次验证 | 生产强制模式必须为 `1` |
-| `FRIST_API_ADMIN_TOTP_SECRETS` | 管理员 TOTP Base32 Secret 列表 | 逗号分隔；只放服务器环境变量或安全注入，不写文档正文 |
+| `FRIST_API_REQUIRE_ADMIN_2FA` | 是否强制管理端 TOTP 二次验证 | 生产强制模式必须为 `1`；Oracle 生产已开启 |
+| `FRIST_API_ADMIN_TOTP_SECRETS` | 管理员 TOTP Base32 Secret 列表 | 逗号分隔；只放服务器环境变量或 root-only 安全文件，不写文档正文 |
 | `FRIST_API_ADMIN_2FA_SESSION_TTL_MS` | 管理员 2FA 会话有效期 | 默认 `3600000`，即 1 小时 |
 | `FRIST_API_ALLOW_PRIVATE_UPSTREAM_URLS` | 是否允许管理端补号 URL 指向私网/本机地址 | 生产必须保持 `0`，只用于本地私网测试 |
-| `FRIST_API_CANONICAL_HOST` | Frist-API 唯一内容入口域名 | 正式为 `frist-api.245334.xyz`；旧 `frist-api.101-43-41-96.nip.io` 只保留冷回滚排障语境，不作为生产兜底入口 |
-| `FRIST_API_REDIRECT_HOSTS` | 需要跳转到唯一入口的旧/裸域名 | Oracle 正式生产以 `frist-api.245334.xyz` 为唯一入口；腾讯冷回滚时才需要旧 `101-43-41-96.nip.io` / nip.io 主机跳转配置 |
-| `FRIST_API_ENFORCE_PRODUCTION_READINESS` | 是否强制生产边界检查 | `1` 时缺固定 HTTPS 品牌域名、New-API 数据库、2FA、兑换码/备份等运营闭环会启动失败；自动支付商户不是当前硬门槛 |
-| `FRIST_API_ALLOW_INSECURE_PUBLIC_HTTP` | 是否允许临时公网 HTTP 网关 | 正式 Oracle + Cloudflare HTTPS 已通，生产应为 `0`；只有冷回滚排障才临时打开 |
+| `FRIST_API_CANONICAL_HOST` | CC中转唯一内容入口域名 | 当前生产内测为 `jiyu.245334.xyz`；旧 `245334.xyz`、`frist-api.245334.xyz` 和 nip.io 只保留跳转/冷回滚排障语境，不作为生产兜底入口 |
+| `FRIST_API_REDIRECT_HOSTS` | 需要跳转到唯一入口的旧/裸域名 | Oracle 用户入口以 `jiyu.245334.xyz` 为主；`frist-api.245334.xyz`、裸域和 nip.io 跳转到主站；`frist-api-oracle.245334.xyz` 不在跳转名单内，专用于 Frist 运营台/自动发货助手 |
+| `FRIST_API_ENFORCE_PRODUCTION_READINESS` | 是否强制生产边界检查 | Oracle 生产已为 `1`；缺固定 HTTPS 品牌域名、New-API 数据库、2FA、兑换码/备份等运营闭环会启动失败；自动支付商户不是当前硬门槛 |
+| `FRIST_API_ALLOW_INSECURE_PUBLIC_HTTP` | 是否允许临时公网 HTTP 网关 | Oracle 生产已为 `0`；只有冷回滚排障才临时打开 |
 | `FRIST_API_BACKUP_STATUS_MAX_AGE_HOURS` | 备份新鲜度上限 | 默认 `26` 小时，超过视为备份监控未闭环 |
 | `FRIST_API_SLA_RETENTION_DAYS` | 渠道 SLA 探测事件保留天数 | 默认 `30` 天 |
 | `FRIST_API_CHANNEL_MONITOR_ENABLED` | 是否启用后台 60 秒通道巡检 | `1` 启用；无人调用时也会巡检健康库存 |
 | `FRIST_API_CHANNEL_MONITOR_INTERVAL_MS` | 后台通道巡检间隔毫秒 | 默认 `60000` |
 | `FRIST_API_CHANNEL_MONITOR_BATCH_SIZE` | 每轮巡检最多探测的 Key 数量 | 默认 `4`，防止一次性压测所有库存 |
 | `FRIST_API_CHANNEL_MONITOR_COOLDOWN_MS` | 同一 Key 自动巡检最小间隔毫秒 | 默认 `55000`，避免短时间重复探测 |
+| `FRIST_API_RATE_MARKUP` | 上游倍率同步后的固定加价 | 生产内测显式固定为 `0.1`；同步到 New-API 模型倍率时只在上游倍率基础上加 `0.1`，其余保持上游一致 |
+| `FRIST_API_XIANYU_WEBHOOK_TOKEN` | 闲鱼全自动发货低权限 webhook token | 只允许调用 `/api/ops/xianyu/paid-order` 发起已付款订单发卡，以及 `/api/ops/xianyu/remap-order` 接管已发卡订单号；不具备管理员权限；禁止写入文档正文或聊天 |
+| `FRIST_API_CARD_AUTOREPLENISH_ENABLED` | Frist-API 是否启用兑换码库存自动补 | 生产内测建议 `1`；只补到安全库存，受每日上限限制 |
+| `FRIST_API_CARD_AUTOREPLENISH_INTERVAL_MS` | 兑换码库存自动补扫描间隔 | 默认 `86400000`，即每天一次；启动服务时会先跑一次 |
+| `FRIST_API_CARD_AUTOREPLENISH_DAILY_CAP` | 自动补兑换码每日上限 | 默认 `50`，防止异常循环大量发码 |
+| `FRIST_API_CARD_AUTOREPLENISH_SAFETY_STOCK` | 自动补兑换码安全库存 JSON/配置 | 留空使用默认档位：1元测试3张、5/15元各10张、50元5张、100元3张、500元1张 |
+| `FRIST_API_UPSTREAM_BALANCE_SYNC_ENABLED` | 是否启用上游余额定时同步 | 生产内测建议 `1`；只读同步 New-API 余额用于运营预警 |
+| `FRIST_API_UPSTREAM_BALANCE_SYNC_INTERVAL_MS` | 上游余额同步间隔 | 默认 `86400000`，即每天一次；启动服务时会先跑一次 |
+| `FRIST_API_UPSTREAM_BALANCE_WARNING_CNY` | 上游余额 warning 阈值 | 默认 `50` 元 |
+| `FRIST_API_UPSTREAM_BALANCE_CRITICAL_CNY` | 上游余额 critical 阈值 | 默认 `20` 元 |
+| `FRIST_API_UPSTREAM_BALANCE_STALE_HOURS` | 上游余额数据过期小时数 | 默认 `26` 小时，超过视为状态过期 |
+| `FRIST_API_UPSTREAM_BALANCE_WEBHOOK` | 上游余额预警 webhook | 可选；用于余额低于阈值时提醒老板充值 |
+| `CC_XIANYU_AUTO_SHIP_ENABLED` | OpenClaw 闲鱼助手是否启用 CC中转自动发货 | `1` 启用；`0/false/no/off` 禁用并回退旧本地 AutoShipper |
+| `CC_XIANYU_WEBHOOK_URL` | OpenClaw 调用 CC中转自动发货 webhook 的地址 | 当前生产内测指向 `https://frist-api-oracle.245334.xyz/api/ops/xianyu/paid-order`；本机会自动推导同域 `/api/ops/xianyu/remap-order` 用于真实订单号接管 |
+| `CC_XIANYU_WEBHOOK_TOKEN` | OpenClaw 调用 CC中转 webhook 的低权限 token | 只用于已付款订单发卡；禁止打印完整值，生产变更后需重启 `ai.openclaw.xianyu` |
+| `CC_XIANYU_AUTO_SHIP_PAUSED` | 自动发货运行时暂停的环境兜底 | 可选；`1/true/yes/on` 时启动后默认暂停。日常暂停/恢复优先使用本机操作台 `/api/cc-operator-mode`，不会要求老板改环境变量 |
+| `CC_OPERATOR_STATE_FILE` | 本机操作台状态文件路径 | 可选；默认 `.openclaw/cc-zhongzhuan-operator-state.json`，测试用例用该变量隔离暂停状态 |
+| `CC_XIANYU_AUTO_SHIP_DELAY_SECONDS` | OpenClaw 检测到已付款后的发货延迟 | 默认 `10` 秒，降低平台风控误判概率 |
+| `CC_XIANYU_DEFAULT_PLAN_ID` | 闲鱼订单无 SKU 或无商品映射时的默认套餐 ID | 当前本机生产内测已固定为唯一可售日卡库存对应 planId；`/api/status.cc_auto_plan_routing` 与 `/api/cc-sale-readiness.plan_routing` 会显示实际路由模式和风险等级；多商品正式上架时仍优先在本机 GUI 配置 `item_id → planId` |
+| `CC_XIANYU_DEFAULT_ITEM_ID` | 闲鱼订单无聊天商品上下文时的默认商品映射 | 可留空；用于买家不聊天直接付款时仍进入 CC中转自动发货链路 |
+| `CC_XIANYU_RESCUE_LOOP_ENABLED` | 闲鱼消息发送失败后的自动补发循环 | 默认 `1`；只补发已分配且本机有完整发货话术的 `message_send_failed` 记录，不会重新分配卡密 |
+| `CC_XIANYU_RESCUE_INTERVAL_SECONDS` | 自动补发队列扫描间隔 | 默认 `60` 秒；下限 `15` 秒 |
+| `CC_XIANYU_RESCUE_BATCH_SIZE` | 每轮最多补发记录数 | 默认 `5`，最大 `20` |
+| `CC_XIANYU_PAID_ORDER_POLL_ENABLED` | 是否启用闲鱼卖家待发货订单列表轮询兜底 | 默认 `1`；当前真实登录态可能返回 `PERMISSION_EXCEPTION::无权限访问`，因此只能作为加分兜底，不能替代 WebSocket/Chrome 付款页看守 |
+| `CC_XIANYU_PAID_ORDER_POLL_INTERVAL_SECONDS` | 卖家订单列表轮询间隔 | 默认 `60` 秒；接口无权限时只记录安全告警，不分配卡密 |
+| `CC_XIANYU_PAID_ORDER_POLL_BATCH_SIZE` | 每轮最多处理待发货订单数 | 默认 `5`，最大 `20`；同订单幂等，不重复发卡 |
+| `CC_XIANYU_AUTO_READINESS_AUDIT_ENABLED` | 后台是否自动刷新内测巡检证据 | 默认 `1`；随闲鱼助手启动，只运行 `read_only` 审计刷新库存、New-API 启用兑换码和渠道数量，不发送消息、不分配卡密、不改库存 |
+| `CC_XIANYU_AUTO_READINESS_AUDIT_INTERVAL_MS` | 后台内测巡检最小间隔 | 默认 `900000`；最小强制 300000ms，避免频繁读取生产接口 |
+| `CC_XIANYU_AUTO_READINESS_AUDIT_SCAN_SECONDS` | 后台内测巡检扫描间隔 | 默认 `60` 秒，最小 `30` 秒；只判断是否到期刷新只读证据 |
+| `CC_XIANYU_AUTO_STRICT_AUDIT_ENABLED` | 真实发货后 GUI/后台是否自动轮询正式售卖严格门 | 默认 `1`；仅在观察到已自动发货、无补救、等待买家兑换/API/调模型时触发只读严格审计，不发送消息、不分配卡密、不改库存 |
+| `CC_XIANYU_AUTO_STRICT_AUDIT_INTERVAL_MS` | GUI/后台自动严格门轮询最小间隔 | 默认 `600000`；最小强制 60000ms，避免频繁远程审计 |
+| `CC_XIANYU_AUTO_STRICT_AUDIT_SCAN_SECONDS` | 后台严格门观察扫描间隔 | 默认 `60` 秒，最小 `30` 秒；只扫描是否需要运行只读严格门，不触发发货或库存写入 |
+| `CC_XIANYU_AUTO_CONFIRM_SHIPMENT_ENABLED` | 是否启用 OpenClaw 后端 API 确认闲鱼发货 | 默认 `0`；浏览器助手确认发货已可用，后端私有 API 方式仅作为显式开启的补充路径 |
+| `CC_XIANYU_OPS_NOTIFY_ENABLED` | 是否启用本机运营状态提醒 | 默认 `1`；随本机闲鱼助手启动，状态变化时弹 macOS 通知；只读，不发货、不分配卡密、不改库存 |
+| `CC_XIANYU_OPS_NOTIFY_INTERVAL_MS` | 本机运营提醒最小间隔 | 默认 `120000`；最小强制 30000ms，避免状态短时间抖动时刷屏 |
+| `CC_XIANYU_OPS_NOTIFY_SCAN_SECONDS` | 本机运营提醒扫描间隔 | 默认 `30` 秒，最小 `10` 秒；只判断是否需要提醒 |
+| `CC_XIANYU_LOW_INVENTORY_THRESHOLD` | 兑换码低库存提醒阈值 | 默认 `2`；未售卡密数量小于等于阈值时提醒补货 |
+| `cc_strict_audits` | 本机 SQLite 严格门审计摘要表 | 保存 `ok/exit_code/real_orders/same_order_ready/same_order_matched` 等脱敏证据，供 GUI/后台在重启后恢复最近严格门状态；不保存卡密、Token、API Key 或原始 stdout/stderr；严格门通过后会用订单哈希把 `cc_shipments.buyer_chain_status` 回写为 `verified` |
 | `FRIST_API_KEY_ALERT_WEBHOOK` | Key 认证/额度异常告警 Webhook | 可选；未配置 Telegram 时可走通用告警 Webhook |
 | `FRIST_API_GATEWAY_DAILY_SPEND_LIMIT_CENTS` | 上游 Key 默认日消费限额 | 可选；余额站库存可单 Key 覆盖，超过后自动熔断并切备用健康渠道 |
 | `FRIST_API_GATEWAY_SLOW_LATENCY_MS` | 慢线上游降级阈值 | 默认 `5000`；当余额站当日消费已超过剩余额度且响应慢，会自动下线该 Key |
@@ -299,6 +375,10 @@
 | `FRIST_API_NEWAPI_DEFAULT_TOKEN_QUOTA` | New-API 新建 Token 默认额度 | `0` 配合 `unlimited_quota=true` |
 | `FRIST_API_NEWAPI_GATEWAY_ENABLED` | 是否让 Frist-API `/v1` 直接代理 New-API 网关 | `1` 启用；默认关闭以保留自研路由兜底 |
 | `FRIST_API_NEWAPI_GATEWAY_BASE_URL` | New-API 网关地址 | Oracle 生产为 `http://127.0.0.1:13000/v1`；Docker/本地开发通常为 `http://openclaw-newapi:3000/v1` |
+| `FRIST_API_NEWAPI_REDEMPTION_STATUS_SYNC_ENABLED` | 是否自动回写 New-API 原生兑换状态 | 生产为 `1`；服务端按卡密哈希把 New-API 已兑换记录同步回 Frist 闲鱼履约 |
+| `FRIST_API_NEWAPI_REDEMPTION_STATUS_SYNC_INTERVAL_MS` | New-API 兑换状态回写间隔 | 默认 `60000` 毫秒；正式售卖期保持开启 |
+| `FRIST_API_DOCKER_NEWAPI_BASE_URL` | Docker Compose 内部 New-API API 地址 | 本机 `make frist-api-up` 默认 `http://new-api:3000`；只用于容器网络，不暴露公网 |
+| `FRIST_API_DOCKER_NEWAPI_GATEWAY_BASE_URL` | Docker Compose 内部 New-API 网关地址 | 本机 `make frist-api-up` 默认 `http://new-api:3000/v1`；宿主机调试仍用 `FRIST_API_NEWAPI_GATEWAY_BASE_URL` |
 | `MITMDUMP_BIN` | mitmdump 可执行文件 | 可指向 `~/.openclaw/tools/mitmproxy-local-venv/bin/mitmdump` 这类独立工具 venv，避免污染项目虚拟环境 |
 
 ---
@@ -312,10 +392,20 @@
 | 同步检查 | `new-api-check` | `make new-api-check` | 检查 GitHub 最新非草稿 release、submodule 指针和 compose 镜像 tag 是否一致 |
 | 同步升级 | `new-api-sync` | `make new-api-sync` | 更新 submodule 到最新 release，并同步 compose 镜像 tag |
 | 同步脚本 | `sync_new_api_upstream.sh` | `scripts/sync_new_api_upstream.sh` | 支持 `check` / `update`；`check` 发现落后返回非 0，适合 CI/定时任务 |
+| 品牌补丁 | `new-api-brand-patch` / `apply_new_api_brand_patch.sh` | `make new-api-brand-patch` | `scripts/patches/new-api-cc-brand.patch` 是 CC中转品牌修改的可维护基线；submodule 保持上游干净状态，升级后先检查兼容，再按需应用补丁 |
+| 本机启动 | `new-api-up` / `frist-api-up` | `Makefile` | `make new-api-up` 先备份 `data/newapi` 再启动 QuantumNous/new-api；`make frist-api-up` 先运行本机桥接配置，再同时启动 New-API 与 Frist-API |
+| 本机桥接配置 | `setup_local_newapi_bridge.mjs` | `scripts/setup_local_newapi_bridge.mjs` | 从 `data/newapi/one-api.db` 读取已生成 access token 用户，写入 `.env` 的 Frist-API/New-API 桥接变量；密钥不打印到终端 |
 | 定时同步 | `New-API Scheduled Sync` | `.github/workflows/new-api-sync.yml` | 每天检查最新 release，落后时自动开 `codex/new-api-scheduled-sync` PR；不会直接升级生产数据库 |
-| Frist-API 桥接 | `newApiBridge.js` | `apps/frist-api/server/newApiBridge.js` | 通过 New-API HTTP 接口承接用户看板、Token、日志、兑换、订阅、邀请和可选网关代理；Oracle 生产调用 `127.0.0.1:13000` |
+| Frist-API 桥接 | `newApiBridge.js` | `apps/frist-api/server/newApiBridge.js` | 通过 New-API HTTP 接口承接用户看板、Token、日志、兑换、订阅、邀请和可选网关代理；生产开启桥接时，`POST /v1/*` 与 `GET /v1/models` 均代理到 New-API，避免用户新建 API Key 后模型列表 401；Oracle 生产调用 `127.0.0.1:13000` |
 | 迁移/回滚 | `frist_api_newapi_migration_dry_run.mjs` | `scripts/frist_api_newapi_migration_dry_run.mjs` | 默认只读 Frist-API runtime；`--package` 生成带时间戳的 runtime 备份、幂等迁移计划和回滚脚本；2026-07-03 已授权并执行生产 `--apply`，回滚目录在服务器 `/opt/frist-api/backups/newapi-migration-20260703T005433Z` |
-| Oracle 生产运行 | `openclaw-newapi.service` | Oracle ARM `/opt/frist-api` | New-API v1.0.0-rc.4 ARM64 release 二进制，以 systemd 监听 `127.0.0.1:13000`；Frist-API 通过 `frist-api.service` 监听 `127.0.0.1:3180`，Apache/Cloudflare 只公开 `frist-api.245334.xyz` |
+| Chrome 运营书签修复 | `cc_zhongzhuan_chrome_bookmarks.mjs` | `scripts/cc_zhongzhuan_chrome_bookmarks.mjs` | 修复/重建本机 Chrome 各 Profile 的 `CC中转运营` 书签文件夹，只写入 2 个老板可点入口：本机操作台、用户主站；`/ops-links` 保留兼容但不再默认收藏。写入前在 Chrome Profile 目录生成 `.codex-backup-*` 备份；加 `--open-window` 可直接打开 2 个运营入口窗口；2026-07-07 复验 `Default/Profile 1/Profile 2/Profile 3` 均为 2 个入口且 `chromeBookmarks.ok=true` |
+| CC中转卖家 Chromium 启动器 | `cc-seller-chrome` / `cc_zhongzhuan_launch_seller_chrome.mjs` | `make cc-seller-chrome` / `scripts/cc_zhongzhuan_launch_seller_chrome.mjs` | 准备卖家专用 Profile `~/.openclaw/cc-zhongzhuan-seller-chromium-v2`、运行版插件目录 `~/.openclaw/cc-social-pilot-runtime-extension` 和本机 `runtime-config.json`，打开本机操作台、用户主站与闲鱼。优先使用 Playwright Chromium 自动加载插件并带 Local Network Access 兼容参数；若 Chromium 缓存缺失，则降级到普通 Google Chrome 并提示安装 Chromium |
+| CC中转卖家本机桥接器 | `cc-seller-bridge` / `cc_zhongzhuan_seller_bridge.mjs` | `make cc-seller-bridge` / `scripts/cc_zhongzhuan_seller_bridge.mjs` | 本机 DevTools 桥接器，读取 18800 队列并注入闲鱼页面执行器，负责付款页发卡、点击发送、确认发货和恢复可售巡检；`--scan-only --require-real-order-id` 会只读捕获闲鱼 `message.headinfo` 真实订单号/商品 ID；`--one-shot-override` 会强制 delivery-only/只跑一次/只允许 1 个闲鱼页，并且优先把已发 `xy_browser_*` 临时单接管为 `xy_oid_*`，不重复发卡；不建议在重复发卡事故未完全验收前恢复 `ai.openclaw.cc-seller-bridge` 常驻 LaunchAgent |
+| 生产闭环审计 | `cc_zhongzhuan_readiness_audit.mjs` | `scripts/cc_zhongzhuan_readiness_audit.mjs` | 默认只读检查 Chrome 运营入口、本机闲鱼助手、本机 GUI 状态、本机配置、Oracle 服务/库存/公网安全门；GUI 检查覆盖 WebSocket、Cookie、CC自动发货配置和补救待处理数量；当前只读巡检已转绿，正式售卖仍需 `--require-real-order` 真实小额单严格门；加 `--webhook-smoke` 会临时跑一次低权限闲鱼已付款 webhook 并清理恢复库存；不输出 token、卡密或用户 Key |
+| 老板统一运营入口 | `/dashboard` / `/api/export-status` / `/api/cc-paid-order-probe` / `/api/cc-operator-mode/one-shot-delivery` / `/api/cc-seller-bridge/page-scan` / `/api/cc-seller-bridge/one-shot-delivery` / `/api/cc-simulation-gate` / `/api/cc-replacement-mode-test-pack` | `http://127.0.0.1:18800/dashboard` | 单一入口展示首页总览、闲鱼售卖、每日简报、系统维护、帮助中心；状态报告导出会脱敏订单、卡密、Token、买家昵称和 API Key；“真实待发货扫单”只读确认闲鱼待发货候选，不发卡、不点击发货；“只放行一次发卡”在暂停状态下只允许当前已付款页发送 1 条卡密；严格模拟门 v2 追踪真实发卡、商品模板/上架、兑换、API Key、CC Switch、模型调用、渠道/服务器状态，但不解锁 `xy_oid_*` 真实订单严格门 |
+| 本机自动健康与灾备脚本 | `auto_health_check.sh` / `auto_recovery.sh` / `local_backup.sh` / `disaster_recovery.sh` | `scripts/` | 健康检查默认只读并输出“怎么办”；恢复脚本支持 `--dry-run` 预演；本地备份排除 `.env`、虚拟环境、node_modules 和日志，默认保留 30 天；灾备恢复必须显式 `--confirm` 才覆盖文件 |
+| 文档治理检查 | `docs-check` / `check_docs_layout.sh` | `make docs-check` | 检查项目根目录散落文档、`docs/` 子目录、非 `XXX-kebab-case.md` 命名、索引漏登记和索引陈旧引用；已纳入 `make ci-local` |
+| Oracle 生产运行 | `openclaw-newapi.service` / `frist-api.service` | Oracle ARM `/opt/frist-api` | New-API v1.0.0-rc.4 ARM64 release 二进制监听 `127.0.0.1:13000`，Apache/Cloudflare 公开 `jiyu.245334.xyz`；Frist-API 监听 `127.0.0.1:3180`，通过 `frist-api-oracle.245334.xyz` 提供兑换码/闲鱼运营台；旧 `frist-api.245334.xyz` 仅跳转到主站 |
 | 腾讯冷回滚 | `frist-api-server` / `openclaw-newapi` | 腾讯云 `/opt/frist-api` | 旧 Docker 容器已停止、R2 timer 已禁用，仅保留数据和备份；回滚时先恢复容器/timer，再把 Cloudflare A 记录切回 `101.43.41.96` |
 
 | 环境变量 | 用途 | 备注 |
@@ -328,7 +418,7 @@
 
 ---
 
-## 1. 注册命令一览（105 个）
+## 1. 注册命令一览（107 个）
 
 命令在 `multi_bot.py` 统一注册；`/cli` 已正式挂到 `CLICommandsMixin`，不再作为预备死代码。
 
@@ -756,6 +846,24 @@
 | 605 | `/cost` | 成本/配额 |
 | 606 | `/config` | 运行配置 |
 
+### 700-708: 每日简报
+
+平台策略：Telegram 支持点击和斜杠菜单，因此优先使用 BotCommand/Inline 按钮/常驻键盘；数字编号只作为兼容备用。微信不支持 Telegram 式点击命令菜单，因此降级为数字编号，并在每个入口提示“回复数字即可跳转”。
+
+| 编号 | 映射命令 | 说明 |
+|------|----------|------|
+| 700 | `/start` / `/today` / 每日简报菜单/今日简报/每日简报 | 优先返回最近一次成功简报；没有记录时显示菜单；Telegram 底部快捷键 `🧭 今日简报` 等同 700；微信可直接发“今日简报” |
+| 701 | `/status` / 我的订阅/订阅状态/简报状态 | 查看套餐、到期时间、已选内容和推送时间 |
+| 702 | `/market` / 市场资金 | 开启 A股资金、国会持仓、机构13F 等市场资金源 |
+| 703 | `/ai` / AI科技 | 开启 AI 模型动态和 GitHub Trending |
+| 704 | `/weather` / 天气预警 | 开启天气、空气、降雨、温度、湿度、灾害预警 |
+| 705 | `/schedule` / 推送时间/设置时间 | 默认每天 08:30；支持 `705 09:00`、`推送时间 09:00`、Telegram `/schedule 09:00`；只发 `705`、`推送时间` 或 `/schedule` 时进入两步式，下一条可回复 `1-5`、`每天 09:00` 或 `每周 09:00` |
+| 706 | `/track` / 添加追踪/追踪 | 支持 `706 英伟达`、`添加追踪 英伟达`、`追踪 英伟达`、`/track 英伟达`；也支持先发 `706`、`添加追踪` 或 `/track`，下一条直接回复名字完成追踪 |
+| 707 | `/help` / 简报帮助 | 返回每日简报菜单和数字命令说明 |
+| 708 | `/pause` / 暂停简报 | 将当前订阅者状态标为 paused；查看状态/打开菜单不会自动恢复，重新选择内容才恢复 |
+
+当前 Telegram Bot 左侧命令菜单已同步为 10 个点击命令：`/start`、`/today`、`/status`、`/market`、`/ai`、`/weather`、`/schedule`、`/track`、`/pause`、`/help`。微信端已接入上述 700-708 数字回复、中文快捷词和两步式；显式“菜单/今日简报”等快捷词会打断 pending 状态，不会被误当作时间或追踪参数。本机处理器同时支持 `/api/v1/wechat/incoming` 和旧路径 `/wechat/incoming`。OpenClaw Weixin 插件已补“每日简报编号菜单直通桥”，授权会话发 `700-708`、`菜单`、`今日简报`、`我的订阅`、`推送时间`、`添加追踪` 等快捷词时会先调用 `/wechat/incoming`，不再落入普通大模型闲聊；当前通道状态为 `enabled, configured, running`。桌面微信窗口当前 `kCGWindowSharingState=0`，Codex/Computer Use 无法读取聊天内容，本轮未把“Codex 亲自发出 700”登记为已验收；下一条真实微信消息或插件日志可作为最终真机入站证据。飞书/钉钉当前仅保留统一菜单合同，不做真实连通验收。
+
 ---
 
 ## 三、依赖清单
@@ -766,6 +874,7 @@
 
 ## OSS 安全依赖收口 (2026-06-22)
 
+| `layui` | `2.13.8`（vendored 静态资源） | 18800 本机操作台组件层 | 文件存放在 `packages/clawbot/src/xianyu/static/layui/`，由 FastAPI `/static/layui/...` 本地提供；不从 CDN 加载，避免本机 Token 页面依赖外网脚本 |
 | 包/区域 | 版本/动作 | 用途 | 说明 |
 |---|---|---|---|
 | `pytest` | `>=9.0.3,<10.0` | Python 测试框架 | 修复 Dependabot 报告的 tmpdir 处理漏洞 |
@@ -784,12 +893,12 @@
 
 | 资产 | 路径 | 用途 | 说明 |
 |---|---|---|---|
-| Social Pilot Manifest | `packages/openclaw-npm/assets/chrome-extension/manifest.json` | Chrome MV3 插件入口 | 工具栏默认打开 `popup.html`，保留 Browser Relay 权限，新增 X / 小红书 / 闲鱼 host permissions，并加入 `scripting` 用于当前标签页只读上下文采集 |
-| Social Core | `packages/openclaw-npm/assets/chrome-extension/social-core.js` | 插件社媒运营核心配置 | 平台识别、安全默认设置、人设/模型/热点选项、no-code 打法选项、从后端 `strategy_summary` 安全同步合法 `strategyPreset`、自动化/互动等级、API URL 拼接、当前页上下文归一化、MCN 热点选题卡规整、草稿创建 payload、热点草稿 payload、互动信号规整、互动回复草稿 payload、表现快照规整、增长反馈 payload、增长反馈热点加权字段、草稿内容/素材计划规整、网页登录额度 copy-only 提示词任务、填入选择器计划（覆盖 X 嵌套 contenteditable/DraftEditor、小红书 Quill/aria-placeholder、闲鱼 placeholder 聊天编辑器）、页面探测 payload、页面校准上报 payload、安全填入 payload、待发布排程 payload、排程提醒卡片规整、人设审核包规整和任务预览 |
-| Popup 驾驶舱 | `packages/openclaw-npm/assets/chrome-extension/popup.html` / `popup.js` | 浏览器主执行入口 | 自动识别当前标签页平台，打开时回拉 OpenEverything 中控 `strategyPreset` 并回写本地安全设置，支持启动/暂停、同步中控、紧急停止、看人设/样稿确认、抓热点并展示 MCN 选题卡、扫当前页并把趋势/标题/正文摘要变成可点击上下文卡片、扫互动并把评论/聊天信号转成待审回复草稿、采表现并把已发布内容指标写入增长反馈池、展示历史高信号选题加权原因、看增长复盘摘要、基于增长复盘生成下一批待审热点草稿、根据当前页或热点生成待审草稿、展示内容结构/封面提示词/图片素材提示词/安全清单的“素材计划”、网页登录额度卡片（复制提示词/打开 Gemini、Grok、ChatGPT 网页）、插件内编辑/确认/打回、加入排程、看排程/到点提醒、最终确认、检测填入点并提示校准是否同步中控、安全填入页面、高级设置和 Relay 兼容连接 |
+| Social Pilot Manifest | `packages/openclaw-npm/assets/chrome-extension/manifest.json` | Chrome MV3 插件入口 | 工具栏默认打开 `popup.html`，保留 Browser Relay 权限，新增 X / 小红书 / 闲鱼 host permissions（含 `m.tb.cn/tb.cn` 手机分享短链），并加入 `scripting` 用于当前标签页只读上下文采集 |
+| Social Core | `packages/openclaw-npm/assets/chrome-extension/social-core.js` | 插件社媒运营核心配置 | 平台识别（含闲鱼 `m.tb.cn/tb.cn` 短链）、安全默认设置、人设/模型/热点选项、no-code 打法选项、从后端 `strategy_summary` 安全同步合法 `strategyPreset`、自动化/互动等级、API URL 拼接、当前页上下文归一化、MCN 热点选题卡规整、草稿创建 payload、热点草稿 payload、互动信号规整、互动回复草稿 payload、表现快照规整、增长反馈 payload、增长反馈热点加权字段、草稿内容/素材计划规整、网页登录额度 copy-only 提示词任务、填入选择器计划（覆盖 X 嵌套 contenteditable/DraftEditor、小红书 Quill/aria-placeholder、闲鱼 placeholder 聊天编辑器）、页面探测 payload、页面校准上报 payload、安全填入 payload、待发布排程 payload、排程提醒卡片规整、人设审核包规整和任务预览 |
+| Popup 驾驶舱 | `packages/openclaw-npm/assets/chrome-extension/popup.html` / `popup.js` | 浏览器主执行入口 | 自动识别当前标签页平台，打开时回拉 OpenEverything 中控 `strategyPreset` 并回写本地安全设置，支持启动/暂停、同步中控、紧急停止、看人设/样稿确认、抓热点并展示 MCN 选题卡、扫当前页并把趋势/标题/正文摘要变成可点击上下文卡片、扫互动并把评论/聊天信号转成待审回复草稿、采表现并把已发布内容指标写入增长反馈池、展示历史高信号选题加权原因、看增长复盘摘要、基于增长复盘生成下一批待审热点草稿、根据当前页或热点生成待审草稿、展示内容结构/封面提示词/图片素材提示词/安全清单的“素材计划”、网页登录额度卡片（复制提示词/打开 Gemini、Grok、ChatGPT 网页）、插件内编辑/确认/打回、加入排程、看排程/到点提醒、最终确认、检测填入点并提示校准是否同步中控、安全填入页面；在闲鱼页额外提供“CC中转发货助手”，可检测当前聊天已付款信号并发送本机待发货卡密；高级设置和 Relay 兼容连接 |
 | Options 高级设置 | `packages/openclaw-npm/assets/chrome-extension/options.html` / `options.js` | no-code 运营设置 | 人设标签、主内容模型、生图模型、热点来源、自动化强度、互动强度、本地 API Base URL 和 Relay 兼容配置；打开时读取后端当前打法并提示“已从 OpenEverything 中控同步当前运营打法”；设置区已纳入真实 `<form id="social-settings-form">`，Gateway token 密码框位于 form 内，保存按钮走 `submit` + `preventDefault()`，真实 Chrome 复验无密码字段表单警告，兼容浏览器密码管理器和回车提交体验 |
-| Background 桥接 | `packages/openclaw-npm/assets/chrome-extension/background.js` | 后台消息桥 | 保留原 Browser Relay attach/detach，同时处理 `toggleRelayForActiveTab`、`socialStatusFetch`、`socialStatusUpdate`、`socialTrendsFetch`、`socialDraftCreate`、`socialPageContextScan`、`socialTrendDraftCreate`、`socialDraftUpdate`、`socialDraftReview`、`socialReviewPackFetch`、`socialPersonaReview`、`socialDraftSchedule`、`socialScheduleFetch`、`socialDraftFinalConfirm`、`socialDraftAutofill`、`socialPageProbe`、`socialWebModelOpen`、`socialInteractionScan`、`socialPerformanceScan`、`socialPerformanceRecord`、`socialGrowthFeedbackFetch`、`socialGrowthDraftsCreate`，读取/同步插件状态、回写中控 no-code 打法到 Chrome 本地设置、读取热点池、写入待审草稿、加入待发布排程、执行到点最终确认桥接、只打开白名单模型网页，并调用可测试页面执行器完成当前页上下文/热点采集、只读检测、互动扫描、表现采集和只填入不发布；生成当前页待审草稿时通过 `runSocialPageContextScanInPage()` 读取 X 趋势/推文、小红书笔记/评论、闲鱼商品/聊天上下文；页面探测后会把校准摘要上报 `social/extension/page-probe`；不提供 `socialInteractionSubmit` 自动评论路径，也不提供 `socialPerformanceBoost` 推广/刷量路径 |
-| Social Page Runner | `packages/openclaw-npm/assets/chrome-extension/social-page-runner.js` | 页面上下文采集、输入框检测、安全填入、只读互动扫描与表现采集执行器 | 从 `background.js` 抽出的可复用注入函数；`runSocialPageContextScanInPage()` 采集当前页 `selection`、`headings`、`trends`、`bodyText`，覆盖 X trend/tweet、小红书 note/title/content/comment、闲鱼 item/message/chat/desc 等热点与上下文信号；支持 X contenteditable/DraftEditor、小红书标题/正文/Quill 编辑器、闲鱼回复/描述/placeholder 聊天编辑器，检测模式和上下文采集均只读，填入模式不点击任何发布/发送/评论按钮；互动扫描只读取可见评论/聊天文本并返回候选信号；表现采集只读取已发布内容可见指标，不点击页面控件 |
+| Background 桥接 | `packages/openclaw-npm/assets/chrome-extension/background.js` | 后台消息桥 | 保留原 Browser Relay attach/detach，同时处理 `toggleRelayForActiveTab`、`socialStatusFetch`、`socialStatusUpdate`、`socialTrendsFetch`、`socialDraftCreate`、`socialPageContextScan`、`socialTrendDraftCreate`、`socialDraftUpdate`、`socialDraftReview`、`socialReviewPackFetch`、`socialPersonaReview`、`socialDraftSchedule`、`socialScheduleFetch`、`socialDraftFinalConfirm`、`socialDraftAutofill`、`socialPageProbe`、`socialWebModelOpen`、`socialInteractionScan`、`socialPerformanceScan`、`socialPerformanceRecord`、`socialGrowthFeedbackFetch`、`socialGrowthDraftsCreate`、`xianyuDeliveryScan`、`xianyuDeliverySend`，读取/同步插件状态、回写中控 no-code 打法到 Chrome 本地设置、读取热点池、写入待审草稿、加入待发布排程、执行到点最终确认桥接、只打开白名单模型网页，并调用可测试页面执行器完成当前页上下文/热点采集、只读检测、互动扫描、表现采集和只填入不发布；生成当前页待审草稿时通过 `runSocialPageContextScanInPage()` 读取 X 趋势/推文、小红书笔记/评论、闲鱼商品/聊天上下文；闲鱼发货桥接会读取本机 `cc-browser-delivery/next` 并在页面付款信号通过后填入/发送/标记；`xianyuDeliveryWatchSet` 可锁定当前闲鱼聊天标签页做一次性看守，命中付款信号和待发货话术后自动发送并关闭看守；卖家专用运行版可读取 `runtime-config.json` 作为本机 gateway token fallback，避免首次使用反复粘贴；页面探测后会把校准摘要上报 `social/extension/page-probe`；不提供 `socialInteractionSubmit` 自动评论路径，也不提供 `socialPerformanceBoost` 推广/刷量路径 |
+| Social Page Runner | `packages/openclaw-npm/assets/chrome-extension/social-page-runner.js` | 页面上下文采集、输入框检测、安全填入、只读互动扫描与表现采集执行器 | 从 `background.js` 抽出的可复用注入函数；`runSocialPageContextScanInPage()` 采集当前页 `selection`、`headings`、`trends`、`bodyText`，覆盖 X trend/tweet、小红书 note/title/content/comment、闲鱼 item/message/chat/desc 等热点与上下文信号；支持 X contenteditable/DraftEditor、小红书标题/正文/Quill 编辑器、闲鱼回复/描述/placeholder/“想跟TA说点什么”聊天编辑器，检测模式和上下文采集均只读，普通草稿填入模式不点击任何发布/发送/评论按钮；互动扫描只读取可见评论/聊天文本并返回候选信号；表现采集只读取已发布内容可见指标，不点击页面控件；`runXianyuDeliveryScanInPage()` / `runXianyuDeliveryFillAndSendInPage()` 是 CC中转已付款发货专用动作，要求页面可见付款信号才会点击“发送” |
 | 真实浏览器烟测 | `packages/openclaw-npm/assets/chrome-extension/test/social-browser-smoke.mjs` | Chrome 插件端到端 QA | 使用本机 Google Chrome 模拟 X / 小红书 / 闲鱼三类页面，加载 `social-core.js` 与 `social-page-runner.js` 的真实模块，验证平台识别、当前页上下文采集、输入框探测、安全填入和截图取证；页面内监听 Post / 发布 / 发送按钮点击，任一按钮点击会失败，当前三平台验收均 `ready=true`、`contextReady=true`、`contextSignals>0`、`filled=true`、`buttonClicks=0`，并额外验证 Popup 预览页点击“扫当前页”后 `page-context-panel` 展开、待审草稿编辑器出现，截图 `social-pilot-popup-context-20260624.png` |
 | Social App 静态测试 | `apps/openclaw-manager-src/src/components/Social/social-growth-feedback.static.test.mjs` | 桌面中控回归 | 覆盖 Social 页增长复盘卡片、复盘反哺待审草稿按钮、Tauri IPC/API/Rust 命令代理，防止 App 中控与 Chrome 插件复盘断链 |
 | 插件单测 | `packages/openclaw-npm/assets/chrome-extension/test/social-core.test.mjs` / `test/social-page-runner.test.mjs` | 行为回归 | 覆盖平台识别、安全默认值、后端 `strategy_summary` 同步到本地合法 no-code 打法且不打开自动化权限、外部动作闸口、平台任务预览、API URL 拼接、当前页上下文规整、MCN 热点选题卡字段、热点草稿 payload、互动信号规整、互动回复草稿 payload、表现快照规整、增长反馈 payload、增长反馈热点加权字段、草稿内容/素材计划规整、网页登录额度 copy-only 提示词、填入选择器计划、真实页面编辑器变体、页面探测 payload、页面校准上报 payload、安全填入 payload、待发布排程 payload、排程提醒卡片规整并保留素材计划、人设审核包规整，以及页面执行器的当前页热点/上下文采集、只读检测、小红书拆分填入/Quill 检测、X compose/DraftEditor 检测且不发布、闲鱼 placeholder 聊天编辑器检测、互动扫描不点击按钮、表现采集不点击按钮；`popup-static.test.mjs` 静态防止按钮绑定函数、消息桥、共享页面上下文采集器、Popup 当前页上下文扫描面板、MCN 热点展示、互动扫描、表现复盘、增长复盘反哺待审草稿、素材计划/网页登录额度展示、中控打法同步缺失、Options 设置页真实表单/密码字段 form 归属/submit 保存逻辑回退，以及三平台真实浏览器烟测脚本缺失 |
@@ -2058,7 +2167,8 @@
 | cookie_refresher.py | `src/xianyu/cookie_refresher.py` | 87 | Cookie 自动刷新 (_m_h5_tk 过期监控/主动续期) |
 | order_notifier.py | `src/xianyu/order_notifier.py` | 134 | 订单通知 (邮件+Telegram 推送/日报/健康告警) |
 | xianyu_apis.py | `src/xianyu/xianyu_apis.py` | 143 | 闲鱼 API 封装 (Token 获取/商品信息/登录状态) |
-| xianyu_context.py | `src/xianyu/xianyu_context.py` | 275 | 闲鱼对话上下文管理 (SQLite 持久化/历史记录, @contextmanager, 利润核算含佣金, 时区统一) |
+| xianyu_context.py | `src/xianyu/xianyu_context.py` | 825 | 闲鱼对话上下文管理 (SQLite 持久化/历史记录/CC中转发货补救队列/商品套餐映射, @contextmanager, 利润核算含佣金, 时区统一) |
+| cc_operator_state.py | `src/xianyu/cc_operator_state.py` | 82 | CC中转本机操作台状态文件；保存暂停/恢复自动发货开关，不保存卡密、Token、Cookie 或买家信息 |
 | xianyu/utils.py | `src/xianyu/utils.py` | 151 | 闲鱼工具函数 (签名生成/MessagePack 解密/ID 生成) |
 | auto_shipper.py | `src/xianyu/auto_shipper.py` | 210 | **搬运** xianyu-super-butler 自动发货引擎 (卡券库存管理/发货规则/订单自动匹配/WebSocket 集成) |
 | **自选股监控 (src/)** | | | |
@@ -2209,9 +2319,10 @@
 
 | 模块 | 路径 | 行数 | 说明 |
 |------|------|------|------|
-| xianyu_live.py | `src/xianyu/xianyu_live.py` | 778 | 闲鱼实时客服 — WebSocket 长连接/自动回复 |
+| xianyu_live.py | `src/xianyu/xianyu_live.py` | 1853 | 闲鱼实时客服 — WebSocket 长连接/自动回复/CC中转已付款自动发货、已付款/待发货状态变体与订单结构化字段位置识别、未付款/退款/普通聊天误发保护、商品套餐映射、订单自带商品 ID 优先路由、URL 参数真实订单号识别、稳定 `orderId` 幂等、发送失败补救记录和本机暂停开关 |
 | xianyu_agent.py | `src/xianyu/xianyu_agent.py` | 497 | 闲鱼 AI Agent — 多轮对话/砍价/推荐 |
-| xianyu_admin.py | `src/xianyu/xianyu_admin.py` | 328 | 闲鱼管理后台 — 商品/订单/统计 |
+| xianyu_admin.py | `src/xianyu/xianyu_admin.py` | 3002 | 闲鱼管理后台 — Apple 风格 CC中转状态中心与操作台、商品/订单/统计/CC中转发货补救队列/已付款漏单兜底发货/商品套餐映射/完整闲鱼分享文本规整/暂停恢复自动发货/自动化运营水位/商品模板/一键闭环审计/CC Switch 导入入口上架锁/后台严格门观察/严格门摘要恢复与买家闭环进度恢复 |
+| cc_operator_state.py | `src/xianyu/cc_operator_state.py` | 82 | CC中转本机操作台状态文件 — 保存暂停/恢复自动发货开关，不保存卡密、Token、Cookie 或买家信息 |
 | goofish_monitor.py | `src/xianyu/goofish_monitor.py` | 336 | 闲鱼监控 — 竞品价格/销量追踪 |
 
 #### API 层 (src/api/)
@@ -2408,3 +2519,663 @@
 | `src/litellm_router.py` | 653 | 依赖 50+ API key | P2 |
 
 ---
+
+### Intel Brief 新增模块（2026-07-06）
+
+| 模块 | 路径 | 说明 |
+|------|------|------|
+| Intel Brief schema | `packages/clawbot/src/intel/db/intel_brief_schema.sql` | 独立 SQLite schema；开放姓名追踪使用 `tracking_targets` / `tracking_subscriptions` / `tracking_audit_log`；含 `content_moderation_log` 与 `source_health`。 |
+| Intel DB store | `packages/clawbot/src/intel/db/store.py` | 初始化 Intel Brief DB；同名追踪目标复用；记录用户追踪请求审计日志。 |
+| Content moderation | `packages/clawbot/src/intel/quality/content_moderation.py` | 推送前内容过滤入口；关键词预过滤、可注入 LLM/规则二次判断、占位过滤、SQLite 日志。 |
+| Congress trading | `packages/clawbot/src/intel/sources/congress_trading.py` | Senate raw GitHub fallback 解析与拉取；MVP 先用 Senate 数据，House 数据源继续迭代。 |
+| Runtime policy | `packages/clawbot/src/intel/runtime_policy.py` | 多服务器运行节点偏好；国内源优先国内 worker，海外源走海外 worker；微博/小红书无人值守优先登录策略。 |
+| Intel worker probe | `packages/clawbot/scripts/intel_worker_probe.py` | Phase B worker/source 验证证据 JSON 脚手架；不连接服务器、不读取密钥，只统一证据字段。 |
+
+### Intel Brief 测试注册（2026-07-06）
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|----------|----------|----------|
+| `test_intel_schema_and_tracking.py` | `src/intel/db/*` | Schema 表结构、开放姓名追踪复用、审计日志 |
+| `test_intel_content_moderation.py` | `src/intel/quality/content_moderation.py` | 关键词预过滤、分类器过滤、占位替换、过滤日志 |
+| `test_intel_congress_trading.py` | `src/intel/sources/congress_trading.py` | Senate JSON 解析、raw GitHub fetch 注入 |
+| `test_intel_runtime_policy.py` | `src/intel/runtime_policy.py` | 国内/海外/controller 路由策略、微博/小红书无人值守优先登录策略 |
+| `test_intel_worker_probe.py` | `scripts/intel_worker_probe.py` | Phase B 证据结构、国内/海外路由和 JSON 落盘 |
+
+### Intel Brief Phase C/D 支架注册（2026-07-06）
+
+| 模块 | 路径 | 说明 |
+|------|------|------|
+| Intel source adapter base | `packages/clawbot/src/intel/sources/base.py` | 统一 `IntelSourceResult` / `IntelSourceAdapter` 契约，后续所有真实数据源必须返回该结构并携带 evidence_path。 |
+| Intel execution scene | `packages/clawbot/src/execution/intel_brief.py` | 独立 Intel Brief 执行场景入口；当前仅 `plan_only` 派发，不远程执行、不注册生产调度。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|----------|----------|----------|
+| `test_intel_source_adapter_base.py` | `src/intel/sources/base.py`, `src/intel/sources/congress_trading.py` | Source Adapter 契约、Senate adapter 结果封装 |
+| `test_intel_scheduler_dispatch.py` | `src/execution/intel_brief.py` | 国内/海外/controller 派发计划、worker_counts 汇总 |
+
+### Intel Brief Worker Contract 与 Source Health 注册（2026-07-06）
+
+| 模块 | 路径 | 说明 |
+|------|------|------|
+| Intel worker contract | `packages/clawbot/src/intel/worker_contract.py` | Controller/worker JSON-safe 契约；只传路由与执行意图，不传 token/cookie/password/private key。 |
+| Intel source health helpers | `packages/clawbot/src/intel/db/store.py` | 新增 `record_source_health` / `get_source_health`；success 清零连续失败，failure 累加并保留最近失败原因。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|----------|----------|----------|
+| `test_intel_worker_contract.py` | `src/intel/worker_contract.py` | Worker request/response 序列化、metadata 敏感键拒绝、source result 包装 |
+| `test_intel_schema_and_tracking.py` | `src/intel/db/store.py` | 追加 source_health success/failure 写入与持久化读取 |
+
+### Intel Brief Worker Runner / Adapter Registry 注册（2026-07-06）
+
+| 模块 | 路径 | 说明 |
+|------|------|------|
+| Intel worker runner | `packages/clawbot/src/intel/worker_runner.py` | Worker 本地执行器；接收 JSON-safe request，调用 adapter，返回 JSON-safe response，并可写 source_health。 |
+| Intel adapter registry | `packages/clawbot/src/intel/sources/registry.py` | 默认 adapter 注册表；当前只注册已有 Phase B 真实证据的 `senate_trading`。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|----------|----------|----------|
+| `test_intel_worker_runner.py` | `src/intel/worker_runner.py` | 成功执行、adapter 异常、未知 source、JSON round-trip、source_health 写入 |
+| `test_intel_source_adapter_base.py` | `src/intel/sources/registry.py` | 默认 registry 只注册已验证 Senate adapter |
+
+### Intel Brief Worker CLI 注册（2026-07-06）
+
+| 脚本 | 路径 | 说明 |
+|------|------|------|
+| Intel worker CLI | `packages/clawbot/scripts/intel_worker_cli.py` | 目标 worker 执行入口；stdin/文件读取 request JSON，调用默认 adapter registry，stdout 输出 response JSON，可选写 source_health DB。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|----------|----------|----------|
+| `test_intel_worker_cli.py` | `scripts/intel_worker_cli.py` | stdin/file 输入、DB 写入、未知源非零返回、坏 JSON parse error |
+
+### Intel Brief Worker Bundle 注册（2026-07-06）
+
+| 脚本 | 路径 | 说明 |
+|------|------|------|
+| Intel worker bundle builder | `packages/clawbot/scripts/intel_worker_bundle.py` | 构建最小 worker CLI bundle；只包含 Intel runtime/schema，不包含密钥、服务文件或生产配置；manifest 记录 cleanup 回滚命令。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|----------|----------|----------|
+| `test_intel_worker_bundle.py` | `scripts/intel_worker_bundle.py` | Bundle 文件清单、manifest、独立目录 CLI smoke |
+
+### Intel Brief AKShare Adapter 注册（2026-07-06/UTC 2026-07-07）
+
+| 模块 | 路径 | 说明 |
+|------|------|------|
+| AKShare 龙虎榜 adapter | `packages/clawbot/src/intel/sources/astock_flow.py` | 调用 `akshare.stock_lhb_detail_em()` 并归一化为 IntelSourceResult；目标 domestic worker 需提供 akshare 运行环境。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|----------|----------|----------|
+| `test_intel_astock_flow.py` | `src/intel/sources/astock_flow.py` | 中文/英文列名归一化、adapter 返回 domestic result |
+| `test_intel_python310_compat.py` | `src/intel/*`, `scripts/intel_worker_*.py` | 防止 worker bundle runtime 使用 Python 3.11+ `datetime.UTC` |
+
+### Intel Brief Remote Runner 注册（2026-07-07）
+
+| 脚本 | 路径 | 说明 |
+|------|------|------|
+| Intel remote worker runner | `packages/clawbot/scripts/intel_worker_remote_run.py` | 构建最小 bundle，通过 SSH 临时 staging 到目标 worker，执行 one-shot worker CLI，查询 source_health，cleanup 并写 evidence。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|----------|----------|----------|
+| `test_intel_worker_remote_runner.py` | `scripts/intel_worker_remote_run.py` | 命令编排、成功/失败 evidence、cleanup 语义、直接脚本 help |
+
+### Intel Brief Collect-once 注册（2026-07-07）
+
+| 脚本 | 路径 | 说明 |
+|------|------|------|
+| Intel collect once | `packages/clawbot/scripts/intel_collect_once.py` | Controller 一次性多源采集编排；按 source 调用 remote runner，聚合 child evidence；不注册 scheduler。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|----------|----------|----------|
+| `test_intel_collect_once.py` | `scripts/intel_collect_once.py` | 默认 worker profiles、聚合成功、未知源失败不远程执行 |
+
+### Intel Brief Dry-run Brief Builder 注册（2026-07-07）
+
+| 模块/脚本 | 路径 | 说明 |
+|---|---|---|
+| Intel brief builder | `packages/clawbot/src/intel/brief_builder.py` | 从 collect-once evidence 生成规范化、去重、内容过滤后的 dry-run Markdown/JSON；不访问外部源、不调用 LLM、不推送 Telegram。 |
+| Intel brief dry-run CLI | `packages/clawbot/scripts/intel_brief_dry_run.py` | Controller 本地 dry-run 入口；参数为 collect evidence、Markdown 输出、JSON 输出和 stamp。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|---|---|---|
+| `test_intel_brief_dry_run.py` | `src/intel/brief_builder.py`, `scripts/intel_brief_dry_run.py` | 数据源展示归一化、stable-key 去重、内容过滤防泄漏、Markdown/JSON evidence、CLI 输出 |
+
+### Intel Brief LLM Summary 注册（2026-07-07）
+
+| 模块/脚本/配置 | 路径 | 说明 |
+|---|---|---|
+| Intel Brief LLM profile | `packages/clawbot/config/llm_routing.json` | `routing_profiles.intel_brief`；生产 family 偏好链与 dry-run family 分离。 |
+| Intel local dry-run family | `packages/clawbot/config/llm_routing.json` | `intel_local` → Ollama `qwen2.5:1.5b`；`fallback_chains.intel_local=[]`，避免本地取证误触发外部 provider。 |
+| Routing profile helper | `packages/clawbot/src/llm_routing_config.py` | `get_routing_profile()` 读取业务专属 LLM profile。 |
+| Intel LLM summary builder | `packages/clawbot/src/intel/llm_summary.py` | 从 dry-run evidence 构造 prompt，调用 LiteLLM routing，写出 LLM summary evidence；失败时保留 fallback evidence。 |
+| Intel LLM summary CLI | `packages/clawbot/scripts/intel_llm_summary_dry_run.py` | 支持 `--dry-run-json`、`--family`、`--max-tokens`，用于受控摘要 dry-run。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|---|---|---|
+| `test_intel_llm_summary.py` | `src/intel/llm_summary.py`, `src/llm_routing_config.py`, `scripts/intel_llm_summary_dry_run.py` | profile、family选择、prompt、LLM调用注入、fallback、CLI与输出 evidence |
+
+## CC中转闲鱼自动发货补充登记
+
+- `XianyuLive._decode_sync_message_payload(raw)`：兼容闲鱼 WebSocket 加密 payload 与明文 JSON 系统卡片。
+- `XianyuLive._extract_order_buyer_id(message)`：从结构化订单消息或聊天系统卡片 meta 中提取买家 ID；缺失时阻止自动发货。
+- `XianyuLive._looks_like_xianyu_paid_system_title(value)`：仅识别“我已付款，等待你发货/待发货/提醒发货”这类闲鱼系统卡片标题，普通聊天内容不触发。
+- `GET /api/cc-browser-delivery/next`：Chrome 发货助手读取已分配待发送话术；返回值属于本机受 token 保护接口，禁止对外公开。
+- `POST /api/cc-shipments/{shipment_id}/mark-sent`：浏览器助手或老板确认话术已发后标记本机履约记录为 `message_sent`。
+- `POST /api/cc-shipments/{shipment_id}/browser-send`：保留给能提供真实 buyer_id/chat_id 的浏览器兜底发送；不得用昵称猜测 buyer_id。
+
+### Intel Brief Delivery Sandbox 注册（2026-07-07）
+
+| 模块/脚本 | 路径 | 说明 |
+|---|---|---|
+| Intel delivery sandbox | `packages/clawbot/src/intel/delivery.py` | Sandbox subscriber/plan/subscription/source_preferences、fake Telegram sender、delivery_log 写入与 delivery evidence。 |
+| Intel delivery sandbox CLI | `packages/clawbot/scripts/intel_delivery_sandbox.py` | 从 LLM summary evidence 运行 fake Telegram 投递沙盒；输出 DB/outbox/evidence。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|---|---|---|
+| `test_intel_delivery_sandbox.py` | `src/intel/delivery.py`, `scripts/intel_delivery_sandbox.py` | sandbox 订阅者、消息渲染、fake sender JSONL、delivery_log、evidence rollback、CLI |
+
+### Intel Brief Scheduled Sandbox 注册（2026-07-07）
+
+| 模块/脚本 | 路径 | 说明 |
+|---|---|---|
+| Intel scheduled pipeline | `packages/clawbot/src/intel/scheduled_pipeline.py` | Controller 本地 scheduled rehearsal；判断计划时间并串联 brief dry-run、LLM summary dry-run、delivery sandbox。 |
+| Intel scheduled sandbox CLI | `packages/clawbot/scripts/intel_scheduled_sandbox.py` | 从既有 collect evidence 运行 scheduled sandbox；输出统一 scheduled evidence；不注册 cron/systemd。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|---|---|---|
+| `test_intel_scheduled_pipeline.py` | `src/intel/scheduled_pipeline.py`, `scripts/intel_scheduled_sandbox.py` | 到点判断、同日去重、skip evidence、artifact 串联、fallback-only LLM、fake Telegram network_calls=0、CLI |
+
+### Intel Brief Scheduler Gate 注册（2026-07-07）
+
+| 模块/脚本/配置 | 路径 | 说明 |
+|---|---|---|
+| Intel scheduler gate | `packages/clawbot/src/execution/intel_brief.py` | `build_intel_brief_scheduler_gate()`；读取 Intel Brief 调度环境变量并输出脱敏 gate decision。 |
+| ExecutionScheduler Intel hook | `packages/clawbot/src/execution/scheduler.py` | `_run_intel_brief()`；默认 sandbox-only，生产硬闸门未满足时不执行。 |
+| Intel scheduler gate probe CLI | `packages/clawbot/scripts/intel_scheduler_gate_probe.py` | 只读输出 gate evidence；不注册 scheduler、不调用 Telegram、不抓外部源。 |
+| Intel Brief env example | `packages/clawbot/config/.env.example` | `INTEL_BRIEF_ENABLED` / `INTEL_BRIEF_TIME` / `INTEL_BRIEF_MODE` 等独立调度变量；默认关闭。 |
+| Control panel task row | `packages/clawbot/src/api/routers/controls.py` | 静态任务表新增 `intel_brief`，默认 disabled，仅展示。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|---|---|---|
+| `test_intel_scheduler_gate.py` | `src/execution/intel_brief.py`, `src/execution/scheduler.py`, `scripts/intel_scheduler_gate_probe.py` | 默认关闭、生产硬闸门、sandbox ready、同日去重、CLI 脱敏、async scheduler 默认 runner |
+
+### Intel Brief Telegram Sandbox Sender 注册（2026-07-07）
+
+| 模块/脚本/配置 | 路径 | 说明 |
+|---|---|---|
+| Telegram delivery contract | `packages/clawbot/src/intel/telegram_delivery.py` | Telegram sandbox gate、Bot API sender 合同、注入 transport、evidence probe。 |
+| Telegram sandbox probe CLI | `packages/clawbot/scripts/intel_telegram_sandbox_probe.py` | 默认 gate-only；真实网络需要 `--allow-real-network` 和完整 gate。 |
+| Telegram sandbox env ack | `packages/clawbot/config/.env.example` | `INTEL_BRIEF_TELEGRAM_SANDBOX_SEND_ACK`；默认空，防误发。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|---|---|---|
+| `test_intel_telegram_delivery.py` | `src/intel/telegram_delivery.py`, `scripts/intel_telegram_sandbox_probe.py` | token/chat 脱敏、缺凭证阻断、注入 transport 合同、probe evidence、CLI blocked evidence |
+
+### Intel Brief Telegram Summary Probe 注册（2026-07-07）
+
+| 模块/脚本 | 路径 | 说明 |
+|---|---|---|
+| Telegram summary delivery probe | `packages/clawbot/src/intel/telegram_delivery.py` | `build_telegram_summary_delivery_probe()`；从真实 summary evidence 渲染 Telegram message 并走 sandbox gate/transport。 |
+| Telegram summary probe CLI | `packages/clawbot/scripts/intel_telegram_summary_probe.py` | 输入 summary evidence，输出 Telegram delivery probe evidence；默认不真实联网。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|---|---|---|
+| `test_intel_telegram_delivery.py` | `src/intel/telegram_delivery.py`, `scripts/intel_telegram_summary_probe.py` | summary evidence 渲染、gate blocked、注入 transport、CLI evidence |
+
+
+### Intel Brief Production Readiness 注册（2026-07-07）
+
+| 模块/脚本 | 路径 | 说明 |
+|---|---|---|
+| Intel production readiness | `packages/clawbot/src/intel/production_readiness.py` | 只读聚合 production readiness：collect evidence、summary evidence、Telegram sandbox gate、scheduler production gate、worker placement。 |
+| Intel production readiness CLI | `packages/clawbot/scripts/intel_production_readiness_audit.py` | 写 readiness evidence；blocked 退出码为 2；不联网、不部署、不写生产 DB。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|---|---|---|
+| `test_intel_production_readiness.py` | `src/intel/production_readiness.py`, `scripts/intel_production_readiness_audit.py` | 缺门槛阻断、密钥脱敏、production runner 未实现阻断、缺 evidence、CLI 相对路径解析 |
+
+### Intel Brief Telegram Local Bootstrap 注册（2026-07-07）
+
+| 模块/脚本 | 路径 | 说明 |
+|---|---|---|
+| Telegram local bootstrap | `packages/clawbot/src/intel/telegram_bootstrap.py` | 本机 Telegram 沙盒自举：getMe、getUpdates、chat id 自动发现、summary sandbox send；证据脱敏。 |
+| Telegram local bootstrap CLI | `packages/clawbot/scripts/intel_telegram_local_bootstrap.py` | 支持 `--prompt-token` 隐藏输入、`--open-telegram`、`--wait-seconds`；真实网络必须显式 `--allow-real-network` 和 sandbox ack。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|---|---|---|
+| `test_intel_telegram_bootstrap.py` | `src/intel/telegram_bootstrap.py`, `scripts/intel_telegram_local_bootstrap.py` | chat candidate 选择、缺 ack 阻断、注入 transport 成功发送、轮询 `/start`、CLI blocked evidence |
+
+
+### Intel Brief Production Runner Contract 注册（2026-07-07）
+
+| 模块/脚本 | 路径 | 说明 |
+|---|---|---|
+| Intel production scheduler gate | `packages/clawbot/src/execution/intel_brief.py` | Production mode 校验 token/chat id、sandbox ack、worker placement、production ack、summary evidence；全部齐备才 `production_ready`。 |
+| ExecutionScheduler production branch | `packages/clawbot/src/execution/scheduler.py` | Gate ready 后调用注入 `intel_brief_production_runner` 或默认 Telegram summary delivery probe；不会绕过 gate。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|---|---|---|
+| `test_intel_scheduler_gate.py` | `src/execution/intel_brief.py`, `src/execution/scheduler.py` | production gate ready/blocked、缺 summary、缺 ack、注入 production runner |
+| `test_intel_production_readiness.py` | `src/intel/production_readiness.py` | readiness all-gates-ready 与真实缺口聚合 |
+
+
+### Intel Brief SGW Preferred Worker 注册（2026-07-07）
+
+| 模块/脚本 | 路径 | 说明 |
+|---|---|---|
+| Intel remote runner | `packages/clawbot/scripts/intel_worker_remote_run.py` | 无 pip 依赖时使用系统 Python 执行临时 worker bundle；有 pip 依赖时才建 venv。 |
+| Intel collect once | `packages/clawbot/scripts/intel_collect_once.py` | `senate_trading` 默认路由到 `oracle-sg-west` / `oracle-sg-west-preferred-overseas`；`akshare` 仍路由 Yanhuoyun。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|---|---|---|
+| `test_intel_worker_remote_runner.py` | `scripts/intel_worker_remote_run.py` | system-python no-pip path、失败仍 cleanup、help CLI |
+| `test_intel_collect_once.py` | `scripts/intel_collect_once.py` | SGW preferred profile、collect aggregation、unknown source failure |
+
+
+### Intel Brief Private Env / Launch Package 注册（2026-07-07）
+
+| 模块/脚本 | 路径 | 说明 |
+|---|---|---|
+| Private env helpers | `packages/clawbot/src/intel/private_env.py` | 写入/读取/审计 `.openclaw/intel-brief.production.env`，证据脱敏，权限 0600。 |
+| Private env CLI | `packages/clawbot/scripts/intel_private_env.py` | 写入或 audit 私有 env；不写 production ack。 |
+| Launch package | `packages/clawbot/src/intel/launch_package.py` | 生成 launchd review package，不安装。 |
+| Launch package CLI | `packages/clawbot/scripts/intel_launch_package.py` | 写 launchd dry-run package evidence，`production_action=none`。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|---|---|---|
+| `test_intel_private_env.py` | private env helpers/CLI | 权限 0600、脱敏、audit、gitignore 覆盖 |
+| `test_intel_launch_package.py` | launch package helpers/CLI | dry-run plist/rollback/evidence |
+| `test_intel_scheduler_gate.py` | scheduler gate | `INTEL_BRIEF_PRIVATE_ENV` 合并与脱敏 |
+
+
+### Intel Brief Production-once 注册（2026-07-07）
+
+| 模块/脚本 | 路径 | 说明 |
+|---|---|---|
+| Production-once runner | `packages/clawbot/src/intel/production_once.py` | 一次性 production delivery 入口；先评估 gate，ready 后才调用 Telegram summary delivery。 |
+| Production-once CLI | `packages/clawbot/scripts/intel_production_once.py` | future scheduler target；当前缺门禁时 blocked 且 `network_calls=0`。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|---|---|---|
+| `test_intel_production_once.py` | production-once runner/CLI | 缺 gate 不联网、注入 runner 成功、CLI blocked evidence |
+
+### Intel Brief Production-once Private Env 修复注册（2026-07-07）
+
+| 模块/脚本 | 路径 | 说明 |
+|---|---|---|
+| Production-once runner | `packages/clawbot/src/intel/production_once.py` | 调用 delivery runner 前合并 `INTEL_BRIEF_PRIVATE_ENV`，保证 gate 与真实 Telegram sender 使用同一脱敏运行环境。 |
+| Production-once CLI | `packages/clawbot/scripts/intel_production_once.py` | 已完成一次真实 Telegram production-once 投递；仍不安装 scheduler。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|---|---|---|
+| `test_intel_production_once.py` | `src/intel/production_once.py` | 缺 gate 不联网、注入 runner 成功、CLI blocked、private env 传递给 delivery runner |
+
+真实投递 evidence：`packages/clawbot/data/intel_evidence/phaser/20260707T032645Z-production-once-real-delivery.json`。该 evidence 只记录 endpoint 脱敏、chat_id_present、message_id presence、network_calls，不记录 token/chat id。
+
+### Intel Brief Production Cycle 注册（2026-07-07）
+
+| 模块/脚本 | 路径 | 说明 |
+|---|---|---|
+| Production cycle runner | `packages/clawbot/src/intel/production_cycle.py` | Fresh one-shot production path：preflight → collect-once → brief → summary → production-once Telegram delivery。 |
+| Production cycle CLI | `packages/clawbot/scripts/intel_production_cycle.py` | 未来 scheduler target；当前已完成一次真实 one-shot run。 |
+| Launch package | `packages/clawbot/src/intel/launch_package.py` | dry-run plist 指向 `intel_production_cycle.py`，不再重放固定 summary evidence。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|---|---|---|
+| `test_intel_production_cycle.py` | production cycle runner/CLI | 无 ack 不采集不联网、fresh cycle 编排、CLI blocked evidence |
+| `test_intel_launch_package.py` | launch package | plist 指向 production cycle；CLI 不再要求 fixed summary |
+
+真实 fresh cycle evidence：`packages/clawbot/data/intel_evidence/phases/20260707T034621Z-production-cycle-real-delivery.json`。
+
+### Intel Brief LaunchAgent 注册（2026-07-07）
+
+| 项目 | 路径/Label | 说明 |
+|---|---|---|
+| LaunchAgent label | `ai.openclaw.intel-brief.scheduler` | macOS 用户 LaunchAgent，日历触发 08:30。 |
+| Installed plist | `~/Library/LaunchAgents/ai.openclaw.intel-brief.scheduler.plist` | 已加载；目标脚本为 `packages/clawbot/scripts/intel_production_cycle.py`。 |
+| Evidence dir | `packages/clawbot/data/intel_evidence/phaset/20260707T040135Z-launchd-production-cycle-install-package-absolute/runs` | launchd 自动运行输出位置。 |
+| Logs | `.../logs/stdout.log` / `stderr.log` | launchd stdout/stderr。 |
+| Rollback | `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/ai.openclaw.intel-brief.scheduler.plist && rm -f ...` | 已记录在 install/load evidence。 |
+
+安装证据：`packages/clawbot/data/intel_evidence/phaset/20260707T040135Z-launchd-production-cycle-reinstall-load-absolute.json`。
+
+### Intel Brief LaunchAgent Post-run Audit 注册（2026-07-07）
+
+| 模块/脚本 | 路径 | 说明 |
+|---|---|---|
+| LaunchAgent audit | `packages/clawbot/src/intel/launchagent_audit.py` | 只读审计 launchctl 状态、run evidence、stdout/stderr，判断自然触发是否完成；当 macOS `launchctl runs` 计数滞后但 artifact/stdout 均成功时，记录 `counter_mismatch=true` 并以 artifact/stdout 作为验证依据。 |
+| LaunchAgent audit CLI | `packages/clawbot/scripts/intel_launchagent_audit.py` | 输出 Phase U evidence；`verified_success` 退出 0，否则退出 2。 |
+| LaunchAgent next-run readiness | `packages/clawbot/src/intel/launchagent_readiness.py` | 只读解析 installed plist 与 controlled six-source evidence，证明下一次自然触发是否会使用当前六源默认链路。 |
+| LaunchAgent readiness CLI | `packages/clawbot/scripts/intel_launchagent_next_run_readiness.py` | 输出 Phase BD readiness evidence；`ready` 退出 0，否则退出 2。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|---|---|---|
+| `test_intel_launchagent_audit.py` | launchagent audit | 未触发 pending、成功触发 verified、launchctl counter stale fallback、CLI evidence |
+| `test_intel_launchagent_readiness.py` | launchagent readiness | 默认六源 ready、显式旧 source mismatch、CLI evidence |
+
+当前 verified evidence：`packages/clawbot/data/intel_evidence/phaset/20260707T211424Z-launchagent-natural-0830-verified-with-artifact/evidence.json`；`verification.basis=artifact_and_standard_output`，`launchctl.counter_mismatch=true`。
+Next-run six-source readiness evidence：`packages/clawbot/data/intel_evidence/phasebd/20260707T213012Z-launchagent-next-run-six-source-readiness/evidence.json`；`status=ready`，`missing=[]`。
+
+### Intel Brief SGW Fallback / Remote Runner Resilience 注册（2026-07-07）
+
+| 模块/脚本 | 路径 | 说明 |
+|---|---|---|
+| Collect once | `packages/clawbot/scripts/intel_collect_once.py` | `senate_trading` 默认优先 SGW，失败后 fallback 到 `oracle-arm1-overseas-fallback`；evidence 记录 `attempts[]` / `fallback`。 |
+| Remote worker runner | `packages/clawbot/scripts/intel_worker_remote_run.py` | 初始 SSH staging/mkdir 失败时 fail-fast，避免重复 SSH timeout；仍只做 `/tmp` 临时 staging。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|---|---|---|
+| `test_intel_collect_once.py` | collect once | SGW failed → oracle-arm1 fallback success；summary success；fallback evidence 字段 |
+| `test_intel_worker_remote_runner.py` | remote runner | staging SSH failure fail-fast，不继续 worker/health/cleanup/verify |
+
+真实证据：
+
+- Fallback 路径：`packages/clawbot/data/intel_evidence/phasew/20260707T124408Z-forced-senate-fallback/collect-once.json`
+- Production cycle：`packages/clawbot/data/intel_evidence/phasew/20260707T124152Z-production-cycle-with-sgw-fallback/latest-production-cycle.json`
+- LaunchAgent canary：`packages/clawbot/data/intel_evidence/phasew/20260707T125003Z-launchd-calendar-canary-verified/post-run-audit.json`
+- Canary rollback：`packages/clawbot/data/intel_evidence/phasew/20260707T125003Z-launchd-calendar-canary-verified/rollback-evidence.json`
+
+### Intel Brief Commercial MVP Subscription 注册（2026-07-07）
+
+| 模块/脚本 | 路径 | 说明 |
+|---|---|---|
+| Subscription service | `packages/clawbot/src/intel/subscriptions.py` | 商业 MVP 订阅与偏好服务：plan/subscriber/subscription/preferences/delivery cadence/menu contract。 |
+| DB schema | `packages/clawbot/src/intel/db/intel_brief_schema.sql` | 新增 `delivery_preferences` 与 `subscription_audit_log`。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|---|---|---|
+| `test_intel_commercial_mvp.py` | `src/intel/subscriptions.py` / schema | 订阅授权、到期排除、分类偏好、推送偏好、Telegram menu contract |
+
+真实证据：`packages/clawbot/data/intel_evidence/phasey/20260707T152655Z-commercial-mvp-subscription-contract/evidence.json`。
+
+### Intel Brief Telegram Menu Handler Contract 注册（2026-07-07）
+
+| 模块/脚本 | 路径 | 说明 |
+|---|---|---|
+| Telegram menu contract handler | `packages/clawbot/src/intel/telegram_menu.py` | 不联网处理 Intel Brief Telegram 命令合同：start/status/sources/schedule/custom/help。 |
+| Telegram menu sandbox | `packages/clawbot/scripts/intel_telegram_menu_sandbox.py` | 用 sandbox SQLite 演练用户菜单、订阅授权、偏好、开放人物追踪 audit。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|---|---|---|
+| `test_intel_telegram_menu_handlers.py` | `src/intel/telegram_menu.py` / sandbox script | subscriber 创建、active subscription 状态、分类偏好、推送计划、人物追踪审计、evidence 生成 |
+
+真实证据：`packages/clawbot/data/intel_evidence/phasez/20260707T155448Z-telegram-menu-handler-contract/evidence.json`。该证据 `network_calls=0`，不包含真实 Telegram token/chat id。
+
+### Intel Brief Telegram Runtime Adapter 注册（2026-07-07）
+
+| 模块/脚本 | 路径 | 说明 |
+|---|---|---|
+| Telegram runtime adapter | `packages/clawbot/src/intel/telegram_runtime.py` | 解析 Telegram update，调用 Intel Brief menu handler，并通过注入式 sender 回复。 |
+| Runtime sandbox | `packages/clawbot/scripts/intel_telegram_runtime_sandbox.py` | fake sender + sandbox SQLite 演练完整用户配置流。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|---|---|---|
+| `test_intel_telegram_runtime.py` | `src/intel/telegram_runtime.py` / runtime sandbox | update 解析、reply sender 注入、chat id 脱敏、active 用户配置、evidence 生成 |
+
+真实证据：`packages/clawbot/data/intel_evidence/phaseaa/20260707T160334Z-telegram-runtime-adapter-sandbox/evidence.json`。该证据 `network_calls=0`，不包含真实 Telegram token/chat id。
+
+### Intel Brief Telegram Bot API Runtime Probe 注册（2026-07-07）
+
+| 模块/脚本 | 路径 | 说明 |
+|---|---|---|
+| Bot API runtime probe | `packages/clawbot/src/intel/telegram_bot_runtime.py` | Bot API gate、`setMyCommands`、`getUpdates` 与脱敏 evidence。 |
+| Bot API runtime CLI | `packages/clawbot/scripts/intel_telegram_bot_runtime_probe.py` | 从私有 env 执行受控真实 Bot API probe；不发送消息。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|---|---|---|
+| `test_intel_telegram_bot_runtime.py` | `src/intel/telegram_bot_runtime.py` / CLI | gate blocked、命令 payload、getUpdates 脱敏、evidence 生成、CLI blocked |
+
+真实证据：
+
+- 注入式合同：`packages/clawbot/data/intel_evidence/phaseab/20260707T161200Z-telegram-bot-runtime-injected-contract/evidence.json`
+- 真实 Bot API：`packages/clawbot/data/intel_evidence/phaseab/20260707T161129Z-telegram-bot-runtime-real-probe.json`
+
+### Intel Brief Telegram Update Processor 注册（2026-07-07）
+
+| 模块/脚本 | 路径 | 说明 |
+|---|---|---|
+| Telegram update processor | `packages/clawbot/src/intel/telegram_update_processor.py` | 持久化 update offset，过滤重复 update，调用 runtime adapter，成功后推进 offset。 |
+| Update processor sandbox | `packages/clawbot/scripts/intel_telegram_update_processor_sandbox.py` | fake client/sender + sandbox DB 演练 offset 防重复与用户配置流。 |
+| Runtime state schema | `packages/clawbot/src/intel/db/intel_brief_schema.sql` | 新增 `telegram_runtime_state(bot_profile,last_update_id,updated_at)`。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|---|---|---|
+| `test_intel_telegram_update_processor.py` | schema / `src/intel/telegram_update_processor.py` / sandbox | offset 持久化、重复跳过、用户配置、evidence 生成 |
+
+真实证据：`packages/clawbot/data/intel_evidence/phaseac/20260707T161820Z-telegram-update-processor-offset-sandbox/evidence.json`。
+
+### Intel Brief Telegram Baseline Offset 注册（2026-07-07）
+
+| 模块/脚本 | 路径 | 说明 |
+|---|---|---|
+| Telegram baseline offset | `packages/clawbot/src/intel/telegram_baseline_offset.py` | 自动回复前读取最新 update_id 并设置 baseline offset，不回复历史命令。 |
+| Baseline offset CLI | `packages/clawbot/scripts/intel_telegram_baseline_offset.py` | 使用私有 env 真实执行 baseline getUpdates；只写 offset。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|---|---|---|
+| `test_intel_telegram_baseline_offset.py` | baseline helper / CLI | offset 推进、不降低已有 offset、evidence 脱敏、blocked gate |
+
+真实证据：
+
+- sandbox：`packages/clawbot/data/intel_evidence/phasead/20260707T162500Z-telegram-baseline-offset-sandbox/evidence.json`
+- real：`packages/clawbot/data/intel_evidence/phasead/20260707T162505Z-telegram-baseline-offset-real.json`
+
+### Intel Brief Telegram Real Update Runner 注册（2026-07-07）
+
+| 模块/脚本 | 路径 | 说明 |
+|---|---|---|
+| Real update runner | `packages/clawbot/src/intel/telegram_real_update_runner.py` | 真实 Bot API getUpdates + sendMessage sender 接入 offset-safe processor，带显式 send gate。 |
+| Real update runner CLI | `packages/clawbot/scripts/intel_telegram_real_update_runner.py` | 一次性运行真实 update 处理；默认 blocked，需显式允许网络和发送。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|---|---|---|
+| `test_intel_telegram_real_update_runner.py` | real runner / CLI | gate、注入式 send、无新 update 不发送、evidence blocked、CLI blocked |
+
+真实证据：`packages/clawbot/data/intel_evidence/phaseae/20260707T163143Z-telegram-real-update-runner-one-shot.json`。
+
+
+### Intel Brief Subscription-filtered Delivery 注册（2026-07-07）
+
+| 模块/脚本 | 路径 | 说明 |
+|---|---|---|
+| Subscription delivery helper | `packages/clawbot/src/intel/subscription_delivery.py` | 从 summary evidence 提取来源分类，筛选 active/non-expired/matching source preference Telegram 订阅者，调用注入式 sender，并写 `delivery_log`。 |
+| Subscription delivery sandbox CLI | `packages/clawbot/scripts/intel_subscription_delivery_sandbox.py` | 使用 sandbox SQLite 与 fake sender 生成脱敏 evidence；不联网。 |
+
+| 测试文件 | 被测模块 | 覆盖类型 |
+|---|---|---|
+| `packages/clawbot/tests/test_intel_subscription_filtered_delivery.py` | `src/intel/subscription_delivery.py` | 订阅到期/偏好过滤、delivery_log、evidence 脱敏、sandbox builder。 |
+
+证据：`packages/clawbot/data/intel_evidence/phaseaf/20260707T164449Z-subscription-filtered-delivery-sandbox/evidence.json`；最终验证：`packages/clawbot/data/intel_evidence/phaseaf/20260707T165346Z-subscription-filtered-delivery-final-verification.json`。
+
+边界：该注册项目前未成为正式 production cycle 的 recipient selector；真实 Telegram delivery 仍走既有生产路径，直到后续显式接线并验证。
+
+
+### Intel Brief Production-once Subscription Switch 注册（2026-07-07）
+
+| 模块/开关 | 路径/变量 | 说明 |
+|---|---|---|
+| Production delivery switch | `packages/clawbot/src/intel/production_once.py` | `INTEL_BRIEF_SUBSCRIPTION_DELIVERY_ENABLED=true` 时从 fixed-chat 改走 subscription-filtered delivery。默认关闭。 |
+| Intel Brief DB path gate | `INTEL_BRIEF_DB_PATH` | subscription delivery 开启时必填；缺失则 blocked 且不调用 Telegram。 |
+| Tests | `packages/clawbot/tests/test_intel_production_once.py` | 覆盖默认 fixed-chat、订阅接线、缺 DB 阻断。 |
+
+证据：`packages/clawbot/data/intel_evidence/phaseag/20260707T165951Z-production-once-subscription-delivery-switch-sandbox/evidence.json`；最终验证：`packages/clawbot/data/intel_evidence/phaseag/20260707T170034Z-production-once-subscription-switch-final-verification.json`。
+
+运维边界：正式 LaunchAgent 环境尚未加入该开关；当前 daily production loop 仍按 fixed-chat 路径运行，直到后续显式切换并产出真实证据。
+
+
+### Intel Brief Telegram Inline Keyboard 菜单注册（2026-07-07）
+
+| 模块/能力 | 路径 | 说明 |
+|---|---|---|
+| Inline menu contract | `packages/clawbot/src/intel/subscriptions.py` | `build_telegram_menu_contract()` 输出 `reply_markup.inline_keyboard`，5 行 22 个按钮，`menu_style=inline_keyboard_card`。 |
+| Callback handling | `packages/clawbot/src/intel/telegram_runtime.py` | 支持 `callback_query`，将按钮文本映射到现有 sources/status/custom/schedule handler。 |
+| Bot API polling | `packages/clawbot/src/intel/telegram_bot_runtime.py` | `allowed_updates` 包含 `message` 与 `callback_query`。 |
+| Callback ACK | `packages/clawbot/src/intel/telegram_delivery.py` | `TelegramBotApiSender.answer_callback_query()`，防止 inline 按钮点击后客户端 loading。 |
+
+测试覆盖：`packages/clawbot/tests/test_intel_telegram_menu_handlers.py`、`test_intel_telegram_runtime.py`、`test_intel_telegram_delivery.py`、`test_intel_telegram_bot_runtime.py`、`test_intel_telegram_real_update_runner.py`。
+
+证据：`packages/clawbot/data/intel_evidence/phaseai/20260707T172324Z-real-telegram-inline-keyboard-menu-send/evidence.json`；最终验证：`packages/clawbot/data/intel_evidence/phaseai/20260707T172410Z-inline-keyboard-menu-final-verification.json`。
+
+### Intel Brief Telegram reference-style menu contract（2026-07-07）
+
+| Registry item | Location | Current baseline |
+|---|---|---|
+| Reference-style inline menu | `packages/clawbot/src/intel/subscriptions.py` | `/start` 菜单正文为短标题/短说明；按钮在 `reply_markup.inline_keyboard` 中渲染。 |
+| Button grid | `TELEGRAM_INLINE_MENU_KEYBOARD` | 7 行、25 个按钮、最大 4 列；第 6 行为 `设置/自定义/定时`，最后一行为 `🔍 情报搜索/👥 功能导航` 两个宽入口；不得回退为正文 ASCII 菜单。 |
+| Evidence | `packages/clawbot/data/intel_evidence/phaseba/20260707T210719Z-screenshot-style-menu-v3-real-send/evidence.json` | 真实 Telegram `sendMessage` 成功，脱敏 evidence 记录新版 7 行 25 按钮截图式菜单；未写 token/chat id 明文。 |
+
+### Intel Brief real subscription-filtered delivery baseline（2026-07-07）
+
+| Registry item | Location | Current baseline |
+|---|---|---|
+| Production subscriber DB | `packages/clawbot/data/intel_brief.db` | 1 个 Telegram subscriber，active 内部测试订阅，偏好 `akshare/senate_trading`，推送 daily 08:30 America/Denver。 |
+| Delivery log | `delivery_log` table | 已有 1 条真实 Telegram delivery success 记录；不记录 raw chat id。 |
+| Real delivery evidence | `packages/clawbot/data/intel_evidence/phaseaj/20260707T174622Z-real-subscription-filtered-delivery/evidence.json` | `eligible=1/sent=1/failed=0`；`delivery_log_delta=1`；source categories `akshare/senate_trading`。 |
+| Redaction contract | `packages/clawbot/src/intel/subscription_delivery.py` | Returned delivery evidence records `user_id_present` / `channel_user_id_present` only; raw Telegram user id and chat id are in-memory only. |
+| User-facing delivery copy | `packages/clawbot/src/intel/delivery.py` | 默认 production 文案为 `🧭 情报简报` + 公开来源/非投资建议提示；sandbox fake 文案只在显式 `delivery_context="sandbox"` 时使用。 |
+| Commercial E2E audit | `packages/clawbot/src/intel/e2e_status_audit.py` / `packages/clawbot/scripts/intel_e2e_status_audit.py` | 只读汇总真实 subscriber、订阅/偏好、最新 delivery_log、next-run readiness 和最近 production delivery evidence；不写 raw chat id/user id/token/message。 |
+| E2E evidence | `packages/clawbot/data/intel_evidence/phasebe/20260707T213933Z-commercial-mvp-e2e-status-audit/evidence.json` | `status=verified`；active eligible subscriber=1；latest delivery success；无 sandbox/fake 文案；按偏好过滤；next-run readiness=ready。 |
+
+### Intel Brief daily subscription delivery runtime switch（2026-07-07）
+
+| Registry item | Location | Current baseline |
+|---|---|---|
+| Daily delivery mode | `.openclaw/intel-brief.production.env` | `INTEL_BRIEF_SUBSCRIPTION_DELIVERY_ENABLED=true`（私有 env，不提交、不打印明文）。 |
+| Production DB path | `.openclaw/intel-brief.production.env` | `INTEL_BRIEF_DB_PATH` 指向正式 `packages/clawbot/data/intel_brief.db`，存在性已验证。 |
+| LaunchAgent | `~/Library/LaunchAgents/ai.openclaw.intel-brief.scheduler.plist` | plist 未重装；通过 `INTEL_BRIEF_PRIVATE_ENV` 读取私有 env。 |
+| Gate hardening | `packages/clawbot/src/intel/production_once.py` | subscription mode requires token present + DB path present + DB file exists before any send. |
+| Controlled evidence | `packages/clawbot/data/intel_evidence/phaseal/20260707T175654Z-daily-subscription-mode-production-once/evidence.json` | `delivery_mode=subscription_filtered`，真实 Telegram delivery success，`delivery_log_delta=1`。 |
+
+### Intel Brief controlled production_cycle subscription-mode baseline（2026-07-07）
+
+| Registry item | Location | Current baseline |
+|---|---|---|
+| Production cycle script path | `packages/clawbot/scripts/intel_production_cycle.py` | 已在 private env subscription mode 下受控跑通。 |
+| Full-chain evidence | `packages/clawbot/data/intel_evidence/phaseam/20260707T180242Z-controlled-production-cycle-subscription-mode/latest-production-cycle.json` | status=success，collect success=2/failed=0，network_calls=1。 |
+| Delivery mode evidence | `.../runs/20260707T180242Z-production-once-delivery.json` | `delivery_mode=subscription_filtered`，subscription gate ready，`eligible=1/sent=1/failed=0`。 |
+| Delivery log baseline | `packages/clawbot/data/intel_brief.db` / `delivery_log` | 至少 3 条真实 Telegram success 记录。 |
+
+### Intel Brief subscription lifecycle registry（2026-07-07）
+
+| Registry item | Location | Current baseline |
+|---|---|---|
+| Lifecycle module | `packages/clawbot/src/intel/subscription_lifecycle.py` | `audit_subscription_lifecycle()` supports read-only audit, optional expired marking, optional reminder sending, same-day reminder de-dup. |
+| Lifecycle sandbox | `packages/clawbot/scripts/intel_subscription_lifecycle_sandbox.py` | Generates sandbox evidence with fake sender; no Telegram network. |
+| Lifecycle maintenance CLI | `packages/clawbot/scripts/intel_subscription_lifecycle.py` | Production-safe entrypoint; default read-only, `--apply-expiry` requires lifecycle apply ack, `--send-reminders` requires Telegram token + runtime ack + `--allow-real-network`. |
+| Lifecycle tests | `packages/clawbot/tests/test_intel_subscription_lifecycle.py` | Covers read-only audit, expiry marking, reminder send, dedup, gated maintenance wrapper, CLI evidence, and redaction. |
+| Sandbox evidence | `packages/clawbot/data/intel_evidence/phasean/20260707T181146Z-subscription-lifecycle-sandbox/evidence.json` | expired=1, reminder=1, audit=2, replay reminder=0. |
+| Production read-only audit | `packages/clawbot/data/intel_evidence/phasean/20260707T181219Z-production-db-subscription-lifecycle-readonly-audit/evidence.json` | Current production DB has no expired active subscription and no 7-day expiring subscription; counts unchanged. |
+| Maintenance evidence | `packages/clawbot/data/intel_evidence/phasebc/20260707T212320Z-subscription-lifecycle-maintenance-sandbox/evidence.json` / `phasebc/20260707T212337Z-subscription-lifecycle-production-readonly/evidence.json` | Sandbox proves blocked/apply/reminder gates; production read-only audit succeeded with no expired/expiring candidates and `network_calls=0`. |
+
+### Intel Brief production_cycle lifecycle audit integration（2026-07-07）
+
+| Registry item | Location | Current baseline |
+|---|---|---|
+| Lifecycle integration | `packages/clawbot/src/intel/production_cycle.py` | Top-level `subscription_lifecycle` is written into production-cycle evidence. |
+| Read-only policy | `audit_subscription_lifecycle(... apply_expiry=False, send_reminders=False)` | Daily cycle observes expiry state but does not mutate subscriptions or send reminders. |
+| DB path source | private env `INTEL_BRIEF_DB_PATH` | If missing/not found, lifecycle audit is `skipped` and main cycle continues. |
+| Integration evidence | `packages/clawbot/data/intel_evidence/phaseao/20260707T182041Z-production-cycle-lifecycle-readonly-integration/wrapper.json` | Production DB counts unchanged, lifecycle summary all 0, network_calls=0. |
+
+### Intel Brief manual entitlement registry（2026-07-07）
+
+| Registry item | Location | Current baseline |
+|---|---|---|
+| Manual entitlement module | `packages/clawbot/src/intel/manual_entitlement.py` | Converts verified external order info into subscription grant; dry-run by default. |
+| Operator CLI | `packages/clawbot/scripts/intel_manual_entitlement.py` | Requires `--apply` for mutation; otherwise preview only. |
+| Sandbox CLI | `packages/clawbot/scripts/intel_manual_entitlement_sandbox.py` | Verifies dry-run, apply, renewal, redaction without production DB. |
+| Tests | `packages/clawbot/tests/test_intel_manual_entitlement.py` | Covers dry-run no business writes, renewal extension, CLI evidence, sandbox redaction. |
+| Production dry-run evidence | `packages/clawbot/data/intel_evidence/phaseap/20260707T183007Z-production-db-manual-entitlement-dry-run/evidence.json` | counts unchanged, planned renewal expiry calculated, network_calls=0. |
+
+### Intel Brief Telegram reference screenshot menu baseline（2026-07-07 Phase AR）
+
+| Registry item | Location | Current baseline |
+|---|---|---|
+| Reference screenshot menu | `packages/clawbot/src/intel/subscriptions.py` | `/start` 正文为 `🔥 热搜排行` + 高价值情报入口 + 关键词搜索提示；首屏不展示订阅状态或命令说明。 |
+| Button definitions | `TELEGRAM_INLINE_MENU_BUTTONS` | 6 行、23 个按钮、最大 4 列；按钮展示文本与 `callback_data` 分离。 |
+| Callback mapping | `packages/clawbot/src/intel/telegram_menu.py` | `github/openai/claude/deepseek/settings/custom/schedule/status` 等稳定 callback 值映射到现有 handler。 |
+| Evidence | `packages/clawbot/data/intel_evidence/phasear/20260707T185237Z-reference-screenshot-style-menu-real-send/evidence.json` | 真实 Telegram `sendMessage` 成功，evidence 只记录 token/chat id 存在性与脱敏发送结果。 |
+
+### Intel Brief GitHub Trending source registry（2026-07-07 Phase AQ）
+
+| Registry item | Location | Current baseline |
+|---|---|---|
+| Source adapter | `packages/clawbot/src/intel/sources/github_trending.py` | `GitHubTrendingAdapter` 抓取 `https://github.com/trending?since=daily`，输出 `repo/url/description/language/stars_today`。 |
+| Parser invariant | `parse_github_trending_html()` | 仓库名只从 article 内 repo heading 的 `<h2><a>` 提取，避免 `/sponsors/...` 链接误识别为 repo。 |
+| Default registry | `packages/clawbot/src/intel/sources/registry.py` | `build_default_source_adapters()` 注册 `github_trending`，evidence 指向已验证的 Oracle SG West 真实调用。 |
+| Worker profile | `packages/clawbot/scripts/intel_collect_once.py` | primary=`oracle-sg-west`，fallback=`oracle-arm1`，fallback source 保持 `github_trending`。 |
+| Worker bundle | `packages/clawbot/scripts/intel_worker_bundle.py` | bundle 包含 `src/intel/sources/github_trending.py`。 |
+| Real worker evidence | `packages/clawbot/data/intel_evidence/phaseaq/20260707T190500Z-github-trending-oracle-sg-worker-parser-fixed.json` | Oracle SG West real call success，`raw_count=3`，cleanup=`cleanup_ok`，cleanup_verify=`remote_stage_absent`。 |
+| Production-cycle evidence | `packages/clawbot/data/intel_evidence/phaseaq/20260707T190718Z-controlled-production-cycle-three-sources/latest-production-cycle.json` | 三源 collect success=3/failed=0，并完成 subscription-filtered Telegram delivery。 |
+| Final verification | `packages/clawbot/data/intel_evidence/phaseaq/20260707T191656Z-github-trending-final-verification/evidence.json` | ruff/pytest/JSON parse/token scan/docs sync 通过。 |
+
+### Intel Brief AI model updates source registry（2026-07-07 Phase AU）
+
+| Registry item | Location | Current baseline |
+|---|---|---|
+| Source adapter | `packages/clawbot/src/intel/sources/ai_model_updates.py` | `AIModelUpdatesAdapter` 聚合 OpenAI official RSS、Anthropic official news HTML、DeepSeek official homepage announcement HTML。 |
+| Providers | `DEFAULT_AI_MODEL_UPDATE_FEEDS` | `openai=https://openai.com/news/rss.xml`；`anthropic=https://www.anthropic.com/news`；`deepseek=https://www.deepseek.com/`。DeepSeek 使用根页是因为 Oracle SG West 访问 `/news` 返回 404。 |
+| Merge invariant | `fetch_ai_model_updates()` | 按 feed 轮询合并，避免 OpenAI RSS 多条记录挤掉 Anthropic/DeepSeek。 |
+| Default registry | `packages/clawbot/src/intel/sources/registry.py` | 注册 `ai_model_updates`，evidence 指向已验证 Oracle SG West real worker。 |
+| Worker profile | `packages/clawbot/scripts/intel_collect_once.py` | primary=`oracle-sg-west`，fallback=`oracle-arm1`，source-specific `limit=6`。 |
+| GitHub source limit | `packages/clawbot/scripts/intel_collect_once.py` | `github_trending` source-specific `limit=3`，对应 Star 增长榜前三 MVP 口径。 |
+| Telegram AI buttons | `packages/clawbot/src/intel/telegram_menu.py` | `OpenAI/Claude/Deepseek` 按钮均映射到 `ai_model_updates` 订阅分类。 |
+| Real worker evidence | `packages/clawbot/data/intel_evidence/phaseau/20260707T193548Z-ai-model-updates-oracle-sg-worker-final.json` | Oracle SG West real call success，providers=`openai/anthropic/deepseek`，cleanup verified。 |
+| Four-source cycle evidence | `packages/clawbot/data/intel_evidence/phaseau/20260707T194551Z-controlled-production-cycle-four-sources-source-limits/latest-production-cycle.json` | `senate_trading/akshare/github_trending/ai_model_updates` collect success=4/failed=0；subscription-filtered delivery success。 |
+| Final verification | `packages/clawbot/data/intel_evidence/phaseau/20260707T195140Z-ai-model-and-recipient-filter-final-verification/evidence.json` | ruff/pytest/diff/JSON/token scan/docs sync 通过。 |
+
+### Intel Brief per-recipient delivery filter registry（2026-07-07 Phase AV）
+
+| Registry item | Location | Current baseline |
+|---|---|---|
+| Recipient payload filter | `packages/clawbot/src/intel/subscription_delivery.py` | `_filter_summary_payload_for_categories()` 在发送前按 subscriber `matched_categories` 裁剪 items，并重写 summary_text，避免未订阅分类泄漏到正文。 |
+| Delivery evidence | `deliver_summary_to_eligible_subscribers()` | 每个 delivery 记录 `matched_categories` 与 `filtered_item_count`，不记录 raw chat id/user id。 |
+| Sandbox evidence | `packages/clawbot/data/intel_evidence/phaseav/20260707T194902Z-subscription-delivery-per-recipient-filter-sandbox/evidence.json` | 三个 sandbox 用户分别只收到自己分类的 1 条 item。 |
+
+## Intel Brief source registry update — institutional_13f aggregated evidence (2026-07-07)
+
+- Source: `institutional_13f`
+- Adapter: `packages/clawbot/src/intel/sources/institutional_13f.py`
+- Registry evidence: `packages/clawbot/data/intel_evidence/phaseaw/20260707T201214Z-institutional-13f-oracle-sg-worker-aggregated.json`
+- Target worker: Oracle Singapore West (`oracle-sg-west-preferred-overseas`)
+- Verified result: `status=success`, `raw_count=10`, cleanup `remote_stage_absent`; sample holdings include Apple, American Express, Coca Cola, Bank of America, Chevron.
+- Quality note: duplicate SEC 13F rows are aggregated by `(issuer, class, cusip)` before limiting, so top-N is not consumed by split rows for the same issuer.
+
+## Intel Brief source registry update — weather source (2026-07-07)
+
+- Source: `weather`
+- Adapter: `packages/clawbot/src/intel/sources/weather_monitor.py`
+- Registry evidence: `packages/clawbot/data/intel_evidence/phaseaz/20260707T204803Z-weather-oracle-sg-worker.json`
+- Target worker: Oracle Singapore West (`oracle-sg-west-preferred-overseas`), fallback Oracle ARM1.
+- External endpoints:
+  - NWS: `https://api.weather.gov/points/{lat},{lon}`, `forecastHourly`, `https://api.weather.gov/alerts/active?point={lat},{lon}`. Requires custom User-Agent.
+  - Open-Meteo Air Quality: `https://air-quality-api.open-meteo.com/v1/air-quality?...` no key for MVP probe; commercial-use boundary must be reviewed before public paid sale.
+- Verified result: `status=success`, `raw_count=6`, cleanup `remote_stage_absent`; categories `weather/temperature/rainfall/humidity/disaster_alerts/air_quality`.
+- Delivery behavior: item `category_aliases` lets broad `weather` subscribers receive all weather subitems while subcategory subscribers receive only their selected category.
+### Intel Brief 常驻菜单与多渠道数字命令注册（2026-07-08）
+
+| 模块/脚本 | 路径 | 说明 |
+|---|---|---|
+| Cross-channel numbered menu | `packages/clawbot/src/intel/channel_menu.py` | 每日简报 700-708 数字命令、Telegram/微信/飞书/钉钉菜单合同；本模块不直接调用任何平台网络接口。 |
+| Telegram menu handler | `packages/clawbot/src/intel/telegram_menu.py` | `/start`、按钮 callback、旧按钮兼容、700-708 数字回复处理；`706` 支持两步式添加追踪。 |
+| Telegram menu contract | `packages/clawbot/src/intel/subscriptions.py` | `build_telegram_menu_contract()` 输出当前产品化菜单文案和 inline keyboard。 |
+| WeChat numbered router | `packages/clawbot/src/api/routers/wechat.py` | 微信 700-708 编号入口和中文快捷词接入 `handle_numbered_intel_command()`，不落 LLM 兜底；运行时用当前 UTC 时间判断订阅有效期；菜单/快捷词可打断两步式 pending。 |
+| WeChat inbound API | `packages/clawbot/src/api/server.py` | 同时挂载 `/api/v1/wechat/incoming` 和兼容旧转发器的 `/wechat/incoming`；两条路径仍走全局 API Token。 |
+| WeChat OpenClaw bridge | `.openclaw/extensions/openclaw-weixin/src/messaging/process-message.ts` + 当前加载的 `~/.openclaw/.../process-message.js` | 授权微信会话命中每日简报数字或中文快捷词时，插件调用本机 `/wechat/incoming` 并直接回发，不进入普通 AI pipeline。 |
+| Telegram update daemon | `packages/clawbot/scripts/intel_telegram_update_daemon.py` | 常驻轮询 Telegram update，处理 `/start` / 数字回复 / 按钮点击；心跳保留最近一次 `/start` 菜单成功证据；不保存 raw update/chat id/token。 |
+| Telegram /start acceptance CLI | `packages/clawbot/scripts/intel_telegram_start_menu_acceptance.py` | 老板发完 `/start` 后读取脱敏心跳，输出 `verified=true/false`、缺口和下一步；不读取或保存原始聊天内容。 |
+| Telegram user journey acceptance CLI | `packages/clawbot/scripts/intel_telegram_user_journey_acceptance.py` | 本地临时库验收普通用户完整路径：打开菜单、看今日简报、看订阅、改时间、完整命令加追踪、两步式加追踪、暂停、暂停后查询、恢复；不调用真实 Telegram。 |
+| WeChat bridge runtime acceptance CLI | `packages/clawbot/scripts/intel_wechat_bridge_runtime_acceptance.py` | 读取 OpenClaw Weixin 插件桥脱敏证据文件，验收最近一次真实微信入站是否命中每日简报桥、调用 `/wechat/incoming` 200、已回发微信且未落普通 LLM；支持 `--wait-seconds` 等待老板发微信；不保存聊天原文、用户 ID 或 Token。 |
+| macOS LaunchAgent | `~/Library/LaunchAgents/ai.openclaw.intel-brief.telegram-listener.plist` | 本机每日简报菜单监听器；当前 label 为 `ai.openclaw.intel-brief.telegram-listener`。 |
+
+| 测试文件 | 覆盖内容 |
+|---|---|
+| `packages/clawbot/tests/test_intel_multichannel_numbered_menu.py` | Telegram/微信/飞书/钉钉菜单能力差异、700-708 数字命令、微信入口不落 LLM。 |
+| `packages/clawbot/tests/test_intel_telegram_menu_handlers.py` | Telegram `/start`、按钮、数字回复、状态、分类、完整命令追踪和两步式追踪。 |
+| `packages/clawbot/tests/test_intel_telegram_runtime.py` | Telegram update 到回复合同的运行时适配。 |
+| `packages/clawbot/tests/test_intel_telegram_update_daemon.py` | 常驻监听器安全闸、心跳脱敏、LaunchAgent plist、`/start` 成功证据不被空轮询覆盖。 |
+| `packages/clawbot/tests/test_intel_telegram_start_menu_acceptance.py` | 真人 `/start` 菜单验收器：等待态、成功态、since 过滤和脱敏输出。 |
+| `packages/clawbot/tests/test_intel_telegram_user_journey_acceptance.py` | 普通用户旅程验收：菜单、今日简报、订阅状态、推送时间、完整命令追踪、两步式追踪、暂停、恢复。 |
+| `packages/clawbot/tests/test_wechat_numbered_commands.py` | 微信编号映射完整性，覆盖 700-708、本地中文快捷词、pending 打断和 `/wechat/incoming` 兼容路径。 |
+| `packages/clawbot/tests/test_intel_wechat_bridge_runtime_acceptance.py` | 微信真实桥接证据验收器：近期 handled 证据可通过，旧证据、LLM 闲聊证据、未回发证据必须失败；等待模式有证据立即通过、无证据明确报告。 |
+| `packages/clawbot/scripts/intel_wechat_user_journey_acceptance.py` | 微信菜单用户旅程验收器；覆盖数字、中文快捷词、两步式中途跳转、暂停恢复；只用临时 SQLite，不调用真实微信网络，输出脱敏证据。 |
+
+真实运行边界：Telegram 监听器已真实运行；Bot API `getMe` 确认机器人为 `@carven_Jianbao_bot`，`getMyCommands` 确认 `/start` 存在；微信处理器和 OpenClaw Weixin 插件桥已就绪，并新增真实桥接证据验收器；但受微信窗口防截图限制，Codex 未完成真实桌面微信发消息验收，当前默认验收报告会在没有新微信入站时显示“未找到微信桥接证据文件”；飞书/钉钉没有真实平台入口，仍为协议层。

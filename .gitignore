@@ -123,8 +123,10 @@ credentials.json
 .openclaw/subagents/
 .openclaw/telegram/
 .openclaw/update-check.json
+.openclaw/cc-zhongzhuan-operator-state.json
 .openclaw/openclaw-weixin/
 .openclaw/env
+.openclaw/*.env
 .openclaw/*.bak*
 .openclaw/workspace
 *.sqlite
@@ -140,6 +142,10 @@ apps/OpenClaw.app/
 # === Playwright 调试产物 ===
 .playwright-cli/
 .playwright-mcp/
+
+# === 本地验收输出与可再生成 LaunchAgent 包 ===
+output/
+packages/clawbot/relative-launch/
 
 # === Git 备份（BFG 清理产物）===
 .git.backup/

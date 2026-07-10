@@ -112,6 +112,11 @@ def _default_social_extension_status() -> dict:
         "detected_platform": {"id": "unsupported", "label": "未识别页面", "supported": False},
         "settings": {},
         "tasks": [],
+        "extension": {
+            "manifest_version": "",
+            "cc_delivery_helper_version": "",
+            "capabilities": {},
+        },
         "page_calibration": {},
         "auto_publish_enabled": False,
         "external_actions_locked": True,
@@ -166,6 +171,22 @@ def _sanitize_social_extension_payload(payload: dict) -> dict:
 
     tasks_in = payload.get("tasks") if isinstance(payload.get("tasks"), list) else []
     tasks = [str(item)[:160] for item in tasks_in[:8]]
+    extension_in = payload.get("extension") if isinstance(payload.get("extension"), dict) else {}
+    capabilities_in = extension_in.get("capabilities") if isinstance(extension_in.get("capabilities"), dict) else {}
+    capability_keys = {
+        "xianyu_delivery_scan",
+        "xianyu_delivery_send",
+        "current_chat_watch",
+        "all_open_xianyu_tabs_watch",
+        "target_tab_preflight",
+        "single_pending_global_gate",
+        "background_heartbeat",
+        "xianyu_confirm_shipment",
+        "xianyu_relist_item",
+        "relist_queue_watch",
+        "paid_page_dispatch",
+    }
+    capabilities = {key: bool(capabilities_in.get(key)) for key in capability_keys}
 
     return {
         "success": True,
@@ -184,6 +205,11 @@ def _sanitize_social_extension_payload(payload: dict) -> dict:
         "settings": settings,
         "strategy_summary": _social_strategy_summary(settings, platform),
         "tasks": tasks,
+        "extension": {
+            "manifest_version": _bounded_str(extension_in.get("manifest_version"), 32),
+            "cc_delivery_helper_version": _bounded_str(extension_in.get("cc_delivery_helper_version"), 80),
+            "capabilities": capabilities,
+        },
         "auto_publish_enabled": False,
         "external_actions_locked": True,
         "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
@@ -193,6 +219,26 @@ def _sanitize_social_extension_payload(payload: dict) -> dict:
 def _save_social_extension_status(status: dict, path: Path = _SOCIAL_EXTENSION_STATUS_FILE) -> None:
     """持久化 Chrome 社媒插件状态。"""
     path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists() and isinstance(status, dict):
+        try:
+            current = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            current = {}
+        current_extension = (
+            current.get("extension")
+            if isinstance(current, dict) and isinstance(current.get("extension"), dict)
+            else {}
+        )
+        next_extension = status.get("extension") if isinstance(status.get("extension"), dict) else {}
+        next_capabilities = (
+            next_extension.get("capabilities")
+            if isinstance(next_extension.get("capabilities"), dict)
+            else {}
+        )
+        has_next_capability = any(bool(value) for value in next_capabilities.values())
+        has_next_version = bool(next_extension.get("manifest_version") or next_extension.get("cc_delivery_helper_version"))
+        if current_extension and not has_next_capability and not has_next_version:
+            status["extension"] = current_extension
     path.write_text(json.dumps(status, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
