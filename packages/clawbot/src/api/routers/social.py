@@ -551,10 +551,16 @@ def review_draft(
 
 
 @router.post("/social/drafts/{index}/publish", response_model=dict[str, Any])
-async def publish_draft(index: int = Path(ge=0, description="草稿索引")):
-    """立即发布指定草稿"""
+async def publish_draft(
+    index: int = Path(ge=0, description="草稿索引"),
+    confirmed: bool = False,
+):
+    """最终确认后发布指定草稿；confirmed 默认为 false。"""
     try:
-        result = await ClawBotRPC._rpc_social_draft_publish(index)
+        result = await ClawBotRPC._rpc_social_draft_publish(
+            index,
+            final_confirmed=confirmed,
+        )
 
         # Push social published event via WebSocket (best-effort)
         try:

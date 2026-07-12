@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import signal
 import sys
 import time
@@ -24,8 +25,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.intel.private_env import default_private_env_path, load_private_env_file  # noqa: E402
-from src.intel.telegram_delivery import TELEGRAM_SANDBOX_ACK_VALUE, TelegramBotApiSender, TelegramTransport  # noqa: E402
 from src.intel.telegram_bot_runtime import TelegramBotApiRuntimeClient  # noqa: E402
+from src.intel.telegram_delivery import (  # noqa: E402
+    TELEGRAM_SANDBOX_ACK_VALUE,
+    TelegramBotApiSender,
+    TelegramTransport,
+)
 from src.intel.telegram_update_processor import DEFAULT_BOT_PROFILE, process_telegram_updates_once  # noqa: E402
 
 LISTENER_ACK_VALUE = "I_UNDERSTAND_REAL_TELEGRAM_LISTENER"
@@ -120,9 +125,21 @@ def _redact_processor(processor: dict[str, Any]) -> dict[str, Any]:
 
 
 def _write_json(path: str | Path, payload: dict[str, Any]) -> None:
+    """以 0600 原子写入脱敏证据，避免并发读取半份 JSON。"""
     target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    target.parent.chmod(0o700)
+    temporary = target.with_name(f".{target.name}.tmp-{os.getpid()}")
+    try:
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        temporary.chmod(0o600)
+        temporary.replace(target)
+        target.chmod(0o600)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _read_json_dict(path: str | Path) -> dict[str, Any]:
@@ -380,7 +397,7 @@ def _install_launchagent(project_root: str | Path, *, label: str, interval_secon
     return plist_path
 
 
-def _handle_signal(signum: int, frame: object) -> None:  # noqa: ARG001 - signal handler signature
+def _handle_signal(signum: int, frame: object) -> None:
     global _STOP
     _STOP = True
 

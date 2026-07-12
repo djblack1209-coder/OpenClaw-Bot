@@ -244,6 +244,7 @@ class CallbackMixin:
                             t,
                             pipeline=pipeline,
                             get_quote_func=get_stock_quote,
+                            human_confirmed=True,
                         )
                         if res.startswith("[OK]"):
                             emoji = "✅"
@@ -259,11 +260,19 @@ class CallbackMixin:
                         # FIX 4: ibkr has no place_order(); use buy()/sell()
                         if t["action"].upper() == "BUY":
                             ret = await ibkr.buy(
-                                t["symbol"], t["qty"], decided_by="itrade_fallback", reason="itrade确认"
+                                t["symbol"],
+                                t["qty"],
+                                decided_by="itrade_fallback",
+                                reason="itrade确认",
+                                human_confirmed=True,
                             )
                         else:
                             ret = await ibkr.sell(
-                                t["symbol"], t["qty"], decided_by="itrade_fallback", reason="itrade确认"
+                                t["symbol"],
+                                t["qty"],
+                                decided_by="itrade_fallback",
+                                reason="itrade确认",
+                                human_confirmed=True,
                             )
                         emoji = "✅" if "error" not in ret else "❌"
                         results.append(
@@ -301,6 +310,7 @@ class CallbackMixin:
                         t,
                         pipeline=pipeline,
                         get_quote_func=get_stock_quote,
+                        human_confirmed=True,
                     )
                     if res.startswith("[OK]"):
                         emoji = "✅"
@@ -315,9 +325,21 @@ class CallbackMixin:
                     # Fallback: pipeline not initialized, use direct broker
                     # FIX 4: ibkr has no place_order(); use buy()/sell()
                     if t["action"].upper() == "BUY":
-                        ret = await ibkr.buy(t["symbol"], t["qty"], decided_by="itrade_fallback", reason="itrade确认")
+                        ret = await ibkr.buy(
+                            t["symbol"],
+                            t["qty"],
+                            decided_by="itrade_fallback",
+                            reason="itrade确认",
+                            human_confirmed=True,
+                        )
                     else:
-                        ret = await ibkr.sell(t["symbol"], t["qty"], decided_by="itrade_fallback", reason="itrade确认")
+                        ret = await ibkr.sell(
+                            t["symbol"],
+                            t["qty"],
+                            decided_by="itrade_fallback",
+                            reason="itrade确认",
+                            human_confirmed=True,
+                        )
                     emoji = "✅" if "error" not in ret else "❌"
                     await query.message.reply_text(
                         f"{emoji} {t['action']} {t['symbol']} x{t['qty']}: {ret.get('message', ret.get('error', 'OK'))}"

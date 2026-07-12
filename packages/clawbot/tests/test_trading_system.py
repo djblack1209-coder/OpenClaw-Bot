@@ -332,3 +332,31 @@ class TestStartTradingSystem:
         pm.start.assert_awaited_once()
         at.start.assert_awaited_once()
         mock_scheduler_inst.start.assert_called_once()
+
+
+class TestLiveExitConfirmationBoundary:
+    @pytest.mark.asyncio
+    async def test_position_monitor_live_sell_wrapper_never_autonomously_calls_broker(self):
+        patches = _init_patches()
+        mocks = {key: patcher.start() for key, patcher in patches.items()}
+        try:
+            broker = MagicMock()
+            broker.sell = AsyncMock(return_value={"status": "filled"})
+            portfolio = MagicMock()
+            ts.init_trading_system(broker=broker, portfolio=portfolio)
+            sell_func = mocks["PositionMonitor"].call_args.kwargs["execute_sell_func"]
+
+            result = await sell_func(
+                "AAPL",
+                3,
+                decided_by="PositionMonitor",
+                reason="止损触发",
+            )
+
+            assert result["live_order_blocked"] is True
+            assert result["code"] == "live_trade_confirmation_required"
+            broker.sell.assert_not_awaited()
+            portfolio.sell.assert_not_called()
+        finally:
+            for patcher in patches.values():
+                patcher.stop()

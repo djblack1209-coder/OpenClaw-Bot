@@ -46,6 +46,7 @@ class XhsPlatformAdapter(SocialPlatformAdapter):
         title: str = "",
         images: list[str] | None = None,
         worker_fn=None,
+        final_confirmed: bool = False,
         **kwargs,
     ) -> dict:
         """发布到小红书 — 委托给 xhs_platform.publish_xhs_article"""
@@ -61,4 +62,5 @@ class XhsPlatformAdapter(SocialPlatformAdapter):
             body=content,
             worker_fn=worker_fn,
             image_path=image_path,
+            final_confirmed=final_confirmed,
         )

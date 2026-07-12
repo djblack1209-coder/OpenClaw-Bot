@@ -169,9 +169,9 @@ class TestEstimateCost:
         expected = (1000 * 2.5 + 500 * 10.0) / 1_000_000
         assert cost == pytest.approx(expected)
 
-    def test_unknown_model_returns_zero(self, cc):
+    def test_unknown_model_does_not_pretend_to_be_free(self, cc):
         cost = cc.estimate_cost("unknown-model-xyz", 10000, 5000)
-        assert cost == 0.0
+        assert cost is None
 
     def test_free_model_returns_zero(self, cc):
         cost = cc.estimate_cost("qwen3-235b", 100000, 50000)
@@ -251,3 +251,24 @@ class TestGetStats:
     def test_stats_zero_budget_pct(self, cc_zero):
         stats = cc_zero.get_stats()
         assert stats["budget_used_pct"] == 0  # Division by zero handled
+
+
+class TestUnpricedCalls:
+    """未知价格必须显式暴露，不能静默算成零成本。"""
+
+    def test_unpriced_call_is_counted_without_changing_spend(self, cc, tmp_path):
+        cc.record_unpriced_call("custom/model-v1", task_type="litellm")
+
+        stats = cc.get_stats()
+        assert stats["unknown_cost_calls"] == 1
+        assert stats["cost_complete"] is False
+        assert stats["today_spend"] == 0.0
+
+        record = json.loads((tmp_path / "daily_costs.jsonl").read_text().strip())
+        assert record["cost_known"] is False
+        assert "cost_usd" not in record
+
+    def test_cost_log_permissions_are_private(self, cc, tmp_path):
+        cc.record_cost("gpt-4o", 0.01, "chat")
+        mode = (tmp_path / "daily_costs.jsonl").stat().st_mode & 0o777
+        assert mode == 0o600

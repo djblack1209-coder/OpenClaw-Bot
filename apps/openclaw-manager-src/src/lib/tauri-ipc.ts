@@ -231,8 +231,8 @@ export const clawbotSocialDraftDelete = (index: number) =>
   invokeWithLog<Record<string, unknown>>('clawbot_api_social_draft_delete', { index });
 export const clawbotSocialDraftReview = (index: number, approved = true, reviewer = 'owner') =>
   invokeWithLog<Record<string, unknown>>('clawbot_api_social_draft_review', { index, approved, reviewer });
-export const clawbotSocialDraftPublish = (index: number) =>
-  invokeWithLog<Record<string, unknown>>('clawbot_api_social_draft_publish', { index });
+export const clawbotSocialDraftPublish = (index: number, finalConfirmed = false) =>
+  invokeWithLog<Record<string, unknown>>('clawbot_api_social_draft_publish', { index, finalConfirmed });
 
 // ── 图像生成 ──
 

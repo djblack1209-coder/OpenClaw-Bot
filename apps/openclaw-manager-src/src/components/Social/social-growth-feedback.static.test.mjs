@@ -72,3 +72,23 @@ test('Social App 中控可以 no-code 保存运营打法但不授权自动发布
   assert.match(rust, /auto_publish_enabled"\s*:\s*false/, 'Rust 代理必须固定不授权自动发布');
   assert.match(main, /clawbot_api::clawbot_api_social_strategy_update/, 'Tauri invoke handler 需要注册策略更新命令');
 });
+
+test('桌面端发布草稿必须把最终确认传到 HTTP 与 Tauri 边界', () => {
+  const social = read('apps/openclaw-manager-src/src/components/Social/index.tsx');
+  const api = read('apps/openclaw-manager-src/src/lib/api.ts');
+  const ipc = read('apps/openclaw-manager-src/src/lib/tauri-ipc.ts');
+  const rust = read('apps/openclaw-manager-src/src-tauri/src/commands/clawbot_api.rs');
+  assert.match(social, /clawbotSocialDraftPublish\(pendingAction\.index, true\)/, '最终确认框确认后必须显式传 true');
+  assert.match(api, /publish\?confirmed=\$\{finalConfirmed\}/, '浏览器 API 必须把最终确认写入请求参数');
+  assert.match(ipc, /clawbotSocialDraftPublish = \(index: number, finalConfirmed = false\)/, 'Tauri IPC 默认必须保持未确认');
+  assert.match(rust, /final_confirmed: bool/, 'Rust 命令必须接收最终确认参数');
+});
+
+test('浏览器健康探针复用环境感知 API 封装，不硬编码真实服务端口', () => {
+  const header = read('apps/openclaw-manager-src/src/components/Layout/Header.tsx');
+  const sidebar = read('apps/openclaw-manager-src/src/components/Layout/Sidebar.tsx');
+  for (const source of [header, sidebar]) {
+    assert.doesNotMatch(source, /fetch\(['"]http:\/\/127\.0\.0\.1:18790\/api\/v1\/status/, '浏览器探针不能绕过 VITE_API_PORT 和统一认证');
+    assert.match(source, /clawbotFetchJson/, '浏览器探针应复用统一 API 封装');
+  }
+});

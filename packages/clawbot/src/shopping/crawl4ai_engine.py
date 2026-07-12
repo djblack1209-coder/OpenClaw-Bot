@@ -2,10 +2,9 @@
 crawl4ai-powered Shopping Price Engine
 搬运 crawl4ai (62.4k⭐) 的结构化网页抽取能力，替代 httpx+bs4 的脆弱爬虫方案。
 
-三级降级链:
-  1. crawl4ai JsonCssExtractionStrategy — CSS 选择器结构化抽取（最快、最可靠）
-  2. crawl4ai LlmExtractionStrategy  — LLM 从 markdown 中提取（CSS 失败时）
-  3. 回退到 brain.py 现有 Jina+LLM 方案 （crawl4ai 完全不可用时）
+安全降级链:
+  1. crawl4ai JsonCssExtractionStrategy — CSS 选择器只读结构化抽取
+  2. 回退到调用方现有 Jina + 统一 LiteLLM 路由
 
 用法:
     from src.shopping.crawl4ai_engine import smart_compare, HAS_CRAWL4AI
@@ -34,7 +33,6 @@ BrowserConfig = None
 CrawlerRunConfig = None
 CacheMode = None
 JsonCssExtractionStrategy = None
-LlmExtractionStrategy = None
 
 try:
     from crawl4ai import AsyncWebCrawler as _AsyncWebCrawler
@@ -44,16 +42,11 @@ try:
     from crawl4ai.extraction_strategy import (
         JsonCssExtractionStrategy as _JsonCssExtractionStrategy,
     )
-    from crawl4ai.extraction_strategy import (
-        LlmExtractionStrategy as _LlmExtractionStrategy,
-    )
-
     AsyncWebCrawler = _AsyncWebCrawler
     BrowserConfig = _BrowserConfig
     CrawlerRunConfig = _CrawlerRunConfig
     CacheMode = _CacheMode
     JsonCssExtractionStrategy = _JsonCssExtractionStrategy
-    LlmExtractionStrategy = _LlmExtractionStrategy
     HAS_CRAWL4AI = True
     logger.info("crawl4ai 已加载 — 结构化比价引擎就绪")
 except ImportError:
@@ -77,7 +70,7 @@ class ProductPrice:
     original_price: float = 0.0
     promo: str = ""
     sales: str = ""
-    source: str = ""  # 抽取来源标记: "css" / "llm" / "jina"
+    source: str = ""  # 抽取来源标记: "css" / "jina"
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -90,7 +83,7 @@ class PriceCompareResult:
     products: list[ProductPrice] = field(default_factory=list)
     best_deal: str = ""
     recommendation: str = ""
-    source: str = ""  # "crawl4ai_css" / "crawl4ai_llm" / "jina_llm"
+    source: str = ""  # "crawl4ai_css" / "jina_llm"
     query: str = ""
     platforms_searched: list[str] = field(default_factory=list)
     error: str = ""
@@ -309,7 +302,7 @@ async def _crawl_platform_css(
     browser_cfg = BrowserConfig(
         headless=True,
         verbose=False,
-        # 反检测: crawl4ai 内置 stealth 模式
+        # 保持标准只读浏览器配置，不启用绕过平台保护的能力。
         text_mode=False,
     )
 
@@ -373,136 +366,6 @@ async def _crawl_platform_css(
     return results
 
 
-# ── crawl4ai LLM 抽取（CSS 失败时的降级）───────────────────
-
-
-async def _crawl_platform_llm(
-    platform_key: str,
-    query: str,
-    limit: int = 6,
-) -> list[ProductPrice]:
-    """
-    用 crawl4ai 的 LlmExtractionStrategy 从网页 markdown 中抽取商品信息。
-    消耗 LLM token，但能应对反爬后页面结构变化的场景。
-    """
-    if not HAS_CRAWL4AI:
-        return []
-
-    schema = PLATFORM_SCHEMAS.get(platform_key)
-    if not schema:
-        return []
-
-    url = schema["search_url"].format(query=urllib.parse.quote(query))
-
-    # 尝试获取 LLM provider 配置
-    llm_provider = None
-    try:
-        import os
-
-        # 优先用 deepseek（便宜）
-        api_key = os.environ.get("DEEPSEEK_API_KEY", "")
-        if api_key:
-            llm_provider = "deepseek/deepseek-chat"
-        else:
-            # 回退到 openai 兼容
-            api_key = os.environ.get("OPENAI_API_KEY", "")
-            if api_key:
-                llm_provider = "openai/gpt-4o-mini"
-    except Exception:
-        logger.debug("Silenced exception", exc_info=True)
-
-    if not llm_provider:
-        logger.debug("[crawl4ai] 无 LLM API key，跳过 LLM 抽取")
-        return []
-
-    strategy = LlmExtractionStrategy(
-        provider=llm_provider,
-        schema={
-            "type": "object",
-            "properties": {
-                "products": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": {"type": "string"},
-                            "price": {"type": "number"},
-                            "shop": {"type": "string"},
-                        },
-                        "required": ["name", "price"],
-                    },
-                },
-            },
-        },
-        instruction=(
-            f"从页面内容中提取与'{query}'相关的商品列表，"
-            f"每个商品包含 name(商品名)、price(价格数字)、shop(店铺名)。"
-            f"只提取前{limit}个最相关的商品。价格只提取数字，不要货币符号。"
-        ),
-        verbose=False,
-    )
-
-    browser_cfg = BrowserConfig(headless=True, verbose=False)
-    crawl_cfg = CrawlerRunConfig(
-        extraction_strategy=strategy,
-        cache_mode=CacheMode.BYPASS,
-        page_timeout=25000,
-    )
-
-    results: list[ProductPrice] = []
-    try:
-        async with AsyncWebCrawler(config=browser_cfg) as crawler:
-            crawl_result = await crawler.arun(url=url, config=crawl_cfg)
-
-            if not crawl_result.success:
-                return []
-
-            import json
-
-            extracted = crawl_result.extracted_content
-            if isinstance(extracted, str):
-                try:
-                    extracted = json.loads(extracted)
-                except (json.JSONDecodeError, TypeError) as e:  # noqa: F841
-                    return []
-
-            # LLM 可能返回 {"products": [...]} 或直接 [...]
-            if isinstance(extracted, dict):
-                extracted = extracted.get("products", [])
-            if not isinstance(extracted, list):
-                return []
-
-            for item in extracted[:limit]:
-                if not isinstance(item, dict):
-                    continue
-                name = (item.get("name") or "").strip()
-                if not name:
-                    continue
-                price = 0.0
-                try:
-                    price = float(item.get("price", 0))
-                except (ValueError, TypeError) as e:  # noqa: F841
-                    price = _extract_price(str(item.get("price", "")))
-
-                results.append(
-                    ProductPrice(
-                        name=name[:120],
-                        price=price,
-                        platform=schema["platform_label"],
-                        url="",  # LLM 抽取通常不含 URL
-                        shop=(item.get("shop") or "").strip(),
-                        source="llm",
-                    )
-                )
-
-    except TimeoutError:
-        logger.warning(f"[crawl4ai] {platform_key} LLM 抽取超时")
-    except Exception as e:
-        logger.warning(f"[crawl4ai] {platform_key} LLM 抽取异常: {scrub_secrets(str(e))}")
-
-    return results
-
-
 # ── 主入口: smart_compare() ────────────────────────────────
 
 
@@ -514,10 +377,9 @@ async def smart_compare(
     """
     crawl4ai 驱动的智能比价。
 
-    三级降级链:
-      1. CSS 结构化抽取（快、免费、精确）
-      2. LLM 抽取（CSS 失败时，消耗 token）
-      3. 返回空结果，让调用方降级到 Jina+LLM
+    安全降级链:
+      1. CSS 结构化只读抽取
+      2. 返回结果或空结果，让调用方走 Jina + 统一 LiteLLM 路由
 
     Args:
         product: 商品搜索关键词 (如 "iPhone 16 128GB")
@@ -564,38 +426,8 @@ async def smart_compare(
             elif isinstance(result, Exception):
                 logger.debug(f"[crawl4ai] {label} CSS 抽取异常: {result}")
 
-    # ── 第二级: CSS 结果不足时，用 LLM 抽取补充 ──
-    css_with_price = [p for p in all_products if p.price > 0]
-    if len(css_with_price) < 2:
-        logger.info("[crawl4ai] CSS 结果不足，启用 LLM 抽取降级")
-        source_method = "crawl4ai_llm"
-
-        # 只对 CSS 失败的平台尝试 LLM
-        failed_platforms = [
-            p
-            for p in platforms
-            if p in PLATFORM_SCHEMAS and PLATFORM_SCHEMAS[p]["platform_label"] not in platforms_searched
-        ]
-        # 也对有结果但无价格的平台重试
-        no_price_platforms = [
-            p
-            for p in platforms
-            if p in PLATFORM_SCHEMAS
-            and PLATFORM_SCHEMAS[p]["platform_label"] in platforms_searched
-            and not any(pp.platform == PLATFORM_SCHEMAS[p]["platform_label"] and pp.price > 0 for pp in all_products)
-        ]
-        retry_platforms = list(set(failed_platforms + no_price_platforms))
-
-        if retry_platforms:
-            llm_tasks = {p: _crawl_platform_llm(p, product, limit_per_platform) for p in retry_platforms}
-            llm_results = await asyncio.gather(*llm_tasks.values(), return_exceptions=True)
-            for platform_key, result in zip(llm_tasks.keys(), llm_results):
-                label = PLATFORM_SCHEMAS[platform_key]["platform_label"]
-                if isinstance(result, list) and result:
-                    all_products.extend(result)
-                    if label not in platforms_searched:
-                        platforms_searched.append(label)
-                    logger.info(f"[crawl4ai] {label} LLM 抽取成功: {len(result)} 个商品")
+    # CSS 结果不足时直接交给调用方的 Jina + 统一 LiteLLM 降级链，
+    # 避免 crawl4ai 私自读取 Provider Key 或产生未计价调用。
 
     # ── 汇总结果 ──
     if not all_products:

@@ -104,13 +104,13 @@ KNOWN_SOLUTIONS: dict[str, dict] = {
     },
     "captcha": {
         "category": ErrorCategory.CAPTCHA,
-        "solution": "触发验证码，切换到反检测浏览器",
-        "action": "switch_to_drission",
+        "solution": "触发验证码，安全停止并等待用户人工完成",
+        "action": "notify_human",
     },
     "验证码": {
         "category": ErrorCategory.CAPTCHA,
-        "solution": "触发验证码，需要切换执行路径",
-        "action": "switch_to_drission",
+        "solution": "触发验证码，安全停止并等待用户人工完成",
+        "action": "notify_human",
     },
     "ModuleNotFoundError": {
         "category": ErrorCategory.DEPENDENCY,
@@ -434,12 +434,6 @@ class SelfHealEngine:
             elif action == "pip_install":
                 logger.info("[自愈] 检测到缺失依赖，建议手动安装")
                 return False  # 不自动 pip install（安全考虑）
-
-            elif action == "switch_to_drission":
-                logger.info("[自愈] 建议切换到 DrissionPage 反检测浏览器")
-                # 在 context 中标记切换，调用者可检查
-                context["switch_browser"] = "drission"
-                return False  # 需要调用者切换执行路径
 
             elif action == "check_credentials":
                 logger.warning("[自愈] 认证失败，需要检查 API 密钥")

@@ -5,8 +5,6 @@ import {
   runSocialInteractionScanInPage,
   runSocialPageContextScanInPage,
   runSocialPerformanceScanInPage,
-  runXianyuRelistItemInPage,
-  runXianyuConfirmShipmentInPage,
   runXianyuDeliveryDraftCleanupInPage,
   runXianyuDeliveryFillAndSendInPage,
   runXianyuDeliveryScanInPage,
@@ -14,8 +12,6 @@ import {
 
 const DEFAULT_PORT = 18792
 const XIANYU_ADMIN_BASE_URL = 'http://127.0.0.1:18800'
-const XIANYU_DELIVERY_WATCH_ALARM = 'xianyu-delivery-watch'
-const XIANYU_RELIST_WATCH_ALARM = 'xianyu-relist-watch'
 
 const BADGE = {
   on: { text: 'ON', color: '#FF5A36' },
@@ -33,7 +29,6 @@ let relayGatewayToken = ''
 let relayConnectRequestId = null
 
 let nextSession = 1
-let xianyuDeliveryWatchInFlight = false
 
 /** @type {Map<number, {state:'connecting'|'connected', sessionId?:string, targetId?:string, attachOrder?:number}>} */
 const tabs = new Map()
@@ -116,15 +111,16 @@ function buildExtensionHeartbeat() {
     cc_delivery_helper_version: '2026-07-07-paid-page-fallback',
     capabilities: {
       xianyu_delivery_scan: true,
-      xianyu_delivery_send: true,
-      xianyu_confirm_shipment: true,
-      xianyu_relist_item: true,
-      current_chat_watch: true,
-      all_open_xianyu_tabs_watch: true,
+      xianyu_delivery_send: false,
+      xianyu_confirm_shipment: false,
+      xianyu_relist_item: false,
+      xianyu_one_shot_delivery_human_gated: true,
+      current_chat_watch: false,
+      all_open_xianyu_tabs_watch: false,
       target_tab_preflight: true,
       single_pending_global_gate: true,
       background_heartbeat: true,
-      relist_queue_watch: true,
+      relist_queue_watch: false,
       paid_page_dispatch: true,
     },
   }
@@ -132,17 +128,16 @@ function buildExtensionHeartbeat() {
 
 async function heartbeatSocialExtensionStatus(reason = 'background') {
   const activeTab = await getActiveTabForSocial().catch(() => null)
-  const watch = await getXianyuDeliveryWatchState().catch(() => ({ enabled: false }))
   const platform = detectSocialPlatform(activeTab?.url || '')
   const payload = {
     platform: platform.id,
     url: activeTab?.url || '',
-    running: Boolean(watch?.enabled),
+    running: false,
     detected_platform: platform,
     tasks: [
-      watch?.enabled ? '闲鱼发货看守运行中' : '后台心跳在线',
-      '待发货时只在已付款/待发货聊天页发送',
-      '发送成功后自动标记本机履约状态',
+      '后台心跳在线',
+      '闲鱼页面仅做付款信号和输入框检查',
+      '真实发卡只接受 18800 操作台逐次人工确认',
     ],
     extension: buildExtensionHeartbeat(),
     heartbeat_reason: reason,
@@ -724,29 +719,6 @@ async function scanXianyuDeliveryPage(payload = {}) {
   return scanXianyuDeliveryTab(tab, payload)
 }
 
-function isXianyuTab(tab) {
-  return Boolean(tab?.id && detectSocialPlatform(tab.url || '').id === 'xianyu')
-}
-
-async function getOpenXianyuTabs() {
-  const allTabs = await chrome.tabs.query({})
-  return allTabs.filter(isXianyuTab).slice(0, 12)
-}
-
-async function assertSinglePendingDeliveryForGlobalWatch() {
-  const status = await fetchXianyuAdminApi('/api/status')
-  if (!status.ok) return status
-  const pendingRescue = Number(status.json?.cc_shipments?.pending_rescue || 0)
-  if (pendingRescue !== 1) {
-    return {
-      ok: false,
-      status: 409,
-      error: `全局看守只在“刚好 1 条待发货”时启用；当前待处理 ${pendingRescue} 条，请改用对应聊天页手动看守，避免发错买家。`,
-    }
-  }
-  return { ok: true, status: 200, pendingRescue }
-}
-
 function normalizeXianyuItemIdFromUrl(url = '') {
   const raw = String(url || '').trim()
   if (!raw) return ''
@@ -820,87 +792,52 @@ async function ensurePendingXianyuDeliveryFromPaidPage(tab, scanResult = {}, pay
   }
 }
 
-async function getXianyuDeliveryWatchState() {
-  const stored = await chrome.storage.local.get(['xianyuDeliveryWatch'])
-  const watch = stored.xianyuDeliveryWatch || {}
-  return {
-    enabled: Boolean(watch.enabled),
-    scope: String(watch.scope || 'current_chat'),
-    tabId: Number.isFinite(Number(watch.tabId)) ? Number(watch.tabId) : 0,
-    tabCount: Number.isFinite(Number(watch.tabCount)) ? Number(watch.tabCount) : 0,
-    url: String(watch.url || ''),
-    title: String(watch.title || ''),
-    enabledAt: String(watch.enabledAt || ''),
-    last_result: watch.last_result || null,
-    last_error: String(watch.last_error || ''),
-  }
+function hasConsumedOneShotDeliveryAuthorization(pending = {}) {
+  const oneShot = pending?.json?.oneShotDelivery
+  return Boolean(
+    oneShot
+      && oneShot.active === false
+      && Number(oneShot.remaining || 0) === 0
+      && String(oneShot.consumed_at || '').trim(),
+  )
 }
 
-async function saveXianyuDeliveryWatchState(watch) {
-  await chrome.storage.local.set({ xianyuDeliveryWatch: watch })
-  if (watch.enabled) {
-    chrome.alarms.create(XIANYU_DELIVERY_WATCH_ALARM, { periodInMinutes: 0.5 })
-  } else {
-    await chrome.alarms.clear(XIANYU_DELIVERY_WATCH_ALARM)
+async function getXianyuDeliveryWatchState() {
+  const stored = await chrome.storage.local.get(['xianyuDeliveryWatch'])
+  const previous = stored.xianyuDeliveryWatch || {}
+  return {
+    enabled: false,
+    scope: 'disabled',
+    tabId: 0,
+    tabCount: 0,
+    url: '',
+    title: '',
+    enabledAt: String(previous.enabledAt || ''),
+    last_result: previous.last_result || null,
+    last_error: String(previous.last_error || ''),
+    reason: 'one_shot_admin_confirmation_required',
   }
 }
 
 async function setXianyuDeliveryWatch(payload = {}) {
-  const enabled = Boolean(payload.enabled)
-  if (!enabled) {
-    await saveXianyuDeliveryWatchState({
+  if (payload.enabled) {
+    return {
+      ok: false,
+      status: 409,
+      error: '自动看守已关闭。真实发卡只能从 18800 操作台逐次确认“一键跑当前页”。',
+      watch: await getXianyuDeliveryWatchState(),
+    }
+  }
+  await chrome.storage.local.set({
+    xianyuDeliveryWatch: {
       enabled: false,
-      scope: 'current_chat',
+      scope: 'disabled',
       disabledAt: new Date().toISOString(),
       reason: 'operator_disabled',
-    })
-    return { ok: true, status: 200, watch: await getXianyuDeliveryWatchState() }
-  }
-  const scope = payload.scope === 'all_open_xianyu_tabs' ? 'all_open_xianyu_tabs' : 'current_chat'
-  if (scope === 'all_open_xianyu_tabs') {
-    const pendingGate = await assertSinglePendingDeliveryForGlobalWatch()
-    if (!pendingGate.ok) return pendingGate
-    const xianyuTabs = await getOpenXianyuTabs()
-    if (!xianyuTabs.length) {
-      return { ok: false, status: 409, error: '没有已打开的闲鱼聊天页；请先打开买家聊天页，再开启全局看守。' }
-    }
-    const scans = []
-    for (const candidate of xianyuTabs.slice(0, 4)) {
-      scans.push(await scanXianyuDeliveryTab(candidate, { ...(payload || {}), scope }))
-    }
-    await saveXianyuDeliveryWatchState({
-      enabled: true,
-      scope,
-      tabId: 0,
-      tabCount: xianyuTabs.length,
-      url: '',
-      title: '所有已打开闲鱼页',
-      enabledAt: new Date().toISOString(),
-      last_result: { ok: true, status: 200, scans },
-      last_error: '',
-    })
-    return { ok: true, status: 200, watch: await getXianyuDeliveryWatchState(), scan: { ok: true, result: { ready: false, paidSignals: [], inputReady: false, sendButtonReady: false, tabCount: xianyuTabs.length } } }
-  }
-  const tab = await getActiveTabForSocial()
-  if (!tab?.id) return { ok: false, status: 0, error: '没有可看守的当前标签页。' }
-  const platform = detectSocialPlatform(tab.url || '')
-  if (platform.id !== 'xianyu') {
-    return { ok: false, status: 409, error: '请先切到对应的闲鱼买家聊天页，再开启看守。' }
-  }
-  const scan = await scanXianyuDeliveryTab(tab, payload)
-  if (!scan.ok) return scan
-  await saveXianyuDeliveryWatchState({
-    enabled: true,
-    scope,
-    tabId: tab.id,
-    tabCount: 1,
-    url: tab.url || '',
-    title: tab.title || '',
-    enabledAt: new Date().toISOString(),
-    last_result: scan,
-    last_error: '',
+    },
   })
-  return { ok: true, status: 200, watch: await getXianyuDeliveryWatchState(), scan }
+  await chrome.alarms.clear('xianyu-delivery-watch')
+  return { ok: true, status: 200, watch: await getXianyuDeliveryWatchState() }
 }
 
 async function sendXianyuCcDeliveryFromTab(tab, payload = {}) {
@@ -952,7 +889,7 @@ async function sendXianyuCcDeliveryFromTab(tab, payload = {}) {
       shipmentId: shipment.id,
       deliveryMessage: shipment.deliveryMessage,
       requirePaidSignal: true,
-      clickSend: true,
+      oneShotHumanAuthorized: hasConsumedOneShotDeliveryAuthorization(pending),
     }],
   })
   const fillResult = filled?.result || {}
@@ -993,276 +930,18 @@ async function sendXianyuCcDeliveryFromTab(tab, payload = {}) {
     result: fillResult,
     shipment: { id: shipment.id, status: 'message_sent', deliveryPreview: shipment.deliveryPreview },
     marked: marked.json,
-    xianyuConfirm: await confirmXianyuShipmentFromTab(tab, { source: 'after_delivery_send', shipmentId: shipment.id }).catch((err) => ({
+    xianyuConfirm: {
       ok: false,
-      status: 0,
-      error: err instanceof Error ? err.message : String(err),
-    })),
+      skipped: true,
+      reason: 'human_confirmation_required',
+      nextAction: '卡密发送完成后，闲鱼“确认发货”仍需由本人逐笔处理。',
+    },
   }
 }
 
 async function sendXianyuCcDeliveryFromActiveTab(payload = {}) {
   const tab = await getActiveTabForSocial()
   return sendXianyuCcDeliveryFromTab(tab, payload)
-}
-
-async function confirmXianyuShipmentFromTab(tab, payload = {}) {
-  if (!tab?.id) return { ok: false, status: 0, error: 'No active tab' }
-  const platform = detectSocialPlatform(tab.url || '')
-  if (platform.id !== 'xianyu') {
-    return { ok: false, status: 0, error: '请先切到对应的闲鱼待发货/聊天页。' }
-  }
-  if (!chrome.scripting?.executeScript) {
-    return { ok: false, status: 0, error: 'Chrome scripting permission unavailable' }
-  }
-  const pending = await fetchXianyuAdminApi('/api/cc-xianyu-confirm/next')
-  if (!pending.ok) return pending
-  const shipment = pending.json?.shipment
-  if (!pending.json?.hasPending || !shipment?.id) {
-    return { ok: true, status: 200, skipped: true, reason: 'no_pending_confirm', pending: pending.json }
-  }
-  const targetShipmentId = payload.shipmentId ? String(payload.shipmentId) : ''
-  if (targetShipmentId && String(shipment.id) !== targetShipmentId) {
-    return {
-      ok: false,
-      status: 409,
-      error: '待确认发货记录和刚发送的卡密记录不一致，已阻止点击。',
-      shipment: { id: shipment.id, status: shipment.status, deliveryPreview: shipment.deliveryPreview },
-    }
-  }
-  const [confirmed] = await chrome.scripting.executeScript({
-    target: { tabId: tab.id },
-    func: runXianyuConfirmShipmentInPage,
-    args: [{
-      shipmentId: shipment.id,
-      requirePaidSignal: true,
-      clickButtons: true,
-    }],
-  })
-  const confirmResult = confirmed?.result || {}
-  if (!confirmResult.confirmed) {
-    const failed = await fetchXianyuAdminApi(`/api/cc-shipments/${encodeURIComponent(String(shipment.id))}/mark-xianyu-confirm-failed`, {
-      method: 'POST',
-      body: JSON.stringify({ error: confirmResult.reason || '浏览器页面未能确认闲鱼发货' }),
-    })
-    return {
-      ok: false,
-      status: 409,
-      error: confirmResult.reason || '浏览器页面未能确认闲鱼发货',
-      result: confirmResult,
-      marked: failed.json || null,
-      shipment: { id: shipment.id, status: shipment.status, deliveryPreview: shipment.deliveryPreview },
-    }
-  }
-  const marked = await fetchXianyuAdminApi(`/api/cc-shipments/${encodeURIComponent(String(shipment.id))}/mark-xianyu-confirmed`, {
-    method: 'POST',
-  })
-  if (!marked.ok) {
-    return {
-      ok: false,
-      status: marked.status,
-      error: `闲鱼已点击发货，但本机标记失败：${marked.error}`,
-      result: confirmResult,
-      shipment: { id: shipment.id, status: shipment.status, deliveryPreview: shipment.deliveryPreview },
-    }
-  }
-  return {
-    ok: true,
-    status: 200,
-    result: confirmResult,
-    shipment: { id: shipment.id, status: 'xianyu_confirmed', deliveryPreview: shipment.deliveryPreview },
-    marked: marked.json,
-  }
-}
-
-async function confirmXianyuShipmentFromActiveTab(payload = {}) {
-  const tab = await getActiveTabForSocial()
-  return confirmXianyuShipmentFromTab(tab, payload)
-}
-
-async function relistXianyuItemFromTab(tab, payload = {}) {
-  if (!tab?.id) return { ok: false, status: 0, error: 'No active tab' }
-  const platform = detectSocialPlatform(tab.url || '')
-  if (platform.id !== 'xianyu') {
-    return { ok: false, status: 0, error: '请先切到对应的闲鱼商品页。' }
-  }
-  if (!chrome.scripting?.executeScript) {
-    return { ok: false, status: 0, error: 'Chrome scripting permission unavailable' }
-  }
-  let shipmentId = payload.shipmentId ? String(payload.shipmentId) : ''
-  let itemId = payload.itemId || ''
-  if (!shipmentId && payload.useQueue !== false) {
-    const pending = await fetchXianyuAdminApi('/api/cc-xianyu-relist/next')
-    if (!pending.ok) return pending
-    const shipment = pending.json?.shipment
-    if (!pending.json?.hasPending || !shipment?.id) {
-      return { ok: true, status: 200, skipped: true, reason: 'no_pending_relist', pending: pending.json }
-    }
-    shipmentId = String(shipment.id)
-    itemId = itemId || shipment.itemId || ''
-  }
-  const [relisted] = await chrome.scripting.executeScript({
-    target: { tabId: tab.id },
-    func: runXianyuRelistItemInPage,
-    args: [{
-      itemId,
-      clickButton: true,
-    }],
-  })
-  const relistResult = relisted?.result || {}
-  if (!shipmentId) {
-    return {
-      ok: Boolean(relistResult.relisted),
-      status: relistResult.relisted ? 200 : 409,
-      error: relistResult.relisted ? '' : (relistResult.reason || '浏览器页面未能恢复上架'),
-      result: relistResult,
-    }
-  }
-  if (!relistResult.relisted) {
-    const failed = await fetchXianyuAdminApi(`/api/cc-shipments/${encodeURIComponent(shipmentId)}/mark-relist-failed`, {
-      method: 'POST',
-      body: JSON.stringify({ error: relistResult.reason || '浏览器页面未能恢复上架' }),
-    })
-    return {
-      ok: false,
-      status: 409,
-      error: relistResult.reason || '浏览器页面未能恢复上架',
-      result: relistResult,
-      marked: failed.json || null,
-    }
-  }
-  const marked = await fetchXianyuAdminApi(`/api/cc-shipments/${encodeURIComponent(shipmentId)}/mark-relisted`, {
-    method: 'POST',
-  })
-  if (!marked.ok) {
-    return {
-      ok: false,
-      status: marked.status,
-      error: `闲鱼已点击恢复上架，但本机标记失败：${marked.error}`,
-      result: relistResult,
-    }
-  }
-  return { ok: true, status: 200, result: relistResult, marked: marked.json }
-}
-
-async function relistXianyuItemFromActiveTab(payload = {}) {
-  const tab = await getActiveTabForSocial()
-  return relistXianyuItemFromTab(tab, payload)
-}
-
-async function runXianyuRelistWatchOnce() {
-  const pending = await fetchXianyuAdminApi('/api/cc-xianyu-relist/next')
-  if (!pending.ok || !pending.json?.hasPending) return pending
-  const tabs = await getOpenXianyuTabs()
-  if (!tabs.length) return { ok: false, status: 404, error: '没有已打开的闲鱼商品页。' }
-  let lastResult = null
-  for (const tab of tabs) {
-    const result = await relistXianyuItemFromTab(tab, {
-      source: 'xianyu_relist_watch',
-      shipmentId: pending.json.shipment?.id,
-      itemId: pending.json.shipment?.itemId || '',
-      useQueue: false,
-    })
-    lastResult = result
-    if (result.ok) return result
-  }
-  return lastResult || { ok: false, status: 409, error: '已打开闲鱼页里暂未找到可重新上架的商品页。' }
-}
-
-async function runXianyuDeliveryWatchOnce() {
-  if (xianyuDeliveryWatchInFlight) {
-    return { ok: false, status: 409, error: '看守任务正在执行，跳过本轮。' }
-  }
-  const watch = await getXianyuDeliveryWatchState()
-  if (!watch.enabled || (!watch.tabId && watch.scope !== 'all_open_xianyu_tabs')) return { ok: true, status: 200, skipped: true, reason: 'watch_disabled' }
-  xianyuDeliveryWatchInFlight = true
-  try {
-    if (watch.scope === 'all_open_xianyu_tabs') {
-      const pendingGate = await assertSinglePendingDeliveryForGlobalWatch()
-      if (!pendingGate.ok) {
-        await saveXianyuDeliveryWatchState({
-          ...watch,
-          enabled: false,
-          last_error: pendingGate.error || '全局看守安全门未通过。',
-        })
-        return pendingGate
-      }
-      const xianyuTabs = await getOpenXianyuTabs()
-      if (!xianyuTabs.length) {
-        await saveXianyuDeliveryWatchState({
-          ...watch,
-          enabled: false,
-          last_error: '没有已打开的闲鱼聊天页，全局看守自动停止。',
-        })
-        return { ok: false, status: 404, error: '没有已打开的闲鱼聊天页。' }
-      }
-      let lastResult = null
-      for (const tab of xianyuTabs) {
-        const result = await sendXianyuCcDeliveryFromTab(tab, { source: 'xianyu_delivery_watch', scope: watch.scope })
-        lastResult = result
-        if (result.ok) {
-          await saveXianyuDeliveryWatchState({
-            ...watch,
-            enabled: false,
-            tabCount: xianyuTabs.length,
-            last_result: result,
-            last_error: '',
-            disabledAt: new Date().toISOString(),
-            reason: 'sent_once',
-          })
-          return result
-        }
-      }
-      const summary = lastResult || { ok: false, status: 409, error: '已打开闲鱼页里暂未命中已付款聊天。' }
-      await saveXianyuDeliveryWatchState({
-        ...watch,
-        enabled: true,
-        tabCount: xianyuTabs.length,
-        last_result: summary,
-        last_error: summary.error || '',
-      })
-      return summary
-    }
-    const tab = await chrome.tabs.get(watch.tabId).catch(() => null)
-    if (!tab?.id) {
-      await saveXianyuDeliveryWatchState({
-        ...watch,
-        enabled: false,
-        last_error: '目标闲鱼聊天页已关闭，看守自动停止。',
-      })
-      return { ok: false, status: 404, error: '目标闲鱼聊天页已关闭。' }
-    }
-    const platform = detectSocialPlatform(tab.url || '')
-    if (platform.id !== 'xianyu') {
-      await saveXianyuDeliveryWatchState({
-        ...watch,
-        enabled: false,
-        last_error: '目标标签页已离开闲鱼，看守自动停止。',
-      })
-      return { ok: false, status: 409, error: '目标标签页已离开闲鱼。' }
-    }
-    const result = await sendXianyuCcDeliveryFromTab(tab, { source: 'xianyu_delivery_watch' })
-    if (result.ok) {
-      await saveXianyuDeliveryWatchState({
-        ...watch,
-        enabled: false,
-        last_result: result,
-        last_error: '',
-        disabledAt: new Date().toISOString(),
-        reason: 'sent_once',
-      })
-      return result
-    }
-    await saveXianyuDeliveryWatchState({
-      ...watch,
-      enabled: true,
-      last_result: result,
-      last_error: result.error || '',
-    })
-    return result
-  } finally {
-    xianyuDeliveryWatchInFlight = false
-  }
 }
 
 async function recordSocialPerformance(payload = {}) {
@@ -2155,35 +1834,23 @@ chrome.tabs.onActivated.addListener(({ tabId }) => void whenReady(() => {
 }))
 
 chrome.runtime.onInstalled.addListener(() => {
+  void chrome.alarms.clear('xianyu-delivery-watch')
+  void chrome.alarms.clear('xianyu-relist-watch')
   void whenReady(() => heartbeatSocialExtensionStatus('installed').catch(() => null))
   void chrome.runtime.openOptionsPage()
 })
 
 chrome.runtime.onStartup.addListener(() => {
+  void chrome.alarms.clear('xianyu-delivery-watch')
+  void chrome.alarms.clear('xianyu-relist-watch')
   void whenReady(() => heartbeatSocialExtensionStatus('startup').catch(() => null))
 })
 
 // MV3 keepalive via chrome.alarms — more reliable than setInterval across
 // service worker restarts. Checks relay health and refreshes badges.
 chrome.alarms.create('relay-keepalive', { periodInMinutes: 0.5 })
-chrome.alarms.create(XIANYU_RELIST_WATCH_ALARM, { periodInMinutes: 2 })
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
-  if (alarm.name === XIANYU_DELIVERY_WATCH_ALARM) {
-    await initPromise
-    await heartbeatSocialExtensionStatus('xianyu-watch-alarm').catch(() => null)
-    await runXianyuDeliveryWatchOnce().catch((err) => {
-      console.warn('Xianyu delivery watch failed:', err instanceof Error ? err.message : err)
-    })
-    return
-  }
-  if (alarm.name === XIANYU_RELIST_WATCH_ALARM) {
-    await initPromise
-    await runXianyuRelistWatchOnce().catch((err) => {
-      console.warn('Xianyu relist watch failed:', err instanceof Error ? err.message : err)
-    })
-    return
-  }
   if (alarm.name !== 'relay-keepalive') return
   await initPromise
   await heartbeatSocialExtensionStatus('relay-keepalive').catch(() => null)
@@ -2395,20 +2062,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
   if (msg?.type === 'xianyuDeliverySend') {
     sendXianyuCcDeliveryFromActiveTab(msg.payload || {})
-      .then((result) => sendResponse(result))
-      .catch((err) => sendResponse({ ok: false, status: 0, error: err instanceof Error ? err.message : String(err) }))
-    return true
-  }
-
-  if (msg?.type === 'xianyuShipmentConfirm') {
-    confirmXianyuShipmentFromActiveTab(msg.payload || {})
-      .then((result) => sendResponse(result))
-      .catch((err) => sendResponse({ ok: false, status: 0, error: err instanceof Error ? err.message : String(err) }))
-    return true
-  }
-
-  if (msg?.type === 'xianyuItemRelist') {
-    relistXianyuItemFromActiveTab(msg.payload || {})
       .then((result) => sendResponse(result))
       .catch((err) => sendResponse({ ok: false, status: 0, error: err instanceof Error ? err.message : String(err) }))
     return true

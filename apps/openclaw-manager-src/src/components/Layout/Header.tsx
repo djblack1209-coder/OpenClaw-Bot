@@ -4,6 +4,7 @@ import { ExternalLink, Loader2 } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-shell';
 import { invoke } from '@tauri-apps/api/core';
 import { createLogger } from '@/lib/logger';
+import { clawbotFetchJson } from '@/lib/tauri-core';
 import { useAppStore } from '@/stores/appStore';
 import { useLanguage } from '@/i18n';
 
@@ -26,10 +27,13 @@ export function Header({ currentPage }: HeaderProps) {
   useEffect(() => {
     if (isTauriRunning) return;
     let cancelled = false;
-    const check = () => {
-      fetch('http://127.0.0.1:18790/api/v1/status', { signal: AbortSignal.timeout(3000) })
-        .then(r => { if (!cancelled && r.ok) setApiAlive(true); })
-        .catch(() => { if (!cancelled) setApiAlive(false); });
+    const check = async () => {
+      try {
+        await clawbotFetchJson('/api/v1/status', undefined, 3000);
+        if (!cancelled) setApiAlive(true);
+      } catch {
+        if (!cancelled) setApiAlive(false);
+      }
     };
     check();
     const timer = setInterval(check, 15000);
@@ -71,7 +75,7 @@ export function Header({ currentPage }: HeaderProps) {
 
   return (
     <header
-      className="h-12 flex items-center justify-between px-6 titlebar-drag"
+      className="h-12 flex items-center justify-between px-3 sm:px-6 titlebar-drag"
       style={{
         background: 'rgba(2, 2, 2, 0.6)',
         backdropFilter: 'blur(12px)',
@@ -82,7 +86,7 @@ export function Header({ currentPage }: HeaderProps) {
       {/* 左侧：页面标题 */}
       <div className="titlebar-no-drag flex items-center gap-3">
         <h2
-          className="font-display font-bold text-base"
+          className="font-display font-bold text-sm sm:text-base whitespace-nowrap"
           style={{ color: 'var(--text-primary)' }}
         >
           {title}
@@ -90,10 +94,10 @@ export function Header({ currentPage }: HeaderProps) {
       </div>
 
       {/* 右侧：时钟 + 连接状态 + 控制面板按钮 */}
-      <div className="flex items-center gap-4 titlebar-no-drag">
+      <div className="flex items-center gap-2 sm:gap-4 titlebar-no-drag min-w-0">
         {/* 实时时钟 */}
         <span
-          className="font-mono tabular-nums text-xs tracking-wider"
+          className="hidden sm:inline font-mono tabular-nums text-xs tracking-wider"
           style={{ color: 'var(--text-tertiary)' }}
         >
           {clock}
@@ -114,7 +118,7 @@ export function Header({ currentPage }: HeaderProps) {
         <button
           onClick={handleOpenDashboard}
           disabled={opening}
-          className="flex items-center gap-1.5 px-3 py-1 rounded-lg font-mono text-[11px] transition-all duration-200 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:outline-none"
+          className="flex items-center gap-1.5 px-2 sm:px-3 py-1 rounded-lg font-mono text-[11px] transition-all duration-200 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:outline-none"
           style={{
             background: 'rgba(255,255,255,0.04)',
             color: 'var(--text-secondary)',
@@ -131,7 +135,7 @@ export function Header({ currentPage }: HeaderProps) {
           title={t('header.openDashboard')}
         >
           {opening ? <Loader2 size={12} className="animate-spin" /> : <ExternalLink size={12} />}
-          <span>{t('header.controlPanel')}</span>
+          <span className="hidden sm:inline">{t('header.controlPanel')}</span>
         </button>
       </div>
     </header>

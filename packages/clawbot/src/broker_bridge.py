@@ -602,8 +602,16 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         limit_price: float = 0,
         decided_by: str = "",
         reason: str = "",
+        human_confirmed: bool = False,
     ) -> dict:
         """统一下单逻辑（BUY/SELL 共用）"""
+        if not human_confirmed:
+            logger.warning("[IBKR] 拦截未经过当前操作人工确认的实盘订单: %s %s", side, symbol)
+            return {
+                "error": "实盘下单需要当前操作的人工确认",
+                "code": "live_trade_confirmation_required",
+                "live_order_blocked": True,
+            }
         if quantity <= 0:
             return {"error": f"数量必须大于零 (got {quantity})"}
         if not await self.ensure_connected():
@@ -720,9 +728,19 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         limit_price: float = 0,
         decided_by: str = "",
         reason: str = "",
+        human_confirmed: bool = False,
     ) -> dict:
         """买入下单（带预算控制）"""
-        return await self._place_order("BUY", symbol, quantity, order_type, limit_price, decided_by, reason)
+        return await self._place_order(
+            "BUY",
+            symbol,
+            quantity,
+            order_type,
+            limit_price,
+            decided_by,
+            reason,
+            human_confirmed,
+        )
 
     async def sell(
         self,
@@ -732,9 +750,19 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         limit_price: float = 0,
         decided_by: str = "",
         reason: str = "",
+        human_confirmed: bool = False,
     ) -> dict:
         """卖出下单"""
-        return await self._place_order("SELL", symbol, quantity, order_type, limit_price, decided_by, reason)
+        return await self._place_order(
+            "SELL",
+            symbol,
+            quantity,
+            order_type,
+            limit_price,
+            decided_by,
+            reason,
+            human_confirmed,
+        )
 
     # ============ 订单管理 ============
 

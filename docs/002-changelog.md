@@ -5,6 +5,51 @@
 
 ## 最近更新（2026-07 / 2026-06 / 2026-05）
 
+
+## [2026-07-12] OpenClaw 最终审计、统一验证与低维护安全闭环
+> 领域: `backend` | `frontend` | `ai-pool` | `infra` | `deploy` | `docs` | `trading` | `social` | `xianyu`
+> 影响模块: `GitHub CI`, `Makefile`, `最终审计`, `备份恢复`, `续费提醒`, `AI 路由`, `任务图/调度`, `Telegram/微信/Intel`, `Frist-API`, `Tauri`, `Chrome 扩展`, `闲鱼/交易/社媒安全门`
+> 关联问题: HI-final-audit-20260712
+
+### 变更内容
+
+- 删除 CI 的“允许预存失败”和 pytest 管道吞退出码；文档变更不再跳过 CI，本地与 GitHub Actions 统一使用 Python、前端、Chrome 扩展、Frist-API 和文档确定性门。
+- 新增 `make final-audit` 脱敏离线入口：报告只写状态、退出码和耗时，不持久化子进程原始输出；GitHub Actions 固定到完整提交 SHA。
+- 收紧所有高风险外部写入：真实交易、闲鱼发卡/确认发货、社媒发布、浏览器提交和通用执行器只能接受顶层人工确认；状态未知默认暂停，模型自报确认无效。
+- 修复 AI 路由不存在模型、隐藏付费 fallback、成本漏计、Provider 探针和成功率；任务图补齐备用节点时序、回填、跳过、共享节点与循环校验。
+- 修复 scheduler 循环中止、重复启动、任务互相拖死和维护/总开关未生效；自愈默认 dry-run，显式 `--confirm` 才执行。
+- 备份/恢复增加锁、空间预检、SQLite 在线备份、完整性与 SHA-256 校验、原子替换、保留策略和可丢弃恢复演练；新增运行权限只读审计/显式修复。
+- 新增不含凭据的续费模板、30/14/7/3/1 天提醒和老板健康摘要；未知日期保留 `unknown`，系统不登录、不付款、不改自动续费。
+- 修复 Telegram/微信/Intel 的幂等、消息边界、URL 编码、状态容量/过期和微信日志隐私；真实渠道与本地模拟证据明确分层。
+- Frist-API 收紧支付验签、回调时间窗、金额/商户/交易号幂等、代理头、CORS、管理员/用户 Key 摘要与 timing-safe 比较；删除无引用旧模块。
+- Tauri/React/Chrome 扩展贯通社媒最终确认链，停止硬编码访问真实运行端口，补移动端布局和危险动作静态合同；普通扩展模式只填不发送。
+- 修复跨机器启动脚本，删除硬编码路径、`pkill -f`、无调用/损坏的旧启动和打包入口；删除未进入主链的 CrewAI bridge 与重复 DB backup。
+- 审计 worktree 从桌面迁入主仓库 `.worktrees/`，保持 HEAD/分支/改动/submodule 一致；`make deep-clean` 改为仅修剪失效记录，不再强制删除有效 worktree。
+- README、AGENTS、Project Map、Architecture、Quickstart、Registries、Operations、Health、Feature Specs、Handoff、Owner Handbook 和文档索引已同步当前安全口径。
+
+### 主要文件变更
+
+- `.github/workflows/ci.yml` / `Makefile` / `scripts/final_audit.py` — 统一真实 CI、最终审计和安全 worktree 清理合同。
+- `scripts/check_renewals.py` / `scripts/harden_runtime_permissions.py` / `scripts/auto_health_check.sh` / `scripts/auto_recovery.sh` — 续费、权限、健康和显式恢复闭环。
+- `scripts/local_backup.sh` / `scripts/disaster_recovery.sh` / `packages/clawbot/scripts/backup_databases.py` — 备份校验、保留与可丢弃恢复。
+- `packages/clawbot/src/core/` / `src/execution/` / `src/litellm_router.py` / `src/llm_routing_config.py` — 任务图、执行器、调度、成本、自愈和 AI 路由修复。
+- `packages/clawbot/src/trading*` / `src/broker_bridge.py` / `src/auto_trader.py` / `src/position_monitor.py` — 模拟/真实交易隔离和人工确认。
+- `packages/clawbot/src/execution/social/` / `packages/openclaw-npm/assets/chrome-extension/` — 草稿、审核、最终发布和浏览器提交双闸门。
+- `packages/clawbot/src/xianyu/` / `scripts/cc_zhongzhuan_seller_bridge.mjs` — 付款证据、一次性票、重复发卡和确认发货边界。
+- `apps/frist-api/server/` / `apps/frist-api/tests/` — 支付、鉴权、代理、CORS、容量和敏感数据边界。
+- `apps/openclaw-manager-src/` — Tauri IPC、社媒确认、运行端点和响应式布局。
+- `packages/clawbot/tests/` / Chrome 扩展 Node 测试 / 桌面静态合同 — 新增安全、恢复、调度、续费、CI 和启动脚本回归。
+- `docs/001-project-map.md` / `docs/002-changelog.md` / `docs/003-docs-index.md` / `docs/004-architecture.md` / `docs/005-quickstart.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `docs/010-feature-specs.md` / `docs/012-handoff.md` / `docs/081-owner-ops-handbook.md` — 单一当前事实源和用户操作口径。
+
+### 验证
+
+- 目标回归：CI/最终审计/续费/启动/权限/备份恢复 Python 合同 `26 passed`；运维 Node 合同 `6/6`；桌面静态合同 `8/8`；Chrome 扩展 `87/87`；文档 `22/22`。
+- `make ci-local`：Ruff、Python 语法、ESLint、TypeScript、Vite production build 全部通过；Python `2118 passed / 2 skipped`；Frist-API `202 passed / 0 failed`；Chrome 扩展 `87 passed / 0 failed`；文档 22 个全部合规。
+- `make final-audit`：`ready`，`21 passed / 0 failed / 0 skipped`，耗时 `488.080s`；当前工作树与全历史 Gitleaks、Python/桌面/Frist-API 依赖高危审计、恢复、运行权限、续费和全部确定性门通过。
+- Playwright 隔离验收使用合成后端，不访问真实 18790；窄视口无横向溢出，控制台 0 errors，社媒 POST 传入最终确认但后端返回 `external_write=false`。
+- 最终 `git diff --check`、worktree/submodule 和未跟踪文件清单复核必须在暂存前再次执行；未 push、未建 PR、未部署、未重启生产。
+
+
 ## [2026-07-08] 微信控制权限医生深度诊断与权限页引导
 > 领域: `infra` | `docs`
 > 影响模块: `Weixin ClawBot`, `Computer Use`, `Intel Brief`

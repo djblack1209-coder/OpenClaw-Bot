@@ -66,6 +66,7 @@ from src.trading_journal import journal
 from src.trading_memory_bridge import trading_memory_bridge
 from src.litellm_router import free_pool, ROUTE_BALANCED
 from src.context_manager import TieredContextManager
+from src.utils import scrub_secrets
 from src.routing import PriorityMessageQueue
 from src.strategy_engine import create_default_engine
 from src.social_tools import ABTestManager
@@ -441,11 +442,16 @@ async def main():
             if u > 0:
                 for prov, info in report.get("providers", {}).items():
                     if info.get("status") not in ("ok", "partial"):
-                        logger.warning(f"  [Key验证] ❌ {prov}: {info.get('status')} — {info.get('error', '')[:80]}")
+                        logger.warning(
+                            "  [Key验证] ❌ %s: %s — %s",
+                            prov,
+                            info.get("status"),
+                            scrub_secrets(str(info.get("error", "")))[:80],
+                        )
                     elif info.get("dead_indices"):
                         logger.warning(f"  [Key验证] ⚠️ {prov}: dead keys #{info['dead_indices']}")
         except Exception as e:
-            logger.warning(f"  [Key验证] 启动验证跳过: {e}")
+            logger.warning("  [Key验证] 启动验证跳过: %s", scrub_secrets(str(e)))
     # 辅助: 为 fire-and-forget 任务统一添加异常回调
     def _task_done_cb(label: str):
         def _cb(t):
@@ -465,19 +471,18 @@ async def main():
         chat_router.register_llm_router(_llm_router_call)
         logger.info("  LLM 路由已注册 (使用 qwen235b/qwen-3-235b, 不保存历史)")
 
-    # 初始化智能记忆管道（搬运自 mem0 模式）
+    # 初始化智能记忆管道；提取逻辑与实际存储引擎分开汇报，避免把 SQLite 回退误报成 Mem0。
     from src.smart_memory import init_smart_memory
     if router_instance:
         async def _memory_llm(prompt: str) -> str:
             return await router_instance._call_api(-998, prompt, save_history=False)
         smart_mem = init_smart_memory(shared_memory, llm_fn=_memory_llm)
-        logger.info("  智能记忆管道已初始化 (mem0 模式, LLM=qwen235b)")
+        logger.info("  智能记忆管道已初始化（规则提取 + 受控 LLM=qwen235b）")
     else:
         smart_mem = init_smart_memory(shared_memory)
-        logger.info("  智能记忆管道已初始化 (无 LLM, 仅规则模式)")
+        logger.info("  智能记忆管道已初始化（仅规则提取）")
 
-    # mem0 记忆层已内置于 SharedMemory v4.0，无需额外 memory_layer
-    logger.info(f"  记忆引擎: {shared_memory.get_stats().get('engine', 'sqlite')}")
+    logger.info("  记忆存储引擎: %s", shared_memory.get_stats().get("engine", "sqlite"))
 
     # 初始化主动智能引擎 (搬运自 BasedHardware/omi 17k⭐ 的 proactive_notification 三步管道)
     try:
@@ -496,13 +501,11 @@ async def main():
     except Exception as e:
         logger.info(f"  自选股异动监控跳过: {e}")
 
-    # browser-use 浏览器代理 — 延迟到首次使用时初始化（节省 ~15-30MB 启动内存）
-    # init_browser_use 会在 src.browser_use_bridge 首次调用时自动触发
-    logger.info("  browser-use 浏览器代理: 延迟加载模式（首次使用时初始化）")
+    # browser-use 是隔离可选依赖；未安装时保持现有只读 Playwright/HTTP 降级路径。
+    logger.info("  browser-use 只读桥接: 按需检查（默认未安装时安全降级）")
 
-    # CrewAI 多 Agent 协作桥接 — 延迟到首次使用时初始化（节省 ~10-20MB 启动内存）
-    # crewai_bridge 内部已是懒加载单例，无需启动时预热
-    logger.info("  CrewAI 多 Agent 协作桥接: 延迟加载模式（首次使用时初始化）")
+    # 多角色分析使用项目原生任务图和投票器，不再宣称未接入主链的 CrewAI 桥接。
+    logger.info("  多角色协作: 原生任务图 + 投票器")
 
     # === 启动内控 API 服务器 (搬运 freqtrade RPC + Open WebUI 模式) ===
     api_port = int(os.environ.get("API_PORT", "18790"))

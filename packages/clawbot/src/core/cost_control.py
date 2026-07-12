@@ -74,6 +74,8 @@ class CostController:
         self._records: list = []
         self._by_model: dict[str, float] = defaultdict(float)
         self._by_task: dict[str, float] = defaultdict(float)
+        self._unknown_cost_calls = 0
+        self._unknown_cost_models: set[str] = set()
         self._load_today()
         logger.info(f"CostController 初始化: 日预算 ${daily_budget_usd:.2f}")
 
@@ -90,6 +92,10 @@ class CostController:
                         continue
                     record = json.loads(line)
                     if record.get("date") == today:
+                        if record.get("cost_known", True) is False:
+                            self._unknown_cost_calls += 1
+                            self._unknown_cost_models.add(record.get("model", "unknown"))
+                            continue
                         cost = record.get("cost_usd", 0)
                         self._today_spend += cost
                         self._by_model[record.get("model", "unknown")] += cost
@@ -105,9 +111,11 @@ class CostController:
             self._today_spend = 0.0
             self._by_model.clear()
             self._by_task.clear()
+            self._unknown_cost_calls = 0
+            self._unknown_cost_models.clear()
             self._records.clear()
 
-    def estimate_cost(self, model: str, input_tokens: int, output_tokens: int) -> float:
+    def estimate_cost(self, model: str, input_tokens: int, output_tokens: int) -> float | None:
         """预估调用成本（美元）"""
         # 查找模型定价
         pricing = None
@@ -116,7 +124,7 @@ class CostController:
                 pricing = prices
                 break
         if pricing is None:
-            return 0.0  # 未知模型假设免费
+            return None  # 未知价格必须显式暴露，不能假装免费
 
         cost = (input_tokens * pricing["input"] + output_tokens * pricing["output"]) / 1_000_000
         return cost
@@ -132,17 +140,12 @@ class CostController:
             "timestamp": time.time(),
             "model": model,
             "cost_usd": round(cost, 6),
+            "cost_known": True,
             "task_type": task_type,
             "date": self._today_date,
         }
         self._records.append(record)
-
-        # 持久化
-        try:
-            with open(DAILY_LOG, "a") as f:
-                f.write(f"{json.dumps(record, ensure_ascii=False)}\n")
-        except Exception as e:
-            logger.warning("[CostControl] 成本记录持久化失败: %s", e)
+        self._append_record(record)
 
         # 预算告警
         if self._daily_budget > 0 and self._today_spend > self._daily_budget * 0.8:
@@ -168,6 +171,38 @@ class CostController:
                         logger.warning("[CostControl] EventBus成本预警发布失败: %s", e)
             except Exception as e:
                 logger.warning("[CostControl] 发布成本预警事件失败: %s", e)
+
+
+    def record_unpriced_call(self, model: str, task_type: str = "unknown") -> None:
+        """记录无法可靠计价的真实调用，让成本面板明确显示统计不完整。"""
+        self._check_date_rollover()
+        self._unknown_cost_calls += 1
+        self._unknown_cost_models.add(model)
+        record = {
+            "timestamp": time.time(),
+            "model": model,
+            "cost_known": False,
+            "task_type": task_type,
+            "date": self._today_date,
+        }
+        self._records.append(record)
+        self._append_record(record)
+
+    @staticmethod
+    def _append_record(record: dict) -> None:
+        """以 0600 追加成本记录，避免模型与费用数据被同机其他账号读取。"""
+        try:
+            COST_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+            os.chmod(COST_DIR, 0o700)
+            fd = os.open(DAILY_LOG, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+            try:
+                os.fchmod(fd, 0o600)
+                payload = f"{json.dumps(record, ensure_ascii=False)}\n".encode()
+                os.write(fd, payload)
+            finally:
+                os.close(fd)
+        except Exception as exc:
+            logger.warning("[CostControl] 成本记录持久化失败: %s", scrub_secrets(str(exc)))
 
     def get_daily_spend(self) -> float:
         self._check_date_rollover()
@@ -195,6 +230,7 @@ class CostController:
         """周报"""
         week_start = (now_et() - timedelta(days=7)).strftime("%Y-%m-%d")
         weekly_cost = 0.0
+        weekly_unknown_cost_calls = 0
         daily_breakdown: dict[str, float] = defaultdict(float)
 
         if DAILY_LOG.exists():
@@ -207,6 +243,9 @@ class CostController:
                         record = json.loads(line)
                         date = record.get("date", "")
                         if date >= week_start:
+                            if record.get("cost_known", True) is False:
+                                weekly_unknown_cost_calls += 1
+                                continue
                             cost = record.get("cost_usd", 0)
                             weekly_cost += cost
                             daily_breakdown[date] += cost
@@ -220,6 +259,8 @@ class CostController:
             "by_model": dict(self._by_model),
             "by_task": dict(self._by_task),
             "daily_breakdown": dict(daily_breakdown),
+            "unknown_cost_calls": weekly_unknown_cost_calls,
+            "cost_complete": weekly_unknown_cost_calls == 0,
         }
 
     def get_stats(self) -> dict:
@@ -230,6 +271,9 @@ class CostController:
             "budget_used_pct": round(self._today_spend / self._daily_budget * 100, 1)
                                if self._daily_budget > 0 else 0,
             "over_budget": self.is_over_budget(),
+            "unknown_cost_calls": self._unknown_cost_calls,
+            "unknown_cost_models": sorted(self._unknown_cost_models),
+            "cost_complete": self._unknown_cost_calls == 0,
             "by_model": {k: round(v, 4) for k, v in self._by_model.items()},
             "by_task": {k: round(v, 4) for k, v in self._by_task.items()},
         }

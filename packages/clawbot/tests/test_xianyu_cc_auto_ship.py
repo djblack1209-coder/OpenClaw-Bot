@@ -104,6 +104,7 @@ def fake_httpx(monkeypatch):
 
 def configure_cc_webhook(monkeypatch):
     monkeypatch.setenv("CC_XIANYU_AUTO_SHIP_ENABLED", "1")
+    monkeypatch.setenv("CC_XIANYU_AUTO_SHIP_PAUSED", "0")
     monkeypatch.setenv("CC_XIANYU_WEBHOOK_URL", "https://cc.example.test/api/ops/xianyu/paid-order")
     monkeypatch.setenv("CC_XIANYU_WEBHOOK_TOKEN", "unit-test-token")
     monkeypatch.setenv("CC_XIANYU_AUTO_SHIP_DELAY_SECONDS", "0")
@@ -1207,7 +1208,7 @@ def test_xianyu_context_tracks_cc_shipments_for_manual_reship(tmp_path):
     assert gate_after_real_order["pending_rescue"] == 0
     assert gate_after_real_order["strict_audit_command"].endswith("--require-real-order")
 
-    order_hash = hashlib.sha256("xy_oid_001_real_order".encode()).hexdigest()
+    order_hash = hashlib.sha256(b"xy_oid_001_real_order").hexdigest()
     saved = ctx.record_cc_strict_audit({
         "mode": "strict",
         "ok": True,
@@ -1255,7 +1256,7 @@ def test_strict_audit_ready_requires_xy_oid_real_order(tmp_path):
             delivery_message="兑换网址：https://jiyu.245334.xyz，卡密：CC-MANUAL",
             error="",
         )
-        manual_hash = hashlib.sha256("xy_manual_internal_test_order".encode()).hexdigest()
+        manual_hash = hashlib.sha256(b"xy_manual_internal_test_order").hexdigest()
         ctx.record_cc_strict_audit({
             "mode": "strict",
             "ok": True,
@@ -1291,7 +1292,7 @@ def test_strict_audit_ready_requires_xy_oid_real_order(tmp_path):
             delivery_message="兑换网址：https://jiyu.245334.xyz，卡密：CC-REAL",
             error="",
         )
-        real_hash = hashlib.sha256("xy_oid_real_unlock_order".encode()).hexdigest()
+        real_hash = hashlib.sha256(b"xy_oid_real_unlock_order").hexdigest()
         saved = ctx.record_cc_strict_audit({
             "mode": "strict",
             "ok": True,
@@ -1827,6 +1828,7 @@ def test_xianyu_admin_browser_delivery_next_reuses_pending_message(tmp_path, mon
     monkeypatch.setenv("ENV", "development")
     monkeypatch.setenv("API_HOST", "127.0.0.1")
     monkeypatch.setattr("src.api.auth._API_TOKEN", "", raising=False)
+    set_auto_ship_paused(False, "unit test explicit resume")
     ctx = XianyuContextManager(db_path=str(tmp_path / "xianyu-chat.db"))
     ctx.record_cc_shipment(
         order_id="xy_manual_browser_pending",
@@ -1861,6 +1863,7 @@ def test_xianyu_admin_browser_delivery_next_claims_pending_once(tmp_path, monkey
     monkeypatch.setenv("ENV", "development")
     monkeypatch.setenv("API_HOST", "127.0.0.1")
     monkeypatch.setattr("src.api.auth._API_TOKEN", "", raising=False)
+    set_auto_ship_paused(False, "unit test explicit resume")
     ctx = XianyuContextManager(db_path=str(tmp_path / "xianyu-chat.db"))
     ctx.record_cc_shipment(
         order_id="xy_manual_browser_claim_once",
@@ -2086,6 +2089,7 @@ def test_xianyu_admin_one_shot_bridge_route_uses_delivery_only_mode(monkeypatch,
         stderr = ""
 
     def _fake_run(command, **kwargs):
+        assert get_operator_state()["one_shot_delivery"]["active"] is True
         calls.append({"command": command, "kwargs": kwargs})
         return _Completed()
 
@@ -2104,6 +2108,7 @@ def test_xianyu_admin_one_shot_bridge_route_uses_delivery_only_mode(monkeypatch,
     assert payload["deliveryOnly"] is True
     assert payload["oneShot"] is True
     assert payload["deliveries"][0]["stage"] == "sent"
+    assert get_operator_state()["one_shot_delivery"]["active"] is False
     assert len(calls) == 1
     command = calls[0]["command"]
     assert "--delivery-only" in command
@@ -2111,6 +2116,61 @@ def test_xianyu_admin_one_shot_bridge_route_uses_delivery_only_mode(monkeypatch,
     assert "--require-single-xianyu-page" in command
     assert "--require-real-order-id" in command
     assert "--json" in command
+
+
+def test_xianyu_admin_one_shot_bridge_revokes_ticket_after_timeout(monkeypatch):
+    """桥接器超时也必须撤销未消费的单次票，不能给后续进程留下发卡权限。"""
+    monkeypatch.delenv("OPENCLAW_API_TOKEN", raising=False)
+    monkeypatch.setenv("ENV", "development")
+    monkeypatch.setenv("API_HOST", "127.0.0.1")
+    monkeypatch.setattr("src.api.auth._API_TOKEN", "", raising=False)
+
+    def _timeout(*_args, **_kwargs):
+        assert get_operator_state()["one_shot_delivery"]["active"] is True
+        raise xianyu_admin.subprocess.TimeoutExpired(cmd="node seller-bridge", timeout=45)
+
+    monkeypatch.setattr(xianyu_admin, "_seller_bridge_node_binary", lambda: "node")
+    monkeypatch.setattr(xianyu_admin.subprocess, "run", _timeout)
+    client = TestClient(xianyu_admin.app)
+
+    response = client.post(
+        "/api/cc-seller-bridge/one-shot-delivery",
+        json={"reason": "unit test timeout"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["exitCode"] == 124
+    assert get_operator_state()["one_shot_delivery"]["active"] is False
+
+
+def test_xianyu_admin_one_shot_bridge_surfaces_ticket_cleanup_failure(monkeypatch):
+    """撤票失败不能继续返回绿色，避免操作台误以为危险权限已经清理。"""
+    monkeypatch.delenv("OPENCLAW_API_TOKEN", raising=False)
+    monkeypatch.setenv("ENV", "development")
+    monkeypatch.setenv("API_HOST", "127.0.0.1")
+    monkeypatch.setattr("src.api.auth._API_TOKEN", "", raising=False)
+
+    class _Completed:
+        returncode = 0
+        stdout = json.dumps({"ok": True, "mode": "one_shot_delivery_only", "deliveries": []})
+        stderr = ""
+
+    monkeypatch.setattr(xianyu_admin, "_seller_bridge_node_binary", lambda: "node")
+    monkeypatch.setattr(xianyu_admin.subprocess, "run", lambda *_args, **_kwargs: _Completed())
+    monkeypatch.setattr(
+        xianyu_admin,
+        "revoke_one_shot_delivery",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("cleanup failed")),
+    )
+    client = TestClient(xianyu_admin.app)
+
+    response = client.post(
+        "/api/cc-seller-bridge/one-shot-delivery",
+        json={"reason": "unit test cleanup failure"},
+    )
+
+    assert response.status_code == 500
+    assert "cleanup failed" not in response.text
 
 
 def test_xianyu_admin_seller_bridge_page_scan_is_read_only(monkeypatch):
@@ -2905,8 +2965,8 @@ def test_operator_next_action_points_manual_ready_to_chrome_watch(tmp_path, monk
         xianyu_admin._live = old_live
 
 
-def test_xianyu_status_reports_chrome_extension_global_watch_capability(tmp_path, monkeypatch):
-    """操作台应能告诉老板 Chrome 插件是否已刷新到全局看守版本。"""
+def test_xianyu_status_reports_chrome_extension_one_shot_safety_capability(tmp_path, monkeypatch):
+    """操作台应以只读预检和人工单次票为新版能力，不再要求自动看守或恢复上架。"""
     status_file = tmp_path / "social-extension.json"
     monkeypatch.setattr(xianyu_admin, "_SOCIAL_EXTENSION_STATUS_FILE", status_file)
     monkeypatch.setattr(
@@ -2957,11 +3017,12 @@ def test_xianyu_status_reports_chrome_extension_global_watch_capability(tmp_path
                     "manifest_version": "0.2.1",
                     "cc_delivery_helper_version": "2026-07-06-global-watch",
                     "capabilities": {
-                        "all_open_xianyu_tabs_watch": True,
+                        "all_open_xianyu_tabs_watch": False,
                         "single_pending_global_gate": True,
                         "target_tab_preflight": True,
-                        "xianyu_relist_item": True,
-                        "relist_queue_watch": True,
+                        "xianyu_relist_item": False,
+                        "relist_queue_watch": False,
+                        "xianyu_one_shot_delivery_human_gated": True,
                         "paid_page_dispatch": True,
                     },
                 },
@@ -2974,10 +3035,11 @@ def test_xianyu_status_reports_chrome_extension_global_watch_capability(tmp_path
     ready = xianyu_admin._cc_chrome_extension_summary()
     assert ready["needs_refresh_for_global_watch"] is False
     assert ready["social_pilot_installed"] is False
-    assert ready["supports_global_watch"] is True
+    assert ready["supports_global_watch"] is False
     assert ready["supports_target_tab_preflight"] is True
     assert ready["supports_paid_page_dispatch"] is True
-    assert ready["supports_relist_queue"] is True
+    assert ready["supports_relist_queue"] is False
+    assert ready["supports_one_shot_human_gate"] is True
     assert ready["manifest_version"] == "0.2.1"
 
 
@@ -3037,11 +3099,12 @@ def test_xianyu_status_reports_local_bridge_next_action(tmp_path, monkeypatch):
                     "manifest_version": "bridge",
                     "cc_delivery_helper_version": "2026-07-07-local-devtools-bridge",
                     "capabilities": {
-                        "all_open_xianyu_tabs_watch": True,
+                        "all_open_xianyu_tabs_watch": False,
                         "single_pending_global_gate": True,
                         "target_tab_preflight": True,
-                        "xianyu_relist_item": True,
-                        "relist_queue_watch": True,
+                        "xianyu_relist_item": False,
+                        "relist_queue_watch": False,
+                        "xianyu_one_shot_delivery_human_gated": True,
                         "paid_page_dispatch": True,
                     },
                 },
@@ -3099,11 +3162,12 @@ def test_xianyu_status_marks_stale_chrome_extension_heartbeat_offline(tmp_path, 
                     "manifest_version": "0.2.1",
                     "cc_delivery_helper_version": "2026-07-07-background-heartbeat",
                     "capabilities": {
-                        "all_open_xianyu_tabs_watch": True,
+                        "all_open_xianyu_tabs_watch": False,
                         "single_pending_global_gate": True,
                         "target_tab_preflight": True,
-                        "xianyu_relist_item": True,
-                        "relist_queue_watch": True,
+                        "xianyu_relist_item": False,
+                        "relist_queue_watch": False,
+                        "xianyu_one_shot_delivery_human_gated": True,
                         "paid_page_dispatch": True,
                     },
                 },
@@ -3506,6 +3570,7 @@ def test_xianyu_admin_paid_order_probe_is_read_only_and_scrubbed(tmp_path, monke
     monkeypatch.setenv("ENV", "development")
     monkeypatch.setenv("API_HOST", "127.0.0.1")
     monkeypatch.setattr("src.api.auth._API_TOKEN", "", raising=False)
+    set_auto_ship_paused(False, "unit test explicit resume")
     ctx = XianyuContextManager(db_path=str(tmp_path / "xianyu-chat.db"))
 
     fake_live = SimpleNamespace(
@@ -3607,3 +3672,22 @@ async def test_xianyu_live_readonly_paid_order_probe_does_not_send_or_record(mon
     assert live.cookies_str == "fresh-cookie"
     live.send_msg.assert_not_awaited()
     live.ctx.record_cc_shipment.assert_not_called()
+
+
+def test_xianyu_auto_ship_requires_explicit_enable_and_defaults_to_paused(monkeypatch):
+    """即使 webhook 凭据存在，缺少显式启用和人工恢复时也不能自动发卡。"""
+    monkeypatch.setenv("CC_XIANYU_WEBHOOK_URL", "https://cc.example.test/api/ops/xianyu/paid-order")
+    monkeypatch.setenv("CC_XIANYU_WEBHOOK_TOKEN", "unit-test-token")
+
+    live_config = XianyuLive._cc_zhongzhuan_auto_ship_config()
+    admin_status = xianyu_admin._cc_auto_ship_status()
+    operator_state = get_operator_state()
+
+    assert live_config["webhook_configured"] is False
+    assert live_config["configured"] is False
+    assert live_config["paused"] is True
+    assert admin_status["enabled"] is False
+    assert admin_status["configured"] is False
+    assert admin_status["operational"] is False
+    assert admin_status["paused"] is True
+    assert operator_state["auto_ship_paused"] is True

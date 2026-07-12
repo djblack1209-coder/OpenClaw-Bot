@@ -24,6 +24,26 @@ from src.utils import now_et, scrub_secrets
 logger = logging.getLogger(__name__)
 
 
+SAFE_HTTP_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+MUTATING_HTTP_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+SUPPORTED_HTTP_METHODS = SAFE_HTTP_METHODS | MUTATING_HTTP_METHODS
+READ_ONLY_BROWSER_ACTIONS = frozenset({"wait", "extract", "screenshot"})
+MUTATING_BROWSER_ACTIONS = frozenset({"click", "fill"})
+SUPPORTED_BROWSER_ACTIONS = READ_ONLY_BROWSER_ACTIONS | MUTATING_BROWSER_ACTIONS
+
+
+class ExternalActionConfirmationRequired(PermissionError):
+    """外部写操作缺少当前调用的可信人工确认。"""
+
+
+def _require_human_confirmation(operation: str, human_confirmed: bool) -> None:
+    """只接受调用方显式传入的布尔确认，拒绝字符串等宽松真值。"""
+    if human_confirmed is not True:
+        raise ExternalActionConfirmationRequired(
+            f"{operation}需要当前操作的人工确认"
+        )
+
+
 # ── 数据结构 ──────────────────────────────────────────
 
 @dataclass
@@ -176,7 +196,11 @@ class MultiPathExecutor:
             )
 
     async def execute_with_fallback(
-        self, strategies: list[dict], platform: str = "unknown"
+        self,
+        strategies: list[dict],
+        platform: str = "unknown",
+        *,
+        human_confirmed: bool = False,
     ) -> ExecutionResult:
         """
         按顺序尝试多个执行策略。
@@ -184,6 +208,8 @@ class MultiPathExecutor:
         Args:
             strategies: 执行策略列表，如 [{"type": "api", ...}, {"type": "browser", ...}]
             platform: 平台名称（用于熔断器）
+            human_confirmed: 当前操作是否已由可信调用方完成逐次人工确认。策略字典
+                中的同名字段永远不会被信任。
 
         Returns:
             ExecutionResult
@@ -193,6 +219,20 @@ class MultiPathExecutor:
 
         for strategy in strategies:
             exec_type = strategy.get("type", "unknown")
+
+            # 外部写操作在熔断器和依赖初始化之前拦截。确认值只能来自顶层可信
+            # 调用方，不能由模型生成的 strategy 字典自行声明。
+            if self._strategy_requires_confirmation(strategy) and human_confirmed is not True:
+                result.attempts.append(
+                    {
+                        "type": exec_type,
+                        "skipped": True,
+                        "blocked": True,
+                        "reason": "外部写操作需要当前操作的人工确认",
+                    }
+                )
+                self._stats[f"{exec_type}_blocked"] += 1
+                continue
 
             # 熔断器检查
             breaker_key = f"{platform}:{exec_type}"
@@ -209,17 +249,20 @@ class MultiPathExecutor:
                         strategy.get("method", "GET"),
                         strategy.get("params", {}),
                         strategy.get("headers", {}),
+                        human_confirmed=human_confirmed,
                     )
                 elif exec_type == "browser":
                     data = await self.execute_via_browser(
                         strategy.get("url", ""),
                         strategy.get("actions", []),
+                        human_confirmed=human_confirmed,
                     )
                 elif exec_type == "voice_call":
                     data = await self.execute_via_voice_call(
                         strategy.get("phone", ""),
                         strategy.get("objective", ""),
                         strategy.get("script_hints", ""),
+                        human_confirmed=human_confirmed,
                     )
                 elif exec_type == "human":
                     await self.fallback_to_human(
@@ -233,6 +276,7 @@ class MultiPathExecutor:
                         strategy.get("params", {}),
                         strategy.get("entity_id"),
                         strategy.get("connected_account_id"),
+                        human_confirmed=human_confirmed,
                     )
                 elif exec_type == "skyvern":
                     data = await self.execute_via_skyvern(
@@ -240,6 +284,7 @@ class MultiPathExecutor:
                         strategy.get("goal", ""),
                         strategy.get("max_steps", 10),
                         strategy.get("data_extraction_schema"),
+                        human_confirmed=human_confirmed,
                     )
                 else:
                     continue
@@ -255,15 +300,39 @@ class MultiPathExecutor:
             except Exception as e:
                 self._circuit_breaker.record_failure(breaker_key)
                 self._stats[f"{exec_type}_failure"] += 1
+                safe_error = scrub_secrets(str(e)) or type(e).__name__
                 result.attempts.append({
-                    "type": exec_type, "success": False, "error": str(e)
+                    "type": exec_type, "success": False, "error": safe_error
                 })
-                logger.warning(f"执行路径 {exec_type} 失败: {scrub_secrets(str(e))}")
+                logger.warning("执行路径 %s 失败: %s", exec_type, safe_error)
 
         result.elapsed_seconds = time.time() - start
         if not result.success:
-            result.error = "所有执行路径均失败"
+            result.error = (
+                "外部写操作需要人工确认"
+                if any(attempt.get("blocked") for attempt in result.attempts)
+                else "所有执行路径均失败"
+            )
         return result
+
+    @staticmethod
+    def _strategy_requires_confirmation(strategy: dict) -> bool:
+        """判断策略是否可能产生外部副作用。未知浏览器动作按写操作处理。"""
+        exec_type = str(strategy.get("type", "unknown")).lower()
+        if exec_type == "api":
+            method = str(strategy.get("method", "GET")).upper()
+            return method not in SAFE_HTTP_METHODS
+        if exec_type == "browser":
+            actions = strategy.get("actions", [])
+            if not isinstance(actions, list):
+                return True
+            return any(
+                not isinstance(action, dict)
+                or str(action.get("type", "")).lower()
+                not in READ_ONLY_BROWSER_ACTIONS
+                for action in actions
+            )
+        return exec_type in {"voice_call", "composio", "skyvern"}
 
     async def execute_via_api(
         self,
@@ -271,8 +340,16 @@ class MultiPathExecutor:
         method: str = "GET",
         params: dict | None = None,
         headers: dict | None = None,
+        *,
+        human_confirmed: bool = False,
     ) -> Any:
         """API 直连 — 最优先的执行路径"""
+        normalized_method = method.strip().upper()
+        if normalized_method not in SUPPORTED_HTTP_METHODS:
+            raise ValueError(f"不支持的 HTTP 方法: {normalized_method or 'empty'}")
+        if normalized_method in MUTATING_HTTP_METHODS:
+            _require_human_confirmation("API 写请求", human_confirmed)
+
         if not endpoint:
             raise ValueError("API endpoint 为空")
 
@@ -285,12 +362,21 @@ class MultiPathExecutor:
         params = params or {}
         client = self._get_http_client()
 
-        if method.upper() == "GET":
+        if normalized_method == "GET":
             resp = await client.get(endpoint, params=params, headers=headers)
-        elif method.upper() == "POST":
+        elif normalized_method == "HEAD":
+            resp = await client.head(endpoint, params=params, headers=headers)
+        elif normalized_method == "OPTIONS":
+            resp = await client.options(endpoint, params=params, headers=headers)
+        elif normalized_method == "POST":
             resp = await client.post(endpoint, json=params, headers=headers)
         else:
-            resp = await client.request(method, endpoint, json=params, headers=headers)
+            resp = await client.request(
+                normalized_method,
+                endpoint,
+                json=params,
+                headers=headers,
+            )
 
         resp.raise_for_status()
 
@@ -300,9 +386,28 @@ class MultiPathExecutor:
         return resp.text
 
     async def execute_via_browser(
-        self, url: str, actions: list[dict]
+        self,
+        url: str,
+        actions: list[dict],
+        *,
+        human_confirmed: bool = False,
     ) -> Any:
         """浏览器自动化 — API不可用时的备选"""
+        if not isinstance(actions, list):
+            raise ValueError("浏览器 actions 必须是列表")
+
+        action_types: list[str] = []
+        for action in actions:
+            if not isinstance(action, dict):
+                raise ValueError("浏览器 action 必须是字典")
+            action_type = str(action.get("type", "")).lower()
+            if action_type not in SUPPORTED_BROWSER_ACTIONS:
+                raise ValueError(f"不支持的浏览器动作: {action_type or 'empty'}")
+            action_types.append(action_type)
+
+        if any(action in MUTATING_BROWSER_ACTIONS for action in action_types):
+            _require_human_confirmation("浏览器点击或填写", human_confirmed)
+
         if not url:
             raise ValueError("URL 为空")
 
@@ -315,14 +420,21 @@ class MultiPathExecutor:
         try:
             from playwright.async_api import async_playwright
         except ImportError:
-            # 降级到 DrissionPage
+            # 只读任务可降级；写操作不能在不透明的备用路径中假装成功。
+            if any(action in MUTATING_BROWSER_ACTIONS for action in action_types):
+                raise RuntimeError("浏览器写操作需要可见且可审计的 Playwright 会话") from None
             try:
                 return await self._execute_via_drission(url, actions)
             except ImportError:
                 raise RuntimeError("Playwright 和 DrissionPage 均未安装") from None
 
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            # 获得逐次确认的写操作必须使用可见窗口，便于用户观察和中止。
+            browser = await p.chromium.launch(
+                headless=not any(
+                    action in MUTATING_BROWSER_ACTIONS for action in action_types
+                )
+            )
             page = await browser.new_page()
 
             try:
@@ -358,7 +470,7 @@ class MultiPathExecutor:
                 await browser.close()
 
     async def _execute_via_drission(self, url: str, actions: list[dict]) -> Any:
-        """DrissionPage 备选浏览器（反检测更好）"""
+        """DrissionPage 只读备用路径，不执行点击或填写。"""
         from DrissionPage import ChromiumPage
 
         def _run():
@@ -366,8 +478,12 @@ class MultiPathExecutor:
             try:
                 page.get(url)
                 title = page.title
-                text = page.html[:5000]
-                return {"url": url, "title": title, "content_preview": text[:500]}
+                content = page.html or ""
+                return {
+                    "url": url,
+                    "title": title,
+                    "content_length": len(content),
+                }
             finally:
                 page.quit()
 
@@ -378,8 +494,11 @@ class MultiPathExecutor:
         phone: str,
         objective: str,
         script_hints: str = "",
+        *,
+        human_confirmed: bool = False,
     ) -> dict:
         """AI 语音拨号 — 只有电话渠道时的最后手段"""
+        _require_human_confirmation("真实电话拨号", human_confirmed)
         if not phone:
             raise ValueError("电话号码为空")
 
@@ -430,8 +549,11 @@ class MultiPathExecutor:
         params: dict | None = None,
         entity_id: str | None = None,
         connected_account_id: str | None = None,
+        *,
+        human_confirmed: bool = False,
     ) -> Any:
         """Composio 外部服务 — 250+ 应用集成 (Gmail/Calendar/Slack/GitHub 等)"""
+        _require_human_confirmation("Composio 外部动作", human_confirmed)
         if not action:
             raise ValueError("Composio action 为空")
 
@@ -451,6 +573,7 @@ class MultiPathExecutor:
             params or {},
             entity_id,
             connected_account_id,
+            human_confirmed=human_confirmed,
         )
 
         if not result.get("success"):
@@ -464,8 +587,11 @@ class MultiPathExecutor:
         goal: str,
         max_steps: int = 10,
         data_extraction_schema: dict | None = None,
+        *,
+        human_confirmed: bool = False,
     ) -> Any:
         """Skyvern 视觉 RPA — 通过截图 + LLM 理解页面，无需 CSS selector"""
+        _require_human_confirmation("Skyvern 浏览器任务", human_confirmed)
         if not url:
             raise ValueError("URL 为空")
         if not goal:
@@ -490,6 +616,7 @@ class MultiPathExecutor:
             goal=goal,
             max_steps=max_steps,
             data_extraction_schema=data_extraction_schema,
+            human_confirmed=human_confirmed,
         )
 
         if not result.get("success"):

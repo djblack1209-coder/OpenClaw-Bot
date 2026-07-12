@@ -147,8 +147,14 @@ def build_fallbacks_from_config(
         # 优先用该 family 的专属降级链，否则用 default
         chain_template = fallback_cfg.get(family, default_chain)
 
-        # 过滤掉不活跃的 family 和自身
-        chain = [f for f in chain_template if f in active_families and f != family]
+        # 过滤掉不活跃的 family 和自身。普通请求绝不能静默降级到 *_paid。
+        chain = [
+            candidate
+            for candidate in chain_template
+            if candidate in active_families
+            and candidate != family
+            and (family.endswith("_paid") or not candidate.endswith("_paid"))
+        ]
         if chain:
             fallbacks.append({family: chain})
 

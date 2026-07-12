@@ -1,220 +1,226 @@
 """
-browser-use 升级适配层 — 搬运自 browser-use (81k⭐)
+browser-use 只读适配层。
 
-替换自研 ai_browser.py 的 DOM 解析 + LLM 决策循环：
-- browser-use 的 Agent 自动规划浏览器操作序列
-- 内置反检测（stealth mode）
-- 结构化数据提取
-- 视觉理解（截图 + VLM 分析）
-
-保留 ClawBot 独有能力：
-- social_browser_worker.py 的平台特定发布逻辑（X/XHS）
-- cookie 管理和 CDP 模式
-- 闲鱼 WebSocket 实时监听
-
-集成方式：browser-use 不可用时自动降级回原有 Playwright 逻辑。
+该依赖默认不安装。即使以后在隔离环境安装，也只允许导航、搜索、滚动、
+提取和截图；点击、输入、上传、下拉选择、Cookie 与文件写入动作会在工具层排除。
+登录、提交表单、购买、预订、发布和删除必须由用户在可见页面中手动完成。
 """
+
 import asyncio
-import contextlib
 import logging
 from typing import Any
-
-from src.bot.config import SILICONFLOW_BASE, SILICONFLOW_KEYS
 
 logger = logging.getLogger(__name__)
 
 _browser_use_available = False
+BrowserAgent = Browser = BrowserConfig = BrowserTools = None
 try:
     from browser_use import Agent as BrowserAgent
-    from browser_use import Browser, BrowserConfig
+    from browser_use import Browser
+    from browser_use import Tools as BrowserTools
+
+    try:
+        from browser_use import BrowserConfig
+    except ImportError:
+        BrowserConfig = None
     _browser_use_available = True
 except ImportError:
-    BrowserAgent = Browser = BrowserConfig = None  # type: ignore[assignment,misc]
-    logger.info("[BrowserUseBridge] browser-use 未安装，使用原有 Playwright 回退")
+    logger.info("[BrowserUseBridge] browser-use 未安装，只读代理不可用")
+
+# browser-use 官方 Tools(exclude_actions=...) 支持按动作名硬排除。
+# 只保留 search/navigate/scroll/switch/close/extract/screenshot/find/done 等只读动作。
+_READ_ONLY_EXCLUDED_ACTIONS = (
+    "click",
+    "input",
+    "upload",
+    "dropdown",
+    "cookies",
+    "read_file",
+    "write_file",
+    "replace_file",
+)
+_EXTERNAL_WRITE_TERMS = (
+    "提交",
+    "付款",
+    "支付",
+    "购买",
+    "下单",
+    "预订",
+    "发布",
+    "发送",
+    "删除",
+    "登录",
+    "注册",
+    "关注",
+    "评论",
+    "私信",
+    "submit",
+    "purchase",
+    "checkout",
+    "book",
+    "publish",
+    "send",
+    "delete",
+    "login",
+    "sign in",
+    "sign up",
+)
+
+
+def _contains_external_write_intent(task: str) -> bool:
+    normalized = task.casefold()
+    return any(term in normalized for term in _EXTERNAL_WRITE_TERMS)
 
 
 class BrowserUseBridge:
-    """
-    browser-use 桥接层
+    """只读 browser-use 桥接；不提供外部写操作绕行入口。"""
 
-    提供高级浏览器自动化能力：
-    - 自然语言驱动的网页操作
-    - 结构化数据抓取
-    - 表单填写和多步骤流程
-    - 截图和视觉分析
-    """
-
-    def __init__(self, llm=None, headless: bool = True):
-        """
-        Args:
-            llm: LangChain 兼容的 LLM 实例（browser-use 需要）
-            headless: 是否无头模式
-        """
+    def __init__(self, llm: Any = None, headless: bool = True):
         self._llm = llm
         self._headless = headless
         self._browser = None
         self._using_browser_use = _browser_use_available
 
-    async def _ensure_llm(self):
-        """确保 LLM 可用（延迟初始化）"""
-        if self._llm:
-            return self._llm
-        try:
-            from langchain_openai import ChatOpenAI
-            sf_key = SILICONFLOW_KEYS[0] if SILICONFLOW_KEYS else ""
-            sf_base = SILICONFLOW_BASE
-            if sf_key:
-                self._llm = ChatOpenAI(
-                    model="Qwen/Qwen3-8B",
-                    api_key=sf_key,
-                    base_url=sf_base,
-                    temperature=0.1,
-                )
-                return self._llm
-        except ImportError:
-            pass  # 合理保留：可选依赖缺失时继续走后续降级链
-        logger.warning("[BrowserUseBridge] 无可用 LLM，browser-use 功能受限")
-        return None
+    async def _ensure_llm(self) -> Any:
+        """仅接受调用方显式注入的受控 LLM，不直接读取 Provider Key。"""
+        if self._llm is None:
+            logger.warning("[BrowserUseBridge] 未注入受控 LLM，拒绝启动浏览器代理")
+        return self._llm
+
+    def _create_browser(self) -> Any:
+        """兼容旧版 BrowserConfig 与新版 Browser(headless=...) 初始化。"""
+        if Browser is None:
+            raise RuntimeError("browser-use Browser 不可用")
+        if BrowserConfig is not None:
+            return Browser(config=BrowserConfig(headless=self._headless, verbose=False))
+        return Browser(headless=self._headless)
 
     async def run_task(self, task: str, url: str = "", max_steps: int = 10) -> dict[str, Any]:
-        """
-        用自然语言描述执行浏览器任务。
-
-        示例：
-            await bridge.run_task("搜索 Python 教程并提取前 5 个结果的标题和链接")
-            await bridge.run_task("登录并获取账户余额", url="https://example.com/login")
-        """
-        if not self._using_browser_use:
-            return {"success": False, "error": "browser-use 未安装",
-                    "fallback": "请使用原有 social_browser_worker.py"}
+        """执行受工具层约束的只读网页任务。"""
+        if _contains_external_write_intent(task):
+            return {
+                "success": False,
+                "blocked": True,
+                "error": "external_write_requires_manual_action",
+                "requires_manual_action": True,
+            }
+        if not self._using_browser_use or BrowserAgent is None or BrowserTools is None:
+            return {
+                "success": False,
+                "error": "browser-use 未安装或缺少 Tools 动作闸门",
+                "fallback": "使用项目现有只读 Playwright/HTTP 提取路径",
+            }
 
         llm = await self._ensure_llm()
-        if not llm:
-            return {"success": False, "error": "无可用 LLM"}
+        if llm is None:
+            return {"success": False, "error": "未注入受控 LLM"}
 
         browser = None
         try:
-            config = BrowserConfig(headless=self._headless)
-            browser = Browser(config=config)
-
+            browser = self._create_browser()
+            tools = BrowserTools(exclude_actions=list(_READ_ONLY_EXCLUDED_ACTIONS))
+            read_only_task = (
+                "只读任务：只能导航、搜索、滚动、提取或截图；"
+                "不得点击、输入、上传、读取 Cookie、本地文件或提交任何更改。\n"
+                f"目标：{task}"
+            )
+            if url:
+                read_only_task = f"先导航到 {url}。\n{read_only_task}"
             agent = BrowserAgent(
-                task=task,
+                task=read_only_task,
                 llm=llm,
                 browser=browser,
-                max_actions_per_step=3,
+                tools=tools,
+                max_actions_per_step=1,
             )
-
-            if url:
-                agent.task = f"先导航到 {url}，然后 {task}"
-
-            # 超时保护: 浏览器自动化容易 hang，最多等 120 秒
-            result = await asyncio.wait_for(
-                agent.run(max_steps=max_steps), timeout=120
-            )
-
+            result = await asyncio.wait_for(agent.run(max_steps=max_steps), timeout=120)
             return {
                 "success": True,
-                "result": str(result),
+                "result": str(result)[:10000],
                 "steps": max_steps,
-                "engine": "browser-use",
+                "engine": "browser-use-read-only",
+                "read_only": True,
             }
         except TimeoutError:
-            logger.warning("[BrowserUseBridge] 任务执行超时(120s)")
-            return {"success": False, "error": "浏览器任务超时(120秒)"}
-        except Exception as e:
-            logger.warning("[BrowserUseBridge] 任务执行失败: %s", e)
-            return {"success": False, "error": str(e)}
+            logger.warning("[BrowserUseBridge] 只读任务超时(120s)")
+            return {"success": False, "error": "浏览器只读任务超时(120秒)"}
+        except Exception as exc:
+            logger.warning("[BrowserUseBridge] 只读任务失败: %s", type(exc).__name__)
+            return {"success": False, "error": "browser_read_only_failed"}
         finally:
-            # 无论成功失败都必须关闭浏览器，防止进程泄漏
-            if browser:
+            if browser is not None:
                 try:
                     await browser.close()
-                except Exception as e:
-                    logger.debug("关闭浏览器实例时异常(可忽略): %s", e)
+                except Exception:
+                    logger.debug("关闭 browser-use 实例失败", exc_info=True)
 
     async def extract_data(
-        self, url: str, instruction: str, schema: dict | None = None,
+        self,
+        url: str,
+        instruction: str,
+        schema: dict | None = None,
     ) -> dict[str, Any]:
-        """
-        从网页提取结构化数据。
-
-        Args:
-            url: 目标网页
-            instruction: 提取指令（如 "提取所有商品的名称、价格和评分"）
-            schema: 可选的数据 schema 描述
-        """
+        """只读提取结构化网页数据。"""
         schema_hint = ""
         if schema:
             import json
-            schema_hint = f"\n输出格式: {json.dumps(schema, ensure_ascii=False)}"
 
-        task = f"导航到 {url}，{instruction}{schema_hint}。将结果以 JSON 格式输出。"
-        return await self.run_task(task, max_steps=8)
+            schema_hint = f"\n输出格式: {json.dumps(schema, ensure_ascii=False)}"
+        return await self.run_task(
+            f"提取以下信息并返回 JSON：{instruction}{schema_hint}",
+            url=url,
+            max_steps=8,
+        )
 
     async def take_screenshot(self, url: str) -> dict[str, Any]:
-        """截取网页截图"""
-        if not self._using_browser_use:
-            return {"success": False, "error": "browser-use 未安装"}
-
-        browser = None
-        try:
-            config = BrowserConfig(headless=True)
-            browser = Browser(config=config)
-            await browser.new_context()
-
-            # 直接用 Playwright 截图（不需要 LLM）
-            context = await browser._browser.new_context()
-            pg = await context.new_page()
-            await pg.goto(url, wait_until="networkidle", timeout=30000)
-            screenshot = await pg.screenshot(full_page=True)
-            await context.close()
-
-            return {"success": True, "screenshot": screenshot, "url": url}
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-        finally:
-            if browser:
-                with contextlib.suppress(Exception):
-                    await browser.close()
+        """通过只读代理获取截图描述；原始截图交给专用 Playwright 路径。"""
+        return await self.run_task("截取当前页面并描述页面标题", url=url, max_steps=4)
 
     async def fill_form(self, url: str, form_data: dict[str, str]) -> dict[str, Any]:
-        """自动填写表单"""
-        fields_desc = ", ".join(f"{k}={v}" for k, v in form_data.items())
-        task = f"导航到 {url}，找到表单，填写以下字段: {fields_desc}，然后提交。"
-        return await self.run_task(task, max_steps=8)
+        """保留兼容入口，但永不自动填写或提交表单。"""
+        return {
+            "success": False,
+            "blocked": True,
+            "error": "form_write_requires_manual_action",
+            "requires_manual_action": True,
+            "field_count": len(form_data),
+            "url_supplied": bool(url),
+        }
 
     def get_stats(self) -> dict[str, Any]:
         return {
             "available": _browser_use_available,
             "using_browser_use": self._using_browser_use,
+            "mode": "read_only",
+            "action_guard": BrowserTools is not None,
             "headless": self._headless,
             "has_llm": self._llm is not None,
         }
 
-    async def close(self):
-        if self._browser:
+    async def close(self) -> None:
+        if self._browser is not None:
             try:
                 await self._browser.close()
-            except Exception as e:
-                logger.debug("[BrowserUseBridge] 异常: %s", e)
+            except Exception:
+                logger.debug("关闭 browser-use 全局实例失败", exc_info=True)
             self._browser = None
 
-
-# ── 全局实例 ──
 
 _bridge: BrowserUseBridge | None = None
 
 
-def init_browser_use(llm=None, headless: bool = True) -> BrowserUseBridge:
+def init_browser_use(llm: Any = None, headless: bool = True) -> BrowserUseBridge:
     global _bridge
     _bridge = BrowserUseBridge(llm=llm, headless=headless)
-    logger.info("[BrowserUseBridge] 初始化完成 (browser-use=%s)",
-                "可用" if _browser_use_available else "未安装")
+    logger.info(
+        "[BrowserUseBridge] 初始化完成 (available=%s, mode=read_only)",
+        _browser_use_available,
+    )
     return _bridge
 
 
 def get_browser_use() -> BrowserUseBridge | None:
-    """获取 bridge 实例 — 首次调用时自动初始化（懒加载）"""
+    """获取只读 bridge；未注入 LLM 时保持不可执行状态。"""
     global _bridge
     if _bridge is None:
         _bridge = init_browser_use(headless=True)

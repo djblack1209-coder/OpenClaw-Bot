@@ -665,3 +665,19 @@ class TestEndToEnd:
 
         rc = get_router_config(config)
         assert rc["num_retries"] == 3  # 默认值
+
+
+def test_non_paid_fallback_chain_cannot_enter_paid_family():
+    """自动降级链不能把普通请求静默送进付费模型族。"""
+    config = {
+        "fallback_chains": {
+            "default": ["deepseek_paid", "qwen", "g4f"],
+        }
+    }
+    fallbacks = build_fallbacks_from_config(
+        config,
+        {"claude", "deepseek_paid", "qwen", "g4f"},
+    )
+    claude_chain = next(item["claude"] for item in fallbacks if "claude" in item)
+    assert "deepseek_paid" not in claude_chain
+    assert claude_chain == ["qwen", "g4f"]

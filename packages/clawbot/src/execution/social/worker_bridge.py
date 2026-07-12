@@ -22,6 +22,8 @@ _PACKAGE_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 def run_social_worker(
     action: str,
     payload: dict[str, Any] | None = None,
+    *,
+    final_confirmed: bool = False,
 ) -> dict[str, Any]:
     """Run scripts/social_browser_worker.py as a subprocess and return parsed JSON.
 
@@ -38,8 +40,26 @@ def run_social_worker(
     Returns:
         dict with at least a ``success`` key.
     """
+    from src.execution.social.publish_safety import enforce_external_write_confirmation
+
+    blocked = enforce_external_write_confirmation(
+        action,
+        final_confirmed=final_confirmed,
+    )
+    if blocked:
+        logger.warning("[SocialWorker] 拦截未最终确认的外部写操作: %s", action)
+        return blocked
+
     worker = _PACKAGE_ROOT / "scripts" / "social_browser_worker.py"
     payload = payload or {}
+    worker_argv = [
+        "python3",
+        str(worker),
+        action,
+        json.dumps(payload, ensure_ascii=False),
+    ]
+    if final_confirmed:
+        worker_argv.append("--final-confirmed")
     max_retries = 2 if action and "publish" in str(action) else 1
     last_err: dict[str, Any] | None = None
 
@@ -48,12 +68,7 @@ def run_social_worker(
             # 状态查询用短超时（5秒），发布等操作用长超时（300秒）
             timeout_sec = 5 if action == "status" else 300
             cp = subprocess.run(
-                [
-                    "python3",
-                    str(worker),
-                    action,
-                    json.dumps(payload, ensure_ascii=False),
-                ],
+                worker_argv,
                 check=False,
                 capture_output=True,
                 text=True,
@@ -119,22 +134,42 @@ def run_social_worker(
 async def run_social_worker_async(
     action: str,
     payload: dict[str, Any] | None = None,
+    *,
+    final_confirmed: bool = False,
 ) -> dict[str, Any]:
     """异步版本 run_social_worker — 不阻塞事件循环。
 
     与同步版本逻辑完全一致，但使用 asyncio.create_subprocess_exec 和 asyncio.sleep。
     """
     import asyncio
+
+    from src.execution.social.publish_safety import enforce_external_write_confirmation
+
+    blocked = enforce_external_write_confirmation(
+        action,
+        final_confirmed=final_confirmed,
+    )
+    if blocked:
+        logger.warning("[SocialWorker] 拦截未最终确认的外部写操作: %s", action)
+        return blocked
+
     worker = _PACKAGE_ROOT / "scripts" / "social_browser_worker.py"
     payload = payload or {}
+    worker_argv = [
+        "python3",
+        str(worker),
+        action,
+        json.dumps(payload, ensure_ascii=False),
+    ]
+    if final_confirmed:
+        worker_argv.append("--final-confirmed")
     max_retries = 2 if action and "publish" in str(action) else 1
     last_err: dict[str, Any] | None = None
 
     for attempt in range(max_retries):
         try:
             proc = await asyncio.create_subprocess_exec(
-                "python3", str(worker), action,
-                json.dumps(payload, ensure_ascii=False),
+                *worker_argv,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )

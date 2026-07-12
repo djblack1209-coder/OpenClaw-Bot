@@ -39,7 +39,7 @@ class ExecutorType(StrEnum):
     VOICE_CALL = "voice_call" # AI 电话
     LOCAL = "local"           # 本地函数调用
     HUMAN = "human"           # 需要人工介入
-    CREW = "crew"             # CrewAI 多智能体
+    CREW = "crew"             # 项目原生多角色协作（保留兼容值）
 
 
 # ── 任务节点 ──────────────────────────────────────────
@@ -130,6 +130,11 @@ class TaskGraph:
             if deps_failed:
                 node.status = NodeStatus.SKIPPED
                 node.error = "依赖节点失败，已跳过"
+                if node.fallback_node_id:
+                    fallback = self.nodes.get(node.fallback_node_id)
+                    if fallback is not None and fallback.status == NodeStatus.WAITING:
+                        fallback.status = NodeStatus.SKIPPED
+                        fallback.error = f"主节点 {node.id} 因依赖失败跳过，未触发备选"
             elif deps_met:
                 ready.append(node)
         return ready
@@ -218,17 +223,24 @@ class TaskGraphExecutor:
             ready_nodes = graph.get_ready_nodes()
             if not ready_nodes:
                 # 没有就绪节点但未完成 → 可能有循环依赖或死锁
-                pending = [n for n in graph.nodes.values()
-                          if n.status == NodeStatus.PENDING]
-                if pending:
-                    logger.error(f"死锁检测: {len(pending)} 个节点无法调度")
-                    for n in pending:
-                        n.status = NodeStatus.CANCELLED
-                        n.error = "死锁: 依赖关系无法满足"
+                unfinished = [
+                    node
+                    for node in graph.nodes.values()
+                    if node.status in (NodeStatus.PENDING, NodeStatus.WAITING)
+                ]
+                if unfinished:
+                    logger.error(f"死锁检测: {len(unfinished)} 个节点无法调度")
+                    for unfinished_node in unfinished:
+                        if unfinished_node.status == NodeStatus.WAITING:
+                            unfinished_node.status = NodeStatus.SKIPPED
+                            unfinished_node.error = "待命备选未触发，已收口"
+                        else:
+                            unfinished_node.status = NodeStatus.CANCELLED
+                            unfinished_node.error = "死锁: 依赖关系无法满足"
                 break
 
             # 并行执行所有就绪节点
-            tasks = [self._execute_node(node) for node in ready_nodes]
+            tasks = [self._execute_node(graph, node) for node in ready_nodes]
             await asyncio.gather(*tasks, return_exceptions=True)
 
             # 推送进度
@@ -246,7 +258,7 @@ class TaskGraphExecutor:
                     f"成功={graph.is_success}")
         return graph
 
-    async def _execute_node(self, node: TaskNode) -> None:
+    async def _execute_node(self, graph: TaskGraph, node: TaskNode) -> None:
         """执行单个节点（带重试）"""
         node.status = NodeStatus.RUNNING
         node.started_at = time.time()
@@ -258,14 +270,25 @@ class TaskGraphExecutor:
                 if node.execute_fn is None:
                     raise ValueError(f"节点 {node.id} 没有执行函数")
 
-                # 带超时执行
+                # 每次执行都从已完成依赖收集真实结果，避免下游只看到静态参数。
+                execution_params = dict(node.params)
+                if node.dependencies:
+                    execution_params["_upstream_results"] = {
+                        dependency_id: graph.nodes[dependency_id].result
+                        for dependency_id in node.dependencies
+                        if dependency_id in graph.nodes
+                        and graph.nodes[dependency_id].status == NodeStatus.SUCCESS
+                    }
+
                 result = await asyncio.wait_for(
-                    node.execute_fn(node.params),
+                    node.execute_fn(execution_params),
                     timeout=node.timeout_seconds,
                 )
                 node.result = result
                 node.status = NodeStatus.SUCCESS
                 node.finished_at = time.time()
+                self._complete_fallback_parent(graph, node)
+                self._skip_unused_fallback(graph, node)
 
                 logger.info(f"节点完成: {node.name} ({node.elapsed_seconds:.1f}s)")
                 _emit_flow(node.id, "hub", "success", f"完成: {node.name}",
@@ -284,32 +307,77 @@ class TaskGraphExecutor:
                 _emit_flow(node.id, "hub", "error", f"超时: {node.name}",
                            {"node": node.id, "attempt": attempt, "error": node.error})
             except Exception as e:
-                node.error = str(e)
+                node.error = scrub_secrets(str(e))[:500]
                 logger.warning(
-                    f"节点失败: {node.name} (尝试 {attempt}/{node.retry_count}): {e}"
+                    "节点失败: %s (尝试 %s/%s): %s",
+                    node.name,
+                    attempt,
+                    node.retry_count,
+                    node.error,
                 )
-                _emit_flow(node.id, "hub", "error", f"失败: {node.name} - {str(e)[:60]}",
+                _emit_flow(node.id, "hub", "error", f"失败: {node.name} - {node.error[:60]}",
                            {"node": node.id, "attempt": attempt, "error": node.error})
 
             if attempt < node.retry_count:
                 await asyncio.sleep(min(attempt * 2, 10))  # 指数退避
 
-        # 所有重试用尽
-        node.status = NodeStatus.FAILED
+        # 所有重试用尽。存在备选时先把主节点置为等待；备选成功后会回填主节点结果。
         node.finished_at = time.time()
+        fallback = graph.nodes.get(node.fallback_node_id) if node.fallback_node_id else None
+        if fallback is not None and fallback.status == NodeStatus.WAITING:
+            node.status = NodeStatus.WAITING
+            fallback.status = NodeStatus.PENDING
+            logger.info(f"节点 {node.name} 失败，启用备选: {fallback.name}")
+            _emit_flow(
+                node.id,
+                fallback.id,
+                "running",
+                f"主路径失败，启用备选: {fallback.name}",
+                {"node": node.id, "fallback": fallback.id, "error": node.error},
+            )
+            return
+
+        node.status = NodeStatus.FAILED
+        self._fail_fallback_parent(graph, node)
         _emit_flow(node.id, "hub", "error", f"放弃: {node.name} (重试耗尽)",
                    {"node": node.id, "error": node.error})
 
-        # 尝试备选节点
-        if node.fallback_node_id:
-            logger.info(f"节点 {node.name} 失败，尝试备选: {node.fallback_node_id}")
-            # 将备选节点的状态重置为 PENDING，下一轮调度时会被执行
-            fallback = self.nodes.get(node.fallback_node_id)
-            if fallback:
-                fallback.status = NodeStatus.PENDING
-                logger.info(f"备选节点 {fallback.name} 已重置为 PENDING")
-            else:
-                logger.warning(f"备选节点 {node.fallback_node_id} 不存在于任务图中")
+    @staticmethod
+    def _fallback_parents(graph: TaskGraph, fallback_id: str) -> list[TaskNode]:
+        return [
+            candidate
+            for candidate in graph.nodes.values()
+            if candidate.fallback_node_id == fallback_id
+        ]
+
+    def _complete_fallback_parent(self, graph: TaskGraph, fallback: TaskNode) -> None:
+        """备选成功时，把结果回填到等待中的主节点，保持原依赖契约。"""
+        for parent in self._fallback_parents(graph, fallback.id):
+            if parent.status != NodeStatus.WAITING:
+                continue
+            parent.result = fallback.result
+            parent.status = NodeStatus.SUCCESS
+            parent.finished_at = fallback.finished_at
+            parent.error = f"主路径失败，已使用备选节点 {fallback.id}"
+
+    def _fail_fallback_parent(self, graph: TaskGraph, fallback: TaskNode) -> None:
+        """备选也失败时，终止等待中的主节点，让下游按失败传播。"""
+        for parent in self._fallback_parents(graph, fallback.id):
+            if parent.status != NodeStatus.WAITING:
+                continue
+            parent.status = NodeStatus.FAILED
+            parent.finished_at = fallback.finished_at
+            parent.error = f"主路径与备选节点 {fallback.id} 均失败"
+
+    @staticmethod
+    def _skip_unused_fallback(graph: TaskGraph, node: TaskNode) -> None:
+        """主路径成功时关闭待命备选，防止外部动作被抢跑。"""
+        if not node.fallback_node_id:
+            return
+        fallback = graph.nodes.get(node.fallback_node_id)
+        if fallback is not None and fallback.status == NodeStatus.WAITING:
+            fallback.status = NodeStatus.SKIPPED
+            fallback.error = f"主节点 {node.id} 已成功，未触发备选"
 
 
 # ── 任务图构建器（常用模式）──────────────────────────────
@@ -372,4 +440,20 @@ class TaskGraphBuilder:
                 fallback_node_id=n.get("fallback_node_id"),
             )
             graph.add_node(node)
+
+        # 备选节点默认待命，不能和主路径一起抢跑。目标缺失或自引用时在构建期直接失败。
+        fallback_owners: dict[str, str] = {}
+        for node in graph.nodes.values():
+            if not node.fallback_node_id:
+                continue
+            if node.fallback_node_id == node.id:
+                raise ValueError(f"节点不能把自己设为备选: {node.id}")
+            fallback = graph.nodes.get(node.fallback_node_id)
+            if fallback is None:
+                raise ValueError(f"备选节点不存在: {node.fallback_node_id}")
+            existing_owner = fallback_owners.get(fallback.id)
+            if existing_owner:
+                raise ValueError(f"备选节点 {fallback.id} 已属于主节点 {existing_owner}")
+            fallback_owners[fallback.id] = node.id
+            fallback.status = NodeStatus.WAITING
         return graph

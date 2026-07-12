@@ -12,7 +12,7 @@ from src.bot.globals import (
     send_long_message,
 )
 from src.broker_selector import ibkr
-from src.constants import ERR_LIVE_UNAVAILABLE, ERR_ORDER_PENDING, ERR_QTY_POSITIVE, ERR_RISK_NOT_INIT
+from src.constants import ERR_QTY_POSITIVE, ERR_RISK_NOT_INIT
 
 # 幻影导入修复: 6 个符号从实际定义模块导入
 from src.invest_tools import format_quote, get_crypto_quote, get_market_summary, portfolio
@@ -390,85 +390,29 @@ class InvestCommandsMixin:
                 return
             if check.adjusted_quantity is not None:
                 quantity = check.adjusted_quantity
-        # 优先走 IBKR 实盘，失败降级模拟
-        ibkr_ok = False
-        if ibkr.is_connected():
-            ibkr_result = await ibkr.buy(symbol, quantity, decided_by=self.name, reason="手动买入")
-            if "error" not in ibkr_result:
-                ibkr_ok = True
-                fill_price = ibkr_result.get("avg_price", 0) or price
-                fill_qty = ibkr_result.get("filled_qty", 0) or quantity
-                # FIX 5: 零成交不入持仓
-                if fill_qty <= 0:
-                    await update.message.reply_text(ERR_ORDER_PENDING)
-                    _trade_cooldown[dedup_key] = now_ts
-                    return
-                # 同步更新模拟组合
-                portfolio.buy(symbol, fill_qty, fill_price, decided_by=self.name, reason="手动买入(IBKR同步)")
-                from src.telegram_ux import format_trade_card
-                card = format_trade_card({
-                    "symbol": ibkr_result['symbol'],
-                    "action": "BUY",
-                    "quantity": fill_qty,
-                    "price": fill_price,
-                    "total": fill_qty * fill_price,
-                    "reason": f"IBKR实盘 | {ibkr_result.get('status', 'N/A')} | OID:{ibkr_result.get('order_id', 'N/A')} | {ibkr.get_budget_status()}",
-                })
-                await update.message.reply_text(card, parse_mode="HTML", reply_to_message_id=update.message.message_id)
-            else:
-                await update.message.reply_text(ERR_LIVE_UNAVAILABLE)
-        if not ibkr_ok:
-            result = portfolio.buy(symbol, quantity, price, decided_by=self.name, reason="手动买入")
-            if "error" in result:
-                await update.message.reply_text(error_service_failed("买入", result.get('error', '')))
-            else:
-                from src.telegram_ux import format_trade_card
-                card = format_trade_card({
-                    "symbol": result['symbol'],
-                    "action": "BUY",
-                    "quantity": result['quantity'],
-                    "price": result['price'],
-                    "total": result['total'],
-                    "remaining_cash": result['remaining_cash'],
-                    "reason": "模拟买入",
-                })
-                await update.message.reply_text(card, parse_mode="HTML", reply_to_message_id=update.message.message_id)
+        # /buy 是模拟组合命令；真实下单只能走带二次确认的专用入口。
+        result = portfolio.buy(symbol, quantity, price, decided_by=self.name, reason="模拟买入")
+        if "error" in result:
+            await update.message.reply_text(error_service_failed("模拟买入", result.get("error", "")))
+        else:
+            from src.telegram_ux import format_trade_card
+
+            card = format_trade_card({
+                "symbol": result["symbol"],
+                "action": "BUY",
+                "quantity": result["quantity"],
+                "price": result["price"],
+                "total": result["total"],
+                "remaining_cash": result["remaining_cash"],
+                "reason": "模拟买入（未提交真实订单）",
+            })
+            await update.message.reply_text(
+                card,
+                parse_mode="HTML",
+                reply_to_message_id=update.message.message_id,
+            )
         # FIX 3: 记录冷却时间戳
         _trade_cooldown[dedup_key] = _time.time()
-
-        # 补齐交易闭环: 记录交易日志 + 仓位监控 + 发布 EventBus 事件
-        try:
-            trade_data = {
-                "symbol": symbol, "action": "BUY", "quantity": quantity,
-                "price": price, "decided_by": self.name, "reason": "手动买入",
-                "ibkr": ibkr_ok,
-            }
-            # 交易日志
-            try:
-                from src.trading_journal import journal
-                if journal:
-                    journal.open_trade(symbol, "BUY", quantity, price, stop_loss=round(price * 0.97, 2))
-            except Exception as e:
-                logger.warning("[Invest] 交易日志记录失败: %s", e)
-            # 仓位监控
-            try:
-                from src.position_monitor import get_position_monitor
-                pm = get_position_monitor()
-                if pm:
-                    pm.add_position(symbol, quantity, price)
-            except Exception as e:
-                logger.debug("仓位监控添加失败: %s", e)
-            # EventBus 事件 — 触发多渠道通知 + 社媒联动
-            try:
-                from src.core.event_bus import get_event_bus
-                bus = get_event_bus()
-                if bus:
-                    await bus.publish("trade.executed", trade_data)
-            except Exception as e:
-                logger.warning("[Invest] 交易事件发布失败: %s", e)
-        except Exception as e:
-            pass  # 闭环增强不影响主流程
-            logger.debug("静默异常: %s", e)
 
     @requires_auth
     @with_typing
@@ -539,52 +483,28 @@ class InvestCommandsMixin:
                 await update.message.reply_text(f"⚠️ 持仓不足: 持有{pos['quantity']}股, 要卖{quantity}股。")
                 return
 
-        # 优先走 IBKR 实盘，失败降级模拟
-        ibkr_ok = False
-        if ibkr.is_connected():
-            ibkr_result = await ibkr.sell(symbol, quantity, decided_by=self.name, reason="手动卖出")
-            if "error" not in ibkr_result:
-                ibkr_ok = True
-                fill_price = ibkr_result.get("avg_price", 0) or price
-                fill_qty = ibkr_result.get("filled_qty", 0) or quantity
-                # FIX 5: 零成交不入持仓
-                if fill_qty <= 0:
-                    await update.message.reply_text(ERR_ORDER_PENDING)
-                    _trade_cooldown[dedup_key] = now_ts
-                    return
-                # 同步更新模拟组合
-                sim_result = portfolio.sell(symbol, fill_qty, fill_price, decided_by=self.name, reason="手动卖出(IBKR同步)")
-                profit = sim_result.get("profit", 0) if "error" not in sim_result else 0
-                from src.telegram_ux import format_trade_card
-                card = format_trade_card({
-                    "symbol": ibkr_result['symbol'],
-                    "action": "SELL",
-                    "quantity": fill_qty,
-                    "price": fill_price,
-                    "total": fill_qty * fill_price,
-                    "profit": profit,
-                    "reason": f"IBKR实盘 | {ibkr_result.get('status', 'N/A')} | OID:{ibkr_result.get('order_id', 'N/A')} | {ibkr.get_budget_status()}",
-                })
-                await update.message.reply_text(card, parse_mode="HTML", reply_to_message_id=update.message.message_id)
-            else:
-                await update.message.reply_text(ERR_LIVE_UNAVAILABLE)
-        if not ibkr_ok:
-            result = portfolio.sell(symbol, quantity, price, decided_by=self.name, reason="手动卖出")
-            if "error" in result:
-                await update.message.reply_text(error_service_failed("卖出", result.get('error', '')))
-            else:
-                from src.telegram_ux import format_trade_card
-                card = format_trade_card({
-                    "symbol": result['symbol'],
-                    "action": "SELL",
-                    "quantity": result['quantity'],
-                    "price": result['price'],
-                    "total": result['total'],
-                    "profit": result['profit'],
-                    "remaining_cash": result['remaining_cash'],
-                    "reason": "模拟卖出",
-                })
-                await update.message.reply_text(card, parse_mode="HTML", reply_to_message_id=update.message.message_id)
+        # /sell 是模拟组合命令；真实下单只能走带二次确认的专用入口。
+        result = portfolio.sell(symbol, quantity, price, decided_by=self.name, reason="模拟卖出")
+        if "error" in result:
+            await update.message.reply_text(error_service_failed("模拟卖出", result.get("error", "")))
+        else:
+            from src.telegram_ux import format_trade_card
+
+            card = format_trade_card({
+                "symbol": result["symbol"],
+                "action": "SELL",
+                "quantity": result["quantity"],
+                "price": result["price"],
+                "total": result["total"],
+                "profit": result["profit"],
+                "remaining_cash": result["remaining_cash"],
+                "reason": "模拟卖出（未提交真实订单）",
+            })
+            await update.message.reply_text(
+                card,
+                parse_mode="HTML",
+                reply_to_message_id=update.message.message_id,
+            )
         # FIX 3: 记录冷却时间戳
         _trade_cooldown[dedup_key] = _time.time()
 

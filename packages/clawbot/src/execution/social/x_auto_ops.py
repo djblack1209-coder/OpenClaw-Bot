@@ -11,6 +11,7 @@ import hashlib
 import html
 import http.client
 import json
+import os
 import re
 import textwrap
 import threading
@@ -438,11 +439,17 @@ def _load_state(path: Path = _STATE_FILE) -> dict[str, Any]:
 
 
 def _save_state(state: dict[str, Any], path: Path = _STATE_FILE) -> None:
-    """原子化保存 X 自动运营状态。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(path)
+    """以 0600 原子保存 X 草稿状态，避免内容被同机其他账号读取。"""
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path.parent.chmod(0o700)
+    tmp = path.with_name(f".{path.name}.tmp-{os.getpid()}-{threading.get_ident()}")
+    try:
+        tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.chmod(0o600)
+        tmp.replace(path)
+        path.chmod(0o600)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def is_draft_approved(draft: dict[str, Any]) -> bool:
@@ -1838,7 +1845,7 @@ def write_launchd_plist(
       <array>
         <string>{python_bin}</string>
         <string>{script_path}</string>
-        <string>--publish-next</string>
+        <string>--pending-review</string>
       </array>
       <key>WorkingDirectory</key><string>{_PACKAGE_ROOT}</string>
       <key>StartCalendarInterval</key>

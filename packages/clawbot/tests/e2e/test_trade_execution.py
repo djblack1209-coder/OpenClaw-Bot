@@ -9,12 +9,11 @@
 3. TestTradePipelineExecution — 管道端到端执行
 """
 
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
 
 from src.bot.chinese_nlp_mixin import _match_chinese_command
 from src.models import TradeProposal
-
 
 # ============================================================================
 # 1. 中文自然语言匹配
@@ -109,11 +108,14 @@ class TestTradePipelineExecution:
         # broker.get_positions 返回空列表，避免被当作真实持仓列表
         mock_broker.get_positions.return_value = []
 
-        result = await pipeline.execute_proposal(sample_proposal)
+        result = await pipeline.execute_proposal(
+            sample_proposal,
+            human_confirmed=True,
+        )
 
-        # 管道应成功执行
-        assert result["status"] in ("executed", "simulated"), (
-            f"正常提案应执行成功，实际状态: {result['status']}，"
+        # 本测试明确模拟用户完成当前订单确认，管道才应执行实盘 broker。
+        assert result["status"] == "executed", (
+            f"已确认提案应真实执行，实际状态: {result['status']}，"
             f"原因: {result.get('reason', 'N/A')}"
         )
 
@@ -121,6 +123,7 @@ class TestTradePipelineExecution:
         mock_broker.buy.assert_called_once()
         call_kwargs = mock_broker.buy.call_args
         assert call_kwargs.kwargs["symbol"] == "AAPL", "下单标的应为 AAPL"
+        assert call_kwargs.kwargs["human_confirmed"] is True
 
         # journal.open_trade 被调用（记录交易日志）
         mock_journal.open_trade.assert_called_once()

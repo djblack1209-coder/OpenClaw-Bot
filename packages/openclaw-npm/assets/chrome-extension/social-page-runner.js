@@ -534,7 +534,7 @@ export function runXianyuDeliveryScanInPage(payload = {}) {
     reason: signals.hasPaidSignal
       ? signals.inputReady ? '' : 'no_chat_input_found'
       : 'no_paid_order_signal',
-    external_actions_locked: false,
+    external_actions_locked: true,
     note: payload.note || '只检测当前可见闲鱼页面，不读取 Cookie，不跨商品群发。',
   }
 }
@@ -553,7 +553,7 @@ export function runXianyuDeliveryDraftCleanupInPage(payload = {}) {
     inputReady: signals.inputReady,
     clearedDraft: false,
     reason: '',
-    external_actions_locked: false,
+    external_actions_locked: true,
   }
   if (requirePaidSignal && !signals.hasPaidSignal) {
     result.reason = 'no_paid_order_signal'
@@ -581,7 +581,8 @@ export function runXianyuDeliveryFillAndSendInPage(payload = {}) {
   const message = String(payload.deliveryMessage || payload.message || '').trim()
   const shipmentId = String(payload.shipmentId || '')
   const requirePaidSignal = payload.requirePaidSignal !== false
-  const clickSend = payload.clickSend !== false
+  const oneShotHumanAuthorized = payload.oneShotHumanAuthorized === true
+  const clickSend = oneShotHumanAuthorized
   const signals = xianyuDeliveryPageSignals()
   const result = {
     ready: false,
@@ -597,7 +598,9 @@ export function runXianyuDeliveryFillAndSendInPage(payload = {}) {
     sent: false,
     clearedDuplicateDraft: false,
     reason: '',
-    external_actions_locked: false,
+    external_actions_locked: !oneShotHumanAuthorized,
+    requires_human_confirmation: true,
+    one_shot_human_authorized: oneShotHumanAuthorized,
   }
   if (!message) {
     result.reason = 'empty_delivery_message'
@@ -624,6 +627,11 @@ export function runXianyuDeliveryFillAndSendInPage(payload = {}) {
     result.reason = 'fill_failed'
     return result
   }
+  if (!oneShotHumanAuthorized) {
+    result.reason = 'one_shot_human_authorization_required'
+    result.ready = true
+    return result
+  }
   const sendButton = findXianyuSendButton()
   if (!sendButton) {
     if (clickSend && pressEnterToSend(input)) {
@@ -648,7 +656,6 @@ export function runXianyuDeliveryFillAndSendInPage(payload = {}) {
 export function runXianyuConfirmShipmentInPage(payload = {}) {
   const shipmentId = String(payload.shipmentId || '')
   const requirePaidSignal = payload.requirePaidSignal !== false
-  const clickButtons = payload.clickButtons !== false
   const signals = xianyuDeliveryPageSignals()
   const result = {
     ready: false,
@@ -660,44 +667,33 @@ export function runXianyuConfirmShipmentInPage(payload = {}) {
     clickedTexts: [],
     confirmed: false,
     reason: '',
-    external_actions_locked: false,
+    external_actions_locked: true,
+    requires_human_confirmation: true,
   }
   if (requirePaidSignal && !signals.hasPaidSignal) {
     result.reason = 'no_paid_order_signal'
     return result
   }
 
-  const steps = [
-    { key: 'open_ship', pattern: /(去发货|立即发货|我要发货|发货)/, exclude: /(确认|确定|已发货)/ },
-    { key: 'no_logistics', pattern: /(无需物流|虚拟商品|无需配送|不需要物流|已与买家协商无需物流)/ },
-    { key: 'confirm', pattern: /(确认发货|确定发货|确认|确定)/ },
-  ]
-  let clickedAny = false
-  for (const step of steps) {
-    const button = findXianyuShipmentButton(step.pattern, { exclude: step.exclude || null })
-    if (!button) continue
-    const text = visibleButtonText(button)
-    if (clickButtons) button.click()
-    result.clickedTexts.push(text)
-    clickedAny = true
-    if (step.key === 'confirm') result.confirmed = true
+  const doneSignal = /(已发货|卖家已发货|交易成功|待收货)/.test(signals.pageText)
+  if (doneSignal) {
+    result.ready = true
+    result.confirmed = true
+    result.reason = 'already_confirmed_on_page'
+    return result
   }
-  if (!clickedAny) {
+  const actionButton = findXianyuShipmentButton(/(去发货|立即发货|我要发货|无需物流|虚拟商品|确认发货|确定发货)/)
+  if (!actionButton) {
     result.reason = 'shipment_button_not_found'
     return result
   }
-  if (!result.confirmed) {
-    const doneSignal = /(已发货|卖家已发货|交易成功|待收货)/.test(signals.pageText)
-    result.confirmed = doneSignal
-    if (!doneSignal) result.reason = 'confirm_button_not_found'
-  }
+  result.reason = 'human_confirmation_required'
   result.ready = true
   return result
 }
 
 export function runXianyuRelistItemInPage(payload = {}) {
   const itemId = String(payload.itemId || '')
-  const clickButton = payload.clickButton !== false
   const body = document.body
   const pageText = cleanVisibleText(body?.innerText || body?.textContent || '', 6000)
   const pageUrl = String(payload.url || globalThis.location?.href || '').slice(0, 500)
@@ -715,7 +711,8 @@ export function runXianyuRelistItemInPage(payload = {}) {
     relisted: false,
     clickedText: '',
     reason: '',
-    external_actions_locked: false,
+    external_actions_locked: true,
+    requires_human_confirmation: true,
   }
   if (!result.unavailableSignal) {
     if (result.onlineSignal) {
@@ -739,8 +736,7 @@ export function runXianyuRelistItemInPage(payload = {}) {
     return result
   }
   result.clickedText = visibleButtonText(button)
-  if (clickButton) button.click()
-  result.relisted = true
+  result.reason = 'human_confirmation_required'
   result.ready = true
   return result
 }

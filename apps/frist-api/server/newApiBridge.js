@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 
 import { modelMatchesGroup, normalizeBaseUrl, normalizeClientAvailableModels, normalizeModelGroup } from '../src/core.js';
+import { safeEqual } from './shared.js';
 
 const DEFAULT_QUOTA_PER_CNY = 100;
 const DEFAULT_USD_TO_CNY = 7.2;
@@ -212,7 +213,7 @@ export function createNewApiBridge(options = {}) {
       const tokens = unwrapArray(await request(`/api/token/search?keyword=&token=${encodeURIComponent(secret)}&p=1&size=${PAGE_SIZE}`));
       const token = tokens.find((item) => {
         const key = String(item.key || item.token || '');
-        return key === secret && tokenEnabled(item.status ?? item.enabled);
+        return safeEqual(key, secret) && tokenEnabled(item.status ?? item.enabled);
       });
       if (!token) {
         throw publicBridgeError(401, 'API Key 不可用');

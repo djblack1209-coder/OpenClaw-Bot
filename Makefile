@@ -15,8 +15,9 @@ PYTHON ?= $(shell \
 	fi)
 FRONTEND := apps/openclaw-manager-src
 FRIST_API := apps/frist-api
+CHROME_EXTENSION := packages/openclaw-npm/assets/chrome-extension
 
-.PHONY: test lint format typecheck docker clean help ci-local syntax-check docs-check frist-api-test frist-api-dev frist-api-static frist-api-up frist-api-down frist-api-newapi-setup new-api-up new-api-down new-api-check new-api-sync new-api-brand-patch cc-seller-chrome cc-seller-bridge cc-seller-auto
+.PHONY: test test-ci lint format format-check typecheck frontend-lint frontend-static-test frontend-build chrome-extension-test backup-databases backup-restore-drill source-backup-restore-test backup-restore-test runtime-permissions-check runtime-permissions-fix runtime-permissions-test renewals-check renewals-test docker clean deep-clean help ci-python ci-frontend ci-frist-api ci-docs ci-local final-audit syntax-check docs-check frist-api-test frist-api-dev frist-api-static frist-api-up frist-api-down frist-api-newapi-setup new-api-up new-api-down new-api-check new-api-sync new-api-brand-patch cc-seller-chrome cc-seller-bridge cc-seller-auto
 
 ## ─── 帮助 ───
 help: ## 显示所有可用命令
@@ -26,6 +27,9 @@ help: ## 显示所有可用命令
 ## ─── 测试 ───
 test: ## 运行 Python 全量测试
 	cd $(CLAWBOT) && $(PYTHON) -m pytest tests/ --tb=short -q
+
+test-ci: ## 运行 CI 使用的完整 Python 测试（不在首个失败处提前停止）
+	cd $(CLAWBOT) && $(PYTHON) -m pytest tests/ --tb=short -q --timeout=120 -o "addopts="
 
 test-v: ## 运行 Python 测试 (详细模式)
 	cd $(CLAWBOT) && $(PYTHON) -m pytest tests/ --tb=short -v
@@ -39,6 +43,49 @@ lint: ## Ruff 静态检查
 
 typecheck: ## 前端 TypeScript 类型检查
 	cd $(FRONTEND) && npx tsc --noEmit
+
+frontend-lint: ## 前端 ESLint 检查
+	cd $(FRONTEND) && npm run lint
+
+frontend-static-test: ## 桌面端高风险动作与运行端点静态合同
+	node $(FRONTEND)/src/components/Social/social-growth-feedback.static.test.mjs
+	node $(FRONTEND)/src/components/Layout/layout-responsive.static.test.mjs
+
+frontend-build: ## 前端生产构建
+	cd $(FRONTEND) && npm run build
+
+chrome-extension-test: ## Chrome 扩展语法与高风险动作安全合同
+	node --check $(CHROME_EXTENSION)/background.js
+	node --check $(CHROME_EXTENSION)/popup.js
+	node --check $(CHROME_EXTENSION)/social-page-runner.js
+	cd $(CHROME_EXTENSION) && node --test test/social-core.test.mjs test/social-page-runner.test.mjs test/popup-static.test.mjs
+
+backup-databases: ## 锁定、校验并原子备份本机 SQLite 数据
+	cd $(CLAWBOT) && $(PYTHON) scripts/backup_databases.py
+
+backup-restore-drill: ## 把最新 SQLite 备份恢复到可丢弃临时目录并校验
+	cd $(CLAWBOT) && $(PYTHON) scripts/backup_databases.py --restore-drill
+
+source-backup-restore-test: ## 运行源码快照、校验和与可丢弃恢复安全合同
+	$(PYTHON) -m pytest $(CLAWBOT)/tests/test_local_backup_restore.py --tb=short -q
+
+backup-restore-test: ## 运行不接触生产数据的数据库和源码备份/恢复合同
+	$(PYTHON) -m pytest $(CLAWBOT)/tests/test_backup_databases.py $(CLAWBOT)/tests/test_local_backup_restore.py --tb=short -q
+
+runtime-permissions-check: ## 只检查本机敏感运行文件权限，不读取内容
+	OPENCLAW_PROJECT_ROOT=$(CURDIR) $(PYTHON) scripts/harden_runtime_permissions.py --check
+
+runtime-permissions-fix: ## 把已知敏感运行文件和目录收紧为仅所有者可访问
+	OPENCLAW_PROJECT_ROOT=$(CURDIR) $(PYTHON) scripts/harden_runtime_permissions.py --apply
+
+runtime-permissions-test: ## 在临时目录验证权限检查和修复合同
+	$(PYTHON) -m pytest $(CLAWBOT)/tests/test_runtime_permissions.py --tb=short -q
+
+renewals-check: ## 校验无凭据续费模板和 30/14/7/3/1 天提醒规则
+	$(PYTHON) scripts/check_renewals.py --config $(CLAWBOT)/config/renewals.example.json --validate-template --json
+
+renewals-test: ## 在临时数据上验证续费提醒和凭据拒绝合同
+	$(PYTHON) -m pytest $(CLAWBOT)/tests/test_check_renewals.py --tb=short -q
 
 frist-api-test: ## 运行 Frist-API 原型测试
 	cd $(FRIST_API) && npm test
@@ -81,10 +128,10 @@ new-api-brand-patch: ## 在干净 New-API submodule 上应用 CC中转品牌补�
 cc-seller-chrome: ## 启动 CC中转闲鱼卖家专用 Chrome，并打开插件加载目录
 	node scripts/cc_zhongzhuan_launch_seller_chrome.mjs --copy-token
 
-cc-seller-bridge: ## 启动 CC中转闲鱼卖家本机桥接器，负责自动发卡/确认发货/恢复可售
+cc-seller-bridge: ## 启动 CC中转闲鱼卖家本机桥接器，只读巡检页面；发卡需 18800 人工单次确认
 	node scripts/cc_zhongzhuan_seller_bridge.mjs
 
-cc-seller-auto: cc-seller-chrome ## 启动卖家专用浏览器后，运行一次本机桥接巡检
+cc-seller-auto: cc-seller-chrome ## 启动卖家专用浏览器后，运行一次只读桥接巡检
 	node scripts/cc_zhongzhuan_seller_bridge.mjs --once
 
 ## ─── 格式化 ───
@@ -140,12 +187,8 @@ deep-clean: clean ## 深度清理（释放 GB 级空间，不影响代码）
 	@echo "══════ 深度清理开始 ══════"
 	@echo "[1/5] 清理 Tauri 编译缓存..."
 	rm -rf $(FRONTEND)/src-tauri/target/ 2>/dev/null || true
-	@echo "[2/5] 清理 worktrees..."
-	@# 先正确注销 git worktree，再删目录
-	@for wt in $$(git worktree list --porcelain 2>/dev/null | grep '^worktree ' | grep '.worktrees/' | sed 's/^worktree //'); do \
-		git worktree remove "$$wt" --force 2>/dev/null || true; \
-	done
-	rm -rf .worktrees/ 2>/dev/null || true
+	@echo "[2/5] 修剪失效 worktree 记录（保留所有有效 worktree 和未提交工作）..."
+	git worktree prune
 	@echo "[3/5] 压缩 git 历史..."
 	git gc --prune=now 2>/dev/null || true
 	@echo "[4/5] 清理 Python 构建缓存..."
@@ -161,26 +204,41 @@ deep-clean: clean ## 深度清理（释放 GB 级空间，不影响代码）
 	@du -sh . 2>/dev/null
 	@echo "提示: 如果 OpenCode 仍然卡顿，请重启 OpenCode 应用"
 
-## ─── CI 本地验证（和 GitHub Actions 一致） ───
-ci-local: ## 一键本地 CI 验证 (等同 GitHub Actions 全部检查)
-	@echo "══════ [1/5] Python Lint (ruff) ══════"
-	cd $(CLAWBOT) && $(PYTHON) -m ruff check src/ --config ruff.toml
-	@echo ""
-	@echo "══════ [2/5] Python Tests (pytest) ══════"
-	cd $(CLAWBOT) && $(PYTHON) -m pytest tests/ --tb=short -q \
-		-x --timeout=120
-	@echo ""
-	@echo "══════ [3/5] Python Syntax Check ══════"
-	cd $(CLAWBOT) && $(PYTHON) -m py_compile multi_main.py
-	cd $(CLAWBOT) && find src/ -name "*.py" -exec $(PYTHON) -m py_compile {} +
-	@echo ""
-	@echo "══════ [4/5] Frontend TypeScript Check ══════"
-	cd $(FRONTEND) && npx tsc --noEmit
-	@echo ""
-	@echo "══════ [5/5] Docs Governance Check ══════"
-	bash scripts/check_docs_layout.sh
+## ─── CI 本地验证（GitHub Actions 直接复用这些目标） ───
+ci-python: ## Python Ruff、全量测试和语法检查
+	@echo "══════ Python: Ruff ══════"
+	$(MAKE) lint
+	@echo "══════ Python: Tests ══════"
+	$(MAKE) test-ci
+	@echo "══════ Python: Syntax ══════"
+	$(MAKE) syntax-check
+
+ci-frontend: ## 前端 ESLint、TypeScript、生产构建和 Chrome 扩展安全合同
+	@echo "══════ Frontend: ESLint ══════"
+	$(MAKE) frontend-lint
+	@echo "══════ Frontend: TypeScript ══════"
+	$(MAKE) typecheck
+	@echo "══════ Frontend: Safety Contracts ══════"
+	$(MAKE) frontend-static-test
+	@echo "══════ Frontend: Build ══════"
+	$(MAKE) frontend-build
+	@echo "══════ Chrome Extension: Safety Contracts ══════"
+	$(MAKE) chrome-extension-test
+
+ci-frist-api: ## Frist-API 确定性测试
+	@echo "══════ Frist-API: Tests ══════"
+	$(MAKE) frist-api-test
+
+ci-docs: ## 文档治理检查
+	@echo "══════ Docs: Governance ══════"
+	$(MAKE) docs-check
+
+ci-local: ci-python ci-frontend ci-frist-api ci-docs ## 一键运行与 GitHub Actions 相同的确定性质量门
 	@echo ""
 	@echo "✅ 本地 CI 全部通过"
+
+final-audit: ## 运行完整离线质量、安全与供应链审计，输出脱敏 JSON/摘要
+	$(PYTHON) scripts/final_audit.py --python $(PYTHON)
 
 syntax-check: ## 仅检查 Python 语法
 	cd $(CLAWBOT) && $(PYTHON) -m py_compile multi_main.py

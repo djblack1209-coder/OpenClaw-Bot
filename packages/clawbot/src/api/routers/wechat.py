@@ -4,15 +4,19 @@
 支持编号命令快捷操作 + 中文自然语言 + LLM 对话。
 """
 
+import hashlib
 import logging
 import os
 import re
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
+
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/wechat")
@@ -25,10 +29,43 @@ _wechat_pending_actions: dict[str, dict] = {}
 _MEMORY_TTL = 1800  # 30 分钟
 _PENDING_TTL = 600  # 10 分钟
 _MAX_MESSAGES = 10
+_MAX_ACTIVE_USERS = 1000
+
+
+def _hash_identifier(value: str) -> str:
+    """生成只用于日志关联的短哈希，不记录微信用户 ID。"""
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
+
+
+def _prune_runtime_state(now: float | None = None) -> None:
+    """清理过期并限制内存状态，避免一次性用户让进程持续增长。"""
+    current = time.time() if now is None else now
+    stores = (
+        (_wechat_memory, _MEMORY_TTL),
+        (_wechat_pending_actions, _PENDING_TTL),
+    )
+    for store, ttl in stores:
+        expired = [
+            user_id
+            for user_id, entry in store.items()
+            if current - float(entry.get("last_active", 0)) > ttl
+        ]
+        for user_id in expired:
+            store.pop(user_id, None)
+
+        overflow = len(store) - _MAX_ACTIVE_USERS
+        if overflow > 0:
+            oldest = sorted(
+                store,
+                key=lambda user_id: float(store[user_id].get("last_active", 0)),
+            )[:overflow]
+            for user_id in oldest:
+                store.pop(user_id, None)
 
 
 def _get_user_history(user_id: str) -> list[dict]:
     """获取用户的对话历史，过期则清空。"""
+    _prune_runtime_state()
     entry = _wechat_memory.get(user_id)
     if not entry:
         return []
@@ -40,6 +77,7 @@ def _get_user_history(user_id: str) -> list[dict]:
 
 def _add_to_history(user_id: str, role: str, content: str) -> None:
     """追加一条消息到用户历史。"""
+    _prune_runtime_state()
     if user_id not in _wechat_memory:
         _wechat_memory[user_id] = {"messages": [], "last_active": time.time()}
     entry = _wechat_memory[user_id]
@@ -48,17 +86,21 @@ def _add_to_history(user_id: str, role: str, content: str) -> None:
     # 保留最近 N 条
     if len(entry["messages"]) > _MAX_MESSAGES:
         entry["messages"] = entry["messages"][-_MAX_MESSAGES:]
+    _prune_runtime_state()
 
 
 def _set_pending_action(user_id: str, action: str) -> None:
     """记录微信下一条普通文字要接着完成的操作。"""
     if not user_id:
         return
+    _prune_runtime_state()
     _wechat_pending_actions[user_id] = {"action": action, "last_active": time.time()}
+    _prune_runtime_state()
 
 
 def _get_pending_action(user_id: str) -> str:
     """读取微信两步式操作，过期自动清理。"""
+    _prune_runtime_state()
     entry = _wechat_pending_actions.get(user_id)
     if not entry:
         return ""
@@ -347,8 +389,13 @@ async def _self_call_api(path: str, timeout: float = 10.0) -> dict | list | str:
                 return resp.json()
             return {"error": f"HTTP {resp.status_code}"}
     except Exception as e:
-        logger.warning("[微信] API self-call 失败 %s: %s", path, e)
-        return {"error": str(e)}
+        safe_error = scrub_secrets(str(e)) or type(e).__name__
+        logger.warning(
+            "[微信] API self-call 失败 path=%s error=%s",
+            path.split("?", 1)[0],
+            safe_error,
+        )
+        return {"error": "本地服务暂时不可用"}
 
 
 # ── 编号命令到 API 路径的映射 ──
@@ -454,7 +501,11 @@ async def _execute_numbered_cmd(num: int, arg: str, from_user: str = "") -> str:
             )
             return str(result.get("reply_text") or "已处理每日简报命令。")
         except Exception as e:
-            logger.warning("[微信] 每日简报命令 %d 执行失败: %s", num, e)
+            logger.warning(
+                "[微信] 每日简报命令 %d 执行失败: %s",
+                num,
+                scrub_secrets(str(e)) or type(e).__name__,
+            )
             return "每日简报命令执行出错，请稍后再试。"
 
     # 需要参数但没提供
@@ -465,7 +516,12 @@ async def _execute_numbered_cmd(num: int, arg: str, from_user: str = "") -> str:
         # ── 有 API 映射的命令: 直接调用本地端点 ──
         if func_name in _CMD_API_MAP:
             path_template, title = _CMD_API_MAP[func_name]
-            path = path_template.replace("{arg}", arg) if "{arg}" in path_template else path_template
+            encoded_arg = quote(arg, safe="")
+            path = (
+                path_template.replace("{arg}", encoded_arg)
+                if "{arg}" in path_template
+                else path_template
+            )
             data = await _self_call_api(path, timeout=15.0)
             # 持仓数据特殊格式化
             if func_name in ("cmd_ipositions", "cmd_monitor"):
@@ -474,7 +530,10 @@ async def _execute_numbered_cmd(num: int, arg: str, from_user: str = "") -> str:
 
         # ── 技术分析: 需要拼 symbol 参数 ──
         if func_name == "cmd_ta":
-            data = await _self_call_api(f"/api/v1/trading/kline?symbol={arg}&interval=1d&limit=30", timeout=15.0)
+            data = await _self_call_api(
+                f"/api/v1/trading/kline?symbol={quote(arg, safe='')}&interval=1d&limit=30",
+                timeout=15.0,
+            )
             return _format_dict_result(f"{arg} 技术分析", data)
 
         if func_name == "cmd_calc":
@@ -498,8 +557,11 @@ async def _execute_numbered_cmd(num: int, arg: str, from_user: str = "") -> str:
                 deals = await scan_blackfriday_deals(arg)
                 return format_deals_message(arg, deals)
             except Exception as e:
-                logger.warning("[微信] 黑五折扣搜索失败: %s", e)
-                return f"黑五折扣搜索失败: {e}"
+                logger.warning(
+                    "[微信] 黑五折扣搜索失败: %s",
+                    scrub_secrets(str(e)) or type(e).__name__,
+                )
+                return "黑五折扣搜索暂时不可用，请稍后再试。"
 
         # ── 需要复杂交互的命令: 走 LLM 语义理解 ──
         prompt = f"用户想要执行「{desc}」"
@@ -509,7 +571,11 @@ async def _execute_numbered_cmd(num: int, arg: str, from_user: str = "") -> str:
         return reply or f"已收到指令: {desc}{(f' ({arg})' if arg else '')}"
 
     except Exception as e:
-        logger.warning("[微信] 命令 %d 执行失败: %s", num, e)
+        logger.warning(
+            "[微信] 命令 %d 执行失败: %s",
+            num,
+            scrub_secrets(str(e)) or type(e).__name__,
+        )
         return "命令执行出错，请稍后再试"
 
 
@@ -645,7 +711,10 @@ async def _generate_wechat_reply(text: str, history: list[dict] | None = None) -
         llm_text = response.choices[0].message.content or ""
         return llm_text.strip() or None
     except Exception as exc:
-        logger.warning("[微信] LLM 调用失败: %s", exc)
+        logger.warning(
+            "[微信] LLM 调用失败: %s",
+            scrub_secrets(str(exc)) or type(exc).__name__,
+        )
         return None
 
 
@@ -655,13 +724,24 @@ async def wechat_incoming(payload: WeChatIncomingRequest) -> WeChatIncomingRespo
 
     优先级: 编号命令 > 招呼语 > 中文自然语言 > LLM 对话
     """
-    from_user = payload.from_user
+    from_user = payload.from_user.strip()
     text = payload.text.strip()
+
+    if not from_user:
+        return WeChatIncomingResponse(
+            reply="无法识别发送者，请从已授权的微信会话重新发送。"
+        )
 
     if not text:
         return WeChatIncomingResponse(reply="你好！有什么可以帮你的吗？")
 
-    logger.info("[微信] 收到消息 from=%s...: %s", from_user[:15], text[:50])
+    _prune_runtime_state()
+    sender_hash = _hash_identifier(from_user)
+    logger.info(
+        "[微信] 收到消息 sender_hash=%s text_length=%d",
+        sender_hash,
+        len(text),
+    )
     start = time.time()
 
     # ── 1. 编号命令/显式菜单/中文快捷词优先 ──
@@ -683,7 +763,13 @@ async def wechat_incoming(payload: WeChatIncomingRequest) -> WeChatIncomingRespo
             _set_pending_action(from_user, "intel_custom")
         reply = await _execute_numbered_cmd(num, arg, from_user=from_user)
         elapsed = round(time.time() - start, 2)
-        logger.info("[微信] 快捷词命令 %d 执行 (%ss): %s...", num, elapsed, reply[:50])
+        logger.info(
+            "[微信] 快捷词命令 %d 执行 sender_hash=%s elapsed=%ss reply_length=%d",
+            num,
+            sender_hash,
+            elapsed,
+            len(reply),
+        )
         return WeChatIncomingResponse(reply=reply)
 
     pending_action = _get_pending_action(from_user)
@@ -714,7 +800,13 @@ async def wechat_incoming(payload: WeChatIncomingRequest) -> WeChatIncomingRespo
             _set_pending_action(from_user, "intel_custom")
         reply = await _execute_numbered_cmd(num, arg, from_user=from_user)
         elapsed = round(time.time() - start, 2)
-        logger.info("[微信] 命令 %d 执行 (%ss): %s...", num, elapsed, reply[:50])
+        logger.info(
+            "[微信] 命令 %d 执行 sender_hash=%s elapsed=%ss reply_length=%d",
+            num,
+            sender_hash,
+            elapsed,
+            len(reply),
+        )
         return WeChatIncomingResponse(reply=reply)
 
     # ── 2. LLM 对话（带对话记忆）──
@@ -729,7 +821,12 @@ async def wechat_incoming(payload: WeChatIncomingRequest) -> WeChatIncomingRespo
 
     reply = _strip_g4f_ads(reply)
     elapsed = round(time.time() - start, 2)
-    logger.info("[微信] 回复生成 (%ss): %s...", elapsed, reply[:50])
+    logger.info(
+        "[微信] 回复生成 sender_hash=%s elapsed=%ss reply_length=%d",
+        sender_hash,
+        elapsed,
+        len(reply),
+    )
     return WeChatIncomingResponse(reply=reply)
 
 

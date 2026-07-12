@@ -15,6 +15,8 @@ import logging
 import os
 from typing import Any
 
+from src.utils import scrub_secrets
+
 logger = logging.getLogger(__name__)
 
 # ── Composio SDK 导入 (graceful degradation) ──────────────────
@@ -68,7 +70,7 @@ class ComposioBridge:
             self._available = True
             logger.info("[ComposioBridge] 初始化成功 (entity=%s)", entity_id)
         except Exception as e:
-            logger.error("[ComposioBridge] 初始化失败: %s", e)
+            logger.error("[ComposioBridge] 初始化失败: %s", scrub_secrets(str(e)))
 
     # ── 状态查询 ──────────────────────────────────────────
 
@@ -99,7 +101,7 @@ class ComposioBridge:
             return {
                 "available": True,
                 "sdk_installed": True,
-                "error": str(e),
+                "error": scrub_secrets(str(e)) or type(e).__name__,
             }
 
     # ── 应用 & 动作枚举 ──────────────────────────────────
@@ -183,6 +185,8 @@ class ComposioBridge:
         params: dict[str, Any] | None = None,
         entity_id: str | None = None,
         connected_account_id: str | None = None,
+        *,
+        human_confirmed: bool = False,
     ) -> dict[str, Any]:
         """执行一个 Composio 动作
 
@@ -191,10 +195,20 @@ class ComposioBridge:
             params: 动作参数字典
             entity_id: 用户实体 ID (覆盖默认)
             connected_account_id: 指定连接账户 ID
+            human_confirmed: 当前动作是否已由可信调用方完成逐次人工确认
 
         Returns:
             执行结果字典，包含 success / data / error 字段
         """
+        if human_confirmed is not True:
+            return {
+                "success": False,
+                "error": "human_confirmation_required",
+                "data": None,
+                "blocked": True,
+                "requires_human_confirmation": True,
+            }
+
         if not self.is_available():
             return {
                 "success": False,
@@ -218,13 +232,15 @@ class ComposioBridge:
                 "error": None,
             }
         except Exception as e:
+            safe_error = scrub_secrets(str(e)) or type(e).__name__
             logger.error(
                 "[ComposioBridge] execute_action(%s) 失败: %s",
-                action_name, e,
+                action_name,
+                safe_error,
             )
             return {
                 "success": False,
-                "error": str(e),
+                "error": safe_error,
                 "data": None,
             }
 

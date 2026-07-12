@@ -1,8 +1,8 @@
 """
-Bot — 社媒发布 / 热点 / 人设 / 日历 命令 Mixin
+Bot — 社媒草稿 / 热点 / 人设 / 日历 命令 Mixin
 
 包含功能:
-  - 社媒发布 (X / 小红书 / 双平台)
+  - 社媒草稿与显式最终发布确认 (X / 小红书 / 双平台)
   - 热点选题与 AI 草稿
   - 社媒人设管理
   - 社媒日历与报表
@@ -20,11 +20,6 @@ from src.bot.error_messages import error_service_failed
 from src.bot.globals import execution_hub, get_siliconflow_key, image_tool, send_long_message
 from src.constants import IMG_MODEL_FLUX
 from src.message_format import format_error
-from src.notify_style import (
-    format_hotpost_result,
-    format_social_dual_result,
-    format_social_published,
-)
 from src.telegram_ux import with_typing
 
 logger = logging.getLogger(__name__)
@@ -739,57 +734,31 @@ class SocialCommandsMixin:
     @requires_auth
     @with_typing
     async def cmd_xhs(self, update, context):
+        """兼容旧“小红书发文”入口；只生成待审草稿。"""
         try:
             topic = " ".join(context.args or []).strip()
             if not topic:
-                await update.message.reply_text("📕 小红书热点发布中...")
+                await update.message.reply_text("📕 正在生成小红书热点待审草稿...")
                 ret = await execution_hub.autopost_hot_content("xiaohongshu")
-                package = (ret.get("results", {}) or {}).get("xiaohongshu", {})
-                if not package:
-                    await update.message.reply_text(error_service_failed("小红书热点发布", package.get('error', ret.get('error', ''))))
-                    return
-                published = package.get("published", {}) or {}
-                if not published.get("success"):
-                    await update.message.reply_text(
-                        f"小红书发布未完成: {published.get('error', published.get('raw', '未知错误'))}"
-                        f"{self._social_login_retry_hint(published, '/post_xhs')}"
-                    )
-                    return
-                text = format_social_published(
-                    platform="xiaohongshu",
-                    topic=package.get("topic", ""),
-                    url=published.get("url", ""),
-                    title=package.get("title", ""),
-                    memory_path=package.get("memory_path", ""),
-                )
-                if package.get("trend_label"):
-                    text = f" 📈 蹭热点: {package.get('trend_label')}\n{text}"
-                await send_long_message(update.effective_chat.id, text, context)
-                return
-
-            await update.message.reply_text(f"📕 小红书发布: {topic}")
-            ret = await execution_hub.autopost_topic_content("xiaohongshu", topic)
-            if not ret.get("success"):
+            else:
+                await update.message.reply_text(f"📕 正在生成小红书待审草稿：{topic}")
+                ret = await execution_hub.autopost_topic_content("xiaohongshu", topic)
+            package = (ret.get("results", {}) or {}).get("xiaohongshu", {})
+            if not ret.get("success") or not package:
                 await update.message.reply_text(
-                    error_service_failed("小红书发帖", ret.get('error', ''))
-                    + f"\n{self._social_login_retry_hint(ret.get('published', ret), '/post_xhs ' + topic if topic else '/post_xhs')}"
+                    error_service_failed("小红书草稿生成", ret.get("error", "无草稿结果"))
                 )
                 return
-            published = ret.get("published", {}) or {}
-            if not published.get("success"):
-                await update.message.reply_text(
-                    f"小红书发布未完成: {published.get('error', published.get('raw', '未知错误'))}"
-                    f"{self._social_login_retry_hint(published, f"/post_xhs {topic}" if topic else '/post_xhs')}"
-                )
-                return
-            text = format_social_published(
-                platform="xiaohongshu",
-                topic=topic,
-                url=published.get("url", ""),
-                title=ret.get("title", ""),
-                memory_path=ret.get("memory_path", ""),
-            )
-            await send_long_message(update.effective_chat.id, text, context)
+            draft = package.get("draft", {}) if isinstance(package.get("draft"), dict) else {}
+            draft_id = package.get("draft_id") or draft.get("draft_id") or "未知"
+            result_topic = ret.get("topic") or topic or "自动热点选题"
+            lines = [
+                "📕 小红书待审草稿已生成",
+                f"主题: {result_topic}",
+                f"草稿ID: {draft_id}",
+                "未提交真实发布。请先审核内容，再从最终确认入口逐条发布。",
+            ]
+            await send_long_message(update.effective_chat.id, "\n".join(lines), context)
         except Exception as e:
             logger.warning("[cmd_xhs] 执行失败: %s", e)
             try:
@@ -800,25 +769,28 @@ class SocialCommandsMixin:
     @requires_auth
     @with_typing
     async def cmd_post(self, update, context):
+        """兼容旧“双平台发文”入口；只生成两份待审草稿。"""
         try:
             topic = " ".join(context.args or []).strip()
             if not topic:
                 await self.cmd_hotpost(update, context)
                 return
-            await update.message.reply_text(f"📱 双平台发文: {topic}")
-            xhs = await execution_hub.autopost_topic_content("xiaohongshu", topic)
-            xret = await execution_hub.autopost_topic_content("x", topic)
-            mem = xhs.get('memory_path') or xret.get('memory_path') or ''
-            hint = self._social_login_retry_hint(xhs.get('published', xhs), f"/post {topic}") or self._social_login_retry_hint(xret.get('published', xret), f"/post {topic}")
-            text = format_social_dual_result(
-                topic=topic,
-                xhs_result=xhs,
-                x_result=xret,
-                memory_path=mem,
-            )
-            if hint:
-                text += f"\n{hint.strip()}"
-            await send_long_message(update.effective_chat.id, text, context)
+            await update.message.reply_text(f"📱 正在生成双平台待审草稿：{topic}")
+            ret = await execution_hub.autopost_topic_content("all", topic)
+            results = ret.get("results", {}) if isinstance(ret, dict) else {}
+            if not ret.get("success") or not results:
+                await update.message.reply_text(
+                    error_service_failed("双平台草稿生成", ret.get("error", "无草稿结果"))
+                )
+                return
+            lines = ["📱 双平台待审草稿已生成", f"主题: {topic}"]
+            for platform, label in (("x", "X"), ("xiaohongshu", "小红书")):
+                package = results.get(platform, {}) if isinstance(results.get(platform), dict) else {}
+                draft = package.get("draft", {}) if isinstance(package.get("draft"), dict) else {}
+                draft_id = package.get("draft_id") or draft.get("draft_id") or "未生成"
+                lines.append(f"- {label} 草稿ID: {draft_id}")
+            lines.append("未提交真实发布。请先审核内容，再从最终确认入口逐条发布。")
+            await send_long_message(update.effective_chat.id, "\n".join(lines), context)
         except Exception as e:
             logger.warning("[cmd_post] 执行失败: %s", e)
             try:
@@ -851,6 +823,7 @@ class SocialCommandsMixin:
                     preview_mode = True
             except Exception:
                 logger.debug("Silenced exception", exc_info=True)
+        preview_mode = True
 
         if args and str(args[0]).lower() in {"x", "xhs", "xiaohongshu", "all", "both", "dual"}:
             raw_platform = str(args[0]).lower()
@@ -888,7 +861,7 @@ class SocialCommandsMixin:
                         preview_lines.append(f"{icon} <b>{plat}</b>\n{content[:300]}{'...' if len(content) > 300 else ''}\n")
 
                 preview_lines.append("━━━━━━━━━━━━━━━")
-                preview_lines.append("确认发布？点击下方按钮")
+                preview_lines.append("如确认本次真实外发，请点击下方最终确认按钮")
 
                 # 存储 package 到 user_data，等待确认
                 context.user_data["pending_social_package"] = package
@@ -896,7 +869,7 @@ class SocialCommandsMixin:
                 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
                 keyboard = InlineKeyboardMarkup([
                     [
-                        InlineKeyboardButton("✅ 确认发布", callback_data="social_confirm:publish"),
+                        InlineKeyboardButton("✅ 本次最终确认并发布", callback_data="social_confirm:publish"),
                         InlineKeyboardButton("❌ 取消", callback_data="social_confirm:cancel"),
                     ],
                     [
@@ -914,46 +887,8 @@ class SocialCommandsMixin:
                 await send_error_with_retry(update, context, e, retry_command=f"/hot --preview {topic}")
             return
 
-        # 非预览模式 — 直接发布（原有逻辑）
-        if topic:
-            await update.message.reply_text(f"🔥 抓取「{topic}」热点并发文...")
-        else:
-            await update.message.reply_text("🔥 抓取今日热点并发文...")
-
-        ret = await execution_hub.autopost_hot_content(platform=platform, topic=topic)
-        if not ret.get("results"):
-            await update.message.reply_text(format_error(ret.get('error', '未知错误'), "热点发文"))
-            return
-
-        # A/B 测试追踪 — 记录发布的内容变体
-        try:
-            from src.bot.globals import ab_test_manager
-            if ab_test_manager:
-                for plat, plat_result in (ret.get("results") or {}).items():
-                    content = plat_result.get("content", "") or plat_result.get("title", "")
-                    if content:
-                        test = ab_test_manager.create_test(
-                            name=f"hotpost_{plat}_{(topic or 'auto')[:20]}",
-                            contents=[content],
-                        )
-                        variant_id, _ = ab_test_manager.get_content(test.test_id)
-                        if plat_result.get("published", {}).get("success"):
-                            ab_test_manager.record_engagement(test.test_id, variant_id, event="publish")
-        except Exception:
-            logger.debug("Silenced exception", exc_info=True)  # A/B 追踪不影响主流程
-
-        hint = self._social_login_retry_hint(
-            (ret.get("results", {}) or {}).get("xiaohongshu", {}).get("published", {}), "/hot"
-        ) or self._social_login_retry_hint(
-            (ret.get("results", {}) or {}).get("x", {}).get("published", {}), "/hot"
-        )
-        text = format_hotpost_result(
-            topic=ret.get("topic", topic or "自动选题"),
-            trend_label=ret.get("trend_label", ""),
-            results=ret.get("results", {}),
-            login_hint=hint or "",
-        )
-        await send_long_message(update.effective_chat.id, text, context)
+        # 默认路径必须停留在预览；外部发布只允许上方确认按钮触发。
+        await update.message.reply_text("⚠️ 社媒发布已锁定，请使用 /hot --preview 预览并最终确认。")
 
     @requires_auth
     @with_typing
@@ -1106,16 +1041,10 @@ class SocialCommandsMixin:
                     await update.message.reply_text(error_service_failed("X 发帖", draft.get('error', '')))
                     return
                 draft_id = int(draft.get("draft_id", 0) or 0)
-            await update.message.reply_text("正在拉起 OpenClaw 专用浏览器并自动发 X...")
-            ret = await asyncio.to_thread(execution_hub.publish_social_draft, "x", draft_id)
-            if ret.get("success"):
-                await update.message.reply_text(f"X 已尝试自动发出，草稿ID: {ret.get('draft_id')}\n页面: {ret.get('url', '')}")
-            else:
-                await update.message.reply_text(
-                    f"X 自动发帖未完成: {ret.get('status', ret.get('error', '未知错误'))}\n"
-                    f"页面: {ret.get('url', '')}"
-                    f"{self._social_login_retry_hint(ret, f"/post_x {topic}" if topic else '/post_x')}"
-                )
+            await update.message.reply_text(
+                f"X 草稿已准备，草稿ID: {draft_id}\n"
+                "未提交真实发布。请先审核，再从最终确认入口逐条发布。"
+            )
         except Exception as e:
             logger.warning("[cmd_xpost] 执行失败: %s", e)
             try:
@@ -1163,16 +1092,10 @@ class SocialCommandsMixin:
                     await update.message.reply_text(error_service_failed("小红书发帖", draft.get('error', '')))
                     return
                 draft_id = int(draft.get("draft_id", 0) or 0)
-            await update.message.reply_text("正在拉起 OpenClaw 专用浏览器并自动发小红书...")
-            ret = await asyncio.to_thread(execution_hub.publish_social_draft, "xiaohongshu", draft_id)
-            if ret.get("success"):
-                await update.message.reply_text(f"小红书已尝试自动发出，草稿ID: {ret.get('draft_id')}\n页面: {ret.get('url', '')}")
-            else:
-                await update.message.reply_text(
-                    f"小红书自动发帖未完成: {ret.get('status', ret.get('error', '未知错误'))}\n"
-                    f"页面: {ret.get('url', '')}"
-                    f"{self._social_login_retry_hint(ret, f"/post_xhs {topic}" if topic else '/post_xhs')}"
-                )
+            await update.message.reply_text(
+                f"小红书草稿已准备，草稿ID: {draft_id}\n"
+                "未提交真实发布。请先审核，再从最终确认入口逐条发布。"
+            )
         except Exception as e:
             logger.warning("[cmd_xhspost] 执行失败: %s", e)
             try:
@@ -1183,14 +1106,14 @@ class SocialCommandsMixin:
     @requires_auth
     @with_typing
     async def cmd_publish(self, update, context):
-        """发布内容到社交媒体 — /publish <平台> <视频/图片路径> [标题]"""
+        """校验社媒素材参数；该兼容入口不直接外发。"""
         try:
-            from src.sau_bridge import PLATFORMS, get_supported_platforms, publish_note, publish_video
+            from src.sau_bridge import PLATFORMS, get_supported_platforms
 
             args = context.args or []
             if len(args) < 2:
                 platforms = get_supported_platforms()
-                help_text = "📤 社媒发布\n\n用法:\n"
+                help_text = "📤 社媒素材预检（不会直接外发）\n\n用法:\n"
                 help_text += "  /publish <平台> <文件路径> [标题]\n\n"
                 help_text += "支持平台:\n"
                 for key, info in platforms.items():
@@ -1212,18 +1135,11 @@ class SocialCommandsMixin:
                 await update.message.reply_text(f"❓ 不支持的平台: {platform}\n支持: {', '.join(PLATFORMS.keys())}")
                 return
 
-            await update.message.reply_text(f"📤 正在发布到 {PLATFORMS[platform]['name']}...")
-
-            if file_path.lower().endswith(('.mp4', '.mov', '.avi')):
-                result = await publish_video(platform, file_path, title)
-            else:
-                result = await publish_note(platform, [file_path], title)
-
-            if result.get("success"):
-                await update.message.reply_text(f"✅ 发布到 {PLATFORMS[platform]['name']} 成功!")
-            else:
-                error = result.get("error", result.get("stderr", "未知错误"))
-                await update.message.reply_text(f"⚠️ 发布失败: {error[:100]}")
+            await update.message.reply_text(
+                f"🔒 未发布到 {PLATFORMS[platform]['name']}。\n"
+                f"已识别素材: {file_path}\n标题: {title}\n"
+                "真实外发必须从带最终确认的发布入口执行。"
+            )
         except Exception as e:
             logger.warning("[cmd_publish] 执行失败: %s", e)
             try:
@@ -1637,7 +1553,10 @@ class SocialCommandsMixin:
 
             await query.edit_message_text("📤 正在发布...")
             try:
-                ret = execution_hub._publish_social_package(package)
+                ret = execution_hub._publish_social_package(
+                    package,
+                    final_confirmed=True,
+                )
                 if ret and ret.get("success"):
                     await query.edit_message_text(
                         "✅ 发布成功\n\n" +

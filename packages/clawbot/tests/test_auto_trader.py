@@ -276,17 +276,18 @@ class TestExecuteTradeBrokerTimeout:
             decided_by="TestBot",
         )
 
-        result = await pipeline.execute_proposal(proposal)
+        result = await pipeline.execute_proposal(proposal, human_confirmed=True)
 
-        # Broker was attempted but timed out
+        # 只有当前操作已人工确认时才允许测试真实券商超时回退
         mock_broker.buy.assert_called_once()
 
         # Fell back to simulation portfolio
         mock_portfolio.buy.assert_called_once()
 
-        # Trade still executed via simulation (标记为 simulated 而非 executed，见 HI-569)
+        # 模拟降级必须与真实持仓彻底隔离，不能写入实盘日志。
         assert result["status"] == "simulated"
-        assert result["trade_id"] == 99
+        assert "trade_id" not in result
+        mock_journal.open_trade.assert_not_called()
 
         # Steps should contain the broker error
         broker_error_steps = [

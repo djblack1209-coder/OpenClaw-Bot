@@ -1,12 +1,23 @@
-#!/bin/bash
-# ClawBot Agent 后台启动脚本 (供 Tauri APP Fallback 使用)
+#!/usr/bin/env bash
+# ClawBot Agent 启动入口；供 Tauri 的受控 fallback 使用，也可在终端前台运行。
+set -euo pipefail
+umask 077
 
-DIR="/Users/blackdj/Desktop/OpenEverything/packages/clawbot"
-cd "$DIR" || exit 1
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PYTHON="$ROOT_DIR/.venv312/bin/python"
 
-# 确保旧进程已被清理 (Tauri 在调用此脚本前会通过端口查杀，但做个双重保险)
-pkill -f "multi_main.py" 2>/dev/null
+if [[ ! -x "$PYTHON" ]]; then
+  printf '错误：项目 Python 环境不存在：%s\n' "$PYTHON" >&2
+  exit 1
+fi
+mkdir -p "$ROOT_DIR/logs"
+chmod 700 "$ROOT_DIR/logs" 2>/dev/null || true
 
-# 后台启动
-nohup .venv312/bin/python multi_main.py >> logs/com-clawbot-agent.stderr.log 2>&1 &
-echo "ClawBot Agent 已启动，PID: $!"
+# 只检查端口，不杀任何未知进程。服务已存在或端口被占用时安全停止。
+if command -v lsof >/dev/null 2>&1 && lsof -nP -iTCP:18790 -sTCP:LISTEN -t >/dev/null 2>&1; then
+  echo "ClawBot Agent 未启动：127.0.0.1:18790 已被占用。"
+  exit 1
+fi
+
+cd "$ROOT_DIR"
+exec "$PYTHON" "$ROOT_DIR/multi_main.py"

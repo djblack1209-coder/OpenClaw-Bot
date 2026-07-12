@@ -1834,11 +1834,55 @@ def delete_x(tweet_url: str) -> Dict[str, Any]:
     return {"success": True, "status": "deleted", "url": tweet_url}
 
 
+_EXTERNAL_WRITE_ACTIONS = (
+    "publish",
+    "post",
+    "reply",
+    "comment",
+    "follow",
+    "unfollow",
+    "like",
+    "unlike",
+    "message",
+    "dm",
+    "delete",
+    "profile",
+    "promote",
+    "boost",
+)
+
+
+def _is_external_write_action(action: str) -> bool:
+    """在浏览器执行器最末端独立复核，防止绕过 Python bridge 直调脚本。"""
+    normalized = str(action or "").strip().lower().replace("-", "_")
+    return any(
+        normalized == prefix
+        or normalized.startswith(f"{prefix}_")
+        or normalized.endswith(f"_{prefix}")
+        for prefix in _EXTERNAL_WRITE_ACTIONS
+    )
+
+
+def _confirmation_required(action: str) -> Dict[str, Any]:
+    return {
+        "success": False,
+        "error": "社媒外部写操作需要当前操作的最终人工确认",
+        "code": "social_publish_confirmation_required",
+        "requires_human_confirmation": True,
+        "external_action_blocked": True,
+        "action": str(action or "publish"),
+    }
+
+
 def main() -> int:
     if len(sys.argv) < 3:
         raise SystemExit("usage: social_browser_worker.py <bootstrap|status|metrics|workspace|research|render|publish_x|reply_x|reply_xhs|publish_xhs|update_xhs_profile|delete_x> '<json>'")
     action = sys.argv[1]
     payload = json.loads(sys.argv[2])
+    final_confirmed = "--final-confirmed" in sys.argv[3:]
+    if _is_external_write_action(action) and not final_confirmed:
+        print(json.dumps(_confirmation_required(action), ensure_ascii=False))
+        return 0
     if action == "bootstrap":
         result = bootstrap_social_browser(payload)
     elif action == "status":

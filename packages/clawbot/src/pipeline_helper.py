@@ -31,7 +31,13 @@ async def _get_atr_based_levels(symbol: str, entry_price: float) -> dict:
     return {}
 
 
-async def execute_trade_via_pipeline(trade_dict: dict, pipeline=None, get_quote_func=None) -> str:
+async def execute_trade_via_pipeline(
+    trade_dict: dict,
+    pipeline=None,
+    get_quote_func=None,
+    *,
+    human_confirmed: bool = False,
+) -> str:
     """
     Execute a single trade dict through the TradingPipeline.
 
@@ -110,7 +116,7 @@ async def execute_trade_via_pipeline(trade_dict: dict, pipeline=None, get_quote_
     logger.info("[PipelineHelper] %s %s x%d @ $%.2f SL=$%.2f TP=$%.2f -> pipeline",
                 action, symbol, int(qty), entry_price, stop_loss, take_profit)
 
-    r = await pipeline.execute_proposal(proposal)
+    r = await pipeline.execute_proposal(proposal, human_confirmed=human_confirmed)
     status = r.get("status", "unknown")
 
     if status == "executed":

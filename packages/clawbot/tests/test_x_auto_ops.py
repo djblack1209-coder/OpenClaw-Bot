@@ -1,3 +1,4 @@
+import stat
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -6,8 +7,8 @@ from src.execution.social.x_auto_ops import (
     TrendSeed,
     VideoSeed,
     build_daily_drafts,
-    build_xhs_review_drafts,
     build_next_draft,
+    build_xhs_review_drafts,
     choose_seed,
     choose_seeds,
     compose_x_post,
@@ -20,10 +21,10 @@ from src.execution.social.x_auto_ops import (
     get_or_build_next_ready_draft,
     is_draft_approved,
     mark_draft_review,
-    require_draft_review,
-    score_content_seed,
     next_morning_at,
     parse_daily_times,
+    require_draft_review,
+    score_content_seed,
     summarize_transcript,
     write_launchd_plist,
     x_weighted_length,
@@ -456,6 +457,8 @@ def test_build_daily_drafts_supersedes_old_ai_ready_drafts(monkeypatch, tmp_path
     assert len(drafts) == 2
     loaded = state_path.read_text(encoding="utf-8")
     assert '"status": "superseded"' in loaded
+    assert stat.S_IMODE(state_path.stat().st_mode) == 0o600
+    assert stat.S_IMODE(state_path.parent.stat().st_mode) == 0o700
     assert all("自动蒸馏" not in draft["text"] for draft in drafts)
 
 
@@ -921,7 +924,7 @@ def test_parse_daily_times_ignores_invalid_values():
     assert times == [(8, 30), (20, 5)]
 
 
-def test_write_launchd_plist_defaults_to_daily_calendar_time(tmp_path):
+def test_write_launchd_plist_defaults_to_review_only_calendar_time(tmp_path):
     target = datetime(2026, 6, 23, 8, 30, tzinfo=ZoneInfo("America/Denver"))
     plist = write_launchd_plist(
         script_path=Path("/tmp/x_auto_morning_post.py"),
@@ -935,7 +938,8 @@ def test_write_launchd_plist_defaults_to_daily_calendar_time(tmp_path):
     assert "<key>Day</key>" not in text
     assert "<key>Hour</key><integer>8</integer>" in text
     assert "<key>Minute</key><integer>30</integer>" in text
-    assert "--publish-next" in text
+    assert "--pending-review" in text
+    assert "--publish-next" not in text
 
 
 def test_write_launchd_plist_supports_multiple_daily_times(tmp_path):

@@ -170,24 +170,14 @@ class LifeExecutorMixin:
         return {"method": "browser", "fallback": "phone"}
 
     async def _exec_booking_execute(self, params: dict) -> dict:
-        """执行预订 — browser-use (81k⭐) 自然语言浏览器自动化"""
-        goal = params.get("goal", params.get("query", ""))
-        url = params.get("url", "")
-        try:
-            from src.browser_use_bridge import get_browser_use
-
-            browser = get_browser_use()
-            if browser:
-                task_desc = f"在网页上完成预订操作: {goal}"
-                if url:
-                    task_desc += f". 目标网站: {url}"
-                result = await browser.run_task(task=task_desc, url=url, max_steps=15)
-                if result.get("success"):
-                    return {"source": "browser_use", "success": True, "result": result}
-                return {"source": "browser_use", "success": False, "details": result}
-        except Exception as e:
-            logger.warning("浏览器预订失败: %s", e)
-        return {"source": "booking_fallback", "success": False, "note": "浏览器自动化未就绪"}
+        """只准备预订信息；提交、付款和账号动作必须由用户在可见页面完成。"""
+        return {
+            "source": "manual_booking_required",
+            "success": False,
+            "requires_manual_confirmation": True,
+            "note": "已准备预订信息；请由用户本人检查价格并在页面手动提交或付款",
+            "has_target_url": bool(params.get("url")),
+        }
 
     async def _exec_booking_phone(self, params: dict) -> dict:
         """电话预订"""

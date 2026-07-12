@@ -129,14 +129,14 @@
         <div class="delivery-panel" id="xianyu-delivery-panel" data-visible="false">
           <div class="delivery-row">
             <button id="xianyu-delivery-scan" class="ghost-button">检测当前聊天</button>
-            <button id="xianyu-delivery-send">发送待发货卡密</button>
-            <button id="xianyu-delivery-watch" class="secondary">看守当前聊天页</button>
+            <button id="xianyu-delivery-send">使用已授权单次票发送</button>
+            <button id="xianyu-delivery-watch" class="secondary" disabled>自动看守已关闭</button>
           </div>
           <div class="delivery-state" id="xianyu-delivery-state">切到闲鱼买家聊天页后使用。</div>
-          <div class="safe">只处理本机已分配的待发货记录；页面看不到“已付款/待发货”时会阻止发送。看守模式成功发一次后会自动关闭。</div>
+          <div class="safe">默认只读检测。只有 18800 操作台刚签发并消费本次短时单次票后，才允许发送 1 条卡密；不会自动确认发货或恢复上架。</div>
         </div>
         <div class="safe" id="xianyu-delivery-hint">打开闲鱼聊天页后，这里会出现发货按钮。</div>
-        <button id="xianyu-delivery-watch-all" class="secondary primary-action">看守所有闲鱼页</button>
+        <button id="xianyu-delivery-watch-all" class="secondary primary-action" disabled>全局自动看守已关闭</button>
       </section>
 
       <section class="card">

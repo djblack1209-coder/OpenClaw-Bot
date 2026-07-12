@@ -71,7 +71,8 @@ def test_social_extension_status_update_persists_cc_delivery_capabilities(tmp_pa
                 "cc_delivery_helper_version": "2026-07-06-global-watch",
                 "capabilities": {
                     "xianyu_delivery_scan": True,
-                    "xianyu_delivery_send": True,
+                    "xianyu_delivery_send": False,
+                    "xianyu_one_shot_delivery_human_gated": True,
                     "current_chat_watch": True,
                     "all_open_xianyu_tabs_watch": True,
                     "target_tab_preflight": True,
@@ -90,6 +91,8 @@ def test_social_extension_status_update_persists_cc_delivery_capabilities(tmp_pa
     assert extension["cc_delivery_helper_version"] == "2026-07-06-global-watch"
     assert extension["capabilities"]["all_open_xianyu_tabs_watch"] is True
     assert extension["capabilities"]["target_tab_preflight"] is True
+    assert extension["capabilities"]["xianyu_delivery_send"] is False
+    assert extension["capabilities"]["xianyu_one_shot_delivery_human_gated"] is True
     assert extension["capabilities"]["background_heartbeat"] is False
     assert "unsafe_extra" not in extension["capabilities"]
     assert "token" not in extension
@@ -111,9 +114,10 @@ def test_social_extension_status_preserves_known_cc_capabilities_when_old_payloa
                     "target_tab_preflight": True,
                     "single_pending_global_gate": True,
                     "background_heartbeat": True,
-                    "xianyu_confirm_shipment": True,
-                    "xianyu_relist_item": True,
-                    "relist_queue_watch": True,
+                    "xianyu_confirm_shipment": False,
+                    "xianyu_relist_item": False,
+                    "xianyu_one_shot_delivery_human_gated": True,
+                    "relist_queue_watch": False,
                     "paid_page_dispatch": True,
                 },
             },
@@ -132,7 +136,8 @@ def test_social_extension_status_preserves_known_cc_capabilities_when_old_payloa
     assert extension["cc_delivery_helper_version"] == "2026-07-07-background-heartbeat"
     assert extension["capabilities"]["all_open_xianyu_tabs_watch"] is True
     assert extension["capabilities"]["background_heartbeat"] is True
-    assert extension["capabilities"]["relist_queue_watch"] is True
+    assert extension["capabilities"]["relist_queue_watch"] is False
+    assert extension["capabilities"]["xianyu_one_shot_delivery_human_gated"] is True
     assert extension["capabilities"]["paid_page_dispatch"] is True
 
 

@@ -130,11 +130,18 @@ def twikit_is_authenticated() -> bool:
 async def twikit_post_tweet(
     text: str,
     media_paths: list[str] | None = None,
+    *,
+    final_confirmed: bool = False,
 ) -> dict:
     """通过 twikit 发布推文（Cookie 认证，无需 API Key）
 
     如果 Cookie 过期会捕获异常并返回明确错误，不会崩溃。
     """
+    from src.execution.social.publish_safety import confirmation_required
+
+    if not final_confirmed:
+        return confirmation_required("publish_x_twikit")
+
     global _HAS_TWIKIT
     if not _HAS_TWIKIT or _twikit_client is None:
         return {"success": False, "error": "twikit 未认证，请先调用 twikit_login()"}
@@ -372,18 +379,29 @@ async def publish_x_post(
     content: str,
     worker_fn=None,
     image_path: str | None = None,
+    *,
+    final_confirmed: bool = False,
+    **_kwargs,
 ) -> dict:
     """发布推文
 
     v3.0 三级降级: twikit Cookie → tweepy API → browser worker
     """
+    from src.execution.social.publish_safety import confirmation_required
+
+    if not final_confirmed:
+        return confirmation_required("publish_x")
     if not content:
         return {"success": False, "error": "内容不能为空"}
 
     # 方式0: twikit Cookie 发布（v3.0 新增）
     if _HAS_TWIKIT and _twikit_client:
         media_paths = [image_path] if image_path else None
-        result = await twikit_post_tweet(content, media_paths=media_paths)
+        result = await twikit_post_tweet(
+            content,
+            media_paths=media_paths,
+            final_confirmed=True,
+        )
         if result.get("success"):
             _emit_flow("twikit", "social", "success", "X 推文发布完成 (twikit)", {"platform": "x"})
             return result
@@ -399,7 +417,12 @@ async def publish_x_post(
             payload["image"] = image_path
         _emit_flow("llm", "browser", "running", "启动浏览器发布 X 推文", {"length": len(content)})
         # 浏览器自动化是同步阻塞操作（5-30秒），必须丢到线程池避免冻结事件循环
-        result = await asyncio.to_thread(worker_fn, "publish_x", payload)
+        result = await asyncio.to_thread(
+            worker_fn,
+            "publish_x",
+            payload,
+            final_confirmed=True,
+        )
         _emit_flow("browser", "social", "success", "X 推文发布完成", {"platform": "x"})
         return {"success": True, "result": result}
     except Exception as e:
@@ -412,8 +435,14 @@ async def reply_to_x_post(
     tweet_url: str,
     reply_text: str,
     worker_fn=None,
+    *,
+    final_confirmed: bool = False,
 ) -> dict:
     """回复推文"""
+    from src.execution.social.publish_safety import confirmation_required
+
+    if not final_confirmed:
+        return confirmation_required("reply_x")
     if not tweet_url or not reply_text:
         return {"success": False, "error": "URL 和回复内容不能为空"}
     if not worker_fn:
@@ -425,7 +454,14 @@ async def reply_to_x_post(
             "url": tweet_url,
             "text": reply_text,
         }
-        result = await asyncio.to_thread(worker_fn, "reply_x", reply_payload)
+        result = await asyncio.to_thread(
+            worker_fn,
+            "reply_x",
+            reply_payload,
+            final_confirmed=True,
+        )
+        if isinstance(result, dict) and not result.get("success", False):
+            return result
         _emit_flow("browser", "social", "success", "X 回复发布完成", {"platform": "x"})
         return {"success": True, "result": result}
     except Exception as e:

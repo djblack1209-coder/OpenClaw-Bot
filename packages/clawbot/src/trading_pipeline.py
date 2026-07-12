@@ -89,6 +89,7 @@ class TradingPipeline:
                 "已成交", "待成交", "成交回写完成", "次日重挂已提交",
                 "卖出完成", "止损触发", "止盈触发", "追踪止损",
                 "自动停机", "熔断", "风控拒绝", "决策验证拒绝",
+                "模拟执行",
             )
             if not any(kw in text for kw in p0_keywords):
                 logger.debug("[Pipeline] 已静默非成交通知: %s", text[:120])
@@ -102,6 +103,8 @@ class TradingPipeline:
         self,
         proposal: TradeProposal,
         pre_fetched_analysis: dict | None = None,
+        *,
+        human_confirmed: bool = False,
     ) -> dict:
         """执行单个交易提案 - 完整管道
 
@@ -222,7 +225,15 @@ class TradingPipeline:
 
         # Step 2: 执行下单
         order_result = None
-        if self.broker:
+        execution_mode = "none"
+        if self.broker and not human_confirmed:
+            result["steps"].append({"live_order": "blocked_human_confirmation_required"})
+            logger.warning(
+                "[Pipeline] 未收到当前订单人工确认，禁止调用实盘券商，降级为模拟执行: %s %s",
+                proposal.action,
+                proposal.symbol,
+            )
+        elif self.broker:
             try:
                 if proposal.action == "BUY":
                     order_result = await self.broker.buy(
@@ -230,6 +241,7 @@ class TradingPipeline:
                         quantity=proposal.quantity,
                         decided_by=proposal.decided_by,
                         reason=proposal.reason,
+                        human_confirmed=True,
                     )
                 elif proposal.action == "SELL":
                     order_result = await self.broker.sell(
@@ -237,9 +249,19 @@ class TradingPipeline:
                         quantity=proposal.quantity,
                         decided_by=proposal.decided_by,
                         reason=proposal.reason,
+                        human_confirmed=True,
                     )
                 result["steps"].append({"order": order_result})
-                # IBKR返回error时回退到模拟组合
+                if order_result and "error" not in order_result:
+                    order_status_value = str(order_result.get("status", "")).lower()
+                    broker_is_paper = getattr(self.broker, "paper", False) is True
+                    order_is_mock = bool(order_result.get("is_mock")) or order_result.get("source") == "mock_fallback"
+                    execution_mode = (
+                        "simulation"
+                        if broker_is_paper or order_is_mock or order_status_value == "simulated"
+                        else "live"
+                    )
+                # 券商返回 error 时只能回退到本地模拟组合。
                 if order_result and "error" in order_result:
                     if self.portfolio:
                         logger.warning(
@@ -247,6 +269,7 @@ class TradingPipeline:
                             order_result.get("error", ""),
                         )
                         result["steps"].append({"broker_fallback": "sim"})
+                        execution_mode = "none"
                         order_result = None  # 清除错误，走下面的模拟逻辑
                     else:
                         # 无模拟组合可用，直接返回错误
@@ -261,6 +284,7 @@ class TradingPipeline:
                 if self.portfolio:
                     logger.warning("[Pipeline] IBKR异常(%s)，回退到模拟组合（注意：后续为模拟执行）", e)
                     result["steps"].append({"broker_error": str(e)})
+                    execution_mode = "none"
                     order_result = None  # 走下面的模拟逻辑
                 else:
                     # 无模拟组合可用，直接返回错误
@@ -288,6 +312,12 @@ class TradingPipeline:
                     reason=proposal.reason,
                 )
                 result["steps"].append({"sim_order": order_result})
+            execution_mode = "simulation"
+
+        if order_result is None:
+            result["status"] = "error"
+            result["reason"] = "没有可用的交易执行器"
+            return result
 
         if order_result and "error" in order_result:
             result["status"] = "error"
@@ -313,7 +343,7 @@ class TradingPipeline:
         pending_statuses = {"Submitted", "PreSubmitted", "PendingSubmit", "ApiPending", "PendingCancel"}
         is_entry_pending = (
             proposal.action == "BUY"
-            and self.broker is not None
+            and execution_mode == "live"
             and order_result is not None
             and bool(order_result.get("order_id"))
             and order_status in pending_statuses
@@ -337,16 +367,13 @@ class TradingPipeline:
                         actual_qty, proposal.quantity, proposal.symbol,
                     )
 
-        # P0#6: 检测是否为模拟降级交易
-        is_simulated_fallback = False
-        if self.broker and order_result:  # noqa: SIM102
-            # 有 broker 但结果来自模拟组合（无 order_id 或有 sim 标记）
-            if "sim_order" in str(result.get("steps", [])):
-                is_simulated_fallback = True
+        # 模拟组合、纸盘和 mock 回退都必须与真实持仓、真实成交事件隔离。
+        is_simulated_execution = execution_mode == "simulation"
+        result["execution_mode"] = execution_mode
 
-        # Step 3: 记录到交易日志
+        # Step 3: 只把真实券商订单写入真实交易日志。
         trade_id = None
-        if self.journal and proposal.action == "BUY":
+        if self.journal and proposal.action == "BUY" and not is_simulated_execution:
             try:
                 entry_order_id = str(order_result.get("order_id", "")) if order_result else ""
                 trade_id = self.journal.open_trade(
@@ -395,7 +422,13 @@ class TradingPipeline:
                 logger.error("[Pipeline] 记录日志失败: %s", e)
 
         # Step 4: 添加到持仓监控
-        if self.monitor and trade_id and proposal.action == "BUY" and not is_entry_pending:
+        if (
+            self.monitor
+            and trade_id
+            and proposal.action == "BUY"
+            and not is_entry_pending
+            and not is_simulated_execution
+        ):
             try:
                 from src.position_monitor import MonitoredPosition, _now_et
                 mon_pos = MonitoredPosition(
@@ -451,53 +484,62 @@ class TradingPipeline:
             )
             return result
 
-        # HI-569: 模拟降级交易使用 "simulated" 状态，避免 ghost position
-        if is_simulated_fallback:
+        if is_simulated_execution:
             result["status"] = "simulated"
             result["simulated"] = True
+            result["reason"] = "模拟执行，未提交真实订单"
             logger.warning(
-                "[Pipeline] 模拟执行(非真实持仓): %s %s x%s @ $%.2f — IBKR下单失败后降级",
-                proposal.action, proposal.symbol, actual_qty, fill_price,
+                "[Pipeline] 模拟执行(非真实持仓): %s %s x%s @ $%.2f",
+                proposal.action,
+                proposal.symbol,
+                actual_qty,
+                fill_price,
             )
         else:
             result["status"] = "executed"
         result["quantity"] = actual_qty
         result["entry_price"] = fill_price  # P0#3: 返回实际成交价
 
-        # Push trade executed via WebSocket (best-effort)
-        try:
-            from src.api.routers.ws import push_event
-            from src.api.schemas import WSMessageType
-            push_event(WSMessageType.TRADE_EXECUTED, {
-                "symbol": proposal.symbol,
-                "action": proposal.action,
-                "quantity": actual_qty,
-                "price": fill_price,
-                "stop_loss": proposal.stop_loss,
-                "take_profit": proposal.take_profit,
-                "decided_by": proposal.decided_by,
-                "trade_id": trade_id,
-                "source": "pipeline",
-            })
-        except Exception as e:
-            logger.warning("[Pipeline] 交易执行WS推送失败: %s", e)
+        # 只有真实成交才允许发布 TRADE_EXECUTED，避免模拟记录触发后续联动。
+        if not is_simulated_execution:
+            try:
+                from src.api.routers.ws import push_event
+                from src.api.schemas import WSMessageType
+
+                push_event(WSMessageType.TRADE_EXECUTED, {
+                    "symbol": proposal.symbol,
+                    "action": proposal.action,
+                    "quantity": actual_qty,
+                    "price": fill_price,
+                    "stop_loss": proposal.stop_loss,
+                    "take_profit": proposal.take_profit,
+                    "decided_by": proposal.decided_by,
+                    "trade_id": trade_id,
+                    "source": "pipeline",
+                })
+            except Exception as e:
+                logger.warning("[Pipeline] 交易执行WS推送失败: %s", e)
 
         # Step 5: 通知
         if self.notify:
-            sim_tag = "模拟降级: IBKR 下单失败，仅保留模拟记录" if is_simulated_fallback else ""
-            msg = format_trade_executed(
-                proposal.action,
-                proposal.symbol,
-                actual_qty,
-                fill_price,
-                proposal.stop_loss,
-                proposal.take_profit,
-                proposal.signal_score,
-                proposal.decided_by,
-                proposal.reason,
-                extra_flag=sim_tag,
-            )
-            await self._safe_notify(msg)
+            if is_simulated_execution:
+                await self._safe_notify(
+                    f"模拟执行（未提交真实订单）: {proposal.action} "
+                    f"{proposal.symbol} x{actual_qty} @ ${fill_price:.2f}"
+                )
+            else:
+                msg = format_trade_executed(
+                    proposal.action,
+                    proposal.symbol,
+                    actual_qty,
+                    fill_price,
+                    proposal.stop_loss,
+                    proposal.take_profit,
+                    proposal.signal_score,
+                    proposal.decided_by,
+                    proposal.reason,
+                )
+                await self._safe_notify(msg)
 
         self._execution_log.append(result)
         # P1#11: 限制 execution_log 大小
@@ -581,4 +623,3 @@ def parse_trade_proposal(text: str, symbol: str = "") -> TradeProposal | None:
         take_profit=target,
         reason=text[:200],
     )
-

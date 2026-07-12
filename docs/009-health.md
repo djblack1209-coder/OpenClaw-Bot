@@ -2,6 +2,46 @@
 
 > 合并自原 060-health.md + 063-learnings.md + 064-feature-requests.md
 
+
+---
+
+## 0. 当前权威健康快照（2026-07-12）
+
+**整体状态：🟢 仓库离线质量门与安全审计全绿；🟡 本轮修复尚未部署到生产。**
+
+> 本节是当前状态唯一权威摘要。后续大量按日期累积的内容是历史证据，不得用历史“已恢复/已通过”覆盖当前代码、当前测试和当前人工确认边界。
+
+### 已收口
+
+- CI 不再允许“预存失败”或吞 pytest 退出码；文档变更也运行完整门，本地/GitHub 统一到 `ci-python`、`ci-frontend`、`ci-frist-api`、`ci-docs`。
+- 新增 `make final-audit` 脱敏离线审计，覆盖 Git、文档、Python、桌面端、Chrome 扩展、Frist-API、恢复、权限、续费、密钥和依赖门。
+- 交易、社媒、闲鱼、浏览器和通用执行器已收紧为顶层人工确认；状态未知默认暂停，模型自报确认无效。
+- SQLite/源码备份具备锁、空间预检、校验、保留和可丢弃恢复；自愈默认 dry-run，执行必须显式 `--confirm`。
+- LLM 路由禁止静默付费 fallback，真实成本进入预算；未接入主链的 CrewAI bridge 与重复 DB 备份实现已删除。
+- 微信/Telegram/Intel 本地旅程、Frist-API 支付鉴权、Tauri/Chrome 危险确认链已补回归；日志和证据只保留脱敏状态。
+- 新增不含凭据的续费台账模板和 30/14/7/3/1 天提醒；系统只提醒，不登录或代付。
+- 审计 worktree 已从桌面迁入 `.worktrees/codex-final-audit-20260712`，迁移前后 HEAD、分支、改动状态和 New-API submodule 一致。
+- `make deep-clean` 已修为只修剪失效 worktree 记录，不再强制删除有效 worktree 或未提交工作。
+
+### 最终门结果
+
+- `make ci-local`：Python Ruff/语法通过；Python `2118 passed / 2 skipped`；桌面 ESLint、TypeScript、production build 通过；桌面静态合同 `8/8`；Chrome 扩展 `87/87`；Frist-API `202/202`；文档 `22/22`。
+- `make final-audit`：`21 passed / 0 failed / 0 skipped`，总耗时 `488.080s`；工作树与全历史 Gitleaks、Python/npm 依赖高危门、恢复、权限、续费和全部确定性质量门通过。
+- 隔离前端验证用 `node_modules` 符号链接已删除；最终报告仅保存在被忽略的 `output/final-audit/`，不含子进程原始输出。
+- 本轮交付只形成可回退本地提交；未经授权不 push、不建 PR、不部署、不重启生产。
+
+### 需用户或单独授权，不属于自动修复失败
+
+- 真实续费供应商、到期日和费用仍为 `unknown`，需本人填写本机忽略台账。
+- New-API 升级、生产 LaunchAgent/Compose 调整、真实部署和服务重启属于 B 级决策。
+- 真实交易、付款/退款、闲鱼发卡/确认发货、社媒发布、登录/MFA 和生产删除必须由本人明确确认。
+
+### 当前固定事实
+
+- 审计分支：`codex/final-audit-20260712`；起始 HEAD：`f242ac4e994b425732131e985b4eb4b91306d253`。
+- New-API submodule 保持 `v1.0.0-rc.4`，本轮未升级。
+- 本轮未执行真实交易、发货、发布、付款、账号登录、应用安装、生产部署或重启。
+
 ---
 
 

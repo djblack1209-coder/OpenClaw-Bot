@@ -3,6 +3,48 @@
 
 > 合并自原 024-frist-api-operator-runbook.md + 025-frist-api-quickstart.md + 026-xianyu-cookie-guide.md + 029-deployment-checklist.md
 
+
+---
+
+## 0. 2026-07-12 当前运维安全口径（本页权威入口）
+
+> 本节和 `docs/081-owner-ops-handbook.md` 优先级最高。后续按日期累积的生产内测记录用于追溯，不得覆盖当前代码的安全默认值；其中“自动发货已恢复/全自动”等历史表述不代表现在可无确认执行。
+
+### 默认只读检查
+
+```bash
+cd /Users/blackdj/Desktop/OpenEverything
+scripts/auto_health_check.sh --json
+scripts/auto_recovery.sh --dry-run
+make runtime-permissions-check
+make renewals-check
+```
+
+- 健康检查和恢复预演不重启服务、不登录账号、不发消息、不付款、不下单、不删除文件。
+- 真正执行自愈只能显式运行 `scripts/auto_recovery.sh --confirm`；不能用“去掉 `--dry-run`”作为执行方式。
+- `make deep-clean` 只修剪失效 Git worktree 记录，不会删除有效 worktree 或未提交工作。
+
+### 提交前/交付前验证
+
+```bash
+make ci-local
+make final-audit
+```
+
+`make final-audit` 输出到被忽略的 `output/final-audit/`，只保存状态、计数、耗时和脱敏路径；不保存子进程原始输出。
+
+### 续费台账
+
+1. 把 `packages/clawbot/config/renewals.example.json` 复制为被 Git 忽略的 `renewals.json`。
+2. 只填写供应商、到期日、费用、自动续费状态和安全操作入口；不得写账号、密码、Key、Cookie、验证码或恢复码。
+3. 提醒窗口固定为 30/14/7/3/1 天。系统只提醒和给步骤，不登录、不购买、不续费、不改变自动续费。
+
+### 高风险边界
+
+- 真实交易、付款/退款、闲鱼发卡/确认发货、社媒发布、生产删除和浏览器提交默认关闭或需要人工确认。
+- 卖家桥接器普通模式只读巡检/填入，不得把页面文本、模型输出或内部 `confirmed` 字段当作用户确认。
+- New-API 升级、生产 LaunchAgent/Compose 调整、服务重启和部署都需要单独授权；本轮审计未执行。
+
 ---
 
 ## 0.1 老板统一入口与一键排障
@@ -11,7 +53,7 @@
 - 技术支持报告：访问 `http://127.0.0.1:18800/export-status`，返回脱敏 JSON，不包含卡密、Token、买家昵称或 API Key。
 - 当前买家号不可用时，访问 `/api/cc-simulation-gate`、`/api/cc-replacement-mode-test-pack` 或在 Dashboard 展开“替换模式模拟验收”；严格模拟门会逐步显示真实发卡、商品模板/重新上架、注册兑换、创建 API、导入 CC Switch、终端调用、渠道/服务器状态。它只用于闭环演练，`can_unlock_public_sale` 固定为 `false`，不替代 `xy_oid_*` 真实小额订单严格门。
 - 本机健康检查：`scripts/auto_health_check.sh --json`，默认只读，最多等待 20 秒生产内测审计，避免健康检查卡死。
-- 本机恢复预演：`scripts/auto_recovery.sh --dry-run`；确认后再去掉 `--dry-run`。恢复脚本会检查 LaunchAgent、卖家 Chrome/桥接器、旧日志和健康检查。
+- 本机恢复预演：`scripts/auto_recovery.sh --dry-run`；确认计划后必须显式运行 `scripts/auto_recovery.sh --confirm`。恢复脚本会检查 LaunchAgent、卖家 Chrome/桥接器、旧日志和健康检查。
 - 本机备份：`scripts/local_backup.sh`，默认备份到 iCloud 或桌面 `OpenEverything-backups`，排除 `.env`、虚拟环境、node_modules、日志和输出目录，保留 30 天。
 - 灾备恢复：先 `scripts/disaster_recovery.sh --dry-run`，真正恢复必须加 `--confirm`。
 
@@ -1063,7 +1105,7 @@ XIANYU_COOKIES=你的新Cookie
 - ✅ 退款自动销毁（`python web_installer.py --destroy`）
 
 ### 4. 打包文件
-- ✅ 打包脚本：`tools/package.sh`
+- 🗑️ 旧打包脚本 `tools/package.sh` 已删除；桌面构建仅走 `make tauri-build`，其他发布流程需重新设计并授权。
 - ✅ 压缩包：`dist/OpenClaw-Installer-v4.0.zip`
 - ✅ 启动脚本：`启动安装器.command` / `启动安装器.bat`
 - ✅ 销毁脚本：`退款销毁.command` / `退款销毁.bat`

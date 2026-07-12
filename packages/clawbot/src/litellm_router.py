@@ -148,6 +148,12 @@ if os.getenv("LANGFUSE_SECRET_KEY") and os.getenv("LANGFUSE_PUBLIC_KEY"):
 
 # ---- 路由策略常量 ----
 ROUTE_BALANCED = "balanced"
+_PAID_FAMILY_SUFFIX = "_paid"
+
+
+def _is_paid_family(family: str | None) -> bool:
+    """识别必须由调用方显式放行的付费模型族。"""
+    return bool(family and family.endswith(_PAID_FAMILY_SUFFIX))
 
 # ---- 模型强度分级 ----
 TIER_S, TIER_A, TIER_B, TIER_C, TIER_D = "S", "A", "B", "C", "D"
@@ -337,7 +343,7 @@ def _check_iflow_key_expiry() -> bool:
                 elapsed_days,
                 _IFLOW_WARN_DAYS,
             )
-            # 尝试自动续期（后台异步触发，不阻塞启动）
+            # 只提醒人工续期；账号登录、验证码、Key 轮换和服务重启不得自动执行。
             _trigger_iflow_auto_renew()
             return True
         logger.info("[iflow] Key 已使用 %.1f 天，剩余约 %.1f 天", elapsed_days, 7 - elapsed_days)
@@ -370,7 +376,7 @@ def _record_iflow_key_usage() -> None:
         data = {
             "first_used_ts": time.time(),
             "key_fingerprint": key_fingerprint,
-            "note": "iflow key 7天有效期，超过6天自动告警",
+            "note": "iflow key 7天有效期，超过6天提醒人工续期",
         }
         _IFLOW_TIMESTAMP_FILE.write_text(
             json.dumps(data, indent=2, ensure_ascii=False),
@@ -382,29 +388,15 @@ def _record_iflow_key_usage() -> None:
 
 
 def _trigger_iflow_auto_renew() -> None:
-    """后台触发 iFlow key 自动续期脚本（不阻塞主进程）"""
-    import subprocess as _sp
-    import threading as _th
-
+    """保留旧函数名以兼容调用方；现在只输出人工续期提醒。"""
     renew_script = Path(__file__).parent.parent / "scripts" / "iflow_key_renew.py"
     if not renew_script.exists():
         logger.warning("[iflow] 续期脚本不存在: %s", renew_script)
         return
-
-    def _run():
-        try:
-            import sys as _sys  # 仅此函数内使用
-            logger.info("[iflow] 🔄 后台启动自动续期脚本...")
-            _sp.Popen(
-                [_sys.executable, str(renew_script), "--restart"],
-                stdout=open("/tmp/iflow_renew.log", "w"),  # noqa: SIM115
-                stderr=_sp.STDOUT,
-                start_new_session=True,
-            )
-        except Exception as e:
-            logger.error("[iflow] 启动续期脚本失败: %s", e)
-
-    _th.Thread(target=_run, daemon=True, name="iflow-auto-renew").start()
+    logger.warning(
+        "[iflow] 自动续期已禁用：请由用户本人运行 %s，手动完成登录、验证码和 Key 轮换",
+        renew_script,
+    )
 
 
 # ============================================================
@@ -494,7 +486,15 @@ class LiteLLMPool:
                 _deployment_id=dep_id,
             ),
         )
-        return {"model_name": fam, "litellm_params": params, "model_info": {"id": dep_id, "tier": "free"}}
+        return {
+            "model_name": fam,
+            "litellm_params": params,
+            "model_info": {
+                "id": dep_id,
+                "tier": tier,
+                "billing": "paid" if _is_paid_family(fam) else "free_or_unmetered",
+            },
+        }
 
     def _build_all_deployments(self) -> list[dict]:
         deps: list[dict] = []
@@ -1029,6 +1029,7 @@ class LiteLLMPool:
         stream: bool = False,
         cache_ttl: int = 3600,
         no_cache: bool = False,
+        allow_paid: bool = False,
         **kwargs,
     ):
         """统一 LLM 调用入口，替代 api_mixin 中所有手写 HTTP 调用
@@ -1039,6 +1040,8 @@ class LiteLLMPool:
         """
         if not self._router:
             raise RuntimeError("LiteLLMPool 未初始化")
+        if _is_paid_family(model_family) and not allow_paid:
+            raise PermissionError("付费模型族必须由当前调用显式设置 allow_paid=True")
 
         # 首次被调用时，在后台发送启动健康摘要（不阻塞当前请求）
         if getattr(self, "_startup_summary_pending", False):
@@ -1098,12 +1101,21 @@ class LiteLLMPool:
                 if hasattr(response, "usage") and response.usage:
                     self._total_input_tokens += getattr(response.usage, "prompt_tokens", 0)
                     self._total_output_tokens += getattr(response.usage, "completion_tokens", 0)
-                    # Calculate cost from LiteLLM response
-                    try:
-                        cost = litellm.completion_cost(completion_response=response)
+                    actual_model, cost = self._calculate_completion_cost(
+                        response,
+                        fallback_model=model,
+                        prompt_tokens=getattr(response.usage, "prompt_tokens", 0),
+                        completion_tokens=getattr(response.usage, "completion_tokens", 0),
+                    )
+                    if cost is not None:
                         self._total_cost += cost
-                    except Exception:
-                        logger.debug("Silenced exception", exc_info=True)  # Free models have no cost data
+                else:
+                    actual_model, cost = self._calculate_completion_cost(
+                        response,
+                        fallback_model=model,
+                    )
+
+            self._record_budget_cost(actual_model, cost)
 
             # ---- Store to cache ----
             if use_cache:
@@ -1131,6 +1143,58 @@ class LiteLLMPool:
                 except Exception as e:
                     logger.debug("发布LLM降级告警事件失败(可忽略): %s", e)
             raise
+
+
+    @staticmethod
+    def _calculate_completion_cost(
+        response: Any,
+        *,
+        fallback_model: str,
+        prompt_tokens: int = 0,
+        completion_tokens: int = 0,
+    ) -> tuple[str, float | None]:
+        """优先读取 LiteLLM 实际响应成本，未知价格保持 unknown 而不是假装免费。"""
+        actual_model = str(getattr(response, "model", "") or fallback_model)
+        hidden = getattr(response, "_hidden_params", None)
+        if isinstance(hidden, dict):
+            response_cost = hidden.get("response_cost")
+            if isinstance(response_cost, (int, float)) and response_cost >= 0:
+                return actual_model, float(response_cost)
+
+        try:
+            value = litellm.completion_cost(completion_response=response)
+            if isinstance(value, (int, float)) and value >= 0:
+                return actual_model, float(value)
+        except Exception:
+            logger.debug("LiteLLM 未提供完整响应成本，尝试按 token 计算", exc_info=True)
+
+        if prompt_tokens or completion_tokens:
+            try:
+                value = litellm.completion_cost(
+                    model=actual_model,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                )
+                if isinstance(value, (int, float)) and value >= 0:
+                    return actual_model, float(value)
+            except Exception:
+                logger.debug("模型 %s 缺少可验证价格信息", actual_model, exc_info=True)
+        return actual_model, None
+
+    @staticmethod
+    def _record_budget_cost(model: str, cost: float | None) -> None:
+        """把真实调用成本接入统一日预算；未知价格单独登记，不猜测为零。"""
+        try:
+            from src.core.cost_control import get_cost_controller
+
+            controller = get_cost_controller()
+            if cost is None:
+                if hasattr(controller, "record_unpriced_call"):
+                    controller.record_unpriced_call(model, task_type="litellm")
+                return
+            controller.record_cost(model, cost, task_type="litellm")
+        except Exception as exc:
+            logger.warning("[LiteLLMPool] 成本记录失败: %s", _scrub_secrets(str(exc)))
 
     # ── 智能路由（RouteLLM 风格，零额外依赖）──────────────
 
@@ -1183,8 +1247,20 @@ class LiteLLMPool:
             # 从 JSON 配置加载 model→family 映射，fallback 到硬编码默认值
             model_to_family = self._get_smart_route_mapping()
             family = model_to_family.get(suggested, "qwen")
-            logger.debug("[SmartRoute] 复杂度=%s → 建议=%s → family=%s", complexity, suggested, family)
-            return family
+            available = any(
+                source.can_accept_request()
+                for source in self._sources.get(family, [])
+            )
+            if available and not _is_paid_family(family):
+                logger.debug("[SmartRoute] 复杂度=%s → 建议=%s → family=%s", complexity, suggested, family)
+                return family
+            fallback = self._pick_strongest_family()
+            logger.info(
+                "[SmartRoute] 建议模型族 %s 当前不可安全使用，降级到 %s",
+                family,
+                fallback,
+            )
+            return fallback
         except Exception as e:
             logger.debug("[SmartRoute] 降级到 _pick_strongest_family: %s", e)
             return self._pick_strongest_family()
@@ -1212,6 +1288,8 @@ class LiteLLMPool:
     def _pick_strongest_family(self) -> str:
         best_fam, best_score = "g4f", 0
         for fam, sources in self._sources.items():
+            if _is_paid_family(fam):
+                continue
             for src in sources:
                 if src.can_accept_request():
                     score = get_model_score(src.model)
@@ -1230,8 +1308,10 @@ class LiteLLMPool:
         prompt_tokens = 0
         completion_tokens = 0
         total_tokens = 0
+        last_chunk = None
 
         async for chunk in response:
+            last_chunk = chunk
             # Many providers include usage in the final chunk
             if hasattr(chunk, "usage") and chunk.usage:
                 prompt_tokens = getattr(chunk.usage, "prompt_tokens", 0) or 0
@@ -1248,15 +1328,21 @@ class LiteLLMPool:
             if total_tokens > 0 or (prompt_tokens + completion_tokens) > 0:
                 self._total_input_tokens += prompt_tokens
                 self._total_output_tokens += completion_tokens
-                try:
-                    cost = litellm.completion_cost(
-                        model=model,
-                        prompt_tokens=prompt_tokens,
-                        completion_tokens=completion_tokens,
-                    )
+                actual_model, cost = self._calculate_completion_cost(
+                    last_chunk,
+                    fallback_model=model,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                )
+                if cost is not None:
                     self._total_cost += cost
-                except Exception:
-                    logger.debug("Silenced exception", exc_info=True)
+            else:
+                actual_model, cost = self._calculate_completion_cost(
+                    last_chunk,
+                    fallback_model=model,
+                )
+
+        self._record_budget_cost(actual_model, cost)
 
     # ---- 兼容旧接口 ----
 
@@ -1315,7 +1401,10 @@ class LiteLLMPool:
             "avg_latency_ms": round(avg_lat, 1),
             "total_calls": self._call_count,
             "total_errors": self._error_count,
-            "success_rate": round((self._call_count - self._error_count) / max(self._call_count, 1), 3),
+            "success_rate": round(
+                self._call_count / max(self._call_count + self._error_count, 1),
+                3,
+            ),
             "families": {
                 k: {
                     "total": len(v),
@@ -1346,33 +1435,25 @@ class LiteLLMPool:
         try:
             stats = self.get_stats()
             total = stats["total_sources"]
-            active = stats["active_sources"]
             families_count = stats["model_families"]
             families = stats.get("families", {})
 
-            # 按在线/离线分组
-            online_parts = []
-            offline_parts = []
-            for fam_name, fam_info in families.items():
-                fam_active = fam_info.get("active", 0)
-                if fam_active > 0:
-                    online_parts.append(f"{fam_name}({fam_active})")
-                else:
-                    offline_parts.append(f"{fam_name}(0)")
+            configured_parts = [
+                f"{fam_name}({fam_info.get('total', 0)})"
+                for fam_name, fam_info in families.items()
+            ]
 
-            # 拼接摘要消息
+            # 初始化只证明配置已加载，不能把未探测的 Provider 误报为在线。
             lines = [
-                "🤖 AI 引擎启动完成",
+                "🤖 AI 路由配置已加载",
                 "",
-                f"📊 {active}/{total} 个模型在线，覆盖 {families_count} 个模型族",
+                f"📊 已配置 {total} 个 deployment，覆盖 {families_count} 个模型族",
                 "",
             ]
-            if online_parts:
-                lines.append(f"✅ 在线: {' '.join(online_parts)}")
-            if offline_parts:
-                lines.append(f"❌ 离线: {' '.join(offline_parts)}")
+            if configured_parts:
+                lines.append(f"🧩 模型族: {' '.join(configured_parts)}")
             lines.append("")
-            lines.append("💡 说「模型」查看详细状态")
+            lines.append("💡 说「Key健康」后才会执行受控探针；未探测不等于在线")
             summary = "\n".join(lines)
 
             # 通过 Telegram Bot 发送给所有管理员
@@ -1396,8 +1477,6 @@ class LiteLLMPool:
         Returns:
             {"checked": N, "healthy": N, "disabled": [...], "elapsed_s": float}
         """
-        import asyncio
-
         start = time.time()
         checked = 0
         healthy = 0
@@ -1415,24 +1494,21 @@ class LiteLLMPool:
                     continue
 
                 checked += 1
-                try:
-                    # Minimal ping: 1-token completion with short timeout
-                    await asyncio.wait_for(
-                        self.acompletion(
-                            model_family=_family,
-                            messages=[{"role": "user", "content": "hi"}],
-                            max_tokens=1,
-                            temperature=0,
-                        ),
-                        timeout=timeout,
-                    )
-                    providers_seen[src.provider] = True
+                result = await self._test_single_key(src, timeout)
+                is_healthy = result.get("status") == "ok"
+                providers_seen[src.provider] = is_healthy
+                if is_healthy:
                     healthy += 1
-                except Exception as e:
-                    logger.warning(f"[健康检查] {src.provider}/{src.model} 不可用: {_scrub_secrets(str(e))}")
-                    providers_seen[src.provider] = False
-                    src.disabled = True
-                    disabled_providers.append(f"{src.provider}/{src.model}")
+                    continue
+
+                logger.warning(
+                    "[健康检查] %s/%s 不可用: %s",
+                    src.provider,
+                    src.model,
+                    _scrub_secrets(str(result.get("status", "unknown"))),
+                )
+                src.disabled = True
+                disabled_providers.append(f"{src.provider}/{src.model}")
 
         # Mark all sources of failed providers as disabled
         for _family, sources in self._sources.items():
@@ -1489,7 +1565,7 @@ class LiteLLMPool:
         model_id = src._deployment_id.split("/", 1)[-1] if "/" in src._deployment_id else src.model
         # 为 litellm 构建正确的 model 格式
         params: dict[str, Any] = {
-            "model": f"openai/{model_id}" if src.base_url else model_id,
+            "model": model_id,
             "messages": [{"role": "user", "content": "hi"}],
             "max_tokens": 1,
             "temperature": 0,

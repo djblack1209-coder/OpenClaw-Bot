@@ -42,6 +42,7 @@ from src.xianyu.cc_operator_state import (
     consume_one_shot_delivery,
     get_operator_state,
     peek_one_shot_delivery,
+    revoke_one_shot_delivery,
     set_auto_ship_paused,
 )
 
@@ -198,13 +199,13 @@ def _cc_auto_ship_status() -> dict:
         os.getenv("CC_XIANYU_WEBHOOK_TOKEN", "").strip()
         or os.getenv("FRIST_API_XIANYU_WEBHOOK_TOKEN", "").strip()
     )
-    disabled = enabled_raw in {"0", "false", "no", "off"}
+    explicitly_enabled = enabled_raw in {"1", "true", "yes", "on"}
     operator_state = get_operator_state()
     paused = bool(operator_state.get("auto_ship_paused"))
     one_shot = operator_state.get("one_shot_delivery") or {}
-    webhook_configured = (not disabled) and bool(endpoint and token)
+    webhook_configured = explicitly_enabled and bool(endpoint and token)
     return {
-        "enabled": not disabled,
+        "enabled": explicitly_enabled,
         "configured": webhook_configured,
         "operational": webhook_configured and not paused,
         "paused": paused,
@@ -387,6 +388,7 @@ def _cc_chrome_extension_summary() -> dict:
             "supports_target_tab_preflight": False,
             "supports_paid_page_dispatch": False,
             "supports_relist_queue": False,
+            "supports_one_shot_human_gate": False,
             "needs_refresh_for_global_watch": True,
             **install_fields,
             "next_action": (
@@ -410,6 +412,7 @@ def _cc_chrome_extension_summary() -> dict:
             "supports_target_tab_preflight": False,
             "supports_paid_page_dispatch": False,
             "supports_relist_queue": False,
+            "supports_one_shot_human_gate": False,
             "needs_refresh_for_global_watch": True,
             **install_fields,
             "next_action": (
@@ -428,13 +431,19 @@ def _cc_chrome_extension_summary() -> dict:
     supports_preflight = bool(capabilities.get("target_tab_preflight"))
     supports_paid_page_dispatch = bool(capabilities.get("paid_page_dispatch"))
     supports_relist_queue = bool(capabilities.get("relist_queue_watch") and capabilities.get("xianyu_relist_item"))
+    supports_one_shot_human_gate = bool(capabilities.get("xianyu_one_shot_delivery_human_gated"))
     try:
         status_age_seconds = max(0, int(time.time() - _SOCIAL_EXTENSION_STATUS_FILE.stat().st_mtime))
     except Exception:
         status_age_seconds = None
     heartbeat_fresh = status_age_seconds is not None and status_age_seconds <= max_status_age_seconds
     online = bool(data.get("online")) and heartbeat_fresh
-    needs_refresh = not (supports_global and supports_preflight and supports_paid_page_dispatch and supports_relist_queue and online)
+    needs_refresh = not (
+        supports_preflight
+        and supports_paid_page_dispatch
+        and supports_one_shot_human_gate
+        and online
+    )
     return {
         "status_file_exists": True,
         "online": online,
@@ -447,20 +456,21 @@ def _cc_chrome_extension_summary() -> dict:
         "supports_target_tab_preflight": supports_preflight,
         "supports_paid_page_dispatch": supports_paid_page_dispatch,
         "supports_relist_queue": supports_relist_queue,
+        "supports_one_shot_human_gate": supports_one_shot_human_gate,
         "needs_refresh_for_global_watch": needs_refresh,
         **install_fields,
         "next_action": (
             "Chrome 插件心跳已过期，请刷新扩展；新版会自动后台上报，无需反复打开弹窗。"
-            if not online and supports_global and supports_preflight and supports_paid_page_dispatch and supports_relist_queue
+            if not online and supports_preflight and supports_paid_page_dispatch and supports_one_shot_human_gate
             else load_extension_action
             if needs_refresh and not install_fields["social_pilot_installed"]
-            else "已启动 Social Pilot，但尚未上报新版发货能力；打开插件弹窗，在高级设置粘贴本机 Token 后保存。"
+            else "已启动 Social Pilot，但尚未上报新版只读预检/人工单次票能力；打开插件弹窗，在高级设置粘贴本机 Token 后保存。"
             if needs_refresh and install_fields["social_pilot_source"] == "running_chrome_process"
-            else "刷新 Chrome 插件并打开一次插件弹窗，同步新版“付款页自动发卡/恢复上架队列”能力。"
+            else "刷新 Chrome 插件并打开一次插件弹窗，同步新版“只读预检/人工单次发卡”安全能力。"
             if needs_refresh
-            else "本机卖家桥接器已接管自动发货；保持卖家专用 Chromium 登录闲鱼并打开。"
+            else "本机卖家桥接器已接管只读巡检；真实发卡仍需在 18800 逐次人工确认。"
             if bridge_active
-            else "插件已上报新版发货助手能力；打开买家聊天页后可使用当前页/全局看守。"
+            else "插件已上报新版安全能力；可只读检查当前页，真实发卡必须使用 18800 的短时单次票。"
         ),
     }
 
@@ -4231,14 +4241,27 @@ def run_cc_seller_bridge_one_shot_delivery(req: CCOneShotBridgeRunRequest):
             "--require-real-order-id",
             "--json",
         ]
-        completed = subprocess.run(
-            command,
-            cwd=str(repo_root),
-            text=True,
-            capture_output=True,
-            timeout=45,
-            check=False,
-        )
+        authorize_one_shot_delivery(req.reason or "老板在 18800 操作台确认当前已付款页", 180)
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=str(repo_root),
+                text=True,
+                capture_output=True,
+                timeout=45,
+                check=False,
+            )
+        finally:
+            # 无论发送成功、跳过、失败或超时，都撤销未消费票；撤销失败必须让请求变红。
+            try:
+                revoke_one_shot_delivery("一键跑当前页已结束，撤销未消费的单次放行票")
+            except Exception as cleanup_error:
+                logger.error(
+                    "[XianyuAdmin] 撤销一键跑当前页单次放行票失败: %s",
+                    scrub_secrets(str(cleanup_error)),
+                    exc_info=True,
+                )
+                raise RuntimeError("单次发卡权限清理失败，本次操作已标记为失败，请保持自动发货暂停") from cleanup_error
         stdout = (completed.stdout or "").strip()
         stderr = (completed.stderr or "").strip()
         payload: dict

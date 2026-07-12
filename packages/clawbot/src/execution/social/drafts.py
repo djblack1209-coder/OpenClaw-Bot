@@ -352,8 +352,15 @@ def publish_social_draft(
     platform: str | None = None,
     draft_id=None,
     worker_fn=None,
+    *,
+    final_confirmed: bool = False,
 ) -> dict:
     """通过 browser worker 发布草稿 — 使用适配器统一分发"""
+    from src.execution.social.publish_safety import confirmation_required
+
+    if not final_confirmed:
+        return confirmation_required(f"publish_draft_{platform or 'unknown'}")
+
     draft = get_social_draft(draft_id) if draft_id else None
     if not draft:
         return {"success": False, "error": f"草稿 {draft_id} 不存在"}
@@ -370,7 +377,11 @@ def publish_social_draft(
         adapter = get_adapter(platform)
         if adapter:
             payload = adapter.build_worker_payload(body, title)
-            result = worker_fn(adapter.worker_action, payload)
+            result = worker_fn(
+                adapter.worker_action,
+                payload,
+                final_confirmed=True,
+            )
         else:
             return {"success": False, "error": f"不支持的平台: {platform}"}
 
