@@ -13,7 +13,7 @@ OpenClaw Bot 是一个公开开源的 AI operations / personal automation 实验
 - **多 Bot 协作**：7 个 Telegram Bot 分工处理系统状态、AI 号池、交易复盘、闲鱼客服、微信入口和运维提醒。
 - **LLM 路由与成本控制**：用 LiteLLM 风格的统一路由、免费优先策略、收费模型闸门和低敏健康统计管理多 Provider。
 - **手机 + 桌面双控制面**：Telegram 命令卡片适合手机操作，Tauri + React 管理端适合本地配置、可视化和调试。
-- **开源集成编排**：集成 FastAPI、python-telegram-bot、CrewAI、browser-use、crawl4ai、Redis、APScheduler、Plotly 等生态工具。
+- **开源集成编排**：默认主链使用 FastAPI、python-telegram-bot、项目原生任务图、LiteLLM、APScheduler 和 Playwright；CrewAI、browser-use、crawl4ai 等仅保留为隔离环境可选集成，不是默认依赖。
 - **安全维护流程**：默认不提交密钥，不回显 token，不自动执行高风险动作；文档中记录验证、回归和已知边界。
 
 > 说明：仓库包含交易、社媒、浏览器自动化等模块，但它们在本项目中的定位是**受控研究和个人助理场景**。任何真实交易、平台账号操作、抓取、通知或发布都必须遵守当地法律、平台条款和人工确认流程。
@@ -22,18 +22,18 @@ OpenClaw Bot 是一个公开开源的 AI operations / personal automation 实验
 
 | Layer | Technology |
 |-------|------------|
-| Backend | Python 3.12, FastAPI, python-telegram-bot, LiteLLM-style routing, CrewAI, mem0 |
+| Backend | Python 3.12, FastAPI, python-telegram-bot, LiteLLM-style routing, project-native task graph, mem0 |
 | Desktop | Tauri 2, React 18, TypeScript, Tailwind CSS, shadcn/ui, Zustand |
 | Trading / Analysis | yfinance, AKShare, CCXT, pandas-ta, IBKR bridge |
-| Browser / Web | browser-use, DrissionPage, crawl4ai |
-| Infra / Ops | Docker Compose, Redis, Langfuse, loguru, APScheduler |
+| Browser / Web | Playwright / DrissionPage；browser-use 与 crawl4ai 为隔离环境可选项 |
+| Infra / Ops | Docker Compose, loguru, APScheduler, Langfuse；Redis 仅用于可选/兼容部署 |
 
 ## Quick Start
 
 ### Prerequisites
 
 - Python 3.12+
-- Node.js 18+
+- Node.js 24（当前 CI 基线；`packages/openclaw-npm` 上游最低要求 22.16）
 - Rust toolchain（Tauri 桌面端需要）
 - Telegram Bot token、LLM Provider Key 等运行密钥（只放在本机 `.env`，不要提交）
 
@@ -52,7 +52,7 @@ python multi_main.py
 
 ```bash
 cd apps/openclaw-manager-src
-npm install
+npm ci
 npm run tauri:dev
 ```
 
@@ -85,6 +85,19 @@ OpenClaw Bot/
 - `docs/002-changelog.md`：变更历史
 - `docs/013-contributing.md`：贡献指南
 - `docs/014-security.md`：安全政策与漏洞报告
+
+## Verification
+
+默认离线验证不会连接真实交易、发货、付款或社媒发布链路：
+
+```bash
+make ci-local
+make final-audit
+```
+
+- `make ci-local` 与 GitHub Actions 使用相同的 Python、桌面前端、Chrome 扩展、Frist-API 和文档治理口径。
+- `make final-audit` 额外检查恢复合同、运行文件权限、续费模板、密钥扫描和依赖高危漏洞，并把脱敏 JSON/TXT 写入被 Git 忽略的 `output/final-audit/`。
+- New-API 是固定上游 submodule；检查和升级分别走 `make new-api-check` / `make new-api-sync`，不要直接在上游目录长期手改。
 
 ## Safety and acceptable-use boundaries
 

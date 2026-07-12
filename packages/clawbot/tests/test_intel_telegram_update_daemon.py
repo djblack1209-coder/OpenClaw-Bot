@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import stat
 
 from src.intel.telegram_delivery import TELEGRAM_SANDBOX_ACK_VALUE
 
@@ -86,7 +87,13 @@ def test_daemon_once_processes_start_and_writes_heartbeat_without_leaking_secret
     assert payload["last_start_menu_inline_keyboard_sent"] is True
     assert payload["last_start_menu_persistent_keyboard_sent"] is True
     assert payload["last_start_menu_raw_content_persisted"] is False
-    assert (evidence_dir / "latest-real-update-daemon.json").exists()
+    latest_evidence = evidence_dir / "latest-real-update-daemon.json"
+    stamped_evidence = next(evidence_dir.glob("*-real-update-daemon.json"))
+    assert latest_evidence.exists()
+    assert stat.S_IMODE(heartbeat.stat().st_mode) == 0o600
+    assert stat.S_IMODE(latest_evidence.stat().st_mode) == 0o600
+    assert stat.S_IMODE(stamped_evidence.stat().st_mode) == 0o600
+    assert stat.S_IMODE(evidence_dir.stat().st_mode) == 0o700
     assert len(calls) == 3
 
 

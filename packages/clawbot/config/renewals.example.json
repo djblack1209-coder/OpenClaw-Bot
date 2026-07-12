@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "timezone": "America/Denver",
+  "reminder_days": [30, 14, 7, 3, 1],
+  "resources": [
+    {
+      "id": "primary-vps",
+      "name": "主业务 VPS",
+      "purpose": "运行 OpenClaw、Frist-API 或配套服务",
+      "provider": "unknown",
+      "expires_on": "unknown",
+      "auto_renew": "unknown",
+      "estimated_cost": {
+        "amount": "unknown",
+        "currency": "unknown",
+        "period": "unknown"
+      },
+      "action_url": "unknown",
+      "notes": "只填续费信息，不要写密码、密钥、Cookie、验证码或恢复码"
+    },
+    {
+      "id": "public-domains",
+      "name": "公网域名与 DNS",
+      "purpose": "主站、API、邮件或渠道入口的域名续费",
+      "provider": "unknown",
+      "expires_on": "unknown",
+      "auto_renew": "unknown",
+      "estimated_cost": {
+        "amount": "unknown",
+        "currency": "unknown",
+        "period": "unknown"
+      },
+      "action_url": "unknown",
+      "notes": "多个域名可复制本条并使用不同 id"
+    },
+    {
+      "id": "email-sms-and-verification",
+      "name": "邮件、短信与验证服务",
+      "purpose": "注册、找回密码、通知和验证码发送",
+      "provider": "unknown",
+      "expires_on": "unknown",
+      "auto_renew": "unknown",
+      "estimated_cost": {
+        "amount": "unknown",
+        "currency": "unknown",
+        "period": "unknown"
+      },
+      "action_url": "unknown",
+      "notes": "若按余额计费，可把 expires_on 写成预计需要充值的日期"
+    },
+    {
+      "id": "llm-and-third-party-apis",
+      "name": "模型与第三方 API 额度",
+      "purpose": "AI 路由、数据源、OCR、TTS 或通知服务",
+      "provider": "unknown",
+      "expires_on": "unknown",
+      "auto_renew": "unknown",
+      "estimated_cost": {
+        "amount": "unknown",
+        "currency": "unknown",
+        "period": "unknown"
+      },
+      "action_url": "unknown",
+      "notes": "按供应商拆分；这里只登记费用和日期，不登记任何凭据"
+    },
+    {
+      "id": "hardware-and-certificates",
+      "name": "硬件、证书与本机账号",
+      "purpose": "必须由本人处理的硬件、开发者账号或证书到期事项",
+      "provider": "unknown",
+      "expires_on": "unknown",
+      "auto_renew": "unknown",
+      "estimated_cost": {
+        "amount": "unknown",
+        "currency": "unknown",
+        "period": "unknown"
+      },
+      "action_url": "unknown",
+      "notes": "只记录提醒，不保存证书文件、恢复码或账号秘密"
+    }
+  ]
+}

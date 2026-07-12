@@ -2,6 +2,36 @@
 
 > 合并自原 030-api-pool-registry.md + 031-command-registry.md + 032-dependency-map.md + 033-module-registry.md
 
+
+---
+
+## 0. 2026-07-12 审计与运维入口注册表（当前权威）
+
+| 类型 | 名称 | 路径 / 命令 | 当前合同 |
+|---|---|---|---|
+| 最终审计 | `final_audit.py` | `make final-audit` | 离线聚合 Git、文档、Python、前端、Frist-API、恢复、权限、续费、密钥和依赖门；只持久化脱敏状态/计数/耗时 |
+| 本地 CI | `ci-local` | `make ci-local` | 与 GitHub Actions 相同的确定性门，不允许预存失败阈值或吞退出码 |
+| 续费提醒 | `check_renewals.py` | `make renewals-check` | 校验无凭据模板和 30/14/7/3/1 天提醒；实际台账 `config/renewals.json` 被忽略且只提醒不代付 |
+| 权限审计 | `harden_runtime_permissions.py` | `make runtime-permissions-check` / `runtime-permissions-fix` | 默认只检查；`--apply` 才收紧权限，不读取敏感文件内容 |
+| 数据恢复合同 | `backup_databases.py`、`local_backup.sh`、`disaster_recovery.sh` | `make backup-restore-test` | 锁、空间预检、校验、原子写入和可丢弃恢复；真实覆盖必须 `--confirm` |
+| 自愈 | `auto_recovery.sh` | `scripts/auto_recovery.sh --dry-run` / `--confirm` | 默认预演；只有显式 `--confirm` 才重启或删除旧文件 |
+| 安全启动 | `start_clawbot.sh`、`start_xianyu.sh` | `packages/clawbot/scripts/` | 无硬编码用户路径、无 `pkill -f`、重复实例安全停止 |
+
+### 本轮删除/停用登记
+
+| 已删除入口 | 原因 | 替代 |
+|---|---|---|
+| `src/crewai_bridge.py` | 未进入主链、形成“配置存在但能力未接入”的假象 | 项目原生 TaskGraph、投资团队与投票器 |
+| `src/tools/db_backup.py` | 与已验证的 SQLite 备份实现重复 | `scripts/backup_databases.py` / `make backup-restore-test` |
+| `scripts/start.sh`、`start_all.sh`、`start_omega.sh`、`stop_all.sh` | 硬编码路径、模糊杀进程或引用过时入口 | `start_clawbot.sh`、`start_xianyu.sh`、明确的服务管理入口 |
+| `scripts/pack_deploy_bundle.sh`、`pack_final.sh`、`pack_web_installer.sh`、`tools/package.sh` | 无调用、内容过时或引用不存在模块 | 桌面构建仅用 `make tauri-build`；其他发布需单独设计并授权 |
+| Frist-API `server/auth.js`、`catalog.js`、`store.js` | 已无引用且逻辑由当前模块承接 | `server.js`、`shared.js`、`payments.js`、`newApiBridge.js` |
+
+### 可选集成边界
+
+- CrewAI、browser-use、crawl4ai 不在默认安装链；如需恢复，必须在隔离环境先做官方文档和依赖安全复核。
+- `packages/new-api-upstream` 是固定上游 submodule，不登记为本项目可直接编辑模块；品牌改动走 `make new-api-brand-patch`。
+
 ---
 
 ## 一、API Key 池注册表
@@ -403,7 +433,7 @@
 | CC中转卖家本机桥接器 | `cc-seller-bridge` / `cc_zhongzhuan_seller_bridge.mjs` | `make cc-seller-bridge` / `scripts/cc_zhongzhuan_seller_bridge.mjs` | 本机 DevTools 桥接器，读取 18800 队列并注入闲鱼页面执行器，负责付款页发卡、点击发送、确认发货和恢复可售巡检；`--scan-only --require-real-order-id` 会只读捕获闲鱼 `message.headinfo` 真实订单号/商品 ID；`--one-shot-override` 会强制 delivery-only/只跑一次/只允许 1 个闲鱼页，并且优先把已发 `xy_browser_*` 临时单接管为 `xy_oid_*`，不重复发卡；不建议在重复发卡事故未完全验收前恢复 `ai.openclaw.cc-seller-bridge` 常驻 LaunchAgent |
 | 生产闭环审计 | `cc_zhongzhuan_readiness_audit.mjs` | `scripts/cc_zhongzhuan_readiness_audit.mjs` | 默认只读检查 Chrome 运营入口、本机闲鱼助手、本机 GUI 状态、本机配置、Oracle 服务/库存/公网安全门；GUI 检查覆盖 WebSocket、Cookie、CC自动发货配置和补救待处理数量；当前只读巡检已转绿，正式售卖仍需 `--require-real-order` 真实小额单严格门；加 `--webhook-smoke` 会临时跑一次低权限闲鱼已付款 webhook 并清理恢复库存；不输出 token、卡密或用户 Key |
 | 老板统一运营入口 | `/dashboard` / `/api/export-status` / `/api/cc-paid-order-probe` / `/api/cc-operator-mode/one-shot-delivery` / `/api/cc-seller-bridge/page-scan` / `/api/cc-seller-bridge/one-shot-delivery` / `/api/cc-simulation-gate` / `/api/cc-replacement-mode-test-pack` | `http://127.0.0.1:18800/dashboard` | 单一入口展示首页总览、闲鱼售卖、每日简报、系统维护、帮助中心；状态报告导出会脱敏订单、卡密、Token、买家昵称和 API Key；“真实待发货扫单”只读确认闲鱼待发货候选，不发卡、不点击发货；“只放行一次发卡”在暂停状态下只允许当前已付款页发送 1 条卡密；严格模拟门 v2 追踪真实发卡、商品模板/上架、兑换、API Key、CC Switch、模型调用、渠道/服务器状态，但不解锁 `xy_oid_*` 真实订单严格门 |
-| 本机自动健康与灾备脚本 | `auto_health_check.sh` / `auto_recovery.sh` / `local_backup.sh` / `disaster_recovery.sh` | `scripts/` | 健康检查默认只读并输出“怎么办”；恢复脚本支持 `--dry-run` 预演；本地备份排除 `.env`、虚拟环境、node_modules 和日志，默认保留 30 天；灾备恢复必须显式 `--confirm` 才覆盖文件 |
+| 本机自动健康、续费与灾备脚本 | `auto_health_check.sh` / `check_renewals.py` / `auto_recovery.sh` / `local_backup.sh` / `disaster_recovery.sh` | `scripts/` | 健康检查默认只读并显示续费黄/红灯；恢复默认 dry-run 且必须显式 `--confirm`；备份排除敏感/生成目录并校验；灾备覆盖必须 `--confirm` |
 | 文档治理检查 | `docs-check` / `check_docs_layout.sh` | `make docs-check` | 检查项目根目录散落文档、`docs/` 子目录、非 `XXX-kebab-case.md` 命名、索引漏登记和索引陈旧引用；已纳入 `make ci-local` |
 | Oracle 生产运行 | `openclaw-newapi.service` / `frist-api.service` | Oracle ARM `/opt/frist-api` | New-API v1.0.0-rc.4 ARM64 release 二进制监听 `127.0.0.1:13000`，Apache/Cloudflare 公开 `jiyu.245334.xyz`；Frist-API 监听 `127.0.0.1:3180`，通过 `frist-api-oracle.245334.xyz` 提供兑换码/闲鱼运营台；旧 `frist-api.245334.xyz` 仅跳转到主站 |
 | 腾讯冷回滚 | `frist-api-server` / `openclaw-newapi` | 腾讯云 `/opt/frist-api` | 旧 Docker 容器已停止、R2 timer 已禁用，仅保留数据和备份；回滚时先恢复容器/timer，再把 Cloudflare A 记录切回 `101.43.41.96` |
@@ -2260,7 +2290,6 @@
 | tool_executor.py | `src/tool_executor.py` | 726 | 工具执行器 — 统一工具调用框架 (参数验证/超时/日志) | 自研 |
 | models.py | `src/models.py` | 23 | 数据模型 — 共享 Pydantic/dataclass 定义 | — |
 | browser_use_bridge.py | `src/browser_use_bridge.py` | ~220 | AI 浏览器代理桥接 — DOM 解析/LLM 决策/反检测 | browser-use (81k⭐) |
-| crewai_bridge.py | `src/crewai_bridge.py` | ~180 | CrewAI 多 Agent 协作桥接 | crewai (27k⭐) |
 | trading_journal.py | `src/trading_journal.py` | 464 | 交易日志主类 — DB初始化/配置/交易CRUD/cleanup + Mixin组合 | 自研 |
 | journal_performance.py | `src/journal_performance.py` | 202 | 交易日志 Mixin — 绩效统计/权益曲线/格式化报告 | 自研 |
 | journal_predictions.py | `src/journal_predictions.py` | 145 | 交易日志 Mixin — 研判预期记录/收盘验证/准确率统计 | 自研 |

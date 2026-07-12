@@ -3,7 +3,6 @@ Trading — 系统初始化
 init_trading_system 和 set_ai_team_callers 的实现
 """
 
-import asyncio
 import logging
 
 from src.trading._helpers import (
@@ -79,56 +78,46 @@ def init_trading_system(
     _ts._risk_manager = RiskManager(config=config, journal=journal)
     logger.info("[TradingSystem] 风控引擎已初始化 (资金基准=$%.0f)", effective_capital)
 
-    # 2. 持仓监控器 — 包含卖出降级逻辑
+    # 2. 持仓监控器 — 实盘退出只告警，模拟组合可自动退出
     from src.position_monitor import PositionMonitor
 
     sell_func = None
     if broker:
-        # 包装 broker.sell 为带重连和降级的版本
-        async def _resilient_sell(symbol, quantity, order_type="MKT", decided_by="", reason=""):
-            """先尝试 IBKR 卖出，失败则重连一次，再失败降级到模拟卖出"""
-            # 第一次尝试
-            try:
-                result = await broker.sell(symbol, quantity, order_type, decided_by=decided_by, reason=reason)
-                if "error" not in result:
-                    return result
-                logger.warning("[TradingSystem] IBKR卖出返回错误: %s，尝试重连", result.get("error"))
-            except Exception as e:
-                logger.warning("[TradingSystem] IBKR卖出异常: %s，尝试重连", e)
+        async def _confirmation_required_sell(
+            symbol,
+            quantity,
+            order_type="MKT",
+            decided_by="",
+            reason="",
+        ):
+            """真实持仓退出只生成告警，不替用户绕过逐笔人工确认。"""
+            logger.warning(
+                "[TradingSystem] 拦截自动平仓，等待人工确认: %s x%s (%s)",
+                symbol,
+                quantity,
+                reason,
+            )
+            return {
+                "error": "真实平仓需要当前操作的人工确认",
+                "code": "live_trade_confirmation_required",
+                "live_order_blocked": True,
+                "requires_human_confirmation": True,
+            }
 
-            # 重连后重试
-            try:
-                reconnected = await broker.ensure_connected()
-                if reconnected:
-                    result = await broker.sell(symbol, quantity, order_type, decided_by=decided_by, reason=reason)
-                    if "error" not in result:
-                        return result
-            except Exception as e:
-                logger.error("[TradingSystem] IBKR重连卖出失败: %s", e)
-
-            # 降级到模拟卖出
-            if portfolio and get_quote_func:
-                logger.warning("[TradingSystem] IBKR不可用，降级到模拟卖出 %s", symbol)
-                if notify_func:
-                    try:
-                        await notify_func(f"!! IBKR卖出失败，降级模拟卖出 {symbol} x{quantity} !!")
-                    except Exception as e:
-                        logger.warning("[TradingSystem] 降级卖出通知失败: %s", e)
-                price_data = await get_quote_func(symbol)
-                price = price_data.get("price", 0) if isinstance(price_data, dict) else 0
-                if price > 0:
-                    return portfolio.sell(symbol, quantity, price, decided_by, reason)
-            return {"error": f"IBKR和模拟卖出均失败: {symbol}"}
-
-        sell_func = _resilient_sell
+        sell_func = _confirmation_required_sell
     elif portfolio:
-        # 包装 portfolio.sell 为异步函数
         async def _sim_sell(symbol, quantity, order_type="MKT", decided_by="", reason=""):
+            """模拟组合允许自动退出，但结果必须明确标记为模拟。"""
             price_data = await get_quote_func(symbol) if get_quote_func else {"price": 0}
             price = price_data.get("price", 0) if isinstance(price_data, dict) else 0
             if price <= 0:
                 return {"error": f"无法获取 {symbol} 价格"}
-            return portfolio.sell(symbol, quantity, price, decided_by, reason)
+            result = portfolio.sell(symbol, quantity, price, decided_by, reason)
+            if isinstance(result, dict) and "error" not in result:
+                result = dict(result)
+                result["status"] = "simulated"
+                result["simulated"] = True
+            return result
 
         sell_func = _sim_sell
 
@@ -262,21 +251,14 @@ def init_trading_system(
     except ImportError:
         logger.warning("[TradingSystem] ta_engine 不可用")
 
-    # AI团队投票函数 — CrewAI 优先，降级到原生投票
-    try:
-        from src.crewai_bridge import get_crewai_bridge
-
-        _crewai = get_crewai_bridge()
-    except ImportError:
-        _crewai = None
-
+    # AI 团队使用项目原生投票器；未初始化、从未进入主链的 CrewAI 桥接已删除。
     try:
         from src.ai_team_voter import run_team_vote_batch
 
         _ai_team_vote_batch = run_team_vote_batch
 
         async def _ai_team_wrapper(candidates, analyses, notify_func=None, max_candidates=5, account_context=""):
-            """包装AI团队投票，优先 CrewAI，降级到原生投票"""
+            """包装项目原生 AI 团队投票，并注入历史准确率与复盘教训。"""
             if not _ts._ai_team_api_callers:
                 logger.warning("[TradingSystem] AI团队API callers未注入，跳过投票")
                 return []
@@ -308,77 +290,10 @@ def init_trading_system(
             except Exception as e:
                 logger.warning("静默异常: %s", e)
 
-            # 注入投资大师圆桌会议分析（5 位大师的共识作为投票参考）
-            try:
-                from src.litellm_router import get_litellm_router
-                from src.trading.master_analysts import run_master_panel
+            # 原生投票直接使用已注入的受控 LLM callers。旧“投资大师圆桌”
+            # 引用了不存在的 get_litellm_router()，从未成功进入主链，现已删除。
 
-                _router = get_litellm_router()
-
-                async def _master_llm_call(system_prompt: str, user_prompt: str) -> str:
-                    """适配 master_analysts 所需的 LLM 调用接口"""
-                    combined = f"[System]\n{system_prompt}\n\n[User]\n{user_prompt}"
-                    resp = await _router.acompletion(
-                        model="auto",
-                        messages=[{"role": "user", "content": combined}],
-                        max_tokens=1024,
-                        temperature=0.3,
-                    )
-                    return resp.choices[0].message.content or ""
-
-                # 性能优化: 所有候选并行分析（从顺序改为 asyncio.gather，节省 80%+ 时间）
-                async def _analyze_one(cand):
-                    sym = cand.get("symbol", "")
-                    analysis = analyses.get(sym, {})
-                    if not sym or not analysis:
-                        return None
-                    try:
-                        panel = await run_master_panel(sym, analysis, _master_llm_call)
-                        consensus = panel.get("consensus", {})
-                        sig = consensus.get("consensus_signal", "neutral")
-                        conf = consensus.get("consensus_confidence", 0)
-                        breakdown = consensus.get("signal_breakdown", {})
-                        return (
-                            f"{sym}: 大师共识={sig} 置信度={conf:.0%} "
-                            f"(看多:{breakdown.get('bullish', 0):.1f} "
-                            f"看空:{breakdown.get('bearish', 0):.1f} "
-                            f"中性:{breakdown.get('neutral', 0):.1f})"
-                        )
-                    except Exception as master_err:
-                        logger.debug("[TradingSystem] %s 大师分析失败: %s", sym, master_err)
-                        return None
-
-                panel_results = await asyncio.gather(
-                    *[_analyze_one(c) for c in candidates[:max_candidates]],
-                    return_exceptions=True,
-                )
-                master_insights = [r for r in panel_results if isinstance(r, str)]
-
-                if master_insights:
-                    account_context += f"\n\n[投资大师圆桌会议 — 5位大师(巴菲特/塔勒布/木头姐/Burry/德鲁肯米勒)的共识]\n{'\n'.join(master_insights)}"
-                    logger.info("[TradingSystem] 大师圆桌分析已注入: %d 个标的", len(master_insights))
-            except ImportError:
-                logger.debug("[TradingSystem] master_analysts 模块不可用，跳过大师分析")
-            except Exception as e:
-                logger.debug("[TradingSystem] 大师分析注入失败(非致命): %s", e)
-
-            # 尝试 CrewAI 多 Agent 协作
-            if _crewai:
-                try:
-                    crewai_results = []
-                    for cand in candidates[:max_candidates]:
-                        sym = cand.get("symbol", "")
-                        analysis = analyses.get(sym, {})
-                        result = await _crewai.analyze_trade(sym, analysis, notify_func)
-                        if result:
-                            crewai_results.append(result)
-                    if crewai_results:
-                        logger.info("[TradingSystem] CrewAI 投票完成: %d 个结果", len(crewai_results))
-                        return crewai_results
-                except Exception as crew_err:
-                    logger.warning("[TradingSystem] CrewAI 投票失败，降级到原生: %s", crew_err)
-
-            # 降级到原生 AI 团队投票
+            # 使用原生 AI 团队投票。
             return await _ai_team_vote_batch(
                 candidates=candidates,
                 analyses=analyses,
@@ -390,7 +305,7 @@ def init_trading_system(
             )
 
         ai_team_func = _ai_team_wrapper
-        logger.info("[TradingSystem] AI团队投票模块已加载 (CrewAI: %s)", "可用" if _crewai else "不可用，使用原生")
+        logger.info("[TradingSystem] 原生 AI 团队投票模块已加载")
     except ImportError:
         logger.warning("[TradingSystem] ai_team_voter 不可用，使用机械策略")
 

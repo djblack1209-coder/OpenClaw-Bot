@@ -144,8 +144,10 @@ export const api = {
     isTauri() ? ipc.clawbotSocialDraftDelete(index) : clawbotFetchJson(`/api/v1/social/drafts/${index}`, { method: 'DELETE' }),
   clawbotSocialDraftReview: (index: number, approved = true, reviewer = 'owner') =>
     isTauri() ? ipc.clawbotSocialDraftReview(index, approved, reviewer) : clawbotFetchJson(`/api/v1/social/drafts/${index}/review?approved=${approved}&reviewer=${encodeURIComponent(reviewer)}`, { method: 'POST' }),
-  clawbotSocialDraftPublish: (index: number) =>
-    isTauri() ? ipc.clawbotSocialDraftPublish(index) : clawbotFetchJson(`/api/v1/social/drafts/${index}/publish`, { method: 'POST' }),
+  clawbotSocialDraftPublish: (index: number, finalConfirmed = false) =>
+    isTauri()
+      ? ipc.clawbotSocialDraftPublish(index, finalConfirmed)
+      : clawbotFetchJson(`/api/v1/social/drafts/${index}/publish?confirmed=${finalConfirmed}`, { method: 'POST' }),
 
   // ── 图像生成 ──
   clawbotGenerateImage: ipc.clawbotGenerateImage,

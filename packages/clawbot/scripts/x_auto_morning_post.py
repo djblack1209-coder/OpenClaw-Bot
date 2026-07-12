@@ -34,12 +34,16 @@ from src.execution.social.x_auto_ops import (  # noqa: E402
 )
 
 
-def _run_worker_publish(text: str) -> dict:
-    """调用现有浏览器 worker 发布 X。"""
+def _run_worker_publish(text: str, *, final_confirmed: bool = False) -> dict:
+    """仅在本次操作已最终确认时调用浏览器 worker 发布 X。"""
+    from src.execution.social.publish_safety import confirmation_required
+
+    if not final_confirmed:
+        return confirmation_required("publish_x")
     worker = ROOT / "scripts" / "social_browser_worker.py"
     payload = json.dumps({"text": text}, ensure_ascii=False)
     cp = subprocess.run(
-        [sys.executable, str(worker), "publish_x", payload],
+        [sys.executable, str(worker), "publish_x", payload, "--final-confirmed"],
         cwd=str(ROOT),
         capture_output=True,
         text=True,
@@ -57,27 +61,46 @@ def _run_worker_publish(text: str) -> dict:
     return {"success": False, "error": "worker 输出不是对象"}
 
 
-async def _publish_with_twikit_or_worker(text: str) -> dict:
-    """优先用 twikit Cookie，失败再走浏览器 worker。"""
+async def _publish_with_twikit_or_worker(
+    text: str,
+    *,
+    final_confirmed: bool = False,
+) -> dict:
+    """最终确认后优先用 twikit Cookie，失败再走浏览器 worker。"""
+    from src.execution.social.publish_safety import confirmation_required
+
+    if not final_confirmed:
+        return confirmation_required("publish_x")
     try:
         from src.execution.social.x_platform import twikit_is_authenticated, twikit_post_tweet
 
         if twikit_is_authenticated():
-            result = await twikit_post_tweet(text)
+            result = await twikit_post_tweet(text, final_confirmed=True)
             if result.get("success"):
                 return result
     except Exception:
         # twikit 是可选路径，失败时直接进入浏览器兜底。
-        return _run_worker_publish(text)
-    return _run_worker_publish(text)
+        return _run_worker_publish(text, final_confirmed=True)
+    return _run_worker_publish(text, final_confirmed=True)
 
 
-async def publish_once(use_existing_ready: bool = True) -> dict:
-    """发布一条 X 自动运营内容。"""
+async def publish_once(
+    use_existing_ready: bool = True,
+    *,
+    final_confirmed: bool = False,
+) -> dict:
+    """发布一条已审核内容；审核通过后仍要求本次最终确认。"""
     draft = get_or_build_next_ready_draft() if use_existing_ready else build_next_draft()
     if not is_draft_approved(draft):
         return require_draft_review(draft)
-    result = await _publish_with_twikit_or_worker(draft["text"])
+    if not final_confirmed:
+        from src.execution.social.publish_safety import confirmation_required
+
+        return confirmation_required("publish_x")
+    result = await _publish_with_twikit_or_worker(
+        draft["text"],
+        final_confirmed=True,
+    )
     if result.get("success"):
         mark_published(draft, result)
     else:
@@ -122,6 +145,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="OpenClaw X 自动运营任务")
     parser.add_argument("--publish", action="store_true", help="立即构建并发布一条 X 推文（兼容旧参数）")
     parser.add_argument("--publish-next", action="store_true", help="发布下一条已准备草稿；没有草稿则自动补齐")
+    parser.add_argument("--final-confirmed", action="store_true", help="确认本次立即发布；定时任务不会设置此参数")
     parser.add_argument("--draft", action="store_true", help="只生成 1 条草稿不发布")
     parser.add_argument("--draft-count", type=int, default=6, help="生成多条草稿，默认 6 条")
     parser.add_argument("--pending-review", action="store_true", help="列出等待确认的人设/内容草稿")
@@ -151,7 +175,10 @@ def main() -> int:
         print(json.dumps(pending_review(limit=args.draft_count), ensure_ascii=False, indent=2))
         return 0
     if args.publish or args.publish_next:
-        print(json.dumps(asyncio.run(publish_once(use_existing_ready=True)), ensure_ascii=False, indent=2))
+        print(json.dumps(asyncio.run(publish_once(
+            use_existing_ready=True,
+            final_confirmed=args.final_confirmed,
+        )), ensure_ascii=False, indent=2))
         return 0
     parser.print_help()
     return 2

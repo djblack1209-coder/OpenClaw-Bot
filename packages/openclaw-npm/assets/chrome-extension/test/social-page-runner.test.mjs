@@ -394,7 +394,7 @@ test('runXianyuDeliveryScanInPage accepts mobile Xianyu reminder and chat placeh
   assert.ok(result.paidSignals.includes('记得及时发货'))
 })
 
-test('runXianyuDeliveryFillAndSendInPage fills delivery message and clicks send after paid signal', () => {
+test('runXianyuDeliveryFillAndSendInPage only fills without a consumed one-shot authorization', () => {
   const body = new FakeElement('div', { text: '买家已付款，等待你发货' })
   const editor = new FakeElement('textarea')
   const send = new FakeElement('button', { text: '发送' })
@@ -407,10 +407,37 @@ test('runXianyuDeliveryFillAndSendInPage fills delivery message and clicks send 
   const result = withFakePage(selectorMap, () => runXianyuDeliveryFillAndSendInPage({
     shipmentId: 7,
     deliveryMessage: '兑换入口：https://jiyu.245334.xyz\n兑换码：CC-TEST',
+    clickSend: true,
+  }))
+
+  assert.equal(result.filled, true)
+  assert.equal(result.sent, false)
+  assert.equal(result.reason, 'one_shot_human_authorization_required')
+  assert.equal(result.external_actions_locked, true)
+  assert.equal(editor.value, '兑换入口：https://jiyu.245334.xyz\n兑换码：CC-TEST')
+  assert.equal(send.clicked, false)
+})
+
+test('runXianyuDeliveryFillAndSendInPage sends only after server one-shot authorization was consumed', () => {
+  const body = new FakeElement('div', { text: '买家已付款，等待你发货' })
+  const editor = new FakeElement('textarea')
+  const send = new FakeElement('button', { text: '发送' })
+  const selectorMap = new Map([
+    ['__body__', [body]],
+    ['textarea[placeholder*="回复"]', [editor]],
+    ['button,[role="button"],a', [send]],
+  ])
+
+  const result = withFakePage(selectorMap, () => runXianyuDeliveryFillAndSendInPage({
+    shipmentId: 7,
+    deliveryMessage: '兑换入口：https://jiyu.245334.xyz\n兑换码：CC-AUTHORIZED',
+    clickSend: true,
+    oneShotHumanAuthorized: true,
   }))
 
   assert.equal(result.sent, true)
-  assert.equal(editor.value, '兑换入口：https://jiyu.245334.xyz\n兑换码：CC-TEST')
+  assert.equal(result.external_actions_locked, false)
+  assert.equal(editor.value, '兑换入口：https://jiyu.245334.xyz\n兑换码：CC-AUTHORIZED')
   assert.equal(send.clicked, true)
 })
 
@@ -428,6 +455,8 @@ test('runXianyuDeliveryFillAndSendInPage presses Enter when Xianyu exposes no se
   const result = withFakePage(selectorMap, () => runXianyuDeliveryFillAndSendInPage({
     shipmentId: 9,
     deliveryMessage: '兑换入口：https://jiyu.245334.xyz\n兑换码：CC-ENTER',
+    clickSend: true,
+    oneShotHumanAuthorized: true,
   }))
 
   assert.equal(result.sent, true)
@@ -504,7 +533,7 @@ test('runXianyuDeliveryFillAndSendInPage blocks send when paid signal is missing
   assert.equal(send.clicked, false)
 })
 
-test('runXianyuConfirmShipmentInPage clicks safe paid shipment controls in order', () => {
+test('runXianyuConfirmShipmentInPage never clicks paid shipment controls from the extension', () => {
   const body = new FakeElement('div', { text: '订单状态：买家已付款，等待卖家发货' })
   const goShip = new FakeElement('button', { text: '去发货' })
   const noLogistics = new FakeElement('button', { text: '无需物流' })
@@ -514,13 +543,18 @@ test('runXianyuConfirmShipmentInPage clicks safe paid shipment controls in order
     ['button,[role="button"],a', [goShip, noLogistics, confirm]],
   ])
 
-  const result = withFakePage(selectorMap, () => runXianyuConfirmShipmentInPage({ shipmentId: 11 }))
+  const result = withFakePage(selectorMap, () => runXianyuConfirmShipmentInPage({
+    shipmentId: 11,
+    clickButtons: true,
+  }))
 
-  assert.equal(result.confirmed, true)
-  assert.deepEqual(result.clickedTexts, ['去发货', '无需物流', '确认发货'])
-  assert.equal(goShip.clicked, true)
-  assert.equal(noLogistics.clicked, true)
-  assert.equal(confirm.clicked, true)
+  assert.equal(result.confirmed, false)
+  assert.deepEqual(result.clickedTexts, [])
+  assert.equal(result.reason, 'human_confirmation_required')
+  assert.equal(result.external_actions_locked, true)
+  assert.equal(goShip.clicked, false)
+  assert.equal(noLogistics.clicked, false)
+  assert.equal(confirm.clicked, false)
 })
 
 test('runXianyuConfirmShipmentInPage blocks shipment click when paid signal is missing', () => {
@@ -538,7 +572,7 @@ test('runXianyuConfirmShipmentInPage blocks shipment click when paid signal is m
   assert.equal(goShip.clicked, false)
 })
 
-test('runXianyuRelistItemInPage clicks relist only when the item is clearly unavailable', () => {
+test('runXianyuRelistItemInPage never clicks relist even when ordinary payload requests it', () => {
   const body = new FakeElement('div', { text: '商品状态：已售罄 已下架 可重新上架' })
   const relist = new FakeElement('button', { text: '重新上架' })
   const selectorMap = new Map([
@@ -546,11 +580,16 @@ test('runXianyuRelistItemInPage clicks relist only when the item is clearly unav
     ['button,[role="button"],a', [relist]],
   ])
 
-  const result = withFakePage(selectorMap, () => runXianyuRelistItemInPage({ itemId: 'item-001' }))
+  const result = withFakePage(selectorMap, () => runXianyuRelistItemInPage({
+    itemId: 'item-001',
+    clickButton: true,
+  }))
 
-  assert.equal(result.relisted, true)
+  assert.equal(result.relisted, false)
   assert.equal(result.clickedText, '重新上架')
-  assert.equal(relist.clicked, true)
+  assert.equal(result.reason, 'human_confirmation_required')
+  assert.equal(result.external_actions_locked, true)
+  assert.equal(relist.clicked, false)
 })
 
 test('runXianyuRelistItemInPage does not click relist while item is already on sale', () => {

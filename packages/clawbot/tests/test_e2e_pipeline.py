@@ -159,7 +159,7 @@ class TestFullPipelineBuySuccess:
         assert len(validation.issues) == 0
 
         # Step 2+3+4+5: Pipeline execution (risk -> broker -> journal -> monitor)
-        result = await pipeline.execute_proposal(proposal)
+        result = await pipeline.execute_proposal(proposal, human_confirmed=True)
 
         assert result["status"] == "executed"
         assert result["symbol"] == "AAPL"
@@ -210,7 +210,7 @@ class TestFullPipelineSellSuccess:
             reason="Take profit target hit",
         )
 
-        result = await pipeline.execute_proposal(proposal)
+        result = await pipeline.execute_proposal(proposal, human_confirmed=True)
 
         assert result["status"] == "executed"
         assert result["symbol"] == "AAPL"
@@ -410,7 +410,7 @@ class TestPipelineExtremeMarketHalt:
             decided_by="TestBot",
         )
 
-        result = await pipeline.execute_proposal(proposal)
+        result = await pipeline.execute_proposal(proposal, human_confirmed=True)
         assert result["status"] == "executed"
 
 
@@ -488,7 +488,7 @@ class TestFullCycleScanToExecution:
 
     @pytest.mark.asyncio
     async def test_full_cycle_scan_to_execution(
-        self, pipeline, risk_manager, mock_notify
+        self, pipeline, risk_manager, mock_notify, mock_broker
     ):
         # Mock scan function returning market signals
         async def mock_scan():
@@ -541,8 +541,10 @@ class TestFullCycleScanToExecution:
         # Proposals generated for top candidates
         assert cycle_result["proposals"] >= 1
 
-        # At least one trade executed (auto_mode=True)
-        assert cycle_result["executed"] >= 1
+        # 自动模式只能生成模拟结果，不能把提案直接送入实盘券商。
+        assert cycle_result["executed"] == 0
+        assert cycle_result["simulated"] >= 1
+        mock_broker.buy.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_full_cycle_no_signals(self, pipeline, risk_manager):
@@ -607,7 +609,7 @@ class TestPipelineQuantityAdjustment:
             decided_by="TestBot",
         )
 
-        result = await pipeline.execute_proposal(proposal)
+        result = await pipeline.execute_proposal(proposal, human_confirmed=True)
 
         assert result["status"] == "executed"
         # max_risk = 10000 * 0.02 = 200, risk_per_share = 5 -> max 40 shares
@@ -672,7 +674,7 @@ class TestValidatorAndPipelineIntegration:
         assert validation.approved is True
 
         # Phase 2: Execute through pipeline
-        result = await pipeline.execute_proposal(proposal)
+        result = await pipeline.execute_proposal(proposal, human_confirmed=True)
 
         assert result["status"] == "executed"
         assert result["trade_id"] == 42
@@ -738,7 +740,7 @@ class TestBrokerFallbackToSimulation:
             decided_by="TestBot",
         )
 
-        result = await pipeline.execute_proposal(proposal)
+        result = await pipeline.execute_proposal(proposal, human_confirmed=True)
 
         # broker 回退到模拟组合后状态为 "simulated"
         assert result["status"] == "simulated"
@@ -765,7 +767,7 @@ class TestBrokerFallbackToSimulation:
             decided_by="TestBot",
         )
 
-        result = await pipeline.execute_proposal(proposal)
+        result = await pipeline.execute_proposal(proposal, human_confirmed=True)
 
         # broker 回退到模拟组合后状态为 "simulated"
         assert result["status"] == "simulated"

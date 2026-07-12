@@ -21,6 +21,7 @@
 """
 import asyncio
 import base64
+import hashlib
 import json
 import logging
 import os
@@ -45,6 +46,11 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent  # → Open
 _HOME_OPENCLAW = Path.home() / ".openclaw" / "openclaw-weixin" / "accounts"
 _PROJECT_OPENCLAW = _PROJECT_ROOT / ".openclaw" / "openclaw-weixin" / "accounts"
 _ACCOUNTS_DIR = _HOME_OPENCLAW if _HOME_OPENCLAW.exists() else _PROJECT_OPENCLAW
+
+
+def _hash_identifier(value: str) -> str:
+    """生成日志关联哈希，避免记录微信用户 ID。"""
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
 
 
 class _CredentialStore:
@@ -148,10 +154,16 @@ class _CredentialStore:
 
             self._token = cred.get("token", "")
             self._user_id = cred.get("userId", "")
-            logger.debug("[WeChatBridge] 凭证已加载: user=%s...", self._user_id[:20] if self._user_id else "")
+            logger.debug(
+                "[WeChatBridge] 凭证已加载: user_id_present=%s",
+                bool(self._user_id),
+            )
 
         except Exception as e:
-            logger.debug("[WeChatBridge] 凭证读取失败: %s", e)
+            logger.debug(
+                "[WeChatBridge] 凭证读取失败: %s",
+                scrub_secrets(str(e)) or type(e).__name__,
+            )
 
     def clear_context(self) -> None:
         """清除 context_token 缓存（token 过期时调用）"""
@@ -289,27 +301,28 @@ async def send_to_wechat(text: str, user_id: str | None = None) -> bool:
         logger.debug("[WeChatBridge] httpx 未安装，跳过微信通知")
         return False
 
-    # 构建 sendmessage 请求体（与 TypeScript 插件格式一致）
+    # 构建 sendmessage 请求体（与 TypeScript 插件格式一致）。client_id 在重试
+    # 期间保持不变，contextToken 刷新后则必须重建请求体。
     client_id = f"openclaw-weixin-py-{secrets.randbelow(90000) + 10000}"
-    body = json.dumps({
-        "msg": {
-            "from_user_id": "",
-            "to_user_id": target,
-            "client_id": client_id,
-            "message_type": 2,  # BOT
-            "message_state": 1,  # FINISH
-            "item_list": [
-                {"type": 1, "text_item": {"text": text}}  # TEXT
-            ],
-            "context_token": context_token or "",
-        },
-        "base_info": {"channel_version": "1.0.2"},
-    })
-    body_bytes = body.encode("utf-8")
-    headers = _build_headers(token, body_bytes)
 
     # 最多重试 1 次（仅用于 401/403 token 刷新，网络级重试由 ResilientHTTPClient 处理）
     for _attempt in range(2):
+        body = json.dumps({
+            "msg": {
+                "from_user_id": "",
+                "to_user_id": target,
+                "client_id": client_id,
+                "message_type": 2,  # BOT
+                "message_state": 1,  # FINISH
+                "item_list": [
+                    {"type": 1, "text_item": {"text": text}}  # TEXT
+                ],
+                "context_token": context_token or "",
+            },
+            "base_info": {"channel_version": "1.0.2"},
+        })
+        body_bytes = body.encode("utf-8")
+        headers = _build_headers(token, body_bytes)
         try:
             resp = await _http.post(
                 f"{_ILINK_BASE}/ilink/bot/sendmessage",
@@ -321,7 +334,10 @@ async def send_to_wechat(text: str, user_id: str | None = None) -> bool:
                 if _is_ilink_token_expired(data):
                     _warn_ilink_token_expired_once("sendmessage", data)
                     return False
-                logger.debug(f"[WeChatBridge] 消息已发送到微信 {target[:20]}...")
+                logger.debug(
+                    "[WeChatBridge] 消息已发送 target_hash=%s",
+                    _hash_identifier(target),
+                )
                 return True
             # token 过期，清缓存重试
             if resp.status_code in (401, 403):
@@ -332,7 +348,10 @@ async def send_to_wechat(text: str, user_id: str | None = None) -> bool:
             _creds.clear_context()
         except Exception as e:
             # 参考 httpx 官方 Exceptions 文档（2026-07-02 访问版）：请求异常只记录脱敏原因，避免泄露 token。
-            logger.warning("[微信桥接] 发送失败: %s", e)
+            logger.warning(
+                "[微信桥接] 发送失败: %s",
+                scrub_secrets(str(e)) or type(e).__name__,
+            )
     return False
 
 
@@ -341,7 +360,7 @@ def send_to_wechat_sync(text: str, user_id: str | None = None) -> bool:
     try:
         try:
             loop = asyncio.get_running_loop()
-        except RuntimeError as e:  # noqa: F841
+        except RuntimeError:
             loop = None
         if loop and loop.is_running():
             # 在已有事件循环中，用线程池执行
@@ -352,5 +371,8 @@ def send_to_wechat_sync(text: str, user_id: str | None = None) -> bool:
         else:
             return asyncio.run(send_to_wechat(text, user_id))
     except Exception as e:
-        logger.debug(f"[WeChatBridge] 同步发送失败: {e}")
+        logger.debug(
+            "[WeChatBridge] 同步发送失败: %s",
+            scrub_secrets(str(e)) or type(e).__name__,
+        )
         return False

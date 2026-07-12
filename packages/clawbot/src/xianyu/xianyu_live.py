@@ -1396,9 +1396,9 @@ class XianyuLive:
             os.getenv("CC_XIANYU_WEBHOOK_TOKEN", "").strip()
             or os.getenv("FRIST_API_XIANYU_WEBHOOK_TOKEN", "").strip()
         )
-        disabled = enabled in {"0", "false", "no", "off"}
+        explicitly_enabled = enabled in {"1", "true", "yes", "on"}
         paused = is_auto_ship_paused()
-        webhook_configured = (not disabled) and bool(endpoint and token)
+        webhook_configured = explicitly_enabled and bool(endpoint and token)
         return {
             "configured": webhook_configured and not paused,
             "webhook_configured": webhook_configured,
@@ -2199,6 +2199,8 @@ class XianyuLive:
         返回 None 表示未配置 CC中转，继续走旧 AutoShipper；返回 bool 表示本次 CC中转链路已接管。
         """
         config = self._cc_zhongzhuan_auto_ship_config()
+        if not config.get("webhook_configured"):
+            return None
         if config.get("paused"):
             logger.info("[CC中转自动发货] 已被本机操作台暂停，跳过订单: %s", order_id)
             self._record_cc_shipment_safely(
@@ -2209,8 +2211,6 @@ class XianyuLive:
                 error="本机操作台已暂停自动发货",
             )
             return False
-        if not config.get("configured"):
-            return None
         endpoint = str(config["endpoint"])
         token = str(config["token"])
 

@@ -229,27 +229,72 @@ class ExecutionHub:
             },
         ]
 
-    async def publish_persona_x(self, topic=None, content=None, **kwargs):
+    async def publish_persona_x(
+        self,
+        topic=None,
+        content=None,
+        *,
+        final_confirmed: bool = False,
+        **kwargs,
+    ):
         from src.execution.social.x_platform import publish_x_post
         persona = self.load_social_persona()
         return await publish_x_post(
-            topic=topic, content=content, persona=persona, **kwargs
+            topic=topic,
+            content=content,
+            persona=persona,
+            final_confirmed=final_confirmed,
+            **kwargs,
         )
 
-    async def publish_persona_xhs(self, topic=None, content=None, **kwargs):
+    async def publish_persona_xhs(
+        self,
+        topic=None,
+        content=None,
+        *,
+        final_confirmed: bool = False,
+        **kwargs,
+    ):
         from src.execution.social.xhs_platform import publish_xhs_article
-        persona = self.load_social_persona()
+        body = str(content or "").strip()
+        title = str(topic or "").strip() or (body.splitlines()[0].strip() if body else "OpenClaw")
         return await publish_xhs_article(
-            topic=topic, content=content, persona=persona, **kwargs
+            title=title[:20],
+            body=body,
+            worker_fn=self._run_social_worker,
+            final_confirmed=final_confirmed,
+            **kwargs,
         )
 
-    async def reply_to_x_post(self, post_url=None, reply_text=None):
+    async def reply_to_x_post(
+        self,
+        post_url=None,
+        reply_text=None,
+        *,
+        final_confirmed: bool = False,
+    ):
         from src.execution.social.x_platform import reply_to_x_post
-        return await reply_to_x_post(post_url, reply_text)
+        return await reply_to_x_post(
+            post_url,
+            reply_text,
+            worker_fn=self._run_social_worker,
+            final_confirmed=final_confirmed,
+        )
 
-    async def reply_to_xhs_comment(self, comment_id=None, reply_text=None):
+    async def reply_to_xhs_comment(
+        self,
+        comment_id=None,
+        reply_text=None,
+        *,
+        final_confirmed: bool = False,
+    ):
         from src.execution.social.xhs_platform import reply_to_xhs_comment
-        return await reply_to_xhs_comment(comment_id, reply_text)
+        return await reply_to_xhs_comment(
+            comment_id,
+            reply_text,
+            worker_fn=self._run_social_worker,
+            final_confirmed=final_confirmed,
+        )
 
     async def fetch_x_profile_posts(self, handle=None, count=8):
         from src.execution.social.x_platform import fetch_x_profile_posts
@@ -336,7 +381,7 @@ class ExecutionHub:
         )
 
     async def autopost_topic_content(self, platform=None, topic=None):
-        """按主题自动发布社媒内容"""
+        """按主题生成待审社媒草稿；保留旧方法名以兼容命令入口。"""
         from src.execution.social.content_pipeline import (
             compose_human_x_post,
             compose_human_xhs_article,
@@ -363,13 +408,17 @@ class ExecutionHub:
             target = platform or "all"
             if target in ("all", "x"):
                 render = self._run_social_worker("render", {"topic": topic, "platform": "x"})
-                published = self._run_social_worker("publish_x", {"text": x_body, "images": []})
+                from src.execution.social.publish_safety import confirmation_required
+
+                published = confirmation_required("publish_x")
                 results["x"] = {"success": True, "body": x_body,
                                 "draft_id": x_draft.get("draft_id", 0) if x_draft else 0,
                                 "rendered": render, "published": published}
             if target in ("all", "xiaohongshu"):
                 render = self._run_social_worker("render", {"topic": topic, "platform": "xiaohongshu"})
-                published = self._run_social_worker("publish_xhs", {"title": xhs_title, "body": xhs_body, "images": []})
+                from src.execution.social.publish_safety import confirmation_required
+
+                published = confirmation_required("publish_xhs")
                 results["xiaohongshu"] = {"success": True, "body": xhs_body, "title": xhs_title,
                                           "draft_id": xhs_draft.get("draft_id", 0) if xhs_draft else 0,
                                           "rendered": render, "published": published}
@@ -378,17 +427,24 @@ class ExecutionHub:
             logger.error(f"[AutopostTopic] failed: {scrub_secrets(str(e))}")
             return {"success": False, "error": str(e)}
 
-    def publish_social_draft(self, platform=None, draft_id=None):
+    def publish_social_draft(
+        self,
+        platform=None,
+        draft_id=None,
+        *,
+        final_confirmed: bool = False,
+    ):
         """发布社媒草稿"""
         from src.execution.social.drafts import publish_social_draft
         from src.execution.social.worker_bridge import run_social_worker
         return publish_social_draft(
             platform=platform, draft_id=draft_id,
             worker_fn=run_social_worker,
+            final_confirmed=final_confirmed,
         )
 
     async def autopost_hot_content(self, platform=None, topic=None):
-        """自动发布热门内容"""
+        """按热点生成待审社媒草稿；保留旧方法名以兼容命令入口。"""
         from src.execution.social.content_pipeline import (
             compose_human_x_post,
             compose_human_xhs_article,
@@ -421,19 +477,33 @@ class ExecutionHub:
         if target in ("all", "x"):
             x_draft = self.save_social_draft("x", "", x_body, topic=hot_topic)
             render = self._run_social_worker("render", {"topic": hot_topic, "platform": "x"})
-            published = self._run_social_worker("publish_x", {"text": x_body, "images": []})
+            from src.execution.social.publish_safety import confirmation_required
+
+            published = confirmation_required("publish_x")
             results["x"] = {"body": x_body, "draft": x_draft, "rendered": render, "published": published}
         if target in ("all", "xiaohongshu"):
             xhs_draft = self.save_social_draft("xiaohongshu", xhs_title, xhs_body, topic=hot_topic)
             render = self._run_social_worker("render", {"topic": hot_topic, "platform": "xiaohongshu"})
-            published = self._run_social_worker("publish_xhs", {"title": xhs_title, "body": xhs_body, "images": []})
+            from src.execution.social.publish_safety import confirmation_required
+
+            published = confirmation_required("publish_xhs")
             results["xiaohongshu"] = {"body": xhs_body, "title": xhs_title, "draft": xhs_draft, "rendered": render, "published": published}
         return {"success": True, "topic": hot_topic, "strategy": strategy, "results": results}
 
-    def _run_social_worker(self, action=None, payload=None):
+    def _run_social_worker(
+        self,
+        action=None,
+        payload=None,
+        *,
+        final_confirmed: bool = False,
+    ):
         """运行社交浏览器 worker (可被测试 monkeypatch)"""
         from src.execution.social.worker_bridge import run_social_worker
-        return run_social_worker(action, payload)
+        return run_social_worker(
+            action,
+            payload,
+            final_confirmed=final_confirmed,
+        )
 
     async def create_hot_social_package(self, platform=None, topic=None):
         """创建热门社媒内容包"""
@@ -445,6 +515,39 @@ class ExecutionHub:
             discover_fn=discover_hot_topics,
             save_draft_fn=save_social_draft,
         )
+
+    def _publish_social_package(
+        self,
+        package,
+        *,
+        final_confirmed: bool = False,
+    ):
+        """发布已预览内容包；仅供明确的最终确认回调调用。"""
+        from src.execution.social.platform_adapter import get_adapter
+        from src.execution.social.publish_safety import confirmation_required
+
+        if not final_confirmed:
+            return confirmation_required("publish_social_package")
+
+        package_results = package.get("results", {}) if isinstance(package, dict) else {}
+        results = {}
+        any_success = False
+        for platform, item in package_results.items():
+            adapter = get_adapter(platform)
+            if not adapter or not isinstance(item, dict):
+                results[platform] = {"success": False, "error": "不支持的平台或内容包无效"}
+                continue
+            body = str(item.get("body") or item.get("text") or item.get("content") or "")
+            title = str(item.get("title") or "")
+            payload = adapter.build_worker_payload(body, title)
+            result = self._run_social_worker(
+                adapter.worker_action,
+                payload,
+                final_confirmed=True,
+            )
+            results[platform] = result
+            any_success = any_success or bool(result.get("success"))
+        return {"success": any_success, "results": results}
 
     async def build_social_repost_bundle(self, topic=None):
         """构建社媒转发包"""

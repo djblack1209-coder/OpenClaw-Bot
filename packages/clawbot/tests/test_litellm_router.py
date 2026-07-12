@@ -335,3 +335,136 @@ class TestClaudeDirectApiGuard:
         cleaned = _scrub_secrets(msg)
         assert "ABCDEFGHIJKLMN1234567890" not in cleaned
         assert "REDACTED" in cleaned
+
+
+class TestRouterSafetyAndCostContracts:
+    """AI 路由必须 fail-safe：不自动进付费族、成本可追踪、探针直连目标。"""
+
+    def test_smart_route_falls_back_when_suggested_family_is_not_active(self, pool_with_sources):
+        pool_with_sources._routing_config = {
+            "smart_route_model_to_family": {"claude-sonnet-4": "claude"}
+        }
+        controller = MagicMock()
+        controller.suggest_model.return_value = "claude-sonnet-4"
+        with patch("src.core.cost_control.get_cost_controller", return_value=controller):
+            assert pool_with_sources._smart_route("complex") == "qwen"
+
+    def test_automatic_selection_never_chooses_paid_family(self, pool):
+        pool._reg(
+            "deepseek_paid",
+            FreeAPISource(
+                provider="paid",
+                base_url="https://example.test/v1",
+                api_key="paid-key",
+                model="gemini-2.5-pro",
+                tier=TIER_S,
+            ),
+        )
+        pool._reg(
+            "qwen",
+            FreeAPISource(
+                provider="free",
+                base_url="https://example.test/v1",
+                api_key="free-key",
+                model="qwen3-32b",
+                tier=TIER_B,
+            ),
+        )
+        assert pool._pick_strongest_family() == "qwen"
+
+    async def test_paid_family_requires_explicit_opt_in(self, pool):
+        router = AsyncMock()
+        response = MagicMock()
+        response.usage = None
+        router.acompletion.return_value = response
+        pool._router = router
+
+        with pytest.raises(PermissionError, match="付费模型族"):
+            await pool.acompletion(
+                "deepseek_paid",
+                [{"role": "user", "content": "hello"}],
+            )
+        router.acompletion.assert_not_awaited()
+
+        await pool.acompletion(
+            "deepseek_paid",
+            [{"role": "user", "content": "hello"}],
+            allow_paid=True,
+        )
+        assert router.acompletion.await_args.kwargs["model"] == "deepseek_paid"
+
+    async def test_actual_completion_cost_reaches_budget_controller(self, pool):
+        router = AsyncMock()
+        usage = MagicMock(prompt_tokens=120, completion_tokens=30)
+        response = MagicMock(usage=usage, model="provider/model-v1")
+        router.acompletion.return_value = response
+        pool._router = router
+        controller = MagicMock()
+
+        with (
+            patch("src.litellm_router.litellm.completion_cost", return_value=0.0123),
+            patch("src.core.cost_control.get_cost_controller", return_value=controller),
+        ):
+            await pool.acompletion(
+                "qwen",
+                [{"role": "user", "content": "hello"}],
+            )
+
+        controller.record_cost.assert_called_once_with(
+            "provider/model-v1",
+            pytest.approx(0.0123),
+            task_type="litellm",
+        )
+
+    async def test_direct_key_probe_does_not_duplicate_provider_prefix(self, pool):
+        source = FreeAPISource(
+            provider="custom",
+            base_url="https://example.test/v1",
+            api_key="secret",
+            model="model-v1",
+            _deployment_id="custom/openai/model-v1",
+        )
+        with patch("src.litellm_router.litellm.acompletion", new_callable=AsyncMock) as call:
+            call.return_value = MagicMock()
+            result = await pool._test_single_key(source, timeout=1.0)
+
+        assert result == {"status": "ok"}
+        assert call.await_args.kwargs["model"] == "openai/model-v1"
+
+    async def test_health_check_probes_exact_source_without_router_fallback(self, pool):
+        source = FreeAPISource(
+            provider="target-provider",
+            base_url="https://example.test/v1",
+            api_key="secret",
+            model="model-v1",
+        )
+        pool._reg("target", source)
+        pool._router = AsyncMock()
+        with patch.object(
+            pool,
+            "_test_single_key",
+            new_callable=AsyncMock,
+            return_value={"status": "auth_error", "error": "401"},
+        ) as probe:
+            result = await pool.health_check(timeout=1.0)
+
+        probe.assert_awaited_once_with(source, 1.0)
+        pool._router.acompletion.assert_not_awaited()
+        assert result["healthy"] == 0
+        assert source.disabled is True
+
+    def test_success_rate_uses_all_attempts(self, pool):
+        pool._call_count = 3
+        pool._error_count = 1
+        assert pool.get_stats()["success_rate"] == pytest.approx(0.75)
+
+    def test_paid_deployment_is_labeled_paid(self, pool):
+        dep = pool._dep(
+            "paid-provider",
+            "openai/model-v1",
+            "secret",
+            family="deepseek_paid",
+            tier=TIER_S,
+        )
+        assert dep["model_info"]["billing"] == "paid"
+        assert dep["model_info"]["tier"] == TIER_S

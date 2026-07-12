@@ -39,6 +39,7 @@ class SocialPlatformAdapter(ABC):
         title: str = "",
         images: list[str] | None = None,
         worker_fn=None,
+        final_confirmed: bool = False,
         **kwargs,
     ) -> dict:
         """发布内容到平台，返回结果字典"""

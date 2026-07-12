@@ -644,7 +644,7 @@ export function Social() {
         await api.clawbotSocialDraftReview(pendingAction.index, false, 'owner');
         toast.success(t('social.reviewRejected'), { channel: 'log' });
       } else {
-        const result = await api.clawbotSocialDraftPublish(pendingAction.index) as any;
+        const result = await api.clawbotSocialDraftPublish(pendingAction.index, true) as any;
         if (result?.success === false && result?.requires_review) {
           toast.error(t('social.reviewRequired'), { channel: 'notification' });
         } else if (result?.success === false) {

@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 from datetime import UTC
 from pathlib import Path
 from typing import Any
@@ -66,12 +67,22 @@ def _load_state() -> dict:
 
 
 def _save_state(state: dict) -> None:
-    """保存控制状态到文件"""
-    CONTROLS_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    CONTROLS_STATE_FILE.write_text(
-        json.dumps(state, indent=2, ensure_ascii=False),
-        encoding="utf-8",
+    """以 0600 原子保存控制状态，避免开关写到一半或被其他账号读取。"""
+    CONTROLS_STATE_FILE.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    CONTROLS_STATE_FILE.parent.chmod(0o700)
+    temporary = CONTROLS_STATE_FILE.with_name(
+        f".{CONTROLS_STATE_FILE.name}.tmp-{os.getpid()}"
     )
+    try:
+        temporary.write_text(
+            json.dumps(state, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        temporary.chmod(0o600)
+        temporary.replace(CONTROLS_STATE_FILE)
+        CONTROLS_STATE_FILE.chmod(0o600)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 # ── 交易控制 ──────────────────────────────────────
@@ -168,6 +179,7 @@ def get_scheduler_status():
         {"id": "xianyu_shipment", "name": "闲鱼发货超时", "cron": "每60秒", "enabled": True},
         {"id": "stock_check", "name": "闲鱼库存预警", "cron": "每4小时", "enabled": True},
         {"id": "price_watch", "name": "降价监控", "cron": "每6小时", "enabled": True},
+        {"id": "deal_scan", "name": "全网折扣扫描", "cron": "每4小时", "enabled": True},
         {"id": "budget_alert", "name": "预算超支检查", "cron": "20:00 ET", "enabled": True},
         {"id": "weekly_strategy", "name": "策略绩效评估", "cron": "周日 20:00", "enabled": True},
         {"id": "weekly_report", "name": "综合周报", "cron": "周日 20:30", "enabled": True},
@@ -188,6 +200,15 @@ def get_scheduler_status():
         "intel_brief": "_last_intel_brief_date",
         "morning_news": "_last_news_date",
     }
+
+    runtime_health: dict[str, Any] = {}
+    if scheduler_instance and hasattr(scheduler_instance, "get_health_snapshot"):
+        try:
+            snapshot = scheduler_instance.get_health_snapshot()
+            runtime_health = snapshot if isinstance(snapshot, dict) else {}
+        except Exception:
+            logger.debug("读取调度器健康摘要失败", exc_info=True)
+    runtime_jobs = runtime_health.get("jobs") if isinstance(runtime_health.get("jobs"), dict) else {}
 
     tasks: list[dict[str, Any]] = []
     source = "live" if scheduler_running else "static"
@@ -227,6 +248,15 @@ def get_scheduler_status():
                 if date_val:
                     task["last_run"] = date_val
 
+        job_health = runtime_jobs.get(task_def["id"]) if isinstance(runtime_jobs, dict) else None
+        if isinstance(job_health, dict):
+            task["last_status"] = job_health.get("status")
+            task["consecutive_failures"] = int(job_health.get("consecutive_failures", 0) or 0)
+            task["duration_seconds"] = float(job_health.get("duration_seconds", 0.0) or 0.0)
+            last_runtime = job_health.get("last_success_at") or job_health.get("last_attempt_at")
+            if last_runtime:
+                task["last_run"] = last_runtime
+
         tasks.append(task)
 
     if not scheduler_running:
@@ -242,13 +272,20 @@ def get_scheduler_status():
             override_last_run = task_overrides[task["id"]].get("last_run")
             if override_last_run and "last_run" not in task:
                 task["last_run"] = override_last_run
-            task["last_status"] = task_overrides[task["id"]].get("last_status")
+            override_status = task_overrides[task["id"]].get("last_status")
+            if override_status is not None and "last_status" not in task:
+                task["last_status"] = override_status
 
     return {
         "enabled": scheduler_state.get("enabled", True),
         "maintenance_mode": scheduler_state.get("maintenance_mode", False),
         "scheduler_running": scheduler_running,
         "source": source,
+        "runtime_health": {
+            "iteration_count": int(runtime_health.get("iteration_count", 0) or 0),
+            "last_loop_at": runtime_health.get("last_loop_at", ""),
+            "last_loop_completed_at": runtime_health.get("last_loop_completed_at", ""),
+        },
         "tasks": tasks,
     }
 

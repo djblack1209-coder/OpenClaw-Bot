@@ -24,8 +24,9 @@ function getArgValue(name) {
   return ''
 }
 const jsonOnly = args.has('--json')
+const contractOnly = args.has('--contract')
 const dryRun = args.has('--dry-run')
-const scanOnly = args.has('--scan-only') || args.has('--preflight-only')
+const explicitScanOnly = args.has('--scan-only') || args.has('--preflight-only')
 const relistOnly = args.has('--relist-only')
 const simulationRelist = args.has('--simulation-relist')
 const oneShotOverride = args.has('--one-shot-override') || args.has('--one-shot')
@@ -34,7 +35,10 @@ const requireSingleXianyuPage = args.has('--require-single-xianyu-page') || oneS
 const requireRealOrderId = (args.has('--require-real-order-id') || oneShotOverride) && !args.has('--allow-browser-order')
 const openPageDestination = getArgValue('--open-page').trim().toLowerCase()
 const openPageOnly = Boolean(openPageDestination)
-const once = args.has('--once') || dryRun || scanOnly || relistOnly || oneShotOverride || deliveryOnly || openPageOnly
+const explicitWriteMode = deliveryOnly || relistOnly
+const readOnlyWatch = !explicitScanOnly && !explicitWriteMode && !openPageOnly && !dryRun && !contractOnly
+const readOnlyMode = explicitScanOnly || readOnlyWatch
+const once = args.has('--once') || dryRun || explicitScanOnly || relistOnly || oneShotOverride || deliveryOnly || openPageOnly || contractOnly
 const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..')
 const runnerFile = path.join(repoRoot, 'packages/openclaw-npm/assets/chrome-extension/social-page-runner.js')
 const envFile = path.join(repoRoot, 'packages/clawbot/config/.env')
@@ -121,17 +125,6 @@ async function adminApi(token, apiPath, options = {}) {
   })
 }
 
-async function authorizeOneShotDelivery(token) {
-  if (!oneShotOverride) return { ok: true, skipped: true }
-  return adminApi(token, '/api/cc-operator-mode/one-shot-delivery', {
-    method: 'POST',
-    body: JSON.stringify({
-      reason: 'seller_bridge_one_shot_override',
-      ttl_seconds: 180,
-    }),
-  })
-}
-
 async function postBridgeStatus(token, port, tabCount) {
   const payload = {
     platform: 'xianyu',
@@ -139,24 +132,25 @@ async function postBridgeStatus(token, port, tabCount) {
     running: true,
     detected_platform: { id: 'xianyu', label: '闲鱼', supported: true },
     tasks: [
-      'CC中转本机卖家桥接器运行中',
-      '由本机进程调度卡密与状态标记',
-      '浏览器页面只执行发货、确认发货和恢复上架动作',
+      'CC中转本机卖家桥接器只读巡检中',
+      '默认只扫描闲鱼页面与付款信号',
+      '发卡必须由 18800 人工确认并使用短时单次放行票',
     ],
     extension: {
       manifest_version: 'bridge',
       cc_delivery_helper_version: '2026-07-07-local-devtools-bridge',
       capabilities: {
         xianyu_delivery_scan: true,
-        xianyu_delivery_send: true,
-        xianyu_confirm_shipment: true,
-        xianyu_relist_item: true,
-        current_chat_watch: true,
-        all_open_xianyu_tabs_watch: true,
+        xianyu_delivery_send: false,
+        xianyu_confirm_shipment: false,
+        xianyu_relist_item: false,
+        xianyu_one_shot_delivery_human_gated: true,
+        current_chat_watch: false,
+        all_open_xianyu_tabs_watch: false,
         target_tab_preflight: true,
         single_pending_global_gate: true,
         background_heartbeat: true,
-        relist_queue_watch: true,
+        relist_queue_watch: false,
         paid_page_dispatch: true,
       },
     },
@@ -462,10 +456,6 @@ async function openSellerBrowserPage(browser, destination) {
 }
 
 async function ensureDeliveryMessage(token, target, scanResult) {
-  if (oneShotOverride && scanResult?.paidSignal && scanResult?.inputReady) {
-    const oneShotAuthorization = await authorizeOneShotDelivery(token)
-    if (!oneShotAuthorization.ok) return oneShotAuthorization
-  }
   const pending = await adminApi(token, `/api/cc-browser-delivery/next${oneShotOverride ? '?one_shot=1' : ''}`)
   if (pending.ok && pending.json?.hasPending && pending.json?.shipment?.deliveryMessage) return pending
   if (pending.ok && pending.json?.reason === 'operator_paused') return pending
@@ -512,8 +502,20 @@ async function ensureDeliveryMessage(token, target, scanResult) {
         deliveryPreview: '浏览器桥接器自动生成的话术',
         deliveryMessage: dispatch.json?.deliveryMessage || '',
       },
+      oneShotDelivery: dispatch.json?.oneShotDelivery || {},
     },
   }
+}
+
+function hasConsumedOneShotDeliveryAuthorization(pending = {}) {
+  const oneShot = pending?.json?.oneShotDelivery
+  return Boolean(
+    oneShotOverride
+      && oneShot
+      && oneShot.active === false
+      && Number(oneShot.remaining || 0) === 0
+      && String(oneShot.consumed_at || '').trim(),
+  )
 }
 
 async function handleDeliveryForPage(token, target) {
@@ -564,7 +566,7 @@ async function handleDeliveryForPage(token, target) {
     shipmentId: shipment.id,
     deliveryMessage: shipment.deliveryMessage,
     requirePaidSignal: true,
-    clickSend: true,
+    oneShotHumanAuthorized: hasConsumedOneShotDeliveryAuthorization(pending),
   })
   if (!sent.ok || !sent.result?.sent) {
     const error = sent.error || sent.result?.reason || 'send_failed'
@@ -581,7 +583,7 @@ async function handleDeliveryForPage(token, target) {
   if (!marked.ok) {
     return { ok: false, stage: 'mark_sent', error: marked.error, shipmentId: shipment.id, url: target.url }
   }
-  const confirm = await handleConfirmForPage(token, target, String(shipment.id))
+  const confirm = { ok: true, skipped: true, reason: 'human_confirmation_required' }
   return { ok: true, stage: 'sent', shipmentId: shipment.id, send: sent.result, confirm, url: target.url }
 }
 
@@ -645,107 +647,11 @@ function buildDeliveryScanNextAction(browser, scans, readyPages, strictReadyPage
   return '当前闲鱼页还不是已付款聊天/订单页，或没有聊天输入框。'
 }
 
-async function handleConfirmForPage(token, target, expectedShipmentId = '') {
-  const pending = await adminApi(token, '/api/cc-xianyu-confirm/next')
-  if (!pending.ok) return { ok: false, error: pending.error || 'confirm_queue_unavailable', status: pending.status || 0 }
-  const shipment = pending.json?.shipment
-  if (!pending.json?.hasPending || !shipment?.id) {
-    return handleCurrentPageConfirmForPage(token, target, expectedShipmentId)
-  }
-  if (expectedShipmentId && String(shipment.id) !== expectedShipmentId) {
-    return { ok: false, error: 'pending_confirm_mismatch', expectedShipmentId, shipmentId: shipment.id }
-  }
-  const confirmed = await runPageFunction(target, 'runXianyuConfirmShipmentInPage', {
-    shipmentId: shipment.id,
-    requirePaidSignal: true,
-    clickButtons: true,
-  })
-  if (!confirmed.ok || !confirmed.result?.confirmed) {
-    const error = confirmed.error || confirmed.result?.reason || 'confirm_failed'
-    await adminApi(token, `/api/cc-shipments/${encodeURIComponent(String(shipment.id))}/mark-xianyu-confirm-failed`, {
-      method: 'POST',
-      body: JSON.stringify({ error }),
-    })
-    return { ok: false, error, shipmentId: shipment.id, result: confirmed.result || null }
-  }
-  const marked = await adminApi(token, `/api/cc-shipments/${encodeURIComponent(String(shipment.id))}/mark-xianyu-confirmed`, { method: 'POST' })
-  return { ok: marked.ok, error: marked.error || '', shipmentId: shipment.id, result: confirmed.result || null }
-}
-
-async function handleStandaloneConfirmForPage(token, target) {
-  const preflight = await runPageFunction(target, 'runXianyuConfirmShipmentInPage', {
-    shipmentId: 'standalone-confirm-preflight',
-    requirePaidSignal: true,
-    clickButtons: false,
-  })
-  if (!preflight.ok) {
-    return { ok: true, skipped: true, reason: 'standalone_confirm_preflight_failed', error: preflight.error || '', url: target.url }
-  }
-  if (!preflight.result?.paidSignal) {
-    return { ok: true, skipped: true, reason: preflight.result?.reason || 'no_paid_order_signal', url: target.url }
-  }
-  return handleConfirmForPage(token, target)
-}
-
-async function handleCurrentPageConfirmForPage(token, target, expectedShipmentId = '') {
-  const preflight = await runPageFunction(target, 'runXianyuConfirmShipmentInPage', {
-    shipmentId: expectedShipmentId || 'current-page-preflight',
-    requirePaidSignal: true,
-    clickButtons: false,
-  })
-  if (!preflight.ok) {
-    return { ok: true, skipped: true, reason: 'current_page_preflight_failed', error: preflight.error || '', url: target.url }
-  }
-  if (!preflight.result?.paidSignal) {
-    return { ok: true, skipped: true, reason: preflight.result?.reason || 'no_pending_confirm', url: target.url }
-  }
-  const rawTargetUrl = String(target.url || '')
-  const hasItemIdInUrl = /[?&#](?:itemId|item_id|itemIdStr|item_id_str|id)=/i.test(rawTargetUrl)
-  const itemId = hasItemIdInUrl ? normalizeItemIdFromUrl(rawTargetUrl) : ''
-  const candidate = await adminApi(
-    token,
-    `/api/cc-xianyu-confirm/current-page-candidate${itemId ? `?item_id=${encodeURIComponent(itemId)}` : ''}`,
-  )
-  const shipment = candidate.json?.shipment
-  if (!candidate.ok || !candidate.json?.hasPending || !shipment?.id) {
-    return {
-      ok: true,
-      skipped: true,
-      reason: candidate.json?.reason || candidate.error || 'no_current_page_confirm_candidate',
-      url: target.url,
-    }
-  }
-  if (expectedShipmentId && String(shipment.id) !== expectedShipmentId) {
-    return { ok: false, error: 'current_page_confirm_mismatch', expectedShipmentId, shipmentId: shipment.id, url: target.url }
-  }
-  const confirmed = await runPageFunction(target, 'runXianyuConfirmShipmentInPage', {
-    shipmentId: shipment.id,
-    requirePaidSignal: true,
-    clickButtons: true,
-  })
-  if (!confirmed.ok || !confirmed.result?.confirmed) {
-    return {
-      ok: false,
-      error: confirmed.error || confirmed.result?.reason || 'current_page_confirm_failed',
-      shipmentId: shipment.id,
-      result: confirmed.result || null,
-      queueType: candidate.json?.queueType || 'current_page_remediation',
-      url: target.url,
-    }
-  }
-  const marked = await adminApi(token, `/api/cc-shipments/${encodeURIComponent(String(shipment.id))}/mark-xianyu-confirmed`, { method: 'POST' })
-  return {
-    ok: marked.ok,
-    error: marked.error || '',
-    shipmentId: shipment.id,
-    result: confirmed.result || null,
-    queueType: candidate.json?.queueType || 'current_page_remediation',
-    url: target.url,
-  }
-}
-
 async function handleRelistForPages(token, targets, options = {}) {
   const mode = options.simulation ? 'simulation' : 'production'
+  if (mode !== 'simulation') {
+    return { ok: false, skipped: true, reason: 'production_relist_requires_human_confirmation', mode }
+  }
   const pending = await adminApi(token, `/api/cc-xianyu-relist/next?mode=${encodeURIComponent(mode)}`)
   const shipment = pending.json?.shipment
   if (!pending.ok || !pending.json?.hasPending || !shipment?.id) {
@@ -755,7 +661,6 @@ async function handleRelistForPages(token, targets, options = {}) {
     const result = await runPageFunction(target, 'runXianyuRelistItemInPage', {
       shipmentId: shipment.id,
       itemId: shipment.itemId || '',
-      clickButton: true,
     })
     if (result.ok && result.result?.relisted) {
       const marked = await adminApi(token, `/api/cc-shipments/${encodeURIComponent(String(shipment.id))}/mark-relisted`, { method: 'POST' })
@@ -801,7 +706,7 @@ async function runOnce(token) {
   if (openPageOnly) {
     return openSellerBrowserPage(browser, openPageDestination)
   }
-  if (scanOnly) {
+  if (readOnlyMode) {
     const scans = []
     for (const target of browser.xianyuPages.slice(0, 8)) {
       scans.push(await scanDeliveryPage(target))
@@ -811,17 +716,33 @@ async function runOnce(token) {
     const ok = browser.xianyuPages.length === 1 && (
       requireRealOrderId ? strictReadyPages.length === 1 : readyPages.length === 1
     )
+    const bridgeStatus = readOnlyWatch
+      ? await postBridgeStatus(token, browser.port, browser.xianyuPages.length)
+      : { ok: true, skipped: true }
     return {
       ok,
-      mode: 'scan_only',
+      mode: explicitScanOnly ? 'scan_only' : 'read_only_watch',
       readOnly: true,
       port: browser.port,
       xianyuTabs: browser.xianyuPages.length,
       readyPages: readyPages.length,
       strictReadyPages: strictReadyPages.length,
       requireRealOrderId,
+      bridgeStatusPosted: Boolean(bridgeStatus.ok && !bridgeStatus.skipped),
       scans,
       nextAction: buildDeliveryScanNextAction(browser, scans, readyPages, strictReadyPages),
+      updatedAt: new Date().toISOString(),
+    }
+  }
+  if (deliveryOnly && !oneShotOverride) {
+    return {
+      ok: false,
+      mode: 'delivery_blocked',
+      deliveries: [],
+      confirms: [],
+      relist: { ok: true, skipped: true, reason: 'delivery_blocked' },
+      error: 'one_shot_human_gate_required',
+      nextAction: '请从 18800 操作台人工确认当前唯一已付款页；桥接器不能自行创建发卡放行票。',
       updatedAt: new Date().toISOString(),
     }
   }
@@ -839,19 +760,23 @@ async function runOnce(token) {
       updatedAt: new Date().toISOString(),
     }
   }
-  const oneShotAuthorization = oneShotOverride
-    ? { ok: true, skipped: true, deferred: true, reason: 'authorize_after_paid_page_scan' }
-    : await authorizeOneShotDelivery(token)
-  if (!oneShotAuthorization.ok) {
-    return {
-      ok: false,
-      stage: 'one_shot_authorize',
-      error: oneShotAuthorization.error || 'one_shot_authorize_failed',
-      status: oneShotAuthorization.status || 0,
-    }
-  }
   const status = await postBridgeStatus(token, browser.port, browser.xianyuPages.length)
   if (relistOnly) {
+    if (!simulationRelist) {
+      return {
+        ok: false,
+        mode: 'production_relist_blocked',
+        port: browser.port,
+        xianyuTabs: browser.xianyuPages.length,
+        bridgeStatusPosted: status.ok,
+        deliveries: [],
+        confirms: [],
+        relist: { ok: false, skipped: true, reason: 'production_relist_requires_human_confirmation' },
+        error: 'production_relist_requires_human_confirmation',
+        nextAction: '当前只允许模拟核验商品是否在线；真实恢复上架必须走单独的人工确认入口。',
+        updatedAt: new Date().toISOString(),
+      }
+    }
     if (browser.xianyuPages.length !== 1) {
       return {
         ok: false,
@@ -891,7 +816,7 @@ async function runOnce(token) {
       ok: true,
       mode: oneShotOverride ? 'one_shot_delivery_only' : 'delivery_only',
       oneShotOverride,
-      oneShotAuthorization: oneShotAuthorization.json || oneShotAuthorization,
+      oneShotAuthorization: { active: oneShotOverride, source: 'preauthorized_by_admin' },
       port: browser.port,
       xianyuTabs: browser.xianyuPages.length,
       bridgeStatusPosted: status.ok,
@@ -901,26 +826,41 @@ async function runOnce(token) {
       updatedAt: new Date().toISOString(),
     }
   }
-  const confirms = []
-  for (const target of browser.xianyuPages.slice(0, 8)) {
-    confirms.push(await handleStandaloneConfirmForPage(token, target))
-  }
-  const relist = await handleRelistForPages(token, browser.xianyuPages.slice(0, 8))
   return {
-    ok: true,
-    oneShotOverride,
-    oneShotAuthorization: oneShotAuthorization.json || oneShotAuthorization,
+    ok: false,
+    mode: 'write_mode_not_authorized',
     port: browser.port,
     xianyuTabs: browser.xianyuPages.length,
     bridgeStatusPosted: status.ok,
-    deliveries,
-    confirms,
-    relist,
+    deliveries: [],
+    confirms: [],
+    relist: { ok: true, skipped: true, reason: 'human_confirmation_required' },
+    error: 'human_confirmation_required',
     updatedAt: new Date().toISOString(),
   }
 }
 
+function getBridgeContract() {
+  return {
+    ok: true,
+    defaultMode: 'read_only_watch',
+    highRiskActions: {
+      delivery: false,
+      confirmShipment: false,
+      relist: false,
+    },
+    oneShotHumanGateRequired: true,
+    oneShotAuthorizationSource: '18800_admin_api',
+    relistMode: 'simulation_only',
+  }
+}
+
 async function main() {
+  if (contractOnly) {
+    const contract = getBridgeContract()
+    process.stdout.write(jsonOnly ? `${JSON.stringify(contract, null, 2)}\n` : `CC中转卖家桥接器安全合同\n${JSON.stringify(contract, null, 2)}\n`)
+    process.exit(0)
+  }
   const env = parseEnvFile(envFile)
   const token = String(env.OPENCLAW_API_TOKEN || '').trim()
   if (!token) {
@@ -930,8 +870,8 @@ async function main() {
   if (once) {
     const result = await runOnce(token)
     process.stdout.write(jsonOnly ? `${JSON.stringify(result, null, 2)}\n` : `CC中转卖家桥接器: ${result.ok ? 'OK' : 'FAIL'}\n${JSON.stringify(result, null, 2)}\n`)
-    const scanCompleted = scanOnly && result?.mode === 'scan_only' && result?.readOnly === true
-    process.exit(result.ok || scanCompleted ? 0 : 1)
+    const readOnlyCompleted = readOnlyMode && result?.readOnly === true
+    process.exit(result.ok || readOnlyCompleted ? 0 : 1)
   }
   process.stdout.write('CC中转卖家桥接器: WATCHING\n')
   for (;;) {

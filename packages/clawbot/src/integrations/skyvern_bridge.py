@@ -12,6 +12,8 @@ import logging
 import os
 from typing import Any
 
+from src.utils import scrub_secrets
+
 logger = logging.getLogger(__name__)
 
 # ── Skyvern SDK 导入 (graceful degradation) ──────────────────
@@ -77,7 +79,7 @@ class SkyvernBridge:
                 url or "cloud (default)",
             )
         except Exception as e:
-            logger.error("[SkyvernBridge] 初始化失败: %s", e)
+            logger.error("[SkyvernBridge] 初始化失败: %s", scrub_secrets(str(e)))
 
     # ── 状态查询 ──────────────────────────────────────────
 
@@ -113,6 +115,8 @@ class SkyvernBridge:
         data_extraction_schema: dict[str, Any] | None = None,
         wait_for_completion: bool = True,
         timeout: float = 600,
+        *,
+        human_confirmed: bool = False,
     ) -> dict[str, Any]:
         """核心方法: 导航到 URL，通过视觉理解实现目标。
 
@@ -123,10 +127,20 @@ class SkyvernBridge:
             data_extraction_schema: 可选的数据提取 schema
             wait_for_completion: 是否等待任务完成
             timeout: 超时秒数 (默认 600s)
+            human_confirmed: 当前任务是否已由可信调用方完成逐次人工确认
 
         Returns:
             包含 success / data / error 的结果字典
         """
+        if human_confirmed is not True:
+            return {
+                "success": False,
+                "error": "human_confirmation_required",
+                "data": None,
+                "blocked": True,
+                "requires_human_confirmation": True,
+            }
+
         if not self.is_available():
             return {
                 "success": False,
@@ -165,10 +179,11 @@ class SkyvernBridge:
                 "error": response.failure_reason if not succeeded else None,
             }
         except Exception as e:
-            logger.error("[SkyvernBridge] run_task 失败: %s", e)
+            safe_error = scrub_secrets(str(e)) or type(e).__name__
+            logger.error("[SkyvernBridge] run_task 失败: %s", safe_error)
             return {
                 "success": False,
-                "error": str(e),
+                "error": safe_error,
                 "data": None,
             }
 
@@ -178,6 +193,8 @@ class SkyvernBridge:
         schema: dict[str, Any],
         prompt: str | None = None,
         max_steps: int = 5,
+        *,
+        human_confirmed: bool = False,
     ) -> dict[str, Any]:
         """从页面提取结构化数据。
 
@@ -196,14 +213,17 @@ class SkyvernBridge:
             goal=goal,
             max_steps=max_steps,
             data_extraction_schema=schema,
+            human_confirmed=human_confirmed,
         )
 
     async def fill_form(
         self,
         url: str,
         fields: dict[str, str],
-        submit: bool = True,
+        submit: bool = False,
         max_steps: int = 10,
+        *,
+        human_confirmed: bool = False,
     ) -> dict[str, Any]:
         """填写页面表单。
 
@@ -216,6 +236,15 @@ class SkyvernBridge:
         Returns:
             包含 success / data / error 的结果字典
         """
+        if human_confirmed is not True:
+            return {
+                "success": False,
+                "error": "human_confirmation_required",
+                "data": None,
+                "blocked": True,
+                "requires_human_confirmation": True,
+            }
+
         field_desc = ", ".join(
             f'"{k}" 填写 "{v}"' for k, v in fields.items()
         )
@@ -227,6 +256,7 @@ class SkyvernBridge:
             url=url,
             goal=goal,
             max_steps=max_steps,
+            human_confirmed=human_confirmed,
         )
 
     async def close(self) -> None:

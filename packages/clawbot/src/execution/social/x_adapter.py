@@ -43,6 +43,7 @@ class XPlatformAdapter(SocialPlatformAdapter):
         title: str = "",
         images: list[str] | None = None,
         worker_fn=None,
+        final_confirmed: bool = False,
         **kwargs,
     ) -> dict:
         """发布到 X — 委托给 x_platform.publish_x_post"""
@@ -53,4 +54,5 @@ class XPlatformAdapter(SocialPlatformAdapter):
             content=content,
             worker_fn=worker_fn,
             image_path=image_path,
+            final_confirmed=final_confirmed,
         )

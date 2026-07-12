@@ -1,6 +1,6 @@
 """
-OpenClaw OMEGA — 多智能体投资团队 (Investment Team)
-基于 CrewAI 的6角色协作投资分析系统。
+OpenClaw OMEGA — 多角色投资团队 (Investment Team)
+基于项目原生异步执行器和统一 LiteLLM 路由的 6 角色协作分析系统。
 
 6个角色:
   投资总监 (Director)   → 接收指令/分配任务/最终决策/汇报
@@ -203,63 +203,8 @@ class InvestmentTeam:
     """
 
     def __init__(self):
-        self._initialized = False
-        self._crew = None
         self._strategy_monitor = StrategyHealthMonitor()
-        logger.info("InvestmentTeam 初始化")
-
-    def _ensure_crew(self):
-        """延迟初始化 CrewAI（避免启动时就加载）"""
-        if self._initialized:
-            return
-        try:
-            from crewai import Agent
-
-            # 创建6个Agent
-            self._director = Agent(
-                role="投资总监",
-                goal="汇总团队分析，做出最优投资决策",
-                backstory=DIRECTOR_PROMPT,
-                verbose=False,
-                allow_delegation=True,
-            )
-            self._researcher = Agent(
-                role="市场研究员",
-                goal="深入分析标的基本面，发现价值洼地和风险点",
-                backstory=RESEARCHER_PROMPT,
-                verbose=False,
-            )
-            self._ta_analyst = Agent(
-                role="技术分析师",
-                goal="通过K线和技术指标判断最佳买卖时机",
-                backstory=TA_PROMPT,
-                verbose=False,
-            )
-            self._quant = Agent(
-                role="量化工程师",
-                goal="用数据和统计方法验证投资假设",
-                backstory=QUANT_PROMPT,
-                verbose=False,
-            )
-            self._risk_officer = Agent(
-                role="首席风控官",
-                goal="确保每笔交易的风险在可控范围内，保护本金安全",
-                backstory=RISK_PROMPT,
-                verbose=False,
-            )
-            self._reviewer = Agent(
-                role="交易复盘官",
-                goal="从每笔交易中提炼教训，持续改进投资策略",
-                backstory=REVIEWER_PROMPT,
-                verbose=False,
-            )
-            self._initialized = True
-            logger.info("CrewAI 投资团队初始化完成（6个Agent）")
-
-        except ImportError:
-            logger.warning("CrewAI 未安装，投资团队使用降级模式")
-        except Exception as e:
-            logger.error("CrewAI 初始化失败: %s", e, exc_info=True)
+        logger.info("InvestmentTeam 原生多角色分析器初始化")
 
     async def analyze(
         self,

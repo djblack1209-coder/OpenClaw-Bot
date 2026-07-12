@@ -1,32 +1,20 @@
-# Monorepo CI — Python 后端测试 + 前端类型检查 + Lint
-# 触发: push/PR 到 main 分支（排除纯文档变更）
-# 优化: uv 缓存 / npm 缓存 / 路径过滤 / 已知失败排除
+# Monorepo CI — 安全门、Python、前端、Frist-API 与文档治理
+# 触发: push/PR 到 main 分支；文档变更同样运行，避免文档治理被路径过滤跳过。
 
 name: OpenClaw CI
 
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - 'AUDIT_PLAN.md'
-      - 'AGENTS.md'
-      - 'scripts/nightly-audit/**'
-      - 'apps/openclaw/**'
-      - '!apps/openclaw-manager-src/**'
   pull_request:
     branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - 'AUDIT_PLAN.md'
-      - 'AGENTS.md'
-      - 'scripts/nightly-audit/**'
-      - 'apps/openclaw/**'
-      - '!apps/openclaw-manager-src/**'
 
-# 同一分支的新推送取消正在跑的旧 CI，节省 Actions 分钟数
+# GitHub 默认未显式指定 shell 时只使用 bash -e；显式指定 bash 才会启用 pipefail。
+defaults:
+  run:
+    shell: bash
+
+# 同一分支的新推送取消正在跑的旧 CI，节省 Actions 分钟数。
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -37,36 +25,36 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 参考 GitHub Actions 官方 marketplace/release（2026-07-02 复核）：v6/v8 动作使用新版 Node 运行时，避免旧 Node 20 预警继续漂移。
-      - uses: actions/checkout@v6
+      # 第三方 Action 固定到 2026-07-12 复核过的完整提交 SHA；行尾保留 tag 便于人工升级。
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 0
 
       - name: Secret scan with Gitleaks
-        uses: gitleaks/gitleaks-action@v3
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Node.js 24
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: "24"
 
       - name: Audit desktop dependencies
         working-directory: apps/openclaw-manager-src
-        run: npm audit --audit-level=high --omit=dev
+        run: npm audit --audit-level=high
 
       - name: Audit Frist-API dependencies
         working-directory: apps/frist-api
-        run: npm audit --audit-level=high --omit=dev
+        run: npm audit --audit-level=high
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v8.2.0
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
 
       - name: Audit backend Python dependencies
         working-directory: packages/clawbot
@@ -77,86 +65,83 @@ jobs:
   # ─── Python 后端测试 + Lint ───
   python-tests:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: packages/clawbot
 
     steps:
-      # 参考 GitHub Actions 官方 marketplace/release（2026-07-02 复核）：checkout/setup-python/cache 均固定到已发布新版主版本。
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v8.2.0
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
 
       - name: Cache uv dependencies
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.cache/uv
-          key: ${{ runner.os }}-uv-${{ hashFiles('packages/clawbot/requirements-dev.txt') }}
+          key: ${{ runner.os }}-uv-${{ hashFiles('packages/clawbot/requirements.txt', 'packages/clawbot/requirements-dev.txt') }}
           restore-keys: ${{ runner.os }}-uv-
 
       - name: Install dependencies
-        run: |
-          uv pip install --system -r requirements-dev.txt
+        run: uv pip install --system -r packages/clawbot/requirements-dev.txt
 
-      - name: Ruff lint check
-        run: |
-          uv pip install --system ruff
-          ruff check src/ --config ruff.toml \
-            --select E,W,F,B \
-            --ignore E501,E402,E701,E702,E741,B008,B905,B904,B004,B005,B007
-
-      - name: Run tests
-        run: |
-          python -m pytest tests/ \
-            --tb=short -q \
-            --cov=src --cov-report=term-missing \
-            --timeout=120 \
-            -o "addopts=" \
-            2>&1 | tee pytest-output.txt
-          # 允许最多 15 个预存失败（当前已知 13 个）
-          # 如果失败数超过 15 说明引入了新回归
-          FAILED_COUNT=$(grep -oP '\d+ failed' pytest-output.txt | grep -oP '\d+' || echo "0")
-          echo "Failed tests: $FAILED_COUNT"
-          if [ "$FAILED_COUNT" -gt 15 ]; then
-            echo "::error::回归检测: 失败测试数 $FAILED_COUNT 超过阈值 15（预存已知 13 个）"
-            exit 1
-          fi
-          echo "✅ 测试通过 (失败数 $FAILED_COUNT <= 阈值 15)"
+      - name: Run Python quality gate
+        run: make ci-python PYTHON=python
         env:
-          # 测试环境变量，避免依赖外部服务
+          # 测试环境变量，避免依赖外部服务。
           TESTING: "true"
           LITELLM_LOG: "ERROR"
 
-      - name: Syntax check source files
-        run: |
-          python -m py_compile multi_main.py
-          find src/ -name "*.py" -exec python -m py_compile {} +
-
-  # ─── 前端 TypeScript 类型检查 ───
-  frontend-typecheck:
+  # ─── 前端 ESLint + TypeScript + 构建 ───
+  frontend-quality:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/openclaw-manager-src
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Set up Node.js 24
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: "24"
           cache: "npm"
           cache-dependency-path: apps/openclaw-manager-src/package-lock.json
 
       - name: Install dependencies
+        working-directory: apps/openclaw-manager-src
         run: npm ci
 
-      - name: TypeScript type check
-        run: npx tsc --noEmit
+      - name: Run frontend quality gate
+        run: make ci-frontend
+
+  # ─── Frist-API 确定性测试 ───
+  frist-api-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: apps/frist-api/package-lock.json
+
+      - name: Install dependencies
+        working-directory: apps/frist-api
+        run: npm ci
+
+      - name: Run Frist-API quality gate
+        run: make ci-frist-api
+
+  # ─── 文档治理 ───
+  docs-governance:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Run docs governance gate
+        run: make ci-docs

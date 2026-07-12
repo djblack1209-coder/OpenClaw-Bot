@@ -79,7 +79,7 @@ async def test_discover_hot_social_topics_prefers_openclaw_practical_candidates(
 
 
 @pytest.mark.asyncio
-async def test_autopost_hot_content_publishes_both_platforms(monkeypatch, tmp_path):
+async def test_autopost_hot_content_creates_reviewable_drafts_without_publishing(monkeypatch, tmp_path):
     monkeypatch.setattr(execution_hub_module, "DB_PATH", tmp_path / "execution_hub.db")
     hub = ExecutionHub(news_fetcher=cast(NewsFetcher, StubFetcher()))
 
@@ -88,10 +88,8 @@ async def test_autopost_hot_content_publishes_both_platforms(monkeypatch, tmp_pa
             return {"success": True, "browser_running": True, "x_ready": True, "xiaohongshu_ready": True, "tabs": 4}
         if action == "render":
             return {"success": True, "x_cover": "/tmp/x-cover.png", "xhs": ["/tmp/cover.png", "/tmp/reasons.png"]}
-        if action == "publish_x":
-            return {"success": True, "url": "https://x.com/test/status/1", "status": "published"}
-        if action == "publish_xhs":
-            return {"success": True, "url": "https://www.xiaohongshu.com/discovery/item/1", "status": "published"}
+        if action.startswith("publish_"):
+            raise AssertionError("自动内容生成不得触发外部发布")
         raise AssertionError(f"unexpected action: {action}")
 
     monkeypatch.setattr(hub, "_run_social_worker", fake_run_social_worker)
@@ -100,8 +98,10 @@ async def test_autopost_hot_content_publishes_both_platforms(monkeypatch, tmp_pa
 
     assert ret["success"] is True
     assert ret["topic"].startswith("OpenClaw")
-    assert ret["results"]["x"]["published"]["success"] is True
-    assert ret["results"]["xiaohongshu"]["published"]["success"] is True
+    assert ret["results"]["x"]["published"]["success"] is False
+    assert ret["results"]["x"]["published"]["requires_human_confirmation"] is True
+    assert ret["results"]["xiaohongshu"]["published"]["success"] is False
+    assert ret["results"]["xiaohongshu"]["published"]["requires_human_confirmation"] is True
     assert "For You" in ret["results"]["x"]["body"] or "热点" in ret["results"]["x"]["body"]
     assert "AI" in ret["results"]["x"]["body"] or "OpenClaw" in ret["results"]["x"]["body"]
     assert "SOP" in ret["results"]["x"]["body"] or "选题" in ret["results"]["x"]["body"]

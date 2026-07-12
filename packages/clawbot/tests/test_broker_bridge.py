@@ -1,16 +1,13 @@
 """Tests for src/broker_bridge.py — pure logic & mock-based (no real IBKR connection)."""
 
-import sys
 import os
+import sys
 import time
-from unittest.mock import MagicMock, AsyncMock, patch
-
-import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from src.broker_bridge import IBKRBridge, SlippageEstimate
-
 
 # ============ IBKRBridge.__init__ ============
 
@@ -193,12 +190,24 @@ async def test_connect_returns_false_without_ib():
 # ============ buy budget check ============
 
 
+async def test_live_order_requires_explicit_human_confirmation():
+    bridge = IBKRBridge(budget=1000.0)
+    bridge.ib = MagicMock()
+    bridge.ib.isConnected.return_value = True
+
+    result = await bridge.buy("AAPL", 1)
+
+    assert result["code"] == "live_trade_confirmation_required"
+    assert result["live_order_blocked"] is True
+    bridge.ib.placeOrder.assert_not_called()
+
+
 async def test_buy_rejects_when_budget_exhausted():
     bridge = IBKRBridge(budget=1000.0)
     bridge.total_spent = 1000.0
     bridge.ib = MagicMock()
     bridge.ib.isConnected.return_value = True
-    result = await bridge.buy("AAPL", 1)
+    result = await bridge.buy("AAPL", 1, human_confirmed=True)
     assert "error" in result
     assert "预算已用完" in result["error"]
 
@@ -224,7 +233,7 @@ async def test_sell_recovers_budget():
     bridge.ib.placeOrder.return_value = mock_trade
 
     with patch("src.broker_bridge.MarketOrder", MagicMock()), patch("asyncio.sleep", new_callable=AsyncMock):
-        result = await bridge.sell("AAPL", 10)
+        result = await bridge.sell("AAPL", 10, human_confirmed=True)
 
     assert result["action"] == "SELL"
     assert result["status"] == "Filled"

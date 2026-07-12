@@ -9,27 +9,20 @@ OMEGA 核心流水线端到端集成测试。
 
 pytest.ini 已配置 asyncio_mode = auto，async 测试不需要装饰器。
 """
-import asyncio
-import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.core.executor import (
+    MultiPathExecutor,
+)
 from src.core.intent_parser import IntentParser, ParsedIntent, TaskType
 from src.core.task_graph import (
     ExecutorType,
     NodeStatus,
-    TaskGraph,
     TaskGraphBuilder,
     TaskGraphExecutor,
-    TaskNode,
 )
-from src.core.executor import (
-    ExecutionResult,
-    MultiPathExecutor,
-    PlatformCircuitBreaker,
-)
-
 
 # ════════════════════════════════════════════════════════════
 #  A. IntentParser 单元测试
@@ -218,6 +211,123 @@ class TestTaskGraph:
         assert completed.nodes["a"].status == NodeStatus.FAILED
         assert completed.nodes["b"].status == NodeStatus.SKIPPED
         assert "依赖节点失败" in (completed.nodes["b"].error or "")
+
+    async def test_dependency_results_are_injected(self):
+        """下游节点必须收到真实上游结果，不能只拿到静态参数。"""
+        received = {}
+
+        async def _upstream(params):
+            return {"analysis": "ready"}
+
+        async def _downstream(params):
+            received.update(params.get("_upstream_results", {}))
+            return {"received": bool(received)}
+
+        b = TaskGraphBuilder("结果传递测试")
+        b.add("upstream", "上游", ExecutorType.LOCAL, _upstream, timeout=5)
+        b.add("downstream", "下游", ExecutorType.LOCAL, _downstream, after=["upstream"], timeout=5)
+        completed = await TaskGraphExecutor().execute(b.build())
+
+        assert completed.is_success is True
+        assert received == {"upstream": {"analysis": "ready"}}
+
+    async def test_fallback_waits_for_failure_and_satisfies_dependents(self):
+        """备选节点只能在主路径失败后运行，并以主节点结果继续下游。"""
+        call_log = []
+        received = {}
+
+        async def _primary(params):
+            call_log.append("primary")
+            raise RuntimeError("primary failed")
+
+        async def _fallback(params):
+            call_log.append("fallback")
+            return {"source": "fallback", "ok": True}
+
+        async def _downstream(params):
+            call_log.append("downstream")
+            received.update(params.get("_upstream_results", {}))
+            return {"done": True}
+
+        b = TaskGraphBuilder("备选链测试")
+        b.add("primary", "主路径", ExecutorType.LOCAL, _primary, timeout=5, retry=1, fallback="fallback")
+        b.add("fallback", "备选路径", ExecutorType.LOCAL, _fallback, timeout=5)
+        b.add("downstream", "下游", ExecutorType.LOCAL, _downstream, after=["primary"], timeout=5)
+        graph = b.build()
+
+        assert graph.nodes["fallback"].status == NodeStatus.WAITING
+        completed = await TaskGraphExecutor().execute(graph)
+
+        assert completed.is_success is True
+        assert call_log == ["primary", "fallback", "downstream"]
+        assert completed.nodes["primary"].status == NodeStatus.SUCCESS
+        assert completed.nodes["fallback"].status == NodeStatus.SUCCESS
+        assert received == {"primary": {"source": "fallback", "ok": True}}
+
+    async def test_dependency_failure_closes_unused_fallback(self):
+        """主节点因依赖失败被跳过时，其待命备选也必须终止，任务图不能半死锁。"""
+
+        async def _fail(params):
+            raise RuntimeError("dependency failed")
+
+        async def _never(params):
+            return {"unexpected": True}
+
+        b = TaskGraphBuilder("依赖失败备选收口测试")
+        b.add("dependency", "失败依赖", ExecutorType.LOCAL, _fail, timeout=5, retry=1)
+        b.add(
+            "primary",
+            "主路径",
+            ExecutorType.LOCAL,
+            _never,
+            after=["dependency"],
+            timeout=5,
+            fallback="fallback",
+        )
+        b.add("fallback", "备选路径", ExecutorType.LOCAL, _never, timeout=5)
+        completed = await TaskGraphExecutor().execute(b.build())
+
+        assert completed.is_complete is True
+        assert completed.nodes["dependency"].status == NodeStatus.FAILED
+        assert completed.nodes["primary"].status == NodeStatus.SKIPPED
+        assert completed.nodes["fallback"].status == NodeStatus.SKIPPED
+
+    async def test_unused_fallback_is_skipped(self):
+        """主路径成功时，备选节点不能被抢跑。"""
+        call_log = []
+
+        async def _primary(params):
+            call_log.append("primary")
+            return {"ok": True}
+
+        async def _fallback(params):
+            call_log.append("fallback")
+            return {"unexpected": True}
+
+        b = TaskGraphBuilder("未触发备选测试")
+        b.add("primary", "主路径", ExecutorType.LOCAL, _primary, timeout=5, fallback="fallback")
+        b.add("fallback", "备选路径", ExecutorType.LOCAL, _fallback, timeout=5)
+        completed = await TaskGraphExecutor().execute(b.build())
+
+        assert completed.is_success is True
+        assert call_log == ["primary"]
+        assert completed.nodes["fallback"].status == NodeStatus.SKIPPED
+
+
+    async def test_task_errors_are_scrubbed_before_persistence(self):
+        """任务异常进入状态、日志和事件前必须脱敏。"""
+        raw_secret = "sk-test-super-secret-value-123456"
+
+        async def _fail(params):
+            raise RuntimeError(f"provider failed api_key={raw_secret}")
+
+        b = TaskGraphBuilder("异常脱敏测试")
+        b.add("fail", "失败节点", ExecutorType.LOCAL, _fail, timeout=5, retry=1)
+        completed = await TaskGraphExecutor().execute(b.build())
+
+        error = completed.nodes["fail"].error or ""
+        assert raw_secret not in error
+        assert "provider failed" in error
 
     # ── B5. get_progress() 统计 ──────────────────────────
 

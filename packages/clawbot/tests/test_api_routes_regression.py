@@ -1,6 +1,7 @@
 import json
 import sys
 import types
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -746,6 +747,7 @@ def test_xianyu_admin_sale_readiness_and_product_template(monkeypatch):
     monkeypatch.setenv("CC_XIANYU_WEBHOOK_URL", "https://frist-api-oracle.245334.xyz/api/ops/xianyu/paid-order")
     monkeypatch.setenv("CC_XIANYU_WEBHOOK_TOKEN", "secret-token")
     monkeypatch.setenv("CC_XIANYU_DEFAULT_PLAN_ID", "day|quotaUsd=30|source=xianyu")
+    xianyu_admin.set_auto_ship_paused(False, "unit test explicit resume")
 
     class _Ws:
         open = True
@@ -1024,6 +1026,7 @@ def test_xianyu_operator_mode_can_pause_auto_ship(monkeypatch):
     monkeypatch.setenv("CC_XIANYU_WEBHOOK_URL", "https://frist-api-oracle.245334.xyz/api/ops/xianyu/paid-order")
     monkeypatch.setenv("CC_XIANYU_WEBHOOK_TOKEN", "secret-token")
     monkeypatch.setenv("CC_XIANYU_DEFAULT_PLAN_ID", "day|quotaUsd=30|source=xianyu")
+    xianyu_admin.set_auto_ship_paused(False, "unit test explicit resume")
 
     class _Ws:
         open = True
@@ -1455,6 +1458,7 @@ def test_xianyu_operator_next_action_waits_for_inventory_evidence(monkeypatch):
     monkeypatch.setenv("CC_XIANYU_AUTO_SHIP_ENABLED", "1")
     monkeypatch.setenv("CC_XIANYU_WEBHOOK_URL", "https://frist-api-oracle.245334.xyz/api/ops/xianyu/paid-order")
     monkeypatch.setenv("CC_XIANYU_WEBHOOK_TOKEN", "secret-token")
+    xianyu_admin.set_auto_ship_paused(False, "unit test explicit resume")
 
     class _Ws:
         open = True

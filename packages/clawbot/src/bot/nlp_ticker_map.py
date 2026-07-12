@@ -58,7 +58,7 @@ _COMMAND_KEYWORDS: list[tuple[str, str, str]] = [
     ("赏金排行", "ops_bounty_top", "赏金排行"),
     ("首发包", "social_launch", "社媒首发包"),
     ("社媒人设", "social_persona", "社媒人设"),
-    ("一键发文", "social_hotpost", "一键发文"),
+    ("一键发文", "social_hotpost", "热点草稿最终确认预览"),
     ("资讯监控列表", "ops_monitor_list", "资讯监控"),
     ("运行资讯监控", "ops_monitor_run", "运行监控"),
     ("自选股", "watchlist", "自选股"),
@@ -94,9 +94,9 @@ _COMMAND_KEYWORDS: list[tuple[str, str, str]] = [
     ("回测", "backtest", "策略回测"),
     ("监控", "monitor", "持仓监控"),
     ("扫描", "scan", "市场扫描"),
-    ("热点", "social_hotpost", "热点发文"),
-    ("发文", "social_post", "双平台发文"),
-    ("小红书", "social_xhs", "发小红书"),
+    ("热点", "social_hotpost", "热点草稿最终确认预览"),
+    ("发文", "social_post", "双平台待审草稿"),
+    ("小红书", "social_xhs", "小红书待审草稿"),
 ]
 
 # jieba 分词器（条件导入，不可用时降级 difflib）

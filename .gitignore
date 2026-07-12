@@ -69,6 +69,7 @@ packages/clawbot/.clawbot/
 packages/clawbot/kiro-gateway/.venv/
 
 # Secrets - NEVER commit
+packages/clawbot/config/renewals.json
 .secrets.baseline
 .openclaw/openclaw.json
 .openclaw/.env

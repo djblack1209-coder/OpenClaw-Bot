@@ -49,7 +49,7 @@ class TradingCommandsMixin:
                 await update.message.reply_text("AutoTrader 已停止")
             elif sub == "auto":
                 trader.set_auto_mode(True)
-                await update.message.reply_text("已切换为全自动模式 - 交易将自动执行，无需确认")
+                await update.message.reply_text("已切换为自动扫描/模拟模式；真实下单仍必须逐笔人工确认")
             elif sub == "manual":
                 trader.set_auto_mode(False)
                 await update.message.reply_text("已切换为手动确认模式 - 交易需要确认后执行")
@@ -57,7 +57,17 @@ class TradingCommandsMixin:
                 await update.message.reply_text("手动触发交易循环...")
                 result = await trader.run_cycle_once()
                 await update.message.reply_text(
-                    '交易循环完成\n\n扫描信号: {:d}\n候选标的: {:d}\n交易提案: {:d}\n已执行: {:d}\n被拒绝: {:d}'.format(int(result["scanned"]), int(result["candidates"]), int(result["proposals"]), int(result["executed"]), int(result["rejected"]))
+                    (
+                        '交易循环完成\n\n扫描信号: {:d}\n候选标的: {:d}\n交易提案: {:d}'
+                        '\n真实执行: {:d}\n模拟执行: {:d}\n被拒绝: {:d}'
+                    ).format(
+                        int(result["scanned"]),
+                        int(result["candidates"]),
+                        int(result["proposals"]),
+                        int(result["executed"]),
+                        int(result.get("simulated", 0)),
+                        int(result["rejected"]),
+                    )
                 )
             elif sub == "confirm":
                 result = await trader.confirm_proposal()

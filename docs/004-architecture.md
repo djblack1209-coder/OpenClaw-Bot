@@ -2,6 +2,17 @@
 
 > 合并自原 010-omega-v2-architecture.md + 011-bot-agent-instructions.md
 
+
+---
+
+## 2026-07-12 当前实现说明
+
+- 本文后续 OMEGA v2 长篇内容保留为架构设计背景；**当前运行事实以本节、`docs/001-project-map.md` 顶部快照和代码为准**。
+- 当前多智能体主链由项目原生 `TaskGraph`、投资团队和投票器承担；未进入主链的 `src/crewai_bridge.py` 已删除，CrewAI 不属于默认运行依赖。
+- 浏览器默认走受控 Playwright/DrissionPage；browser-use、crawl4ai 仅允许在隔离环境按需安装，失败时必须安全降级，不得绕过验证码或平台保护。
+- 调度、自愈、交易、闲鱼和社媒外部写入都受顶层人工确认约束；模型或子任务自报的确认字段不能解锁真实动作。
+- 默认架构验证入口为 `make ci-local`，最终离线审计为 `make final-audit`。
+
 ---
 
 ## 一、OMEGA v2 架构
@@ -16,7 +27,7 @@
 
 **Architecture:** 洋葱分层架构（Layer 0 基础设施 → Layer 1 能力层 → Layer 2 执行层 → Layer 3 编排层 → Layer 4 交互层），所有模块通过事件总线松耦合。现有 `multi_main.py` 入口 + `globals.py` DI容器模式保持不变，新模块以插件方式注册。
 
-**Tech Stack:** Python 3.12 / FastAPI / python-telegram-bot / CrewAI / LangGraph / LiteLLM / mem0 / APScheduler / Redis(可选) / Playwright / Retell AI / PaddleOCR / vectorbt
+**Tech Stack:** Python 3.12 / FastAPI / python-telegram-bot / project-native TaskGraph / LiteLLM / mem0 / APScheduler / Redis(可选) / Playwright / PaddleOCR / vectorbt；CrewAI 仅为隔离环境可选项
 
 ---
 
@@ -45,7 +56,7 @@
 │  Layer 1: 能力层 (Modules)                                   │
 │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌──────────┐ │
 │  │ 投资团队│ │ 社媒运营│ │ 电商博弈│ │ 生活服务│ │ 自进化   │ │
-│  │(CrewAI) │ │(已有)  │ │(已有)  │ │ (新增) │ │ (已有)   │ │
+│  │(原生图) │ │(已有)  │ │(已有)  │ │ (新增) │ │ (已有)   │ │
 │  └────────┘ └────────┘ └────────┘ └────────┘ └──────────┘ │
 ├─────────────────────────────────────────────────────────────┤
 │  Layer 0: 基础设施                                           │
@@ -96,7 +107,7 @@ packages/clawbot/
 │   │   ├── __init__.py
 │   │   ├── investment/
 │   │   │   ├── __init__.py
-│   │   │   ├── team.py              # 多智能体投资团队（CrewAI 6角色）
+│   │   │   ├── team.py              # 项目原生多角色投资团队
 │   │   │   ├── monitor.py           # 盘中自动监控
 │   │   │   ├── strategy_learner.py  # 从X学习交易策略
 │   │   │   └── risk_rules.py        # 风控规则引擎
@@ -232,7 +243,7 @@ packages/clawbot/
 复杂推理/决策      → Claude Opus 4 (free_first)
 快速执行/格式化    → Claude Sonnet / Haiku (free_pool)
 中文社媒理解      → Qwen3-235B / DeepSeek V3 (free_pool)
-投资团队多角色    → CrewAI (内部调度)
+投资团队多角色    → 项目原生团队与投票器（内部调度）
 图像理解/OCR      → Claude Vision / PaddleOCR (本地)
 代码任务          → Claude Code CLI (subprocess)
 本地私密任务      → Ollama (本地)
@@ -327,7 +338,7 @@ class TaskNode:
 
 ### Module 5: 多智能体投资团队 (modules/investment/team.py)
 
-**基于 CrewAI 的6个角色**:
+**项目原生多角色团队（不依赖 CrewAI bridge）**:
 
 | 角色 | Agent ID | 职责 | LLM |
 |------|----------|------|-----|

@@ -253,8 +253,8 @@ class OpsCommandsMixin:
             lines.append("高频入口:")
             lines.append("- /dev <路径> -> 开发/配置流程")
             lines.append("- /brief -> 手动生成执行简报")
-            lines.append("- /hot [x|xhs|all] [题材] -> 抓热点并一键发文")
-            lines.append("- /post_social [题材] -> 自动拉起专用浏览器并双发")
+            lines.append("- /hot [x|xhs|all] [题材] -> 抓热点并生成最终确认预览")
+            lines.append("- /post_social [题材] -> 生成双平台待审草稿")
             lines.append("- /social_plan [题材] -> 生成发文计划")
             lines.append("- /social_repost [题材] -> 生成双平台草稿")
             lines.append("- /social_launch -> 查看数字生命首发包")
@@ -464,7 +464,7 @@ class OpsCommandsMixin:
     def _ops_help(self) -> str:
         return (
             "执行场景命令\n\n"
-            "社媒默认走 OpenClaw 专用浏览器；首次会自动拉起并复用登录态。\n"
+            "社媒默认先生成待审草稿；真实外发必须逐条最终确认。\n"
             "/ops email [all] - 自动整理邮箱\n"
             "/ops brief - 每日行业简报\n"
             "/ops docs index <路径> - 建立本地文档索引\n"
@@ -479,11 +479,11 @@ class OpsCommandsMixin:
             "/social_repost [题材] - 生成双平台草稿\n"
             "/social_launch - 查看数字生命首发包\n"
             "/social_persona - 查看当前社媒人设\n"
-            "/post_social [题材] - 自动拉起专用浏览器并双发\n"
-            "/post_x [题材] - 自动拉起专用浏览器发 X\n"
-            "/post_xhs [题材] - 自动拉起专用浏览器发小红书\n"
-            "/hot [x|xhs|all] [题材] - 抓热点并一键发文\n"
-            "/hotpost [x|xhs|all] [题材] - 抓热点并一键发文\n"
+            "/post_social [题材] - 生成双平台待审草稿\n"
+            "/post_x [题材] - 生成 X 待审草稿\n"
+            "/post_xhs [题材] - 生成小红书待审草稿\n"
+            "/hot [x|xhs|all] [题材] - 抓热点并生成最终确认预览\n"
+            "/hotpost [x|xhs|all] [题材] - 抓热点并生成最终确认预览\n"
             "/ops bounty scan [关键词1,关键词2] - 扫描赏金线索\n"
             "/ops bounty run [关键词1,关键词2] - 自动评估ROI并止损筛选\n"
             "/ops bounty list [status] - 查看赏金线索\n"
@@ -501,7 +501,7 @@ class OpsCommandsMixin:
             "/ops project [路径] - 项目协作周报\n"
             "/ops dev [路径] - 开发流程自动化\n"
             "/ops xianyu start|stop|status|reload - 闲鱼 AI 客服控制\n"
-            "/publish <平台> <文件路径> [标题] - 社媒多平台发布 (抖音/B站/小红书/快手)"
+            "/publish <平台> <文件路径> [标题] - 素材参数预检，不直接外发"
         )
 
     # ---- 社媒多平台发布 (sau_bridge) ----

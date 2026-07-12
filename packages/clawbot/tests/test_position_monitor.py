@@ -466,3 +466,75 @@ class TestMultipleExitConditionsPriority:
         # But SL is checked first.
         assert signal is not None
         assert signal.reason == ExitReason.STOP_LOSS
+
+
+class TestExitExecutionSafety:
+    """真实平仓被拦截或失败时，监控器不得伪造已平仓。"""
+
+    @staticmethod
+    def _position() -> MonitoredPosition:
+        pos = MonitoredPosition(
+            trade_id=77,
+            symbol="AAPL",
+            side="BUY",
+            quantity=10,
+            entry_price=150.0,
+            entry_time=now_et(),
+            stop_loss=145.0,
+        )
+        pos.update_price(140.0)
+        return pos
+
+    @pytest.mark.asyncio
+    async def test_confirmation_required_keeps_position_and_real_journal_open(self):
+        mock_sell = AsyncMock(return_value={
+            "error": "实盘下单需要当前操作的人工确认",
+            "code": "live_trade_confirmation_required",
+            "live_order_blocked": True,
+        })
+        mock_notify = AsyncMock()
+        mock_journal = MagicMock()
+        mock_risk = MagicMock()
+        monitor = PositionMonitor(
+            get_quote_func=AsyncMock(return_value={"price": 140.0}),
+            execute_sell_func=mock_sell,
+            notify_func=mock_notify,
+            journal=mock_journal,
+            risk_manager=mock_risk,
+        )
+        monitor.add_position(self._position())
+
+        await monitor.check_once()
+        first_notification_count = mock_notify.await_count
+        await monitor.check_once()
+
+        assert 77 in monitor.positions
+        mock_journal.close_trade.assert_not_called()
+        mock_risk.record_trade_result.assert_not_called()
+        assert any(
+            "未卖出" in call.args[0] and "人工确认" in call.args[0]
+            for call in mock_notify.await_args_list
+        )
+        assert mock_notify.await_count == first_notification_count
+
+    @pytest.mark.asyncio
+    async def test_broker_error_keeps_position_and_real_journal_open(self):
+        mock_sell = AsyncMock(return_value={"error": "broker unavailable"})
+        mock_notify = AsyncMock()
+        mock_journal = MagicMock()
+        mock_risk = MagicMock()
+        monitor = PositionMonitor(
+            get_quote_func=AsyncMock(return_value={"price": 140.0}),
+            execute_sell_func=mock_sell,
+            notify_func=mock_notify,
+            journal=mock_journal,
+            risk_manager=mock_risk,
+        )
+        monitor.add_position(self._position())
+
+        await monitor.check_once()
+
+        assert 77 in monitor.positions
+        mock_journal.close_trade.assert_not_called()
+        mock_risk.record_trade_result.assert_not_called()
+        assert any("平仓执行失败" in call.args[0] for call in mock_notify.await_args_list)

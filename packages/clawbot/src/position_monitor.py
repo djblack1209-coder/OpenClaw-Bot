@@ -234,6 +234,7 @@ class PositionMonitor:
         self._exit_history: list[ExitSignal] = []
         self._exit_retry_count: dict[int, int] = {}  # trade_id -> 重试次数
         self._max_exit_retries = 3  # 最大重试次数
+        self._manual_confirmation_alerted: set[int] = set()
         # v2.0: 通知节流 (搬运 PanWatch throttle 模式)
         # key: (trade_id, AlertLevel) -> last_alert_timestamp
         self._alert_cooldowns: dict[tuple, float] = {}
@@ -556,24 +557,67 @@ class PositionMonitor:
         if is_partial:
             sell_qty = max(1, int(pos.quantity * 0.5))
 
-        if self.execute_sell:
-            try:
-                sell_result = await self.execute_sell(
-                    symbol=pos.symbol,
-                    quantity=sell_qty,
-                    order_type="MKT",
-                    decided_by="PositionMonitor",
-                    reason=f'{signal.reason.value}: {signal.message}',
+        if not self.execute_sell:
+            if trade_id not in self._manual_confirmation_alerted and self.notify:
+                await self.notify(
+                    "🚨 退出条件已触发，但未卖出\n\n"
+                    f"{signal.message}\n"
+                    "当前没有可用的平仓执行器，请在券商客户端人工处理。\n"
+                    "持仓仍在监控，系统不会把它标记为已平仓。"
                 )
-                logger.info("[Monitor] 平仓执行结果: %s", sell_result)
-            except Exception as e:
-                self._exit_retry_count[trade_id] = retry_count + 1
-                logger.error("[Monitor] 平仓执行失败 (第%d次): %s", retry_count + 1, e)
-                if self.notify:
+            self._manual_confirmation_alerted.add(trade_id)
+            return
+
+        try:
+            sell_result = await self.execute_sell(
+                symbol=pos.symbol,
+                quantity=sell_qty,
+                order_type="MKT",
+                decided_by="PositionMonitor",
+                reason=f'{signal.reason.value}: {signal.message}',
+            )
+            logger.info("[Monitor] 平仓执行结果: %s", sell_result)
+        except Exception as e:
+            self._exit_retry_count[trade_id] = retry_count + 1
+            logger.error("[Monitor] 平仓执行失败 (第%d次): %s", retry_count + 1, e)
+            if self.notify:
+                await self.notify(
+                    f'!! 平仓执行失败 (第{int(retry_count + 1):d}/{int(self._max_exit_retries):d}次) !!\n{signal.message}\n错误: {e}\n{self.check_interval}秒后重试...'
+                )
+            return
+
+        if not isinstance(sell_result, dict):
+            sell_result = {"error": "平仓执行器返回了无效结果"}
+
+        if sell_result.get("error"):
+            if (
+                sell_result.get("live_order_blocked")
+                or sell_result.get("code") == "live_trade_confirmation_required"
+            ):
+                if trade_id not in self._manual_confirmation_alerted and self.notify:
                     await self.notify(
-                        f'!! 平仓执行失败 (第{int(retry_count + 1):d}/{int(self._max_exit_retries):d}次) !!\n{signal.message}\n错误: {e}\n{self.check_interval}秒后重试...'
+                        "🚨 退出条件已触发，但未卖出\n\n"
+                        f"{signal.message}\n"
+                        "真实订单仍需本次操作的人工确认，请在券商客户端或逐笔确认入口处理。\n"
+                        "持仓仍在监控，系统不会把它标记为已平仓。"
                     )
+                self._manual_confirmation_alerted.add(trade_id)
+                logger.warning("[Monitor] %s 平仓等待人工确认，未修改真实持仓状态", pos.symbol)
                 return
+
+            self._exit_retry_count[trade_id] = retry_count + 1
+            logger.error(
+                "[Monitor] 平仓执行失败 (第%d次): %s",
+                retry_count + 1,
+                sell_result.get("error"),
+            )
+            if self.notify:
+                await self.notify(
+                    f'!! 平仓执行失败 (第{int(retry_count + 1):d}/{int(self._max_exit_retries):d}次) !!\n{signal.message}\n错误: {sell_result.get("error")}\n{self.check_interval}秒后重试...'
+                )
+            return
+
+        self._manual_confirmation_alerted.discard(trade_id)
 
         # 2. 更新交易日志
         if self.journal:
@@ -621,6 +665,7 @@ class PositionMonitor:
             # 全部平仓: 移除监控
             self.remove_position(trade_id)
             self._exit_retry_count.pop(trade_id, None)  # 清理重试计数
+            self._manual_confirmation_alerted.discard(trade_id)
 
         # 5. 记录历史
         self._exit_history.append(signal)

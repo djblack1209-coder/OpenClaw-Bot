@@ -342,7 +342,7 @@ function App() {
           <Header currentPage={currentPage} />
           
           {/* 页面内容 */}
-          <main className="flex-1 overflow-hidden px-5 py-4">
+          <main className="flex-1 overflow-hidden px-2 py-2 sm:px-5 sm:py-4">
             {renderPage()}
           </main>
         </div>

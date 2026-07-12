@@ -34,6 +34,7 @@ import {
 import { PageType } from '../../App';
 import { useAppStore } from '@/stores/appStore';
 import { useLanguage } from '@/i18n';
+import { clawbotFetchJson } from '@/lib/tauri-core';
 import clsx from 'clsx';
 
 /* ===== 类型定义 ===== */
@@ -113,7 +114,7 @@ function SidebarButton({
         onClick={() => onNavigate(item.id)}
         title={collapsed ? label : undefined}
         className={clsx(
-          'w-full flex items-center gap-3 rounded-xl transition-all duration-200 relative focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:outline-none',
+          'w-full flex items-center gap-3 rounded-xl transition-all duration-200 relative focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:outline-none max-sm:px-0 max-sm:justify-center',
           collapsed ? 'px-0 py-3 justify-center' : 'px-4 py-3',
         )}
         style={{
@@ -153,7 +154,7 @@ function SidebarButton({
             color: isActive ? 'var(--accent-cyan)' : 'rgba(255,255,255,0.5)',
           }}
         />
-        {!collapsed && <span className="truncate">{label}</span>}
+        {!collapsed && <span className="truncate max-sm:hidden">{label}</span>}
       </button>
     </li>
   );
@@ -173,10 +174,13 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
   useEffect(() => {
     if (isRunning) return; // Tauri 已经知道在线，不用再查
     let cancelled = false;
-    const check = () => {
-      fetch('http://127.0.0.1:18790/api/v1/status', { signal: AbortSignal.timeout(3000) })
-        .then(r => { if (!cancelled && r.ok) setApiAlive(true); })
-        .catch(() => { if (!cancelled) setApiAlive(false); });
+    const check = async () => {
+      try {
+        await clawbotFetchJson('/api/v1/status', undefined, 3000);
+        if (!cancelled) setApiAlive(true);
+      } catch {
+        if (!cancelled) setApiAlive(false);
+      }
     };
     check();
     const timer = setInterval(check, 15000);
@@ -200,7 +204,7 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
   return (
     <aside
       className={clsx(
-        'transition-all duration-300 flex flex-col relative z-10',
+        'transition-all duration-300 flex flex-col relative z-10 max-sm:w-[56px]',
         sidebarCollapsed ? 'w-[56px]' : 'w-[240px]',
       )}
       style={{
@@ -210,7 +214,7 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
     >
       {/* ===== Logo 区域 ===== */}
       <div
-        className="h-14 flex items-center px-3 titlebar-drag flex-shrink-0"
+        className="h-14 flex items-center px-3 titlebar-drag flex-shrink-0 max-sm:px-0 max-sm:justify-center"
         style={{ borderBottom: '1px solid var(--glass-border)' }}
       >
         <div className="flex items-center gap-2 titlebar-no-drag">
@@ -224,7 +228,7 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
             <span className="text-sm">🦞</span>
           </div>
           {!sidebarCollapsed && (
-            <div className="flex flex-col">
+            <div className="flex flex-col max-sm:hidden">
               <span
                 className="font-display font-bold leading-tight"
                 style={{ fontSize: '14px', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}
@@ -261,7 +265,7 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
           <>
             <div className="my-2 mx-2 h-px" style={{ background: 'var(--glass-border)' }} />
             {!sidebarCollapsed && (
-              <div className="px-2 py-1 mb-1">
+              <div className="px-2 py-1 mb-1 max-sm:hidden">
                 <span
                   className="font-mono uppercase"
                   style={{ fontSize: '10px', letterSpacing: '1.5px', color: 'var(--accent-cyan)', opacity: 0.5 }}
@@ -292,7 +296,7 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
       >
         {/* 系统状态指示 */}
         {!sidebarCollapsed ? (
-          <div className="flex items-center gap-2 px-2 py-1.5 mb-2 rounded-lg"
+          <div className="flex items-center gap-2 px-2 py-1.5 mb-2 rounded-lg max-sm:hidden"
             style={{ background: 'rgba(255,255,255,0.02)' }}
           >
             <span className={isOnline ? 'status-dot-green' : 'status-dot-red'} />
@@ -314,13 +318,19 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
           </div>
         )}
 
+        {!sidebarCollapsed && (
+          <div className="hidden max-sm:flex justify-center py-2 mb-1">
+            <span className={isOnline ? 'status-dot-green' : 'status-dot-red'} />
+          </div>
+        )}
+
         {/* DEV 模式开关 + 折叠按钮 */}
-        <div className={clsx('flex items-center', sidebarCollapsed ? 'flex-col gap-2' : 'gap-1')}>
+        <div className={clsx('flex items-center max-sm:flex-col max-sm:gap-2', sidebarCollapsed ? 'flex-col gap-2' : 'gap-1')}>
           {/* DEV 开关 */}
           <button
             onClick={toggleDevMode}
             title={devMode ? t('sidebar.devModeOn') : t('sidebar.devModeOff')}
-            className="flex items-center justify-center rounded-lg transition-all duration-200 focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:outline-none"
+            className="flex items-center justify-center rounded-lg transition-all duration-200 focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:outline-none max-sm:!w-8 max-sm:!p-0"
             style={{
               width: sidebarCollapsed ? 32 : 'auto',
               height: 32,
@@ -345,13 +355,13 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
             }}
           >
             <Terminal size={12} />
-            {!sidebarCollapsed && <span className="ml-1">DEV</span>}
+            {!sidebarCollapsed && <span className="ml-1 max-sm:hidden">DEV</span>}
           </button>
 
           {/* 用户头像区域（三击解锁 dev） */}
           {!sidebarCollapsed && (
             <button
-              className="flex items-center gap-2 flex-1 min-w-0 rounded-lg px-2 py-1 transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:outline-none"
+              className="flex items-center gap-2 flex-1 min-w-0 rounded-lg px-2 py-1 transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:outline-none max-sm:hidden"
               style={{ color: 'var(--text-tertiary)' }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
@@ -376,7 +386,7 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
           {/* 折叠按钮 */}
           <button
             onClick={toggleSidebar}
-            className="flex items-center justify-center w-8 h-8 rounded-lg transition-colors duration-200 flex-shrink-0 focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:outline-none"
+            className="flex items-center justify-center w-8 h-8 rounded-lg transition-colors duration-200 flex-shrink-0 focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:outline-none max-sm:hidden"
             style={{ color: 'var(--text-tertiary)' }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = 'rgba(255,255,255,0.06)';

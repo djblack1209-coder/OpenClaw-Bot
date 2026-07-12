@@ -1,6 +1,36 @@
 # OpenClaw Bot — 项目全景地图
 
-> 最后更新: 2026-05-09 (冗余清理与生产状态收口) | AI 开发助手请先读完本文再开始工作 | 当前健康状态以 `docs/009-health.md` 和 `docs/002-changelog.md` 最近条目为准
+> 最后更新: 2026-07-12（最终审计快速收口） | 本页顶部快照是当前权威事实；历史规模数字只作背景 | 当前健康状态以 `docs/009-health.md` 顶部快照为准
+
+
+## 2026-07-12 当前权威快照
+
+### 代码与资产边界
+
+| 路径 | 所有权 | 当前责任 | 默认验证 |
+|---|---|---|---|
+| `packages/clawbot/` | 本项目自有 | Python 后端、Bot、FastAPI、调度、交易/社媒/闲鱼/Intel 安全链 | `make ci-python` |
+| `apps/frist-api/` | 本项目自有 | 用户站、管理员入口、额度/兑换/支付回调、New-API 桥 | `make ci-frist-api` |
+| `apps/openclaw-manager-src/` | 本项目自有 | Tauri 2 + React 桌面控制面 | `make ci-frontend` |
+| `apps/openclaw/` | 运行资产 | Bot 人设、Skill、Memory/Tool 定义；路径保持稳定 | 对应 Bot/渠道验收 |
+| `packages/new-api-upstream/` | 上游 submodule | 固定上游源码；品牌适配走补丁和同步流程 | `make new-api-check` |
+| `packages/openclaw-npm/`、`packages/awesome-*`、`packages/opencode-skills/` | 上游/参考包 | 仅审查本项目实际接入和自有补丁，不做全仓重写 | 各包自身合同 |
+| `.venv*`、`node_modules`、`target`、`data`、`logs`、`output`、浏览器 Profile | 依赖/生成/敏感运行数据 | 不作为源码批量修改对象，必须被忽略和脱敏 | `make final-audit` |
+
+### 当前稳定入口
+
+- 后端主入口：`packages/clawbot/multi_main.py`；安全启动脚本为 `packages/clawbot/scripts/start_clawbot.sh`。
+- 闲鱼只读/受控入口：`packages/clawbot/scripts/start_xianyu.sh`；状态未知时默认暂停，真实发卡和确认发货不能自动越过人工门。
+- 桌面开发入口：`apps/openclaw-manager-src` 的 `npm run tauri:dev`；打包只能使用 `make tauri-build`，本轮未安装应用。
+- 默认确定性门：`make ci-local`；统一离线审计：`make final-audit`。
+- 本地审计 worktree 必须放在主仓库 `.worktrees/` 内；清理命令不得强制删除有效 worktree 或未知未提交工作。
+
+### 当前架构取舍
+
+- 多智能体主链使用项目原生 TaskGraph、投资团队和投票器；未接入主链的 `crewai_bridge.py` 已删除，CrewAI 仅可在隔离环境重新评估。
+- 浏览器默认使用受控 Playwright/DrissionPage 路径；`browser-use`、`crawl4ai` 因依赖安全冲突不默认安装，功能会安全降级。
+- 真实交易、付款、闲鱼发货、社媒发布、外部删除和系统写操作必须由顶层人工确认；模型输出里的“已确认”字段不可信。
+- New-API 当前固定 `v1.0.0-rc.4`；是否升级属于单独授权决策，本轮未改指针。
 
 ## 一句话概述
 
@@ -19,12 +49,12 @@
 | LLM 路由 | LiteLLM (39k⭐) + instructor (10k⭐) | 100+ 模型统一调用 + 结构化输出 |
 | 内控 API | FastAPI (80k⭐) + Uvicorn | REST API 供 Tauri Manager 调用 |
 | 记忆层 | mem0 (50k⭐) + SQLite | 向量嵌入 + 语义搜索 + 冲突消解 |
-| 浏览器 | browser-use (81k⭐) + DrissionPage (11.6k⭐) + Skyvern (11k⭐) | AI 浏览器自动化 + 反检测 CDP + 视觉 RPA |
+| 浏览器 | Playwright + DrissionPage；browser-use/Skyvern 可选 | 默认受控自动化；可选代理失败时安全停止 |
 | 可观测 | Langfuse (23.4k⭐) + Phoenix OTEL (9k⭐) | 全链路追踪 + 成本分析 |
-| 多Agent | CrewAI (46.6k⭐) | 动态角色 + 结构化任务编排 |
+| 多Agent | 项目原生 TaskGraph + 投票器；CrewAI 可选 | 默认主链不依赖 CrewAI |
 | 交易数据 | yfinance + AKShare (14k⭐) + CCXT (35k⭐) | 美股/A股/加密货币 |
 | 技术分析 | pandas-ta (5k⭐) + ta | 200+ 标准指标 |
-| 网页抓取 | crawl4ai (62.4k⭐) + Jina Reader | 结构化抽取 + LLM 降级 |
+| 网页抓取 | Jina/Tavily 降级链；crawl4ai 可选 | crawl4ai 不默认安装，不读取隐藏 Key |
 | 通知 | Apprise (16.1k⭐) | 100+ 渠道 (Discord/Slack/微信等) |
 | 日志 | loguru (23.7k⭐) | 彩色控制台 + JSON 文件 + 自动轮转 |
 | 重试 | tenacity (6k⭐) + stamina (1.4k⭐) | 指数退避 + 声明式重试 |
@@ -56,7 +86,7 @@
 | 组件 | 说明 |
 |---|---|
 | Docker Compose | Redis + OpenClaw 主服务 |
-| Redis 7 | 任务队列持久化 (可选) |
+| Redis 7 | 可选/兼容部署；当前默认确定性测试不依赖 |
 | API 端口 | 18790 (内控 REST) / 9090 (Prometheus) |
 | macOS LaunchAgent | 开机自启服务管理 |
 

@@ -286,8 +286,13 @@ def test_social_draft_approve_then_publish(isolate_state_file):
     assert approved_state["drafts"][0]["approved_by"] == "owner"
 
     with patch("src.execution.social.worker_bridge.run_social_worker", return_value={"success": True, "url": "https://x.com/demo/status/1"}) as worker:
-        result = __import__("asyncio").run(ClawBotRPC._rpc_social_draft_publish(0))
+        blocked = __import__("asyncio").run(ClawBotRPC._rpc_social_draft_publish(0))
+        result = __import__("asyncio").run(
+            ClawBotRPC._rpc_social_draft_publish(0, final_confirmed=True)
+        )
 
+    assert blocked["success"] is False
+    assert blocked["requires_human_confirmation"] is True
     assert result["success"] is True
     worker.assert_called_once()
     final_state = ss_module._load_state()

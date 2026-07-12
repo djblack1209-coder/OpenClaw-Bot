@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 export { resolveSmtpSocketTargets } from './email.js';
 import { createNewApiBridge } from './newApiBridge.js';
+import { clientIp, requestOrigin } from './shared.js';
 import {
   buildBalanceAlertEmail,
   buildPasswordResetEmail,
@@ -131,6 +132,7 @@ const ADMIN_2FA_COOKIE = 'frist_admin_2fa';
 const TOTP_STEP_SECONDS = 30;
 const TOTP_DIGITS = 6;
 const DEFAULT_SLA_RETENTION_DAYS = 30;
+const DEFAULT_SECURITY_STATE_MAX_ENTRIES = 10_000;
 const LEGACY_CARD_CODES = new Map([
   ['CC-DAY-001', { label: 'Codex API 30刀额度/日卡', plan: 'day', days: 1, packageCents: 800, quotaUsd: 30, priceCny: 5.88 }],
   ['CC-MONTH-001', { label: 'Codex API 月卡 Pro', plan: 'month', days: 30, packageCents: 8000, quotaUsd: 300, priceCny: 58.88 }],
@@ -165,7 +167,7 @@ export function createFristApiServer(options = {}) {
   const serverOptions = normalizeServerOptions(options);
   const newApiBridge = createNewApiBridge(serverOptions);
   const store = createRuntimeStore(serverOptions.dataFile, serverOptions.dataEncryptionKey);
-  const securityState = createSecurityState();
+  const securityState = createSecurityState(serverOptions);
   let stopChannelMonitor = null;
   let stopRedemptionStatusSync = null;
   let stopUpstreamBalanceSync = null;
@@ -329,6 +331,7 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
 
   if (request.method === 'POST' && url.pathname === '/api/frist/verify') {
     const body = await readJsonBody(request);
+    assertAuthRateLimit(securityState, request, serverOptions);
     const result = await store.mutate((data) => {
       requireCsrfIfEnabled(data, request, serverOptions);
       return verifyCustomer(data, request, body);
@@ -1065,7 +1068,7 @@ function loginCustomer(data, body, serverOptions) {
   }
 
   const now = new Date().toISOString();
-  if (!isModernPasswordHash(user.passwordHash) || passwordResult.secret !== serverOptions.passwordHashSecret) {
+  if (!isModernPasswordHash(user.passwordHash) || !safeEqual(passwordResult.secret, serverOptions.passwordHashSecret)) {
     user.passwordHash = hashPassword(password, serverOptions.passwordHashSecret);
     data.events.push({ type: 'password_hash_upgraded', userId: user.id, at: now });
   }
@@ -1184,7 +1187,7 @@ function verifyCustomer(data, request, body) {
   if (!user.verificationCode && user.emailVerified) {
     return { user: sanitizeUser(user) };
   }
-  if (String(body.code || '') !== user.verificationCode) {
+  if (!safeEqual(String(body.code || ''), user.verificationCode)) {
     throw publicError(400, '验证码不正确');
   }
   user.emailVerified = true;
@@ -1319,10 +1322,10 @@ function claimAdminIdentity(data, request, body, serverOptions) {
   const code = String(body.code || '').trim();
   const codeHash = hashAdminClaimCode(code);
   const allowedHashes = serverOptions.adminClaimCodeHashes || [];
-  if (!code || allowedHashes.length === 0 || !allowedHashes.includes(codeHash)) {
+  if (!code || allowedHashes.length === 0 || !allowedHashes.some((allowedHash) => safeEqual(allowedHash, codeHash))) {
     throw publicError(403, '身份码无效');
   }
-  if (data.usedAdminClaimCodeHashes.includes(codeHash)) {
+  if (data.usedAdminClaimCodeHashes.some((usedHash) => safeEqual(usedHash, codeHash))) {
     throw publicError(409, '身份码已失效');
   }
 
@@ -1574,7 +1577,9 @@ function handleWechatPaymentNotification(data, request, rawBody, serverOptions) 
     headers: request.headers,
     rawBody,
     paymentConfig: serverOptions.paymentConfig,
+    now: currentDate(serverOptions),
   });
+  assertWechatPaymentIdentity(transaction, serverOptions.paymentConfig.wechat);
   const orderId = String(transaction.out_trade_no || '').trim();
   if (!orderId) {
     throw publicError(400, '微信支付回调缺少订单号');
@@ -1584,21 +1589,33 @@ function handleWechatPaymentNotification(data, request, rawBody, serverOptions) 
       provider: 'wechat',
       status: 'ignored',
       reason: transaction.trade_state || 'not_success',
-      payload: sanitizePaymentCallbackPayload(transaction),
+      payload: sanitizePaymentCallbackPayload(transaction, 'wechat'),
     });
     return { code: 'SUCCESS', message: '成功' };
   }
   confirmProviderPayment(data, orderId, {
     provider: 'wechat',
     transactionId: transaction.transaction_id || '',
-    payload: sanitizePaymentCallbackPayload(transaction),
+    payload: sanitizePaymentCallbackPayload(transaction, 'wechat'),
     rawPayload: transaction,
   });
   return { code: 'SUCCESS', message: '成功' };
 }
 
+function assertWechatPaymentIdentity(transaction, config = {}) {
+  const appId = String(transaction?.appid || '').trim();
+  const merchantId = String(transaction?.mchid || '').trim();
+  if (!appId || !merchantId || !safeEqual(appId, config.appid) || !safeEqual(merchantId, config.mchid)) {
+    throw publicError(400, '微信支付回调应用或商户不匹配');
+  }
+}
+
 function handleAlipayPaymentNotification(data, rawBody, serverOptions) {
-  const notification = parseAlipayNotification(rawBody, serverOptions.paymentConfig.alipay.publicKey);
+  const notification = parseAlipayNotification(
+    rawBody,
+    serverOptions.paymentConfig.alipay.publicKey,
+    serverOptions.paymentConfig.alipay.appId,
+  );
   const orderId = String(notification.out_trade_no || '').trim();
   if (!orderId) {
     throw publicError(400, '支付宝回调缺少订单号');
@@ -1609,14 +1626,14 @@ function handleAlipayPaymentNotification(data, rawBody, serverOptions) {
       provider: 'alipay',
       status: 'ignored',
       reason: tradeStatus || 'not_success',
-      payload: sanitizePaymentCallbackPayload(notification),
+      payload: sanitizePaymentCallbackPayload(notification, 'alipay'),
     });
     return { ok: true };
   }
   confirmProviderPayment(data, orderId, {
     provider: 'alipay',
     transactionId: notification.trade_no || '',
-    payload: sanitizePaymentCallbackPayload(notification),
+    payload: sanitizePaymentCallbackPayload(notification, 'alipay'),
     rawPayload: notification,
   });
   return { ok: true };
@@ -1630,6 +1647,25 @@ function confirmProviderPayment(data, orderId, details = {}) {
   const user = data.users.find((item) => item.id === order.userId);
   if (!user) {
     throw publicError(404, '支付订单用户不存在');
+  }
+  const callbackProvider = String(details.provider || '').trim();
+  const orderProvider = String(order.provider || '').trim();
+  if (!callbackProvider || !orderProvider || !safeEqual(callbackProvider, orderProvider)) {
+    throw publicError(400, '支付渠道与订单不一致');
+  }
+  const transactionId = String(details.transactionId || '').trim();
+  if (!transactionId) {
+    throw publicError(400, '支付回调缺少交易号');
+  }
+  const reusedTransaction = data.paymentOrders.find(
+    (item) =>
+      item.id !== order.id &&
+      safeEqual(item.provider, callbackProvider) &&
+      item.transactionId &&
+      safeEqual(item.transactionId, transactionId),
+  );
+  if (reusedTransaction) {
+    throw publicError(409, '支付交易号已被其他订单使用');
   }
   const now = new Date().toISOString();
   if (order.status === 'paid' || order.status === 'confirmed') {
@@ -1646,7 +1682,7 @@ function confirmProviderPayment(data, orderId, details = {}) {
   creditUserForOrder(user, order, now);
   order.status = 'paid';
   order.provider = details.provider || order.provider || '';
-  order.transactionId = details.transactionId || '';
+  order.transactionId = transactionId;
   order.paidAt = now;
   order.updatedAt = now;
   order.callbackPayload = details.payload || {};
@@ -1812,11 +1848,15 @@ function sanitizeProviderPayment(payment) {
   };
 }
 
-function sanitizePaymentCallbackPayload(payload = {}) {
-  const blocked = new Set(['openid', 'payer', 'buyer_logon_id', 'buyer_user_id', 'fund_bill_list']);
+function sanitizePaymentCallbackPayload(payload = {}, provider = '') {
+  const allowedFields = provider === 'wechat'
+    ? new Set(['appid', 'mchid', 'out_trade_no', 'transaction_id', 'trade_state', 'success_time', 'amount'])
+    : provider === 'alipay'
+      ? new Set(['app_id', 'out_trade_no', 'trade_no', 'trade_status', 'total_amount'])
+      : new Set(['out_trade_no', 'transaction_id', 'trade_no', 'trade_state', 'trade_status']);
   return Object.fromEntries(
     Object.entries(payload)
-      .filter(([key]) => !blocked.has(key))
+      .filter(([key]) => allowedFields.has(key))
       .map(([key, value]) => [key, typeof value === 'object' ? JSON.stringify(value).slice(0, 300) : String(value).slice(0, 300)]),
   );
 }
@@ -3945,9 +3985,7 @@ async function routeChatCompletion(data, request, body, serverOptions, options =
         model,
         pool: credential.pool,
         quotaCost,
-        endpoint: credential.baseUrl,
         client,
-        apiKeyPreview: userKey.preview || maskKey(userKey.secret),
         inferenceEffort: String(routedBody.reasoning_effort || routedBody.reasoning?.effort || routedBody.thinking?.budget_tokens || '默认'),
         requestType: options.requestType || (isImageGenerationModel(model) ? '图片' : '文本'),
         billingMode: credential.pool === 'day' || credential.pool === 'hour' || credential.pool === 'month' ? '套餐' : '余额',
@@ -4600,7 +4638,7 @@ async function maybeNotifyCredentialIssue(data, credential, reason, serverOption
     type: 'upstream_key_issue',
     issueType,
     reason: String(reason || '').slice(0, 120),
-    keyPreview: credential.keyPreview || maskKey(credential.rawKey),
+    keyFingerprint: tokenFingerprint(credential.rawKey || credential.id),
     pool: credential.pool || 'default',
     providerGroup: effectiveCredentialGroup(credential),
     modelGroup: credential.modelGroup || 'All',
@@ -4943,10 +4981,15 @@ function clearRouteAffinity(data, sessionKey, credentialId) {
   }
 }
 
-function createSecurityState() {
+function createSecurityState(serverOptions = {}) {
+  const maxEntries = normalizePositiveInteger(
+    serverOptions.securityStateMaxEntries,
+    DEFAULT_SECURITY_STATE_MAX_ENTRIES,
+  );
   return {
     captchas: new Map(),
     rateLimits: new Map(),
+    maxEntries,
   };
 }
 
@@ -4959,6 +5002,7 @@ function createCaptchaChallenge(securityState, serverOptions) {
     };
   }
   cleanupCaptchas(securityState);
+  ensureMapCapacity(securityState.captchas, securityState.maxEntries);
   const challenge = buildRegistrationCaptcha();
   const id = createId('cap');
   securityState.captchas.set(id, {
@@ -5144,21 +5188,38 @@ function assertRateLimit(securityState, key, max, windowMs) {
     return;
   }
   const now = Date.now();
-  const bucket = securityState.rateLimits.get(key) || { count: 0, resetAt: now + windowMs };
-  if (bucket.resetAt <= now) {
+  let bucket = securityState.rateLimits.get(key);
+  if (!bucket) {
+    cleanupExpiredRateLimits(securityState, now);
+    ensureMapCapacity(securityState.rateLimits, securityState.maxEntries);
+    bucket = { count: 0, resetAt: now + windowMs };
+  } else if (bucket.resetAt <= now) {
     bucket.count = 0;
     bucket.resetAt = now + windowMs;
   }
   bucket.count += 1;
+  securityState.rateLimits.delete(key);
   securityState.rateLimits.set(key, bucket);
   if (bucket.count > max) {
     throw publicError(429, '请求过于频繁，请稍后再试');
   }
 }
 
-function clientIp(request) {
-  const forwarded = headerValue(request, 'x-forwarded-for').split(',')[0]?.trim();
-  return forwarded || request.socket?.remoteAddress || 'unknown';
+function cleanupExpiredRateLimits(securityState, now = Date.now()) {
+  for (const [key, bucket] of securityState.rateLimits) {
+    if (!bucket || Number(bucket.resetAt || 0) <= now) {
+      securityState.rateLimits.delete(key);
+    }
+  }
+}
+
+function ensureMapCapacity(map, maxEntries) {
+  const limit = normalizePositiveInteger(maxEntries, DEFAULT_SECURITY_STATE_MAX_ENTRIES);
+  while (map.size >= limit) {
+    const oldest = map.keys().next().value;
+    if (oldest === undefined) break;
+    map.delete(oldest);
+  }
 }
 
 function headerValue(request, name) {
@@ -5804,6 +5865,10 @@ function normalizeServerOptions(options) {
     authRateLimitWindowMs: Number(
       options.authRateLimitWindowMs ?? process.env.FRIST_API_AUTH_RATE_LIMIT_WINDOW_MS ?? 60_000,
     ),
+    securityStateMaxEntries: normalizePositiveInteger(
+      options.securityStateMaxEntries,
+      DEFAULT_SECURITY_STATE_MAX_ENTRIES,
+    ),
     redemptionRateLimitMax: Number(options.redemptionRateLimitMax ?? process.env.FRIST_API_REDEEM_RATE_LIMIT_MAX ?? 12),
     redemptionRateLimitWindowMs: Number(
       options.redemptionRateLimitWindowMs ?? process.env.FRIST_API_REDEEM_RATE_LIMIT_WINDOW_MS ?? 60_000,
@@ -6119,7 +6184,7 @@ function createCredentialIssueNotifier(fetchImpl) {
     const message = [
       `[CC中转] ${payload.issueType === 'quota' ? 'Key 额度异常' : 'Key 认证异常'}`,
       `渠道: ${payload.pool || 'default'} / ${payload.providerGroup || 'Unknown'}`,
-      `Key: ${payload.keyPreview || 'unknown'}`,
+      `Key 指纹: ${payload.keyFingerprint || 'unknown'}`,
       `状态: ${payload.status || 'unknown'}`,
       `原因: ${payload.reason || 'unknown'}`,
       `剩余额度: ${Number(payload.quotaRemaining || 0)} / ${Number(payload.quotaTotal || 0)}`,
@@ -6296,7 +6361,7 @@ function redirectToCanonicalHost({ request, response, url, serverOptions }) {
   if (!serverOptions.canonicalHost || !serverOptions.redirectHosts?.size) {
     return false;
   }
-  const requestHost = normalizeCanonicalHost(request.headers['x-forwarded-host'] || request.headers.host || '');
+  const requestHost = normalizeCanonicalHost(url.host || '');
   if (!requestHost || !serverOptions.redirectHosts.has(requestHost)) {
     return false;
   }
@@ -6384,7 +6449,7 @@ function requireUserKey(data, request) {
 
 function requireAdmin(data, request, serverOptions, options = {}) {
   const token = request.headers['x-admin-token'];
-  if (token && token === serverOptions.adminToken) {
+  if (token && safeEqual(token, serverOptions.adminToken)) {
     requireAdminSecondFactorIfEnabled(data, request, serverOptions, options);
     return;
   }
@@ -6696,10 +6761,10 @@ async function validateAdminPageGate({ request, url, pathname, serverOptions, st
   }
   const cookies = parseCookies(request.headers.cookie || '');
   const code = url.searchParams.get('code') || '';
-  if (cookies.frist_admin_gate === hashId(serverOptions.adminPageCode)) {
+  if (safeEqual(cookies.frist_admin_gate, hashId(serverOptions.adminPageCode))) {
     return {};
   }
-  if (code !== serverOptions.adminPageCode) {
+  if (!safeEqual(code, serverOptions.adminPageCode)) {
     if (store) {
       const data = await store.load();
       const { user } = findSession(data, request);
@@ -6767,8 +6832,7 @@ function csrfCookie(csrfToken, request, serverOptions) {
 }
 
 function shouldUseSecureCookie(request, serverOptions) {
-  const forwardedProto = String(request.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
-  return forwardedProto === 'https' || isPublicHttpsGateway(serverOptions.publicGatewayBaseUrl);
+  return requestOrigin(request).startsWith('https://') || isPublicHttpsGateway(serverOptions.publicGatewayBaseUrl);
 }
 
 async function readJsonBody(request) {
@@ -6831,34 +6895,6 @@ function normalizePublicError(error) {
     return error;
   }
   return publicError(500, String(error?.message || '服务暂时不可用'));
-}
-
-function requestOrigin(request) {
-  const forwardedProtocol = firstHeaderToken(request.headers['x-forwarded-proto']);
-  const protocol = forwardedProtocol.toLowerCase().replace(/:$/, '') === 'https' ? 'https' : 'http';
-  const forwardedHost = firstHeaderToken(request.headers['x-forwarded-host']);
-  const hostHeader = firstHeaderToken(request.headers.host);
-  const host = normalizeOriginHost(forwardedHost || hostHeader) || '127.0.0.1';
-  const origin = `${protocol}://${host}`;
-  try {
-    new URL(origin);
-    return origin;
-  } catch {
-    return 'http://127.0.0.1';
-  }
-}
-
-function firstHeaderToken(value) {
-  const raw = Array.isArray(value) ? value[0] : String(value || '');
-  return raw.split(',')[0].trim();
-}
-
-function normalizeOriginHost(value) {
-  const raw = String(value || '').trim();
-  if (!raw) {
-    return '';
-  }
-  return raw.replace(/^https?:\/\//i, '').split('/')[0].trim();
 }
 
 function parseCookies(header) {
@@ -7266,10 +7302,10 @@ function buildUsageRecords(data, user) {
       const key = keyById.get(event.keyId);
       return {
         id: `${event.at || ''}-${event.keyId || ''}-${event.model || ''}`,
-        apiKey: event.apiKeyPreview || key?.preview || 'sk-******',
+        apiKey: key?.preview || 'sk-******',
         model: normalizeOfficialModelName(event.model || 'unknown'),
         inferenceEffort: event.inferenceEffort || '默认',
-        endpoint: event.endpoint || '-',
+        endpoint: '/v1',
         type: event.requestType || '文本',
         billingMode: event.billingMode || '余额',
         client: event.client || clientLabelFromEvent(event),
@@ -8696,9 +8732,14 @@ function parseSecretList(value) {
 }
 
 function safeEqual(left, right) {
-  const leftBuffer = Buffer.from(String(left || ''));
-  const rightBuffer = Buffer.from(String(right || ''));
-  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+  const leftDigest = createHash('sha256').update(String(left ?? '')).digest();
+  const rightDigest = createHash('sha256').update(String(right ?? '')).digest();
+  return timingSafeEqual(leftDigest, rightDigest);
+}
+
+function normalizePositiveInteger(value, fallback) {
+  const number = Math.floor(Number(value));
+  return Number.isSafeInteger(number) && number > 0 ? number : fallback;
 }
 
 function normalizeTotpSecrets(value) {

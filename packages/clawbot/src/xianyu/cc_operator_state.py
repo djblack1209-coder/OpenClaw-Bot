@@ -27,9 +27,9 @@ def operator_state_file() -> Path:
 
 
 def _env_pause_default() -> bool:
-    """读取环境变量中的兜底暂停状态。"""
+    """读取环境变量中的兜底暂停状态；未明确放行时默认暂停。"""
     raw = os.getenv("CC_XIANYU_AUTO_SHIP_PAUSED", "").strip().lower()
-    return raw in {"1", "true", "yes", "on"}
+    return raw not in {"0", "false", "no", "off"}
 
 
 def _now_iso() -> str:
@@ -205,6 +205,27 @@ def authorize_one_shot_delivery(reason: str = "", ttl_seconds: int = 180) -> dic
 def peek_one_shot_delivery() -> dict[str, Any]:
     """只读查看当前是否存在有效的单次发卡放行票。"""
     return get_operator_state().get("one_shot_delivery") or _normalize_one_shot({})
+
+
+def revoke_one_shot_delivery(reason: str = "") -> dict[str, Any]:
+    """撤销尚未消费的单次放行票；桥接器结束、失败或超时时都应调用。"""
+    state = get_operator_state()
+    one_shot = _normalize_one_shot(state.get("one_shot_delivery"))
+    was_active = bool(one_shot.get("active"))
+    one_shot["active"] = False
+    one_shot["remaining"] = 0
+    one_shot["expires_at"] = _now_iso()
+    if reason:
+        one_shot["reason"] = str(reason)[:200]
+    state["one_shot_delivery"] = one_shot
+    state["updated_at"] = _now_iso()
+    state["updated_by"] = "local-operator"
+    _write_operator_state(state)
+    return {
+        "revoked": was_active,
+        "reason": "one_shot_delivery_revoked" if was_active else "one_shot_delivery_inactive",
+        "one_shot_delivery": one_shot,
+    }
 
 
 def consume_one_shot_delivery(reason: str = "") -> dict[str, Any]:

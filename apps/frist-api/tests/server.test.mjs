@@ -755,6 +755,8 @@ describe('CC中转 public server chain', () => {
       const notifyBody = buildWechatNotifyBody({
         apiV3Key,
         transaction: {
+          appid: 'wx-test-app',
+          mchid: '1900000001',
           out_trade_no: created.json.paymentOrder.id,
           transaction_id: 'wx-transaction-1',
           trade_state: 'SUCCESS',
@@ -788,6 +790,107 @@ describe('CC中转 public server chain', () => {
       const data = await fixture.readData();
       assert.equal(data.paymentOrders[0].status, 'paid');
       assert.equal(data.events.filter((event) => event.type === 'provider_payment_confirmed').length, 1);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('rejects signed WeChat callbacks for a different app or merchant', async () => {
+    const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const wechatPrivateKey = privateKey.export({ type: 'pkcs8', format: 'pem' });
+    const wechatPublicKey = publicKey.export({ type: 'spki', format: 'pem' });
+    const apiV3Key = '12345678901234567890123456789012';
+    const fixture = await createServerFixture({
+      paymentEnabled: true,
+      wechatPayEnabled: true,
+      wechatPayAppId: 'wx-test-app',
+      wechatPayMchId: '1900000001',
+      wechatPaySerialNo: 'SERIALNO',
+      wechatPayPrivateKey: wechatPrivateKey,
+      wechatPayPublicKey: wechatPublicKey,
+      wechatPayApiV3Key: apiV3Key,
+      fetchImpl: async () => jsonResponse(200, { code_url: 'weixin://wxpay/bizpayurl?pr=test' }),
+    });
+
+    try {
+      const cookie = await fixture.createVerifiedCustomer('wechat-wrong-merchant@example.com');
+      const created = await fixture.request('/api/frist/recharge', {
+        method: 'POST',
+        cookie,
+        body: { planId: 'codex-30-unlimited', method: 'wechat_native' },
+      });
+      const notifyBody = buildWechatNotifyBody({
+        apiV3Key,
+        transaction: {
+          appid: 'wx-other-app',
+          mchid: 'other-merchant',
+          out_trade_no: created.json.paymentOrder.id,
+          transaction_id: 'wx-wrong-merchant-1',
+          trade_state: 'SUCCESS',
+          amount: { total: 888, payer_total: 888 },
+        },
+      });
+      const notify = await fixture.rawRequest('/api/frist/payments/wechat/notify', {
+        method: 'POST',
+        headers: signWechatNotifyHeaders({ privateKey: wechatPrivateKey, bodyText: notifyBody }),
+        bodyText: notifyBody,
+      });
+
+      assert.equal(notify.status, 400);
+      assert.match(notify.text, /应用或商户不匹配/);
+      const dashboard = await fixture.request('/api/frist/dashboard', { cookie });
+      assert.equal(dashboard.json.account.balance, '$0.00');
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('rejects a callback provider that does not match the original payment order', async () => {
+    const wechatKeys = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const alipayKeys = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const fixture = await createServerFixture({
+      paymentEnabled: true,
+      wechatPayEnabled: true,
+      wechatPayAppId: 'wx-test-app',
+      wechatPayMchId: '1900000001',
+      wechatPaySerialNo: 'SERIALNO',
+      wechatPayPrivateKey: wechatKeys.privateKey.export({ type: 'pkcs8', format: 'pem' }),
+      wechatPayPublicKey: wechatKeys.publicKey.export({ type: 'spki', format: 'pem' }),
+      wechatPayApiV3Key: '12345678901234567890123456789012',
+      alipayEnabled: true,
+      alipayAppId: '2021000000000000',
+      alipayPrivateKey: alipayKeys.privateKey.export({ type: 'pkcs8', format: 'pem' }),
+      alipayPublicKey: alipayKeys.publicKey.export({ type: 'spki', format: 'pem' }),
+      fetchImpl: async () => jsonResponse(200, { code_url: 'weixin://wxpay/bizpayurl?pr=test' }),
+    });
+
+    try {
+      const cookie = await fixture.createVerifiedCustomer('cross-provider@example.com');
+      const created = await fixture.request('/api/frist/recharge', {
+        method: 'POST',
+        cookie,
+        body: { planId: 'codex-30-unlimited', method: 'wechat_native' },
+      });
+      const notifyBody = signAlipayNotifyBody(
+        {
+          app_id: '2021000000000000',
+          out_trade_no: created.json.paymentOrder.id,
+          trade_no: 'ali-cross-provider-1',
+          trade_status: 'TRADE_SUCCESS',
+          total_amount: '8.88',
+        },
+        alipayKeys.privateKey.export({ type: 'pkcs8', format: 'pem' }),
+      );
+      const notify = await fixture.rawRequest('/api/frist/payments/alipay/notify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        bodyText: notifyBody,
+      });
+
+      assert.equal(notify.status, 400);
+      assert.match(notify.text, /支付渠道与订单不一致/);
+      const dashboard = await fixture.request('/api/frist/dashboard', { cookie });
+      assert.equal(dashboard.json.account.balance, '$0.00');
     } finally {
       await fixture.close();
     }
@@ -895,6 +998,12 @@ describe('CC中转 public server chain', () => {
           trade_no: 'ali-trade-1',
           trade_status: 'TRADE_SUCCESS',
           total_amount: '5.88',
+          buyer_logon_id: 'buyer-private@example.com',
+          buyer_user_id: 'buyer-private-id',
+          seller_email: 'merchant-private@example.com',
+          subject: '不应持久化的商品描述',
+          passback_params: 'private-callback-context',
+          fund_bill_list: '[{"fundChannel":"ALIPAYACCOUNT","amount":"5.88"}]',
         },
         alipayPrivateKey,
       );
@@ -918,6 +1027,88 @@ describe('CC中转 public server chain', () => {
       assert.equal(dashboard.json.account.packageQuota, '$30.00');
       const data = await fixture.readData();
       assert.equal(data.paymentOrders[0].status, 'paid');
+      assert.deepEqual(Object.keys(data.paymentOrders[0].callbackPayload).sort(), [
+        'app_id',
+        'out_trade_no',
+        'total_amount',
+        'trade_no',
+        'trade_status',
+      ]);
+      assert.equal(JSON.stringify(data.paymentOrders[0].callbackPayload).includes('buyer-private'), false);
+      assert.equal(JSON.stringify(data.paymentOrders[0].callbackPayload).includes('merchant-private'), false);
+      assert.equal(JSON.stringify(data.paymentOrders[0].callbackPayload).includes('private-callback-context'), false);
+      assert.equal(JSON.stringify(data.paymentOrders[0].callbackPayload).includes('ALIPAYACCOUNT'), false);
+      assert.equal(Object.hasOwn(data.paymentOrders[0].callbackPayload, 'sign'), false);
+      assert.equal(Object.hasOwn(data.paymentOrders[0].callbackPayload, 'sign_type'), false);
+      assert.equal(data.events.filter((event) => event.type === 'provider_payment_confirmed').length, 1);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('rejects one provider transaction id being reused across different orders', async () => {
+    const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const alipayPrivateKey = privateKey.export({ type: 'pkcs8', format: 'pem' });
+    const alipayPublicKey = publicKey.export({ type: 'spki', format: 'pem' });
+    const fixture = await createServerFixture({
+      paymentEnabled: true,
+      alipayEnabled: true,
+      alipayAppId: '2021000000000000',
+      alipayPrivateKey,
+      alipayPublicKey,
+      fetchImpl: async () => jsonResponse(200, {
+        alipay_trade_precreate_response: {
+          code: '10000',
+          msg: 'Success',
+          qr_code: 'https://qr.alipay.com/test',
+        },
+      }),
+    });
+
+    try {
+      const cookie = await fixture.createVerifiedCustomer('alipay-reused-trade@example.com');
+      const firstOrder = await fixture.request('/api/frist/recharge', {
+        method: 'POST',
+        cookie,
+        body: { planId: 'codex-30-day', method: 'alipay_precreate' },
+      });
+      const secondOrder = await fixture.request('/api/frist/recharge', {
+        method: 'POST',
+        cookie,
+        body: { planId: 'codex-30-day', method: 'alipay_precreate' },
+      });
+
+      const firstNotify = signAlipayNotifyBody({
+        app_id: '2021000000000000',
+        out_trade_no: firstOrder.json.paymentOrder.id,
+        trade_no: 'ali-shared-trade-id',
+        trade_status: 'TRADE_SUCCESS',
+        total_amount: '5.88',
+      }, alipayPrivateKey);
+      const firstResult = await fixture.rawRequest('/api/frist/payments/alipay/notify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        bodyText: firstNotify,
+      });
+      assert.equal(firstResult.status, 200);
+
+      const secondNotify = signAlipayNotifyBody({
+        app_id: '2021000000000000',
+        out_trade_no: secondOrder.json.paymentOrder.id,
+        trade_no: 'ali-shared-trade-id',
+        trade_status: 'TRADE_SUCCESS',
+        total_amount: '5.88',
+      }, alipayPrivateKey);
+      const secondResult = await fixture.rawRequest('/api/frist/payments/alipay/notify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        bodyText: secondNotify,
+      });
+      assert.equal(secondResult.status, 409);
+      assert.match(secondResult.text, /交易号已被其他订单使用/);
+
+      const data = await fixture.readData();
+      assert.equal(data.paymentOrders.filter((order) => order.status === 'paid').length, 1);
       assert.equal(data.events.filter((event) => event.type === 'provider_payment_confirmed').length, 1);
     } finally {
       await fixture.close();
@@ -2445,6 +2636,8 @@ describe('CC中转 public server chain', () => {
       assert.equal(alerts.length, 1);
       assert.equal(alerts[0].issueType, 'upstream');
       assert.match(alerts[0].reason, /upstream_http_503/);
+      assert.match(alerts[0].keyFingerprint, /^[a-f0-9]{16}$/);
+      assert.equal(Object.hasOwn(alerts[0], 'keyPreview'), false);
       assert.equal(inventory.json.credentials.find((item) => item.status === 'failed')?.status, 'failed');
       assert.equal(inventory.json.credentials.find((item) => item.status === 'healthy')?.status, 'healthy');
     } finally {
@@ -2957,6 +3150,87 @@ describe('CC中转 public server chain', () => {
       assert.match(second.text, /请求过于频繁/);
     } finally {
       await fixture.close();
+    }
+  });
+
+  it('does not let spoofed leading forwarded addresses bypass auth rate limits', async () => {
+    const fixture = await createServerFixture({ authRateLimitMax: 1, authRateLimitWindowMs: 60_000 });
+
+    try {
+      const first = await fixture.request('/api/frist/login', {
+        method: 'POST',
+        headers: { 'x-forwarded-for': '203.0.113.70, 198.51.100.10' },
+        body: { email: 'forwarded-limit@example.com', password: 'wrong-password' },
+      });
+      assert.equal(first.status, 401);
+
+      const second = await fixture.request('/api/frist/login', {
+        method: 'POST',
+        headers: { 'x-forwarded-for': '203.0.113.71, 198.51.100.10' },
+        body: { email: 'forwarded-limit@example.com', password: 'wrong-password' },
+      });
+      assert.equal(second.status, 429);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('bounds transient auth and captcha state instead of growing forever', async () => {
+    const authFixture = await createServerFixture({
+      authRateLimitMax: 1,
+      authRateLimitWindowMs: 60_000,
+      securityStateMaxEntries: 2,
+    });
+    const captchaFixture = await createServerFixture({
+      requireCaptcha: true,
+      authRateLimitMax: 100,
+      securityStateMaxEntries: 2,
+    });
+
+    try {
+      for (const ip of ['198.51.100.20', '198.51.100.21', '198.51.100.22']) {
+        const response = await authFixture.request('/api/frist/login', {
+          method: 'POST',
+          headers: { 'x-forwarded-for': ip },
+          body: { email: 'bounded-rate@example.com', password: 'wrong-password' },
+        });
+        assert.equal(response.status, 401);
+      }
+      const evictedRateBucket = await authFixture.request('/api/frist/login', {
+        method: 'POST',
+        headers: { 'x-forwarded-for': '198.51.100.20' },
+        body: { email: 'bounded-rate@example.com', password: 'wrong-password' },
+      });
+      assert.equal(evictedRateBucket.status, 401);
+
+      const firstChallenge = await captchaFixture.request('/api/frist/challenge');
+      await captchaFixture.request('/api/frist/challenge');
+      const newestChallenge = await captchaFixture.request('/api/frist/challenge');
+      const evictedCaptcha = await captchaFixture.request('/api/frist/register', {
+        method: 'POST',
+        body: {
+          email: 'evicted-captcha@example.com',
+          password: 'TestPass123!',
+          captchaId: firstChallenge.json.id,
+          captchaAnswer: solveRegistrationChallenge(firstChallenge.json.question),
+        },
+      });
+      assert.equal(evictedCaptcha.status, 400);
+      assert.match(evictedCaptcha.text, /已过期/);
+
+      const newestCaptcha = await captchaFixture.request('/api/frist/register', {
+        method: 'POST',
+        body: {
+          email: 'newest-captcha@example.com',
+          password: 'TestPass123!',
+          captchaId: newestChallenge.json.id,
+          captchaAnswer: solveRegistrationChallenge(newestChallenge.json.question),
+        },
+      });
+      assert.equal(newestCaptcha.status, 200);
+    } finally {
+      await authFixture.close();
+      await captchaFixture.close();
     }
   });
 
@@ -4745,7 +5019,8 @@ describe('CC中转 public server chain', () => {
       assert.equal(degradedCredential.enabled, false);
       assert.equal(keyAlerts.length, 1);
       assert.equal(keyAlerts[0].issueType, 'auth');
-      assert.equal(keyAlerts[0].keyPreview.endsWith('bad'), true);
+      assert.match(keyAlerts[0].keyFingerprint, /^[a-f0-9]{16}$/);
+      assert.equal(Object.hasOwn(keyAlerts[0], 'keyPreview'), false);
 
       await new Promise((resolve) => setTimeout(resolve, 120));
       assert.equal(keyAlerts.length, 1, '同一个失效 Key 应该只提醒一次补号');
@@ -5331,12 +5606,18 @@ describe('CC中转 public server chain', () => {
       assert.equal(dashboard.json.usageRecords[0].apiKey, token.json.key.preview);
       assert.equal(dashboard.json.usageRecords[0].model, 'gpt-5.5');
       assert.equal(dashboard.json.usageRecords[0].inferenceEffort, 'high');
-      assert.equal(dashboard.json.usageRecords[0].endpoint, 'https://supplier.example.com/v1');
+      assert.equal(dashboard.json.usageRecords[0].endpoint, '/v1');
       assert.equal(dashboard.json.usageRecords[0].type, '文本');
       assert.equal(dashboard.json.usageRecords[0].billingMode, '套餐');
       assert.equal(dashboard.json.usageRecords[0].tokens, '1.5K');
       assert.match(dashboard.json.usageRecords[0].amount, /^\$\d+\.\d{2}$/);
       assert.ok(dashboard.json.recentLogs.some((item) => item.type === 'gateway_routed'));
+
+      const runtime = await fixture.readData();
+      const routedEvent = runtime.events.find((item) => item.type === 'gateway_routed');
+      assert.ok(routedEvent);
+      assert.equal(Object.hasOwn(routedEvent, 'endpoint'), false);
+      assert.equal(Object.hasOwn(routedEvent, 'apiKeyPreview'), false);
     } finally {
       await fixture.close();
     }
@@ -6542,6 +6823,7 @@ async function createServerFixture(options = {}) {
     turnstileAllowedHostnames: options.turnstileAllowedHostnames,
     authRateLimitMax: options.authRateLimitMax,
     authRateLimitWindowMs: options.authRateLimitWindowMs,
+    securityStateMaxEntries: options.securityStateMaxEntries,
     redemptionRateLimitMax: options.redemptionRateLimitMax,
     redemptionRateLimitWindowMs: options.redemptionRateLimitWindowMs,
     publicMode: options.publicMode,
@@ -6727,8 +7009,7 @@ function buildWechatNotifyBody({ apiV3Key, transaction }) {
   });
 }
 
-function signWechatNotifyHeaders({ privateKey, bodyText }) {
-  const timestamp = '1777777777';
+function signWechatNotifyHeaders({ privateKey, bodyText, timestamp = String(Math.floor(Date.now() / 1000)) }) {
   const nonce = 'notify-nonce';
   const message = `${timestamp}\n${nonce}\n${bodyText}\n`;
   return {

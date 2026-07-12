@@ -163,6 +163,8 @@ def xhs_create_note(
     content: str,
     images: list[str] | None = None,
     is_private: bool = False,
+    *,
+    final_confirmed: bool = False,
 ) -> dict:
     """通过 xhs 库发布小红书笔记（Cookie 认证）
 
@@ -172,6 +174,11 @@ def xhs_create_note(
         images: 图片文件路径列表（至少需要 1 张图片才能发布图文笔记）
         is_private: 是否设为私密笔记
     """
+    from src.execution.social.publish_safety import confirmation_required
+
+    if not final_confirmed:
+        return confirmation_required("publish_xhs_api")
+
     global _HAS_XHS
     if not _HAS_XHS or _xhs_client is None:
         return {"success": False, "error": "小红书未认证，请先调用 xhs_login()"}
@@ -230,11 +237,18 @@ async def publish_xhs_article(
     body: str,
     worker_fn=None,
     image_path: str | None = None,
+    *,
+    final_confirmed: bool = False,
+    **_kwargs,
 ) -> dict:
     """发布小红书笔记
 
     v2.0 二级降级: xhs API → browser worker
     """
+    from src.execution.social.publish_safety import confirmation_required
+
+    if not final_confirmed:
+        return confirmation_required("publish_xhs")
     if not title or not body:
         return {"success": False, "error": "标题和正文不能为空"}
 
@@ -245,6 +259,7 @@ async def publish_xhs_article(
             title=title,
             content=body,
             images=images,
+            final_confirmed=True,
         )
         if result.get("success"):
             return result
@@ -259,7 +274,12 @@ async def publish_xhs_article(
         if image_path:
             payload["image"] = image_path
         # 浏览器自动化是同步阻塞操作（5-30秒），必须丢到线程池避免冻结事件循环
-        result = await asyncio.to_thread(worker_fn, "publish_xhs", payload)
+        result = await asyncio.to_thread(
+            worker_fn,
+            "publish_xhs",
+            payload,
+            final_confirmed=True,
+        )
         return {"success": True, "result": result}
     except Exception as e:
         logger.error(f"[XHS.publish] failed: {scrub_secrets(str(e))}")
@@ -270,8 +290,14 @@ async def reply_to_xhs_comment(
     note_url: str,
     reply_text: str,
     worker_fn=None,
+    *,
+    final_confirmed: bool = False,
 ) -> dict:
     """回复小红书评论"""
+    from src.execution.social.publish_safety import confirmation_required
+
+    if not final_confirmed:
+        return confirmation_required("reply_xhs")
     if not note_url or not reply_text:
         return {"success": False, "error": "URL 和回复内容不能为空"}
     if not worker_fn:
@@ -282,7 +308,14 @@ async def reply_to_xhs_comment(
             "url": note_url,
             "text": reply_text,
         }
-        result = await asyncio.to_thread(worker_fn, "reply_xhs", reply_payload)
+        result = await asyncio.to_thread(
+            worker_fn,
+            "reply_xhs",
+            reply_payload,
+            final_confirmed=True,
+        )
+        if isinstance(result, dict) and not result.get("success", False):
+            return result
         return {"success": True, "result": result}
     except Exception as e:
         logger.error(f"[XHS.reply] failed: {scrub_secrets(str(e))}")
@@ -292,8 +325,14 @@ async def reply_to_xhs_comment(
 async def update_xhs_profile(
     bio: str | None = None,
     worker_fn=None,
+    *,
+    final_confirmed: bool = False,
 ) -> dict:
     """更新小红书个人资料"""
+    from src.execution.social.publish_safety import confirmation_required
+
+    if not final_confirmed:
+        return confirmation_required("update_xhs_profile")
     if not worker_fn:
         return {"success": False, "error": "browser worker 未配置"}
     try:
@@ -301,7 +340,14 @@ async def update_xhs_profile(
         if bio:
             payload["bio"] = bio
         # 浏览器自动化是同步阻塞操作，必须丢到线程池
-        result = await asyncio.to_thread(worker_fn, "update_xhs_profile", payload)
+        result = await asyncio.to_thread(
+            worker_fn,
+            "update_xhs_profile",
+            payload,
+            final_confirmed=True,
+        )
+        if isinstance(result, dict) and not result.get("success", False):
+            return result
         return {"success": True, "result": result}
     except Exception as e:
         logger.error(f"[XHS.profile] failed: {scrub_secrets(str(e))}")

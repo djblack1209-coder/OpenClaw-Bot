@@ -1,5 +1,7 @@
 import { createDecipheriv, createSign, createVerify, randomBytes } from 'node:crypto';
 
+const DEFAULT_WECHAT_NOTIFICATION_MAX_AGE_SECONDS = 300;
+
 export function normalizePem(value) {
   const text = String(value || '').trim();
   if (!text) return '';
@@ -37,11 +39,19 @@ export function providerReady(config, provider) {
   if (!config?.enabled) return false;
   if (provider === 'wechat') {
     const item = config.wechat || {};
-    return Boolean(item.enabled && item.appid && item.mchid && item.serialNo && item.privateKey && item.apiV3Key);
+    return Boolean(
+      item.enabled &&
+      item.appid &&
+      item.mchid &&
+      item.serialNo &&
+      item.privateKey &&
+      item.publicKey &&
+      item.apiV3Key
+    );
   }
   if (provider === 'alipay') {
     const item = config.alipay || {};
-    return Boolean(item.enabled && item.appId && item.privateKey);
+    return Boolean(item.enabled && item.appId && item.privateKey && item.publicKey);
   }
   return false;
 }
@@ -162,7 +172,7 @@ export function buildWechatAuthorization({ method, path, bodyText, mchid, serial
   ].join(' ');
 }
 
-export function verifyWechatNotification({ headers, rawBody, paymentConfig }) {
+export function verifyWechatNotification({ headers, rawBody, paymentConfig, now = new Date() }) {
   const config = paymentConfig.wechat || {};
   if (!config.publicKey || !config.apiV3Key) {
     throw publicPaymentError(503, '微信支付回调验签配置未完成');
@@ -173,6 +183,7 @@ export function verifyWechatNotification({ headers, rawBody, paymentConfig }) {
   if (!timestamp || !nonce || !signature) {
     throw publicPaymentError(400, '微信支付回调缺少签名头');
   }
+  assertWechatNotificationFresh(timestamp, now);
   const message = `${timestamp}\n${nonce}\n${rawBody}\n`;
   const verified = createVerify('RSA-SHA256').update(message).verify(config.publicKey, signature, 'base64');
   if (!verified) {
@@ -182,6 +193,18 @@ export function verifyWechatNotification({ headers, rawBody, paymentConfig }) {
   const resource = payload.resource || {};
   const plaintext = decryptWechatResource(resource, config.apiV3Key);
   return parseJson(plaintext);
+}
+
+function assertWechatNotificationFresh(timestamp, nowValue) {
+  const seconds = Number(timestamp);
+  const nowMs = nowValue instanceof Date ? nowValue.getTime() : Date.parse(nowValue);
+  if (!Number.isSafeInteger(seconds) || !Number.isFinite(nowMs)) {
+    throw publicPaymentError(400, '微信支付回调时间戳无效');
+  }
+  const ageSeconds = Math.abs(Math.floor(nowMs / 1000) - seconds);
+  if (ageSeconds >= DEFAULT_WECHAT_NOTIFICATION_MAX_AGE_SECONDS) {
+    throw publicPaymentError(400, '微信支付回调时间戳已过期');
+  }
 }
 
 export function decryptWechatResource(resource, apiV3Key) {
@@ -199,10 +222,16 @@ export function decryptWechatResource(resource, apiV3Key) {
   return `${decipher.update(ciphertext.subarray(0, ciphertext.length - 16), undefined, 'utf8')}${decipher.final('utf8')}`;
 }
 
-export function parseAlipayNotification(rawBody, publicKey) {
+export function parseAlipayNotification(rawBody, publicKey, expectedAppId = '') {
   const params = Object.fromEntries(new URLSearchParams(rawBody));
-  if (publicKey && !verifyAlipayParams(params, publicKey)) {
+  if (!publicKey) {
+    throw publicPaymentError(503, '支付宝回调验签配置未完成');
+  }
+  if (!verifyAlipayParams(params, publicKey)) {
     throw publicPaymentError(400, '支付宝回调验签失败');
+  }
+  if (expectedAppId && String(params.app_id || '') !== String(expectedAppId)) {
+    throw publicPaymentError(400, '支付宝回调应用 ID 不匹配');
   }
   return params;
 }

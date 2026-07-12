@@ -284,7 +284,7 @@ async def create_topic_social_package(
         return {"success": False, "error": str(e)}
 
 
-# ── 自动发布 ────────────────────────────────────────────────
+# ── 历史 autopost 兼容入口：当前只生成待审草稿 ──────────────
 
 async def autopost_topic_content(
     platform: str | None = None,
@@ -294,7 +294,7 @@ async def autopost_topic_content(
     save_draft_fn=None,
     worker_fn=None,
 ) -> dict:
-    """按话题自动发布社媒内容 — 通过适配器统一分发"""
+    """按话题生成待审社媒草稿；保留旧函数名以兼容调用方。"""
     try:
         package = await create_topic_social_package(
             platform=platform, topic=topic,
@@ -325,10 +325,9 @@ async def autopost_topic_content(
                 continue
             if worker_fn:
                 render = worker_fn("render", {"topic": topic, "platform": pid})
-                body = pkg_data.get("body", "")
-                title = pkg_data.get("title", "")
-                payload = adapter.build_worker_payload(body, title)
-                published = worker_fn(adapter.worker_action, payload)
+                from src.execution.social.publish_safety import confirmation_required
+
+                published = confirmation_required(adapter.worker_action)
                 results[pid] = {**pkg_data, "rendered": render, "published": published}
             else:
                 results[pid] = pkg_data
@@ -346,7 +345,7 @@ async def autopost_hot_content(
     save_draft_fn=None,
     worker_fn=None,
 ) -> dict:
-    """自动发布热门内容"""
+    """按热点生成待审社媒草稿；保留旧函数名以兼容调用方。"""
     if not discover_fn:
         return {"success": False, "error": "discover_fn not provided"}
 
@@ -403,8 +402,9 @@ async def autopost_hot_content(
         title = content_data.get("title", "")
         draft = save_draft_fn(pid, title, body, topic=hot_topic) if save_draft_fn else {}
         rendered = worker_fn("render", {"topic": hot_topic, "platform": pid}) if worker_fn else {}
-        payload = adapter.build_worker_payload(body, title)
-        published = worker_fn(adapter.worker_action, payload) if worker_fn else {}
+        from src.execution.social.publish_safety import confirmation_required
+
+        published = confirmation_required(adapter.worker_action)
         results[pid] = {
             "body": body,
             "title": title,

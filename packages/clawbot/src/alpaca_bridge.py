@@ -68,6 +68,7 @@ class AlpacaBridge:
         self._spent = 0.0
         self._connected = False
         self._client: TradingClient | None = None  # type: ignore[type-arg]
+        self.paper = True
 
         if not _HAS_ALPACA:
             logger.warning("[AlpacaBridge] alpaca-py 未安装，所有操作将返回模拟数据")
@@ -76,6 +77,7 @@ class AlpacaBridge:
         key = api_key or os.getenv("ALPACA_API_KEY", "")
         secret = api_secret or os.getenv("ALPACA_API_SECRET", "")
         is_paper = paper or os.getenv("ALPACA_PAPER", "true").lower() == "true"
+        self.paper = is_paper
 
         if not key or not secret:
             logger.warning("[AlpacaBridge] ALPACA_API_KEY/SECRET 未设置，降级模拟模式")
@@ -157,9 +159,10 @@ class AlpacaBridge:
         quantity: float,
         order_type: str = "market",
         limit_price: float | None = None,
+        human_confirmed: bool = False,
     ) -> dict:
         """买入 — 兼容 IBKRBridge.buy()"""
-        return await self._place_order("BUY", symbol, quantity, order_type, limit_price)
+        return await self._place_order("BUY", symbol, quantity, order_type, limit_price, human_confirmed)
 
     async def sell(
         self,
@@ -167,9 +170,10 @@ class AlpacaBridge:
         quantity: float,
         order_type: str = "market",
         limit_price: float | None = None,
+        human_confirmed: bool = False,
     ) -> dict:
         """卖出 — 兼容 IBKRBridge.sell()"""
-        return await self._place_order("SELL", symbol, quantity, order_type, limit_price)
+        return await self._place_order("SELL", symbol, quantity, order_type, limit_price, human_confirmed)
 
     async def _place_order(
         self,
@@ -178,7 +182,15 @@ class AlpacaBridge:
         quantity: float,
         order_type: str = "market",
         limit_price: float | None = None,
+        human_confirmed: bool = False,
     ) -> dict:
+        if not self.paper and not human_confirmed:
+            logger.warning("[AlpacaBridge] 拦截未经过当前操作人工确认的实盘订单: %s %s", side, symbol)
+            return {
+                "error": "实盘下单需要当前操作的人工确认",
+                "code": "live_trade_confirmation_required",
+                "live_order_blocked": True,
+            }
         if not self.connected:
             logger.warning("⚠️ 使用模拟数据 - Alpaca 未连接，返回的不是真实交易数据")
             return {"status": "⚠️ 模拟数据 — Alpaca未连接，以下数据非真实交易",

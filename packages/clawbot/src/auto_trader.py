@@ -351,6 +351,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
             "proposals": 0,
             "submitted": 0,
             "executed": 0,
+            "simulated": 0,
             "rejected": 0,
         }
 
@@ -748,6 +749,14 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
                                     self.max_trades_per_day,
                                 )
                             )
+                    elif exec_result["status"] == "simulated":
+                        cycle_result["simulated"] += 1
+                        await self._safe_notify(
+                            f"模拟执行（未提交真实订单）: {proposal.action} "
+                            f"{proposal.symbol} x{proposal.quantity:d} "
+                            f"@ ${proposal.entry_price:.2f}\n"
+                            "如需实盘，请从人工确认入口逐笔确认。"
+                        )
                     elif exec_result["status"] == "rejected":
                         cycle_result["rejected"] += 1
                         await self._safe_notify(
@@ -782,7 +791,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
         self.state = TraderState.MONITORING
         await self._safe_notify(
             "-- 循环 #%d 完成 --\n"  # noqa: UP031
-            "扫描%d -> 候选%d -> 分析%d -> 投票%d -> 提案%d -> 提交%d -> 执行%d 拒绝%d\n"
+            "扫描%d -> 候选%d -> 分析%d -> 投票%d -> 提案%d -> 提交%d -> 实盘%d 模拟%d 拒绝%d\n"
             "今日交易: %d/%d笔"
             % (
                 self._cycle_count,
@@ -793,6 +802,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
                 cycle_result["proposals"],
                 cycle_result["submitted"],
                 cycle_result["executed"],
+                cycle_result["simulated"],
                 cycle_result["rejected"],
                 self._today_trades,
                 self.max_trades_per_day,
@@ -800,7 +810,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
         )
 
         logger.info(
-            "[AutoTrader] 循环 #%d 完成: 扫描%d 候选%d 投票%d 提案%d 提交%d 执行%d 拒绝%d",
+            "[AutoTrader] 循环 #%d 完成: 扫描%d 候选%d 投票%d 提案%d 提交%d 实盘%d 模拟%d 拒绝%d",
             self._cycle_count,
             cycle_result["scanned"],
             cycle_result["candidates"],
@@ -808,6 +818,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
             cycle_result["proposals"],
             cycle_result["submitted"],
             cycle_result["executed"],
+            cycle_result["simulated"],
             cycle_result["rejected"],
         )
         return cycle_result
@@ -845,7 +856,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
             "",
             '状态: {}'.format(state_cn.get(s["state"], s["state"])),
             '运行: {}'.format("是" if s["running"] else "否"),
-            '自动模式: {}'.format("开启" if s["auto_mode"] else "关闭(需确认)"),
+            '自动模式: {}'.format("自动扫描/仅模拟" if s["auto_mode"] else "关闭(待逐笔确认)"),
             '已完成循环: {:d}次'.format(int(s["cycle_count"])),
             '扫描间隔: {:d}分钟'.format(int(s["scan_interval_min"])),
             '上次扫描: {}'.format(s["last_scan"] or "无"),
@@ -868,7 +879,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
             return None
         proposal = self._proposals.pop(index)
         if self.pipeline:
-            result = await self.pipeline.execute_proposal(proposal)
+            result = await self.pipeline.execute_proposal(proposal, human_confirmed=True)
             # HI-572: 手动确认也要计入日交易数
             if result and result.get("status") in ("executed", "simulated"):
                 self._today_trades += 1

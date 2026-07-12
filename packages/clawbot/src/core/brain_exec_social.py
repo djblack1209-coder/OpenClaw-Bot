@@ -113,13 +113,27 @@ class SocialExecutorMixin:
             adapter = get_adapter(platform)
             if adapter:
                 result = await adapter.publish(content=draft)
-                return {"source": f"{adapter.platform_id}_platform", "success": True, "result": result}
+                return {
+                    "source": f"{adapter.platform_id}_platform",
+                    "success": bool(result.get("success")),
+                    "result": result,
+                    "requires_human_confirmation": bool(
+                        result.get("requires_human_confirmation")
+                    ),
+                }
             else:
                 # 未注册的平台 — 降级到 worker_bridge
                 from src.execution.social.worker_bridge import run_social_worker_async
 
                 result = await run_social_worker_async(f"publish_{platform}", {"content": draft})
-                return {"source": "worker_bridge", "success": True, "result": result}
+                return {
+                    "source": "worker_bridge",
+                    "success": bool(result.get("success")),
+                    "result": result,
+                    "requires_human_confirmation": bool(
+                        result.get("requires_human_confirmation")
+                    ),
+                }
         except Exception as e:
             logger.warning(f"社媒发布失败 ({platform}): {scrub_secrets(str(e))}")
         return {"source": "publish_fallback", "success": False, "note": f"{platform} 发布失败"}

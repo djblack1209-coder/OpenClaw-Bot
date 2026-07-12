@@ -183,6 +183,7 @@ def _sanitize_social_extension_payload(payload: dict) -> dict:
         "background_heartbeat",
         "xianyu_confirm_shipment",
         "xianyu_relist_item",
+        "xianyu_one_shot_delivery_human_gated",
         "relist_queue_watch",
         "paid_page_dispatch",
     }
@@ -3367,13 +3368,19 @@ class ClawBotRPC:
     async def _rpc_social_publish(
         platform: str,
         content: str,
+        *,
+        final_confirmed: bool = False,
     ) -> dict:
         """Publish content to a social platform via adapter pattern.
 
         通过适配器注册表统一分发，支持 "both" 同时发布到所有平台。
         """
         from src.execution.social.platform_adapter import get_adapter, get_all_adapters
+        from src.execution.social.publish_safety import confirmation_required
         from src.execution.social.worker_bridge import run_social_worker_async
+
+        if not final_confirmed:
+            return confirmation_required(f"publish_{platform}")
 
         try:
             if platform == "both":
@@ -3384,7 +3391,11 @@ class ClawBotRPC:
                     try:
                         title, body = adapter.normalize_content(content)
                         payload = adapter.build_worker_payload(body, title)
-                        result = await run_social_worker_async(adapter.worker_action, payload)
+                        result = await run_social_worker_async(
+                            adapter.worker_action,
+                            payload,
+                            final_confirmed=True,
+                        )
                         results[pid] = result
                         if result.get("success"):
                             any_success = True
@@ -3399,7 +3410,11 @@ class ClawBotRPC:
             if adapter:
                 title, body = adapter.normalize_content(content)
                 payload = adapter.build_worker_payload(body, title)
-                return await run_social_worker_async(adapter.worker_action, payload)
+                return await run_social_worker_async(
+                    adapter.worker_action,
+                    payload,
+                    final_confirmed=True,
+                )
             else:
                 return {"success": False, "error": f"Unknown platform: {platform}"}
         except Exception as e:
@@ -3561,7 +3576,11 @@ class ClawBotRPC:
         return {"success": True, "draft": draft}
 
     @staticmethod
-    async def _rpc_social_draft_publish(index: int) -> dict:
+    async def _rpc_social_draft_publish(
+        index: int,
+        *,
+        final_confirmed: bool = False,
+    ) -> dict:
         """Publish a reviewed draft immediately.
 
         安全闸口：社媒外部发布属于高风险动作，必须先由用户在人设/内容确认页
@@ -3581,14 +3600,28 @@ class ClawBotRPC:
                 from src.execution.social import x_auto_ops
 
                 return x_auto_ops.require_draft_review(draft, state_path=x_auto_ops._STATE_FILE)
+            if not final_confirmed:
+                from src.execution.social.publish_safety import confirmation_required
+
+                return confirmation_required(f"publish_draft_{draft.get('platform', 'x')}")
             platform = str(draft.get("platform") or "x").lower()
             content = draft.get("text") or draft.get("content") or draft.get("body") or ""
             if platform in {"xhs", "xiaohongshu"}:
                 title = draft.get("title") or content.split("\n")[0][:50]
                 body = draft.get("body") or content[len(str(title)) :].strip() or content
-                result = await asyncio.to_thread(run_social_worker, "publish_xhs", {"title": title, "body": body})
+                result = await asyncio.to_thread(
+                    run_social_worker,
+                    "publish_xhs",
+                    {"title": title, "body": body},
+                    final_confirmed=True,
+                )
             else:
-                result = await asyncio.to_thread(run_social_worker, "publish_x", {"text": content})
+                result = await asyncio.to_thread(
+                    run_social_worker,
+                    "publish_x",
+                    {"text": content},
+                    final_confirmed=True,
+                )
             if result.get("success"):
                 from src.execution.social import x_auto_ops
 
@@ -3622,6 +3655,10 @@ class ClawBotRPC:
                 "error": "发布前请先确认人设和内容，草稿审核通过后才允许发布",
                 "draft": draft,
             }
+        if not final_confirmed:
+            from src.execution.social.publish_safety import confirmation_required
+
+            return confirmation_required(f"publish_draft_{draft.get('platform', 'x')}")
 
         platform = draft.get("platform", "x")
         content = draft.get("text") or draft.get("content") or draft.get("body") or ""
@@ -3630,11 +3667,21 @@ class ClawBotRPC:
         _save_state(state)
 
         if platform in ("x", "twitter"):
-            result = await asyncio.to_thread(run_social_worker, "publish_x", {"text": content})
+            result = await asyncio.to_thread(
+                run_social_worker,
+                "publish_x",
+                {"text": content},
+                final_confirmed=True,
+            )
         elif platform in ("xhs", "xiaohongshu"):
             title = content.split("\n")[0][:50] if "\n" in content else content[:50]
             body = content[len(title) :].strip() if "\n" in content else content
-            result = await asyncio.to_thread(run_social_worker, "publish_xhs", {"title": title, "body": body})
+            result = await asyncio.to_thread(
+                run_social_worker,
+                "publish_xhs",
+                {"title": title, "body": body},
+                final_confirmed=True,
+            )
         else:
             result = {"success": False, "error": f"Unknown platform: {platform}"}
 

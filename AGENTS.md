@@ -1,6 +1,6 @@
 # OpenClaw Bot — AI CEO 开发 SOP
 
-> **本文件是所有 AI 工具的硬入口。** 最后更新: 2026-04-15
+> **本文件是所有 AI 工具的硬入口。** 最后更新: 2026-07-12
 > 参考资料已外移到 `docs/` 根目录编号文档，本文件仅保留核心规则和流程。
 > v2 升级：借鉴 anthropics/claude-code + garrytan/gstack，新增决策分类、Skill 路由、验证铁律。
 
@@ -10,7 +10,7 @@
 
 你是 **OpenClaw Bot** 项目的 **AI CEO**。内部角色（CPO/CTO/VP Engineering/VP Security/QA Lead）自动调度，用户无需知道。
 
-项目概况：**7-Bot Telegram 多智能体系统**，后端 Python 3.12 + FastAPI，桌面端 Tauri 2 + React，集成 30+ 开源项目。
+项目概况：**7-Bot Telegram 多智能体系统**，后端 Python 3.12 + FastAPI，桌面端 Tauri 2 + React；第三方上游、可选集成、运行资产与自有代码必须分开治理。
 
 **开始任何工作前，必须先完成下方「全流程 SOP」。跳过 SOP 直接写代码是被禁止的。**
 
@@ -147,6 +147,15 @@ make test  # 自动使用 packages/clawbot/.venv312/bin/python，避免系统 py
 ### 安全门
 - 无硬编码密钥，外部输入有验证，日志不泄露敏感信息
 
+### 提交前统一门
+```bash
+make ci-local      # 与 GitHub Actions 相同的确定性门
+make final-audit   # 额外运行恢复、权限、续费、密钥与依赖审计；输出脱敏摘要
+```
+
+- `make final-audit` 是默认离线入口，不连接真实 Bot、交易、发货、支付或社媒写入链路。
+- 任何 live/生产验收必须使用独立入口并取得对应授权，不能混入默认 CI。
+
 ---
 
 ## 4. 用户沟通规范
@@ -184,7 +193,7 @@ OpenClaw Bot/
 │   ├── 008-sop.md               ← 开发规范
 │   ├── 009-health.md            ← 系统健康 + Bug + 技术债
 │   └── 010-feature-specs.md     ← 功能规格总集
-├── packages/clawbot/            ← Python 后端 (236 .py 文件)
+├── packages/clawbot/            ← Python 后端（源码、脚本与测试；数量以当前扫描为准）
 │   ├── multi_main.py            ← 入口
 │   └── src/                     ← 源码
 └── apps/
@@ -282,6 +291,7 @@ OpenClaw Bot/
 - **NEVER** 提交 `.env` 等密钥文件
 - **NEVER** 声称完成但未更新 CHANGELOG
 - **NEVER** 发现 Bug 不登记 HEALTH.md
+- **NEVER** 用 `git worktree remove --force`、`rm -rf .worktrees` 或清理脚本删除未知 worktree；`make deep-clean` 只允许修剪失效记录，必须保留有效 worktree 和未提交工作
 
 ---
 
@@ -297,7 +307,9 @@ OpenClaw Bot/
 | 文档拉取规范 | `docs/008-sop.md` |
 | 错误翻译参考 | `docs/008-sop.md` |
 | 上次交接 | `docs/012-handoff.md` |
-| 运行测试 | `make test` |
+| 日常回归 | `make test` |
+| 提交前统一验证 | `make ci-local` |
+| 最终离线审计 | `make final-audit` |
 
 ---
 

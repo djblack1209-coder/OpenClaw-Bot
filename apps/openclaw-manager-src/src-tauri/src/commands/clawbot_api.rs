@@ -451,9 +451,15 @@ pub async fn clawbot_api_social_draft_review(
 }
 
 #[command]
-pub async fn clawbot_api_social_draft_publish(index: u32) -> AppResult<Value> {
+pub async fn clawbot_api_social_draft_publish(
+    index: u32,
+    final_confirmed: bool,
+) -> AppResult<Value> {
     api_post(
-        &format!("/social/drafts/{}/publish", index),
+        &format!(
+            "/social/drafts/{}/publish?confirmed={}",
+            index, final_confirmed,
+        ),
         serde_json::json!({}),
     )
     .await

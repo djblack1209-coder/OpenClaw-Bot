@@ -1,96 +1,107 @@
 # OpenEverything 使用手册（给老板）
 
-> 最后更新：2026-07-07
-> 目标：老板只看绿灯/黄灯/红灯，不记技术命令。
+> 最后更新：2026-07-12
+> 目标：日常只看状态和续费提醒；真实交易、发货、发布、付款和生产修改仍由本人确认。
 
-## 每天早上第一件事
+## 日常只做这一件事
 
-1. 打开：`http://127.0.0.1:18800/dashboard`
-2. 看首屏颜色：
-   - 🟢 绿灯：不用管，系统在自动看守。
-   - 🟡 黄灯：按页面里的“下一步”做。
-   - 🔴 红灯：点右上角“导出状态报告”，发给技术支持。
-3. 如果页面打不开，再运行：
+在项目目录运行：
 
 ```bash
-cd ~/Desktop/OpenEverything && scripts/auto_recovery.sh --dry-run
+cd /Users/blackdj/Desktop/OpenEverything
+scripts/auto_health_check.sh --json
 ```
 
-先看 dry-run 提示，确认没问题后再去掉 `--dry-run`。
+如果本机控制台已经启动，也可以打开 `http://127.0.0.1:18800/dashboard`。页面打不开不等于数据丢失，先按下面的恢复预演处理。
 
-## 闲鱼有新订单怎么办
+### 颜色怎么看
 
-正常情况：你什么都不用做。
+- 🟢 **绿灯**：不用处理。
+- 🟡 **黄灯**：按输出里的“下一步”处理；常见原因是续费日期仍为 `unknown`、资源进入提醒窗口或某个可选服务降级。
+- 🔴 **红灯**：先导出脱敏状态或保存健康检查输出，再做恢复预演；不要反复重启、重复发卡或重复点击发布。
 
-- 买家付款后，系统自动发卡密。
-- 浏览器助手看到“已付款/待发货”后，才会点发货。
-- 买家兑换后，系统会继续观察是否创建 API、导入 CC Switch、调用模型。
+## 红灯怎么处理
 
-如果看到“补救队列不为空”：
-
-1. 打开 `http://127.0.0.1:18800/dashboard`
-2. 展开“补救队列”
-3. 按页面提示复制话术或让浏览器助手重试
-
-## 当前买家号不能测试时怎么办
-
-用“替换模式模拟验收”：
-
-1. 打开 `http://127.0.0.1:18800/dashboard`
-2. 展开“替换模式模拟验收”
-3. 看“严格模拟门”逐步状态，按页面提示补齐：发卡 → 商品模板/重新上架 → 注册 → 兑换 → 创建 API → 导入 CC Switch → 终端调用 → 渠道/服务器状态
-4. 页面显示“严格模拟门已跑通”后，也只能说明演练通过，不能正式放量
-
-注意：替换模式只证明流程能演练，不能解锁正式售卖。正式售卖仍必须等新的 `xy_oid_*` 真实小额订单；“买家真实下单付款”和“最终点击闲鱼发货按钮”不在模拟门里伪造。
-
-## 系统红灯怎么办
-
-### 1. 先导出状态报告
-
-打开：`http://127.0.0.1:18800/export-status`
-
-把页面里的 JSON 发给技术支持。报告已经去掉卡密、Token、买家昵称和 API Key。
-
-### 2. 再跑一键健康检查
+### 第一步：只看恢复计划
 
 ```bash
-cd ~/Desktop/OpenEverything && scripts/auto_health_check.sh
+scripts/auto_recovery.sh --dry-run
 ```
 
-看每一行后面的“怎么办”。
+这一步不会重启服务、启动浏览器或删除文件。
 
-### 3. 仍然红灯，再跑一键恢复预演
+### 第二步：确认计划后再执行
 
 ```bash
-cd ~/Desktop/OpenEverything && scripts/auto_recovery.sh --dry-run
+scripts/auto_recovery.sh --confirm
 ```
 
-确认要执行，再运行：
+只有显式 `--confirm` 才会执行。涉及生产部署、LaunchAgent、Docker、账号登录或真实外部业务时，先由本人授权对应动作。
+
+## 续费清单
+
+本机实际台账位置：
+
+```text
+packages/clawbot/config/renewals.json
+```
+
+首次使用：
 
 ```bash
-cd ~/Desktop/OpenEverything && scripts/auto_recovery.sh
+cp packages/clawbot/config/renewals.example.json packages/clawbot/config/renewals.json
+```
+
+只填写：资源名称、用途、供应商、到期日、预计费用、自动续费状态和安全操作入口。**不要填写**密码、API Key、Cookie、验证码、MFA 恢复码、证书内容或银行卡信息。
+
+提醒规则：提前 **30 / 14 / 7 / 3 / 1 天**提示；未知日期保持 `unknown`。系统不会替你登录、付款、续费或修改自动续费。
+
+检查方式：
+
+```bash
+scripts/check_renewals.py --json
 ```
 
 ## 备份和恢复
 
-### 手动备份一次
+### 创建源码快照
 
 ```bash
-cd ~/Desktop/OpenEverything && scripts/local_backup.sh
+scripts/local_backup.sh
 ```
 
-默认备份到 iCloud（如果可用）或桌面 `OpenEverything-backups`，保留 30 天。
+脚本带锁、空间预检、校验和保留策略，并排除 `.env`、数据库、日志、浏览器 Profile、依赖和构建产物等敏感/可再生成目录。
 
-### 恢复前先预演
+### 数据库备份与可丢弃恢复演练
 
 ```bash
-cd ~/Desktop/OpenEverything && scripts/disaster_recovery.sh --dry-run
+make backup-databases
+make backup-restore-drill
 ```
 
-真正恢复必须加 `--confirm`，避免误覆盖。
+### 灾难恢复
+
+先预演：
+
+```bash
+scripts/disaster_recovery.sh --dry-run
+```
+
+真实覆盖必须显式确认：
+
+```bash
+scripts/disaster_recovery.sh --confirm
+```
+
+## 永远需要本人确认的事
+
+- 真实交易、下单、转账、付款、退款和充值。
+- 闲鱼发送卡密、确认发货、恢复自动发货和处理真实订单。
+- 社媒发布、评论、关注、私信和删除内容。
+- 账号登录、扫码、MFA、实名、验证码和平台风控验证。
+- 购买、续费、扩容、改变自动续费或创建付费资源。
+- 生产部署、重启、删除数据、升级 New-API、安装桌面 App 和不可逆操作。
 
 ## 老板只需要记住一句话
 
-平时只打开：`http://127.0.0.1:18800/dashboard`
-
-看不懂就点：`导出状态报告`。
+平时跑健康检查，看黄/红灯和续费提醒；任何会动钱、动账号、发出去或删生产数据的动作，都先由本人确认。

@@ -93,6 +93,8 @@ async def publish_video(
     tags: list[str] | None = None,
     account: str = "",
     timeout: int = 180,
+    *,
+    final_confirmed: bool = False,
 ) -> dict:
     """发布视频到指定平台"""
     account = account or DEFAULT_ACCOUNT
@@ -102,6 +104,15 @@ async def publish_video(
         return {"success": False, "error": f"{PLATFORMS[platform]['name']}不支持视频发布"}
     if not Path(video_path).exists():
         return {"success": False, "error": f"视频文件不存在: {video_path}"}
+
+    from src.execution.social.publish_safety import enforce_external_write_confirmation
+
+    blocked = enforce_external_write_confirmation(
+        f"publish_video_{platform}",
+        final_confirmed=final_confirmed,
+    )
+    if blocked:
+        return blocked
 
     args = [platform, "upload-video",
             "--account", account,
@@ -123,6 +134,8 @@ async def publish_note(
     tags: list[str] | None = None,
     account: str = "",
     timeout: int = 120,
+    *,
+    final_confirmed: bool = False,
 ) -> dict:
     """发布图文笔记到指定平台"""
     account = account or DEFAULT_ACCOUNT
@@ -135,6 +148,15 @@ async def publish_note(
     valid_images = [img for img in images if Path(img).exists()]
     if not valid_images:
         return {"success": False, "error": "没有有效的图片文件"}
+
+    from src.execution.social.publish_safety import enforce_external_write_confirmation
+
+    blocked = enforce_external_write_confirmation(
+        f"publish_note_{platform}",
+        final_confirmed=final_confirmed,
+    )
+    if blocked:
+        return blocked
 
     args = [platform, "upload-note", "--account", account, "--title", title[:100], "--images", *valid_images]
     if content:
@@ -153,15 +175,42 @@ async def publish_multi_platform(
     description: str = "",
     tags: list[str] | None = None,
     account: str = "",
+    *,
+    final_confirmed: bool = False,
 ) -> dict[str, dict]:
     """一键多平台发布（并行执行）"""
+    from src.execution.social.publish_safety import enforce_external_write_confirmation
+
+    blocked = enforce_external_write_confirmation(
+        "publish_multi_platform",
+        final_confirmed=final_confirmed,
+    )
+    if blocked:
+        return {"_blocked": blocked}
+
     async def _publish_one(platform):
         if platform not in PLATFORMS:
             return platform, {"success": False, "error": f"不支持: {platform}"}
         if video_path:
-            return platform, await publish_video(platform, video_path, title, description, tags, account)
+            return platform, await publish_video(
+                platform,
+                video_path,
+                title,
+                description,
+                tags,
+                account,
+                final_confirmed=True,
+            )
         elif images:
-            return platform, await publish_note(platform, images, title, description, tags, account)
+            return platform, await publish_note(
+                platform,
+                images,
+                title,
+                description,
+                tags,
+                account,
+                final_confirmed=True,
+            )
         else:
             return platform, {"success": False, "error": "需要视频或图片"}
 

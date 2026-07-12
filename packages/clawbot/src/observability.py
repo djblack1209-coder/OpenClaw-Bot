@@ -4,7 +4,6 @@ OpenClaw LLM 可观测性 — 搬运 Arize Phoenix OTEL (9k⭐)
 
 提供:
   - LiteLLM 自动追踪（所有 completion/embedding 调用）
-  - CrewAI 自动追踪（多 Agent 协作可视化）
   - 自定义 span 装饰器（任意函数追踪）
   - MCP Server 配置生成
 
@@ -49,15 +48,6 @@ try:
     _litellm_instrumentor_cls = LiteLLMInstrumentor
 except ImportError:
     logger.info("[Observability] openinference-instrumentation-litellm 未安装，跳过 LiteLLM instrumentor")
-
-# CrewAI instrumentor — 可选，仅在安装了 openinference-instrumentation-crewai 时生效
-_crewai_instrumentor_cls = None
-try:
-    from openinference.instrumentation.crewai import CrewAIInstrumentor  # type: ignore[import-untyped]
-
-    _crewai_instrumentor_cls = CrewAIInstrumentor
-except ImportError:
-    logger.info("[Observability] openinference-instrumentation-crewai 未安装，跳过 CrewAI instrumentor")
 
 # OpenTelemetry trace API — 用于自定义 span
 _otel_trace = None
@@ -122,14 +112,6 @@ def init_phoenix(
             logger.warning("[Phoenix] LiteLLM instrumentor 安装失败: %s", e)
     else:
         logger.debug("[Phoenix] openinference-instrumentation-litellm 未安装，跳过")
-
-    # ── 安装 CrewAI instrumentor (可选) ──
-    if _crewai_instrumentor_cls:
-        try:
-            _crewai_instrumentor_cls().instrument(tracer_provider=tracer_provider)
-            logger.info("[Phoenix] CrewAI instrumentor 已安装")
-        except Exception as e:
-            logger.debug("[Phoenix] CrewAI instrumentor 安装失败: %s", e)
 
     # ── 获取 tracer 用于自定义 span ──
     if _otel_trace:
@@ -240,6 +222,5 @@ def get_stats() -> dict[str, Any]:
         "ui_url": get_phoenix_url(),
         "instrumentors": {
             "litellm": _litellm_instrumentor_cls is not None,
-            "crewai": _crewai_instrumentor_cls is not None,
         },
     }

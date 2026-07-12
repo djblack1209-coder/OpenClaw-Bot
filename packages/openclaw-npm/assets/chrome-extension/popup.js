@@ -206,8 +206,8 @@ function render() {
   els.xianyuDeliveryHint.style.display = xianyuDeliveryVisible ? 'none' : 'block'
   els.xianyuDeliveryScan.disabled = !xianyuDeliveryVisible
   els.xianyuDeliverySend.disabled = !xianyuDeliveryVisible
-  els.xianyuDeliveryWatch.disabled = !xianyuDeliveryVisible
-  els.xianyuDeliveryWatchAll.disabled = false
+  els.xianyuDeliveryWatch.disabled = true
+  els.xianyuDeliveryWatchAll.disabled = true
 }
 
 function renderDraftEditor(draft) {
@@ -465,7 +465,7 @@ async function sendXianyuDelivery() {
     if (!hasChromeRuntime()) {
       renderXianyuDeliveryState({
         result: { paidSignals: ['买家已付款'], inputReady: true, sendButtonReady: true },
-      }, '预览模式：会填入待发货卡密并点击发送。')
+      }, '预览模式：只有 18800 操作台刚签发并消费单次票后，才会填入并点击发送。')
       return
     }
     const result = await chrome.runtime.sendMessage({ type: 'xianyuDeliverySend', payload: {} })
@@ -474,85 +474,15 @@ async function sendXianyuDelivery() {
       setError(result?.error || '发送失败，请检查当前闲鱼聊天页。')
       return
     }
-    renderXianyuDeliveryState(result, `已发送并标记本机记录 #${result.shipment?.id || ''}。`)
-    els.draftResult.textContent = '发货完成：买家收到兑换网址和卡密后，继续让买家注册/登录、兑换、创建 API Key、导入 CC Switch 并调一次模型。'
+    renderXianyuDeliveryState(result, `已用本次单次票发送并标记本机记录 #${result.shipment?.id || ''}。`)
+    els.draftResult.textContent = '卡密已发送；闲鱼确认发货仍需本人逐笔处理。然后让买家注册/登录、兑换、创建 API Key、导入 CC Switch 并调一次模型。'
   } catch (err) {
     setError(err instanceof Error ? err.message : String(err))
   } finally {
     els.xianyuDeliverySend.disabled = platform.id !== 'xianyu'
-    els.xianyuDeliverySend.textContent = '发送待发货卡密'
+    els.xianyuDeliverySend.textContent = '使用已授权单次票发送'
   }
 }
-
-async function refreshXianyuDeliveryWatchState() {
-  if (!els.xianyuDeliveryWatch) return
-  try {
-    if (!hasChromeRuntime()) {
-      els.xianyuDeliveryWatch.textContent = '看守当前聊天页'
-      return
-    }
-    const state = await chrome.runtime.sendMessage({ type: 'xianyuDeliveryWatchState', payload: {} })
-    const enabled = Boolean(state?.watch?.enabled)
-    const scope = state?.watch?.scope || 'current_chat'
-    els.xianyuDeliveryWatch.textContent = enabled && scope === 'current_chat' ? '关闭看守' : '看守当前聊天页'
-    els.xianyuDeliveryWatchAll.textContent = enabled && scope === 'all_open_xianyu_tabs' ? '关闭全局看守' : '看守所有闲鱼页'
-    if (state?.watch?.last_result?.ok) {
-      renderXianyuDeliveryState(
-        state.watch.last_result,
-        scope === 'all_open_xianyu_tabs' ? `全局看守运行中：已扫描 ${state.watch.tabCount || 0} 个闲鱼页。` : '看守模式最近一次已发货。',
-      )
-    }
-  } catch {
-    els.xianyuDeliveryWatch.textContent = '看守当前聊天页'
-    els.xianyuDeliveryWatchAll.textContent = '看守所有闲鱼页'
-  }
-}
-
-async function toggleXianyuDeliveryWatch(scope = 'current_chat') {
-  setError('')
-  const button = scope === 'all_open_xianyu_tabs' ? els.xianyuDeliveryWatchAll : els.xianyuDeliveryWatch
-  button.disabled = true
-  button.textContent = '处理中…'
-  try {
-    if (!hasChromeRuntime()) {
-      renderXianyuDeliveryState({
-        result: { paidSignals: ['买家已付款'], inputReady: true, sendButtonReady: true },
-      }, scope === 'all_open_xianyu_tabs' ? '预览模式：会看守所有已打开闲鱼页。' : '预览模式：会看守当前聊天页，命中后自动发送一次。')
-      return
-    }
-    const state = await chrome.runtime.sendMessage({ type: 'xianyuDeliveryWatchState', payload: {} })
-    const enabled = Boolean(state?.watch?.enabled)
-    const currentScope = state?.watch?.scope || 'current_chat'
-    const nextEnabled = !(enabled && currentScope === scope)
-    const result = await chrome.runtime.sendMessage({
-      type: 'xianyuDeliveryWatchSet',
-      payload: { enabled: nextEnabled, scope },
-    })
-    if (!result?.ok) {
-      setError(result?.error || (scope === 'all_open_xianyu_tabs' ? '全局看守开启失败，请先打开闲鱼买家聊天页。' : '看守模式切换失败，请确认当前页是闲鱼买家聊天页。'))
-      return
-    }
-    if (nextEnabled) {
-      const prefix = scope === 'all_open_xianyu_tabs'
-        ? `已开启全局看守：保持闲鱼聊天页打开（当前 ${result.watch?.tabCount || 0} 个）。`
-        : '已开启看守：保持当前闲鱼买家聊天页打开。'
-      renderXianyuDeliveryState(result.scan || {}, prefix)
-      els.draftResult.textContent = scope === 'all_open_xianyu_tabs'
-        ? '全局看守已开启：只在本机刚好 1 条待发货、页面看见已付款信号时发送，成功一次后自动关闭。'
-        : '看守模式已开启：插件会定时检查当前聊天页；成功发货一次后自动关闭，避免重复发送。'
-    } else {
-      els.xianyuDeliveryState.textContent = '看守模式已关闭。'
-      els.draftResult.textContent = '已关闭闲鱼发货看守。'
-    }
-  } catch (err) {
-    setError(err instanceof Error ? err.message : String(err))
-  } finally {
-    els.xianyuDeliveryWatch.disabled = platform.id !== 'xianyu'
-    els.xianyuDeliveryWatchAll.disabled = false
-    await refreshXianyuDeliveryWatchState()
-  }
-}
-
 
 function renderGrowthFeedback(summary = {}) {
   currentGrowthFeedback = normalizeGrowthFeedbackSummary(summary || {})
@@ -1126,15 +1056,16 @@ function buildExtensionHeartbeat() {
     cc_delivery_helper_version: '2026-07-07-paid-page-fallback',
     capabilities: {
       xianyu_delivery_scan: true,
-      xianyu_delivery_send: true,
-      xianyu_confirm_shipment: true,
-      xianyu_relist_item: true,
-      current_chat_watch: true,
-      all_open_xianyu_tabs_watch: true,
+      xianyu_delivery_send: false,
+      xianyu_confirm_shipment: false,
+      xianyu_relist_item: false,
+      xianyu_one_shot_delivery_human_gated: true,
+      current_chat_watch: false,
+      all_open_xianyu_tabs_watch: false,
       target_tab_preflight: true,
       single_pending_global_gate: true,
       background_heartbeat: true,
-      relist_queue_watch: true,
+      relist_queue_watch: false,
       paid_page_dispatch: true,
     },
   }
@@ -1743,8 +1674,6 @@ els.generateGrowthDrafts.addEventListener('click', () => void generateGrowthDraf
 els.refreshReviewPack.addEventListener('click', () => void refreshReviewPack())
 els.xianyuDeliveryScan.addEventListener('click', () => void scanXianyuDelivery())
 els.xianyuDeliverySend.addEventListener('click', () => void sendXianyuDelivery())
-els.xianyuDeliveryWatch.addEventListener('click', () => void toggleXianyuDeliveryWatch('current_chat'))
-els.xianyuDeliveryWatchAll.addEventListener('click', () => void toggleXianyuDeliveryWatch('all_open_xianyu_tabs'))
 els.personaApprove.addEventListener('click', () => void reviewPersonaDirection(true))
 els.personaReject.addEventListener('click', () => void reviewPersonaDirection(false))
 els.refreshSchedule.addEventListener('click', () => void refreshScheduleQueue())
@@ -1774,5 +1703,4 @@ els.attachRelay.addEventListener('click', (event) => {
 })
 
 void loadState()
-void refreshXianyuDeliveryWatchState()
 renderDraftEditor(null)

@@ -4,16 +4,48 @@ Execution Hub — 调度器
 """
 
 import asyncio
+import json
 import logging
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from pathlib import Path
+from typing import Any
 
 from src.execution._utils import parse_hhmm, safe_int
 from src.utils import now_et
 
 logger = logging.getLogger(__name__)
+_CONTROLS_STATE_FILE = Path(__file__).resolve().parents[2] / "data" / "controls_state.json"
+
+
+def _load_scheduler_controls() -> dict[str, Any]:
+    """读取调度器总开关和单项开关；损坏时安全回退为默认启用。"""
+    configured = os.getenv("OPENCLAW_CONTROLS_STATE_FILE", "").strip()
+    path = Path(configured).expanduser() if configured else _CONTROLS_STATE_FILE
+    if not path.exists():
+        return {"enabled": True, "maintenance_mode": False, "tasks": {}}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        logger.warning("[ExecutionScheduler] 控制状态损坏，按默认安全配置继续")
+        return {"enabled": True, "maintenance_mode": False, "tasks": {}}
+    scheduler = payload.get("scheduler") if isinstance(payload, dict) else {}
+    if not isinstance(scheduler, dict):
+        scheduler = {}
+    tasks = scheduler.get("tasks")
+    return {
+        "enabled": bool(scheduler.get("enabled", True)),
+        "maintenance_mode": bool(scheduler.get("maintenance_mode", False)),
+        "tasks": tasks if isinstance(tasks, dict) else {},
+    }
+
+
+def _task_enabled(controls: dict[str, Any], task_id: str) -> bool:
+    """没有显式关闭的任务保持兼容启用。"""
+    tasks = controls.get("tasks") if isinstance(controls.get("tasks"), dict) else {}
+    task = tasks.get(task_id) if isinstance(tasks, dict) else None
+    return not isinstance(task, dict) or bool(task.get("enabled", True))
 
 
 class ExecutionScheduler:
@@ -34,6 +66,11 @@ class ExecutionScheduler:
         self._stock_alert_cooldown: dict[str, float] = {}  # 库存预警冷却(每item 24h)
         self._last_price_watch_ts = 0.0  # 降价监控上次检查时间
         self._last_deal_scan_ts = 0.0  # 折扣搜集上次扫描时间
+        self._last_backup_alert_date = ""  # 同一天的备份故障只提醒一次
+        self._job_health: dict[str, dict[str, Any]] = {}
+        self._last_loop_at = ""
+        self._last_loop_completed_at = ""
+        self._iteration_count = 0
         # 外部依赖（注入）
         self.monitor_manager = None
         self.social_autopilot_func = None
@@ -41,31 +78,45 @@ class ExecutionScheduler:
         self.intel_brief_sandbox_runner = None
         self.intel_brief_production_runner = None
 
-    async def start(self, notify_func=None, private_notify_func=None):
-        self._notify_func = notify_func
-        self._private_notify_func = private_notify_func
+    async def start(self, notify_func=None, private_notify_func=None) -> bool:
+        """幂等启动调度循环；重复调用只更新通知函数，不创建第二个循环。"""
+        if notify_func is not None:
+            self._notify_func = notify_func
+        if private_notify_func is not None:
+            self._private_notify_func = private_notify_func
+        if self._task and not self._task.done():
+            self._running = True
+            logger.info("[ExecutionScheduler] already running")
+            return False
+
         self._running = True
         self._task = asyncio.ensure_future(self._loop())
 
-        def _scheduler_done(t):
-            if not t.cancelled() and t.exception():
-                logger.warning("[ExecutionScheduler] 循环崩溃: %s", t.exception())
+        def _scheduler_done(task: asyncio.Task) -> None:
+            if not task.cancelled() and task.exception():
+                logger.warning(
+                    "[ExecutionScheduler] 循环崩溃: %s",
+                    type(task.exception()).__name__,
+                )
 
         self._task.add_done_callback(_scheduler_done)
         logger.info("[ExecutionScheduler] started")
+        return True
 
-    async def stop(self):
+    async def stop(self) -> None:
+        """幂等停止调度循环并等待取消完成。"""
         self._running = False
         if self._task and not self._task.done():
             self._task.cancel()
-            try:  # noqa: SIM105
+            try:
                 await self._task
-            except asyncio.CancelledError as e:  # noqa: F841
-                pass  # 合理保留：任务取消是正常停止流程
+            except asyncio.CancelledError:
+                logger.debug("[ExecutionScheduler] cancellation completed")
         self._task = None
         logger.info("[ExecutionScheduler] stopped")
 
-    async def _loop(self):
+    async def _loop(self) -> None:
+        """每分钟运行一轮；单个任务失败或超时不会终止整个调度器。"""
         brief_time = parse_hhmm(os.getenv("OPS_BRIEF_TIME"), (8, 0))
         intel_brief_time = parse_hhmm(os.getenv("INTEL_BRIEF_TIME"), (8, 30))
         monitor_interval = max(1, safe_int(os.getenv("OPS_MONITOR_INTERVAL_MIN"), 15)) * 60
@@ -75,46 +126,138 @@ class ExecutionScheduler:
         while self._running:
             try:
                 await asyncio.sleep(60)
-            except asyncio.CancelledError as e:  # noqa: F841
+            except asyncio.CancelledError:
                 break
+            await self._run_iteration(
+                now=now_et(),
+                ts=time.time(),
+                brief_time=brief_time,
+                intel_brief_time=intel_brief_time,
+                monitor_interval=monitor_interval,
+                bounty_interval=bounty_interval,
+                social_op_interval=social_op_interval,
+            )
 
-            now = now_et()
-            ts = time.time()
+    async def _run_iteration(
+        self,
+        *,
+        now: Any,
+        ts: float,
+        brief_time: tuple[int, int],
+        intel_brief_time: tuple[int, int],
+        monitor_interval: int,
+        bounty_interval: int,
+        social_op_interval: int,
+    ) -> None:
+        """运行一轮完整任务列表，并为每项留下脱敏健康状态。"""
+        timeout_seconds = max(5, safe_int(os.getenv("OPS_SCHEDULER_JOB_TIMEOUT_SECONDS"), 180))
+        self._last_loop_at = now_et().isoformat()
+        controls = _load_scheduler_controls()
+        if not controls["enabled"] or controls["maintenance_mode"]:
+            status = "maintenance" if controls["maintenance_mode"] else "disabled"
+            self._job_health["scheduler"] = {
+                "status": status,
+                "last_attempt_at": self._last_loop_at,
+                "last_success_at": "",
+                "consecutive_failures": 0,
+                "error_type": "",
+                "duration_seconds": 0.0,
+            }
+            self._iteration_count += 1
+            self._last_loop_completed_at = now_et().isoformat()
+            return
+        jobs: list[tuple[str, Callable[[], Awaitable[Any]]]] = [
+            ("daily_brief", lambda: self._run_daily_brief(now, brief_time)),
+            ("intel_brief", lambda: self._run_intel_brief(now, intel_brief_time)),
+            ("morning_news", lambda: self._run_morning_news(now)),
+            ("monitors", lambda: self._run_monitors(ts, monitor_interval)),
+            ("social_operator", lambda: self._run_social_operator(ts, social_op_interval)),
+            ("bounty_scan", lambda: self._run_bounty_scan(ts, bounty_interval)),
+            ("cleanup", lambda: self._run_cleanup(now)),
+            ("reminders", self._run_reminders),
+            ("bill_checks", lambda: self._run_bill_checks(now)),
+            ("xianyu_shipment", self._run_xianyu_shipment_check),
+            ("stock_check", lambda: self._run_stock_check(ts)),
+            ("weekly_strategy", self._run_weekly_strategy_review),
+            ("weekly_report", self._run_weekly_report),
+            ("price_watch", lambda: self._run_price_watch_check(now, ts)),
+            ("deal_scan", lambda: self._run_deal_scan(ts)),
+            ("budget_alert", lambda: self._run_budget_alert(now)),
+        ]
+        for name, job in jobs:
+            if not _task_enabled(controls, name):
+                self._job_health[name] = {
+                    "status": "disabled",
+                    "last_attempt_at": now_et().isoformat(),
+                    "last_success_at": self._job_health.get(name, {}).get("last_success_at", ""),
+                    "consecutive_failures": 0,
+                    "error_type": "",
+                    "duration_seconds": 0.0,
+                }
+                continue
+            await self._run_guarded(name, job, timeout_seconds=timeout_seconds)
+        self._iteration_count += 1
+        self._last_loop_completed_at = now_et().isoformat()
 
-            await self._run_daily_brief(now, brief_time)
-            await self._run_intel_brief(now, intel_brief_time)
-            await self._run_morning_news(now)  # 每早自动推送科技早报
-            await self._run_monitors(ts, monitor_interval)
-            await self._run_social_operator(ts, social_op_interval)
-            await self._run_bounty_scan(ts, bounty_interval)
-            self._run_cleanup(now)
+    async def _run_guarded(
+        self,
+        name: str,
+        job: Callable[[], Awaitable[Any]],
+        *,
+        timeout_seconds: float,
+    ) -> Any:
+        """隔离一个任务的异常和超时，记录错误类型但不保存敏感正文。"""
+        started = time.monotonic()
+        previous = self._job_health.get(name, {})
+        try:
+            result = await asyncio.wait_for(job(), timeout=timeout_seconds)
+        except asyncio.CancelledError:
+            raise
+        except TimeoutError:
+            failures = int(previous.get("consecutive_failures", 0)) + 1
+            self._job_health[name] = {
+                "status": "timeout",
+                "last_attempt_at": now_et().isoformat(),
+                "last_success_at": previous.get("last_success_at", ""),
+                "consecutive_failures": failures,
+                "error_type": "TimeoutError",
+                "duration_seconds": round(time.monotonic() - started, 3),
+            }
+            logger.warning("[ExecutionScheduler] %s 超过 %.1f 秒，已安全取消", name, timeout_seconds)
+            return None
+        except Exception as error:
+            failures = int(previous.get("consecutive_failures", 0)) + 1
+            self._job_health[name] = {
+                "status": "failed",
+                "last_attempt_at": now_et().isoformat(),
+                "last_success_at": previous.get("last_success_at", ""),
+                "consecutive_failures": failures,
+                "error_type": type(error).__name__,
+                "duration_seconds": round(time.monotonic() - started, 3),
+            }
+            logger.warning("[ExecutionScheduler] %s 失败: %s", name, type(error).__name__)
+            return None
 
-            # 提醒检查 — 每次循环都执行(60秒一次)
-            await self._run_reminders()
+        completed_at = now_et().isoformat()
+        self._job_health[name] = {
+            "status": "ok",
+            "last_attempt_at": completed_at,
+            "last_success_at": completed_at,
+            "consecutive_failures": 0,
+            "error_type": "",
+            "duration_seconds": round(time.monotonic() - started, 3),
+        }
+        return result
 
-            # 账单低余额告警 + 定期查询提醒
-            await self._run_bill_checks(now)
-
-            # 闲鱼发货超时提醒
-            await self._run_xianyu_shipment_check()
-
-            # 闲鱼库存低预警 — 每4小时巡检
-            await self._run_stock_check(ts)
-
-            # 每周日 20:00 策略绩效评估
-            await self._run_weekly_strategy_review()
-
-            # 每周日 20:30 综合周报推送
-            await self._run_weekly_report()
-
-            # 降价监控 — 每6小时检查一次 (06:00/12:00/18:00/00:00 ET)
-            await self._run_price_watch_check(now, ts)
-
-            # 折扣搜集 — 每4小时扫描全网好价
-            await self._run_deal_scan(ts)
-
-            # 每天 20:00 预算超支检查
-            await self._run_budget_alert(now)
+    def get_health_snapshot(self) -> dict[str, Any]:
+        """返回不含任务输出、聊天内容或凭据的调度器健康摘要。"""
+        return {
+            "running": self._running,
+            "iteration_count": self._iteration_count,
+            "last_loop_at": self._last_loop_at,
+            "last_loop_completed_at": self._last_loop_completed_at,
+            "jobs": {name: dict(status) for name, status in self._job_health.items()},
+        }
 
     async def _run_weekly_strategy_review(self):
         """每周日检查策略绩效并推送报告"""
@@ -532,6 +675,20 @@ class ExecutionScheduler:
         except Exception as e:
             logger.warning("[Scheduler] 降价监控检查异常: %s", e)
 
+    async def _run_deal_scan(self, ts: float) -> None:
+        """每 4 小时扫描全网折扣；失败后保留冷却，避免反复轰炸外部站点。"""
+        interval = max(1, safe_int(os.getenv("OPS_DEAL_SCAN_INTERVAL_MIN", "240"), 240)) * 60
+        if ts - self._last_deal_scan_ts < interval:
+            return
+        self._last_deal_scan_ts = ts
+
+        try:
+            from src.shopping.deal_scanner import scheduled_deal_scan
+
+            await scheduled_deal_scan()
+        except Exception as error:
+            logger.warning("[Scheduler] 折扣扫描失败: %s", type(error).__name__)
+
     async def _run_budget_alert(self, now):
         """每天 20:00 检查所有用户的月预算使用情况
 
@@ -577,8 +734,7 @@ class ExecutionScheduler:
         except Exception as e:
             logger.warning("[Scheduler] 预算检查异常: %s", e)
 
-    @staticmethod
-    def _run_cleanup(now):
+    async def _run_cleanup(self, now):
         if now.minute != 0:
             return
         try:
@@ -588,13 +744,25 @@ class ExecutionScheduler:
         except Exception:
             logger.debug("Silenced exception", exc_info=True)
 
+        controls = _load_scheduler_controls()
         # Daily database cleanup — run once at 03:00 ET to bound DB growth
-        if now.hour == 3:
+        if now.hour == 3 and _task_enabled(controls, "db_cleanup"):
             _run_daily_db_cleanup()
 
         # Daily database backup — run once at 04:00 ET (after cleanup)
-        if now.hour == 4:
-            _run_daily_db_backup()
+        if now.hour == 4 and _task_enabled(controls, "db_backup"):
+            summary = _run_daily_db_backup()
+            if summary["failed"] > 0 and self._private_notify_func:
+                alert_date = now.date().isoformat()
+                if self._last_backup_alert_date != alert_date:
+                    self._last_backup_alert_date = alert_date
+                    try:
+                        await self._private_notify_func(
+                            "⚠️ 数据库备份失败，系统已保留错误状态且不会自动覆盖生产数据。\n"
+                            "请打开老板状态入口查看备份红灯，再运行可丢弃恢复演练。"
+                        )
+                    except Exception as error:
+                        logger.warning("[Scheduler] 备份失败提醒发送失败: %s", error)
 
 
 def _run_daily_db_cleanup():
@@ -640,34 +808,26 @@ def _run_daily_db_cleanup():
         logger.debug("[Scheduler] stale watches cleanup failed", exc_info=True)
 
 
-def _run_daily_db_backup():
-    """Back up all SQLite databases using the online backup API."""
+def _run_daily_db_backup() -> dict[str, int]:
+    """运行 SQLite 在线备份，并返回调度器可告警的脱敏计数。"""
     try:
         from scripts.backup_databases import backup_all
 
         results = backup_all()
-        ok_count = sum(1 for v in results.values() if isinstance(v, str) and v.startswith("OK"))
-        skip_count = sum(1 for v in results.values() if isinstance(v, str) and "skipped" in v)
-        fail_count = sum(1 for v in results.values() if isinstance(v, str) and "FAILED" in v)
+        database_results = {
+            key: value
+            for key, value in results.items()
+            if not str(key).startswith("_")
+        }
+        ok_count = sum(1 for value in database_results.values() if value.startswith("OK"))
+        skip_count = sum(1 for value in database_results.values() if "skipped" in value)
+        fail_count = sum(1 for value in results.values() if "FAILED" in str(value))
         logger.info("[Scheduler] DB backup: %d OK, %d skipped, %d failed", ok_count, skip_count, fail_count)
         if fail_count > 0:
             for db, status in results.items():
                 if isinstance(status, str) and "FAILED" in status:
                     logger.error("[Scheduler] Backup failed: %s → %s", db, status)
+        return {"ok": ok_count, "skipped": skip_count, "failed": fail_count}
     except Exception:
         logger.error("[Scheduler] daily DB backup failed", exc_info=True)
-
-    # ── 折扣搜集 ───────────────────────────────────────────
-
-    async def _run_deal_scan(self, ts: float):
-        """每 4 小时扫描全网折扣并推送"""
-        interval = safe_int(os.getenv("OPS_DEAL_SCAN_INTERVAL_MIN", "240"), 240) * 60
-        if ts - self._last_deal_scan_ts < interval:
-            return
-        self._last_deal_scan_ts = ts
-
-        try:
-            from src.shopping.deal_scanner import scheduled_deal_scan
-            await scheduled_deal_scan()
-        except Exception as e:
-            logger.warning("[Scheduler] 折扣扫描失败: %s", e)
+        return {"ok": 0, "skipped": 0, "failed": 1}

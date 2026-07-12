@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""闲鱼 Cookie 自动登录工具 — Playwright 浏览器登录 + Stealth 反检测 + 滑块自动处理
+"""闲鱼 Cookie 人工登录助手 — Playwright 可见浏览器 + 登录态提取
 
 流程：
-1. 打开浏览器（注入 stealth 反检测脚本）访问闲鱼登录页
-2. 用户用手机扫码登录（或自动处理滑块验证码）
+1. 打开可见浏览器访问闲鱼登录页
+2. 用户本人扫码并手动完成平台验证码
 3. 检测到登录成功后自动提取所有 Cookie
 4. 写入 config/.env 文件
 5. 通知 xianyu_main 进程热更新（SIGUSR1）
 
 使用方式：
   python3 scripts/xianyu_login.py              # 有界面模式（扫码）
-  python3 scripts/xianyu_login.py --headless    # 无界面模式（后台静默）
+  python3 scripts/xianyu_login.py --headless    # 安全拒绝：登录必须有界面并由用户操作
   python3 scripts/xianyu_login.py --quiet       # 静默模式（被其他脚本调用时）
 """
 
@@ -44,62 +44,46 @@ def _log(msg: str, quiet: bool = False):
 def extract_cookies_from_browser(quiet: bool = False, headless: bool = False) -> str:
     """打开浏览器让用户登录闲鱼，登录成功后提取 Cookie。
 
-    集成 stealth 反检测 + 滑块自动处理。
-    headless=True 时完全后台运行，不弹出任何窗口。
+    只检测验证码，不注入反检测脚本、不自动拖动。
+    headless=True 会被安全拒绝，因为账号登录必须由用户本人完成。
 
     返回 Cookie 字符串，失败返回空字符串。
     """
+    if headless:
+        _log("headless 模式已禁用：账号登录和验证码必须由用户在可见浏览器中完成", quiet)
+        return ""
+
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
         _log("Playwright 未安装，请执行: pip install playwright && playwright install chromium", quiet)
         return ""
 
-    # 加载滑块求解器
+    # 只加载验证码检测器，不执行自动求解。
     try:
-        from src.xianyu.slider_solver import SliderSolverSync, STEALTH_JS
+        from src.xianyu.slider_solver import SliderSolverSync
 
         slider_solver = SliderSolverSync()
         has_slider_solver = True
-        _log("滑块求解器已加载", quiet)
+        _log("验证码检测器已加载", quiet)
     except ImportError:
         has_slider_solver = False
-        STEALTH_JS = ""
-        _log("滑块求解器不可用，跳过自动处理", quiet)
+        slider_solver = None
+        _log("验证码检测器不可用；仍需在浏览器中手动完成平台验证", quiet)
 
-    mode_str = "headless 静默" if headless else "有界面"
-    _log(f"正在以 {mode_str} 模式打开浏览器...", quiet)
+    _log("正在打开可见浏览器...", quiet)
 
     cookie_str = ""
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
-            headless=headless,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--no-sandbox",
-                "--disable-web-security",
-                "--disable-features=IsolateOrigins,site-per-process",
-            ],
+            headless=False,
         )
         context = browser.new_context(
             viewport={"width": 1280, "height": 800},
-            user_agent=(
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/131.0.0.0 Safari/537.36"
-            ),
             locale="zh-CN",
         )
         page = context.new_page()
-
-        # 注入 stealth 反检测脚本（在任何页面加载前生效）
-        if STEALTH_JS:
-            try:
-                context.add_init_script(STEALTH_JS)
-                _log("Stealth 反检测脚本已注入", quiet)
-            except Exception as e:
-                _log(f"Stealth 脚本注入失败（非致命）: {e}", quiet)
 
         # 访问登录页
         page.goto(LOGIN_URL, wait_until="domcontentloaded")
@@ -108,35 +92,32 @@ def extract_cookies_from_browser(quiet: bool = False, headless: bool = False) ->
         # 等待登录成功
         start = time.time()
         logged_in = False
-        slider_checked = False
+        captcha_notified = False
 
         while time.time() - start < LOGIN_TIMEOUT:
+            captcha_visible = False
             try:
                 current_url = page.url
 
-                # 每 5 秒检查一次是否出现滑块（登录过程中可能弹出）
-                if has_slider_solver and not slider_checked:
-                    if slider_solver.detect_slider(page):
-                        _log("检测到滑块验证码，正在自动处理...", quiet)
-                        solved = slider_solver.solve(page, max_retries=5)
-                        if solved:
-                            _log("滑块验证码已自动通过!", quiet)
-                        else:
-                            _log("滑块自动处理失败，可能需要手动处理", quiet)
-                        slider_checked = True
-                        # 处理完滑块后重置计时器，给用户更多时间扫码
-                        start = time.time()
+                # 检测到验证码后只提醒，不模拟轨迹、不自动拖动。
+                captcha_visible = bool(
+                    has_slider_solver
+                    and slider_solver is not None
+                    and slider_solver.detect_slider(page)
+                )
+                if captcha_visible and not captcha_notified:
+                    _log("检测到平台验证码，请在浏览器中手动完成；自动化已暂停", quiet)
+                    captcha_notified = True
 
                 # 登录成功判定
                 if SUCCESS_DOMAIN in current_url and "login.taobao.com" not in current_url:
                     _log("检测到登录成功，等待 Cookie 同步...", quiet)
                     time.sleep(5)
 
-                    # 登录后也可能出现滑块验证（风控二次验证）
-                    if has_slider_solver and slider_solver.detect_slider(page):
-                        _log("登录后检测到二次滑块验证，正在处理...", quiet)
-                        slider_solver.solve(page, max_retries=5)
-                        time.sleep(2)
+                    # 登录后仍出现验证码时继续等待人工完成，不能提取半成品登录态。
+                    if captcha_visible:
+                        time.sleep(1)
+                        continue
 
                     # 访问闲鱼消息页面触发 session 初始化
                     if "/im" not in current_url:
@@ -153,9 +134,8 @@ def extract_cookies_from_browser(quiet: bool = False, headless: bool = False) ->
                 pass
 
             time.sleep(1)
-            # 每 10 秒重新检查滑块（可能动态加载）
-            if int(time.time() - start) % 10 == 0:
-                slider_checked = False
+            if not captcha_visible:
+                captcha_notified = False
 
         if not logged_in:
             _log("登录超时（10分钟内未完成），请重试", quiet)
@@ -266,7 +246,7 @@ def extract_cookies_from_browser(quiet: bool = False, headless: bool = False) ->
                     }""")
                     if user_id:
                         cookie_dict["unb"] = user_id
-                        _log(f"从 hasLogin API 获取到用户 ID: {user_id}", quiet)
+                        _log("已从登录状态补齐用户标识（不显示具体值）", quiet)
                 except Exception as e:
                     _log(f"hasLogin API 获取 UID 失败: {e}", quiet)
 
@@ -285,7 +265,7 @@ def extract_cookies_from_browser(quiet: bool = False, headless: bool = False) ->
                     }""")
                     if user_id:
                         cookie_dict["unb"] = str(user_id)
-                        _log(f"从页面获取到用户 ID: {user_id}", quiet)
+                        _log("已从页面补齐用户标识（不显示具体值）", quiet)
                 except Exception:
                     pass
 
@@ -295,7 +275,7 @@ def extract_cookies_from_browser(quiet: bool = False, headless: bool = False) ->
                 for c in all_cookies:
                     if c["name"] == "unb":
                         cookie_dict["unb"] = c["value"]
-                        _log(f"从 Cookie 获取到用户 ID: {c['value']}", quiet)
+                        _log("已从 Cookie 补齐用户标识（不显示具体值）", quiet)
                         break
 
             # 方法4: 从闲鱼本地数据库获取历史卖家 ID
@@ -309,7 +289,7 @@ def extract_cookies_from_browser(quiet: bool = False, headless: bool = False) ->
                         row = conn.execute("SELECT DISTINCT user_id FROM consultations LIMIT 1").fetchone()
                         if row and row[0]:
                             cookie_dict["unb"] = str(row[0])
-                            _log(f"从本地数据库获取到卖家 ID: {row[0]}", quiet)
+                            _log("已从本地状态补齐卖家标识（不显示具体值）", quiet)
                         conn.close()
                 except Exception as e:
                     _log(f"从数据库获取卖家 ID 失败: {e}", quiet)
@@ -362,7 +342,7 @@ def notify_xianyu_process(quiet: bool = False) -> bool:
 
 def run_login(quiet: bool = False, headless: bool = False) -> bool:
     """完整登录流程：浏览器登录 → 提取Cookie → 写入.env → 热更新"""
-    _log("=== 闲鱼 Cookie 自动登录工具 ===", quiet)
+    _log("=== 闲鱼 Cookie 人工登录助手 ===", quiet)
 
     # 1. 浏览器登录 + Cookie 提取
     cookie_str = extract_cookies_from_browser(quiet=quiet, headless=headless)
@@ -414,7 +394,7 @@ def run_login(quiet: bool = False, headless: bool = False) -> bool:
     # 4. 通知闲鱼进程热更新
     notify_xianyu_process(quiet=quiet)
 
-    _log("=== 登录完成，闲鱼客服即将恢复 ===", quiet)
+    _log("=== 登录凭据已更新；发货、确认收货等高风险动作仍保持人工闸门 ===", quiet)
     return True
 
 

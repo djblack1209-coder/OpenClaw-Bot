@@ -4,9 +4,9 @@ Social Autopilot Scheduler
 
 5 个定时任务 (北京时间):
   09:00 — 热点扫描 + 选题 + 简报
-  12:30 — 评论互动 + 蹭评
+  12:30 — 互动候选提醒（不自动回复/评论）
   19:00 — 内容生产 + 预检
-  20:30 — 自动发布 (双平台)
+  20:30 — 草稿审核与最终确认提醒
   22:00 — 数据统计 + 复盘
 
 用法:
@@ -35,7 +35,6 @@ logger = logging.getLogger(__name__)
 _PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 _STATE_FILE = _PACKAGE_ROOT / "data" / "social_autopilot_state.json"
 _TIMEZONE = "Asia/Shanghai"
-_REVIEW_MODE = True
 
 
 def _alert_admin(message: str) -> None:
@@ -240,48 +239,9 @@ def job_morning_scan() -> None:
 
 
 def job_noon_engage() -> None:
-    """12:30 — 评论互动 + 蹭评"""
-    logger.info("[Autopilot] === 午间互动 ===")
-
-    if _REVIEW_MODE:
-        _notify("跳过午间互动: 审核模式已开启，外部回复/蹭评需人工确认")
-        return
-
-    try:
-        from src.execution.social.worker_bridge import run_social_worker
-
-        # 自动回复评论
-        try:
-            reply_result = run_social_worker("auto_reply", {})
-            logger.info("[Autopilot] 自动回复结果: %s", reply_result.get("success"))
-        except Exception as e:
-            logger.error("[Autopilot] 自动回复失败: %s", e)
-            reply_result = {"success": False, "error": str(e)}
-            # 互动失败通知（措辞较柔和）
-            _alert_admin(f"⚠️ 社媒自动互动任务失败: 自动回复\n错误: {str(e)[:100]}")
-
-        # 蹭评热门帖子
-        try:
-            scout_result = run_social_worker("scout_comment", {"count": 3})
-            logger.info("[Autopilot] 蹭评结果: %s", scout_result.get("success"))
-        except Exception as e:
-            logger.error("[Autopilot] 蹭评失败: %s", e)
-            scout_result = {"success": False, "error": str(e)}
-            # 互动失败通知（措辞较柔和）
-            _alert_admin(f"⚠️ 社媒自动互动任务失败: 蹭评\n错误: {str(e)[:100]}")
-
-        _notify(
-            "午间互动完成",
-            {
-                "auto_reply": reply_result.get("success", False),
-                "scout_comment": scout_result.get("success", False),
-            },
-        )
-    except Exception as e:
-        logger.error("[Autopilot] 午间互动失败: %s", e)
-        _notify(f"午间互动失败: {e}")
-        # 互动整体失败通知
-        _alert_admin(f"⚠️ 社媒自动互动任务整体失败\n错误: {str(e)[:100]}")
+    """12:30 — 只提醒人工处理互动，不执行外部回复或蹭评。"""
+    logger.info("[Autopilot] === 午间互动提醒 ===")
+    _notify("午间互动候选已暂停自动执行；回复、评论、关注等外部动作需逐次人工确认")
 
 
 def job_evening_produce() -> None:
@@ -379,155 +339,44 @@ def job_evening_produce() -> None:
 
 
 def job_night_publish() -> None:
-    """20:30 — 自动发布 (双平台)"""
+    """20:30 — 整理待审草稿并提醒用户最终确认，永不自动发布。"""
+    state = _load_state()
+    drafts = state.get("drafts", [])
+    changed = False
 
-    async def _run() -> None:
-        from src.execution.social.worker_bridge import run_social_worker_async
+    for draft in drafts:
+        if draft.get("status") == "ready" and draft.get("review_status") != "approved":
+            draft["status"] = "needs_review"
+            draft["review_status"] = draft.get("review_status") or "pending"
+            draft["review_required_at"] = now_et().isoformat()
+            draft["review_required_reason"] = "发布前请先确认人设和内容"
+            changed = True
 
-        state = _load_state()
-        drafts = state.get("drafts", [])
-
-        ready_drafts = [
-            d
-            for d in drafts
-            if d.get("status") == "ready" and d.get("review_status") == "approved"
-        ]
-        if _REVIEW_MODE:
-            for draft in drafts:
-                if draft.get("status") == "ready" and draft.get("review_status") != "approved":
-                    draft["status"] = "needs_review"
-                    draft["review_status"] = draft.get("review_status") or "pending"
-                    draft["review_required_at"] = now_et().isoformat()
-                    draft["review_required_reason"] = "发布前请先确认人设和内容"
-            _save_state(state)
-            _notify("跳过发布: 审核模式已开启，请在桌面端点击最终发布确认")
-            return
-        for draft in drafts:
-            if draft.get("status") == "ready" and draft.get("review_status") != "approved":
-                draft["status"] = "needs_review"
-                draft["review_status"] = draft.get("review_status") or "pending"
-                draft["review_required_at"] = now_et().isoformat()
-                draft["review_required_reason"] = "发布前请先确认人设和内容"
-        if any(d.get("status") == "needs_review" for d in drafts):
-            _save_state(state)
-        if not ready_drafts:
-            _notify("跳过发布: 无待发草稿")
-            return
-
-        published: list[dict] = []
-        failed: list[dict] = []
-
-        for draft in ready_drafts:
-            platform = draft.get("platform", "x")
-            text = draft.get("text", "")
-            draft_id = draft.get("id", "?")
-
-            # 防重发: 先标记为 publishing 并持久化
-            draft["status"] = "publishing"
-            _save_state(state)
-
-            try:
-                # 通过适配器统一分发到对应平台
-                from src.execution.social.platform_adapter import get_adapter
-
-                adapter = get_adapter(platform)
-                if adapter:
-                    title, body = adapter.normalize_content(text)
-                    payload = adapter.build_worker_payload(body, title)
-                    result = await run_social_worker_async(adapter.worker_action, payload)
-                else:
-                    result = {"success": False, "error": f"未知平台: {platform}"}
-
-                if result.get("success"):
-                    draft["status"] = "published"
-                    draft["published_at"] = now_et().isoformat()
-                    published.append(draft)
-                    logger.info("[Autopilot] 发布成功: %s/%s", platform, draft_id)
-                else:
-                    draft["status"] = "failed"
-                    draft["error"] = result.get("error", "unknown")
-                    failed.append(draft)
-                    logger.warning(
-                        "[Autopilot] 发布失败: %s/%s - %s",
-                        platform,
-                        draft_id,
-                        result.get("error"),
-                    )
-                    # 发布返回失败，通知管理员
-                    _alert_admin(
-                        f"⚠️ 社媒自动发布失败: {platform}\n"
-                        f"错误: {str(result.get('error', 'unknown'))[:100]}\n\n"
-                        f"手动发布: 说「发文到{platform}」"
-                    )
-            except Exception as e:
-                draft["status"] = "failed"
-                draft["error"] = str(e)
-                failed.append(draft)
-                logger.error("[Autopilot] 发布异常: %s/%s - %s", platform, draft_id, e)
-                # 单篇发布失败，通知管理员
-                _alert_admin(
-                    f"⚠️ 社媒自动发布失败: {platform}\n错误: {str(e)[:100]}\n\n手动发布: 说「发文到{platform}」"
-                )
-
-            _save_state(state)
-
-        state["drafts"] = drafts  # updated statuses
-        state["today_published"].extend(published)
-        state["stats"]["posts_today"] = len(state["today_published"])
+    if changed:
+        state["drafts"] = drafts
         _save_state(state)
 
-        # sau_bridge: 将已发布内容同步到抖音/B站等平台（如果 sau 可用）
-        try:
-            from src.sau_bridge import publish_multi_platform
-
-            # 把已成功发布的内容通过 sau 同步到更多平台
-            for draft in published:
-                text = draft.get("text", "")
-                title = text.strip().splitlines()[0].strip()[:100] if text.strip() else "OpenClaw 自动发布"
-                sau_results = await publish_multi_platform(
-                    platforms=["douyin", "xiaohongshu"],
-                    title=title,
-                    description=text[:500],
-                )
-                sau_ok = sum(1 for r in sau_results.values() if r.get("success"))
-                if sau_ok:
-                    logger.info("[Autopilot] sau 多平台同步: %d 个平台成功", sau_ok)
-        except ImportError:
-            logger.info("[SocialAutopilot] sau_bridge 未配置，跳过自动发布")
-        except Exception as e:
-            logger.warning("[Autopilot] sau 多平台同步异常: %s", e)
-
-        # EventBus: 社媒发布事件（逐篇发射，触发主动引擎 1 小时后跟进）
-        if published:
-            try:
-                from src.core.event_bus import EventType, get_event_bus
-
-                bus = get_event_bus()
-                for draft in published:
-                    _platform = draft.get("platform", "")
-                    _text = draft.get("text", "")
-                    _title = _text.strip().splitlines()[0].strip()[:50] if _text.strip() else "无标题"
-                    await bus.publish(
-                        EventType.SOCIAL_PUBLISHED,
-                        {"platform": _platform, "title": _title},
-                        source="social_scheduler",
-                    )
-            except Exception as e:
-                logger.debug("[SocialScheduler] 发布事件发射失败: %s", e)
-
-        _notify(
-            f"发布完成: {len(published)} 成功, {len(failed)} 失败",
-            {"published": len(published), "failed": len(failed)},
-        )
-
-    logger.info("[Autopilot] === 晚间自动发布 ===")
-    try:
-        _run_async(_run())
-    except Exception as e:
-        logger.error("[Autopilot] 发布整体失败: %s", e)
-        _notify(f"发布失败: {e}")
-        # 整体发布流程崩溃，通知管理员
-        _alert_admin(f"⚠️ 社媒自动发布整体失败\n错误: {str(e)[:100]}\n\n所有草稿均未发出，请手动检查")
+    approved_count = sum(
+        1
+        for draft in drafts
+        if draft.get("review_status") == "approved"
+        and draft.get("status") not in {"published", "publishing", "rejected"}
+    )
+    pending_count = sum(
+        1
+        for draft in drafts
+        if draft.get("status") == "needs_review"
+    )
+    _notify(
+        "社媒草稿等待人工处理："
+        f"{pending_count} 条待内容审核，{approved_count} 条待本次最终发布确认",
+        {
+            "needs_review": pending_count,
+            "ready_for_final_confirmation": approved_count,
+            "external_actions_locked": True,
+        },
+    )
+    logger.info("[Autopilot] === 晚间审核提醒 ===")
 
 
 def _review_check_kpi(result: dict, state: dict) -> tuple:
@@ -835,7 +684,7 @@ class SocialAutopilot:
             replace_existing=True,
             misfire_grace_time=3600,
         )
-        # 20:30 — 自动发布（数据驱动：根据历史互动数据选择最佳发布时间）
+        # 20:30 — 审核提醒（沿用历史高互动时段，提醒用户做最终确认）
         try:
             from src.social_tools import get_post_time_optimizer
 
@@ -843,12 +692,12 @@ class SocialAutopilot:
             best = optimizer.best_hours("twitter", top_n=1)
             publish_hour = best[0] if best else 20  # 默认 20 点（没有数据时）
             if best:
-                logger.info("[社媒] 发布时间设定为 %d:30 (数据驱动)", publish_hour)
+                logger.info("[社媒] 审核提醒时间设定为 %d:30 (数据驱动)", publish_hour)
             else:
-                logger.info("[社媒] 发布时间使用默认 20:30")
+                logger.info("[社媒] 审核提醒时间使用默认 20:30")
         except Exception as e:
             publish_hour = 20
-            logger.warning("[社媒] 查询最佳发布时间失败, 使用默认 20:30: %s", e)
+            logger.warning("[社媒] 查询最佳互动时段失败, 审核提醒使用默认 20:30: %s", e)
 
         # 记录当前发布小时，供 job_late_review 比对和更新（线程安全）
         with SocialAutopilot._publish_hour_lock:
@@ -858,7 +707,7 @@ class SocialAutopilot:
             job_night_publish,
             CronTrigger(hour=publish_hour, minute=30, timezone=_TIMEZONE),
             id="night_publish",
-            name="社媒晚发",
+            name="社媒审核提醒",
             replace_existing=True,
             misfire_grace_time=3600,
         )
@@ -928,8 +777,8 @@ class SocialAutopilot:
         return {
             "running": running,
             "enabled": state.get("enabled", False),
-            "review_mode": _REVIEW_MODE,
-            "external_actions_locked": _REVIEW_MODE,
+            "review_mode": True,
+            "external_actions_locked": True,
             "jobs": jobs,
             "next_action": next_action,
             "next_time": next_time,
