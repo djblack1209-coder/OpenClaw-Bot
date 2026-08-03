@@ -902,7 +902,7 @@
 | `topojson-client` | `^3.1.0` | TopoJSON → GeoJSON | `WorldMonitor` 读取 `countries-110m.json` |
 | `postcss` / `nanoid` | `8.5.25` / `3.3.16` | 桌面前端构建 | 修复 source map 路径穿越公告并同步安全的传递依赖 |
 | `brace-expansion` / `fast-uri` / `hono` / `js-yaml` / `minimatch` | `5.0.8` / `3.1.4` / `4.12.27` / `4.3.0` / `10.2.6` | 桌面开发与构建工具链 | 保持同一主版本的最小安全 override；全量 `npm audit` 为 0 |
-| Tauri Rust 依赖 | Tauri `2.11.x` / `apps/openclaw-manager-src/src-tauri/Cargo.lock` | 桌面原生层可重复构建 | 锁文件和对应 Capability schema 纳入 Git；本地/GitHub CI 必须使用 `cargo test --locked` 和 `cargo check --locked`，禁止静默重新解析依赖 |
+| Tauri 桌面依赖 | Rust Tauri `2.11.5`、`@tauri-apps/api 2.11.1`、`@tauri-apps/cli 2.11.4` / `apps/openclaw-manager-src/src-tauri/Cargo.lock` + `package-lock.json` | 桌面原生层可重复构建 | Rust/JavaScript 必须保持相同主次版本；本地/GitHub CI 使用 `cargo test --locked` 和 `cargo check --locked`，运维合同检查版本与 macOS ad-hoc signing；本机正式打包只走 `make tauri-build` |
 | `hono` / `undici` / `markdown-it` / `tar` / `@opentelemetry/sdk-node` | 安全补丁版本 | `packages/openclaw-npm` 上游包 | 修复 Hono、Undici、Markdown、tar、OTel 相关 Dependabot 告警 |
 | `@mariozechner/pi-coding-agent` | 已从 `packages/openclaw-npm` 直接依赖移除 | 历史上游 Agent 包 | 源码未直接 import；上游暂无 patched version，移除可降低公开告警面 |
 

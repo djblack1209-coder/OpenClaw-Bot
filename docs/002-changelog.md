@@ -8,7 +8,7 @@
 ## [2026-08-03] P0 安全与交易正确性整改闭环
 > 领域: `backend` | `frontend` | `ai-pool` | `deploy` | `infra` | `trading` | `social` | `docs`
 > 影响模块: `Telegram 鉴权`, `Agent 工具`, `OMEGA DAG`, `交易状态机`, `社媒发布门`, `Frist-API/New-API`, `Tauri Manager`, `运行时健康`, `CI`
-> 关联问题: HI-913, HI-914, HI-915, HI-916, HI-917, HI-918, HI-921, HI-922, HI-923, HI-924, HI-925
+> 关联问题: HI-913, HI-914, HI-915, HI-916, HI-917, HI-918, HI-921, HI-922, HI-923, HI-924, HI-925, HI-926, HI-927
 ### 变更内容
 - Telegram 主 Bot、OMEGA Gateway、Inline Query、图片、文档和语音等入口统一改为白名单为空即拒绝；启动配置缺少有效正整数用户 ID 时直接阻止服务启动，环境变量注入部署不再强制依赖磁盘 `.env`。
 - 自动 Agent 工具循环移除文件读写、Shell、代码执行和记忆写入；外部网页内容进入上下文后撤销后续工具权限。`/agent` 从本地 CodeAgent 改为只读 ToolCallingAgent，Bash 整体禁用 Git，`/claude` 禁止 Telegram 提示词进入终端。Python 仅执行 RestrictedPython 受限字节码，Node/Shell 代码执行关闭，FileTool 收紧软链接和敏感文件边界。
@@ -19,26 +19,32 @@
 - Tauri Manager 移除 WebView 文件权限和 IBKR 自定义 Shell 字段；管理器生成的本地 `gateway.auth.token` 使用强随机字符串，实际 OpenClaw 2026.7.1 支持的 Token/密码/远程 SecretRef 原样保留并交由官方校验。配置和导出在 IPC 边界递归脱敏，保存时递归恢复对象/数组内磁盘原凭据；Provider 更新基于最新对象合并，保留 SecretRef、headers/request 等未建模字段。渠道 `enabled` 可真实持久化，JSON/env 联合读取与写入共用跨实例锁；环境键兼容 dotenv/export 两种格式并消除重复项。单文件使用原子替换，跨文件普通错误会补偿恢复，强制终止边界登记为 HI-922。服务停止仅作用于已登记且身份核验通过的进程，敏感 IPC 不再记录参数或返回值。
 - CI 从“最多允许 15 个失败”改为任一测试失败即阻断，并新增 Frist-API、桌面安全边界、Rust 测试/编译和文档治理门禁；`make ci-local` 同步为 8 阶段本地闭环入口。
 - Tauri 桌面应用的 `Cargo.lock` 从忽略项改为版本化资产，将兼容范围内的 Rust 栈固定到已通过隔离测试的 Tauri 2.11.x；本地与 GitHub Rust 门禁统一使用 `cargo test --locked` / `cargo check --locked`，干净工作树若出现依赖解析漂移会直接失败。Capability schema 随锁定版本重新生成并纳入同一基线。
+- 首次真实 `make tauri-build` 红灯发现 Rust Tauri 已锁到 `2.11.5`，JavaScript API/CLI 仍为 `2.10.1`，静态编译不会触发 Tauri 的主次版本一致性门。JavaScript API/CLI 已对齐到官方注册表 `2.11.x`，运维合同新增跨语言版本断言。第二次构建进一步发现无 Apple 身份时只有可执行文件 linker 签名、App 资源没有 sealed manifest；按 Tauri 官方 ARM 内测方案配置 `signingIdentity="-"`，并对构建产物和覆盖前临时安装副本强制执行严格 `codesign`，不把 ad-hoc 包冒充 Developer ID/公证发行版。
 - 修复 Frist 在 Node 18 下每个 HTTP 测试夹具等待 5 秒 keep-alive 才关闭的问题：测试回收现在先发起 server close，再主动清理空闲与现存连接；Node 18/24 仍跑同一套 200 项合同，生产服务的优雅关闭逻辑不变。
 - 修复闲鱼操作台暂停/恢复测试读取本机历史库存缓存的问题：测试现在显式模拟冷缓存、只读刷新后库存就绪、真实小额单严格门未通过三个状态，干净 CI 与开发机得到相同阻断顺序；生产预检逻辑不变。
+- 本机发布重启证实 OpenClaw Weixin 上游通道首次连接可让 Gateway 在 socket 已监听后约 230 秒才进入 `gateway ready`；健康检查在此期间保持失败，超时降级后 `/health` 恢复毫秒级 200。部署验收改以 ready/HTTP 真值等待，不以 PID 或固定短延迟判断成功。
 - 依赖安全门发现并修复生产 PostCSS 路径穿越公告（`8.5.15 → 8.5.25`）及 `json-repair` 资源消耗公告（`0.30.3 → 0.60.1`）；同步更新桌面开发工具链同主版本安全 overrides，使全量 `npm audit` 回到 0；桌面 CI 同时纳入 Social 最终确认静态合同。
 - LiteLLM 路由把 G4F、Kiro 和 Ollama 改为显式启用，缺必填 Key 的 provider 不再注入 `dummy` deployment；IBKR 未启用时不建立券商连接、不注册成交/撤单/资金/健康定时任务。自动健康检查改为核验核心 LaunchAgent 的 `running + PID`、18789/18790/18800 真实端点和公网只读巡检，并把禁用的可选服务标记为正常隔离状态。
 - 桌面打包入口改为事务式安装：构建前先把 `/Applications` 中三个历史 App 名称备份并清理，构建或安装失败自动恢复旧版，成功后保证只保留 `OpenClaw.app`。删除已被内联 LaunchAgent 取代且全仓零引用的 `gateway-launcher.sh`；G4F/Kiro 启动器因仍被桌面服务管理调用而保留。
-- Release Gate 2.0 六维评分为架构 8.3、代码质量 8.2、测试工程 8.8、安全 8.6、可靠性 8.3、运维发布 8.1，综合 8.4；评分只覆盖当前 macOS/Oracle 内测拓扑，不把签名公证、Windows 实机或正式公开售卖算作完成。
+- Release Gate 2.0 六维评分为架构 8.3、代码质量 8.2、测试工程 8.8、安全 8.6、可靠性 8.3、运维发布 8.4，综合 8.4；六维均达到 8 分。评分只覆盖当前 macOS/Oracle 内测拓扑，不把 Developer ID/公证、Windows 实机或正式公开售卖算作完成。
 ### 文件变更
 - `.github/workflows/ci.yml`, `Makefile` — 收紧远端与本地 CI 门禁。
 - `apps/frist-api/server/`, `apps/frist-api/src/`, `apps/frist-api/tests/`, `apps/frist-api/deploy/production.env.example`, `scripts/frist_api_newapi_ownership_map.mjs`, `docker-compose.frist-api.yml` — 多租户、前后端双单位额度、创建补偿、显式历史归属、会话和回归测试。
-- `apps/openclaw-manager-src/` — Gateway Token、配置原子写入、服务进程所有权、日志、Capability 安全边界和 Rust 依赖锁定。
+- `apps/openclaw-manager-src/` — Gateway Token、配置原子写入、服务进程所有权、日志、Capability 安全边界、Rust/JavaScript Tauri 版本锁定和 macOS ad-hoc bundle 签名。
 - `apps/openclaw-manager-src/package.json`, `apps/openclaw-manager-src/package-lock.json`, `packages/clawbot/requirements.txt` — 依赖安全下限与锁文件更新。
 - `packages/clawbot/src/`, `packages/clawbot/multi_main.py`, `packages/clawbot/tests/` — Telegram、工具沙箱、交易、DAG、社媒发布门和针对性回归。
 - `scripts/auto_health_check.sh`, `scripts/auto_ops_scripts.test.mjs`, `scripts/tauri_build_install.sh`, `tools/launchagents/` — 运行时真值、可选能力开关、桌面事务安装和冗余清理。
 - `docs/001-project-map.md`, `docs/002-changelog.md`, `docs/004-architecture.md`, `docs/006-registries.md`, `docs/007-operations.md`, `docs/009-health.md` — 同步架构、评分、注册表、风险与上线边界。
 ### 验证
-- 最终 `make ci-local` 退出码 0：Ruff 通过；Python 收集 `2182` 项并跑到 `[100%]`、0 失败、2 项预期跳过；Python 全源码语法通过；Frist-API `200 passed / 0 failed / 0 skipped`；桌面安全/Social/运维合同 `18 passed / 0 failed`；TypeScript 通过；锁定依赖下 Rust `34 passed / 0 failed` 且 `cargo check --locked`、`cargo fmt --check` 通过；`docs-check` 为 22 份文档全部合规。
+- 最终 `make ci-local` 退出码 0：Ruff 通过；Python 收集 `2182` 项并跑到 `[100%]`、0 失败、2 项预期跳过；Python 全源码语法通过；Frist-API `200 passed / 0 failed / 0 skipped`；桌面安全/Social/运维合同 `20 passed / 0 failed`；TypeScript 通过；锁定依赖下 Rust `34 passed / 0 failed` 且 `cargo check --locked`、`cargo fmt --check` 通过；`docs-check` 为 22 份文档全部合规。
 - 桌面与 Frist 生产依赖 `npm audit --omit=dev`、项目 Python 3.12 的 `pip-audit` 均为 0 已知漏洞，`pip check` 无依赖冲突。
 - 独立安全复核结论为当前审查范围无剩余 P0/P1。`gitleaks --pre-commit` 无泄漏，CI YAML 可解析，`git diff --check` 通过；Playwright 在标准 Vite 1420 端口验证首屏 0 console error，主界面在无 Token 时按预期 fail-closed，真实桌面实装在部署阶段复验。
+### 部署与回滚证据
+- 本机五个可选能力已显式关闭，G4F/Kiro/heartbeat 三个失败 LaunchAgent 已卸载；Bot/Gateway 重启后健康检查 `ok=true, release_ready=true`，新日志没有未关闭 session 或 IBKR 重连。Weixin 首连让 Gateway ready 延迟约 230 秒，已登记 HI-926，稳定后 `/health` 为毫秒级 200。
+- `make tauri-build` 最终成功生成并安装唯一 `/Applications/OpenClaw.app`；Bundle ID `com.openclaw.manager`、arm64、ad-hoc sealed resources 和严格 `codesign` 均通过。Computer Use 实机首页非空、已连接、无重叠或凭据显示；本机临时验收截图为 `output/playwright/openclaw-app-deployed.png`，属于可再生成且不纳入 Git 的证据。
+- Oracle 在 `/opt/frist-api/releases/8736484/repo` staging 的 Node 18 全量测试为 `200/200`；回滚包 `/opt/frist-api/backups/release-gate2-20260803T064021Z` 已校验。部署后 Frist/New-API/Apache active，3180/13000/公网均 200，未授权模型入口 401，SQLite 与源码漂移正常，新增 failed unit/错误均为 0；额度 7200、owner 0、历史无限 Token 9/9 保持不变。
 ### 上线边界
-- 本条记录描述本地工作树的代码与测试闭环，不代表已部署生产。Oracle 的 `frist-api.service` 实际读取 `/etc/frist-api/frist-api.env`，该文件当前缺少 `FRIST_API_NEWAPI_DEFAULT_TOKEN_QUOTA`，所以新版会 fail-closed 拒绝创建 Key；上线前必须在该文件显式配置正数“本地人民币分上限”。生产 Token 1–9 当前均为 `unlimited_quota=1`；这表示没有 Token 级上限但仍受 New-API 原生用户额度约束。主域 `jiyu.245334.xyz` 由 Apache 直接代理 New-API，不改现有产品拓扑，也不禁用或迁移这些 Token；它们不得映射进 Frist，本地归属保持空并由客户重建有限 Key。只有未来先经单独批准把某个 Token 转为明确有限正额度后，才可用本工具重新 dry-run/申请 apply。
+- 代码已部署到本机 Bot/桌面和 Oracle Frist，但发布口径仍是内部 macOS/Oracle 内测。生产 Token 1–9 仍为 `unlimited_quota=1` 并由主域 New-API 原生用户额度承接；它们没有映射进 Frist，也未禁用或迁移。只有未来先经单独批准把某个 Token 转为明确有限正额度后，才可重新 dry-run/申请 ownership apply。桌面 App 为 ad-hoc 内测签名，不是 Apple Developer ID/公证公开发行版。
 
 ## [2026-07-08] 微信控制权限医生深度诊断与权限页引导
 > 领域: `infra` | `docs`

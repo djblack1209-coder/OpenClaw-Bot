@@ -49,10 +49,12 @@ echo "══════ 构建 Tauri 桌面端 ══════"
   echo "构建未生成 OpenClaw.app" >&2
   exit 1
 }
+codesign --verify --deep --strict --verbose=2 "$BUNDLE_APP"
 
 echo "══════ 原子安装到 /Applications ══════"
 rm -rf "$INSTALL_TMP"
 ditto "$BUNDLE_APP" "$INSTALL_TMP"
+codesign --verify --deep --strict --verbose=2 "$INSTALL_TMP"
 mv "$INSTALL_TMP" "$INSTALL_APP"
 rm -rf "$BUNDLE_APP"
 

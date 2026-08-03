@@ -20,7 +20,7 @@
 1. 在 `packages/clawbot/config/.env` 显式设置 `G4F_ENABLED`、`KIRO_GATEWAY_ENABLED`、`OLLAMA_ENABLED`、`IBKR_ENABLED`、`HEARTBEAT_SENDER_ENABLED`。未验收的能力保持 `false`；禁止用 LaunchAgent 已加载冒充服务可用。
 2. 执行 `make ci-local`；必须同时通过 Python、Frist、桌面合同、TypeScript、Rust 和文档治理。
 3. 执行 `scripts/auto_health_check.sh --json`；只有 `ok=true` 且 `release_ready=true` 才能继续。本机已安装但关闭的旧可选 LaunchAgent 应 `launchctl bootout` 后删除用户目录中的旧 plist，仓库模板保留供未来显式启用。
-4. 桌面端只能执行 `make tauri-build`。该入口会先备份并清理 `/Applications/OpenEverything.app`、`OpenClaw.app`、`OpenClaw-Gateway.app`，失败恢复旧版，成功后只保留 `/Applications/OpenClaw.app`。
+4. 桌面端只能执行 `make tauri-build`。该入口会先备份并清理 `/Applications/OpenEverything.app`、`OpenClaw.app`、`OpenClaw-Gateway.app`，失败恢复旧版；macOS 内测包按 Tauri 官方方式使用 `signingIdentity="-"`，构建产物与覆盖前临时安装副本都必须通过严格 `codesign`，成功后只保留 `/Applications/OpenClaw.app`。这不是 Developer ID 签名或 Apple 公证，不能作为公开分发口径。
 5. 重启 Bot/Gateway 后，以新日志窗口确认没有新增 G4F/Kiro 重启风暴、IBKR 拒绝连接或未关闭 HTTP session；再复跑健康检查。
 
 ### Frist-API Release Gate 2.0 部署边界
@@ -30,6 +30,13 @@
 - 生产 Token 1–9 当前都是 unlimited Token，继续由主域 New-API 原生用户额度体系承接；不得映射、禁用或迁移到 Frist owner 表。Frist 客户只创建新的有限 Key。
 - 只重启 `frist-api.service`，不替换 New-API 二进制、不改变 Apache `jiyu.245334.xyz -> 127.0.0.1:13000` 主域拓扑。失败时恢复源码、环境和 runtime 备份并重启 Frist。
 - 部署后同时验证 3180 Dashboard、13000 `/api/status`、公网站点、未授权 `/v1/models=401`、Frist 运营域和 `systemctl --failed`；任一失败立即回滚。
+
+### Release Gate 2.0 实装记录（2026-08-03）
+
+- 本机 Bot 与 Gateway 已从当前工作树重启；五个可选能力显式为 `false`，G4F/Kiro/heartbeat 三个历史失败 LaunchAgent 已从用户目录卸载，核心 18789/18790/18800 和 `scripts/auto_health_check.sh --json` 均为健康。重启后的 Bot 日志没有新增未关闭 session 或 IBKR 重连；Gateway 因 Weixin 上游首次连接约 230 秒后才 ready，部署门在此期间保持红色，恢复后 `/health` 为毫秒级 200。
+- `/Applications` 只保留 `OpenClaw.app`；Bundle ID 为 `com.openclaw.manager`，arm64 App 的 ad-hoc sealed resources 通过 `codesign --verify --deep --strict`。真实 App 首屏已用 Computer Use 验收，窗口非空、连接状态正常、无控件重叠或凭据展示；本机临时证据截图为 `output/playwright/openclaw-app-deployed.png`，不纳入 Git 基线。
+- Oracle Frist 发布前在 Node 18 的完整仓库 staging 跑过 `200/200`；生产备份为 `/opt/frist-api/backups/release-gate2-20260803T064021Z`，包含源码、root-only 环境、Frist runtime、SQLite 在线备份、Apache/systemd 配置和前后哈希。只重启 `frist-api.service` 后，3180/13000/两个公网入口均为 200，未授权 `/v1/models` 为 401，SQLite `quick_check=ok`，源码漂移/新增错误/新增 failed unit 均为 0。
+- 生产 `FRIST_API_NEWAPI_DEFAULT_TOKEN_QUOTA=7200` 已生效；`newApiTokenOwners=0`，New-API Token 仍为 `9/9` 无限额度。ownership dry-run 已确认会拒绝无限 Token，本轮没有执行 `--apply`、禁用或迁移。
 
 ## 一、CC中转 / Frist-API 运营操作清单
 
@@ -73,10 +80,10 @@ Frist-API 生产流量已从国内腾讯云迁到 Oracle ARM Always Free，目�
 | Frist-API | `frist-api.service`，监听 `http://127.0.0.1:3180` |
 | New-API | `openclaw-newapi.service`，监听 `http://127.0.0.1:13000`；使用 New-API v1.0.0-rc.4 ARM64 release 二进制，不在 Oracle 上安装 Docker |
 | 公网入口 | 用户主站 `https://jiyu.245334.xyz` → Cloudflare proxied A → Oracle Apache 443/Origin CA → New-API `127.0.0.1:13000`；运营台 `https://frist-api-oracle.245334.xyz/admin.html` → Frist-API `127.0.0.1:3180`；旧 `https://frist-api.245334.xyz` 301 到 CC中转主站 |
-| 备份 | `frist-api-r2-backup.timer` 在 Oracle active；最近手动上传日志为 `backup_ok ... http=200` |
+| 备份 | `frist-api-r2-backup.timer` 在 Oracle active；Release Gate 2.0 回滚包为 `/opt/frist-api/backups/release-gate2-20260803T064021Z`，SQLite/源码/环境/runtime/Apache/systemd 和校验清单完整 |
 | 冷回滚 | 腾讯云 `101.43.41.96:/opt/frist-api` 保留旧数据和备份，旧 `frist-api-server` / `openclaw-newapi` 容器已停止，旧 R2 timer 已禁用 |
 | 运行数据 | Oracle 生产真实路径为 `/opt/frist-api/data/frist-api/runtime/runtime.json`，New-API 数据库为 `/opt/frist-api/data/newapi/one-api.db`；两者均只在服务器环境中保存，含用户 Key、上游 Key 和卡密密文，禁止提交 Git |
-| 环境变量 | 只放服务器本机环境文件，禁止写入仓库；SMTP 密码必须无回显输入，不能放进命令历史；`FRIST_API_NEWAPI_REDEMPTION_STATUS_SYNC_ENABLED=1` 用于把 New-API 原生兑换状态回写到 Frist 闲鱼履约 |
+| 环境变量 | 只放服务器本机环境文件，禁止写入仓库；SMTP 密码必须无回显输入，不能放进命令历史；`FRIST_API_NEWAPI_DEFAULT_TOKEN_QUOTA=7200` 已用于新建有限 Key，`FRIST_API_NEWAPI_REDEMPTION_STATUS_SYNC_ENABLED=1` 用于把 New-API 原生兑换状态回写到 Frist 闲鱼履约 |
 
 上线或重启后按下面顺序验收:
 
@@ -84,7 +91,7 @@ Frist-API 生产流量已从国内腾讯云迁到 Oracle ARM Always Free，目�
 2. `ssh oracle-arm1 'curl -sS -o /dev/null -w "%{http_code}" http://127.0.0.1:3180/api/frist/dashboard'` 应返回 `200`。
 3. `ssh oracle-arm1 'curl -sS -o /dev/null -w "%{http_code}" http://127.0.0.1:13000/api/status'` 应返回 `200`。
 4. 本机访问 `https://jiyu.245334.xyz/api/status` 应返回 `system_name=CC中转` 且 `hasCcSwitch=true`；未授权访问 `https://jiyu.245334.xyz/v1/models` 应返回 `401`；访问 `https://frist-api.245334.xyz/` 应 301 到 CC中转主站。
-5. `ssh oracle-arm1 'systemctl --failed --no-pager'` 应显示 `0 loaded units listed`。
+5. `ssh oracle-arm1 'systemctl --failed --no-pager'` 当前基线为 3 个与 Frist 无依赖的被动站单元：`oracle-resource-maintainer-standby`、`sonic-extract-failover-db-publish`、`sonic-oracle-db-backup`。发布门检查“没有新增 failed unit”，禁止用 `reset-failed` 抹掉基线；这 3 个单元归 SONIC EXTRACT/资源维护项目单独处理。
 6. 旧腾讯云只做冷回滚；除非执行回滚，不要同时启动旧 Frist-API 和旧 R2 timer，避免双源探测、重复备份或上游渠道状态漂移。
 
 ### 多 VPS 故障转移方案（给老板的大白话版）

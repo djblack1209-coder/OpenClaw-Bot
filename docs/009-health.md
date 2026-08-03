@@ -6,29 +6,31 @@
 
 ## P0 安全与正确性整改（2026-08-03）
 
-本轮对 Telegram 控制面、Agent 工具、交易订单、OMEGA 编排、社媒发布、Frist/New-API 多租户、桌面 Gateway、运行时真值和 CI 做了端到端整改。下表状态均指本地发布候选；生产部署和桌面实装尚未执行，不能解读为线上已经生效。
+本轮对 Telegram 控制面、Agent 工具、交易订单、OMEGA 编排、社媒发布、Frist/New-API 多租户、桌面 Gateway、运行时真值和 CI 做了端到端整改。下表状态已按 2026-08-03 本机 Bot/Gateway、macOS App 和 Oracle Frist 实装结果回写；评分边界仍只覆盖当前 macOS + Oracle 内测拓扑。
 
 | 编号 | 分类 | 严重度 | 状态 | 当前结论 |
 |---|---|---|---|---|
-| HI-913 | `SECURITY` | 🔴 阻塞 | 本地已关闭 | Telegram 白名单空值不再等于公开访问，启动配置 fail-closed；媒体/Inline 入口先鉴权。自动循环不再获得本地文件、Shell、代码执行或记忆写入权限；`/agent` 改为只读 ToolCallingAgent，Bash 禁用 Git，`/claude` 禁止远程提示词进入终端。 |
-| HI-914 | `BUG` | 🔴 阻塞 | 本地已关闭 | 自动交易默认关闭；预算同步不突破配置上限也不清零已花金额；零成交、取消、未决和模拟订单不会再伪造真实持仓，退出订单按累计成交量对账。 |
-| HI-915 | `SECURITY` | 🔴 阻塞 | 本地已关闭 | 社媒正文直发和夜间自动发布旁路关闭；只有内容未变化的已审核草稿可签发短时一次性确认。发布中/已发布草稿不可变，外部成功与本地状态冲突会追加对账审计并提示禁止重发。 |
-| HI-916 | `SECURITY` | 🟠 重要 | 本地已关闭 | 桌面端移除固定 Gateway Token、WebView 文件权限和 IBKR Shell 配置；管理器新建 Token 使用强随机字符串，OpenClaw 2026.7.1 支持的 Token/密码/远程 SecretRef 原样保留并交由官方校验；WebView 配置/导出递归脱敏且数组内凭据可安全回写，Provider 更新保留 SecretRef 和官方扩展字段；跨实例锁、PID 所有权和日志边界统一。 |
-| HI-917 | `SECURITY` | 🔴 阻塞 | 本地已关闭，待生产配置/部署 | Frist 对共享 New-API Token 建立客户归属并保护读写/导入/网关代理；人民币分和 New-API units 已分离，创建 Key 使用“本地预留 → 上游零额度暂存 → 归属落盘 → 激活”及失败补偿。Frist `/v1` 只放行唯一有效本地用户的完整 active owner 和 finite/enabled/正余额上游 Token；历史 Token 1–9 均无限且不映射，继续由主域 New-API 原生用户额度体系承接。 |
+| HI-913 | `SECURITY` | 🔴 阻塞 | 已部署关闭 | Telegram 白名单空值不再等于公开访问，启动配置 fail-closed；媒体/Inline 入口先鉴权。自动循环不再获得本地文件、Shell、代码执行或记忆写入权限；`/agent` 改为只读 ToolCallingAgent，Bash 禁用 Git，`/claude` 禁止远程提示词进入终端。 |
+| HI-914 | `BUG` | 🔴 阻塞 | 已部署关闭 | 自动交易默认关闭；预算同步不突破配置上限也不清零已花金额；零成交、取消、未决和模拟订单不会再伪造真实持仓，退出订单按累计成交量对账。Bot 重启日志确认 IBKR 未启用且没有新重连循环。 |
+| HI-915 | `SECURITY` | 🔴 阻塞 | 已部署关闭 | 社媒正文直发和夜间自动发布旁路关闭；只有内容未变化的已审核草稿可签发短时一次性确认。发布中/已发布草稿不可变，外部成功与本地状态冲突会追加对账审计并提示禁止重发。 |
+| HI-916 | `SECURITY` | 🟠 重要 | 已部署关闭 | 桌面端移除固定 Gateway Token、WebView 文件权限和 IBKR Shell 配置；管理器新建 Token 使用强随机字符串，OpenClaw 2026.7.1 支持的 Token/密码/远程 SecretRef 原样保留并交由官方校验；WebView 配置/导出递归脱敏且数组内凭据可安全回写，Provider 更新保留 SecretRef 和官方扩展字段；跨实例锁、PID 所有权和日志边界统一。实装 App 已通过严格 ad-hoc sealed 签名与真实首屏验收。 |
+| HI-917 | `SECURITY` | 🔴 阻塞 | 生产已关闭 | Frist 对共享 New-API Token 建立客户归属并保护读写/导入/网关代理；人民币分和 New-API units 已分离，创建 Key 使用“本地预留 → 上游零额度暂存 → 归属落盘 → 激活”及失败补偿。Oracle 已配置默认有限额度 7200；历史 Token 1–9 仍全部无限且 owner 为空，dry-run 确认拒绝映射。 |
 | HI-918 | `TECH_DEBT` | 🟠 重要 | 本地已关闭 | CI 不再容忍预存失败；Frist、Tauri Rust、桌面安全边界和文档治理均进入必过门禁。 |
 | HI-919 | `ARCH_LIMIT` | 🔵 低优先 | 已隔离 | `CodeTool` 使用 RestrictedPython + 受限子进程，不等同容器/内核级沙箱；当前自动 Agent 和 Telegram 不可达。重新开放前应迁移到容器或专用沙箱。 |
 | HI-920 | `SECURITY` | 🔵 低优先 | 已隔离 | `FileTool` 的路径预检与实际打开之间存在理论上的本机并发换链竞态；当前自动 Agent 和未授权入口不可达。重新开放写入前应改用 `openat/dirfd` 与 no-follow 原子打开。 |
 | HI-921 | `TECH_DEBT` | 🔵 低优先 | 已关闭 | 已对 Tauri Rust 工作区执行统一格式化；`cargo fmt --all -- --check`、34 项 Rust 测试和 `cargo check` 全部通过。 |
 | HI-922 | `ARCH_LIMIT` | 🔵 低优先 | 已降级 | 桌面渠道 JSON/env 联合读写在管理器进程内和多个管理器实例间使用同一把锁，普通写入错误会恢复 env 快照；两个独立文件仍不具备断电或强制终止级原子提交，极窄窗口内可能留下跨文件版本差异。当前 env 只承载测试目标 ID，可通过重新保存渠道配置恢复；若未来把凭据迁入该联合事务，必须先改成单一持久化源或增加可恢复事务日志。 |
-| HI-923 | `TECH_DEBT` | 🔵 低优先 | 待观察 | 历史 Bot 日志出现 19 条 `Unclosed client session`；本轮先通过重启后的日志增量确认是否仍发生。若继续增长，按持有者追踪并统一收口 aiohttp client 生命周期；未复现前不作为 P0/P1 阻断。 |
+| HI-923 | `TECH_DEBT` | 🔵 低优先 | 已关闭 | 历史 Bot 日志有 19 条 `Unclosed client session`；2026-08-03 重启后持续到桌面实装完成的日志窗口新增 0 条，同时 IBKR 重连新增 0 条。若未来再次出现，按 client 持有者重新登记，不沿用本次已关闭结论。 |
 | HI-924 | `PERF` | 🔵 低优先 | 已关闭 | Frist Node 18 测试夹具过去逐例等待 5 秒 HTTP keep-alive，200 项矩阵显著慢于 Node 24；fixture close 已主动清理空闲与现存连接，不改变生产优雅关闭路径。 |
 | HI-925 | `TECH_DEBT` | 🔵 低优先 | 已关闭 | 闲鱼操作台暂停/恢复测试曾读取本机历史库存缓存，导致干净 CI 的首个阻断从“真实小额单严格门”漂移为“库存为 0”；测试已显式注入冷缓存与刷新后状态，生产预检逻辑不变。 |
+| HI-926 | `PERF` | 🔵 低优先 | 已降级 | 本机重启时 OpenClaw Weixin 上游通道首次连接约 230 秒后超时降级，期间 Gateway 已监听 18789 但 HTTP 未就绪；进程无 CPU/内存异常，日志随后出现 `gateway ready`，`/health` 恢复约 2ms。部署验收必须等待 ready/HTTP 200，后续升级 Weixin 插件时复测启动耗时。 |
+| HI-927 | `BUG` | 🟠 重要 | 已关闭 | 真实 `make tauri-build` 先发现 Rust Tauri `2.11.5` 与 JavaScript API/CLI `2.10.1` 主次版本不一致，修复后又发现无 Apple 身份时 App 资源未 sealed、严格 `codesign` 失败。API/CLI 已对齐到 `2.11.x`，Tauri 官方 ad-hoc `signingIdentity="-"`、构建产物和覆盖前临时安装副本签名门均已生效；旧树合同红灯 2 项、当前 7/7 绿，最终 App 严格签名、唯一安装和真实首屏均通过。 |
 
-上线前硬门槛：先备份 Frist runtime 和 New-API 数据；在 systemd 实际读取的 `/etc/frist-api/frist-api.env` 设置正数 `FRIST_API_NEWAPI_DEFAULT_TOKEN_QUOTA`（单位为本地人民币分）；保持 `newApiTokenOwners` 对历史 Token 1–9 为空，不对这些无限 Token 执行归属 apply、禁用或迁移，让 Frist 客户重建有限 Key；在目标机复跑 Node 18 可用的语法和测试门，再灰度重启 Frist。Apache 主域 `jiyu.245334.xyz → New-API:13000` 的现有产品拓扑保持不变；未满足任一项时 Frist 3180 桥接面继续 fail-closed。
+上线硬门槛已执行：Oracle 回滚包 `/opt/frist-api/backups/release-gate2-20260803T064021Z` 含 runtime、New-API SQLite 在线备份、源码、环境、Apache/systemd 和哈希；目标机 Node 18 staging 为 `200/200`；systemd 环境已设置 `FRIST_API_NEWAPI_DEFAULT_TOKEN_QUOTA=7200`；`newApiTokenOwners` 对历史 Token 1–9 仍为空且 ownership dry-run 拒绝无限 Token。Apache 主域 `jiyu.245334.xyz → New-API:13000` 未改变，Frist 3180、New-API 13000、两个公网入口和未授权 401 门均已复验。
 
 保留的安全降级边界：券商下单成功与本地订单 ID 落盘之间若进程被强制终止，会留下未绑定预算预留并阻止后续买入；必须先用券商订单记录人工对账或显式重置，系统不会猜测释放额度。社媒外发成功后若磁盘无法落盘，草稿保持 `publishing` 并阻止重发，调用方会收到平台结果和人工对账提示。桌面渠道 JSON/env 已对管理器读写统一加锁并在普通错误时补偿恢复，但强制终止发生在两个文件替换之间时仍需重新保存渠道配置，不能宣称具备跨文件崩溃原子性。
 
-本地验证证据：最终 `make ci-local` 已退出 0，覆盖 Python `2182` 项收集/0 失败/2 项预期跳过、Frist `200/200`、桌面静态合同 `18/18`、Rust `34/34`、TypeScript/编译和 22 份文档治理；Tauri `Cargo.lock` 已纳入 Git，`cargo test/check --locked` 与 `cargo fmt --check` 同步通过。桌面与 Frist 生产 npm、项目 Python 3.12 的 pip 审计均为 0 已知漏洞，`pip check` 无冲突，gitleaks 无泄漏。独立安全复核结论为当前范围无剩余 P0/P1。Release Gate 2.0 当前六维评分为 8.3/8.2/8.8/8.6/8.3/8.1，综合 8.4；该证据只代表本地发布候选，仍未部署生产。
+发布验证证据：本地 `make ci-local`、GitHub PR #11 干净环境 5 个 job、Oracle Node 18 staging 和实际部署冒烟均全绿；覆盖 Python `2182` 项收集/0 失败/2 项预期跳过、Frist `200/200`、桌面静态合同 `20/20`、Rust `34/34`、TypeScript/编译和 22 份文档治理。桌面/Frist npm 与项目 Python 3.12 审计均为 0 已知漏洞，gitleaks 无泄漏。Release Gate 2.0 六维评分为架构 8.3、代码质量 8.2、测试工程 8.8、安全 8.6、可靠性 8.3、运维发布 8.4，综合 8.4；六维均达到 8 分，只覆盖当前 macOS/Oracle 内测拓扑。
 
 
 ### 每日简报 / CC中转文档治理 — 已收口
