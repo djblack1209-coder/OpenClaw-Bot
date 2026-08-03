@@ -21,6 +21,8 @@
 | HI-921 | `TECH_DEBT` | 🔵 低优先 | 已关闭 | 已对 Tauri Rust 工作区执行统一格式化；`cargo fmt --all -- --check`、34 项 Rust 测试和 `cargo check` 全部通过。 |
 | HI-922 | `ARCH_LIMIT` | 🔵 低优先 | 已降级 | 桌面渠道 JSON/env 联合读写在管理器进程内和多个管理器实例间使用同一把锁，普通写入错误会恢复 env 快照；两个独立文件仍不具备断电或强制终止级原子提交，极窄窗口内可能留下跨文件版本差异。当前 env 只承载测试目标 ID，可通过重新保存渠道配置恢复；若未来把凭据迁入该联合事务，必须先改成单一持久化源或增加可恢复事务日志。 |
 | HI-923 | `TECH_DEBT` | 🔵 低优先 | 待观察 | 历史 Bot 日志出现 19 条 `Unclosed client session`；本轮先通过重启后的日志增量确认是否仍发生。若继续增长，按持有者追踪并统一收口 aiohttp client 生命周期；未复现前不作为 P0/P1 阻断。 |
+| HI-924 | `PERF` | 🔵 低优先 | 已关闭 | Frist Node 18 测试夹具过去逐例等待 5 秒 HTTP keep-alive，200 项矩阵显著慢于 Node 24；fixture close 已主动清理空闲与现存连接，不改变生产优雅关闭路径。 |
+| HI-925 | `TECH_DEBT` | 🔵 低优先 | 已关闭 | 闲鱼操作台暂停/恢复测试曾读取本机历史库存缓存，导致干净 CI 的首个阻断从“真实小额单严格门”漂移为“库存为 0”；测试已显式注入冷缓存与刷新后状态，生产预检逻辑不变。 |
 
 上线前硬门槛：先备份 Frist runtime 和 New-API 数据；在 systemd 实际读取的 `/etc/frist-api/frist-api.env` 设置正数 `FRIST_API_NEWAPI_DEFAULT_TOKEN_QUOTA`（单位为本地人民币分）；保持 `newApiTokenOwners` 对历史 Token 1–9 为空，不对这些无限 Token 执行归属 apply、禁用或迁移，让 Frist 客户重建有限 Key；在目标机复跑 Node 18 可用的语法和测试门，再灰度重启 Frist。Apache 主域 `jiyu.245334.xyz → New-API:13000` 的现有产品拓扑保持不变；未满足任一项时 Frist 3180 桥接面继续 fail-closed。
 
