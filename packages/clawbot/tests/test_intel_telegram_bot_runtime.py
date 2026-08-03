@@ -68,6 +68,7 @@ def test_bot_api_client_sets_commands_and_gets_updates_with_redacted_results():
         "network": "injected_transport",
         "network_calls": 1,
         "command_count": len(commands),
+        "language_code": "default",
         "error_code": "",
         "error": "",
     }
@@ -124,14 +125,38 @@ def test_runtime_probe_contract_sets_commands_gets_updates_and_writes_redacted_e
 
     saved = output.read_text(encoding="utf-8")
     assert result["status"] == "success"
-    assert result["network_calls"] == 2
+    assert result["network_calls"] == 4
     assert result["set_my_commands"]["success"] is True
+    assert result["set_my_commands"]["language_scope_count"] == 3
+    assert result["set_my_commands"]["languages"] == ["default", "zh", "en"]
     assert result["get_updates"]["success"] is True
     assert result["get_updates"]["update_count"] == 1
     assert result["get_updates"]["command_update_count"] == 1
     assert result["raw_updates_persisted"] is False
     assert FAKE_TOKEN not in saved
     assert FAKE_CHAT_ID not in saved
+
+
+def test_bot_api_registers_default_zh_and_en_command_menus():
+    from src.intel.telegram_bot_runtime import TelegramBotApiRuntimeClient
+
+    calls: list[dict[str, object]] = []
+
+    def transport(url: str, payload: dict[str, object], timeout: int) -> dict[str, object]:
+        calls.append({"url": url, "payload": payload, "timeout": timeout})
+        return {"ok": True, "result": True}
+
+    client = TelegramBotApiRuntimeClient(token=FAKE_TOKEN, transport=transport)
+    result = client.set_localized_commands()
+
+    assert result["success"] is True
+    assert result["network_calls"] == 3
+    assert result["languages"] == ["default", "zh", "en"]
+    assert "language_code" not in calls[0]["payload"]
+    assert calls[1]["payload"]["language_code"] == "zh"
+    assert calls[2]["payload"]["language_code"] == "en"
+    assert calls[0]["payload"]["commands"][-2] == {"command": "language", "description": "资讯语言"}
+    assert calls[2]["payload"]["commands"][-2] == {"command": "language", "description": "Brief language"}
 
 
 def test_bot_runtime_probe_cli_writes_blocked_evidence_without_private_env(tmp_path):

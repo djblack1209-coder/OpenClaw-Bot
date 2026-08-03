@@ -107,6 +107,22 @@ check_required_launchagent "ai.openclaw.intel-brief.telegram-listener"
 check_required_launchagent "ai.openclaw.cc-seller-bridge"
 check_scheduled_launchagent "ai.openclaw.intel-brief.scheduler"
 
+# 每日资讯不能只看 launchd 退出码，还要检查中央来源、offset 证据和磁盘增长。
+intel_python="$ROOT_DIR/packages/clawbot/.venv312/bin/python"
+intel_health_script="$ROOT_DIR/packages/clawbot/scripts/intel_runtime_health.py"
+if [[ -x "$intel_python" && -f "$intel_health_script" ]]; then
+  intel_health_output="$($intel_python "$intel_health_script" 2>/dev/null || true)"
+  intel_health_status="$(printf '%s' "$intel_health_output" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status", "bad"))' 2>/dev/null || echo bad)"
+  intel_health_detail="$(printf '%s' "$intel_health_output" | python3 -c 'import json,sys; d=json.load(sys.stdin); s=d.get("source_health",{}); l=d.get("listener",{}); print(f"来源 {s.get('"'"'coverage'"'"',0)}/{s.get('"'"'expected'"'"',6)}，listener {l.get('"'"'event_file_count'"'"',0)} 文件/{round(l.get('"'"'event_bytes'"'"',0)/1048576,1)}MB")' 2>/dev/null || echo "运行健康 JSON 无法解析")"
+  case "$intel_health_status" in
+    ok) add_check "intel_runtime" "ok" "$intel_health_detail" "无需处理" ;;
+    warn) add_check "intel_runtime" "warn" "$intel_health_detail" "等待自然周期补齐来源与投递 SLI" ;;
+    *) add_check "intel_runtime" "bad" "$intel_health_detail" "检查每日资讯中央库、listener heartbeat 和证据保留策略" ;;
+  esac
+else
+  add_check "intel_runtime" "bad" "每日资讯运行健康脚本不可用" "恢复 .venv312 和 intel_runtime_health.py"
+fi
+
 # 本机操作台：有 Token 时检查受保护接口，否则只检查页面是否打开。
 if [[ -n "${OPENCLAW_API_TOKEN:-}" ]]; then
   code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 -H "X-API-Token: ${OPENCLAW_API_TOKEN}" "http://127.0.0.1:18800/api/status" 2>/dev/null || echo "000")

@@ -17,20 +17,44 @@ def _first_text(row: dict[str, Any], keys: tuple[str, ...]) -> str:
     return ""
 
 
+def _trade_date_text(raw: str) -> str:
+    """把 AKShare 常见交易日格式统一为 ISO 日期。"""
+    raw = str(raw or "").strip()
+    if not raw:
+        return ""
+    normalized = raw.replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(normalized).date().isoformat()
+    except ValueError:
+        for format_string in ("%Y/%m/%d", "%Y%m%d", "%m/%d/%Y"):
+            try:
+                return datetime.strptime(raw, format_string).date().isoformat()
+            except ValueError:
+                continue
+    return ""
+
+
 def normalize_lhb_records(records: list[dict[str, Any]], *, limit: int = 20) -> list[dict[str, str]]:
     """Normalize AKShare Eastmoney LHB rows to a compact stable schema."""
     normalized: list[dict[str, str]] = []
-    for row in records[: max(0, int(limit))]:
+    for row in records:
+        trade_date_raw = _first_text(row, ("上榜日", "TRADE_DATE", "交易日期", "日期", "date"))
         normalized.append(
             {
                 "source": "akshare_stock_lhb_detail_em",
+                "trade_date": _trade_date_text(trade_date_raw),
+                "trade_date_raw": trade_date_raw,
                 "code": _first_text(row, ("代码", "SECURITY_CODE", "股票代码", "code")),
                 "name": _first_text(row, ("名称", "SECURITY_NAME_ABBR", "股票简称", "name")),
                 "reason": _first_text(row, ("解读", "EXPLAIN", "上榜原因", "reason")),
                 "close_price": _first_text(row, ("收盘价", "CLOSE_PRICE", "close_price")),
             }
         )
-    return normalized
+    normalized.sort(
+        key=lambda item: (item["trade_date"], item["code"], item["reason"]),
+        reverse=True,
+    )
+    return normalized[: max(0, int(limit))]
 
 
 class AkshareLhbAdapter:
@@ -56,7 +80,7 @@ class AkshareLhbAdapter:
 
     def fetch(self, *, limit: int = 20) -> IntelSourceResult:
         frame = self._ak().stock_lhb_detail_em()
-        rows = frame.head(max(0, int(limit))).to_dict(orient="records")
+        rows = frame.to_dict(orient="records")
         items = normalize_lhb_records(rows, limit=limit)
         policy = resolve_runtime_policy(self.source_name)
         return IntelSourceResult(

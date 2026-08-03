@@ -1,6 +1,6 @@
 # OpenClaw Bot — 项目全景地图
 
-> 最后更新: 2026-08-03 (Release Gate 2.0 已部署基线) | AI 开发助手请先读完本文再开始工作 | 当前健康状态以 `docs/009-health.md` 和 `docs/002-changelog.md` 最近条目为准
+> 最后更新: 2026-08-04 (Release Gate 2.0 + 每日资讯 V2 基线) | AI 开发助手请先读完本文再开始工作 | 当前健康状态以 `docs/009-health.md` 和 `docs/002-changelog.md` 最近条目为准
 
 ## 一句话概述
 
@@ -313,6 +313,34 @@ OpenClaw Bot/
 | 可靠性与性能 | 8.3 | 交易预算/订单/成交对账和社媒发布均具备幂等、claim/tombstone 与跨进程互斥；禁用服务不再重启风暴；Node 18 测试由约 10 分钟降到约 10 秒 | Weixin 上游首次连接可让 Gateway ready 延迟约 230 秒（HI-926）；强制终止后的券商/社媒结果仍需人工对账 |
 | 运维与发布 | 8.4 | Bot/Gateway 运行健康全绿；macOS App 经事务构建、ad-hoc sealed 签名、唯一安装和真实截图验收；Oracle 经 staging 200 项测试、SQLite 在线备份、自动回滚门和双向公网冒烟部署 | ad-hoc 只覆盖本机内测，未完成 Developer ID/公证；Oracle 既有 3 个非本项目 failed unit 按增量门监控 |
 | **综合** | **8.4** | 六维均达到内部发布 8 分线 | 不扩大到尚未验收的公开发行边界 |
+
+### 每日资讯 V2 子系统（2026-08-04）
+
+```text
+六源采集
+  -> 统一 ContentItem 契约
+  -> 日期 fail-closed / URL 规范化 / 事件与实体去重
+  -> 确定性评分 / 来源与类别配额 / 多样化 Top 3
+  -> CC Switch 三端只读翻译池 + SQLite 翻译缓存
+  -> Telegram sendPhoto + inline callback + 完整 brief 回放
+  -> delivery claim / update offset / LaunchAgent / runtime health
+```
+
+- 中央视图由独立 SQLite V3 承载：内容事实、观察、候选决定、结构化 brief、本地化、投递 artifact、媒体 `file_id`、逐事件尝试、来源 LKG、基线水位和投递 claim 均可审计。
+- tgNetDisc 采用“搬核心、不搬服务”的方案 C：复用 Telegram `file_id` 存储思想，不引入 Go 服务、公开文件代理或第二个 update poller；缓存按脱敏 Bot 身份、渲染版本和内容哈希隔离。
+- 翻译池只读本机 CC Switch 数据库，最多选择三个 HTTPS OpenAI 兼容端点；Key 仅在内存使用，不进入日志、证据、持久化缓存或对象 `repr`。
+- 生产调度合同收口为 Asia/Singapore 08:30；可选每周一 08:30。系统不再展示唯一 LaunchAgent 无法兑现的 09:00/12:00/20:00 选项。
+
+| 维度 | 分数 | 证据 | 保留边界 |
+|---|---:|---|---|
+| 内容正确性与新鲜度 | 9.1 | 日期缺失/过旧 fail-closed、Senate 排序后限额、13F 聚合、事件去重、GitHub 7 日冷却、空成功不覆盖 LKG | 上游源真实性仍依赖公开来源本身 |
+| Telegram 体验 | 8.8 | 候选 3 深色封面、管道 rank 保序的 Top 3、完整回放、分类/语言按钮、无重叠同视口 QA | Telegram 客户端字体渲染存在平台差异 |
+| 国际化 | 8.7 | 中文/English 菜单与内容、实体遮罩、字段缓存、三端 failover、45 秒总 deadline、降级后恢复重试 | 翻译质量仍需抽样人工复核 |
+| 可靠性与幂等 | 8.8 | 投递 claim lease、逐事件去重、callback 先确认、partial/unknown offset 终态、媒体失效重传 | 7 日真实 SLI 尚在新版本部署后自然积累 |
+| 安全 | 8.9 | CC Switch 只读、HTTPS-only、Key 不落盘/不进 repr、HTML 回显转义、证据脱敏 | 本机用户账户仍是私有环境的信任边界 |
+| 运维与可观测 | 8.5 | 六源 health/LKG、只读 runtime health、心跳、30 天/2000 文件/100MB 门、SQLite quick check | 首次部署后的周期/投递 SLI 为 warmup，不冒充已达 95%/99% |
+| 测试与文档 | 8.8 | Intel 全量 345 项、Ruff/format/py_compile/diff 门、V0/V2->V3 迁移、视觉 QA 和回滚手册 | 真实次日跨日运行仍需自然观测 |
+| **综合** | **8.8** | 七维工程门均超过 8 分 | 分数表示当前单机 Telegram 内测发布能力，不等于长期 SLI 已完成采样 |
 
 ### 关键文件路径和行数
 

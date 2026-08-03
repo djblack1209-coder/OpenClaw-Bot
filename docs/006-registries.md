@@ -861,7 +861,7 @@
 | 605 | `/cost` | 成本/配额 |
 | 606 | `/config` | 运行配置 |
 
-### 700-708: 每日简报
+### 700-709: 每日简报
 
 平台策略：Telegram 支持点击和斜杠菜单，因此优先使用 BotCommand/Inline 按钮/常驻键盘；数字编号只作为兼容备用。微信不支持 Telegram 式点击命令菜单，因此降级为数字编号，并在每个入口提示“回复数字即可跳转”。
 
@@ -872,12 +872,13 @@
 | 702 | `/market` / 市场资金 | 开启 A股资金、国会持仓、机构13F 等市场资金源 |
 | 703 | `/ai` / AI科技 | 开启 AI 模型动态和 GitHub Trending |
 | 704 | `/weather` / 天气预警 | 开启天气、空气、降雨、温度、湿度、灾害预警 |
-| 705 | `/schedule` / 推送时间/设置时间 | 默认每天 08:30；支持 `705 09:00`、`推送时间 09:00`、Telegram `/schedule 09:00`；只发 `705`、`推送时间` 或 `/schedule` 时进入两步式，下一条可回复 `1-5`、`每天 09:00` 或 `每周 09:00` |
+| 705 | `/schedule` / 推送时间/设置时间 | 当前生产只支持 Asia/Singapore 08:30；回复 `1` 为每天，回复 `2` 为每周一。不在唯一 LaunchAgent 调度范围内的时间会明确拒绝，不再展示无法履约的选项 |
 | 706 | `/track` / 添加追踪/追踪 | 支持 `706 英伟达`、`添加追踪 英伟达`、`追踪 英伟达`、`/track 英伟达`；也支持先发 `706`、`添加追踪` 或 `/track`，下一条直接回复名字完成追踪 |
 | 707 | `/help` / 简报帮助 | 返回每日简报菜单和数字命令说明 |
 | 708 | `/pause` / 暂停简报 | 将当前订阅者状态标为 paused；查看状态/打开菜单不会自动恢复，重新选择内容才恢复 |
+| 709 | `/language zh\|en` / 中文 / English | Telegram 资讯语言切换；只更新 `content_language`，不改变分类、频率、时区、订阅到期或暂停状态 |
 
-当前 Telegram Bot 左侧命令菜单已同步为 10 个点击命令：`/start`、`/today`、`/status`、`/market`、`/ai`、`/weather`、`/schedule`、`/track`、`/pause`、`/help`。微信端已接入上述 700-708 数字回复、中文快捷词和两步式；显式“菜单/今日简报”等快捷词会打断 pending 状态，不会被误当作时间或追踪参数。本机处理器同时支持 `/api/v1/wechat/incoming` 和旧路径 `/wechat/incoming`。OpenClaw Weixin 插件已补“每日简报编号菜单直通桥”，授权会话发 `700-708`、`菜单`、`今日简报`、`我的订阅`、`推送时间`、`添加追踪` 等快捷词时会先调用 `/wechat/incoming`，不再落入普通大模型闲聊；当前通道状态为 `enabled, configured, running`。桌面微信窗口当前 `kCGWindowSharingState=0`，Codex/Computer Use 无法读取聊天内容，本轮未把“Codex 亲自发出 700”登记为已验收；下一条真实微信消息或插件日志可作为最终真机入站证据。飞书/钉钉当前仅保留统一菜单合同，不做真实连通验收。
+当前 Telegram Bot 左侧命令菜单已同步为 11 个点击命令：`/start`、`/today`、`/status`、`/market`、`/ai`、`/weather`、`/schedule`、`/track`、`/pause`、`/language`、`/help`，并注册 default、`zh`、`en` 三个 scope。微信端仍保持 700-708 数字回复与中文快捷词；709 是本轮明确的 Telegram 入口，不伪装成已接通微信。显式“菜单/今日简报”等快捷词会打断 pending 状态，不会被误当作时间或追踪参数。本机处理器同时支持 `/api/v1/wechat/incoming` 和旧路径 `/wechat/incoming`。
 
 ---
 
@@ -3198,3 +3199,22 @@ Next-run six-source readiness evidence：`packages/clawbot/data/intel_evidence/p
 | `packages/clawbot/scripts/intel_wechat_user_journey_acceptance.py` | 微信菜单用户旅程验收器；覆盖数字、中文快捷词、两步式中途跳转、暂停恢复；只用临时 SQLite，不调用真实微信网络，输出脱敏证据。 |
 
 真实运行边界：Telegram 监听器已真实运行；Bot API `getMe` 确认机器人为 `@carven_Jianbao_bot`，`getMyCommands` 确认 `/start` 存在；微信处理器和 OpenClaw Weixin 插件桥已就绪，并新增真实桥接证据验收器；但受微信窗口防截图限制，Codex 未完成真实桌面微信发消息验收，当前默认验收报告会在没有新微信入站时显示“未找到微信桥接证据文件”；飞书/钉钉没有真实平台入口，仍为协议层。
+
+### Intel Brief V2 内容、双语、富媒体与运行治理注册（2026-08-04）
+
+| 类型 | 路径/变量 | 说明 |
+|---|---|---|
+| 内容契约 | `packages/clawbot/src/intel/content_contract.py` | 六源统一 `ContentItem`、日期解析、URL 规范化、坏行隔离和 13F accession 聚合。 |
+| 选择管道 | `packages/clawbot/src/intel/content_pipeline.py` | 时效 fail-closed、事件/实体去重、GitHub 7 日冷却、确定性评分、来源/类别配额和多样化 Top 3。 |
+| 本地化 | `packages/clawbot/src/intel/localization.py`、`translation_service.py` | 实体遮罩、字段缓存、最多三个 CC Switch HTTPS 第三方端点、45 秒总 deadline；Key 只驻留内存且不进入 repr。 |
+| Telegram 渲染 | `packages/clawbot/src/intel/telegram_brief_renderer.py` | 候选 3 深色首屏、管道 rank 保序、Top 3 caption、完整回放和语言/分类 callback。 |
+| Telegram 媒体 | `packages/clawbot/src/intel/telegram_media_store.py` | 搬运 tgNetDisc 的核心思想：私有 Telegram `file_id` 存储与复用；不引入 Go 服务、公开文件代理或第二轮询器。 |
+| 生产封面 | `packages/clawbot/assets/intel/openclaw-intel-brief-dark.jpg` | JPEG 1280 x 720，156 KB，SHA-256 `eee7a545...d5315`。 |
+| 运行健康 | `packages/clawbot/src/intel/runtime_health.py`、`packages/clawbot/scripts/intel_runtime_health.py` | 只读汇总 SQLite quick check、六源覆盖、7 日周期/投递 SLI、listener 心跳和证据留存。 |
+| Schema V3 | `packages/clawbot/src/intel/db/intel_brief_schema.sql` | 结构化 brief/localization、翻译缓存、Telegram media、内容事实/观察/候选、逐事件尝试、来源 LKG、管道水位和投递 claim lease。 |
+| 调度 | `INTEL_BRIEF_SCHEDULER_TIMEZONE`、`INTEL_BRIEF_SCHEDULER_WINDOW_END` | 默认 Asia/Singapore，生产窗口 08:30-10:00；非法时区/窗口 fail-closed。 |
+| 翻译 | `INTEL_BRIEF_TRANSLATION_ENABLED`、`CC_SWITCH_DB_PATH` | 生产需显式开启翻译；CC Switch 数据库只读。 |
+| 媒体 | `INTEL_BRIEF_TELEGRAM_MEDIA_CHAT_ID` | 可选私有素材会话；未设置时由首个真实收件人的 `sendPhoto` 回包种入缓存。 |
+| 富消息兼容 | `INTEL_BRIEF_TELEGRAM_RICH_MESSAGE_ENABLED` | 生产保持 false；Telegram 无官方 `sendRichMessage`，误开时本地零网络拒绝并降级 `sendPhoto`。 |
+
+新增回归文件：`test_intel_content_contract.py`、`test_intel_content_pipeline.py`、`test_intel_db_migrations_v2.py`、`test_intel_localization.py`、`test_intel_translation_service.py`、`test_intel_brief_replay.py`、`test_intel_telegram_rich_delivery.py`、`test_intel_telegram_media_store.py`、`test_intel_runtime_health.py`。V2 未新增 pip 依赖，继续使用 Python 标准库、现有 SQLite 和 Telegram Bot API。

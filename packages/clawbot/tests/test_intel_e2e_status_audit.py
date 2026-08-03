@@ -35,7 +35,13 @@ def _seed_db(db_path: Path, *, content: str) -> None:
         source="e2e_test",
     )
     set_source_preferences(db_path, user_id=subscriber["user_id"], enabled_categories=["akshare", "senate_trading"])
-    set_delivery_preferences(db_path, user_id=subscriber["user_id"], frequency="daily", delivery_time="08:30", timezone="America/Denver")
+    set_delivery_preferences(
+        db_path,
+        user_id=subscriber["user_id"],
+        frequency="daily",
+        delivery_time="08:30",
+        timezone="Asia/Singapore",
+    )
     with sqlite3.connect(db_path) as conn:
         conn.execute(
             """
@@ -57,7 +63,14 @@ def _readiness(path: Path) -> None:
         path,
         {
             "status": "ready",
-            "expected_sources": ["senate_trading", "akshare", "github_trending", "ai_model_updates", "institutional_13f", "weather"],
+            "expected_sources": [
+                "senate_trading",
+                "akshare",
+                "github_trending",
+                "ai_model_updates",
+                "institutional_13f",
+                "weather",
+            ],
             "missing": [],
             "network_calls": 0,
         },
@@ -177,10 +190,7 @@ def test_e2e_status_audit_requires_natural_six_source_launchagent_audit(tmp_path
     missing_launchagent_audit = tmp_path / "missing-launchagent-audit.json"
     _seed_db(
         db,
-        content=(
-            "🧭 情报简报\n已按你的订阅偏好筛选 2 条情报。\n"
-            "提示：内容来自公开来源自动汇总，不构成投资建议。"
-        ),
+        content=("🧭 情报简报\n已按你的订阅偏好筛选 2 条情报。\n提示：内容来自公开来源自动汇总，不构成投资建议。"),
     )
     _readiness(readiness)
     _delivery_evidence(delivery)
@@ -218,20 +228,22 @@ def test_e2e_status_audit_cli_writes_evidence(tmp_path):
     _delivery_evidence(delivery)
     _natural_launchagent_audit(launchagent_audit)
 
-    exit_code = main([
-        "--db",
-        str(db),
-        "--now",
-        NOW,
-        "--readiness-evidence",
-        str(readiness),
-        "--delivery-evidence",
-        str(delivery),
-        "--launchagent-audit-evidence",
-        str(launchagent_audit),
-        "--output",
-        str(output),
-    ])
+    exit_code = main(
+        [
+            "--db",
+            str(db),
+            "--now",
+            NOW,
+            "--readiness-evidence",
+            str(readiness),
+            "--delivery-evidence",
+            str(delivery),
+            "--launchagent-audit-evidence",
+            str(launchagent_audit),
+            "--output",
+            str(output),
+        ]
+    )
 
     assert exit_code == 0
     saved = json.loads(output.read_text(encoding="utf-8"))

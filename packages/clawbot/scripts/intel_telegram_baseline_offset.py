@@ -48,6 +48,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--allow-real-network", action="store_true")
     parser.add_argument("--limit", type=int, default=100)
     parser.add_argument("--timeout-seconds", type=int, default=0)
+    parser.add_argument("--max-batches", type=int, default=100)
     args = parser.parse_args(argv)
 
     env = load_private_env_file(args.env_path)
@@ -57,7 +58,13 @@ def main(argv: list[str] | None = None) -> int:
         payload = _blocked_payload(db_path=args.db, output=args.output, gate=gate)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        print(json.dumps({"status": "blocked", "gate": gate, "network_calls": 0, "output": args.output}, ensure_ascii=False, sort_keys=True))
+        print(
+            json.dumps(
+                {"status": "blocked", "gate": gate, "network_calls": 0, "output": args.output},
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
         return 2
 
     client = TelegramBotApiRuntimeClient(token=env.get("INTEL_BRIEF_TELEGRAM_BOT_TOKEN", ""))
@@ -67,6 +74,7 @@ def main(argv: list[str] | None = None) -> int:
         client=client,
         limit=args.limit,
         timeout_seconds=args.timeout_seconds,
+        max_batches=args.max_batches,
         source="real_bot_api_baseline",
     )
     print(

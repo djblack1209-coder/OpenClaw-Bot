@@ -1428,3 +1428,51 @@ Phase BG 解决了 post-run audit 会不会误判的问题；Phase BH 把这个�
 因此商业 MVP E2E status 为 `needs_attention`，不是完成态。唯一剩余的强证据是下一次自然 08:30 后，用 Phase BG 的 `--expected-source` 六源 post-run audit 得到 `verified_success`，然后再把那份 audit 传给 E2E status audit。
 
 回滚边界：回退 `e2e_status_audit.py`、`intel_e2e_status_audit.py` 与 `test_intel_e2e_status_audit.py` 即可；不涉及 LaunchAgent plist、VPS、private env、远程 worker、生产 DB、订阅授权、支付/闲鱼或爬虫。
+
+## 2026-08-04 V2 生产基线（覆盖旧阶段当前状态）
+
+本节是每日资讯当前权威基线，覆盖本文早期阶段中的“暂停生产”“不部署”“最多 8 条纯文本”和“自然六源尚未验证”等当时状态；早期内容继续保留为历史决策与证据，不再代表当前实现。
+
+### 产品合同
+
+- Telegram 用户可在 `709`、`/language zh|en`、中文和 English 按钮之间切换资讯语言；语言切换不改变订阅、分类、频率、时区、到期或 paused 状态。
+- 默认每天 Asia/Singapore 08:30 投递，也支持每周一 08:30。唯一 LaunchAgent 无法兑现的其他时间不再展示，直接输入会收到明确拒绝。
+- 首屏采用方案 C + Top 3 + 候选 3：深色真实机柜封面、三条多样化重点、市场/AI/查看全部/语言按钮；完整 8 条内容保存在同一个 `brief_ref`，按钮回放不依赖截断 delivery log。
+- 生产使用 Telegram 官方 `sendPhoto`。不存在的 `sendRichMessage` 在本地零网络拒绝后降级，不参与真实发布路径。
+
+### 内容正确性
+
+- 六源先归一化为稳定 `ContentItem`，日期缺失、未来时间和超过来源阈值的条目 fail-closed。
+- 事件键负责同一事件去重；实体键负责 GitHub 同仓库 7 日冷却。13F 以 accession 聚合，不把同一申报的持仓行刷成多条新闻。
+- 首次启用 V2 时 GitHub/13F 只建立基线，不投递历史榜单；只有两源均 fresh 且已有可审计观察才完成水位。基线 event/entity 在后续运行继续参与去重。
+- `status=success` 但 `items=[]` 记为 `empty_success`，不覆盖 LKG；有未过期缓存时降级为 cached，无缓存时按失败处理。
+- Top 3 先保证类别多样性，再按确定性分数和来源/类别配额补齐；渲染器尊重管道 `rank_position`，不会二次按分数破坏前三类目。
+
+### 双语与密钥边界
+
+- 翻译服务只读 `~/.cc-switch/cc-switch.db` 或 `CC_SWITCH_DB_PATH`，按当前优先级选择最多三个 Codex/OpenAI HTTPS 兼容端点。
+- 标题、摘要和来源标签按源语言批量；代码、Ticker、百分比、金额、repo、URL 等实体先遮罩，返回后校验并恢复。
+- 三端共享 45 秒总 deadline；失败保留来源语言并标记 `partial_source_fallback`，后续按钮回放在供应商恢复时允许重试并覆盖为 `translated`。
+- API Key 只在内存请求头使用，不进入 SQLite、日志、证据或对象 `repr`。翻译缓存只保存源文、译文、语言和 provider 版本。
+
+### tgNetDisc 方案 C
+
+- 搬运“Telegram 就是私有文件存储、`file_id` 可复用”的核心，不搬 Go Web 服务、公开 URL 代理、独立 Bot 或第二个 `getUpdates` poller。
+- 缓存键包含脱敏 Bot 身份、渲染版本和封面内容哈希；同 Bot Token 轮换仍复用，换 Bot 自动隔离。
+- 可选私有素材会话只用于首次预上传。未配置时，首位真实订阅者的 `sendPhoto` 回包也会种入缓存，后续日期无条件先读取。
+- Telegram 400 明确表示旧 `file_id` 无效后，系统将其标记失效，使用本地封面重传一次并保存新引用；网络超时/5xx 结果不确定时停止降级，避免重复发正文。
+
+### 幂等、listener 与运维
+
+- 同一订阅者+业务日期由 SQLite V3 `delivery_claims` 原子抢占；15 分钟 lease 支持过期接管，claim token fencing 防止旧进程覆盖新租约，`sent/unknown` 不自动重发。
+- callback update 先 `answerCallbackQuery`，再翻译和回放；确认失败只记 warning。正文 `sent/partial/unknown` 都是 offset 终态，只有首段明确失败才允许下一轮重试。
+- listener 仅为有意义事件生成证据，保留 30 天且最多 2000 个事件文件；空轮询只更新原子 heartbeat，idle 日志每 5 分钟最多一条。
+- 运行健康为只读：数据库缺失或结构错误直接报 bad，不创建空库；同时检查六源、周期/投递 7 日 SLI、heartbeat、文件数和体积。
+
+### 验收基线
+
+- Intel Brief 全量 345 项通过，变更 Python 文件 Ruff check/format、py_compile 和 `git diff --check` 通过。
+- `make ci-local` 八阶段通过；本机 SQLite V3、listener 独占锁、heartbeat、真实 Telegram `sendPhoto` 和媒体缓存均已实装验证，旧 810,904 KiB 空轮询证据已清理。
+- V0/V2 到 V3 迁移、并发双发、stale lease、callback failure/timeout/partial、多日 baseline、无素材群跨日复用、Bot 隔离、失效 `file_id` 重传、partial 翻译恢复和 Top 3 rank 均有回归。
+- 视觉验收见 `docs/085-intel-brief-design-qa.md`；部署与回滚见 `docs/007-operations.md`；当前健康和评分见 `docs/009-health.md`。
+- 7 日 95% 周期可用率和 99% 投递成功率从 V2 部署后自然积累，暖机期不作为阻断，也不冒充已完成。

@@ -47,17 +47,23 @@ def test_parse_github_trending_html_normalizes_daily_rows():
     assert rows == [
         {
             "source": "github_trending_daily",
+            "provider": "github",
             "repo": "openai/codex",
+            "title": "openai/codex",
             "url": "https://github.com/openai/codex",
             "description": "Lightweight coding agent for terminal workflows.",
+            "summary": "Lightweight coding agent for terminal workflows.",
             "language": "Python",
             "stars_today": "1234",
         },
         {
             "source": "github_trending_daily",
+            "provider": "github",
             "repo": "anthropics/claude-code",
+            "title": "anthropics/claude-code",
             "url": "https://github.com/anthropics/claude-code",
             "description": "Agentic coding CLI.",
+            "summary": "Agentic coding CLI.",
             "language": "TypeScript",
             "stars_today": "98",
         },
@@ -97,6 +103,8 @@ def test_github_trending_adapter_uses_injected_opener_without_credentials():
     assert result.health_status == "success"
     assert result.raw_count == 1
     assert result.items[0]["repo"] == "openai/codex"
+    assert result.items[0]["title"] == "openai/codex"
+    assert result.items[0]["url"] == "https://github.com/openai/codex"
     assert result.items[0]["stars_today"] == "1234"
     assert result.evidence_path == "evidence/github.json"
     assert calls[0]["url"] == "https://github.com/trending?since=daily"

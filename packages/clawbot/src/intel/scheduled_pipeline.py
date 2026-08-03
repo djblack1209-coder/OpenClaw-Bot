@@ -146,6 +146,7 @@ def run_scheduled_sandbox_pipeline(
         markdown_output_path=brief_md,
         json_output_path=brief_json,
         stamp=stamp,
+        content_pipeline_v2=True,
     )
     summary = _run_async(
         build_llm_summary_dry_run(

@@ -15,7 +15,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from src.intel.runtime_policy import resolve_runtime_policy
+from src.intel.runtime_policy import (
+    DEFAULT_INTEL_BRIEF_SCHEDULER_TIMEZONE,
+    DEFAULT_INTEL_BRIEF_WINDOW_END,
+    IntelBriefRuntimePolicyError,
+    evaluate_intel_brief_delivery_window,
+    resolve_runtime_policy,
+)
 from src.intel.telegram_delivery import TELEGRAM_SANDBOX_ACK_VALUE
 from src.intel.worker_contract import build_worker_request
 
@@ -46,6 +52,20 @@ def _hhmm_text(scheduled_time: tuple[int, int]) -> str:
     return f"{int(scheduled_time[0]):02d}:{int(scheduled_time[1]):02d}"
 
 
+def _parse_hhmm_text(value: object, *, default: tuple[int, int]) -> tuple[int, int]:
+    """解析调度窗口配置，非法值由安全门显式阻断。"""
+    text = str(value or "").strip()
+    if not text:
+        return default
+    parts = text.split(":")
+    if len(parts) != 2:
+        raise IntelBriefRuntimePolicyError("invalid_scheduler_window", "window end must use HH:MM")
+    try:
+        return int(parts[0]), int(parts[1])
+    except ValueError as exc:
+        raise IntelBriefRuntimePolicyError("invalid_scheduler_window", "window end must use HH:MM") from exc
+
+
 def _redacted_env(env: dict[str, str]) -> dict[str, object]:
     return {
         "INTEL_BRIEF_ENABLED": _truthy(env.get("INTEL_BRIEF_ENABLED")),
@@ -58,11 +78,17 @@ def _redacted_env(env: dict[str, str]) -> dict[str, object]:
         "INTEL_BRIEF_TELEGRAM_SANDBOX_SEND_ACK": (
             str(env.get("INTEL_BRIEF_TELEGRAM_SANDBOX_SEND_ACK") or "").strip() == TELEGRAM_SANDBOX_ACK_VALUE
         ),
-        "INTEL_BRIEF_WORKER_PLACEMENT_CONFIRMED": _truthy(
-            env.get("INTEL_BRIEF_WORKER_PLACEMENT_CONFIRMED")
-        ),
+        "INTEL_BRIEF_WORKER_PLACEMENT_CONFIRMED": _truthy(env.get("INTEL_BRIEF_WORKER_PLACEMENT_CONFIRMED")),
         "INTEL_BRIEF_SCHEDULER_PRODUCTION_ACK": bool(
             str(env.get("INTEL_BRIEF_SCHEDULER_PRODUCTION_ACK") or "").strip()
+        ),
+        "INTEL_BRIEF_SCHEDULER_TIMEZONE": (
+            str(env.get("INTEL_BRIEF_SCHEDULER_TIMEZONE") or DEFAULT_INTEL_BRIEF_SCHEDULER_TIMEZONE).strip()
+            or DEFAULT_INTEL_BRIEF_SCHEDULER_TIMEZONE
+        ),
+        "INTEL_BRIEF_SCHEDULER_WINDOW_END": (
+            str(env.get("INTEL_BRIEF_SCHEDULER_WINDOW_END") or _hhmm_text(DEFAULT_INTEL_BRIEF_WINDOW_END)).strip()
+            or _hhmm_text(DEFAULT_INTEL_BRIEF_WINDOW_END)
         ),
     }
 
@@ -90,17 +116,37 @@ def build_intel_brief_scheduler_gate(
     last_run_date: str = "",
     project_root: str | Path | None = None,
 ) -> dict[str, Any]:
-    """Build a redacted scheduler safety decision for Intel Brief.
+    """构建不含敏感值的每日资讯调度安全决策。
 
-    This gate intentionally defaults to sandbox mode and blocks production mode
-    until every explicit production guard is present. It never returns secret
-    values; token/chat fields are represented as booleans only.
+    安全门默认采用沙箱模式；只有显式生产条件齐全时才允许生产投递。
+    网络条件判定前先按业务时区校验投递窗口，Token 和会话字段只返回布尔状态。
     """
     root = Path(project_root) if project_root is not None else _project_root()
     env_map = _merge_private_env(dict(os.environ if env is None else env), root)
     mode = str(env_map.get("INTEL_BRIEF_MODE") or "sandbox").strip().lower() or "sandbox"
-    run_date = now.strftime("%Y-%m-%d")
     scheduled_label = _hhmm_text(scheduled_time)
+    scheduler_timezone = (
+        str(env_map.get("INTEL_BRIEF_SCHEDULER_TIMEZONE") or DEFAULT_INTEL_BRIEF_SCHEDULER_TIMEZONE).strip()
+        or DEFAULT_INTEL_BRIEF_SCHEDULER_TIMEZONE
+    )
+    window_error = ""
+    window_decision = None
+    try:
+        window_end = _parse_hhmm_text(
+            env_map.get("INTEL_BRIEF_SCHEDULER_WINDOW_END"),
+            default=DEFAULT_INTEL_BRIEF_WINDOW_END,
+        )
+        window_decision = evaluate_intel_brief_delivery_window(
+            now=now,
+            scheduler_timezone=scheduler_timezone,
+            window_start=scheduled_time,
+            window_end=window_end,
+        )
+    except IntelBriefRuntimePolicyError as exc:
+        window_error = exc.code
+        window_end = DEFAULT_INTEL_BRIEF_WINDOW_END
+
+    run_date = window_decision.local_now.strftime("%Y-%m-%d") if window_decision else now.strftime("%Y-%m-%d")
     redacted = _redacted_env(env_map)
     base: dict[str, Any] = {
         "enabled": _truthy(env_map.get("INTEL_BRIEF_ENABLED")),
@@ -108,8 +154,13 @@ def build_intel_brief_scheduler_gate(
         "should_run": False,
         "reason": "",
         "now_iso": now.isoformat(),
+        "scheduler_now_iso": window_decision.local_now.isoformat() if window_decision is not None else "",
+        "scheduler_timezone": scheduler_timezone,
         "run_date": run_date,
         "scheduled_time": scheduled_label,
+        "window_start": scheduled_label,
+        "window_end": _hhmm_text(window_end),
+        "window_status": window_decision.reason if window_decision is not None else "invalid_configuration",
         "last_run_date": str(last_run_date or ""),
         "missing_gates": [],
         "redacted_env": redacted,
@@ -117,10 +168,10 @@ def build_intel_brief_scheduler_gate(
 
     if not base["enabled"]:
         return {**base, "reason": "disabled"}
+    if window_error:
+        return {**base, "reason": "blocked_by_hard_gate", "missing_gates": [window_error]}
     if str(last_run_date or "").strip() == run_date:
         return {**base, "reason": "already_ran_today"}
-    if (now.hour, now.minute) < (int(scheduled_time[0]), int(scheduled_time[1])):
-        return {**base, "reason": "before_scheduled_time"}
     if mode not in {"sandbox", "production"}:
         return {**base, "reason": "blocked_by_hard_gate", "missing_gates": ["invalid_mode"]}
 
@@ -146,6 +197,8 @@ def build_intel_brief_scheduler_gate(
             missing.append("summary_evidence_not_found")
         if missing:
             return {**base, "reason": "blocked_by_hard_gate", "missing_gates": missing}
+        if window_decision is not None and not window_decision.should_run:
+            return {**base, "reason": window_decision.reason}
         evidence_dir_text = str(env_map.get("INTEL_BRIEF_EVIDENCE_DIR") or DEFAULT_INTEL_BRIEF_EVIDENCE_DIR).strip()
         evidence_dir = Path(evidence_dir_text)
         if not evidence_dir.is_absolute():
@@ -174,6 +227,8 @@ def build_intel_brief_scheduler_gate(
             "missing_gates": missing,
             "collect_evidence": collect_text,
         }
+    if window_decision is not None and not window_decision.should_run:
+        return {**base, "reason": window_decision.reason, "collect_evidence": str(collect_path)}
 
     evidence_dir_text = str(env_map.get("INTEL_BRIEF_EVIDENCE_DIR") or DEFAULT_INTEL_BRIEF_EVIDENCE_DIR).strip()
     evidence_dir = Path(evidence_dir_text)

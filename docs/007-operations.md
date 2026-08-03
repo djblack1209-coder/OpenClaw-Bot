@@ -1202,3 +1202,62 @@ npm config set registry https://registry.npmmirror.com
 2. 明确说明需要自己注册API
 3. 退款后激活码自动失效并删除已部署内容
 4. 提供7天售后支持
+## 每日资讯 V2 本机部署与回滚
+
+### 生产合同
+
+- listener: `ai.openclaw.intel-brief.telegram-listener`
+- scheduler: `ai.openclaw.intel-brief.scheduler`，本机 Asia/Singapore 08:30
+- 数据库: `packages/clawbot/data/intel_brief.db`，SQLite V3
+- 私有环境: `.openclaw/intel-brief.production.env`，权限必须为 0600 且保持 Git 忽略
+- 生产开关: `INTEL_BRIEF_TRANSLATION_ENABLED=true`、`INTEL_BRIEF_SCHEDULER_TIMEZONE=Asia/Singapore`、`INTEL_BRIEF_SCHEDULER_WINDOW_END=10:00`、`INTEL_BRIEF_TELEGRAM_RICH_MESSAGE_ENABLED=false`
+- `INTEL_BRIEF_TELEGRAM_MEDIA_CHAT_ID` 可选；不应把真实用户私聊当素材群。未配置时，首位收件人的 `sendPhoto` 回包会种入缓存。
+
+### 部署顺序
+
+1. 记录时间戳，复制私有环境文件，使用 SQLite `.backup` 生成数据库回滚副本并对副本执行 `PRAGMA quick_check`。
+2. `launchctl bootout` 停止 listener，确认旧 PID 已退出。scheduler 保持待机，不在非 08:30 时间直接触发外发。
+3. 将旧 `telegram-listener` 证据目录在同一文件系统重命名为带时间戳的隔离目录，再创建权限 0700 的空目录；禁止在验证前直接删除旧证据。
+4. 使用 `src.intel.private_env.load_private_env_file/write_private_env_file` 修改非密钥开关，避免 shell 重写时回显或丢失已有 Token。
+5. 调用 `initialize_intel_db()` 执行 V0/V2 -> V3 幂等迁移；随后把活跃 Telegram 订阅统一校正为 `08:30 / Asia/Singapore`，保留 daily/weekly 频率。
+6. `plutil -lint` 验证 plist 后重新 `launchctl bootstrap` listener；观察心跳、stderr、PID 和证据文件增长。
+7. 运行 `packages/clawbot/scripts/intel_runtime_health.py`。`database_quick_check`、listener 文件/体积门必须为真；六源和 7 日 SLI 初次部署可为 warmup。
+
+### 验收查询
+
+```bash
+cd /Users/blackdj/Desktop/OpenEverything/packages/clawbot
+
+.venv312/bin/python scripts/intel_runtime_health.py \
+  --db data/intel_brief.db \
+  --listener-evidence-dir data/intel_evidence/phasefix/telegram-listener
+
+sqlite3 -readonly data/intel_brief.db '
+PRAGMA quick_check;
+PRAGMA user_version;
+SELECT max(version) FROM schema_migrations;
+SELECT count(*) FROM telegram_media_assets WHERE invalidated_at IS NULL;
+'
+```
+
+预期：`quick_check=ok`、`user_version=3`、最大迁移版本 3、listener heartbeat 小于 120 秒、新目录不超过 2000 文件/100MB。首次真实图片投递前媒体资产可以为 0；首次投递后应出现 active `file_id`，次日同 Bot/同封面不新增 key。
+
+### 回滚
+
+1. 停止 listener，将当前数据库和证据目录重命名为 `.failed-<timestamp>`。
+2. 从部署前 SQLite `.backup` 恢复数据库，恢复部署前私有环境副本和旧证据目录。
+3. 重新 bootstrap listener，验证 heartbeat 和 `PRAGMA quick_check`。
+4. 旧 791MB 级证据隔离目录只在 V2 首次真实投递、次日媒体复用和运行健康均通过后删除；这是运行冗余，不进入 Git。
+
+安全边界：整个过程不打印 Bot Token、API Key 或完整 chat id；健康证据只记录布尔值、计数、哈希和稳定错误类型。
+
+### 2026-08-04 本机实装记录
+
+- 部署时间：2026-08-04 04:36-04:48 Asia/Singapore；回滚目录为 `.openclaw/backups/intel-brief-v2-20260803T203601Z`，数据库、私有环境和旧 listener plist 均已备份，文件权限统一为 0600，SQLite 回滚副本 `quick_check=ok`。
+- 数据：生产库 `user_version=3`、迁移版本 3、`quick_check=ok`；1 个 active Telegram 订阅的偏好已规范为 `08:30 / Asia/Singapore`，原订阅状态和语言偏好保留。
+- listener：LaunchAgent 已重装并显式携带 `--lock-file ~/.openclaw/locks/intel-brief-telegram-listener.lock`；锁文件 0600、单进程运行、heartbeat 小于 120 秒，新证据目录通过 2000 文件/100MB 硬门。
+- 翻译：生产开关已启用，CC Switch 只读探针确认 3 个 HTTPS 端点可用；未配置私有素材会话，符合“首位收件人种缓存”的方案 C 合同。
+- Telegram：真实 `sendPhoto` 上线验收成功，返回 message id 和 photo `file_id`，并把候选 3 封面种入 `telegram_media_assets`；验收过程未建立每日投递 claim，不会吞掉 08:30 的正式简报。
+- 健康：`runtime_health.py` 返回 `ok=true`、`hard_failures=[]`；数据库、listener 心跳、文件数和体积均通过。六源 coverage 与 7 日周期/投递 SLI 尚未完成自然采样，继续显示 `warmup`。
+- 清理：旧 listener 证据目录约 202,726 个文件、810,904 KiB，在新 listener、数据库备份和真实图片验收通过后已删除；回滚所需的数据库、环境和 plist 小型副本继续保留。
+- 本机提示：用户所见“CC中转”通知来自 `ai.openclaw.xianyu` 进程中 `xianyu_admin.py` 的 macOS `osascript` 运营提醒，不是 CC Switch。已在 Git 忽略的 `packages/clawbot/config/.env` 设置 `CC_XIANYU_OPS_NOTIFY_ENABLED=0` 并通过 SIGUSR1 热加载；闲鱼进程继续运行，后续观察无新通知进程。CC Switch 数据库已恢复原配置，未关闭 Provider、密钥、路由或用量记录。

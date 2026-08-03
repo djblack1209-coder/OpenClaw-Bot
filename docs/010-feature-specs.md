@@ -1451,3 +1451,7 @@ node tools/task-log.mjs validate retrieval
 - 2026-06-24 追加 Popup 可视化当前页上下文扫描面板：`popup.html` 新增“当前页热点/上下文”区域和 `scan-page-context` 按钮；`popup.js` 新增 `scanPageContext()` / `renderPageContextPanel()` / `createDraftFromPageContext()`，把 `runSocialPageContextScanInPage()` 采集到的趋势、标题、正文摘要和选中文本显示成可点击卡片；点击卡片只生成待审草稿，不发布、不评论。`background.js` 新增 `socialPageContextScan` 桥，真实 Chrome 烟测已覆盖 Popup 预览页 `page-context-panel` 展开和草稿编辑器出现，截图 `output/playwright/social-pilot-browser-smoke-20260624/social-pilot-popup-context-20260624.png`。
 - 2026-06-23 追加 Telegram 审核/排程中控：Telegram 可用序号或草稿 ID 操作统一草稿队列，确认/打回只改 `review_status`，排程只写入 `extension_schedule` 的 `queued_for_owner_publish`；`/social_review_schedule_queue` 可查看 `awaiting_final_confirmation` 到点项，`/social_review_final_confirm` 只标记 `ready_for_manual_publish`，不点击发布器、不自动评论、不绕过最终人工页面操作。
 - 当前已放开“网页登录额度安全接力”的复制提示词/打开网页能力、“只读互动扫描 → 待审回复草稿”能力，以及“只读表现复盘 → 增长反馈池”能力，以及“增长复盘 → 下一批待审草稿”能力；但仍未放开自动调用网页模型、自动粘贴提交、图片生成、热点深采集、自动评论、排程外发和自动发布；必须在用户确认人设和内容后继续分阶段启用。
+
+## 每日资讯 V2
+
+当前权威产品规格、内容契约、双语边界、方案 C、Top 3、幂等和验收基线统一维护在 `docs/052-intel-brief-master-plan.md` 的“2026-08-04 V2 生产基线”章节；视觉决策与同视口 QA 见 `docs/085-intel-brief-design-qa.md`。本文件只保留索引，避免与权威规格复制后漂移。

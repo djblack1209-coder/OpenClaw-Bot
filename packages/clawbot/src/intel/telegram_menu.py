@@ -13,12 +13,17 @@ from pathlib import Path
 from typing import Any
 
 from src.intel.channel_menu import (
+    CALLBACK_LANGUAGE_ARGS,
     CALLBACK_TO_NUMBER,
     build_schedule_prompt_text,
     handle_numbered_intel_command,
     parse_intel_schedule_text,
 )
+from src.intel.channel_menu import (
+    category_display_text as channel_category_display_text,
+)
 from src.intel.db.store import subscribe_tracking_target
+from src.intel.localization import normalize_content_language
 from src.intel.subscriptions import (
     build_telegram_menu_contract,
     get_subscription_profile,
@@ -55,20 +60,28 @@ def _args(values: list[str] | tuple[str, ...] | None) -> list[str]:
 
 
 def _parse_schedule_args(values: list[str]) -> tuple[str, str, str]:
-    """兼容普通用户只输入时间的写法，例如 /schedule 09:00。"""
+    """解析每日或每周 08:30 的固定生产投递合同。"""
     return parse_intel_schedule_text(" ".join(values))
 
 
-def _subscription_status_label(status: Any) -> str:
+def _subscription_status_label(status: Any, content_language: str = "zh") -> str:
     """把内部状态翻译成普通用户看得懂的话。"""
-    mapping = {
+    mapping_zh = {
         "active": "已开通",
         "inactive_or_expired": "未开通或已到期",
         "not_found": "未开通",
         "paused": "已暂停",
     }
+    mapping_en = {
+        "active": "Active",
+        "inactive_or_expired": "Inactive or expired",
+        "not_found": "Not activated",
+        "paused": "Paused",
+    }
+    language = normalize_content_language(content_language)
+    mapping = mapping_en if language == "en" else mapping_zh
     cleaned = _clean(status)
-    return mapping.get(cleaned, cleaned or "未知")
+    return mapping.get(cleaned, cleaned or ("Unknown" if language == "en" else "未知"))
 
 
 def _numbered_command_reactivates(number: int, args: list[str]) -> bool:
@@ -81,8 +94,10 @@ SLASH_TO_NUMBER = {
     "market": 702,
     "ai": 703,
     "weather": 704,
+    "schedule": 705,
     "track": 706,
     "pause": 708,
+    "language": 709,
 }
 
 
@@ -142,9 +157,9 @@ MENU_BUTTON_PROMPTS = {
     "custom": ("custom", "请回复：706 周杰伦  来添加你想追踪的人、公司或项目。"),
     "自定义": ("custom", "请回复：706 周杰伦  来添加你想追踪的人、公司或项目。"),
     "🔎 自定义": ("custom", "请回复：706 周杰伦  来添加你想追踪的人、公司或项目。"),
-    "schedule": ("schedule", "默认每天 08:30 推送。如需调整，请回复：705 09:00。"),
-    "定时": ("schedule", "默认每天 08:30 推送。如需调整，请回复：705 09:00。"),
-    "⏰ 定时": ("schedule", "默认每天 08:30 推送。如需调整，请回复：705 09:00。"),
+    "schedule": ("schedule", "默认每天 08:30 推送；也可选择每周一 08:30。"),
+    "定时": ("schedule", "默认每天 08:30 推送；也可选择每周一 08:30。"),
+    "⏰ 定时": ("schedule", "默认每天 08:30 推送；也可选择每周一 08:30。"),
 }
 
 MENU_BUTTON_COMMANDS = {
@@ -223,6 +238,22 @@ def _base_result(command: str, user: TelegramUserContext, subscriber: dict[str, 
 def _status_text(profile: dict[str, Any]) -> str:
     categories = _category_display_text(profile.get("enabled_categories") or [])
     delivery = profile.get("delivery_preferences") or {}
+    language = normalize_content_language(delivery.get("content_language"))
+    if language == "en":
+        categories = channel_category_display_text(profile.get("enabled_categories") or [], "en")
+        return "\n".join(
+            [
+                f"Subscription: {_subscription_status_label(profile.get('status', 'inactive_or_expired'), language)}",
+                f"Plan: {profile.get('plan_name') or 'Not activated'}",
+                f"Expires: {profile.get('expires_at') or 'None'}",
+                f"Topics: {categories}",
+                "Delivery: "
+                f"{delivery.get('frequency', 'daily')} "
+                f"{delivery.get('delivery_time', '08:30')} "
+                f"{delivery.get('timezone', 'Asia/Singapore')}",
+                "Language: English",
+            ]
+        )
     lines = [
         f"订阅状态：{_subscription_status_label(profile.get('status', 'inactive_or_expired'))}",
         f"套餐：{profile.get('plan_name') or '未授权'}",
@@ -231,7 +262,8 @@ def _status_text(profile: dict[str, Any]) -> str:
         "推送："
         f"{delivery.get('frequency', 'daily')} "
         f"{delivery.get('delivery_time', '08:30')} "
-        f"{delivery.get('timezone', 'America/Denver')}",
+        f"{delivery.get('timezone', 'Asia/Singapore')}",
+        "资讯语言：中文",
     ]
     return "\n".join(lines)
 
@@ -313,6 +345,14 @@ def _is_known_plain_command(raw_cmd: str) -> bool:
     return raw_cmd in MENU_BUTTON_CATEGORY_MAP or raw_cmd in MENU_BUTTON_PROMPTS or raw_cmd in MENU_BUTTON_COMMANDS
 
 
+def _numbered_args(raw_cmd: str, parsed_args: list[str]) -> list[str]:
+    """为语言按钮补上数字命令所需的语言参数。"""
+    if parsed_args:
+        return parsed_args
+    language_arg = CALLBACK_LANGUAGE_ARGS.get(raw_cmd)
+    return [language_arg] if language_arg else []
+
+
 def _tracking_success_result(
     db_path: str | Path,
     *,
@@ -336,11 +376,17 @@ def _tracking_success_result(
         "normalized_name": target["normalized_name"],
         "active_subscription_count": target["active_subscription_count"],
     }
+    profile = get_subscription_profile(db_path, user_id=subscriber["user_id"])
+    language = normalize_content_language((profile.get("delivery_preferences") or {}).get("content_language"))
     return {
         **base,
         "command": "custom",
         "status": "success",
-        "reply_text": f"✅ 已添加追踪：{target['name']}。以后简报会优先关注它。",
+        "reply_text": (
+            f"✅ Tracking added: {target['name']}. Future briefs will prioritize it."
+            if language == "en"
+            else f"✅ 已添加追踪：{target['name']}。以后简报会优先关注它。"
+        ),
         "tracking_target": safe_target,
         "scrape_triggered": False,
     }
@@ -354,7 +400,12 @@ def _with_tracking_prompt(
 ) -> dict[str, Any]:
     """把添加追踪提示升级成两步式，并保存等待状态。"""
     _set_pending_action(db_path, user_id=user_id, action="custom")
-    return {**result, "status": "prompt", "command": "custom", "reply_text": _tracking_prompt_text()}
+    return {
+        **result,
+        "status": "prompt",
+        "command": "custom",
+        "reply_text": _clean(result.get("reply_text")) or _tracking_prompt_text(),
+    }
 
 
 def _with_schedule_prompt(
@@ -365,7 +416,12 @@ def _with_schedule_prompt(
 ) -> dict[str, Any]:
     """保存两步式推送时间设置状态。"""
     _set_pending_action(db_path, user_id=user_id, action="schedule")
-    return {**result, "status": "prompt", "command": "schedule", "reply_text": _schedule_prompt_text()}
+    return {
+        **result,
+        "status": "prompt",
+        "command": "schedule",
+        "reply_text": _clean(result.get("reply_text")) or _schedule_prompt_text(),
+    }
 
 
 def _schedule_success_result(
@@ -377,19 +433,41 @@ def _schedule_success_result(
 ) -> dict[str, Any]:
     """按用户的小白输入更新推送频率和时间。"""
     frequency, delivery_time, timezone = parse_intel_schedule_text(schedule_text)
-    preferences = set_delivery_preferences(
-        db_path,
-        user_id=subscriber["user_id"],
-        frequency=frequency,
-        delivery_time=delivery_time,
-        timezone=timezone,
-    )
+    profile = get_subscription_profile(db_path, user_id=subscriber["user_id"])
+    language = normalize_content_language((profile.get("delivery_preferences") or {}).get("content_language"))
+    try:
+        preferences = set_delivery_preferences(
+            db_path,
+            user_id=subscriber["user_id"],
+            frequency=frequency,
+            delivery_time=delivery_time,
+            timezone=timezone,
+        )
+    except ValueError as exc:
+        if str(exc) != "unsupported_delivery_schedule":
+            raise
+        return {
+            **base,
+            "command": "schedule",
+            "status": "error",
+            "error": "unsupported_delivery_schedule",
+            "reply_text": (
+                "This deployment currently supports 08:30 Asia/Singapore only. Reply 1 for daily or 2 for weekly."
+                if language == "en"
+                else "当前仅支持新加坡时间 08:30 推送。回复 1 设置每天，或回复 2 设置每周一。"
+            ),
+        }
     frequency_label = "每周" if preferences["frequency"] == "weekly" else "每天"
     return {
         **base,
         "command": "schedule",
         "status": "success",
-        "reply_text": f"✅ 推送时间已设置：{frequency_label} {preferences['delivery_time']}（{preferences['timezone']}）。",
+        "reply_text": (
+            f"✅ Delivery time updated: {'Weekly' if preferences['frequency'] == 'weekly' else 'Daily'} "
+            f"{preferences['delivery_time']} ({preferences['timezone']})."
+            if language == "en"
+            else f"✅ 推送时间已设置：{frequency_label} {preferences['delivery_time']}（{preferences['timezone']}）。"
+        ),
         "delivery_preferences": preferences,
     }
 
@@ -417,6 +495,10 @@ def handle_intel_telegram_command(
         chat_id=user.chat_id,
         reactivate=_telegram_command_reactivates(raw_cmd, parsed_args),
     )
+    current_profile = get_subscription_profile(db_path, user_id=subscriber["user_id"], now=now)
+    content_language = normalize_content_language(
+        (current_profile.get("delivery_preferences") or {}).get("content_language")
+    )
     pending_action = _get_pending_action(db_path, user_id=subscriber["user_id"]) if not is_slash_command else ""
     if pending_action == "schedule" and raw_text:
         if raw_cmd in {"0", "取消", "cancel", "算了", "不用了"}:
@@ -424,7 +506,11 @@ def handle_intel_telegram_command(
             return {
                 **_base_result("schedule", user, subscriber),
                 "status": "success",
-                "reply_text": "已取消修改推送时间。需要时再点“推送时间”或回复 705。",
+                "reply_text": (
+                    "Delivery-time change cancelled. Use Delivery Time or reply 705 whenever you need it."
+                    if content_language == "en"
+                    else "已取消修改推送时间。需要时再点“推送时间”或回复 705。"
+                ),
             }
         if not _is_known_plain_command(raw_cmd) or raw_cmd in {"1", "2", "3", "4", "5"}:
             _clear_pending_action(db_path, user_id=subscriber["user_id"])
@@ -440,7 +526,11 @@ def handle_intel_telegram_command(
             return {
                 **_base_result("custom", user, subscriber),
                 "status": "success",
-                "reply_text": "已取消添加追踪。需要时再回复 706。",
+                "reply_text": (
+                    "Tracking cancelled. Reply 706 whenever you want to add a topic."
+                    if content_language == "en"
+                    else "已取消添加追踪。需要时再回复 706。"
+                ),
             }
         if not _is_known_plain_command(raw_cmd):
             _clear_pending_action(db_path, user_id=subscriber["user_id"])
@@ -459,18 +549,21 @@ def handle_intel_telegram_command(
             external_user_id=user.telegram_user_id,
             channel_user_id=user.chat_id,
             number=CALLBACK_TO_NUMBER[raw_cmd],
-            arg=" ".join(parsed_args),
+            arg=" ".join(_numbered_args(raw_cmd, parsed_args)),
             now=now,
         )
         if numbered.get("command") == "custom" and numbered.get("status") == "prompt":
             numbered = _with_tracking_prompt(db_path, user_id=subscriber["user_id"], result=numbered)
         if numbered.get("command") == "schedule" and numbered.get("status") == "prompt":
             numbered = _with_schedule_prompt(db_path, user_id=subscriber["user_id"], result=numbered)
+        if numbered.get("command") == "language":
+            _clear_pending_action(db_path, user_id=subscriber["user_id"])
         base = _base_result(str(numbered.get("command") or raw_cmd), user, subscriber)
         return {
             **base,
             "command": numbered.get("command", raw_cmd),
             "status": numbered.get("status", "success"),
+            "error": numbered.get("error", ""),
             "reply_text": numbered.get("reply_text", ""),
             "reply_markup": numbered.get("reply_markup"),
             "menu": numbered.get("menu"),
@@ -480,6 +573,7 @@ def handle_intel_telegram_command(
             "all_enabled_categories": numbered.get("all_enabled_categories"),
             "tracking_target": numbered.get("tracking_target"),
             "delivery_preferences": numbered.get("delivery_preferences"),
+            "content_language": numbered.get("content_language"),
             "subscriber_status": numbered.get("subscriber_status"),
             "latest_delivery_present": numbered.get("latest_delivery_present"),
         }
@@ -496,11 +590,16 @@ def handle_intel_telegram_command(
         )
         if numbered.get("command") == "custom" and numbered.get("status") == "prompt":
             numbered = _with_tracking_prompt(db_path, user_id=subscriber["user_id"], result=numbered)
+        if numbered.get("command") == "schedule" and numbered.get("status") == "prompt":
+            numbered = _with_schedule_prompt(db_path, user_id=subscriber["user_id"], result=numbered)
+        if numbered.get("command") == "language":
+            _clear_pending_action(db_path, user_id=subscriber["user_id"])
         base = _base_result(str(numbered.get("command") or raw_cmd), user, subscriber)
         return {
             **base,
             "command": numbered.get("command", raw_cmd),
             "status": numbered.get("status", "success"),
+            "error": numbered.get("error", ""),
             "reply_text": numbered.get("reply_text", ""),
             "reply_markup": numbered.get("reply_markup"),
             "menu": numbered.get("menu"),
@@ -510,6 +609,7 @@ def handle_intel_telegram_command(
             "all_enabled_categories": numbered.get("all_enabled_categories"),
             "tracking_target": numbered.get("tracking_target"),
             "delivery_preferences": numbered.get("delivery_preferences"),
+            "content_language": numbered.get("content_language"),
             "subscriber_status": numbered.get("subscriber_status"),
             "latest_delivery_present": numbered.get("latest_delivery_present"),
         }
@@ -539,10 +639,13 @@ def handle_intel_telegram_command(
             numbered = _with_tracking_prompt(db_path, user_id=subscriber["user_id"], result=numbered)
         if numbered.get("command") == "schedule" and numbered.get("status") == "prompt":
             numbered = _with_schedule_prompt(db_path, user_id=subscriber["user_id"], result=numbered)
+        if numbered.get("command") == "language":
+            _clear_pending_action(db_path, user_id=subscriber["user_id"])
         return {
             **base,
             "command": numbered.get("command", cmd),
             "status": numbered.get("status", "success"),
+            "error": numbered.get("error", ""),
             "reply_text": numbered.get("reply_text", ""),
             "reply_markup": numbered.get("reply_markup"),
             "menu": numbered.get("menu"),
@@ -552,6 +655,7 @@ def handle_intel_telegram_command(
             "all_enabled_categories": numbered.get("all_enabled_categories"),
             "tracking_target": numbered.get("tracking_target"),
             "delivery_preferences": numbered.get("delivery_preferences"),
+            "content_language": numbered.get("content_language"),
             "subscriber_status": numbered.get("subscriber_status"),
             "latest_delivery_present": numbered.get("latest_delivery_present"),
         }
@@ -587,7 +691,9 @@ def handle_intel_telegram_command(
             profile = get_subscription_profile(db_path, user_id=subscriber["user_id"], now=now)
             current = {_clean(category) for category in profile.get("enabled_categories", []) if _clean(category)}
             selected = {_clean(category) for category in button_categories if _clean(category)}
-            enabled_categories = sorted(current - selected) if selected and selected.issubset(current) else sorted(current | selected)
+            enabled_categories = (
+                sorted(current - selected) if selected and selected.issubset(current) else sorted(current | selected)
+            )
         preferences = set_source_preferences(
             db_path,
             user_id=subscriber["user_id"],
@@ -597,37 +703,65 @@ def handle_intel_telegram_command(
         return {
             **base,
             "status": "success",
-            "reply_text": f"已启用分类：{_category_display_text(enabled)}",
+            "reply_text": (
+                f"Enabled topics: {channel_category_display_text(enabled, 'en')}"
+                if content_language == "en"
+                else f"已启用分类：{_category_display_text(enabled)}"
+            ),
             "enabled_categories": enabled,
             "enabled_category_labels": [_category_display_name(category) for category in enabled],
         }
 
     if cmd == "schedule":
         if button_prompt and not parsed_args:
-            return _with_schedule_prompt(db_path, user_id=subscriber["user_id"], result={
-                **base,
-                "status": "prompt",
-                "reply_text": _schedule_prompt_text(),
-            })
+            return _with_schedule_prompt(
+                db_path,
+                user_id=subscriber["user_id"],
+                result={
+                    **base,
+                    "status": "prompt",
+                    "reply_text": build_schedule_prompt_text(content_language),
+                },
+            )
         if not parsed_args:
-            return _with_schedule_prompt(db_path, user_id=subscriber["user_id"], result={
-                **base,
-                "status": "prompt",
-                "reply_text": _schedule_prompt_text(),
-            })
+            return _with_schedule_prompt(
+                db_path,
+                user_id=subscriber["user_id"],
+                result={
+                    **base,
+                    "status": "prompt",
+                    "reply_text": build_schedule_prompt_text(content_language),
+                },
+            )
         frequency, delivery_time, timezone = _parse_schedule_args(parsed_args)
-        preferences = set_delivery_preferences(
-            db_path,
-            user_id=subscriber["user_id"],
-            frequency=frequency,
-            delivery_time=delivery_time,
-            timezone=timezone,
-        )
+        try:
+            preferences = set_delivery_preferences(
+                db_path,
+                user_id=subscriber["user_id"],
+                frequency=frequency,
+                delivery_time=delivery_time,
+                timezone=timezone,
+            )
+        except ValueError as exc:
+            if str(exc) != "unsupported_delivery_schedule":
+                raise
+            return {
+                **base,
+                "status": "error",
+                "error": "unsupported_delivery_schedule",
+                "reply_text": (
+                    "This deployment currently supports 08:30 Asia/Singapore only. Reply 1 for daily or 2 for weekly."
+                    if content_language == "en"
+                    else "当前仅支持新加坡时间 08:30 推送。回复 1 设置每天，或回复 2 设置每周一。"
+                ),
+            }
         return {
             **base,
             "status": "success",
             "reply_text": (
-                "推送设置已更新："
+                f"Delivery updated: {preferences['frequency']} {preferences['delivery_time']} {preferences['timezone']}"
+                if content_language == "en"
+                else "推送设置已更新："
                 f"{preferences['frequency']} {preferences['delivery_time']} {preferences['timezone']}"
             ),
             "delivery_preferences": preferences,
@@ -636,12 +770,20 @@ def handle_intel_telegram_command(
     if cmd == "custom":
         target_name = " ".join(parsed_args).strip()
         if not target_name:
-            return _with_tracking_prompt(db_path, user_id=subscriber["user_id"], result={
-                **base,
-                "status": "prompt" if button_prompt else "error",
-                "error": "target_name_required",
-                "reply_text": button_prompt[1] if button_prompt else "请在 /custom 后输入要追踪的人物姓名。",
-            })
+            return _with_tracking_prompt(
+                db_path,
+                user_id=subscriber["user_id"],
+                result={
+                    **base,
+                    "status": "prompt" if button_prompt else "error",
+                    "error": "target_name_required",
+                    "reply_text": (
+                        "Add a person, company or project after /custom."
+                        if content_language == "en"
+                        else (button_prompt[1] if button_prompt else "请在 /custom 后输入要追踪的人物姓名。")
+                    ),
+                },
+            )
         _clear_pending_action(db_path, user_id=subscriber["user_id"])
         return _tracking_success_result(
             db_path,
@@ -658,9 +800,17 @@ def handle_intel_telegram_command(
             **base,
             "status": "prompt",
             "reply_text": (
-                f"已收到关键词：{keyword}。搜索索引接入后会按你的订阅范围返回结果。"
-                if keyword
-                else (button_prompt[1] if button_prompt else "请直接发送关键词，我会按你的订阅范围检索相关情报。")
+                (
+                    f"Keyword received: {keyword}. Results will be limited to your subscribed topics."
+                    if keyword
+                    else "Send a keyword to search within your subscribed topics."
+                )
+                if content_language == "en"
+                else (
+                    f"已收到关键词：{keyword}。搜索索引接入后会按你的订阅范围返回结果。"
+                    if keyword
+                    else (button_prompt[1] if button_prompt else "请直接发送关键词，我会按你的订阅范围检索相关情报。")
+                )
             ),
         }
 
@@ -680,12 +830,20 @@ def handle_intel_telegram_command(
         return {
             **base,
             "status": "prompt",
-            "reply_text": f"已收到关键词：{raw_cmd}。搜索索引接入后会按你的订阅范围返回结果。",
+            "reply_text": (
+                f"Keyword received: {raw_cmd}. Results will be limited to your subscribed topics."
+                if content_language == "en"
+                else f"已收到关键词：{raw_cmd}。搜索索引接入后会按你的订阅范围返回结果。"
+            ),
         }
 
     return {
         **base,
         "status": "error",
         "error": "unknown_command",
-        "reply_text": "未知命令。请发送 /help 查看情报简报 Bot 可用命令。",
+        "reply_text": (
+            "Unknown command. Send /help to view available brief commands."
+            if content_language == "en"
+            else "未知命令。请发送 /help 查看情报简报 Bot 可用命令。"
+        ),
     }

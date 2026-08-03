@@ -5,6 +5,36 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
+## [2026-08-04] 每日资讯 V2 内容正确性、双语与富媒体闭环
+> 领域: `backend` | `ai-pool` | `deploy` | `infra` | `docs`
+> 影响模块: `Intel Brief 内容管道`, `Telegram 菜单与投递`, `CC Switch 翻译池`, `SQLite V3`, `LaunchAgent`, `运行健康`
+> 关联问题: HI-928, HI-929, HI-930, HI-931, HI-932, HI-933
+### 变更内容
+- 新增六源统一内容契约和 V2 选择管道：缺失/未来/过期日期 fail-closed，Senate 先全量按披露日排序再限额，A股补交易日，GitHub 保留真实仓库字段，13F 按 accession 聚合；事件键、实体冷却、来源/类别配额和确定性评分共同生成多样化 Top 3。
+- 修复 2020 BYND、缺失日期、跨日重复、同 GitHub 仓库刷屏、空成功覆盖 LKG 和首次基线提前完成；GitHub/13F 基线必须两源均有新鲜观察才完成，旧 repo/accession 在后续运行持续拦截，新 accession 可进入候选。
+- Telegram 采用方案 C：搬运 tgNetDisc 的 `file_id` 存储核心，不引入 Go 服务、公开代理或第二轮询器。候选 3 深色封面通过官方 `sendPhoto` 投递，首屏保留管道 Top 3 顺序，按钮支持分类、查看全部和中英文回放。
+- 媒体缓存按脱敏 Bot 身份、渲染版本和内容哈希隔离；无私有素材群时也会读取首位收件人种入的缓存。Telegram 明确拒绝旧 `file_id` 时，系统作废缓存、用本地封面重传一次并保存新引用。
+- 新增 `709` / `/language zh|en`，注册 Telegram default/zh/en 三套原生命令；语言切换和 brief callback 不恢复 paused 用户。首次翻译降级为 `partial_source_fallback` 后，供应商恢复可再次生成完整译文。
+- 接入本机 CC Switch 最多三个第三方 HTTPS 端点，批量翻译同语言字段并持久化非密钥缓存；Key 只驻留内存且不进入 `repr`，三端共用 45 秒总 deadline，错误只暴露稳定类型。
+- SQLite 升级 V3：增加结构化 brief/localization、内容事实/观察/候选、来源尝试/LKG、媒体资产、投递 artifact、逐事件状态和投递 claim lease；V0/V2 幂等迁移保留历史行并把生产投递合同收口到 Asia/Singapore 08:30。
+- listener 改为只保留有意义事件，30 天且最多 2000 文件；callback 先确认再翻译/回放，正文 `sent/partial/unknown` 均提交 offset，只有首段明确失败才重试，避免 callback 辅助失败或超时导致重复回复。
+- 生产菜单只提供每天 08:30 与每周一 08:30；无法由唯一 LaunchAgent 履约的时间会明确拒绝。新增只读运行健康汇总，覆盖数据库、六源、7 日周期/投递、心跳和证据目录门。
+### 验证
+- Intel Brief 全量：345 项通过；变更文件 Ruff check、Ruff format、Python 编译和 `git diff --check` 全绿。
+- `make ci-local` 八阶段全部通过：Python 全仓 100%、Frist-API 200/200、桌面安全边界 20/20、TypeScript、Rust 34/34、`cargo check --locked` 与 23 份文档治理均为绿色。
+- 真实 CC Switch 最小翻译烟测：3 个端点可用，英文句子成功翻译为中文；过程未输出或持久化 API Key。
+- 视觉 QA：390 x 844 同视口实现与参考合并比较，控制台 0 error / 0 warning；详情见 `docs/085-intel-brief-design-qa.md`。
+- 本机生产已迁移到 SQLite V3 和 Asia/Singapore 08:30，listener 以 0600 独占锁单实例运行；真实 Telegram `sendPhoto` 验收成功并种入 1 个 active `file_id`。运行健康无 hard failure，六源和 7 日 SLI 按事实保持 warmup。
+- 旧 listener 的 202,726 级文件目录完成隔离后清理，释放 810,904 KiB；数据库、私有环境和旧 plist 回滚副本继续以 0600 保留。与 CC Switch 本体无关的“CC中转”本机弹窗定位到闲鱼 `xianyu_admin.py` 的 `osascript` 运营提醒，已通过本机私有运行开关关闭；CC Switch 数据库、Provider、密钥和路由保持原配置。
+### 文件变更
+- `packages/clawbot/src/intel/content_contract.py`、`content_pipeline.py`、`brief_builder.py`、`production_cycle.py` — 内容事实、筛选、LKG 与基线水位。
+- `packages/clawbot/src/intel/localization.py`、`translation_service.py` — 双语、缓存和 CC Switch 三端池。
+- `packages/clawbot/src/intel/telegram_brief_renderer.py`、`telegram_media_store.py`、`telegram_delivery.py`、`subscription_delivery.py` — Top 3、图片、回放、媒体复用与投递 claim。
+- `packages/clawbot/src/intel/db/intel_brief_schema.sql`、`db/store.py` — SQLite V3 增量迁移与中央审计状态。
+- `packages/clawbot/scripts/intel_telegram_update_daemon.py`、`scripts/intel_runtime_health.py`、`scripts/auto_health_check.sh` — listener 留存和运行健康。
+- `packages/clawbot/assets/intel/openclaw-intel-brief-dark.jpg` — 候选 3 生产封面。
+- `docs/001-project-map.md`、`002-changelog.md`、`003-docs-index.md`、`006-registries.md`、`007-operations.md`、`009-health.md`、`010-feature-specs.md`、`052-intel-brief-master-plan.md`、`085-intel-brief-design-qa.md` — 架构、基线、运维、规格和设计证据。
+
 ## [2026-08-03] P0 安全与交易正确性整改闭环
 > 领域: `backend` | `frontend` | `ai-pool` | `deploy` | `infra` | `trading` | `social` | `docs`
 > 影响模块: `Telegram 鉴权`, `Agent 工具`, `OMEGA DAG`, `交易状态机`, `社媒发布门`, `Frist-API/New-API`, `Tauri Manager`, `运行时健康`, `CI`

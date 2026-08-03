@@ -12,8 +12,15 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from src.intel.channel_menu import INTEL_INLINE_MENU_BUTTONS, INTEL_NUMBERED_COMMANDS, build_intel_menu_text
+from src.intel.channel_menu import (
+    INTEL_INLINE_MENU_BUTTONS,
+    build_intel_menu_text,
+    intel_inline_menu_buttons,
+    intel_numbered_commands,
+)
 from src.intel.db.store import initialize_intel_db
+from src.intel.localization import DEFAULT_CONTENT_LANGUAGE, normalize_content_language, parse_content_language
+from src.intel.runtime_policy import DEFAULT_INTEL_BRIEF_DELIVERY_TIME, DEFAULT_INTEL_BRIEF_SCHEDULER_TIMEZONE
 
 DEFAULT_MVP_CATEGORIES = [
     "senate_trading",
@@ -29,7 +36,7 @@ DEFAULT_MVP_CATEGORIES = [
     "disaster_alerts",
 ]
 
-TELEGRAM_COMMANDS = [
+TELEGRAM_COMMANDS_ZH = [
     {"command": "start", "description": "打开菜单"},
     {"command": "today", "description": "今日简报"},
     {"command": "status", "description": "我的订阅"},
@@ -39,20 +46,41 @@ TELEGRAM_COMMANDS = [
     {"command": "schedule", "description": "推送时间"},
     {"command": "track", "description": "添加追踪"},
     {"command": "pause", "description": "暂停简报"},
+    {"command": "language", "description": "资讯语言"},
     {"command": "help", "description": "帮助"},
 ]
 
+TELEGRAM_COMMANDS_EN = [
+    {"command": "start", "description": "Open menu"},
+    {"command": "today", "description": "Today's brief"},
+    {"command": "status", "description": "My subscription"},
+    {"command": "market", "description": "Markets"},
+    {"command": "ai", "description": "AI and tech"},
+    {"command": "weather", "description": "Weather alerts"},
+    {"command": "schedule", "description": "Delivery time"},
+    {"command": "track", "description": "Track a topic"},
+    {"command": "pause", "description": "Pause brief"},
+    {"command": "language", "description": "Brief language"},
+    {"command": "help", "description": "Help"},
+]
+
+TELEGRAM_COMMANDS = TELEGRAM_COMMANDS_ZH
+
 TELEGRAM_INLINE_MENU_BUTTONS = INTEL_INLINE_MENU_BUTTONS
 
-TELEGRAM_INLINE_MENU_KEYBOARD = [
-    [button["text"] for button in row]
-    for row in TELEGRAM_INLINE_MENU_BUTTONS
-]
+TELEGRAM_INLINE_MENU_KEYBOARD = [[button["text"] for button in row] for row in TELEGRAM_INLINE_MENU_BUTTONS]
 
 TELEGRAM_PERSISTENT_MENU_BUTTONS = [
     [
         {"text": "🧭 今日简报"},
         {"text": "📌 我的订阅"},
+    ],
+]
+
+TELEGRAM_PERSISTENT_MENU_BUTTONS_EN = [
+    [
+        {"text": "🧭 Today's Brief"},
+        {"text": "📌 Subscription"},
     ],
 ]
 
@@ -64,6 +92,18 @@ def _clean(value: Any) -> str:
 def _categories(values: list[str] | tuple[str, ...] | None) -> list[str]:
     cleaned = sorted({_clean(value) for value in (values or []) if _clean(value)})
     return cleaned
+
+
+def telegram_commands_for_language(content_language: str = DEFAULT_CONTENT_LANGUAGE) -> list[dict[str, str]]:
+    """返回指定语言的 Telegram 原生命令定义副本。"""
+    commands = TELEGRAM_COMMANDS_EN if normalize_content_language(content_language) == "en" else TELEGRAM_COMMANDS_ZH
+    return [dict(item) for item in commands]
+
+
+def _has_delivery_language_column(conn: sqlite3.Connection) -> bool:
+    """兼容探测新旧数据库是否已具备语言偏好列。"""
+    columns = conn.execute("PRAGMA table_info(delivery_preferences)").fetchall()
+    return any(str(row[1]) == "content_language" for row in columns)
 
 
 def _subscriber_id(conn: sqlite3.Connection, user_id: str) -> int:
@@ -172,7 +212,9 @@ def grant_subscription(
     initialize_intel_db(db_path)
     with sqlite3.connect(db_path) as conn:
         subscriber_id = _subscriber_id(conn, user_id)
-        plan_row = conn.execute("SELECT id, plan_name FROM subscription_plans WHERE plan_name=?", (plan_name,)).fetchone()
+        plan_row = conn.execute(
+            "SELECT id, plan_name FROM subscription_plans WHERE plan_name=?", (plan_name,)
+        ).fetchone()
         if plan_row is None:
             raise ValueError(f"plan_not_found: {plan_name}")
         plan_id = int(plan_row[0])
@@ -231,7 +273,10 @@ def set_source_preferences(
     enabled = _categories(enabled_categories)
     with sqlite3.connect(db_path) as conn:
         subscriber_id = _subscriber_id(conn, user_id)
-        conn.execute("UPDATE source_preferences SET enabled=0, updated_at=CURRENT_TIMESTAMP WHERE subscriber_id=?", (subscriber_id,))
+        conn.execute(
+            "UPDATE source_preferences SET enabled=0, updated_at=CURRENT_TIMESTAMP WHERE subscriber_id=?",
+            (subscriber_id,),
+        )
         for category in enabled:
             conn.execute(
                 """
@@ -251,33 +296,152 @@ def set_delivery_preferences(
     user_id: str,
     frequency: str = "daily",
     delivery_time: str = "08:30",
-    timezone: str = "America/Denver",
-) -> dict[str, str]:
+    timezone: str = "Asia/Singapore",
+    content_language: str | None = None,
+) -> dict[str, Any]:
     """Set MVP delivery cadence for a subscriber."""
+    normalized_frequency = _clean(frequency) or "daily"
+    normalized_time = _clean(delivery_time) or DEFAULT_INTEL_BRIEF_DELIVERY_TIME
+    normalized_timezone = _clean(timezone) or DEFAULT_INTEL_BRIEF_SCHEDULER_TIMEZONE
+    if normalized_frequency not in {"daily", "weekly"}:
+        raise ValueError("frequency must be daily or weekly")
+    if (
+        normalized_time != DEFAULT_INTEL_BRIEF_DELIVERY_TIME
+        or normalized_timezone != DEFAULT_INTEL_BRIEF_SCHEDULER_TIMEZONE
+    ):
+        raise ValueError("unsupported_delivery_schedule")
     initialize_intel_db(db_path)
     with sqlite3.connect(db_path) as conn:
         subscriber_id = _subscriber_id(conn, user_id)
-        conn.execute(
-            """
-            INSERT INTO delivery_preferences (subscriber_id, frequency, delivery_time, timezone, updated_at)
-            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(subscriber_id) DO UPDATE SET
-                frequency=excluded.frequency,
-                delivery_time=excluded.delivery_time,
-                timezone=excluded.timezone,
-                updated_at=CURRENT_TIMESTAMP
-            """,
-            (subscriber_id, _clean(frequency) or "daily", _clean(delivery_time) or "08:30", _clean(timezone) or "America/Denver"),
-        )
+        has_language = _has_delivery_language_column(conn)
+        requested_language = parse_content_language(content_language) if content_language is not None else None
+        if content_language is not None and requested_language is None:
+            raise ValueError("content_language must be zh or en")
+        if has_language and requested_language is not None:
+            conn.execute(
+                """
+                INSERT INTO delivery_preferences (
+                    subscriber_id, frequency, delivery_time, timezone, content_language, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(subscriber_id) DO UPDATE SET
+                    frequency=excluded.frequency,
+                    delivery_time=excluded.delivery_time,
+                    timezone=excluded.timezone,
+                    content_language=excluded.content_language,
+                    updated_at=CURRENT_TIMESTAMP
+                """,
+                (
+                    subscriber_id,
+                    normalized_frequency,
+                    normalized_time,
+                    normalized_timezone,
+                    requested_language,
+                ),
+            )
+        elif has_language:
+            conn.execute(
+                """
+                INSERT INTO delivery_preferences (
+                    subscriber_id, frequency, delivery_time, timezone, content_language, updated_at
+                )
+                VALUES (?, ?, ?, ?, 'zh', CURRENT_TIMESTAMP)
+                ON CONFLICT(subscriber_id) DO UPDATE SET
+                    frequency=excluded.frequency,
+                    delivery_time=excluded.delivery_time,
+                    timezone=excluded.timezone,
+                    updated_at=CURRENT_TIMESTAMP
+                """,
+                (
+                    subscriber_id,
+                    normalized_frequency,
+                    normalized_time,
+                    normalized_timezone,
+                ),
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO delivery_preferences (subscriber_id, frequency, delivery_time, timezone, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(subscriber_id) DO UPDATE SET
+                    frequency=excluded.frequency,
+                    delivery_time=excluded.delivery_time,
+                    timezone=excluded.timezone,
+                    updated_at=CURRENT_TIMESTAMP
+                """,
+                (
+                    subscriber_id,
+                    normalized_frequency,
+                    normalized_time,
+                    normalized_timezone,
+                ),
+            )
+        row = conn.execute(
+            (
+                "SELECT frequency, delivery_time, timezone, content_language "
+                "FROM delivery_preferences WHERE subscriber_id=?"
+                if has_language
+                else "SELECT frequency, delivery_time, timezone FROM delivery_preferences WHERE subscriber_id=?"
+            ),
+            (subscriber_id,),
+        ).fetchone()
         conn.commit()
+    if row is None:
+        raise RuntimeError("delivery_preferences_write_failed")
+    result: dict[str, Any] = {
+        "frequency": str(row[0] or "daily"),
+        "delivery_time": str(row[1] or "08:30"),
+        "timezone": str(row[2] or "Asia/Singapore"),
+    }
+    if content_language is not None:
+        result["content_language"] = normalize_content_language(
+            row[3] if has_language and len(row) > 3 else DEFAULT_CONTENT_LANGUAGE
+        )
+        result["language_persisted"] = has_language
+    return result
+
+
+def set_content_language(
+    db_path: str | Path,
+    *,
+    user_id: str,
+    content_language: str,
+) -> dict[str, Any]:
+    """只更新资讯语言，不改变频率、时间、时区或订阅启停状态。"""
+    requested = parse_content_language(content_language)
+    if requested is None:
+        raise ValueError("content_language must be zh or en")
+    initialize_intel_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        subscriber_id = _subscriber_id(conn, user_id)
+        has_language = _has_delivery_language_column(conn)
+        if has_language:
+            conn.execute(
+                """
+                INSERT INTO delivery_preferences (
+                    subscriber_id, frequency, delivery_time, timezone, content_language, updated_at
+                )
+                VALUES (?, 'daily', '08:30', 'Asia/Singapore', ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(subscriber_id) DO UPDATE SET
+                    content_language=excluded.content_language,
+                    updated_at=CURRENT_TIMESTAMP
+                """,
+                (subscriber_id, requested),
+            )
+        conn.commit()
+    profile = get_subscription_profile(db_path, user_id=user_id)
+    preferences = dict(profile.get("delivery_preferences") or {})
     return {
-        "frequency": _clean(frequency) or "daily",
-        "delivery_time": _clean(delivery_time) or "08:30",
-        "timezone": _clean(timezone) or "America/Denver",
+        **preferences,
+        "content_language": requested if has_language else DEFAULT_CONTENT_LANGUAGE,
+        "language_persisted": has_language,
     }
 
 
-def _active_subscription_row(conn: sqlite3.Connection, subscriber_id: int, now: str) -> sqlite3.Row | tuple[Any, ...] | None:
+def _active_subscription_row(
+    conn: sqlite3.Connection, subscriber_id: int, now: str
+) -> sqlite3.Row | tuple[Any, ...] | None:
     return conn.execute(
         """
         SELECT us.id, sp.plan_name, us.starts_at, us.expires_at, us.status
@@ -317,14 +481,23 @@ def get_subscription_profile(
                 (subscriber_id,),
             ).fetchall()
         ]
+        has_language = _has_delivery_language_column(conn)
         delivery = conn.execute(
-            "SELECT frequency, delivery_time, timezone FROM delivery_preferences WHERE subscriber_id=?",
+            (
+                "SELECT frequency, delivery_time, timezone, content_language "
+                "FROM delivery_preferences WHERE subscriber_id=?"
+                if has_language
+                else "SELECT frequency, delivery_time, timezone FROM delivery_preferences WHERE subscriber_id=?"
+            ),
             (subscriber_id,),
         ).fetchone()
     delivery_preferences = {
         "frequency": str(delivery[0]) if delivery else "daily",
         "delivery_time": str(delivery[1]) if delivery else "08:30",
-        "timezone": str(delivery[2]) if delivery else "America/Denver",
+        "timezone": str(delivery[2]) if delivery else "Asia/Singapore",
+        "content_language": normalize_content_language(
+            delivery[3] if delivery and has_language and len(delivery) > 3 else DEFAULT_CONTENT_LANGUAGE
+        ),
     }
     subscriber_status = str(subscriber_row[4])
     status = "active" if subscription is not None and subscriber_status == "active" else "inactive_or_expired"
@@ -383,34 +556,44 @@ def build_telegram_menu_contract(profile: dict[str, Any]) -> dict[str, Any]:
     """Build the Telegram MVP menu contract without sending it."""
     enabled = list(profile.get("enabled_categories") or [])
     status = str(profile.get("status") or "inactive_or_expired")
-    text = build_intel_menu_text(channel="telegram", subscription_status=status)
+    delivery_preferences = dict(profile.get("delivery_preferences") or {})
+    content_language = normalize_content_language(delivery_preferences.get("content_language"))
+    commands = telegram_commands_for_language(content_language)
+    inline_buttons = intel_inline_menu_buttons(content_language)
+    numbered_commands = intel_numbered_commands(content_language)
+    persistent_buttons = (
+        TELEGRAM_PERSISTENT_MENU_BUTTONS_EN if content_language == "en" else TELEGRAM_PERSISTENT_MENU_BUTTONS
+    )
+    text = build_intel_menu_text(
+        channel="telegram",
+        subscription_status=status,
+        content_language=content_language,
+    )
     persistent_reply_markup = {
-        "keyboard": [
-            [dict(button) for button in row]
-            for row in TELEGRAM_PERSISTENT_MENU_BUTTONS
-        ],
+        "keyboard": [[dict(button) for button in row] for row in persistent_buttons],
         "resize_keyboard": True,
         "one_time_keyboard": False,
         "is_persistent": True,
-        "input_field_placeholder": "输入关键词搜索...",
+        "input_field_placeholder": "Search intelligence..." if content_language == "en" else "输入关键词搜索...",
     }
     reply_markup = {
-        "inline_keyboard": [
-            [dict(button) for button in row]
-            for row in TELEGRAM_INLINE_MENU_BUTTONS
-        ],
+        "inline_keyboard": [[dict(button) for button in row] for row in inline_buttons],
     }
     return {
         "bot_profile": "intel_brief_bot",
-        "commands": TELEGRAM_COMMANDS,
-        "inline_buttons": TELEGRAM_INLINE_MENU_BUTTONS,
-        "inline_keyboard": TELEGRAM_INLINE_MENU_KEYBOARD,
-        "numbered_commands": [dict(item) for item in INTEL_NUMBERED_COMMANDS],
-        "persistent_keyboard": [[button["text"] for button in row] for row in TELEGRAM_PERSISTENT_MENU_BUTTONS],
+        "commands": commands,
+        "inline_buttons": inline_buttons,
+        "inline_keyboard": [[button["text"] for button in row] for row in inline_buttons],
+        "numbered_commands": numbered_commands,
+        "persistent_keyboard": [[button["text"] for button in row] for row in persistent_buttons],
         "persistent_reply_markup": persistent_reply_markup,
         "prelude_replies": [
             {
-                "text": "菜单快捷入口已打开：可点按钮，也可直接回复数字，例如 706 英伟达。",
+                "text": (
+                    "Quick actions are ready. Tap a button or reply with a number, for example 706 NVIDIA."
+                    if content_language == "en"
+                    else "菜单快捷入口已打开：可点按钮，也可直接回复数字，例如 706 英伟达。"
+                ),
                 "reply_markup": persistent_reply_markup,
             }
         ],
@@ -419,5 +602,6 @@ def build_telegram_menu_contract(profile: dict[str, Any]) -> dict[str, Any]:
         "text": text,
         "subscription_status": status,
         "enabled_categories": enabled,
-        "delivery_preferences": profile.get("delivery_preferences", {}),
+        "delivery_preferences": delivery_preferences,
+        "content_language": content_language,
     }

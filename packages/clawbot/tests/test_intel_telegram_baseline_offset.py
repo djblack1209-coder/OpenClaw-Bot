@@ -15,16 +15,17 @@ class FakeBaselineClient:
 
     def get_updates(self, *, limit: int = 20, offset: int | None = None, timeout_seconds: int = 0) -> dict[str, object]:
         self.calls.append({"limit": limit, "offset": offset, "timeout_seconds": timeout_seconds})
+        selected = [item for item in self.updates if offset is None or int(item.get("update_id", 0)) >= offset][:limit]
         return {
             "success": self.success,
             "method": "getUpdates",
             "network": "fake_client",
             "network_calls": 0,
-            "update_count": len(self.updates),
-            "command_update_count": len(self.updates),
-            "max_update_id_present": bool(self.updates),
-            "redacted": {"update_count": len(self.updates), "chat_id_values_persisted": False},
-            "updates": self.updates,
+            "update_count": len(selected),
+            "command_update_count": len(selected),
+            "max_update_id_present": bool(selected),
+            "redacted": {"update_count": len(selected), "chat_id_values_persisted": False},
+            "updates": selected,
             "error_code": "",
             "error": "" if self.success else "boom",
         }
@@ -72,9 +73,29 @@ def test_seed_baseline_offset_never_decreases_existing_offset(tmp_path):
 
     assert result["status"] == "success"
     assert result["previous_offset"] == 100
-    assert result["baseline_update_id"] == 99
+    assert result["baseline_update_id"] == 100
     assert result["new_offset"] == 100
+    assert client.calls == [{"limit": 100, "offset": 101, "timeout_seconds": 0}]
     assert get_telegram_offset(db_path) == 100
+
+
+def test_seed_baseline_offset_drains_more_than_one_hundred_updates(tmp_path):
+    from src.intel.telegram_baseline_offset import seed_telegram_baseline_offset
+
+    db_path = tmp_path / "baseline.db"
+    client = FakeBaselineClient([_update(update_id) for update_id in range(1, 251)])
+
+    result = seed_telegram_baseline_offset(db_path, client=client, limit=100)
+
+    assert result["status"] == "success"
+    assert result["batch_count"] == 3
+    assert result["drained_update_count"] == 250
+    assert result["drain_complete"] is True
+    assert result["baseline_update_id"] == 250
+    assert result["new_offset"] == 250
+    assert result["reply_sent"] is False
+    assert [call["offset"] for call in client.calls] == [None, 101, 201]
+    assert get_telegram_offset(db_path) == 250
 
 
 def test_baseline_evidence_builder_writes_redacted_json(tmp_path):

@@ -54,15 +54,15 @@ def test_senate_adapter_returns_source_result_from_payload():
     assert result.items == [
         {
             "source": "senate-stock-watcher-data",
-            "transaction_date": "11/10/2020",
-            "disclosure_date": "11/16/2020",
-            "person": "Ron L Wyden",
+            "transaction_date": "11/12/2020",
+            "disclosure_date": "11/18/2020",
+            "person": "Jane Doe",
             "owner": "",
-            "ticker": "BYND",
+            "ticker": "AAPL",
             "asset_description": "",
             "asset_type": "",
-            "transaction_type": "Purchase",
-            "amount": "$1,001 - $15,000",
+            "transaction_type": "Sale",
+            "amount": "$15,001 - $50,000",
             "ptr_link": "",
         }
     ]

@@ -69,6 +69,23 @@ def test_telegram_bot_api_sender_uses_injected_transport_and_redacts_result():
     assert FAKE_CHAT_ID not in json.dumps(result)
 
 
+def test_official_sender_rejects_nonexistent_rich_method_without_network():
+    calls = []
+
+    def transport(url: str, payload: dict[str, object], timeout: int) -> dict[str, object]:
+        calls.append((url, payload, timeout))
+        raise AssertionError("不存在的 sendRichMessage 不应发起网络请求")
+
+    sender = TelegramBotApiSender(token=FAKE_TOKEN, transport=transport)
+    result = sender.send_rich_message(FAKE_CHAT_ID, envelope=object(), photo="file-id")
+
+    assert result["success"] is False
+    assert result["error_code"] == 404
+    assert result["ambiguous_delivery"] is False
+    assert sender.network_calls == 0
+    assert calls == []
+
+
 def test_build_telegram_sandbox_probe_blocks_without_credentials_and_no_network(tmp_path):
     output = tmp_path / "telegram-gate.json"
     result = build_telegram_sandbox_probe(evidence_path=output, env={}, message="probe")

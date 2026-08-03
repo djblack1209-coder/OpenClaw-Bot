@@ -4,6 +4,27 @@
 
 ---
 
+## 每日资讯 V2 健康基线（2026-08-04）
+
+当前结论：工程发布门为绿色，七个维度均达到 8 分；7 日周期可用率和投递成功率需要从 V2 部署后自然积累，当前标记为 `warmup`，不能写成已达到 95%/99%。下表中的关闭状态均有 345 项 Intel 回归、八阶段本地 CI、同视口视觉证据或真实 Telegram `sendPhoto` 证据；生产实装结果记录在 `docs/007-operations.md`。
+
+| 编号 | 分类 | 严重度 | 状态 | 当前结论 |
+|---|---|---|---|---|
+| HI-928 | `BUG` | 🟠 重要 | 已关闭 | 旧 2020 BYND、缺失日期、Senate limit-before-sort 和旧 AI 内容可进入简报；现由统一日期契约、全量排序后限额和过期 fail-closed 关闭。 |
+| HI-929 | `BUG` | 🟠 重要 | 已关闭 | 跨日重复、同仓库刷屏和首次 GitHub/13F 基线漏拦截；现由 event key、逐订阅者投递状态、GitHub 7 日 entity cooldown、baseline event/entity 水位关闭。 |
+| HI-930 | `BUG` | 🟠 重要 | 已关闭 | 并发 production run 可对同一订阅者双发；SQLite V3 使用订阅者+业务日期唯一 claim、15 分钟 lease、过期接管和 token fencing。 |
+| HI-931 | `PERF` | 🟠 重要 | 已部署关闭 | 旧 listener 每次空轮询落盘，实机累积约 202,726 个文件、810,904 KiB；新进程只写有意义事件，30 天、最多 2000 文件、5 分钟 idle log，并由 100MB 健康门约束。旧目录已在备份、重载和真实图片验收后删除。 |
+| HI-932 | `SECURITY` | 🟠 重要 | 已关闭 | 翻译 Key 仅从 CC Switch 只读加载，最多三个 HTTPS 端点，Key 不写日志/证据/缓存且不进入 endpoint `repr`；用户追踪名回显执行 HTML 转义。 |
+| HI-933 | `ARCH_LIMIT` | 🔵 低优先 | 观察中 | V2 的 7 日周期可用率目标 95%、投递成功率目标 99% 尚无完整自然窗口；`runtime_health.py` 会如实返回 warmup，不以单次测试代替长期 SLI。 |
+
+模块评分：内容正确性 9.1、Telegram 体验 8.8、国际化 8.7、可靠性/幂等 8.8、安全 8.9、运维/可观测 8.5、测试/文档 8.8，综合 8.8。评分边界只覆盖当前 macOS 单机、Telegram 内测用户、现有六源和 CC Switch 三端池；不扩大到微信 709、飞书/钉钉实连或长期 SLI。
+
+### V2 仍需自然观察的信号
+
+- 首次真实 08:30 应确认六源 `fresh/cached/failed` 覆盖、Top 3 分类多样性和中文/English 真实投递。
+- 真实图片上线验收后 `telegram_media_assets` 已有 1 个 active `file_id`；次日同 Bot/同封面仍需确认不新增资产或重新上传本地文件。
+- listener 新目录当前心跳小于 120 秒、文件少于 2000、体积小于 100MB；旧 810,904 KiB 轮询证据已删除，数据库、环境和 plist 回滚副本仍保留。
+
 ## P0 安全与正确性整改（2026-08-03）
 
 本轮对 Telegram 控制面、Agent 工具、交易订单、OMEGA 编排、社媒发布、Frist/New-API 多租户、桌面 Gateway、运行时真值和 CI 做了端到端整改。下表状态已按 2026-08-03 本机 Bot/Gateway、macOS App 和 Oracle Frist 实装结果回写；评分边界仍只覆盖当前 macOS + Oracle 内测拓扑。

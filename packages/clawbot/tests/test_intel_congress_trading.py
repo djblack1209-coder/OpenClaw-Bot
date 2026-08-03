@@ -18,6 +18,23 @@ SAMPLE = [
 ]
 
 
+RECENCY_SAMPLE = [
+    SAMPLE[0],
+    {
+        "transaction_date": "07/30/2026",
+        "owner": "Self",
+        "ticker": "NVDA",
+        "asset_description": "NVIDIA Corp.",
+        "asset_type": "Stock",
+        "type": "Purchase",
+        "amount": "$15,001 - $50,000",
+        "senator": "Example Senator",
+        "ptr_link": "https://efdsearch.senate.gov/search/view/ptr/newest/",
+        "disclosure_date": "08/03/2026",
+    },
+]
+
+
 class FakeResponse:
     status = 200
     headers = {"content-type": "application/json"}
@@ -73,3 +90,11 @@ def test_fetch_senate_transactions_uses_raw_github_url_with_injected_opener():
     assert opener.requested_url == SENATE_RAW_URL
     assert rows[0]["person"] == "Ron L Wyden"
     assert rows[0]["ticker"] == "BYND"
+
+
+def test_parse_transactions_sorts_all_rows_before_applying_limit():
+    rows = parse_transactions(json.dumps(RECENCY_SAMPLE), limit=1)
+
+    assert len(rows) == 1
+    assert rows[0]["ticker"] == "NVDA"
+    assert rows[0]["disclosure_date"] == "08/03/2026"

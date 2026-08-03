@@ -32,7 +32,8 @@ def _collect_payload() -> dict:
                             "person": "Ron L Wyden",
                             "source": "senate-stock-watcher-data",
                             "ticker": "BYND",
-                            "transaction_date": "11/10/2020",
+                            "transaction_date": "2026-07-06",
+                            "disclosure_date": "2026-07-07",
                             "transaction_type": "Sale (Full)",
                         }
                     ],
@@ -54,6 +55,7 @@ def _collect_payload() -> dict:
                             "name": "深科技",
                             "reason": "1家机构买入，成功率46.03%",
                             "source": "akshare_stock_lhb_detail_em",
+                            "trade_date": "2026-07-07",
                         }
                     ],
                 },
