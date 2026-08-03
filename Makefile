@@ -178,7 +178,7 @@ ci-local: ## 一键本地 CI 验证 (等同 GitHub Actions 全部检查)
 	cd $(FRONTEND) && npx tsc --noEmit
 	@echo ""
 	@echo "══════ [7/8] Desktop Rust Tests + Compile Check ══════"
-	cd $(FRONTEND)/src-tauri && cargo test && cargo check
+	cd $(FRONTEND)/src-tauri && cargo test --locked && cargo check --locked
 	@echo ""
 	@echo "══════ [8/8] Docs Governance Check ══════"
 	bash scripts/check_docs_layout.sh

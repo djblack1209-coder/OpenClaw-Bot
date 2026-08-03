@@ -36,6 +36,7 @@ yarn-error.log*
 # Rust
 target/
 Cargo.lock
+!apps/openclaw-manager-src/src-tauri/Cargo.lock
 
 # IDEs
 .vscode/
