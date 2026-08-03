@@ -65,6 +65,36 @@ test('desktop build entry keeps a rollback copy until the new app is installed',
   assert.ok(script.indexOf('mv "$INSTALL_TMP" "$INSTALL_APP"') < script.lastIndexOf('trap - EXIT INT TERM'));
 });
 
+test('desktop JavaScript and Rust Tauri packages stay on the same major and minor version', async () => {
+  const packageJson = JSON.parse(await readFile('apps/openclaw-manager-src/package.json', 'utf8'));
+  const cargoLock = await readFile('apps/openclaw-manager-src/src-tauri/Cargo.lock', 'utf8');
+  const rustTauri = cargoLock.match(/\[\[package\]\]\s+name = "tauri"\s+version = "([^"]+)"/);
+  assert.ok(rustTauri, 'Cargo.lock should contain the Tauri crate');
+
+  const rustMajorMinor = rustTauri[1].split('.').slice(0, 2).join('.');
+  for (const [name, version] of [
+    ['@tauri-apps/api', packageJson.dependencies['@tauri-apps/api']],
+    ['@tauri-apps/cli', packageJson.devDependencies['@tauri-apps/cli']],
+  ]) {
+    const jsMajorMinor = version.match(/\d+\.\d+/)?.[0];
+    assert.equal(jsMajorMinor, rustMajorMinor, `${name} should match Rust Tauri ${rustMajorMinor}.x`);
+  }
+});
+
+test('desktop macOS internal bundle is ad-hoc signed and verified before installation', async () => {
+  const tauriConfig = JSON.parse(await readFile('apps/openclaw-manager-src/src-tauri/tauri.conf.json', 'utf8'));
+  assert.equal(tauriConfig.bundle.macOS.signingIdentity, '-', 'macOS internal builds should use Tauri ad-hoc signing');
+
+  const buildScript = await readFile('scripts/tauri_build_install.sh', 'utf8');
+  const bundleVerification = 'codesign --verify --deep --strict --verbose=2 "$BUNDLE_APP"';
+  const installVerification = 'codesign --verify --deep --strict --verbose=2 "$INSTALL_TMP"';
+  const installMove = 'mv "$INSTALL_TMP" "$INSTALL_APP"';
+  assert.ok(buildScript.includes(bundleVerification), 'desktop build should verify the signed bundle before installation');
+  assert.ok(buildScript.includes(installVerification), 'desktop build should verify the temporary install copy');
+  assert.ok(buildScript.indexOf(bundleVerification) < buildScript.indexOf(installVerification));
+  assert.ok(buildScript.indexOf(installVerification) < buildScript.indexOf(installMove));
+});
+
 test('seller bridge exposes relist-only simulation mode without delivery or confirm actions', async () => {
   const file = 'scripts/cc_zhongzhuan_seller_bridge.mjs';
   await access(file, constants.F_OK);

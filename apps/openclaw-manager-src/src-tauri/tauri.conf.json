@@ -47,6 +47,7 @@
     "copyright": "Copyright © 2024-2026 OpenClaw Team",
     "macOS": {
       "minimumSystemVersion": "10.15",
+      "signingIdentity": "-",
       "entitlements": null,
       "exceptionDomain": null
     },

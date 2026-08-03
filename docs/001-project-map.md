@@ -1,6 +1,6 @@
 # OpenClaw Bot — 项目全景地图
 
-> 最后更新: 2026-08-03 (Release Gate 2.0 发布候选基线) | AI 开发助手请先读完本文再开始工作 | 当前健康状态以 `docs/009-health.md` 和 `docs/002-changelog.md` 最近条目为准
+> 最后更新: 2026-08-03 (Release Gate 2.0 已部署基线) | AI 开发助手请先读完本文再开始工作 | 当前健康状态以 `docs/009-health.md` 和 `docs/002-changelog.md` 最近条目为准
 
 ## 一句话概述
 
@@ -302,16 +302,16 @@ OpenClaw Bot/
 
 ### Release Gate 2.0 评分基线
 
-评分口径中的 8 分表示“当前 macOS 单机 + Oracle 内测拓扑可重复构建、验证、回滚和审计”，不表示已经完成 Apple 签名/公证、Windows 实机验证或 CC 中转正式公开售卖。
+评分口径中的 8 分表示“当前 macOS 单机 + Oracle 内测拓扑可重复构建、验证、回滚和审计”，不表示已经完成 Apple Developer ID 签名/公证、Windows 实机验证或 CC 中转正式公开售卖。
 
 | 维度 | 分数 | 达标证据 | 保留边界 |
 |---|---:|---|---|
 | 架构与边界 | 8.3 | Telegram、工具、交易、社媒、Frist、Tauri 均有单一入口或显式状态机；跨进程锁统一复用 | 双文件配置不具备强制终止级原子提交（HI-922） |
 | 代码质量 | 8.2 | Ruff、Python 语法、TypeScript、`cargo fmt --check` 全绿；删除全仓零引用旧 Gateway 启动脚本 | 历史大文件仍需按风险渐进拆分 |
-| 测试与工程化 | 8.8 | Python 2,182 项、Frist 200 项、桌面合同 18 项、Rust 34 项；Tauri `Cargo.lock` 入库且 CI 使用 `--locked`；任一失败即阻断 | GitHub 干净环境结果以本次 PR CI 为最终远端证据 |
+| 测试与工程化 | 8.8 | Python 2,182 项、Frist 200 项、桌面合同 20 项、Rust 34 项；Tauri `Cargo.lock` 入库，跨语言版本/签名合同和 CI `--locked` 门均生效；GitHub PR #11 干净环境全绿 | macOS 完整 App 打包只能在本机门禁执行，Linux CI 负责静态/Rust 合同 |
 | 安全 | 8.6 | 白名单/Token/归属/额度均 fail-closed；三类依赖审计 0 漏洞，gitleaks 0 泄漏 | RestrictedPython 不是内核沙箱，FileTool 保留理论竞态（HI-919/920） |
-| 可靠性与性能 | 8.3 | 交易预算/订单/成交对账和社媒发布均具备幂等、claim/tombstone 与跨进程互斥；禁用服务不再重启风暴 | 强制终止后的券商/社媒结果仍需人工对账 |
-| 运维与发布 | 8.1 | 健康检查区分核心/可选能力；桌面构建采用备份、清理、安装、失败恢复事务；Frist 有备份与回滚步骤 | 生产与桌面实装证据在部署后写回 HEALTH/CHANGELOG |
+| 可靠性与性能 | 8.3 | 交易预算/订单/成交对账和社媒发布均具备幂等、claim/tombstone 与跨进程互斥；禁用服务不再重启风暴；Node 18 测试由约 10 分钟降到约 10 秒 | Weixin 上游首次连接可让 Gateway ready 延迟约 230 秒（HI-926）；强制终止后的券商/社媒结果仍需人工对账 |
+| 运维与发布 | 8.4 | Bot/Gateway 运行健康全绿；macOS App 经事务构建、ad-hoc sealed 签名、唯一安装和真实截图验收；Oracle 经 staging 200 项测试、SQLite 在线备份、自动回滚门和双向公网冒烟部署 | ad-hoc 只覆盖本机内测，未完成 Developer ID/公证；Oracle 既有 3 个非本项目 failed unit 按增量门监控 |
 | **综合** | **8.4** | 六维均达到内部发布 8 分线 | 不扩大到尚未验收的公开发行边界 |
 
 ### 关键文件路径和行数
