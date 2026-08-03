@@ -1020,6 +1020,7 @@ def test_xianyu_resume_preflight_refreshes_inventory_when_cache_cold(monkeypatch
 
 
 def test_xianyu_operator_mode_can_pause_auto_ship(monkeypatch):
+    """暂停后只在库存证据刷新且严格门未通过时拒绝恢复。"""
     monkeypatch.setenv("CC_XIANYU_AUTO_SHIP_ENABLED", "1")
     monkeypatch.setenv("CC_XIANYU_WEBHOOK_URL", "https://frist-api-oracle.245334.xyz/api/ops/xianyu/paid-order")
     monkeypatch.setenv("CC_XIANYU_WEBHOOK_TOKEN", "secret-token")
@@ -1045,6 +1046,32 @@ def test_xianyu_operator_mode_can_pause_auto_ship(monkeypatch):
 
     monkeypatch.setattr("src.xianyu.xianyu_admin._live", _Live())
     monkeypatch.setattr("src.xianyu.xianyu_admin._ctx", _Context())
+
+    def _fake_lock(refresh=False):
+        gates = {
+            "webhook_configured": True,
+            "ws_connected": True,
+            "cookie_ok": True,
+            "pending_rescue_clear": True,
+            "inventory_known": bool(refresh),
+            "inventory_ready": True,
+            "redemptions_ready": True,
+            "channels_ready": True,
+            "buyer_self_service_ready": True,
+            "webhook_public_locked": True,
+            "ccswitch_import_ready": True,
+            "strict_real_order_ready": False,
+        }
+        return {
+            "state": "internal_test_only",
+            "state_label": "仅允许内测",
+            "can_internal_test": True,
+            "can_public_sale": False,
+            "blockers": ["真实小额单严格门未通过"],
+            "gates": gates,
+        }
+
+    monkeypatch.setattr("src.xianyu.xianyu_admin._cc_public_sale_lock_summary", _fake_lock)
 
     client = TestClient(xianyu_admin.app)
     before = client.get("/api/cc-operator-mode")

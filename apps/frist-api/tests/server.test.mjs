@@ -7403,7 +7403,12 @@ async function createServerFixture(options = {}) {
       return registered.cookie;
     },
     async close() {
-      await new Promise((resolve) => server.close(resolve));
+      const closed = new Promise((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+      server.closeIdleConnections?.();
+      server.closeAllConnections?.();
+      await closed;
       await rm(dir, { force: true, recursive: true });
     },
   };
