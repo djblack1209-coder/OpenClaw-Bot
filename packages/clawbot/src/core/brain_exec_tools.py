@@ -5,6 +5,7 @@ Core — 工具 + 系统领域执行器 Mixin
 从 brain_executors.py 拆分以降低扇出复杂度。
 """
 
+import asyncio
 import logging
 
 from config.prompts import INFO_QUERY_PROMPT, SOUL_CORE
@@ -97,8 +98,13 @@ class ToolsExecutorMixin:
 
             tool = CodeTool()
             if any(kw in task_desc for kw in ["import ", "def ", "print(", "for ", "class "]):
-                result = await tool.execute_python(task_desc)
-                return {"source": "code_tool", "output": result, "type": "direct_execution"}
+                result = await asyncio.to_thread(tool.execute_python, task_desc)
+                return {
+                    "source": "code_tool",
+                    "success": bool(result.get("success", False)),
+                    "output": result,
+                    "type": "direct_execution",
+                }
             else:
                 # 用 LLM 生成代码再执行
                 from src.litellm_router import free_pool
@@ -117,8 +123,13 @@ class ToolsExecutorMixin:
                     code_match = re.search(r"```python\s*(.*?)```", code, re.DOTALL)
                     if code_match:
                         code = code_match.group(1).strip()
-                    result = await tool.execute_python(code)
-                    return {"source": "code_tool_llm", "code": code[:500], "output": result}
+                    result = await asyncio.to_thread(tool.execute_python, code)
+                    return {
+                        "source": "code_tool_llm",
+                        "success": bool(result.get("success", False)),
+                        "code": code[:500],
+                        "output": result,
+                    }
         except Exception as e:
             logger.warning(f"代码任务失败: {scrub_secrets(str(e))}")
-        return {"source": "code_fallback", "note": "代码执行模块异常"}
+        return {"source": "code_fallback", "success": False, "note": "代码执行模块异常"}

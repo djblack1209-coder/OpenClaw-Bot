@@ -91,6 +91,7 @@ class _SettingsMixin:
             reply_markup=InlineKeyboardMarkup(keyboard) if keyboard else None,
         )
 
+    @requires_auth
     async def handle_settings_callback(self, update, context):
         """处理设置切换按钮的回调"""
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup

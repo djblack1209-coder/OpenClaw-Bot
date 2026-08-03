@@ -231,7 +231,9 @@ class TestCheckOnce:
     @pytest.mark.asyncio
     async def test_check_once_returns_only_new_exits(self):
         mock_quote = AsyncMock(return_value={"price": 140.0})
-        mock_sell = AsyncMock(return_value={"status": "filled"})
+        mock_sell = AsyncMock(
+            return_value={"status": "filled", "filled_qty": 10, "avg_price": 140.0}
+        )
         mock_notify = AsyncMock()
 
         mon = PositionMonitor(

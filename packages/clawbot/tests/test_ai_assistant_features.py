@@ -13,11 +13,13 @@
   9. 首次引导标志 (_first_time_flags)
   10. 能力发现按钮 (通用聊天分支)
 """
-import pytest
+import os
 import re
 import sys
-import os
 import time
+from types import SimpleNamespace
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -344,6 +346,91 @@ class TestCrossDomainEnrichment:
         }
         result = self.sp.get_context_enrichment()
         assert "OLD" not in result
+
+
+class TestSynergySocialDraftStorage:
+    """测试协同管道只写入统一社媒草稿存储"""
+
+    @pytest.mark.asyncio
+    async def test_trade_signal_writes_unified_store_once(self, monkeypatch):
+        """交易信号应只创建一条统一草稿"""
+        from src.core.synergy_pipelines import SynergyPipelines
+        from src.execution.social import drafts
+
+        calls = []
+
+        def fake_save_social_draft(**kwargs):
+            calls.append(kwargs)
+            return {"success": True, "draft_id": "trade-draft"}
+
+        monkeypatch.setattr(drafts, "save_social_draft", fake_save_social_draft)
+        pipelines = SynergyPipelines()
+        event = SimpleNamespace(data={
+            "symbol": "TSLA",
+            "analysis": {
+                "final_recommendation": "buy",
+                "confidence": 0.9,
+                "director": {"reasoning": "趋势和基本面形成共振"},
+            },
+        })
+
+        await pipelines._on_trade_signal(event)
+
+        assert len(calls) == 1
+        assert calls[0]["platform"] == "both"
+        assert calls[0]["topic"] == "TSLA投资分析"
+        assert "#TSLA" in calls[0]["body"]
+        assert pipelines.get_stats()["social_drafts_created"] == 1
+
+    @pytest.mark.asyncio
+    async def test_profit_celebration_writes_unified_store_once(self, monkeypatch):
+        """盈利庆祝应只创建一条统一草稿"""
+        from src.core.synergy_pipelines import SynergyPipelines
+        from src.execution.social import drafts
+
+        calls = []
+
+        def fake_save_social_draft(**kwargs):
+            calls.append(kwargs)
+            return {"success": True, "draft_id": "profit-draft"}
+
+        monkeypatch.setattr(drafts, "save_social_draft", fake_save_social_draft)
+        pipelines = SynergyPipelines()
+        event = SimpleNamespace(data={
+            "symbol": "TSLA",
+            "pnl_pct": 12.5,
+            "pnl": 25,
+        })
+
+        await pipelines._on_profit_celebration(event)
+
+        assert len(calls) == 1
+        assert calls[0]["platform"] == "both"
+        assert calls[0]["topic"] == "投资分享"
+        assert "TSLA" in calls[0]["body"]
+        assert pipelines.get_stats()["social_drafts_created"] == 1
+
+    @pytest.mark.asyncio
+    async def test_failed_unified_write_does_not_inflate_stats(self, monkeypatch):
+        """统一存储拒绝重复内容时不应虚增草稿计数"""
+        from src.core.synergy_pipelines import SynergyPipelines
+        from src.execution.social import drafts
+
+        monkeypatch.setattr(
+            drafts,
+            "save_social_draft",
+            lambda **kwargs: {"success": False, "error": "内容重复"},
+        )
+        pipelines = SynergyPipelines()
+        event = SimpleNamespace(data={
+            "symbol": "TSLA",
+            "pnl_pct": 12.5,
+            "pnl": 25,
+        })
+
+        await pipelines._on_profit_celebration(event)
+
+        assert pipelines.get_stats()["social_drafts_created"] == 0
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

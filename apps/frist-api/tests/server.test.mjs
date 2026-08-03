@@ -1305,6 +1305,12 @@ describe('CC中转 public server chain', () => {
       assert.match(registered.setCookie, /frist_csrf=/);
       const csrfToken = registered.json.csrfToken;
 
+      const reloaded = await fixture.request('/api/frist/dashboard', {
+        cookie: registered.cookie,
+      });
+      assert.equal(reloaded.status, 200);
+      assert.equal(reloaded.json.csrfToken, csrfToken);
+
       const blocked = await fixture.request('/api/frist/token', {
         method: 'POST',
         cookie: registered.cookie,
@@ -1325,6 +1331,38 @@ describe('CC中转 public server chain', () => {
     }
   });
 
+  it('logs customers out by revoking the server session and expiring both cookies', async () => {
+    const fixture = await createServerFixture({ requireCsrf: true, requireEmailVerification: false });
+
+    try {
+      const registered = await fixture.request('/api/frist/register', {
+        method: 'POST',
+        body: { email: 'logout@example.com', password: 'TestPass123!' },
+      });
+      const csrfToken = registered.json.csrfToken;
+
+      const blocked = await fixture.request('/api/frist/logout', {
+        method: 'POST',
+        cookie: registered.cookie,
+      });
+      assert.equal(blocked.status, 403);
+
+      const loggedOut = await fixture.request('/api/frist/logout', {
+        method: 'POST',
+        cookie: registered.cookie,
+        headers: { 'x-csrf-token': csrfToken },
+      });
+      assert.equal(loggedOut.status, 200);
+      assert.match(loggedOut.setCookie, /frist_session=.*Max-Age=0/);
+      assert.match(loggedOut.setCookie, /frist_csrf=.*Max-Age=0/);
+
+      const dashboard = await fixture.request('/api/frist/dashboard', { cookie: registered.cookie });
+      assert.equal(dashboard.json.authenticated, false);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it('lets logged-in customers change password before using the same account again', async () => {
     const fixture = await createServerFixture();
 
@@ -1337,6 +1375,11 @@ describe('CC中转 public server chain', () => {
       });
       assert.equal(changed.status, 200);
       assert.equal(changed.json.user.email, 'change-password@example.com');
+
+      const revokedSession = await fixture.request('/api/frist/dashboard', { cookie });
+      const rotatedSession = await fixture.request('/api/frist/dashboard', { cookie: changed.cookie });
+      assert.equal(revokedSession.json.authenticated, false);
+      assert.equal(rotatedSession.json.authenticated, true);
 
       const oldLogin = await fixture.request('/api/frist/login', {
         method: 'POST',
@@ -1358,7 +1401,7 @@ describe('CC中转 public server chain', () => {
     const fixture = await createServerFixture();
 
     try {
-      await fixture.createVerifiedCustomer('admin-reset@example.com');
+      const oldCookie = await fixture.createVerifiedCustomer('admin-reset@example.com');
       const reset = await fixture.request('/api/admin/customers/password', {
         method: 'POST',
         headers: { 'x-admin-token': 'admin-test-token' },
@@ -1367,6 +1410,9 @@ describe('CC中转 public server chain', () => {
       assert.equal(reset.status, 200);
       assert.equal(reset.json.user.email, 'admin-reset@example.com');
       assert.equal(reset.text.includes('RecoveredPass123!'), false);
+
+      const revokedSession = await fixture.request('/api/frist/dashboard', { cookie: oldCookie });
+      assert.equal(revokedSession.json.authenticated, false);
 
       const oldLogin = await fixture.request('/api/frist/login', {
         method: 'POST',
@@ -1385,6 +1431,29 @@ describe('CC中转 public server chain', () => {
       assert.match(user.passwordHash, /^pbkdf2-sha256\$210000\$/);
       assert.equal(user.passwordHash.includes('RecoveredPass123!'), false);
       assert.equal(data.events.some((event) => event.type === 'admin_password_reset'), true);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('expires customer sessions on the server instead of trusting persistent cookies forever', async () => {
+    const fixture = await createServerFixture({ sessionTtlMs: 60_000 });
+
+    try {
+      const cookie = await fixture.createVerifiedCustomer('expired-session@example.com');
+      const data = await fixture.readData();
+      const token = cookie.split('=')[1];
+      data.sessions[token].expiresAt = '2020-01-01T00:00:00.000Z';
+      await fixture.writeData(data);
+
+      const dashboard = await fixture.request('/api/frist/dashboard', { cookie });
+      const mutation = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie,
+        body: { name: 'Expired Session Key' },
+      });
+      assert.equal(dashboard.json.authenticated, false);
+      assert.equal(mutation.status, 401);
     } finally {
       await fixture.close();
     }
@@ -2509,12 +2578,15 @@ describe('CC中转 public server chain', () => {
   });
 
   it('rejects New-API wildcard-only imports until real upstream models are known', async () => {
+    let tokenCreated = false;
+    let tokenQuota = 0;
     const fixture = await createServerFixture({
       requireEmailVerification: false,
       newApiEnabled: true,
       newApiBaseUrl: 'https://new-api.internal',
       newApiAccessToken: 'newapi-access-token',
       newApiUserId: '42',
+      newApiDefaultTokenQuota: 7200,
       newApiGatewayEnabled: false,
       fetchImpl: async (url, init = {}) => {
         const requestUrl = new URL(String(url));
@@ -2523,19 +2595,65 @@ describe('CC中转 public server chain', () => {
           return jsonResponse(200, {
             success: true,
             data: {
-              items: [
+              items: tokenCreated ? [
                 {
                   id: 9,
                   name: 'OpenAI Partial Key',
                   key: 'sk-openai-partial-secret',
                   status: 1,
-                  remain_quota: 7100,
+                  remain_quota: tokenQuota,
+                  unlimited_quota: false,
                   model_limits_enabled: true,
                   model_limits: 'gpt-*',
                 },
-              ],
+              ] : [],
             },
           });
+        }
+        if (path === '/api/token/' && init.method === 'POST') {
+          const body = JSON.parse(init.body);
+          assert.equal(body.remain_quota, 0);
+          tokenCreated = true;
+          tokenQuota = body.remain_quota;
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              id: 9,
+              ...body,
+              key: 'sk-openai-partial-secret',
+              status: 1,
+              remain_quota: tokenQuota,
+              unlimited_quota: false,
+              model_limits_enabled: true,
+              model_limits: 'gpt-*',
+            },
+          });
+        }
+        if (path === '/api/token/search') {
+          return jsonResponse(200, { success: true, data: { items: [] } });
+        }
+        if (path === '/api/token/9') {
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              id: 9,
+              name: 'OpenAI Partial Key',
+              status: 1,
+              remain_quota: tokenQuota,
+              unlimited_quota: false,
+              model_limits_enabled: true,
+              model_limits: 'gpt-*',
+            },
+          });
+        }
+        if (path === '/api/token/' && init.method === 'PUT') {
+          const body = JSON.parse(init.body);
+          assert.equal(requestUrl.searchParams.has('status_only'), false);
+          assert.equal(body.id, 9);
+          assert.equal(body.remain_quota, 36_000_000);
+          assert.equal(body.unlimited_quota, false);
+          tokenQuota = body.remain_quota;
+          return jsonResponse(200, { success: true, data: body });
         }
         if (path === '/api/token/9/key') {
           return jsonResponse(200, { success: true, data: { key: 'sk-openai-partial-secret' } });
@@ -2552,18 +2670,19 @@ describe('CC中转 public server chain', () => {
         method: 'POST',
         body: { email: 'partial-openai@example.com', password: 'TestPass123!' },
       });
-      await fixture.request('/api/frist/redeem', {
-        method: 'POST',
-        cookie: registered.cookie,
-        body: { code: 'JIYU-DAY-001' },
-      });
-      await fixture.request('/api/frist/token', {
+      const funded = await fixture.readData();
+      const fundedUser = funded.users.find((user) => user.email === 'partial-openai@example.com');
+      fundedUser.packageQuotaCents = 7200;
+      fundedUser.balanceCents = 7200;
+      await fixture.writeData(funded);
+      const created = await fixture.request('/api/frist/token', {
         method: 'POST',
         cookie: registered.cookie,
         body: { name: 'OpenAI Partial Key', modelGroup: 'OpenAI' },
       });
+      assert.equal(created.status, 200);
 
-      const imported = await fixture.request('/api/frist/import-url?target=Codex&model=gpt-5.4', {
+      const imported = await fixture.request(`/api/frist/import-url?target=Codex&model=gpt-5.4&keyId=${created.json.key.id}`, {
         cookie: registered.cookie,
       });
       assert.equal(imported.status, 409);
@@ -3121,6 +3240,7 @@ describe('CC中转 public server chain', () => {
       newApiBaseUrl: 'http://new-api.example.test',
       newApiAccessToken: 'new-api-access-token-with-enough-randomness',
       newApiUserId: '1',
+      newApiDefaultTokenQuota: 7200,
       newApiSqliteDb: sqliteDb,
     });
 
@@ -3353,7 +3473,7 @@ describe('CC中转 public server chain', () => {
       fetchImpl: async (url, init = {}) => {
         calls.push({ url: String(url), authorization: init.headers?.Authorization || '' });
         if (String(url).endsWith('/api/user/self')) {
-          return jsonResponse(200, { success: true, data: { username: 'operator', quota: 35 * 100, used_quota: 1000, group: 'default' } });
+          return jsonResponse(200, { success: true, data: { username: 'operator', quota: 35 * 500_000, used_quota: 10 * 500_000, group: 'default' } });
         }
         return jsonResponse(404, { success: false, message: 'unexpected endpoint' });
       },
@@ -5404,12 +5524,15 @@ describe('CC中转 public server chain', () => {
   it('uses New-API business endpoints for dashboard, token management, import and gateway when enabled', async () => {
     const newApiCalls = [];
     let newApiTokenStatus = 1;
+    let newApiTokenCreated = false;
+    let newApiTokenQuota = 0;
     const fixture = await createServerFixture({
       requireEmailVerification: false,
       newApiEnabled: true,
       newApiBaseUrl: 'https://new-api.internal',
       newApiAccessToken: 'newapi-access-token',
       newApiUserId: '42',
+      newApiDefaultTokenQuota: 7200,
       newApiGatewayEnabled: true,
       newApiGatewayBaseUrl: 'https://new-api.internal/v1',
       fetchImpl: async (url, init = {}) => {
@@ -5450,28 +5573,41 @@ describe('CC中转 public server chain', () => {
         if (path === '/api/token/' && init.method === 'POST') {
           const body = JSON.parse(init.body);
           assert.equal(body.name, 'Codex NewAPI Key');
+          assert.equal(body.unlimited_quota, false);
+          assert.equal(body.remain_quota, 0);
           assert.equal(body.model_limits_enabled, true);
           assert.equal(body.model_limits, 'deepseek-v4-flash,deepseek-v4-pro,deepseek-chat,deepseek-reasoner');
-          return jsonResponse(200, { success: true, message: '' });
+          newApiTokenCreated = true;
+          newApiTokenQuota = body.remain_quota;
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              id: 9,
+              ...body,
+              key: 'sk-newapi-full-secret',
+              status: newApiTokenStatus,
+            },
+          });
         }
         if (path === '/api/token/' && (!init.method || init.method === 'GET')) {
           return jsonResponse(200, {
             success: true,
             data: {
-              items: [
+              items: newApiTokenCreated ? [
                 {
                   id: 9,
                   name: 'Codex NewAPI Key',
                   key: 'sk-newapi-full-secret',
                   status: newApiTokenStatus,
-                  used_quota: 100,
-                  remain_quota: 7100,
+                  used_quota: 500_000,
+                  remain_quota: newApiTokenQuota,
+                  unlimited_quota: false,
                   model_limits_enabled: true,
                   model_limits: 'deepseek-v4-flash,deepseek-v4-pro,deepseek-chat,deepseek-reasoner',
                   accessed_time: 1770000000,
                   expired_time: -1,
                 },
-              ],
+              ] : [],
             },
           });
         }
@@ -5485,8 +5621,9 @@ describe('CC中转 public server chain', () => {
                   name: 'Codex NewAPI Key',
                   key: 'sk-newapi-full-secret',
                   status: newApiTokenStatus,
-                  remain_quota: 7100,
-                  used_quota: 100,
+                  remain_quota: newApiTokenQuota,
+                  used_quota: 500_000,
+                  unlimited_quota: false,
                   model_limits: 'deepseek-v4-flash,deepseek-v4-pro,deepseek-chat,deepseek-reasoner',
                 },
               ],
@@ -5503,7 +5640,8 @@ describe('CC中转 public server chain', () => {
               id: 9,
               name: 'Codex NewAPI Key',
               status: newApiTokenStatus,
-              remain_quota: 7100,
+              remain_quota: newApiTokenQuota,
+              unlimited_quota: false,
               model_limits_enabled: true,
               model_limits: 'deepseek-v4-flash,deepseek-v4-pro,deepseek-chat,deepseek-reasoner',
               expired_time: -1,
@@ -5511,11 +5649,16 @@ describe('CC中转 public server chain', () => {
           });
         }
         if (path === '/api/token/' && init.method === 'PUT') {
-          assert.equal(requestUrl.searchParams.get('status_only'), 'true');
           const body = JSON.parse(init.body);
           assert.equal(body.id, 9);
-          assert.equal(body.status, 2);
-          newApiTokenStatus = body.status;
+          if (requestUrl.searchParams.get('status_only') === 'true') {
+            assert.equal(body.status, 2);
+            newApiTokenStatus = body.status;
+          } else {
+            assert.equal(body.remain_quota, 36_000_000);
+            assert.equal(body.unlimited_quota, false);
+            newApiTokenQuota = body.remain_quota;
+          }
           return jsonResponse(200, { success: true, data: { ...body, key: 'sk-newapi-full-secret' } });
         }
         if (path === '/api/token/9/' && init.method === 'DELETE') {
@@ -5529,6 +5672,7 @@ describe('CC中转 public server chain', () => {
               items: [
                 {
                   id: 88,
+                  token_id: 9,
                   model_name: 'deepseek-v4-flash',
                   quota: 360,
                   prompt_tokens: 1000,
@@ -5567,6 +5711,11 @@ describe('CC中转 public server chain', () => {
         method: 'POST',
         body: { email: 'newapi@example.com', password: 'TestPass123!' },
       });
+      const funded = await fixture.readData();
+      const fundedUser = funded.users.find((user) => user.email === 'newapi@example.com');
+      fundedUser.packageQuotaCents = 7200;
+      fundedUser.balanceCents = 7200;
+      await fixture.writeData(funded);
       const created = await fixture.request('/api/frist/token', {
         method: 'POST',
         cookie: registered.cookie,
@@ -5579,11 +5728,12 @@ describe('CC中转 public server chain', () => {
       const dashboard = await fixture.request('/api/frist/dashboard', { cookie: registered.cookie });
       assert.equal(dashboard.status, 200);
       assert.equal(dashboard.json.account.balance, '$10.00');
-      assert.equal(dashboard.json.account.monthCost, '$20.00');
+      assert.equal(dashboard.json.account.monthCost, '$0.14');
       assert.equal(dashboard.json.apiKeys[0].preview, 'sk-••••••cret');
+      assert.equal(Object.hasOwn(dashboard.json.apiKeys[0], 'secret'), false);
       assert.equal(dashboard.json.modelUsage[0].model, 'DeepSeek');
 
-      const imported = await fixture.request('/api/frist/import-url?target=Codex', {
+      const imported = await fixture.request('/api/frist/import-url?target=Codex&keyId=9', {
         cookie: registered.cookie,
       });
       assert.equal(imported.status, 200);
@@ -5608,8 +5758,8 @@ describe('CC中转 public server chain', () => {
       assert.equal(usage.status, 200);
       assert.equal(usage.json.ok, true);
       assert.equal(usage.json.keyPreview, 'sk-••••••cret');
-      assert.equal(usage.json.plan, 'pro');
-      assert.equal(usage.json.remainingUsd, 9.86);
+      assert.equal(usage.json.plan, 'New-API');
+      assert.equal(usage.json.remainingUsd, 10);
       assert.equal(usage.json.usedUsd, 0.14);
       assert.equal(JSON.stringify(usage.json).includes('sk-newapi-full-secret'), false);
 
@@ -5620,14 +5770,6 @@ describe('CC中转 public server chain', () => {
       assert.equal(models.json.data[0].id, 'deepseek-v4-flash');
       assert.ok(newApiCalls.some((call) => call.url === 'https://new-api.internal/v1/models'));
 
-      const disabled = await fixture.request('/api/frist/token/9', {
-        method: 'PATCH',
-        cookie: registered.cookie,
-        body: { enabled: false },
-      });
-      assert.equal(disabled.status, 200);
-      assert.equal(disabled.json.key.enabled, false);
-
       const gateway = await fixture.request('/v1/responses', {
         method: 'POST',
         headers: { Authorization: 'Bearer sk-newapi-full-secret' },
@@ -5636,6 +5778,14 @@ describe('CC中转 public server chain', () => {
       assert.equal(gateway.status, 200);
       assert.equal(gateway.json.id, 'resp-newapi');
       assert.ok(newApiCalls.some((call) => call.url === 'https://new-api.internal/v1/responses'));
+
+      const disabled = await fixture.request('/api/frist/token/9', {
+        method: 'PATCH',
+        cookie: registered.cookie,
+        body: { enabled: false },
+      });
+      assert.equal(disabled.status, 200);
+      assert.equal(disabled.json.key.enabled, false);
 
       const deleted = await fixture.request('/api/frist/token/9', {
         method: 'DELETE',
@@ -5649,30 +5799,371 @@ describe('CC中转 public server chain', () => {
     }
   });
 
-  it('hard-deletes New-API SQLite token rows after API soft deletion', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'frist-api-newapi-token-delete-'));
-    const sqliteDb = join(dir, 'one-api.db');
-    const sqlite = spawnSync('sqlite3', [sqliteDb], {
-      input: [
-        'create table tokens (id integer primary key, name text, status integer, deleted_at text, used_quota integer);',
-        "insert into tokens (id, name, status, deleted_at, used_quota) values (9, 'OpenAI e2e-token-cleanup', 2, '2026-07-05 20:53:13+08:00', 12);",
-      ].join('\n'),
-      encoding: 'utf8',
-    });
-    assert.equal(sqlite.status, 0, sqlite.stderr || sqlite.stdout);
-
-    const newApiCalls = [];
+  it('blocks unowned, legacy, pending, malformed, orphan, unlimited, exhausted and disabled New-API tokens before gateway proxying', async () => {
+    const tokenSecret = 'sk-gateway-owner-boundary-secret';
+    const upstreamToken = {
+      id: 88,
+      name: 'Gateway Ownership Boundary',
+      key: tokenSecret,
+      status: 1,
+      remain_quota: 500_000,
+      unlimited_quota: false,
+    };
+    let gatewayCalls = 0;
     const fixture = await createServerFixture({
       requireEmailVerification: false,
       newApiEnabled: true,
       newApiBaseUrl: 'https://new-api.internal',
       newApiAccessToken: 'newapi-access-token',
       newApiUserId: '42',
-      newApiSqliteDb: sqliteDb,
-      fetchImpl: async (url, init = {}) => {
-        newApiCalls.push({ url: String(url), init });
+      newApiDefaultTokenQuota: 7200,
+      newApiGatewayEnabled: true,
+      newApiGatewayBaseUrl: 'https://new-api.internal/v1',
+      fetchImpl: async (url) => {
         const path = new URL(String(url)).pathname;
-        if (path === '/api/token/9/' && init.method === 'DELETE') {
+        if (path === '/api/token/search') {
+          return jsonResponse(200, { success: true, data: { items: [{ ...upstreamToken }] } });
+        }
+        if (path === '/api/token/88') {
+          return jsonResponse(200, { success: true, data: { ...upstreamToken } });
+        }
+        if (path === '/v1/responses') {
+          gatewayCalls += 1;
+          return jsonResponse(200, { id: 'resp-owner-verified', output_text: 'ok' });
+        }
+        return jsonResponse(404, { success: false, message: `unexpected ${path}` });
+      },
+    });
+
+    async function setOwner(owner) {
+      const data = await fixture.readData();
+      data.newApiTokenOwners = owner === undefined ? {} : { '88': owner };
+      await fixture.writeData(data);
+    }
+
+    async function requestGateway() {
+      return fixture.request('/v1/responses', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${tokenSecret}` },
+        body: { model: 'gpt-5.5', input: 'owner boundary' },
+      });
+    }
+
+    try {
+      const registered = await fixture.request('/api/frist/register', {
+        method: 'POST',
+        body: { email: 'gateway-owner@example.com', password: 'TestPass123!' },
+      });
+      assert.equal(registered.status, 200);
+      const data = await fixture.readData();
+      const user = data.users.find((item) => item.email === 'gateway-owner@example.com');
+
+      await setOwner(undefined);
+      assert.equal((await requestGateway()).status, 401);
+      await setOwner(user.id);
+      assert.equal((await requestGateway()).status, 401);
+      await setOwner({ userId: user.id, state: 'pending_activation' });
+      assert.equal((await requestGateway()).status, 401);
+      await setOwner({ state: 'active', allocatedCents: 100, upstreamQuotaUnits: 500_000 });
+      assert.equal((await requestGateway()).status, 401);
+      await setOwner({ userId: 'missing-user', state: 'active', allocatedCents: 100, upstreamQuotaUnits: 500_000 });
+      assert.equal((await requestGateway()).status, 401);
+      const duplicatedUsers = await fixture.readData();
+      duplicatedUsers.users.push({ ...user, email: 'duplicate-id@example.com' });
+      duplicatedUsers.newApiTokenOwners = {
+        '88': { userId: user.id, state: 'active', allocatedCents: 100, upstreamQuotaUnits: 500_000 },
+      };
+      await fixture.writeData(duplicatedUsers);
+      assert.equal((await requestGateway()).status, 401);
+      duplicatedUsers.users = duplicatedUsers.users.filter(
+        (item) => item.id !== user.id || item.email === 'gateway-owner@example.com',
+      );
+      await fixture.writeData(duplicatedUsers);
+      await setOwner({ userId: user.id, state: 'active' });
+      assert.equal((await requestGateway()).status, 401);
+      await setOwner({ userId: user.id, state: 'active', allocatedCents: 100, upstreamQuotaUnits: 500_000 });
+      upstreamToken.unlimited_quota = true;
+      assert.equal((await requestGateway()).status, 401);
+      upstreamToken.unlimited_quota = false;
+      upstreamToken.remain_quota = 0;
+      assert.equal((await requestGateway()).status, 401);
+      upstreamToken.remain_quota = 500_000;
+      upstreamToken.status = 2;
+      assert.equal((await requestGateway()).status, 401);
+      assert.equal(gatewayCalls, 0);
+
+      upstreamToken.status = 1;
+      const allowed = await requestGateway();
+      assert.equal(allowed.status, 200);
+      assert.equal(allowed.json.id, 'resp-owner-verified');
+      assert.equal(gatewayCalls, 1);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('isolates shared New-API tokens by local customer ownership', async () => {
+    const upstreamTokens = [];
+    const deletedTokenIds = [];
+    let returnExistingToken = false;
+    const fixture = await createServerFixture({
+      requireEmailVerification: false,
+      newApiEnabled: true,
+      newApiBaseUrl: 'https://new-api.internal',
+      newApiAccessToken: 'newapi-access-token',
+      newApiUserId: '42',
+      newApiDefaultTokenQuota: 7200,
+      fetchImpl: async (url, init = {}) => {
+        const requestUrl = new URL(String(url));
+        const path = requestUrl.pathname;
+        if (path === '/api/models/') {
+          return jsonResponse(200, { success: true, data: { items: [{ model_name: 'gpt-5.5' }] } });
+        }
+        if (path === '/api/token/' && init.method === 'POST') {
+          const body = JSON.parse(init.body);
+          assert.equal(body.unlimited_quota, false);
+          assert.equal(body.remain_quota, 0);
+          if (returnExistingToken) {
+            return jsonResponse(200, { success: true, data: upstreamTokens[0] });
+          }
+          const id = upstreamTokens.length + 1;
+          const token = {
+            id,
+            ...body,
+            key: `sk-tenant-${id}-secret`,
+            status: 1,
+            used_quota: id * 100,
+            remain_quota: body.remain_quota,
+          };
+          upstreamTokens.push(token);
+          return jsonResponse(200, { success: true, data: token });
+        }
+        if (path === '/api/token/' && (!init.method || init.method === 'GET')) {
+          return jsonResponse(200, { success: true, data: { items: upstreamTokens } });
+        }
+        if (path === '/api/token/search') {
+          const keyword = requestUrl.searchParams.get('keyword') || '';
+          return jsonResponse(200, {
+            success: true,
+            data: { items: upstreamTokens.filter((token) => token.name.includes(keyword)) },
+          });
+        }
+        const keyMatch = path.match(/^\/api\/token\/(\d+)\/key$/);
+        if (keyMatch) {
+          const token = upstreamTokens.find((item) => item.id === Number(keyMatch[1]));
+          return jsonResponse(200, { success: true, data: { key: token?.key || '' } });
+        }
+        const tokenMatch = path.match(/^\/api\/token\/(\d+)\/?$/);
+        if (tokenMatch && init.method === 'DELETE') {
+          deletedTokenIds.push(Number(tokenMatch[1]));
+          return jsonResponse(200, { success: true, data: 1 });
+        }
+        if (tokenMatch && (!init.method || init.method === 'GET')) {
+          const token = upstreamTokens.find((item) => item.id === Number(tokenMatch[1]));
+          return token
+            ? jsonResponse(200, { success: true, data: token })
+            : jsonResponse(404, { success: false, message: 'not found' });
+        }
+        if (path === '/api/token/' && init.method === 'PUT') {
+          const body = JSON.parse(init.body);
+          const token = upstreamTokens.find((item) => item.id === Number(body.id));
+          Object.assign(token, body);
+          return jsonResponse(200, { success: true, data: token });
+        }
+        if (path === '/api/log/self') {
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              items: upstreamTokens.map((token) => ({
+                id: `log-${token.id}`,
+                token_id: token.id,
+                model_name: 'gpt-5.5',
+                quota: token.id * 10,
+              })).concat({
+                id: 'log-ambiguous-name-only',
+                token_name: 'Shared Key',
+                model_name: 'leaked-model',
+                quota: 999_999,
+              }),
+            },
+          });
+        }
+        if (path === '/api/user/topup/info') {
+          return jsonResponse(200, { success: true, data: {} });
+        }
+        return jsonResponse(404, { success: false, message: `unexpected ${path}` });
+      },
+    });
+
+    try {
+      const first = await fixture.request('/api/frist/register', {
+        method: 'POST',
+        body: { email: 'first-newapi@example.com', password: 'TestPass123!' },
+      });
+      const second = await fixture.request('/api/frist/register', {
+        method: 'POST',
+        body: { email: 'second-newapi@example.com', password: 'TestPass123!' },
+      });
+
+      const unfunded = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie: first.cookie,
+        body: { name: 'Shared Key', modelGroup: 'OpenAI' },
+      });
+      assert.equal(unfunded.status, 402);
+      assert.equal(upstreamTokens.length, 0);
+
+      const funded = await fixture.readData();
+      for (const user of funded.users) {
+        if (['first-newapi@example.com', 'second-newapi@example.com'].includes(user.email)) {
+          user.packageQuotaCents = 7200;
+          user.balanceCents = 7200;
+        }
+      }
+      await fixture.writeData(funded);
+
+      const firstKey = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie: first.cookie,
+        body: { name: 'Shared Key', modelGroup: 'OpenAI', remainQuota: 999_999 },
+      });
+      const secondKey = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie: second.cookie,
+        body: { name: 'Shared Key', modelGroup: 'OpenAI' },
+      });
+      assert.equal(firstKey.status, 200);
+      assert.equal(secondKey.status, 200);
+      assert.equal(firstKey.json.key.id, '1');
+      assert.equal(secondKey.json.key.id, '2');
+
+      const allocated = await fixture.readData();
+      assert.equal(allocated.users.find((user) => user.email === 'first-newapi@example.com').balanceCents, 0);
+      assert.equal(allocated.users.find((user) => user.email === 'second-newapi@example.com').balanceCents, 0);
+      assert.equal(allocated.newApiTokenOwners['1'].allocatedCents, 7200);
+      assert.equal(allocated.newApiTokenOwners['2'].allocatedCents, 7200);
+      assert.equal(allocated.newApiTokenOwners['1'].upstreamQuotaUnits, 36_000_000);
+      assert.equal(allocated.newApiTokenOwners['2'].upstreamQuotaUnits, 36_000_000);
+      assert.equal(allocated.newApiTokenOwners['1'].state, 'active');
+      assert.equal(allocated.newApiTokenOwners['2'].state, 'active');
+      assert.deepEqual(allocated.newApiTokenCreateIntents, {});
+
+      const duplicatedQuota = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie: first.cookie,
+        body: { name: 'Another Key', modelGroup: 'OpenAI', remainQuota: 999_999 },
+      });
+      assert.equal(duplicatedQuota.status, 402);
+      assert.equal(upstreamTokens.length, 2);
+
+      const collisionData = await fixture.readData();
+      const firstUser = collisionData.users.find((user) => user.email === 'first-newapi@example.com');
+      firstUser.packageQuotaCents = 7200;
+      firstUser.balanceCents = 7200;
+      await fixture.writeData(collisionData);
+      returnExistingToken = true;
+      const collided = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie: first.cookie,
+        body: { name: 'Collision Key', modelGroup: 'OpenAI' },
+      });
+      returnExistingToken = false;
+      assert.equal(collided.status, 502);
+      const afterCollision = await fixture.readData();
+      assert.equal(afterCollision.newApiTokenOwners['1'].userId, firstUser.id);
+      assert.equal(afterCollision.users.find((user) => user.id === firstUser.id).balanceCents, 7200);
+
+      const firstDashboard = await fixture.request('/api/frist/dashboard', { cookie: first.cookie });
+      const secondDashboard = await fixture.request('/api/frist/dashboard', { cookie: second.cookie });
+      assert.deepEqual(firstDashboard.json.apiKeys.map((key) => key.id), ['1']);
+      assert.deepEqual(secondDashboard.json.apiKeys.map((key) => key.id), ['2']);
+      assert.equal(JSON.stringify(firstDashboard.json).includes('sk-tenant-2-secret'), false);
+      assert.equal(JSON.stringify(secondDashboard.json).includes('sk-tenant-1-secret'), false);
+      assert.equal(JSON.stringify(firstDashboard.json).includes('leaked-model'), false);
+      assert.equal(JSON.stringify(secondDashboard.json).includes('leaked-model'), false);
+
+      const stolenPatch = await fixture.request('/api/frist/token/1', {
+        method: 'PATCH',
+        cookie: second.cookie,
+        body: { enabled: false },
+      });
+      const stolenDelete = await fixture.request('/api/frist/token/1', {
+        method: 'DELETE',
+        cookie: second.cookie,
+      });
+      const stolenImport = await fixture.request('/api/frist/import-url?target=Codex&keyId=1', {
+        cookie: second.cookie,
+      });
+      assert.equal(stolenPatch.status, 404);
+      assert.equal(stolenDelete.status, 404);
+      assert.equal(stolenImport.status, 404);
+      assert.deepEqual(deletedTokenIds, []);
+
+      const missingKeyImport = await fixture.request('/api/frist/import-url?target=Codex', {
+        cookie: second.cookie,
+      });
+      assert.equal(missingKeyImport.status, 400);
+
+      const ownImport = await fixture.request('/api/frist/import-url?target=Codex&keyId=2', {
+        cookie: second.cookie,
+      });
+      assert.equal(ownImport.status, 200);
+      assert.equal(JSON.parse(ownImport.json.config.authJson).OPENAI_API_KEY, 'sk-tenant-2-secret');
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('revokes a staged New-API token and restores quota when owner persistence fails', async () => {
+    let upstreamToken = null;
+    let failOwnerSave = false;
+    let deleteRequests = 0;
+    const fixture = await createServerFixture({
+      requireEmailVerification: false,
+      newApiEnabled: true,
+      newApiBaseUrl: 'https://new-api.internal',
+      newApiAccessToken: 'newapi-access-token',
+      newApiUserId: '42',
+      newApiDefaultTokenQuota: 7200,
+      runtimeBeforeSave: async (data) => {
+        if (failOwnerSave && Object.keys(data.newApiTokenOwners || {}).length > 0) {
+          failOwnerSave = false;
+          throw new Error('simulated owner persistence failure');
+        }
+      },
+      fetchImpl: async (url, init = {}) => {
+        const requestUrl = new URL(String(url));
+        const path = requestUrl.pathname;
+        if (path === '/api/models/') {
+          return jsonResponse(200, { success: true, data: { items: [{ model_name: 'gpt-5.5' }] } });
+        }
+        if (path === '/api/token/' && (!init.method || init.method === 'GET')) {
+          return jsonResponse(200, { success: true, data: { items: upstreamToken ? [upstreamToken] : [] } });
+        }
+        if (path === '/api/token/' && init.method === 'POST') {
+          const body = JSON.parse(init.body);
+          assert.equal(body.remain_quota, 0);
+          assert.equal(body.unlimited_quota, false);
+          upstreamToken = {
+            id: 91,
+            ...body,
+            key: 'sk-staged-persistence-secret',
+            status: 1,
+          };
+          failOwnerSave = true;
+          return jsonResponse(200, { success: true, data: upstreamToken });
+        }
+        if (path === '/api/token/91/key') {
+          return jsonResponse(200, { success: true, data: { key: upstreamToken?.key || '' } });
+        }
+        if (path === '/api/token/91' && (!init.method || init.method === 'GET')) {
+          return upstreamToken
+            ? jsonResponse(200, { success: true, data: upstreamToken })
+            : jsonResponse(404, { success: false, message: 'not found' });
+        }
+        if (path === '/api/token/91/' && init.method === 'DELETE') {
+          deleteRequests += 1;
+          upstreamToken = null;
           return jsonResponse(200, { success: true, data: 1 });
         }
         return jsonResponse(404, { success: false, message: `unexpected ${path}` });
@@ -5682,19 +6173,261 @@ describe('CC中转 public server chain', () => {
     try {
       const registered = await fixture.request('/api/frist/register', {
         method: 'POST',
-        body: { email: 'cleanup-newapi@example.com', password: 'TestPass123!' },
+        body: { email: 'owner-save-failure@example.com', password: 'TestPass123!' },
       });
-      const deleted = await fixture.request('/api/frist/token/9', {
+      const funded = await fixture.readData();
+      const user = funded.users.find((item) => item.email === 'owner-save-failure@example.com');
+      user.packageQuotaCents = 7200;
+      user.balanceCents = 7200;
+      await fixture.writeData(funded);
+
+      const created = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie: registered.cookie,
+        body: { name: 'Persistence Safety Key', modelGroup: 'OpenAI' },
+      });
+
+      assert.equal(created.status, 500);
+      assert.equal(deleteRequests, 1);
+      assert.equal(upstreamToken, null);
+      const after = await fixture.readData();
+      assert.equal(after.users.find((item) => item.id === user.id).balanceCents, 7200);
+      assert.deepEqual(after.newApiTokenOwners, {});
+      assert.deepEqual(after.newApiTokenCreateIntents, {});
+      assert.equal(
+        after.events.some((event) => event.type === 'newapi_token_create_rolled_back' && event.userId === user.id),
+        true,
+      );
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('keeps New-API ownership when delete cannot revoke an enabled token', async () => {
+    const upstreamToken = {
+      id: 77,
+      name: 'Delete Safety Key',
+      key: 'sk-delete-safety-secret',
+      status: 1,
+      remain_quota: 0,
+      unlimited_quota: false,
+    };
+    let disableAttempts = 0;
+    let deleteVerificationMode = 'enabled';
+    let deleteRequested = false;
+    const fixture = await createServerFixture({
+      requireEmailVerification: false,
+      newApiEnabled: true,
+      newApiBaseUrl: 'https://new-api.internal',
+      newApiAccessToken: 'newapi-access-token',
+      newApiUserId: '42',
+      newApiDefaultTokenQuota: 7200,
+      fetchImpl: async (url, init = {}) => {
+        const requestUrl = new URL(String(url));
+        const path = requestUrl.pathname;
+        if (path === '/api/models/') {
+          return jsonResponse(200, { success: true, data: { items: ['gpt-5.5'] } });
+        }
+        if (path === '/api/token/' && (!init.method || init.method === 'GET')) {
+          return jsonResponse(200, { success: true, data: { items: [] } });
+        }
+        if (path === '/api/token/' && init.method === 'POST') {
+          Object.assign(upstreamToken, JSON.parse(init.body));
+          return jsonResponse(200, { success: true, data: upstreamToken });
+        }
+        if (path === '/api/token/77/key') {
+          return jsonResponse(200, { success: true, data: { key: upstreamToken.key } });
+        }
+        if (path === '/api/token/77' && (!init.method || init.method === 'GET')) {
+          if (deleteRequested && deleteVerificationMode === 'missing-status') {
+            return jsonResponse(200, { success: true, data: { id: 77 } });
+          }
+          if (deleteRequested && deleteVerificationMode === 'wrong-id') {
+            return jsonResponse(200, { success: true, data: { id: 78, status: 2 } });
+          }
+          return jsonResponse(200, { success: true, data: upstreamToken });
+        }
+        if (path === '/api/token/77/' && init.method === 'DELETE') {
+          // 模拟旧上游返回成功但实际上没有删除或禁用。
+          deleteRequested = true;
+          return jsonResponse(200, { success: true, data: 1 });
+        }
+        if (path === '/api/token/' && init.method === 'PUT') {
+          const body = JSON.parse(init.body);
+          if (requestUrl.searchParams.get('status_only') === 'true') {
+            disableAttempts += 1;
+            // 模拟状态接口也谎报成功，后续 GET 仍为 enabled。
+            return jsonResponse(200, { success: true, data: { id: 77, status: 2 } });
+          }
+          Object.assign(upstreamToken, body);
+          return jsonResponse(200, { success: true, data: upstreamToken });
+        }
+        return jsonResponse(404, { success: false, message: `unexpected ${path}` });
+      },
+    });
+
+    try {
+      const registered = await fixture.request('/api/frist/register', {
+        method: 'POST',
+        body: { email: 'delete-safety@example.com', password: 'TestPass123!' },
+      });
+      const funded = await fixture.readData();
+      const user = funded.users.find((item) => item.email === 'delete-safety@example.com');
+      user.packageQuotaCents = 7200;
+      user.balanceCents = 7200;
+      await fixture.writeData(funded);
+
+      const created = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie: registered.cookie,
+        body: { name: upstreamToken.name, modelGroup: 'OpenAI' },
+      });
+      assert.equal(created.status, 200);
+
+      const deleted = await fixture.request('/api/frist/token/77', {
         method: 'DELETE',
         cookie: registered.cookie,
       });
-      assert.equal(deleted.status, 200);
-      assert.equal(deleted.json.deletedKeyId, '9');
-      assert.ok(newApiCalls.some((call) => call.url === 'https://new-api.internal/api/token/9/'));
-      assert.equal(sqliteScalar(sqliteDb, 'select count(*) from tokens where id=9;'), '0');
+      assert.equal(deleted.status, 502);
+      assert.equal(disableAttempts, 1);
+
+      let after = await fixture.readData();
+      assert.equal(after.newApiTokenOwners['77'].userId, user.id);
+      assert.equal(
+        after.events.some((event) => event.type === 'newapi_token_deleted' && event.keyId === '77'),
+        false,
+      );
+
+      deleteVerificationMode = 'missing-status';
+      const missingStatus = await fixture.request('/api/frist/token/77', {
+        method: 'DELETE',
+        cookie: registered.cookie,
+      });
+      assert.equal(missingStatus.status, 502);
+      assert.equal(disableAttempts, 2);
+      after = await fixture.readData();
+      assert.equal(after.newApiTokenOwners['77'].userId, user.id);
+
+      deleteVerificationMode = 'wrong-id';
+      const wrongId = await fixture.request('/api/frist/token/77', {
+        method: 'DELETE',
+        cookie: registered.cookie,
+      });
+      assert.equal(wrongId.status, 502);
+      assert.equal(disableAttempts, 2);
+      after = await fixture.readData();
+      assert.equal(after.newApiTokenOwners['77'].userId, user.id);
     } finally {
       await fixture.close();
-      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reports New-API token inventory failures instead of showing an empty dashboard', async () => {
+    const fixture = await createServerFixture({
+      requireEmailVerification: false,
+      newApiEnabled: true,
+      newApiBaseUrl: 'https://new-api.internal',
+      newApiAccessToken: 'newapi-access-token',
+      newApiUserId: '42',
+      newApiDefaultTokenQuota: 7200,
+      fetchImpl: async (url) => {
+        const path = new URL(String(url)).pathname;
+        if (path === '/api/token/') {
+          return jsonResponse(503, { success: false, message: 'inventory unavailable' });
+        }
+        return jsonResponse(200, { success: true, data: { items: [] } });
+      },
+    });
+
+    try {
+      const registered = await fixture.request('/api/frist/register', {
+        method: 'POST',
+        body: { email: 'inventory-failure@example.com', password: 'TestPass123!' },
+      });
+
+      const dashboard = await fixture.request('/api/frist/dashboard', {
+        cookie: registered.cookie,
+      });
+
+      assert.equal(dashboard.status, 503);
+      assert.equal(dashboard.json.error, 'inventory unavailable');
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('never claims an unowned historical New-API token beyond the first page', async () => {
+    const upstreamTokens = Array.from({ length: 101 }, (_, index) => ({
+      id: index + 1,
+      name: index === 100 ? 'Historical Shared Key' : `Historical Key ${index + 1}`,
+      key: index === 100 ? 'sk-legacy-secret' : `sk-history-${index + 1}`,
+      status: 1,
+      remain_quota: 100,
+    }));
+    let historicalSecretRead = false;
+    const requestedTokenPages = [];
+    const fixture = await createServerFixture({
+      requireEmailVerification: false,
+      newApiEnabled: true,
+      newApiBaseUrl: 'https://new-api.internal',
+      newApiAccessToken: 'newapi-access-token',
+      newApiUserId: '42',
+      newApiDefaultTokenQuota: 7200,
+      fetchImpl: async (url, init = {}) => {
+        const requestUrl = new URL(String(url));
+        const path = requestUrl.pathname;
+        if (path === '/api/models/') {
+          return jsonResponse(200, { success: true, data: { items: [] } });
+        }
+        if (path === '/api/token/' && (!init.method || init.method === 'GET')) {
+          const page = Number(requestUrl.searchParams.get('p') || 1);
+          requestedTokenPages.push(page);
+          const start = (page - 1) * 100;
+          return jsonResponse(200, {
+            success: true,
+            data: { items: upstreamTokens.slice(start, start + 100) },
+          });
+        }
+        if (path === '/api/token/' && init.method === 'POST') {
+          // 旧逻辑会在无 ID 响应后按名称搜索，并误认第 101 条历史 Token。
+          return jsonResponse(200, { success: true, data: {} });
+        }
+        if (path === '/api/token/search') {
+          return jsonResponse(200, { success: true, data: { items: [upstreamTokens[100]] } });
+        }
+        if (path === '/api/token/101/key') {
+          historicalSecretRead = true;
+          return jsonResponse(200, { success: true, data: { key: 'sk-legacy-secret' } });
+        }
+        return jsonResponse(404, { success: false, message: `unexpected ${path}` });
+      },
+    });
+
+    try {
+      const registered = await fixture.request('/api/frist/register', {
+        method: 'POST',
+        body: { email: 'pagination-owner@example.com', password: 'TestPass123!' },
+      });
+      const funded = await fixture.readData();
+      const user = funded.users.find((item) => item.email === 'pagination-owner@example.com');
+      user.packageQuotaCents = 7200;
+      user.balanceCents = 7200;
+      await fixture.writeData(funded);
+
+      const created = await fixture.request('/api/frist/token', {
+        method: 'POST',
+        cookie: registered.cookie,
+        body: { name: 'Historical Shared Key', modelGroup: 'OpenAI' },
+      });
+
+      assert.equal(created.status, 502);
+      assert.equal(historicalSecretRead, false);
+      assert.ok(requestedTokenPages.includes(2));
+      const after = await fixture.readData();
+      assert.equal(after.newApiTokenOwners['101'], undefined);
+      assert.equal(after.users.find((item) => item.id === user.id).balanceCents, 7200);
+    } finally {
+      await fixture.close();
     }
   });
 
@@ -5899,6 +6632,7 @@ describe('CC中转 public server chain', () => {
       newApiBaseUrl: 'http://openclaw-newapi:3000',
       newApiAccessToken: 'new-api-access-token-with-enough-randomness',
       newApiUserId: '1',
+      newApiDefaultTokenQuota: 7200,
       requireAdmin2fa: true,
       adminTotpSecrets: ['JBSWY3DPEHPK3PXP'],
       requireTurnstile: true,
@@ -6053,7 +6787,7 @@ describe('CC中转 public server chain', () => {
 
       const viewerCookie = await fixture.createVerifiedCustomer('sla-viewer@example.com');
       const current = await fixture.readData();
-      current.userKeys.find((item) => item.id === 'key-sla').userId = current.sessions[viewerCookie.split('=')[1]];
+      current.userKeys.find((item) => item.id === 'key-sla').userId = current.sessions[viewerCookie.split('=')[1]].userId;
       await fixture.writeData(current);
       const dashboard = await fixture.request('/api/frist/dashboard', { cookie: viewerCookie });
       const check = dashboard.json.channelChecks.find((item) => item.model === 'gpt-5.5');
@@ -6553,11 +7287,14 @@ async function createServerFixture(options = {}) {
     newApiBaseUrl: options.newApiBaseUrl,
     newApiAccessToken: options.newApiAccessToken,
     newApiUserId: options.newApiUserId,
+    newApiDefaultTokenQuota: options.newApiDefaultTokenQuota,
+    newApiRequestTimeoutMs: options.newApiRequestTimeoutMs,
     newApiSqliteDb: Object.hasOwn(options, 'newApiSqliteDb') ? options.newApiSqliteDb : '',
     newApiGatewayEnabled: options.newApiGatewayEnabled,
     newApiGatewayBaseUrl: options.newApiGatewayBaseUrl,
     newApiRedemptionStatusSyncEnabled: options.newApiRedemptionStatusSyncEnabled,
     newApiRedemptionStatusSyncIntervalMs: options.newApiRedemptionStatusSyncIntervalMs,
+    runtimeBeforeSave: options.runtimeBeforeSave,
     cardAutoreplenishEnabled: options.cardAutoreplenishEnabled,
     cardAutoreplenishIntervalMs: options.cardAutoreplenishIntervalMs,
     cardAutoreplenishDailyCap: options.cardAutoreplenishDailyCap,
@@ -6567,6 +7304,7 @@ async function createServerFixture(options = {}) {
     legacyPasswordHashSecrets: options.legacyPasswordHashSecrets,
     accountEmailSender: options.accountEmailSender,
     passwordResetTtlMs: options.passwordResetTtlMs,
+    sessionTtlMs: options.sessionTtlMs,
     paymentEnabled: options.paymentEnabled,
     enforceProductionReadiness: options.enforceProductionReadiness,
     requireNewApiDatabase: options.requireNewApiDatabase,

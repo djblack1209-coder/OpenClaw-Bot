@@ -235,9 +235,16 @@ class LifeExecutorMixin:
                 from src.execution.life_automation import create_reminder
 
                 reminder = await create_reminder(goal)
-                return {"source": "reminder", "data": reminder}
+                success = isinstance(reminder, dict) and reminder.get("success") is True
+                return {
+                    "source": "reminder",
+                    "success": success,
+                    "error": "" if success else str(reminder.get("error") or "提醒未能保存"),
+                    "data": reminder,
+                }
             except Exception as e:
                 logger.warning("提醒设置失败: %s", e)
+                return {"source": "reminder", "success": False, "error": "提醒设置失败"}
 
         # 汇率查询
         if any(kw in goal for kw in ["汇率", "换算", "兑换", "exchange"]):

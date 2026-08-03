@@ -111,7 +111,9 @@ impl From<std::io::Error> for AppError {
     fn from(e: std::io::Error) -> Self {
         match e.kind() {
             std::io::ErrorKind::NotFound => Self::not_found(format!("文件或目录不存在: {}", e)),
-            std::io::ErrorKind::PermissionDenied => Self::new(ErrorKind::Permission, format!("权限不足: {}", e)),
+            std::io::ErrorKind::PermissionDenied => {
+                Self::new(ErrorKind::Permission, format!("权限不足: {}", e))
+            }
             _ => Self::io(format!("IO 操作失败: {}", e)),
         }
     }

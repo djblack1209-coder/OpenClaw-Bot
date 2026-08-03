@@ -3,6 +3,7 @@
 """
 import logging
 
+from src.bot.auth import requires_auth
 from src.message_format import format_error
 
 logger = logging.getLogger(__name__)
@@ -109,6 +110,7 @@ class _CallbackMixin:
         context.args = cmd_args
         await _safe_cmd_from_callback(query, handler, update, context, cmd_name)
 
+    @requires_auth
     async def handle_card_action_callback(self, update, context):
         """处理 OMEGA 响应卡片上的操作按钮（response_cards.py 生成的 callback_data）"""
         query = update.callback_query
@@ -153,6 +155,7 @@ class _CallbackMixin:
         else:
             await query.message.reply_text("💡 此操作暂不支持")
 
+    @requires_auth
     async def handle_clarification_callback(self, update, context):
         """处理 ClarificationCard 追问按钮的回调 (callback_data: {tid}:{param}:{value})"""
         query = update.callback_query

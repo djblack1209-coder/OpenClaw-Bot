@@ -24,14 +24,15 @@ async def _daily_risk_reset():
     if _ts._risk_manager:
         _ts._risk_manager.reset_daily()
         logger.info("[Scheduler] 每日风控重置完成")
-    # 同时重置 IBKR 预算追踪
-    try:
-        from src.broker_selector import ibkr as _ibkr
+    # 仅在显式启用时重置 IBKR 预算追踪。
+    if env_bool("IBKR_ENABLED", False):
+        try:
+            from src.broker_selector import ibkr as _ibkr
 
-        _ibkr.reset_budget(_ibkr.budget)  # 保留当前预算额度，仅重置 total_spent
-        logger.info("[Scheduler] IBKR预算已重置")
-    except Exception as e:
-        logger.warning("[Scheduler] IBKR预算重置失败: %s", e)
+            _ibkr.reset_budget(_ibkr.budget)  # 保留当前预算额度，仅重置 total_spent
+            logger.info("[Scheduler] IBKR预算已重置")
+        except Exception as e:
+            logger.warning("[Scheduler] IBKR预算重置失败: %s", e)
     # 重置 AutoTrader 日交易计数
     if _ts._auto_trader:
         _ts._auto_trader._today_trades = 0
@@ -73,16 +74,12 @@ async def _eod_auto_review():
                 lines.append("\n已平仓:")
                 for t in closed:
                     sign = "+" if t.get("pnl", 0) >= 0 else ""
-                    lines.append(
-                        f"  {t.get('side', '?')} {t.get('symbol', '?')} {sign}${abs(t.get('pnl', 0)):.2f}"
-                    )
+                    lines.append(f"  {t.get('side', '?')} {t.get('symbol', '?')} {sign}${abs(t.get('pnl', 0)):.2f}")
 
             if open_trades:
                 lines.append(f"\n持仓中: {len(open_trades)}笔")
                 for t in open_trades:
-                    lines.append(
-                        f"  {t.get('symbol', '?')} x{t.get('quantity', '?')} 入场${t.get('entry_price', '?')}"
-                    )
+                    lines.append(f"  {t.get('symbol', '?')} x{t.get('quantity', '?')} 入场${t.get('entry_price', '?')}")
 
             lines.append(f"\n{perf}")
             lines.append("\n系统将在明日开盘自动继续交易。")
@@ -143,6 +140,8 @@ async def _daily_capital_sync():
     """每日从 IBKR 同步实际资金到风控引擎"""
     import src.trading_system as _ts
 
+    if not env_bool("IBKR_ENABLED", False):
+        return
     if _ts._risk_manager:
         try:
             from src.broker_selector import ibkr as _ibkr
@@ -306,6 +305,8 @@ async def _ibkr_health_check():
     避免 Gateway 未运行时每3分钟一条 WARNING/ERROR 造成日志洪泛。
     """
     global _ibkr_health_fail_count
+    if not env_bool("IBKR_ENABLED", False):
+        return
     try:
         from src.broker_selector import ibkr as _ibkr
 
@@ -357,32 +358,34 @@ async def _setup_scheduler():
         _ts._scheduler.add_task("eod_auto_review", _eod_auto_review, schedule_time=time(16, 5))
         _ts._scheduler.add_task("quote_refresh", _refresh_quotes, interval_minutes=5)
         _ts._scheduler.add_task("daily_rebalance", _daily_rebalance_check, schedule_time=time(9, 35))
-        _ts._scheduler.add_task("daily_capital_sync", _daily_capital_sync, schedule_time=time(9, 25))
         _ts._scheduler.add_task(
             "weekly_profit_guard",
             _weekly_profit_guard,
             schedule_time=time(9, 20),
         )
-        _ts._scheduler.add_task(
-            "ibkr_fill_reconcile",
-            _reconcile_ibkr_entry_fills,
-            interval_minutes=env_int("IBKR_FILL_RECONCILE_INTERVAL_MIN", 2, minimum=1),
-        )
-        _ts._scheduler.add_task(
-            "pending_entry_cancel",
-            _cancel_stale_pending_entries,
-            interval_minutes=env_int("PENDING_ENTRY_CANCEL_CHECK_INTERVAL_MIN", 5, minimum=1),
-        )
-        _ts._scheduler.add_task(
-            "pending_reentry_submit",
-            _submit_pending_reentry_queue,
-            interval_minutes=env_int("PENDING_REENTRY_CHECK_INTERVAL_MIN", 3, minimum=1),
-        )
-        _ts._scheduler.add_task(
-            "ibkr_health_check",
-            _ibkr_health_check,
-            interval_minutes=env_int("IBKR_HEALTH_CHECK_INTERVAL_MIN", 3, minimum=1),
-        )
+        ibkr_enabled = env_bool("IBKR_ENABLED", False)
+        if ibkr_enabled:
+            _ts._scheduler.add_task("daily_capital_sync", _daily_capital_sync, schedule_time=time(9, 25))
+            _ts._scheduler.add_task(
+                "ibkr_fill_reconcile",
+                _reconcile_ibkr_entry_fills,
+                interval_minutes=env_int("IBKR_FILL_RECONCILE_INTERVAL_MIN", 2, minimum=1),
+            )
+            _ts._scheduler.add_task(
+                "pending_entry_cancel",
+                _cancel_stale_pending_entries,
+                interval_minutes=env_int("PENDING_ENTRY_CANCEL_CHECK_INTERVAL_MIN", 5, minimum=1),
+            )
+            _ts._scheduler.add_task(
+                "pending_reentry_submit",
+                _submit_pending_reentry_queue,
+                interval_minutes=env_int("PENDING_REENTRY_CHECK_INTERVAL_MIN", 3, minimum=1),
+            )
+            _ts._scheduler.add_task(
+                "ibkr_health_check",
+                _ibkr_health_check,
+                interval_minutes=env_int("IBKR_HEALTH_CHECK_INTERVAL_MIN", 3, minimum=1),
+            )
 
         # 每日成本报告 — 23:00 ET 发送当日 LLM 花费汇总
         async def _cost_daily_report():
@@ -407,10 +410,10 @@ async def _setup_scheduler():
         _ts._scheduler.add_task("cost_daily_report", _cost_daily_report, schedule_time=time(23, 0))
 
         _ts._scheduler.start()
+        ibkr_tasks = "，含 IBKR 资金/成交/撤单/重挂/健康任务" if ibkr_enabled else "，IBKR 未启用"
         logger.info(
-            "[TradingSystem] Scheduler已启动 "
-            "(重置09:00, 周守卫09:20, 资金09:25, 再平衡09:35, 复盘16:05, "
-            "成交回写2min, 撤单5min, 重挂3min, IBKR健康3min)"
+            "[TradingSystem] Scheduler已启动 (重置09:00, 周守卫09:20, 再平衡09:35, 复盘16:05%s)",
+            ibkr_tasks,
         )
     except Exception as e:
         logger.warning("[TradingSystem] Scheduler启动失败: %s", e)

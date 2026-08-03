@@ -713,17 +713,19 @@ def test_social_extension_final_confirm_requires_due_schedule_and_keeps_external
     monkeypatch.setattr("src.execution.social.x_auto_ops._STATE_FILE", state_file)
     from src.execution.social import x_auto_ops
 
+    draft = {
+        "id": "ext-x-final",
+        "platform": "x",
+        "status": "awaiting_final_confirmation",
+        "review_status": "approved",
+        "text": "最终确认也只是进入可手动发布，不自动发。",
+    }
+    from src.execution.social.publish_gate import seal_approved_draft
+
+    seal_approved_draft(draft)
     x_auto_ops._save_state(
         {
-            "drafts": [
-                {
-                    "id": "ext-x-final",
-                    "platform": "x",
-                    "status": "awaiting_final_confirmation",
-                    "review_status": "approved",
-                    "text": "最终确认也只是进入可手动发布，不自动发。",
-                }
-            ],
+            "drafts": [draft],
             "extension_schedule": [
                 {
                     "id": "schedule-ext-x-final",
@@ -750,6 +752,7 @@ def test_social_extension_final_confirm_requires_due_schedule_and_keeps_external
     assert result["manual_publish_ready"] is True
     assert result["auto_publish_enabled"] is False
     assert result["external_actions_locked"] is True
+    assert result["confirmation_token"]
     assert result["schedule_item"]["status"] == "ready_for_manual_publish"
     assert result["draft"]["status"] == "ready_for_manual_publish"
 

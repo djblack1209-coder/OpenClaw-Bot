@@ -5,14 +5,11 @@
 支持平台: 抖音/B站/小红书/快手
 调用方式: CLI 桥接 (解耦、稳定、不受 sau 内部重构影响)
 
-用法:
-    from src.sau_bridge import publish_video, publish_note, check_login, get_supported_platforms
-    result = await publish_video("douyin", "my_account", "/path/to/video.mp4", "标题", "描述")
+说明：登录检查能力保留；公开 publish_* 入口在媒体审核快照接入前统一拒绝外发。
 """
 import asyncio
 import logging
 import os
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -94,25 +91,18 @@ async def publish_video(
     account: str = "",
     timeout: int = 180,
 ) -> dict:
-    """发布视频到指定平台"""
-    account = account or DEFAULT_ACCOUNT
+    """拒绝未经持久化媒体审核门的公开视频直发。"""
     if platform not in PLATFORMS:
         return {"success": False, "error": f"不支持的平台: {platform}"}
     if not PLATFORMS[platform]["video"]:
         return {"success": False, "error": f"{PLATFORMS[platform]['name']}不支持视频发布"}
-    if not Path(video_path).exists():
-        return {"success": False, "error": f"视频文件不存在: {video_path}"}
-
-    args = [platform, "upload-video",
-            "--account", account,
-            "--file", str(video_path),
-            "--title", title[:100]]
-    if description:
-        args += ["--desc", description[:500]]
-    if tags:
-        args += ["--tags"] + [t[:20] for t in tags[:10]]
-
-    return await _run_sau_cmd(args, timeout=timeout)
+    return {
+        "success": False,
+        "requires_approved_media_draft": True,
+        "requires_final_confirmation": True,
+        "external_actions_locked": True,
+        "error": "Sau 视频直发已禁用：媒体审核快照和一次性确认尚未接入",
+    }
 
 
 async def publish_note(
@@ -124,25 +114,18 @@ async def publish_note(
     account: str = "",
     timeout: int = 120,
 ) -> dict:
-    """发布图文笔记到指定平台"""
-    account = account or DEFAULT_ACCOUNT
+    """拒绝未经持久化媒体审核门的公开图文直发。"""
     if platform not in PLATFORMS:
         return {"success": False, "error": f"不支持的平台: {platform}"}
     if not PLATFORMS[platform]["note"]:
         return {"success": False, "error": f"{PLATFORMS[platform]['name']}不支持图文发布"}
-
-    # 验证图片文件存在
-    valid_images = [img for img in images if Path(img).exists()]
-    if not valid_images:
-        return {"success": False, "error": "没有有效的图片文件"}
-
-    args = [platform, "upload-note", "--account", account, "--title", title[:100], "--images", *valid_images]
-    if content:
-        args += ["--note", content[:2000]]
-    if tags:
-        args += ["--tags"] + [t[:20] for t in tags[:10]]
-
-    return await _run_sau_cmd(args, timeout=timeout)
+    return {
+        "success": False,
+        "requires_approved_media_draft": True,
+        "requires_final_confirmation": True,
+        "external_actions_locked": True,
+        "error": "Sau 图文直发已禁用：媒体审核快照和一次性确认尚未接入",
+    }
 
 
 async def publish_multi_platform(

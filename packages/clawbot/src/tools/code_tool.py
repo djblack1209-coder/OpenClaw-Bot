@@ -1,14 +1,13 @@
 """
 ClawBot - 代码执行工具
-所有代码执行均通过子进程实现 (OS级隔离)
-Python: RestrictedPython AST编译(第一道防线) → 子进程执行(OS隔离)
-Node.js: 模块禁用 + --disable-proto=delete + 子进程执行
-Shell: 已禁用
+Python 代码通过 RestrictedPython 编译后在受限子进程中执行。
+Node.js 与 Shell 执行默认禁用。
 """
 import logging
 import os
 import signal
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -22,34 +21,8 @@ MAX_CODE_LENGTH = 10000
 # 只传递运行时必需的环境变量，阻止泄漏 API Key、Token 等敏感信息
 _SAFE_ENV_KEYS = frozenset({
     "PATH", "HOME", "USER", "LANG", "LC_ALL", "LC_CTYPE",
-    "TERM", "TMPDIR", "TZ", "PYTHONPATH", "NODE_PATH",
+    "TERM", "TMPDIR", "TZ",
 })
-
-# ── RestrictedPython 沙箱配置 ──
-# 允许用户代码使用的安全内置函数
-_SAFE_EXTRA_BUILTINS = {
-    "sum": sum, "min": min, "max": max, "abs": abs,
-    "round": round, "len": len, "range": range, "enumerate": enumerate,
-    "zip": zip, "map": map, "filter": filter, "sorted": sorted,
-    "reversed": reversed, "list": list, "dict": dict, "set": set,
-    "tuple": tuple, "str": str, "int": int, "float": float,
-    "bool": bool, "isinstance": isinstance, "issubclass": issubclass,
-    "repr": repr, "chr": chr, "ord": ord,
-    "hex": hex, "oct": oct, "bin": bin, "pow": pow, "divmod": divmod,
-    "any": any, "all": all,
-    "format": format,
-}
-
-# 允许在沙箱中 import 的安全模块
-_SAFE_IMPORTABLE = frozenset({
-    "math", "random", "statistics", "collections",
-    "itertools", "functools", "operator", "string",
-    "re", "json", "datetime", "time", "decimal",
-    "fractions", "textwrap", "unicodedata", "copy",
-    "pprint", "dataclasses", "enum", "typing",
-    "base64", "hashlib", "hmac", "csv",
-})
-
 
 def _make_safe_env() -> dict:
     """构建安全的子进程环境变量 (只保留白名单内的 key)"""
@@ -59,24 +32,34 @@ def _make_safe_env() -> dict:
 def _sandbox_preexec():
     """子进程预执行函数 — 设置 OS 级资源限制 (仅 Unix)"""
     import resource
+
+    def _set_soft_limit(limit_name: int, value: int) -> None:
+        """设置平台支持的软限制；不支持的单项不能阻断沙箱启动。"""
+        try:
+            _soft, hard = resource.getrlimit(limit_name)
+            target = min(value, hard) if hard != resource.RLIM_INFINITY else value
+            resource.setrlimit(limit_name, (target, hard))
+        except (OSError, ValueError):
+            return
+
     # 新进程组 — 超时时可杀掉整个进程树
     os.setsid()
-    # CPU 时间上限 30 秒 (硬限制)
-    resource.setrlimit(resource.RLIMIT_CPU, (30, 30))
+    # CPU 时间上限 30 秒
+    _set_soft_limit(resource.RLIMIT_CPU, 30)
     # 虚拟内存上限 256MB
-    resource.setrlimit(resource.RLIMIT_AS, (256 * 1024 * 1024, 256 * 1024 * 1024))
+    _set_soft_limit(resource.RLIMIT_AS, 256 * 1024 * 1024)
     # 禁止创建子进程 (fork bomb 防护)
-    resource.setrlimit(resource.RLIMIT_NPROC, (0, 0))
+    _set_soft_limit(resource.RLIMIT_NPROC, 0)
     # 文件写入大小上限 1MB
-    resource.setrlimit(resource.RLIMIT_FSIZE, (1024 * 1024, 1024 * 1024))
+    _set_soft_limit(resource.RLIMIT_FSIZE, 1024 * 1024)
     # 禁止 core dump
-    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    _set_soft_limit(resource.RLIMIT_CORE, 0)
 
 
-def _try_compile_restricted(code: str) -> str:
+def _try_compile_restricted(code: str) -> None:
     """
     使用 RestrictedPython 在 AST 层面验证代码安全性 (第一道防线)
-    通过则返回原始代码 (实际执行在子进程中)
+    通过则返回；实际执行仍在子进程中重新编译并运行受限字节码。
     不通过则抛出异常
     """
     try:
@@ -84,125 +67,84 @@ def _try_compile_restricted(code: str) -> str:
         byte_code = compile_restricted(code, "<sandbox>", "exec")
         if byte_code is None:
             raise SyntaxError("代码包含沙箱不允许的操作 (如访问双下划线属性)")
-        # AST 编译通过，返回原始代码供子进程执行
-        return code
+        return None
     except ImportError:
         # 安全沙箱缺失时禁止执行，不再静默降级
-        _RESTRICTEDPYTHON_AVAILABLE = False
         raise RuntimeError("安全沙箱组件 RestrictedPython 未安装，代码执行已禁用") from None
 
 
 # ── Python 子进程沙箱前导代码 ──
-# 在子进程中注入 import hook + 文件访问限制 + 危险属性封锁
+# 子进程必须执行 RestrictedPython 产出的字节码，禁止执行原始源码字节码。
 _PYTHON_SANDBOX_PREFIX = '''\
-# ── 子进程沙箱 (OS级隔离 + import hook) ──
-import sys as _sys
+# ── 子进程沙箱 (RestrictedPython + OS 资源限制) ──
+import builtins as _builtins
+from RestrictedPython import compile_restricted as _compile_restricted
+from RestrictedPython.Eval import default_guarded_getitem as _guarded_getitem
+from RestrictedPython.Eval import default_guarded_getiter as _guarded_getiter
+from RestrictedPython.Guards import full_write_guard as _full_write_guard
+from RestrictedPython.Guards import guarded_iter_unpack_sequence as _guarded_iter_unpack
+from RestrictedPython.Guards import guarded_unpack_sequence as _guarded_unpack
+from RestrictedPython.Guards import safe_builtins as _restricted_builtins
+from RestrictedPython.Guards import safer_getattr as _safer_getattr
+from RestrictedPython.PrintCollector import PrintCollector as _PrintCollector
 
-# 1. 阻止导入危险模块
-_BLOCKED_MODULES = frozenset({
-    "os", "subprocess", "shutil", "signal", "ctypes", "_ctypes",
-    "socket", "http", "urllib", "requests", "pathlib",
-    "importlib", "pickle", "shelve", "multiprocessing",
-    "threading", "concurrent", "asyncio",
-    "gc", "inspect", "dis", "code", "codeop", "compileall",
-    "py_compile", "zipimport", "pkgutil", "runpy",
-    # 底层 C 扩展模块 — 防止绕过上层模块封锁
-    "_io", "_posixsubprocess", "_socket", "_thread",
-    "_multiprocessing", "_signal", "posix", "nt",
-    "msvcrt", "winreg", "_winapi",
-})
-_orig_import = __import__
-def _safe_import(name, *args, **kwargs):
-    top = name.split(".")[0]
-    if top in _BLOCKED_MODULES:
-        raise ImportError(f"模块 \\'{name}\\' 在沙箱中被禁用")
-    return _orig_import(name, *args, **kwargs)
-import builtins as _b
-_b.__import__ = _safe_import
+class _LimitedPrintCollector(_PrintCollector):
+    """将收集到的标准输出限制为 5000 个字符。"""
 
-# 2. 禁止文件访问 (只允许 /dev/null 和 /dev/urandom)
-_orig_open = _b.open
-def _safe_open(path, *a, **kw):
-    _p = str(path)
-    if not _p.startswith(("/dev/null", "/dev/urandom")):
-        raise PermissionError(f"文件访问被禁用: {_p[:50]}")
-    return _orig_open(path, *a, **kw)
-_b.open = _safe_open
-
-# 3. 封锁危险的类型内省
-type.__subclasses__ = lambda self: []
-
-# 4. 移除可用于逃逸的内置函数
-for _fn in ("exec", "eval", "compile", "__build_class__", "globals",
-            "locals", "vars", "dir", "getattr", "setattr", "delattr",
-            "hasattr", "id", "hash", "breakpoint", "exit", "quit"):
-    if hasattr(_b, _fn):
-        try:
-            delattr(_b, _fn)
-        except (AttributeError, TypeError):
-            pass  # 合理保留：该分支只用于显式跳过并继续后续降级/清理流程
-
-# 5. 限制输出长度
-class _LimitedPrint:
-    def __init__(self, max_chars=5000):
-        self._buf = []
+    def __init__(self, _getattr_=None):
+        super().__init__(_getattr_)
         self._total = 0
-        self._max = max_chars
-    def __call__(self, *args, **kwargs):
-        text = " ".join(str(a) for a in args)
-        end = kwargs.get("end", "\\n")
-        text += end
-        remaining = self._max - self._total
-        if remaining > 0:
-            self._buf.append(text[:remaining])
-            self._total += min(len(text), remaining)
-        elif not self._buf or self._buf[-1] != "\\n... (输出已截断)\\n":
-            self._buf.append("\\n... (输出已截断)\\n")
-_b.print = _LimitedPrint()
 
-del _sys, _b, _orig_import, _orig_open, _BLOCKED_MODULES
-# ── 沙箱初始化完成 ──
+    def write(self, text):
+        remaining = max(0, 5000 - self._total)
+        if remaining:
+            chunk = str(text)[:remaining]
+            self.txt.append(chunk)
+            self._total += len(chunk)
+
+# 不向用户代码提供 import/open/exec/eval，也移除可扩大反射面的内置函数。
+_SAFE_BUILTINS = dict(_restricted_builtins)
+for _name in ("setattr", "delattr", "id", "hash", "__build_class__", "_getattr_"):
+    _SAFE_BUILTINS.pop(_name, None)
+_SAFE_BUILTINS.update({
+    "all": _builtins.all,
+    "any": _builtins.any,
+    "dict": _builtins.dict,
+    "enumerate": _builtins.enumerate,
+    "filter": _builtins.filter,
+    "frozenset": _builtins.frozenset,
+    "iter": _builtins.iter,
+    "list": _builtins.list,
+    "map": _builtins.map,
+    "max": _builtins.max,
+    "min": _builtins.min,
+    "next": _builtins.next,
+    "reversed": _builtins.reversed,
+    "set": _builtins.set,
+    "sum": _builtins.sum,
+})
+
+_USER_GLOBALS = {
+    "__builtins__": _SAFE_BUILTINS,
+    "__name__": "__sandbox__",
+    "_print_": _LimitedPrintCollector,
+    "_getattr_": _safer_getattr,
+    "_getitem_": _guarded_getitem,
+    "_getiter_": _guarded_getiter,
+    "_iter_unpack_sequence_": _guarded_iter_unpack,
+    "_unpack_sequence_": _guarded_unpack,
+    "_write_": _full_write_guard,
+}
 '''
-
-# Node.js 沙箱前导代码: 禁用危险模块 + 原型链保护
-NODE_SANDBOX_PREFIX = """\
-// ── 沙箱安全限制 ──
-'use strict';
-const _origRequire = typeof require !== 'undefined' ? require : null;
-if (_origRequire) {
-    const _blocked = new Set([
-        'child_process','fs','net','dgram','dns','tls','cluster',
-        'worker_threads','v8','vm','os','http','https','http2',
-        'crypto','zlib','stream','path','readline','repl',
-        'inspector','perf_hooks','async_hooks','trace_events',
-    ]);
-    globalThis.require = function(mod) {
-        if (_blocked.has(mod)) throw new Error('模块 ' + mod + ' 在沙箱中被禁用');
-        return _origRequire(mod);
-    };
-}
-// 禁用 process 危险方法
-if (typeof process !== 'undefined') {
-    delete process.env;
-    Object.defineProperty(process, 'env', { get: () => ({}) });
-    process.exit = () => { throw new Error('process.exit 被禁用'); };
-    process.kill = () => { throw new Error('process.kill 被禁用'); };
-    // 封锁原生模块加载
-    if (process.dlopen) process.dlopen = () => { throw new Error('process.dlopen 被禁用'); };
-    if (process.binding) process.binding = () => { throw new Error('process.binding 被禁用'); };
-    if (process._linkedBinding) process._linkedBinding = () => { throw new Error('process._linkedBinding 被禁用'); };
-}
-// ── 沙箱结束 ──
-"""
 
 
 class CodeTool:
     """
-    代码执行沙箱 — 全部通过子进程执行 (OS 级隔离)
+    Python 代码执行沙箱；Node.js 与 Shell 默认禁用。
 
     安全架构:
     Layer 1: RestrictedPython AST 编译检查 (拦截已知危险模式)
-    Layer 2: 子进程 import hook + 文件访问限制 (运行时拦截)
+    Layer 2: 子进程执行 RestrictedPython 字节码，不提供 import/open
     Layer 3: resource.setrlimit (OS 级资源限制: CPU/内存/进程数)
     Layer 4: 进程组隔离 + 环境变量清洗 (阻止信息泄漏)
     """
@@ -217,13 +159,13 @@ class CodeTool:
             from RestrictedPython import compile_restricted  # noqa: F401
             self._has_restricted_python = True
         except ImportError:
-            logger.warning("[CodeTool] RestrictedPython 未安装，仅使用子进程沙箱")
+            logger.warning("[CodeTool] RestrictedPython 未安装，Python 代码执行已禁用")
 
     def execute_python(self, code: str) -> dict[str, Any]:
         """
         执行 Python 代码 (全部走子进程, 不在宿主进程内 exec)
 
-        流程: AST预检查(可选) → 写入临时文件 → 子进程执行(带资源限制)
+        流程: AST 预检查 → 写入临时文件 → 子进程重新受限编译并执行
         """
         # 代码大小限制
         if len(code) > MAX_CODE_LENGTH:
@@ -249,22 +191,24 @@ class CodeTool:
             # RestrictedPython 运行时缺失，拒绝执行
             return {"success": False, "error": str(e), "stdout": "", "stderr": ""}
         except Exception as e:
-            # AST 检查失败不阻止执行 (子进程 import hook 仍会拦截)
-            logger.debug("[CodeTool] AST 预检查异常 (继续执行): %s", e)
+            logger.warning("[CodeTool] AST 安全检查异常，拒绝执行: %s", type(e).__name__)
+            return {
+                "success": False,
+                "error": f"代码安全检查异常: {type(e).__name__}",
+                "stdout": "",
+                "stderr": "",
+            }
 
         # Layer 2-4: 子进程执行 (OS 级隔离)
         return self._execute_in_subprocess(code, "python")
 
     def execute_node(self, code: str) -> dict[str, Any]:
-        """执行 Node.js 代码 (模块禁用 + 原型链保护 + 子进程隔离)"""
-        # 代码大小限制
-        if len(code) > MAX_CODE_LENGTH:
-            return {
-                "success": False,
-                "error": f"代码长度超限 ({len(code)} > {MAX_CODE_LENGTH} 字符)"
-            }
-
-        return self._execute_in_subprocess(code, "node")
+        """Node.js 缺少可靠进程级沙箱，默认拒绝执行。"""
+        logger.warning("[CodeTool] 拒绝执行 Node.js 代码 (%d 字符)", len(code))
+        return {
+            "success": False,
+            "error": "Node.js 代码执行已禁用；当前环境没有可靠的隔离沙箱。",
+        }
 
     def execute_shell(self, code: str) -> dict[str, Any]:
         """Shell 脚本执行已禁用"""
@@ -283,7 +227,10 @@ class CodeTool:
         - 环境变量清洗: 只保留 PATH/HOME/LANG 等必需变量
         - 进程组隔离: 超时可杀掉整个进程树
         """
-        ext = "py" if lang == "python" else "js"
+        if lang != "python":
+            return {"success": False, "error": f"不支持的代码语言: {lang}"}
+
+        ext = "py"
         # 使用唯一文件名避免并发写入的竞态条件
         import uuid as _uuid
         unique_id = _uuid.uuid4().hex[:12]
@@ -293,16 +240,20 @@ class CodeTool:
             # 写入带沙箱前导代码的临时文件
             with open(filepath, "w") as f:
                 if lang == "python":
-                    f.write(f"{_PYTHON_SANDBOX_PREFIX}\n{code}")
-                else:
-                    f.write(NODE_SANDBOX_PREFIX + code)
+                    f.write(_PYTHON_SANDBOX_PREFIX)
+                    f.write(f"\n_USER_CODE = {code!r}\n")
+                    f.write(
+                        "_BYTE_CODE = _compile_restricted(_USER_CODE, '<user-code>', 'exec')\n"
+                        "if _BYTE_CODE is None:\n"
+                        "    raise RuntimeError('代码安全检查未生成可执行字节码')\n"
+                        "exec(_BYTE_CODE, _USER_GLOBALS)\n"
+                        "_OUTPUT = _USER_GLOBALS.get('_print')\n"
+                        "if _OUTPUT is not None:\n"
+                        "    _builtins.print(_OUTPUT(), end='')\n"
+                    )
 
             # 构建子进程命令
-            if lang == "python":
-                cmd = ["python3", "-u", str(filepath)]
-            else:
-                # --disable-proto=delete 阻止通过 __proto__ 遍历原型链
-                cmd = ["node", "--disable-proto=delete", str(filepath)]
+            cmd = [sys.executable, "-u", str(filepath)]
 
             # 选择 preexec_fn: Unix 使用 _sandbox_preexec 加资源限制
             preexec = _sandbox_preexec if os.name != "nt" else None
@@ -342,8 +293,7 @@ class CodeTool:
             }
 
         except FileNotFoundError:
-            runtime = "Python" if lang == "python" else "Node.js"
-            return {"success": False, "error": f"{runtime} 未安装"}
+            return {"success": False, "error": "Python 未安装"}
         except Exception as e:
             logger.debug("[CodeTool] 执行异常: %s", e)
             return {"success": False, "error": f"执行错误: {type(e).__name__}"}

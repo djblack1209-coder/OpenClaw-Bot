@@ -1,15 +1,13 @@
 """sau_bridge 单元测试 — 社媒发布桥接层"""
+
 import pytest
-from unittest.mock import patch, AsyncMock
 
 from src.sau_bridge import (
     PLATFORMS,
-    get_supported_platforms,
     format_publish_result,
-    publish_video,
+    get_supported_platforms,
     publish_note,
-    publish_multi_platform,
-    check_sau_installed,
+    publish_video,
 )
 
 
@@ -51,7 +49,8 @@ class TestPublishVideo:
     async def test_file_not_exist(self):
         result = await publish_video("douyin", "/nonexistent/video.mp4", "test")
         assert not result["success"]
-        assert "不存在" in result["error"]
+        assert result["requires_approved_media_draft"] is True
+        assert result["external_actions_locked"] is True
 
 
 class TestPublishNote:
@@ -64,7 +63,8 @@ class TestPublishNote:
     async def test_no_valid_images(self):
         result = await publish_note("xiaohongshu", ["/nonexistent/1.png"], "test")
         assert not result["success"]
-        assert "有效" in result["error"]
+        assert result["requires_approved_media_draft"] is True
+        assert result["external_actions_locked"] is True
 
     @pytest.mark.asyncio
     async def test_bilibili_no_note_support(self):

@@ -55,9 +55,10 @@ class TestCheckPermissionWhitelist:
         assert result.permission_level == "denied"
         assert "白名单" in result.reason
 
-    def test_empty_admin_list_allows_everyone(self, gate_no_admin):
+    def test_empty_admin_list_denies_everyone(self, gate_no_admin):
         result = gate_no_admin.check_permission("screen_read", user_id=999)
-        assert result.allowed is True
+        assert result.allowed is False
+        assert result.permission_level == "denied"
 
     def test_confirm_action_requires_confirmation(self, gate):
         result = gate.check_permission("purchase_over_500", user_id=111)

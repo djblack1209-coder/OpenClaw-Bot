@@ -10,11 +10,11 @@
   <array>
     <string>/bin/bash</string>
     <string>-c</string>
-    <string>cd "/Users/blackdj/Desktop/OpenEverything/packages/clawbot/kiro-gateway" &amp;&amp; exec "/Users/blackdj/Desktop/OpenEverything/packages/clawbot/kiro-gateway/.venv/bin/python" "/Users/blackdj/Desktop/OpenEverything/packages/clawbot/kiro-gateway/main.py" --host 127.0.0.1 --port 18793</string>
+    <string>PYTHON="/Users/blackdj/Desktop/OpenEverything/packages/clawbot/kiro-gateway/.venv/bin/python"; if [[ ! -x "$PYTHON" ]]; then echo "Kiro Gateway disabled: reproducible runtime is not installed"; exit 0; fi; cd "/Users/blackdj/Desktop/OpenEverything/packages/clawbot/kiro-gateway" &amp;&amp; exec "$PYTHON" "/Users/blackdj/Desktop/OpenEverything/packages/clawbot/kiro-gateway/main.py" --host 127.0.0.1 --port 18793</string>
   </array>
 
   <key>RunAtLoad</key>
-  <true/>
+  <false/>
 
   <key>KeepAlive</key>
   <dict>

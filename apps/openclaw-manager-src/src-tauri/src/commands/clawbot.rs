@@ -1,19 +1,23 @@
-use crate::models::{AppResult, AppError};
-use crate::utils::shell;
 use super::config::{get_home_dir, mask_secret};
+use crate::models::{AppError, AppResult};
+use crate::utils::{file, shell};
 use log::{info, warn};
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::fs;
+use std::io::Write;
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
 use std::path::Path;
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 use tauri::command;
 
-// 安全加固: IBKR_START_CMD / IBKR_STOP_CMD 已移除（前端可写的命令直接通过 bash -c 执行=RCE 风险）
-// 这两个值只能通过手动编辑 .env 文件设置
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
+
+// IBKR shell 命令不属于运行时配置；桌面端仅执行源码内固定操作。
 const CLAWBOT_ENV_KEYS: [&str; 8] = [
     "G4F_BASE_URL",
     "KIRO_BASE_URL",
@@ -28,8 +32,6 @@ const CLAWBOT_ENV_KEYS: [&str; 8] = [
 const IBKR_MANAGED_LABEL: &str = "com.clawbot.ibkr";
 const IBKR_MANAGED_NAME: &str = "IBKR Gateway";
 const IBKR_DEFAULT_START_CMD: &str = "open -a \"IB Gateway\"";
-const IBKR_DEFAULT_STOP_CMD: &str =
-    "pkill -f \"IB Gateway\" || pkill -f \"Trader Workstation\" || true";
 
 const CLAWBOT_BOT_DEFINITIONS: [(&str, &str, &str, &str, &str, &str); 7] = [
     (
@@ -91,6 +93,21 @@ const CLAWBOT_BOT_DEFINITIONS: [(&str, &str, &str, &str, &str, &str); 7] = [
 ];
 
 const OPENCLAW_MAIN_AGENT_ID: &str = "main";
+static MANAGED_SERVICE_OPERATION_LOCK: Lazy<tokio::sync::Mutex<()>> =
+    Lazy::new(|| tokio::sync::Mutex::new(()));
+
+fn acquire_managed_service_operation_file_lock() -> AppResult<file::ExclusiveFileLock> {
+    let path = std::path::PathBuf::from(crate::utils::platform::get_config_dir())
+        .join("manager-pids")
+        .join("managed-services-operation.lock");
+    file::ExclusiveFileLock::acquire(&path, 200, 25).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::WouldBlock {
+            AppError::conflict("另一个 OpenClaw 管理器实例正在操作托管服务")
+        } else {
+            AppError::io(format!("创建托管服务操作锁失败: {}", error))
+        }
+    })
+}
 
 /// 服务定义：包含 launchd 标签、显示名、plist 路径、监听端口和启动脚本路径
 #[derive(Debug, Clone)]
@@ -166,7 +183,7 @@ fn get_managed_services() -> AppResult<Vec<ManagedServiceDefinition>> {
             name: "OpenClaw Gateway".to_string(),
             plist_path: format!("{}/ai.openclaw.gateway.plist", launchagents_dir),
             port: Some(18789),
-            launcher_script: Some(format!("{}/gateway-launcher.sh", launchagents_dir)),
+            launcher_script: None,
             stdout_log: Some(format!("{}/gateway.log", openclaw_logs_dir)),
             stderr_log: Some(format!("{}/gateway.err.log", openclaw_logs_dir)),
         },
@@ -202,7 +219,10 @@ fn get_managed_services() -> AppResult<Vec<ManagedServiceDefinition>> {
             name: "ClawBot Agent".to_string(),
             plist_path: format!("{}/ai.openclaw.clawbot-agent.plist", launchagents_dir),
             port: Some(18790), // 内部 API 端口
-            launcher_script: Some(format!("{}/packages/clawbot/scripts/start_clawbot.sh", base_dir)),
+            launcher_script: Some(format!(
+                "{}/packages/clawbot/scripts/start_clawbot.sh",
+                base_dir
+            )),
             stdout_log: Some(format!("{}/com-clawbot-agent.stdout.log", logs_dir)),
             stderr_log: Some(format!("{}/com-clawbot-agent.stderr.log", logs_dir)),
         },
@@ -211,7 +231,10 @@ fn get_managed_services() -> AppResult<Vec<ManagedServiceDefinition>> {
             name: "闲鱼 AI 客服".to_string(),
             plist_path: format!("{}/ai.openclaw.xianyu.plist", launchagents_dir),
             port: None, // 闲鱼客服是 WebSocket 客户端，不监听端口
-            launcher_script: Some(format!("{}/packages/clawbot/scripts/start_xianyu.sh", base_dir)),
+            launcher_script: Some(format!(
+                "{}/packages/clawbot/scripts/start_xianyu.sh",
+                base_dir
+            )),
             stdout_log: Some(format!("{}/com-clawbot-xianyu.stdout.log", logs_dir)),
             stderr_log: Some(format!("{}/com-clawbot-xianyu.stderr.log", logs_dir)),
         },
@@ -254,7 +277,9 @@ fn run_launchctl(args: &[&str]) -> AppResult<String> {
     if output.status.success() {
         Ok(stdout)
     } else {
-        Err(AppError::process(format!("{}{}", stdout, stderr).trim().to_string()))
+        Err(AppError::process(
+            format!("{}{}", stdout, stderr).trim().to_string(),
+        ))
     }
 }
 
@@ -270,23 +295,174 @@ fn parse_pid(launchctl_print_output: &str) -> Option<u32> {
     None
 }
 
-/// 通过 lsof 查找监听指定端口的进程 PID（用于非 launchd 启动的服务）
-fn find_pid_by_port(port: u16) -> Option<u32> {
-    // 白名单校验 — lsof 在允许列表中
-    if shell::validate_command("lsof").is_err() {
-        return None;
+fn fallback_process_marker(definition: &ManagedServiceDefinition) -> String {
+    format!("openclaw-manager:{}", definition.label)
+}
+
+fn fallback_pid_file_path(definition: &ManagedServiceDefinition) -> String {
+    let safe_label: String = definition
+        .label
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' || ch == '.' {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    format!(
+        "{}/manager-pids/{}.pid",
+        crate::utils::platform::get_config_dir(),
+        safe_label
+    )
+}
+
+fn write_fallback_pid(definition: &ManagedServiceDefinition, pid: u32) -> AppResult<()> {
+    if pid <= 1 {
+        return Err(AppError::process("脚本启动返回了不安全的 PID"));
     }
-    let output = Command::new("lsof")
-        .args(["-i", &format!(":{}", port), "-sTCP:LISTEN", "-t"])
-        .output();
-    match output {
-        Ok(out) if out.status.success() => {
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            // lsof -t 返回 PID 列表（每行一个），取第一个
-            stdout.lines().next().and_then(|s| s.trim().parse::<u32>().ok())
+    let path = fallback_pid_file_path(definition);
+    if let Some(parent) = Path::new(&path).parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| AppError::io(format!("创建服务 PID 目录失败: {}", e)))?;
+    }
+    fs::write(&path, pid.to_string())
+        .map_err(|e| AppError::io(format!("保存服务 PID 所有权记录失败: {}", e)))
+}
+
+fn read_fallback_pid(definition: &ManagedServiceDefinition) -> AppResult<Option<u32>> {
+    let path = fallback_pid_file_path(definition);
+    if !Path::new(&path).exists() {
+        return Ok(None);
+    }
+    let raw = fs::read_to_string(&path)
+        .map_err(|e| AppError::io(format!("读取服务 PID 所有权记录失败: {}", e)))?;
+    let pid = raw
+        .trim()
+        .parse::<u32>()
+        .map_err(|_| AppError::config("服务 PID 所有权记录格式无效"))?;
+    if pid <= 1 {
+        return Err(AppError::config("服务 PID 所有权记录不安全"));
+    }
+    Ok(Some(pid))
+}
+
+fn clear_fallback_pid(definition: &ManagedServiceDefinition) -> AppResult<()> {
+    match fs::remove_file(fallback_pid_file_path(definition)) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(AppError::io(format!(
+            "清理服务 PID 所有权记录失败: {}",
+            error
+        ))),
+    }
+}
+
+fn command_line_has_fallback_marker(command_line: &str, marker: &str) -> bool {
+    command_line
+        .split_whitespace()
+        .map(|token| token.trim_matches(|ch: char| ch == '\'' || ch == '"'))
+        .any(|token| token == marker)
+}
+
+#[cfg(test)]
+mod fallback_process_marker_tests {
+    use super::{command_line_has_fallback_marker, prepare_managed_script, set_or_append_env_line};
+
+    #[test]
+    fn requires_an_exact_manager_marker_argument() {
+        let marker = "openclaw-manager:ai.openclaw.clawbot-agent";
+        assert!(command_line_has_fallback_marker(
+            "/bin/bash -s -- openclaw-manager:ai.openclaw.clawbot-agent",
+            marker
+        ));
+        assert!(!command_line_has_fallback_marker(
+            "/bin/bash -s -- openclaw-manager:ai.openclaw.clawbot-agent-copy",
+            marker
+        ));
+        assert!(!command_line_has_fallback_marker(
+            "python3 service.py",
+            marker
+        ));
+    }
+
+    #[test]
+    fn managed_script_removes_unowned_kills_and_waits_for_children() {
+        let script = "#!/bin/bash\npkill -f multi_main.py\nnohup python main.py &\n";
+        let managed = prepare_managed_script(script);
+
+        assert!(!managed.contains("pkill"));
+        assert!(managed.contains("nohup python main.py &"));
+        assert!(managed.ends_with("\nwait\n"));
+    }
+
+    #[test]
+    fn runtime_config_rejects_cross_line_env_injection() {
+        let mut lines = vec!["G4F_BASE_URL=\"https://old.example\"".to_string()];
+        let error = set_or_append_env_line(
+            &mut lines,
+            "G4F_BASE_URL",
+            "https://safe.example\nOPENCLAW_API_TOKEN=attacker-known",
+        )
+        .expect_err("运行时配置不得注入新环境变量行");
+
+        assert!(error.message.contains("换行符"));
+        assert_eq!(lines, vec!["G4F_BASE_URL=\"https://old.example\""]);
+    }
+}
+
+fn verify_fallback_process(definition: &ManagedServiceDefinition, pid: u32) -> AppResult<String> {
+    let command_line = shell::get_process_command_line(pid).map_err(|e| {
+        AppError::not_found(format!(
+            "{} PID {} 不存在或不可读: {}",
+            definition.name, pid, e
+        ))
+    })?;
+    let marker = fallback_process_marker(definition);
+    if !command_line_has_fallback_marker(&command_line, &marker) {
+        return Err(AppError::conflict(format!(
+            "PID {} 与 {} 的管理器标记不匹配，已拒绝终止",
+            pid, definition.name
+        )));
+    }
+    Ok(command_line)
+}
+
+fn verified_fallback_pid(definition: &ManagedServiceDefinition) -> Option<u32> {
+    read_fallback_pid(definition)
+        .ok()
+        .flatten()
+        .filter(|pid| verify_fallback_process(definition, *pid).is_ok())
+}
+
+fn prepare_managed_script(script: &str) -> String {
+    let without_unowned_kills = script
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim_start();
+            !trimmed.starts_with("pkill ") && !trimmed.starts_with("pkill\t")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        .replace("exec ", "");
+    format!("{}\nwait\n", without_unowned_kills.trim_end())
+}
+
+fn terminate_spawned_process_group(child: &mut Child, process_group_id: u32) {
+    if shell::signal_process_group(process_group_id, true).is_err() {
+        let _ = child.kill();
+    }
+    let _ = child.wait();
+}
+
+fn reap_fallback_process(mut child: Child, definition: ManagedServiceDefinition, pid: u32) {
+    std::thread::spawn(move || {
+        let _ = child.wait();
+        if matches!(read_fallback_pid(&definition), Ok(Some(recorded_pid)) if recorded_pid == pid) {
+            let _ = clear_fallback_pid(&definition);
         }
-        _ => None,
-    }
+    });
 }
 
 /// 通过启动脚本直接启动服务（macOS 后台任务管理屏蔽 launchd 时的 fallback）
@@ -296,78 +472,156 @@ fn find_pid_by_port(port: u16) -> Option<u32> {
 ///
 /// 解决方案：读取脚本内容 → 通过 stdin 管道传给 bash，绕过文件执行权限检查。
 fn start_service_via_script(definition: &ManagedServiceDefinition) -> AppResult<String> {
-    let script = definition.launcher_script.as_ref()
-        .ok_or_else(|| AppError::config(format!("{} 未配置启动脚本，无法通过进程方式启动", definition.name)))?;
+    let script = definition.launcher_script.as_ref().ok_or_else(|| {
+        AppError::config(format!(
+            "{} 未配置启动脚本，无法通过进程方式启动",
+            definition.name
+        ))
+    })?;
 
     // 读取脚本文件内容（读取不受 provenance 限制，只有执行才被拦截）
     let script_content = std::fs::read_to_string(script)
         .map_err(|e| AppError::io(format!("读取启动脚本失败 {}: {}", script, e)))?;
 
-    // 将 exec 替换掉：exec 在 stdin 管道模式下行为不同，直接执行即可
-    let adjusted_content = script_content.replace("exec ", "");
+    // 删除旧脚本中无所有权核验的 pkill，并让 wrapper 等待所有后台子进程。
+    let managed_content = prepare_managed_script(&script_content);
 
     let stdout_log = definition.stdout_log.as_deref().unwrap_or("/dev/null");
     let stderr_log = definition.stderr_log.as_deref().unwrap_or("/dev/null");
+    let marker = fallback_process_marker(definition);
 
-    // 构造外层命令：nohup bash 从 stdin 读取脚本内容并后台执行
-    // 使用 heredoc 方式避免任何 shell 转义问题
-    let wrapper = format!(
-        "nohup bash <<'__OPENCLAW_SCRIPT_EOF__' > \"{}\" 2> \"{}\" &\n{}\n__OPENCLAW_SCRIPT_EOF__",
-        stdout_log, stderr_log, adjusted_content
-    );
+    let stdout = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(stdout_log)
+        .map_err(|e| AppError::io(format!("打开服务 stdout 日志失败: {}", e)))?;
+    let stderr = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(stderr_log)
+        .map_err(|e| AppError::io(format!("打开服务 stderr 日志失败: {}", e)))?;
 
-    let output = {
-        shell::validate_command("bash")?;
-        Command::new("bash")
-        .args(["-c", &wrapper])
-        .output()
-        .map_err(|e| AppError::process(format!("执行启动脚本失败: {}", e)))?
-    };
+    shell::validate_command("bash")?;
+    let mut command = Command::new("bash");
+    command
+        .args(["-s", "--", &marker])
+        .env("PATH", shell::get_extended_path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::from(stdout))
+        .stderr(Stdio::from(stderr));
+    #[cfg(unix)]
+    command.process_group(0);
 
-    if output.status.success() {
-        Ok(format!("{} 已通过启动脚本启动", definition.name))
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(AppError::process(format!("{} 启动脚本执行失败: {}", definition.name, stderr.trim())))
+    let mut child = command
+        .spawn()
+        .map_err(|e| AppError::process(format!("执行启动脚本失败: {}", e)))?;
+    let pid = child.id();
+    let write_result = child
+        .stdin
+        .take()
+        .ok_or_else(|| AppError::process("启动脚本 stdin 不可用"))
+        .and_then(|mut stdin| {
+            stdin
+                .write_all(managed_content.as_bytes())
+                .map_err(|e| AppError::process(format!("写入启动脚本失败: {}", e)))
+        });
+    if let Err(error) = write_result {
+        terminate_spawned_process_group(&mut child, pid);
+        return Err(error);
     }
+    if let Err(error) = write_fallback_pid(definition, pid) {
+        terminate_spawned_process_group(&mut child, pid);
+        return Err(error);
+    }
+    if let Err(error) = verify_fallback_process(definition, pid) {
+        terminate_spawned_process_group(&mut child, pid);
+        let _ = clear_fallback_pid(definition);
+        return Err(error);
+    }
+    reap_fallback_process(child, definition.clone(), pid);
+    Ok(format!(
+        "{} 已通过启动脚本启动 (PID: {})",
+        definition.name, pid
+    ))
 }
 
-/// 停止通过脚本启动的服务（通过端口找到 PID 并 kill）
+/// 停止通过脚本启动且具有管理器 PID 所有权记录的服务。
 /// 使用 tokio::time::sleep 替代 std::thread::sleep，避免阻塞 tokio 工作线程
 async fn stop_service_via_pid(definition: &ManagedServiceDefinition) -> AppResult<String> {
-    let port = definition.port
-        .ok_or_else(|| AppError::config(format!("{} 未配置端口，无法通过进程方式停止", definition.name)))?;
-
-    let pid = find_pid_by_port(port)
-        .ok_or_else(|| AppError::not_found(format!("{} 未找到监听端口 {} 的进程", definition.name, port)))?;
-
-    // 先发 SIGTERM（优雅关闭），进程不响应再 SIGKILL
-    shell::validate_command("kill")?;
-    let output = Command::new("kill")
-        .args(["-TERM", &pid.to_string()])
-        .output()
-        .map_err(|e| AppError::process(format!("发送停止信号失败: {}", e)))?;
-
-    if output.status.success() {
-        // 等待进程退出（异步等待，不阻塞 tokio 线程）
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-        // 检查进程是否还在
-        if find_pid_by_port(port).is_some() {
-            // 强制杀死
-            let _ = Command::new("kill").args(["-KILL", &pid.to_string()]).output();
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    let Some(pid) = read_fallback_pid(definition)? else {
+        if let Some(port) = definition.port {
+            let address = format!("127.0.0.1:{}", port);
+            if address
+                .parse::<SocketAddr>()
+                .ok()
+                .is_some_and(|socket| check_tcp(socket).is_ok())
+            {
+                return Err(AppError::conflict(format!(
+                    "{} 端口可达但没有管理器 PID 所有权记录，已拒绝终止",
+                    definition.name
+                )));
+            }
         }
-        Ok(format!("{} 已停止 (PID: {})", definition.name, pid))
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(AppError::process(format!("{} 停止失败: {}", definition.name, stderr.trim())))
+        return Ok(format!("{} 没有脚本模式进程需要停止", definition.name));
+    };
+
+    if let Err(error) = verify_fallback_process(definition, pid) {
+        if shell::get_process_command_line(pid).is_err() {
+            if shell::process_group_is_running(pid) {
+                return Err(AppError::conflict(format!(
+                    "{} 的进程组 {} 仍有成员，但组长身份不可核验，已拒绝终止",
+                    definition.name, pid
+                )));
+            }
+            clear_fallback_pid(definition)?;
+            return Ok(format!("{} 已停止，失效 PID 记录已清理", definition.name));
+        }
+        return Err(error);
     }
+
+    shell::signal_process_group(pid, false)
+        .map_err(|e| AppError::process(format!("发送 {} 停止信号失败: {}", definition.name, e)))?;
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    if shell::process_group_is_running(pid) {
+        if shell::get_process_command_line(pid).is_ok() {
+            verify_fallback_process(definition, pid)?;
+        }
+        shell::signal_process_group(pid, true)
+            .map_err(|e| AppError::process(format!("强制终止 {} 失败: {}", definition.name, e)))?;
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    }
+    if shell::process_group_is_running(pid) {
+        return Err(AppError::process(format!(
+            "{} 进程组 {} 仍在运行",
+            definition.name, pid
+        )));
+    }
+    clear_fallback_pid(definition)?;
+    Ok(format!("{} 已停止 (PID: {})", definition.name, pid))
 }
 
 /// 查询服务运行状态
 /// 优先用 launchctl print 检测 launchd 状态，如果 launchd 不可用（被 macOS 后台任务管理屏蔽），
 /// 则降级为端口探活 + 进程名匹配方式判断服务是否在运行
 fn query_service_status(uid: &str, definition: &ManagedServiceDefinition) -> ManagedServiceStatus {
+    if definition.label == "ai.openclaw.gateway" {
+        return match super::service::gateway_status_snapshot() {
+            Ok(status) => ManagedServiceStatus {
+                label: definition.label.clone(),
+                name: definition.name.clone(),
+                running: status.running,
+                pid: status.pid,
+                plist_path: definition.plist_path.clone(),
+            },
+            Err(_) => ManagedServiceStatus {
+                label: definition.label.clone(),
+                name: definition.name.clone(),
+                running: false,
+                pid: None,
+                plist_path: definition.plist_path.clone(),
+            },
+        };
+    }
     if definition.label == IBKR_MANAGED_LABEL {
         return query_ibkr_status(definition);
     }
@@ -375,10 +629,15 @@ fn query_service_status(uid: &str, definition: &ManagedServiceDefinition) -> Man
     let target = launchctl_target(uid, &definition.label);
     // 白名单校验 — launchctl 在允许列表中
     let output = if shell::validate_command("launchctl").is_ok() {
-        Command::new("launchctl").args(["print", target.as_str()]).output()
+        Command::new("launchctl")
+            .args(["print", target.as_str()])
+            .output()
     } else {
         // 校验失败时直接走 fallback 路径
-        Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "命令不在白名单中"))
+        Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "命令不在白名单中",
+        ))
     };
 
     match output {
@@ -393,12 +652,11 @@ fn query_service_status(uid: &str, definition: &ManagedServiceDefinition) -> Man
                     if let Ok(addr) = addr_str.parse::<SocketAddr>() {
                         if check_tcp(addr).is_ok() {
                             // 端口可达说明服务实际在运行（可能通过非 launchd 方式启动）
-                            let fallback_pid = find_pid_by_port(port);
                             return ManagedServiceStatus {
                                 label: definition.label.clone(),
                                 name: definition.name.clone(),
                                 running: true,
-                                pid: fallback_pid,
+                                pid: verified_fallback_pid(definition),
                                 plist_path: definition.plist_path.clone(),
                             };
                         }
@@ -419,12 +677,11 @@ fn query_service_status(uid: &str, definition: &ManagedServiceDefinition) -> Man
                 let addr_str = format!("127.0.0.1:{}", port);
                 if let Ok(addr) = addr_str.parse::<SocketAddr>() {
                     if check_tcp(addr).is_ok() {
-                        let fallback_pid = find_pid_by_port(port);
                         return ManagedServiceStatus {
                             label: definition.label.clone(),
                             name: definition.name.clone(),
                             running: true,
-                            pid: fallback_pid,
+                            pid: verified_fallback_pid(definition),
                             plist_path: definition.plist_path.clone(),
                         };
                     }
@@ -437,7 +694,7 @@ fn query_service_status(uid: &str, definition: &ManagedServiceDefinition) -> Man
                 pid: None,
                 plist_path: definition.plist_path.clone(),
             }
-        },
+        }
     }
 }
 
@@ -499,47 +756,22 @@ fn find_service_definition(label: &str) -> AppResult<ManagedServiceDefinition> {
 
 fn parse_env_content(content: &str) -> HashMap<String, String> {
     let mut values = HashMap::new();
-    for raw_line in content.lines() {
-        let line = raw_line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        if let Some((k, v)) = line.split_once('=') {
-            let trimmed = v.trim();
-            // 只在值被完整引号包裹且长度 ≥ 2 时才去除引号
-            let unquoted = if trimmed.len() >= 2
-                && ((trimmed.starts_with('"') && trimmed.ends_with('"'))
-                    || (trimmed.starts_with('\'') && trimmed.ends_with('\'')))
-            {
-                &trimmed[1..trimmed.len() - 1]
-            } else {
-                trimmed
-            };
-            values.insert(k.trim().to_string(), unquoted.to_string());
+    for line in content.lines() {
+        if let Some((key, value)) = file::parse_env_assignment(line) {
+            values.insert(key, value);
         }
     }
     values
 }
 
-fn normalize_shell_command(value: &str) -> String {
-    value
-        .trim()
-        .chars()
-        .map(|ch| match ch {
-            '“' | '”' | '„' | '‟' => '"',
-            '‘' | '’' | '‚' | '‛' => '\'',
-            '\u{00A0}' => ' ',
-            _ => ch,
-        })
-        .collect()
-}
-
-fn set_or_append_env_line(lines: &mut Vec<String>, key: &str, value: &str) {
+fn set_or_append_env_line(lines: &mut Vec<String>, key: &str, value: &str) -> AppResult<()> {
+    let new_line = file::format_env_assignment(key, value, false)
+        .map_err(|e| AppError::validation(format!("ClawBot 环境变量值无效: {}", e)))?;
     let mut updated = false;
     for line in lines.iter_mut() {
         if let Some((left, _)) = line.split_once('=') {
             if left.trim() == key {
-                *line = format!("{}={}", key, value);
+                *line = new_line.clone();
                 updated = true;
                 break;
             }
@@ -547,8 +779,9 @@ fn set_or_append_env_line(lines: &mut Vec<String>, key: &str, value: &str) {
     }
 
     if !updated {
-        lines.push(format!("{}={}", key, value));
+        lines.push(new_line);
     }
+    Ok(())
 }
 
 fn get_clawbot_env_path() -> AppResult<String> {
@@ -560,13 +793,25 @@ fn get_service_log_path(label: &str) -> AppResult<String> {
     let base_dir = get_base_dir()?;
     let path = match label {
         "ai.openclaw.gateway" => format!("{}/.openclaw/logs/gateway.log", base_dir),
-        "ai.openclaw.clawbot-agent" => format!("{}/packages/clawbot/logs/com-clawbot-agent.stderr.log", base_dir),
-        "ai.openclaw.g4f" => format!("{}/packages/clawbot/logs/com-clawbot-g4f.stderr.log", base_dir),
+        "ai.openclaw.clawbot-agent" => format!(
+            "{}/packages/clawbot/logs/com-clawbot-agent.stderr.log",
+            base_dir
+        ),
+        "ai.openclaw.g4f" => format!(
+            "{}/packages/clawbot/logs/com-clawbot-g4f.stderr.log",
+            base_dir
+        ),
         "ai.openclaw.kiro-gateway" => {
-            format!("{}/packages/clawbot/logs/com-clawbot-kiro-gateway.stderr.log", base_dir)
+            format!(
+                "{}/packages/clawbot/logs/com-clawbot-kiro-gateway.stderr.log",
+                base_dir
+            )
         }
         "ai.openclaw.xianyu" => {
-            format!("{}/packages/clawbot/logs/com-clawbot-xianyu.stderr.log", base_dir)
+            format!(
+                "{}/packages/clawbot/logs/com-clawbot-xianyu.stderr.log",
+                base_dir
+            )
         }
         _ => return Err(AppError::not_found(format!("未知服务标签: {}", label))),
     };
@@ -628,7 +873,8 @@ fn load_openclaw_config() -> AppResult<Value> {
     let cfg_path = get_openclaw_config_path()?;
     let content = fs::read_to_string(&cfg_path)
         .map_err(|e| AppError::config(format!("读取 OpenClaw 配置失败: {}", e)))?;
-    serde_json::from_str(&content).map_err(|e| AppError::serialization(format!("解析 OpenClaw 配置失败: {}", e)))
+    serde_json::from_str(&content)
+        .map_err(|e| AppError::serialization(format!("解析 OpenClaw 配置失败: {}", e)))
 }
 
 fn get_openclaw_main_matrix_entry() -> AppResult<Option<ClawbotBotMatrixEntry>> {
@@ -709,22 +955,15 @@ fn is_ibkr_reachable(env_map: &HashMap<String, String>) -> AppResult<()> {
 
 fn get_default_ibkr_start_cmd() -> String {
     if let Ok(base_dir) = get_base_dir() {
-        let script_path = format!("{}/packages/clawbot/scripts/start_ibkr_gateway.sh", base_dir);
+        let script_path = format!(
+            "{}/packages/clawbot/scripts/start_ibkr_gateway.sh",
+            base_dir
+        );
         if Path::new(&script_path).exists() {
             return format!("bash \"{}\"", script_path);
         }
     }
     IBKR_DEFAULT_START_CMD.to_string()
-}
-
-fn get_default_ibkr_stop_cmd() -> String {
-    if let Ok(base_dir) = get_base_dir() {
-        let script_path = format!("{}/packages/clawbot/scripts/stop_ibkr_gateway.sh", base_dir);
-        if Path::new(&script_path).exists() {
-            return format!("bash \"{}\"", script_path);
-        }
-    }
-    IBKR_DEFAULT_STOP_CMD.to_string()
 }
 
 fn query_ibkr_status(definition: &ManagedServiceDefinition) -> ManagedServiceStatus {
@@ -739,70 +978,46 @@ fn query_ibkr_status(definition: &ManagedServiceDefinition) -> ManagedServiceSta
     }
 }
 
-/// 校验 shell 脚本命令中的程序名是否在白名单中
-/// 提取命令字符串的第一个 token（程序名），交给 shell::validate_command 校验
-/// 用于验证从 .env 配置文件读取的命令（如 IBKR_START_CMD）
-fn validate_script_command(script: &str) -> AppResult<()> {
-    let trimmed = script.trim();
-    if trimmed.is_empty() {
-        return Ok(());
-    }
-    // 提取第一个 token 作为程序名（按空格分割）
-    let first_token = trimmed.split_whitespace().next().unwrap_or(trimmed);
-    shell::validate_command(first_token)
-}
-
 fn control_ibkr_service(action: &str) -> AppResult<String> {
     let env_map = load_clawbot_env_map()?;
     let (host, port) = get_ibkr_host_port(&env_map);
-    let start_cmd_raw = env_map
-        .get("IBKR_START_CMD")
-        .cloned()
-        .filter(|v| !v.trim().is_empty())
-        .unwrap_or_else(get_default_ibkr_start_cmd);
-    let stop_cmd_raw = env_map
-        .get("IBKR_STOP_CMD")
-        .cloned()
-        .filter(|v| !v.trim().is_empty())
-        .unwrap_or_else(get_default_ibkr_stop_cmd);
-    let start_cmd = normalize_shell_command(&start_cmd_raw);
-    let stop_cmd = normalize_shell_command(&stop_cmd_raw);
-
-    if start_cmd != start_cmd_raw {
-        info!("[IBKR] 启动命令已自动规范化引号: {} -> {}", start_cmd_raw, start_cmd);
-    }
-    if stop_cmd != stop_cmd_raw {
-        info!("[IBKR] 停止命令已自动规范化引号: {} -> {}", stop_cmd_raw, stop_cmd);
-    }
-
-    // 安全加固: 校验 IBKR 命令的程序名是否在白名单中
-    // 从 shell 脚本命令中提取第一个 token（即程序名）
-    validate_script_command(&start_cmd)?;
-    validate_script_command(&stop_cmd)?;
+    let reachable = is_ibkr_reachable(&env_map).is_ok();
+    let start_cmd = get_default_ibkr_start_cmd();
 
     match action {
         "start" => {
+            if reachable {
+                return Ok(format!("IBKR 已在 {}:{} 运行", host, port));
+            }
             shell::run_script_output(&start_cmd)
                 .map_err(|e| AppError::process(format!("执行 IBKR 启动命令失败: {}", e)))?;
             Ok(format!(
-                "IBKR 启动命令已执行（{}），等待端口 {}:{} 就绪",
-                start_cmd, host, port
+                "IBKR 启动命令已执行，等待端口 {}:{} 就绪",
+                host, port
             ))
         }
         "stop" => {
-            shell::run_script_output(&stop_cmd)
-                .map_err(|e| AppError::process(format!("执行 IBKR 停止命令失败: {}", e)))?;
-            Ok("IBKR 停止命令已执行".to_string())
+            if reachable {
+                Err(AppError::conflict(
+                    "IBKR 是外部客户端且没有管理器 PID 所有权记录，已拒绝终止；请在 IB Gateway/TWS 内退出",
+                ))
+            } else {
+                Ok("IBKR 未在运行".to_string())
+            }
         }
         "restart" => {
-            shell::run_script_output(&stop_cmd)
-                .map_err(|e| AppError::process(format!("执行 IBKR 停止命令失败: {}", e)))?;
-            shell::run_script_output(&start_cmd)
-                .map_err(|e| AppError::process(format!("执行 IBKR 启动命令失败: {}", e)))?;
-            Ok(format!(
-                "IBKR 已重启（{}），等待端口 {}:{} 就绪",
-                start_cmd, host, port
-            ))
+            if reachable {
+                Err(AppError::conflict(
+                    "IBKR 是外部客户端且没有管理器 PID 所有权记录，已拒绝重启；请先在 IB Gateway/TWS 内退出",
+                ))
+            } else {
+                shell::run_script_output(&start_cmd)
+                    .map_err(|e| AppError::process(format!("执行 IBKR 启动命令失败: {}", e)))?;
+                Ok(format!(
+                    "IBKR 启动命令已执行，等待端口 {}:{} 就绪",
+                    host, port
+                ))
+            }
         }
         _ => Err(AppError::validation(format!("不支持的操作: {}", action))),
     }
@@ -828,12 +1043,11 @@ fn get_route_base_url(provider: &str, env_map: &HashMap<String, String>) -> Stri
             .unwrap_or_default(),
         "claude-proxy" => env_map.get("CLAUDE_BASE_URL").cloned().unwrap_or_default(),
         // 这些 Bot 走 LiteLLM 统一路由，优先显示 SiliconFlow 付费渠道地址
-        "free_pool" | "free_first" | "free_llm" => {
-            env_map.get("SILICONFLOW_PAID_BASE_URL")
-                .or_else(|| env_map.get("SILICONFLOW_BASE_URL"))
-                .cloned()
-                .unwrap_or_else(|| "LiteLLM 智能路由".to_string())
-        }
+        "free_pool" | "free_first" | "free_llm" => env_map
+            .get("SILICONFLOW_PAID_BASE_URL")
+            .or_else(|| env_map.get("SILICONFLOW_BASE_URL"))
+            .cloned()
+            .unwrap_or_else(|| "LiteLLM 智能路由".to_string()),
         _ => String::new(),
     }
 }
@@ -853,6 +1067,17 @@ pub async fn get_managed_services_status() -> AppResult<Vec<ManagedServiceStatus
 
 #[command]
 pub async fn control_managed_service(label: String, action: String) -> AppResult<String> {
+    if label == "ai.openclaw.gateway" {
+        info!("[总控] Gateway 操作委托给统一服务控制器: {}", action);
+        return match action.as_str() {
+            "start" => super::service::start_service().await,
+            "stop" => super::service::stop_service().await,
+            "restart" => super::service::restart_service().await,
+            _ => Err(AppError::validation(format!("不支持的操作: {}", action))),
+        };
+    }
+    let _operation_guard = MANAGED_SERVICE_OPERATION_LOCK.lock().await;
+    let _file_guard = acquire_managed_service_operation_file_lock()?;
     if label == IBKR_MANAGED_LABEL {
         info!("[总控] 服务操作: {} -> {}", label, action);
         return control_ibkr_service(&action);
@@ -881,36 +1106,65 @@ pub async fn control_managed_service(label: String, action: String) -> AppResult
                         Ok(format!("{} 已启动", definition.name))
                     } else if definition.launcher_script.is_some() {
                         // launchd 声称成功但端口没起来，降级用脚本启动
-                        info!("[总控] launchd 启动 {} 后未响应，降级为脚本启动", definition.label);
+                        info!(
+                            "[总控] launchd 启动 {} 后未响应，降级为脚本启动",
+                            definition.label
+                        );
                         start_service_via_script(&definition)
                     } else {
-                        Err(AppError::process(format!("{} 启动失败：launchd 未能拉起服务", definition.name)))
+                        Err(AppError::process(format!(
+                            "{} 启动失败：launchd 未能拉起服务",
+                            definition.name
+                        )))
                     }
                 }
                 Err(_) if definition.launcher_script.is_some() => {
                     // launchd 操作失败（如被 macOS 屏蔽），降级用脚本启动
-                    info!("[总控] launchd 启动 {} 失败，降级为脚本启动", definition.label);
+                    info!(
+                        "[总控] launchd 启动 {} 失败，降级为脚本启动",
+                        definition.label
+                    );
                     start_service_via_script(&definition)
                 }
-                Err(e) => Err(AppError::process(format!("{} 启动失败: {}", definition.name, e))),
+                Err(e) => Err(AppError::process(format!(
+                    "{} 启动失败: {}",
+                    definition.name, e
+                ))),
             }
         }
         "stop" => {
-            // 先尝试 launchd 方式停止
-            let _ = bootout_service(&uid, &definition);
-            // 无论 launchd 是否成功，都检查端口并 kill 残留进程
-            if definition.port.is_some() {
-                if let Ok(msg) = stop_service_via_pid(&definition).await {
-                    return Ok(msg);
+            let launchd_result = bootout_service(&uid, &definition);
+            let fallback_result = stop_service_via_pid(&definition).await;
+            let status = query_service_status(&uid, &definition);
+            if status.running {
+                if let Err(error) = fallback_result {
+                    return Err(error);
                 }
+                if let Err(error) = launchd_result {
+                    return Err(error);
+                }
+                return Err(AppError::process(format!(
+                    "{} 停止后仍在运行",
+                    definition.name
+                )));
             }
             Ok(format!("{} 已停止", definition.name))
         }
         "restart" => {
-            // 停止：先 launchd bootout + kill 进程
-            let _ = bootout_service(&uid, &definition);
-            if definition.port.is_some() {
-                let _ = stop_service_via_pid(&definition).await;
+            let launchd_stop = bootout_service(&uid, &definition);
+            let fallback_stop = stop_service_via_pid(&definition).await;
+            let stopped_status = query_service_status(&uid, &definition);
+            if stopped_status.running {
+                if let Err(error) = fallback_stop {
+                    return Err(error);
+                }
+                if let Err(error) = launchd_stop {
+                    return Err(error);
+                }
+                return Err(AppError::process(format!(
+                    "{} 重启前未能安全停止",
+                    definition.name
+                )));
             }
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             // 启动：先 launchd，失败则降级脚本
@@ -923,7 +1177,10 @@ pub async fn control_managed_service(label: String, action: String) -> AppResult
                     if recheck.running {
                         Ok(format!("{} 已重启", definition.name))
                     } else if definition.launcher_script.is_some() {
-                        info!("[总控] launchd 重启 {} 后未响应，降级为脚本启动", definition.label);
+                        info!(
+                            "[总控] launchd 重启 {} 后未响应，降级为脚本启动",
+                            definition.label
+                        );
                         start_service_via_script(&definition)?;
                         Ok(format!("{} 已重启（脚本模式）", definition.name))
                     } else {
@@ -931,11 +1188,17 @@ pub async fn control_managed_service(label: String, action: String) -> AppResult
                     }
                 }
                 Err(_) if definition.launcher_script.is_some() => {
-                    info!("[总控] launchd 重启 {} 失败，降级为脚本启动", definition.label);
+                    info!(
+                        "[总控] launchd 重启 {} 失败，降级为脚本启动",
+                        definition.label
+                    );
                     start_service_via_script(&definition)?;
                     Ok(format!("{} 已重启（脚本模式）", definition.name))
                 }
-                Err(e) => Err(AppError::process(format!("{} 重启失败: {}", definition.name, e))),
+                Err(e) => Err(AppError::process(format!(
+                    "{} 重启失败: {}",
+                    definition.name, e
+                ))),
             }
         }
         _ => Err(AppError::validation(format!("不支持的操作: {}", action))),
@@ -951,6 +1214,7 @@ pub async fn control_all_managed_services(action: String) -> AppResult<String> {
     }
 
     let mut messages = Vec::new();
+    let mut failures = Vec::new();
 
     for service in services {
         if service.label == IBKR_MANAGED_LABEL && !should_autostart_ibkr(&action)? {
@@ -962,12 +1226,20 @@ pub async fn control_all_managed_services(action: String) -> AppResult<String> {
             Ok(msg) => messages.push(msg),
             Err(err) => {
                 warn!("[总控] 操作失败 {}: {}", service.label, err);
-                messages.push(format!("{}: {}", service.name, err));
+                failures.push(format!("{}: {}", service.name, err));
             }
         }
     }
 
-    Ok(messages.join("\n"))
+    if failures.is_empty() {
+        Ok(messages.join("\n"))
+    } else {
+        Err(AppError::process(format!(
+            "部分服务操作失败:\n{}\n\n已完成:\n{}",
+            failures.join("\n"),
+            messages.join("\n")
+        )))
+    }
 }
 
 #[command]
@@ -988,9 +1260,7 @@ pub async fn get_clawbot_runtime_config() -> AppResult<HashMap<String, String>> 
 #[command]
 pub async fn get_openclaw_usage_snapshot() -> AppResult<Value> {
     // 使用超时机制避免 openclaw 命令挂起导致 UI 卡死
-    let handle = std::thread::spawn(|| {
-        shell::run_openclaw(&["status", "--usage", "--json"])
-    });
+    let handle = std::thread::spawn(|| shell::run_openclaw(&["status", "--usage", "--json"]));
 
     let result = tokio::time::timeout(
         std::time::Duration::from_secs(3),
@@ -1020,7 +1290,8 @@ pub async fn get_clawbot_bot_matrix() -> AppResult<Vec<ClawbotBotMatrixEntry>> {
     let env_map = parse_env_content(&content);
 
     let mut entries = Vec::new();
-    for (id, name, token_key, username_key, route_provider, route_model) in CLAWBOT_BOT_DEFINITIONS {
+    for (id, name, token_key, username_key, route_provider, route_model) in CLAWBOT_BOT_DEFINITIONS
+    {
         let token = env_map.get(token_key).cloned().unwrap_or_default();
         let username = env_map.get(username_key).cloned().unwrap_or_default();
         let token_configured = !token.is_empty();
@@ -1062,15 +1333,11 @@ pub async fn save_clawbot_runtime_config(values: HashMap<String, String>) -> App
 
     for key in CLAWBOT_ENV_KEYS {
         if let Some(value) = values.get(key) {
-            let normalized_value = match key {
-                "IBKR_START_CMD" | "IBKR_STOP_CMD" => normalize_shell_command(value),
-                _ => value.to_string(),
-            };
-            set_or_append_env_line(&mut lines, key, &normalized_value);
+            set_or_append_env_line(&mut lines, key, value)?;
         }
     }
 
-    fs::write(&env_path, lines.join("\n"))
+    file::write_file_atomic(&env_path, &lines.join("\n"))
         .map_err(|e| AppError::io(format!("保存 ClawBot 配置失败: {}", e)))?;
 
     Ok("ClawBot 配置已保存".to_string())
@@ -1085,21 +1352,20 @@ pub async fn get_managed_service_logs(label: String, lines: Option<u32>) -> AppR
         return Ok(vec![
             "IBKR 属于外部客户端服务（无 LaunchAgent 日志文件）".to_string(),
             format!("当前探测地址: {}:{}", host, port),
-            format!("端口状态: {}", if reachable { "Reachable" } else { "Unreachable" }),
             format!(
-                "IBKR_AUTOSTART={} | IBKR_START_CMD={} | IBKR_STOP_CMD={}",
+                "端口状态: {}",
+                if reachable {
+                    "Reachable"
+                } else {
+                    "Unreachable"
+                }
+            ),
+            format!(
+                "IBKR_AUTOSTART={} | 启停操作由桌面端固定管理",
                 env_map
                     .get("IBKR_AUTOSTART")
                     .cloned()
                     .unwrap_or_else(|| "true".to_string()),
-                env_map
-                    .get("IBKR_START_CMD")
-                    .cloned()
-                    .unwrap_or_else(get_default_ibkr_start_cmd),
-                env_map
-                    .get("IBKR_STOP_CMD")
-                    .cloned()
-                    .unwrap_or_else(get_default_ibkr_stop_cmd),
             ),
         ]);
     }
@@ -1135,12 +1401,7 @@ pub async fn get_managed_endpoints_status() -> AppResult<Vec<ManagedEndpointStat
             "127.0.0.1".to_string(),
             "18793".to_string(),
         ),
-        (
-            "ibkr".to_string(),
-            "IBKR".to_string(),
-            ibkr_host,
-            ibkr_port,
-        ),
+        ("ibkr".to_string(), "IBKR".to_string(), ibkr_host, ibkr_port),
     ];
 
     let mut results = Vec::new();
@@ -1213,21 +1474,27 @@ pub async fn get_skills_status() -> AppResult<SkillsStatus> {
 
     // 读取 openclaw.json 中的 skills.entries 获取启用列表
     let enabled_set: std::collections::HashSet<String> = match load_openclaw_config() {
-        Ok(cfg) => {
-            cfg.get("skills")
-                .and_then(|v| v.get("entries"))
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|entry| {
-                            let name = entry.get("name").and_then(|v| v.as_str())?;
-                            let enabled = entry.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true);
-                            if enabled { Some(name.to_string()) } else { None }
-                        })
-                        .collect()
-                })
-                .unwrap_or_default()
-        }
+        Ok(cfg) => cfg
+            .get("skills")
+            .and_then(|v| v.get("entries"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|entry| {
+                        let name = entry.get("name").and_then(|v| v.as_str())?;
+                        let enabled = entry
+                            .get("enabled")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(true);
+                        if enabled {
+                            Some(name.to_string())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
         Err(_) => std::collections::HashSet::new(),
     };
 

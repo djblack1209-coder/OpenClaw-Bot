@@ -11,7 +11,9 @@ import hashlib
 import html
 import http.client
 import json
+import os
 import re
+import tempfile
 import textwrap
 import threading
 import urllib.error
@@ -440,9 +442,87 @@ def _load_state(path: Path = _STATE_FILE) -> dict[str, Any]:
 def _save_state(state: dict[str, Any], path: Path = _STATE_FILE) -> None:
     """原子化保存 X 自动运营状态。"""
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(path)
+    descriptor, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(state, handle, ensure_ascii=False, indent=2)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, path)
+    finally:
+        if os.path.exists(temp_name):
+            os.unlink(temp_name)
+
+
+def _mutate_state(path: Path, mutator):
+    """在统一跨进程事务内更新 X 自动运营状态。"""
+    from src.execution.social.publish_gate import mutate_state_transaction
+
+    return mutate_state_transaction(
+        lambda: _load_state(path),
+        lambda state: _save_state(state, path),
+        mutator,
+    )
+
+
+def _has_active_publish_authorization(draft: dict[str, Any]) -> bool:
+    """识别不能被草稿重建覆盖的审核或发布中状态。"""
+    return bool(
+        draft.get("review_status") == "approved"
+        or draft.get("confirmation_token_hash")
+        or str(draft.get("status") or "").lower() in {"approved", "publishing", "published"}
+    )
+
+
+def _trim_drafts_preserving_authorized(
+    drafts: list[dict[str, Any]],
+    limit: int,
+) -> list[dict[str, Any]]:
+    """裁剪普通候选草稿，但永不丢弃已审核、已发布或发布中的记录。"""
+    protected = [draft for draft in drafts if _has_active_publish_authorization(draft)]
+    ordinary = [draft for draft in drafts if not _has_active_publish_authorization(draft)]
+    ordinary_slots = max(0, limit - len(protected))
+    return [*protected, *ordinary[-ordinary_slots:]] if ordinary_slots else protected
+
+
+def _merge_generated_drafts(
+    state: dict[str, Any],
+    generated: list[dict[str, Any]],
+    *,
+    limit: int,
+    rebuild: bool = False,
+    supersede_legacy: bool = False,
+) -> list[dict[str, Any]]:
+    """把新候选合并进最新磁盘状态，避免覆盖审核令牌和发布结果。"""
+    if rebuild:
+        _supersede_ready_drafts_for_rebuild(state)
+    if supersede_legacy:
+        _supersede_legacy_ready_drafts(state)
+
+    drafts = list(state.get("drafts", []) or [])
+    committed: list[dict[str, Any]] = []
+    for candidate in generated:
+        draft_id = str(candidate.get("id") or "")
+        existing_index = next(
+            (index for index, item in enumerate(drafts) if str(item.get("id") or "") == draft_id),
+            None,
+        )
+        if existing_index is None:
+            drafts.append(candidate)
+            committed.append(candidate)
+            continue
+
+        existing = drafts[existing_index]
+        if _has_active_publish_authorization(existing):
+            committed.append(existing)
+            continue
+        candidate["created_at"] = existing.get("created_at") or candidate.get("created_at")
+        drafts[existing_index] = candidate
+        committed.append(candidate)
+
+    state["drafts"] = _trim_drafts_preserving_authorized(drafts, limit)
+    state["last_run"] = now_et().isoformat()
+    return committed
 
 
 def is_draft_approved(draft: dict[str, Any]) -> bool:
@@ -1412,21 +1492,52 @@ def mark_draft_review(
     reviewer: str = "owner",
     state_path: Path = _STATE_FILE,
 ) -> dict[str, Any]:
+    """跨进程串行化 X 自动运营草稿审核。"""
+    from src.execution.social.publish_gate import publish_state_lock
+
+    with publish_state_lock:
+        return _mark_draft_review_locked(
+            draft_id,
+            approved=approved,
+            reviewer=reviewer,
+            state_path=state_path,
+        )
+
+
+def _mark_draft_review_locked(
+    draft_id: str,
+    approved: bool,
+    reviewer: str = "owner",
+    state_path: Path = _STATE_FILE,
+) -> dict[str, Any]:
     """审核 X 自动运营草稿：用户确认后才允许定时/手动外发。"""
-    state = _load_state(state_path)
-    for draft in state.get("drafts", []):
-        if draft.get("id") != draft_id:
-            continue
-        draft["review_status"] = "approved" if approved else "rejected"
-        draft["reviewed_at"] = now_et().isoformat()
-        draft["approved_by"] = reviewer if approved else ""
-        if approved and draft.get("status") in {"ready", "needs_review", "edited", "failed", "rejected"}:
-            draft["status"] = "approved"
-        elif not approved:
-            draft["status"] = "rejected"
-        _save_state(state, state_path)
-        return {"success": True, "draft": draft}
-    return {"success": False, "error": "Invalid draft id"}
+    def apply_review(state: dict[str, Any]) -> dict[str, Any]:
+        for draft in state.get("drafts", []):
+            if draft.get("id") != draft_id:
+                continue
+            draft["review_status"] = "approved" if approved else "rejected"
+            draft["reviewed_at"] = now_et().isoformat()
+            draft["approved_by"] = reviewer if approved else ""
+            if approved and draft.get("status") in {
+                "ready",
+                "needs_review",
+                "edited",
+                "failed",
+                "rejected",
+            }:
+                draft["status"] = "approved"
+                from src.execution.social.publish_gate import seal_approved_draft
+
+                seal_approved_draft(draft)
+            elif not approved:
+                draft["status"] = "rejected"
+                from src.execution.social.publish_gate import invalidate_publish_authorization
+
+                invalidate_publish_authorization(draft)
+            return {"success": True, "draft": draft}
+        return {"success": False, "error": "Invalid draft id"}
+
+    return _mutate_state(state_path, apply_review)
 
 
 def get_next_reviewable_drafts(limit: int = 8, state_path: Path = _STATE_FILE) -> list[dict[str, Any]]:
@@ -1442,28 +1553,29 @@ def get_next_reviewable_drafts(limit: int = 8, state_path: Path = _STATE_FILE) -
 
 def require_draft_review(draft: dict[str, Any], state_path: Path = _STATE_FILE) -> dict[str, Any]:
     """阻止未审核草稿发布，并把状态写回待审核。"""
-    state = _load_state(state_path)
-    for item in state.get("drafts", []):
-        if item.get("id") == draft.get("id"):
-            item["status"] = "needs_review"
-            item["review_status"] = _review_pending_status(item)
-            item["review_required_at"] = now_et().isoformat()
-            item["review_required_reason"] = "发布前请先确认人设和内容"
-            draft = item
-            break
-    _save_state(state, state_path)
-    return {
-        "success": False,
-        "requires_review": True,
-        "error": "发布前请先确认人设和内容，草稿审核通过后才允许发布",
-        "draft": draft,
-    }
+    def require_review(state: dict[str, Any]) -> dict[str, Any]:
+        stored = draft
+        for item in state.get("drafts", []):
+            if item.get("id") == draft.get("id"):
+                item["status"] = "needs_review"
+                item["review_status"] = _review_pending_status(item)
+                item["review_required_at"] = now_et().isoformat()
+                item["review_required_reason"] = "发布前请先确认人设和内容"
+                stored = item
+                break
+        return {
+            "success": False,
+            "requires_review": True,
+            "error": "发布前请先确认人设和内容，草稿审核通过后才允许发布",
+            "draft": stored,
+        }
+
+    return _mutate_state(state_path, require_review)
 
 
 def build_next_draft(state_path: Path = _STATE_FILE, angle: str = "operating_loop", fetch_transcript: bool = True) -> dict[str, Any]:
     """构建下一条 X 自动运营草稿并写入状态。"""
     state = _load_state(state_path)
-    _supersede_legacy_ready_drafts(state)
     if angle == "operating_loop":
         angle = "internet_mood"
     seeds = fetch_all_content_seeds()
@@ -1485,12 +1597,16 @@ def build_next_draft(state_path: Path = _STATE_FILE, angle: str = "operating_loo
         "created_at": now_et().isoformat(),
         "review_required_reason": "发布前请先确认热点抽象号人设和内容",
     }
-    drafts = [d for d in state.get("drafts", []) if d.get("id") != draft["id"]]
-    drafts.append(draft)
-    state["drafts"] = drafts[-80:]
-    state["last_run"] = now_et().isoformat()
-    _save_state(state, state_path)
-    return draft
+    committed = _mutate_state(
+        state_path,
+        lambda latest: _merge_generated_drafts(
+            latest,
+            [draft],
+            limit=80,
+            supersede_legacy=True,
+        ),
+    )
+    return committed[0]
 
 
 def build_daily_drafts(
@@ -1506,8 +1622,6 @@ def build_daily_drafts(
     if not raw_seeds:
         raw_seeds = fetch_all_video_seeds()
     seeds = [distill_seed(seed, fetch_transcript=fetch_transcript) for seed in choose_seeds(raw_seeds, state, bounded_count)]
-    existing_ids = {d.get("id") for d in state.get("drafts", [])}
-    drafts = list(state.get("drafts", []) or [])
     created: list[dict[str, Any]] = []
     for idx in range(bounded_count):
         seed = seeds[idx % len(seeds)] if seeds else _FALLBACK_SEEDS[idx % len(_FALLBACK_SEEDS)]
@@ -1527,20 +1641,16 @@ def build_daily_drafts(
             "created_at": now_et().isoformat(),
             "review_required_reason": "发布前请先确认热点抽象号人设和内容",
         }
-        if draft_id in existing_ids:
-            for pos, existing in enumerate(drafts):
-                if existing.get("id") == draft_id and existing.get("status") in {"ready", "failed", "superseded"}:
-                    draft["created_at"] = existing.get("created_at") or draft["created_at"]
-                    drafts[pos] = draft
-                    break
-        else:
-            drafts.append(draft)
-            existing_ids.add(draft_id)
         created.append(draft)
-    state["drafts"] = drafts[-80:]
-    state["last_run"] = now_et().isoformat()
-    _save_state(state, state_path)
-    return created
+    return _mutate_state(
+        state_path,
+        lambda latest: _merge_generated_drafts(
+            latest,
+            created,
+            limit=80,
+            rebuild=True,
+        ),
+    )
 
 
 def compose_xhs_note(seed: ContentSeed, angle: str = "internet_mood") -> dict[str, str]:
@@ -1617,8 +1727,6 @@ def build_xhs_review_drafts(
             distill_seed(seed, fetch_transcript=False)
             for seed in choose_seeds(raw_seeds, state, bounded_count + 2)
         ]
-    existing_ids = {d.get("id") for d in state.get("drafts", [])}
-    drafts = list(state.get("drafts", []) or [])
     created: list[dict[str, Any]] = []
     for idx in range(bounded_count):
         seed = seeds[idx % len(seeds)] if seeds else _FALLBACK_SEEDS[idx % len(_FALLBACK_SEEDS)]
@@ -1641,20 +1749,11 @@ def build_xhs_review_drafts(
             "created_at": now_et().isoformat(),
             "review_required_reason": "发布前请先确认小红书笔记人设和内容",
         }
-        if draft_id in existing_ids:
-            for pos, existing in enumerate(drafts):
-                if existing.get("id") == draft_id and existing.get("status") in {"ready", "needs_review", "failed", "superseded"}:
-                    draft["created_at"] = existing.get("created_at") or draft["created_at"]
-                    drafts[pos] = draft
-                    break
-        else:
-            drafts.append(draft)
-            existing_ids.add(draft_id)
         created.append(draft)
-    state["drafts"] = drafts[-90:]
-    state["last_run"] = now_et().isoformat()
-    _save_state(state, state_path)
-    return created
+    return _mutate_state(
+        state_path,
+        lambda latest: _merge_generated_drafts(latest, created, limit=90),
+    )
 
 
 def get_or_build_next_ready_draft(state_path: Path = _STATE_FILE) -> dict[str, Any]:
@@ -1686,51 +1785,59 @@ def _published_url(result: dict[str, Any]) -> str:
 
 def mark_published(draft: dict[str, Any], result: dict[str, Any], state_path: Path = _STATE_FILE) -> None:
     """发布成功后记录 URL 和去重键。"""
-    state = _load_state(state_path)
-    video_digest = draft.get("video_digest", "")
-    draft_digest = draft.get("digest", "")
-    seen_items = [item for item in [video_digest, f"{video_digest}:{draft.get('angle', '')}", draft_digest] if item]
-    if seen_items:
-        seen = list(dict.fromkeys(list(state.get("seen", []) or []) + seen_items))
-        state["seen"] = seen[-800:]
-    event = {
-        "id": draft.get("id", ""),
-        "platform": "x",
-        "url": _published_url(result),
-        "method": result.get("method") or result.get("status") or "unknown",
-        "published_at": now_et().isoformat(),
-        "seed": draft.get("seed", {}),
-        "angle": draft.get("angle", ""),
-    }
-    state.setdefault("published", []).append(event)
-    state["published"] = state["published"][-300:]
-    for item in state.get("drafts", []):
-        if item.get("id") == draft.get("id"):
-            item["status"] = "published"
-            item["published_at"] = event["published_at"]
-            item["url"] = event["url"]
-    _save_state(state, state_path)
+    def apply_publish_result(state: dict[str, Any]) -> None:
+        video_digest = draft.get("video_digest", "")
+        draft_digest = draft.get("digest", "")
+        seen_items = [
+            item
+            for item in [video_digest, f"{video_digest}:{draft.get('angle', '')}", draft_digest]
+            if item
+        ]
+        if seen_items:
+            seen = list(dict.fromkeys(list(state.get("seen", []) or []) + seen_items))
+            state["seen"] = seen[-800:]
+        event = {
+            "id": draft.get("id", ""),
+            "platform": "x",
+            "url": _published_url(result),
+            "method": result.get("method") or result.get("status") or "unknown",
+            "published_at": now_et().isoformat(),
+            "seed": draft.get("seed", {}),
+            "angle": draft.get("angle", ""),
+        }
+        state.setdefault("published", []).append(event)
+        state["published"] = state["published"][-300:]
+        for item in state.get("drafts", []):
+            if item.get("id") == draft.get("id"):
+                item["status"] = "published"
+                item["published_at"] = event["published_at"]
+                item["url"] = event["url"]
+
+    _mutate_state(state_path, apply_publish_result)
 
 
 def mark_failed(draft: dict[str, Any], error: str, state_path: Path = _STATE_FILE) -> None:
     """发布失败时记录原因，但保留草稿等待下一次排程重试。"""
-    state = _load_state(state_path)
-    failures = state.setdefault("failures", [])
-    failures.append({
-        "id": draft.get("id", ""),
-        "platform": "x",
-        "angle": draft.get("angle", ""),
-        "error": str(error)[:300],
-        "failed_at": now_et().isoformat(),
-    })
-    state["failures"] = failures[-100:]
-    for item in state.get("drafts", []):
-        if item.get("id") == draft.get("id"):
-            # 不改成 failed，避免临时登录/网络问题导致草稿被跳过。
-            item["status"] = "ready"
-            item["last_error"] = str(error)[:300]
-            item["last_failed_at"] = now_et().isoformat()
-    _save_state(state, state_path)
+    def apply_failure(state: dict[str, Any]) -> None:
+        failures = state.setdefault("failures", [])
+        failures.append(
+            {
+                "id": draft.get("id", ""),
+                "platform": "x",
+                "angle": draft.get("angle", ""),
+                "error": str(error)[:300],
+                "failed_at": now_et().isoformat(),
+            }
+        )
+        state["failures"] = failures[-100:]
+        for item in state.get("drafts", []):
+            if item.get("id") == draft.get("id"):
+                # 不改成 failed，避免临时登录/网络问题导致草稿被跳过。
+                item["status"] = "ready"
+                item["last_error"] = str(error)[:300]
+                item["last_failed_at"] = now_et().isoformat()
+
+    _mutate_state(state_path, apply_failure)
 
 
 # ---------------------------------------------------------------------------
@@ -1838,7 +1945,9 @@ def write_launchd_plist(
       <array>
         <string>{python_bin}</string>
         <string>{script_path}</string>
-        <string>--publish-next</string>
+        <string>--draft</string>
+        <string>--draft-count</string>
+        <string>1</string>
       </array>
       <key>WorkingDirectory</key><string>{_PACKAGE_ROOT}</string>
       <key>StartCalendarInterval</key>

@@ -15,6 +15,22 @@
 - 本机备份：`scripts/local_backup.sh`，默认备份到 iCloud 或桌面 `OpenEverything-backups`，排除 `.env`、虚拟环境、node_modules、日志和输出目录，保留 30 天。
 - 灾备恢复：先 `scripts/disaster_recovery.sh --dry-run`，真正恢复必须加 `--confirm`。
 
+### Release Gate 2.0 本机发布步骤
+
+1. 在 `packages/clawbot/config/.env` 显式设置 `G4F_ENABLED`、`KIRO_GATEWAY_ENABLED`、`OLLAMA_ENABLED`、`IBKR_ENABLED`、`HEARTBEAT_SENDER_ENABLED`。未验收的能力保持 `false`；禁止用 LaunchAgent 已加载冒充服务可用。
+2. 执行 `make ci-local`；必须同时通过 Python、Frist、桌面合同、TypeScript、Rust 和文档治理。
+3. 执行 `scripts/auto_health_check.sh --json`；只有 `ok=true` 且 `release_ready=true` 才能继续。本机已安装但关闭的旧可选 LaunchAgent 应 `launchctl bootout` 后删除用户目录中的旧 plist，仓库模板保留供未来显式启用。
+4. 桌面端只能执行 `make tauri-build`。该入口会先备份并清理 `/Applications/OpenEverything.app`、`OpenClaw.app`、`OpenClaw-Gateway.app`，失败恢复旧版，成功后只保留 `/Applications/OpenClaw.app`。
+5. 重启 Bot/Gateway 后，以新日志窗口确认没有新增 G4F/Kiro 重启风暴、IBKR 拒绝连接或未关闭 HTTP session；再复跑健康检查。
+
+### Frist-API Release Gate 2.0 部署边界
+
+- 先备份 `/opt/frist-api/apps/frist-api`、`/etc/frist-api/frist-api.env`、Frist runtime、New-API SQLite 和 Apache 配置；备份校验成功后才替换源码。
+- systemd 实际环境必须设置有限正整数 `FRIST_API_NEWAPI_DEFAULT_TOKEN_QUOTA`，单位为本地人民币分；例如 `7200` 表示单次最多划转 72 元，再换算为 New-API quota units。
+- 生产 Token 1–9 当前都是 unlimited Token，继续由主域 New-API 原生用户额度体系承接；不得映射、禁用或迁移到 Frist owner 表。Frist 客户只创建新的有限 Key。
+- 只重启 `frist-api.service`，不替换 New-API 二进制、不改变 Apache `jiyu.245334.xyz -> 127.0.0.1:13000` 主域拓扑。失败时恢复源码、环境和 runtime 备份并重启 Frist。
+- 部署后同时验证 3180 Dashboard、13000 `/api/status`、公网站点、未授权 `/v1/models=401`、Frist 运营域和 `systemctl --failed`；任一失败立即回滚。
+
 ## 一、CC中转 / Frist-API 运营操作清单
 
 # CC中转 / Frist-API 运营操作清单
@@ -273,7 +289,7 @@ SMTP 密码已通过隐藏输入方式写入 Oracle 环境变量，并已用 Gma
 | P1 | 告警 Webhook | Telegram、企业微信、飞书或 OpenClaw 通知地址 | 低库存、5xx、支付失败、异常扣费告警 |
 | P2 | 合规文档 | 服务条款、退款规则、隐私政策、AGPL 源码入口 | 页面页脚和订单确认页展示 |
 
-不要把 API Key、Webhook Secret、商户密钥、SMTP 密码或服务器密码发到聊天里。SMTP 密码即使用户在聊天里给过，也不能由 Codex 写进命令历史或最终报告；本轮已通过本机隐藏输入框写入 Oracle `/etc/frist-api/frist-api.env`，并同步兼容 `/opt/frist-api/.env`，文档只记录状态不记录值。
+不要把 API Key、Webhook Secret、商户密钥、SMTP 密码或服务器密码发到聊天里。SMTP 密码即使用户在聊天里给过，也不能由 Codex 写进命令历史或最终报告；本轮已通过本机隐藏输入框写入 Oracle `/etc/frist-api/frist-api.env`，文档只记录状态不记录值。`/opt/frist-api/.env` 是历史兼容文件，不是当前 `frist-api.service` 的 `EnvironmentFile`，以后不要只更新该兼容文件。
 
 ## 备用渠道人工风控
 
@@ -851,7 +867,7 @@ make frist-api-up
 - `FRIST_API_NEWAPI_ENABLED`: 生产设为 `1`，Frist-API 服务端通过 New-API 接管用户看板、API Key、日志、订阅、兑换和邀请数据
 - `FRIST_API_REQUIRE_NEWAPI_DATABASE=1`: 生产硬门槛，防止继续把 JSON runtime 当数据库使用
 - `FRIST_API_NEWAPI_BASE_URL` / `FRIST_API_NEWAPI_ACCESS_TOKEN` / `FRIST_API_NEWAPI_USER_ID`: 可选，New-API 内网地址、用户 access token 和对应用户 ID，只能放服务器环境变量
-- `FRIST_API_NEWAPI_GATEWAY_ENABLED` / `FRIST_API_NEWAPI_GATEWAY_BASE_URL`: 可选，设为 `1` 后 `/v1` 网关请求直接代理 New-API；默认关闭，继续保留 Frist-API 自研路由兜底
+- `FRIST_API_NEWAPI_GATEWAY_ENABLED` / `FRIST_API_NEWAPI_GATEWAY_BASE_URL`: 可选，设为 `1` 后仅让 Frist 3180 的 `/v1` 桥接面代理 New-API；代理前必须同时通过本地唯一用户、完整 active owner 和上游 finite/enabled/正余额校验。该开关不控制 Apache 主域直连 New-API 的产品入口
 
 无域名公网 IP 验收时可临时设置 `FRIST_API_ALLOW_INSECURE_PUBLIC_HTTP=1`。当前 Cloudflare HTTPS 入口已关闭这个临时开关。
 
@@ -872,7 +888,7 @@ curl -fsS \
   https://你的域名/api/admin/production-readiness
 ```
 
-备份任务完成后登记一次状态，恢复演练建议至少每月跑一次。注意：服务器 env 文件按 key/value 解析，不要直接 `source /etc/frist-api/frist-api.env`，避免包含空格或特殊字符的值被 shell 误执行。
+备份任务完成后登记一次状态，恢复演练建议至少每月跑一次。Oracle 当前 `frist-api.service` 的工作目录是 `/opt/frist-api/apps/frist-api`，唯一实际加载的 systemd 环境文件是 `/etc/frist-api/frist-api.env`；仓库 `apps/frist-api/deploy/production.env.example` 只是模板。服务器 env 文件按 key/value 解析，不要直接 `source /etc/frist-api/frist-api.env`，避免包含空格或特殊字符的值被 shell 误执行。
 
 ```bash
 curl -fsS -X POST \
@@ -904,7 +920,7 @@ apps/frist-api/deploy/smoke-test.sh http://127.0.0.1:3180 "$FRIST_API_ADMIN_PAGE
 - API Key: `/api/token/`、`/api/token/search`、`/api/token/:id/key`、`PUT /api/token/`、`DELETE /api/token/:id`
 - 兑换码: `POST /api/user/topup`
 - 订阅/充值/邀请读取: `/api/subscription/self`、`/api/user/topup/info`、`/api/user/aff`
-- 可选模型网关: `FRIST_API_NEWAPI_GATEWAY_ENABLED=1` 后代理 `/v1/chat/completions`、`/v1/responses`、`/v1/images/generations`、`/v1/messages`
+- 可选模型网关: `FRIST_API_NEWAPI_GATEWAY_ENABLED=1` 后代理 `/v1/chat/completions`、`/v1/responses`、`/v1/images/generations`、`/v1/messages`；未归属、旧字符串归属、待激活、残缺、孤儿、无限、耗尽或禁用 Token 在实际网关请求前统一拒绝
 
 仍然保留在 Frist-API 自研层的部分:
 

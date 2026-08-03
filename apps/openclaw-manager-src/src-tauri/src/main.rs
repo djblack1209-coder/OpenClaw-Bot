@@ -8,14 +8,12 @@ mod commands;
 mod models;
 mod utils;
 
-use commands::{clawbot, clawbot_api, config, diagnostics, installer, process, service, mcp};
+use commands::{clawbot, clawbot_api, config, diagnostics, installer, mcp, process, service};
 
 fn main() {
     // 初始化日志 - 默认显示 info 级别日志
-    env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or("info")
-    ).init();
-    
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+
     log::info!("🦞 OpenClaw 启动");
 
     tauri::Builder::default()
@@ -133,6 +131,7 @@ fn main() {
             clawbot_api::clawbot_api_social_draft_update,
             clawbot_api::clawbot_api_social_draft_delete,
             clawbot_api::clawbot_api_social_draft_review,
+            clawbot_api::clawbot_api_social_draft_final_confirm,
             clawbot_api::clawbot_api_social_draft_publish,
             // Image Generation
             clawbot_api::clawbot_api_generate_image,

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """X 自动运营发布入口。
 
 文件名保留 morning 是为了兼容已安装 LaunchAgent；实际能力已升级为全天多时段发布。
@@ -22,11 +21,9 @@ from src.execution.social.x_auto_ops import (  # noqa: E402
     DEFAULT_DAILY_TIMES,
     build_daily_drafts,
     build_next_draft,
-    get_or_build_next_ready_draft,
     get_next_reviewable_drafts,
+    get_or_build_next_ready_draft,
     is_draft_approved,
-    mark_failed,
-    mark_published,
     next_scheduled_at,
     parse_daily_times,
     require_draft_review,
@@ -34,55 +31,18 @@ from src.execution.social.x_auto_ops import (  # noqa: E402
 )
 
 
-def _run_worker_publish(text: str) -> dict:
-    """调用现有浏览器 worker 发布 X。"""
-    worker = ROOT / "scripts" / "social_browser_worker.py"
-    payload = json.dumps({"text": text}, ensure_ascii=False)
-    cp = subprocess.run(
-        [sys.executable, str(worker), "publish_x", payload],
-        cwd=str(ROOT),
-        capture_output=True,
-        text=True,
-        timeout=360,
-        check=False,
-    )
-    if cp.returncode != 0:
-        return {"success": False, "error": cp.stderr.strip() or cp.stdout.strip() or f"worker exited {cp.returncode}"}
-    try:
-        data = json.loads(cp.stdout.strip())
-        if isinstance(data, dict):
-            return data
-    except json.JSONDecodeError as exc:
-        return {"success": False, "error": f"worker JSON 解析失败: {exc}", "stdout": cp.stdout[:500]}
-    return {"success": False, "error": "worker 输出不是对象"}
-
-
-async def _publish_with_twikit_or_worker(text: str) -> dict:
-    """优先用 twikit Cookie，失败再走浏览器 worker。"""
-    try:
-        from src.execution.social.x_platform import twikit_is_authenticated, twikit_post_tweet
-
-        if twikit_is_authenticated():
-            result = await twikit_post_tweet(text)
-            if result.get("success"):
-                return result
-    except Exception:
-        # twikit 是可选路径，失败时直接进入浏览器兜底。
-        return _run_worker_publish(text)
-    return _run_worker_publish(text)
-
-
 async def publish_once(use_existing_ready: bool = True) -> dict:
-    """发布一条 X 自动运营内容。"""
+    """旧 CLI 发布入口永久 fail-closed，只返回待审草稿。"""
     draft = get_or_build_next_ready_draft() if use_existing_ready else build_next_draft()
     if not is_draft_approved(draft):
         return require_draft_review(draft)
-    result = await _publish_with_twikit_or_worker(draft["text"])
-    if result.get("success"):
-        mark_published(draft, result)
-    else:
-        mark_failed(draft, result.get("error") or result.get("status") or "unknown")
-    return {"success": bool(result.get("success")), "draft": draft, "result": result}
+    return {
+        "success": False,
+        "requires_final_confirmation": True,
+        "external_actions_locked": True,
+        "error": "CLI/LaunchAgent 发布已禁用；请在 App 或 Telegram 完成最终确认",
+        "draft": draft,
+    }
 
 
 def pending_review(limit: int = 8) -> dict:
@@ -92,7 +52,7 @@ def pending_review(limit: int = 8) -> dict:
 
 
 def schedule_daily(times: list[tuple[int, int]] | None = None, posts_per_day: int = 6) -> dict:
-    """生成全天多时段 launchd 自动发布任务。"""
+    """生成全天多时段 launchd 草稿准备任务，不执行外部发布。"""
     daily_times = times or DEFAULT_DAILY_TIMES
     drafts = build_daily_drafts(count=max(posts_per_day, len(daily_times)))
     target = next_scheduled_at(daily_times)
@@ -120,8 +80,8 @@ def schedule_morning(hour: int = 8, minute: int = 30) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="OpenClaw X 自动运营任务")
-    parser.add_argument("--publish", action="store_true", help="立即构建并发布一条 X 推文（兼容旧参数）")
-    parser.add_argument("--publish-next", action="store_true", help="发布下一条已准备草稿；没有草稿则自动补齐")
+    parser.add_argument("--publish", action="store_true", help="旧参数：现已禁用，只返回待确认草稿")
+    parser.add_argument("--publish-next", action="store_true", help="旧参数：现已禁用，只返回待确认草稿")
     parser.add_argument("--draft", action="store_true", help="只生成 1 条草稿不发布")
     parser.add_argument("--draft-count", type=int, default=6, help="生成多条草稿，默认 6 条")
     parser.add_argument("--pending-review", action="store_true", help="列出等待确认的人设/内容草稿")

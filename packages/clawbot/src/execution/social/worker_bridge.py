@@ -25,8 +25,9 @@ def run_social_worker(
 ) -> dict[str, Any]:
     """Run scripts/social_browser_worker.py as a subprocess and return parsed JSON.
 
-    Mirrors ExecutionHub._run_social_worker() exactly:
-      - 2 retries for publish actions, 1 attempt for everything else
+    外部发布动作永不自动重试，避免首次已发出但响应超时时重复发布：
+      - publish_x / publish_xhs 固定 1 次
+      - 其他动作维持当前 1 次
       - 300-second timeout
       - JSON stdout parsing with setdefault("success", True)
       - 3-second sleep between retries
@@ -40,7 +41,7 @@ def run_social_worker(
     """
     worker = _PACKAGE_ROOT / "scripts" / "social_browser_worker.py"
     payload = payload or {}
-    max_retries = 2 if action and "publish" in str(action) else 1
+    max_retries = 1
     last_err: dict[str, Any] | None = None
 
     for attempt in range(max_retries):
@@ -127,7 +128,7 @@ async def run_social_worker_async(
     import asyncio
     worker = _PACKAGE_ROOT / "scripts" / "social_browser_worker.py"
     payload = payload or {}
-    max_retries = 2 if action and "publish" in str(action) else 1
+    max_retries = 1
     last_err: dict[str, Any] | None = None
 
     for attempt in range(max_retries):

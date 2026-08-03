@@ -2,6 +2,30 @@ import { invoke } from '@tauri-apps/api/core';
 import { apiLogger } from './logger';
 import { trackApiWait, trackError } from './qa-tracker';
 
+/** 这些命令可能携带完整配置、Token 或 API Key，日志只保留命令名。 */
+const SENSITIVE_IPC_COMMANDS = new Set([
+  'get_config',
+  'save_config',
+  'get_env_value',
+  'save_env_value',
+  'get_or_create_gateway_token',
+  'get_dashboard_url',
+  'get_ai_config',
+  'save_provider',
+  'get_channels_config',
+  'save_channel_config',
+  'clear_channel_config',
+  'get_clawbot_runtime_config',
+  'save_clawbot_runtime_config',
+  'get_clawbot_bot_matrix',
+  'get_logs',
+  'get_managed_service_logs',
+  'control_managed_service',
+  'control_all_managed_services',
+  'clawbot_api_social_draft_final_confirm',
+  'clawbot_api_social_draft_publish',
+]);
+
 // 检查是否在 Tauri 环境中运行
 export function isTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -12,13 +36,26 @@ export async function invokeWithLog<T>(cmd: string, args?: Record<string, unknow
   if (!isTauri()) {
     throw new Error('不在 Tauri 环境中运行，请通过 Tauri 应用启动');
   }
-  apiLogger.apiCall(cmd, args);
+  const sensitive = SENSITIVE_IPC_COMMANDS.has(cmd);
+  if (sensitive) {
+    apiLogger.apiCall(cmd);
+  } else {
+    apiLogger.apiCall(cmd, args);
+  }
   try {
     const result = await invoke<T>(cmd, args);
-    apiLogger.apiResponse(cmd, result);
+    if (sensitive) {
+      apiLogger.apiResponse(cmd);
+    } else {
+      apiLogger.apiResponse(cmd, result);
+    }
     return result;
   } catch (error) {
-    apiLogger.apiError(cmd, error);
+    if (sensitive) {
+      apiLogger.apiError(cmd);
+    } else {
+      apiLogger.apiError(cmd, error);
+    }
     throw error;
   }
 }
@@ -174,8 +211,6 @@ export interface ClawbotRuntimeConfig {
   IBKR_ACCOUNT: string;
   IBKR_BUDGET: string;
   IBKR_AUTOSTART: string;
-  IBKR_START_CMD: string;
-  IBKR_STOP_CMD: string;
   NOTIFY_CHAT_ID: string;
 }
 

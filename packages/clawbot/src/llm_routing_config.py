@@ -15,7 +15,7 @@ import logging
 import os
 from pathlib import Path
 
-from src.utils import scrub_secrets
+from src.utils import env_bool, scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +79,11 @@ def build_deployments_from_config(
     deps: list[dict] = []
 
     for provider_name, provider_cfg in providers.items():
+        enabled_env = str(provider_cfg.get("enabled_env", "") or "").strip()
+        if enabled_env and not env_bool(enabled_env, False):
+            logger.info("[RoutingConfig] %s 未显式启用，跳过注册", provider_name)
+            continue
+
         # 解析 API Key
         keys = _resolve_keys(provider_cfg)
         if not keys:
@@ -161,13 +166,12 @@ def get_bot_model_family(config: dict, bot_id: str) -> str | None:
     return mapping.get(bot_id)
 
 
-
-
 def get_routing_profile(config: dict, profile_name: str) -> dict:
     """获取业务专属 LLM routing profile；不存在时返回空 dict。"""
     profiles = config.get("routing_profiles", {}) if isinstance(config, dict) else {}
     profile = profiles.get(profile_name, {}) if isinstance(profiles, dict) else {}
     return dict(profile) if isinstance(profile, dict) else {}
+
 
 def get_router_config(config: dict) -> dict:
     """获取 Router 全局配置参数"""
@@ -208,8 +212,8 @@ def _resolve_keys(provider_cfg: dict) -> list[str]:
         else:
             k = _env(env_key)
             keys = [k] if k else []
-        if keys:
-            return keys
+        # 声明必填 key 的 provider 不得因同时配置本地 URL 而降级成 dummy。
+        return keys
 
     # 可选 key（如 g4f 可以无 key）
     env_key_optional = provider_cfg.get("env_key_optional", "")

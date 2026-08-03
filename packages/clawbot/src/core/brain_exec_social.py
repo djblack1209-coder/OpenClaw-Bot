@@ -102,24 +102,26 @@ class SocialExecutorMixin:
         return {"source": "content_gen_fallback", "draft": "", "note": "内容生成模块异常"}
 
     async def _exec_social_publish(self, params: dict) -> dict:
-        """社媒发布 — 通过适配器统一分发到对应平台"""
-        platform = params.get("platform", "x")
-        draft = params.get("draft", params.get("content", ""))
-        if not draft:
-            return {"source": "publish", "success": False, "note": "无内容可发布"}
+        """社媒发布必须走统一草稿授权门，DAG 不接受正文直发。"""
+        draft_id = str(params.get("draft_id") or "").strip()
+        confirmation_token = str(params.get("confirmation_token") or "").strip()
+        if not draft_id or not confirmation_token:
+            return {
+                "source": "publish_gate",
+                "success": False,
+                "requires_approved_draft": True,
+                "requires_final_confirmation": True,
+                "note": "需要已审核草稿和一次性发布确认",
+            }
         try:
-            from src.execution.social.platform_adapter import get_adapter
+            from src.api.rpc import ClawBotRPC
 
-            adapter = get_adapter(platform)
-            if adapter:
-                result = await adapter.publish(content=draft)
-                return {"source": f"{adapter.platform_id}_platform", "success": True, "result": result}
-            else:
-                # 未注册的平台 — 降级到 worker_bridge
-                from src.execution.social.worker_bridge import run_social_worker_async
-
-                result = await run_social_worker_async(f"publish_{platform}", {"content": draft})
-                return {"source": "worker_bridge", "success": True, "result": result}
+            result = await ClawBotRPC._rpc_social_publish(
+                platform=str(params.get("platform") or ""),
+                draft_id=draft_id,
+                confirmation_token=confirmation_token,
+            )
+            return {"source": "publish_gate", **result}
         except Exception as e:
-            logger.warning(f"社媒发布失败 ({platform}): {scrub_secrets(str(e))}")
-        return {"source": "publish_fallback", "success": False, "note": f"{platform} 发布失败"}
+            logger.warning("社媒发布授权门异常: %s", scrub_secrets(str(e)))
+        return {"source": "publish_gate", "success": False, "note": "社媒发布失败"}

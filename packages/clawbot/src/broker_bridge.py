@@ -9,21 +9,42 @@ ClawBot IBKR 券商桥接层 v1.0
 """
 
 import asyncio
+import copy
+import hashlib
 import json
 import logging
+import math
 import os as _os
 import shlex
+import tempfile
 import time as _time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime
+from decimal import ROUND_CEILING, Decimal, InvalidOperation
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from src.broker_scanner import BrokerScannerMixin
 from src.broker_slippage import BrokerSlippageMixin, SlippageEstimate  # noqa: F401 — 向后兼容重导出
+from src.cross_process_lock import CrossProcessFileRLock, cross_process_file_lock
 from src.notify_style import format_ibkr_connectivity
 from src.utils import now_et, scrub_secrets
 
 BUDGET_STATE_FILE = Path(__file__).parent.parent / "data" / "broker_budget_state.json"
+
+
+def _ceil_buy_limit_price(price: float) -> float:
+    """把自动买单价格向上量化到一美分，确保券商上限不高于预留依据。"""
+    try:
+        value = Decimal(str(price))
+        tick = Decimal("0.01")
+        quantized = (value / tick).to_integral_value(rounding=ROUND_CEILING) * tick
+        result = float(quantized)
+    except (InvalidOperation, ValueError, OverflowError):
+        return 0.0
+    return result if math.isfinite(result) and result > 0 else 0.0
+
 
 logger = logging.getLogger(__name__)
 
@@ -63,12 +84,20 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         self.port = port
         self.client_id = client_id
         self.account = account
-        self.budget = budget  # 预算上限（USD）
+        parsed_budget = float(budget)
+        if not math.isfinite(parsed_budget) or parsed_budget < 0:
+            raise ValueError("IBKR budget 必须是有限非负数")
+        self.configured_budget = parsed_budget  # 用户配置的硬预算上限（USD）
+        self.budget = self.configured_budget
         self.total_spent = 0.0  # 已花费
         self.ib: IB | None = None
         self._connected = False
         self._reconnect_lock = asyncio.Lock()
         self._budget_lock = asyncio.Lock()  # 预算读写原子锁，防止并发下单时预算追踪失准
+        self._reserved_buy_notional = 0.0
+        self._pending_buy_reservations: dict[str, dict[str, float]] = {}
+        self._budget_state_valid = True
+        self._budget_state_error = ""
         self._notify_func = None  # Telegram 通知回调，由外部注入
         self._disconnect_count = 0
         self._last_reconnect_attempt = 0.0  # 上次重连时间戳
@@ -90,27 +119,201 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         # 启动时恢复预算状态
         self._load_budget_state()
 
-    def _save_budget_state(self):
-        """Persist daily budget state to survive restarts."""
-        try:
-            BUDGET_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-            state = {"date": now_et().strftime("%Y-%m-%d"), "total_spent": self.total_spent}
-            BUDGET_STATE_FILE.write_text(json.dumps(state))
-        except Exception as e:
-            logger.warning("Failed to persist budget state: %s", e)
+    def _budget_account_scope(self) -> str:
+        """返回不可逆的账户作用域，防止不同账户共用同一本预算账。"""
+        normalized = str(self.account or "").strip().casefold()
+        if not normalized:
+            return "default-account"
+        return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
-    def _load_budget_state(self):
-        """Restore daily budget state after restart."""
+    def _budget_state_lock(self) -> CrossProcessFileRLock:
+        """返回与当前预算状态文件绑定的跨进程锁。"""
+        lock_path = BUDGET_STATE_FILE.with_name(f".{BUDGET_STATE_FILE.name}.lock")
+        return cross_process_file_lock(lock_path)
+
+    def _budget_state_snapshot(
+        self,
+    ) -> tuple[float, float, float, float, dict[str, dict[str, float]]]:
+        """复制内存账本，持久化失败时可恢复到锁内最新状态。"""
+        return (
+            self.configured_budget,
+            self.budget,
+            self.total_spent,
+            self._reserved_buy_notional,
+            copy.deepcopy(self._pending_buy_reservations),
+        )
+
+    def _restore_budget_state_snapshot(
+        self,
+        snapshot: tuple[float, float, float, float, dict[str, dict[str, float]]],
+    ) -> None:
+        """恢复事务开始时的内存预算账本。"""
+        (
+            self.configured_budget,
+            self.budget,
+            self.total_spent,
+            self._reserved_buy_notional,
+            reservations,
+        ) = snapshot
+        self._pending_buy_reservations = reservations
+
+    def _budget_state_payload(self) -> dict:
+        """生成可原子落盘的账户级预算状态。"""
+        pending_total = sum(
+            float(item.get("reserved_notional", 0) or 0)
+            for item in self._pending_buy_reservations.values()
+        )
+        return {
+            "date": now_et().strftime("%Y-%m-%d"),
+            "account_scope": self._budget_account_scope(),
+            "total_spent": self.total_spent,
+            "pending_buy_reservations": self._pending_buy_reservations,
+            "unbound_buy_reservation": max(
+                0.0,
+                self._reserved_buy_notional - pending_total,
+            ),
+        }
+
+    def _save_budget_state(self) -> None:
+        """在账户账本锁内原子保存预算状态。"""
         try:
-            if BUDGET_STATE_FILE.exists():
-                state = json.loads(BUDGET_STATE_FILE.read_text())
-                if state.get("date") == now_et().strftime("%Y-%m-%d"):
-                    self.total_spent = state.get("total_spent", 0.0)
-                    logger.info("Restored budget state: spent $%.2f today", self.total_spent)
-                else:
-                    logger.info("Budget state from previous day (%s), starting fresh", state.get("date"))
-        except Exception as e:
-            logger.warning("Failed to load budget state: %s", e)
+            with self._budget_state_lock():
+                BUDGET_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+                descriptor, temp_name = tempfile.mkstemp(
+                    prefix=f".{BUDGET_STATE_FILE.name}.",
+                    dir=BUDGET_STATE_FILE.parent,
+                )
+                try:
+                    with _os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                        json.dump(self._budget_state_payload(), handle, allow_nan=False)
+                        handle.flush()
+                        _os.fsync(handle.fileno())
+                    _os.replace(temp_name, BUDGET_STATE_FILE)
+                finally:
+                    if _os.path.exists(temp_name):
+                        _os.unlink(temp_name)
+        except Exception as exc:
+            self._budget_state_valid = False
+            self._budget_state_error = str(exc)
+            raise
+
+    def _load_budget_state_locked(self) -> None:
+        """持锁读取并校验最新账户预算状态。"""
+        if not BUDGET_STATE_FILE.exists():
+            self.total_spent = 0.0
+            self._reserved_buy_notional = 0.0
+            self._pending_buy_reservations = {}
+            self._budget_state_valid = True
+            self._budget_state_error = ""
+            return
+
+        state = json.loads(BUDGET_STATE_FILE.read_text(encoding="utf-8"))
+        if not isinstance(state, dict):
+            raise ValueError("预算状态根节点不是对象")
+        stored_scope = str(state.get("account_scope") or "").strip()
+        if stored_scope and stored_scope != self._budget_account_scope():
+            raise ValueError("预算状态属于另一个 IBKR 账户")
+
+        raw_date = str(state.get("date") or "")
+        state_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
+        today = now_et().date()
+        if state_date > today:
+            raise ValueError("预算状态日期来自未来")
+
+        total_spent = float(state.get("total_spent", 0) or 0)
+        if not math.isfinite(total_spent) or total_spent < 0:
+            raise ValueError("total_spent 必须是有限非负数")
+        reservations = state.get("pending_buy_reservations", {})
+        if not isinstance(reservations, dict):
+            raise ValueError("pending_buy_reservations 必须是对象")
+        validated: dict[str, dict[str, float]] = {}
+        numeric_fields = {
+            "requested_qty",
+            "estimated_unit_price",
+            "reserved_notional",
+            "applied_filled_qty",
+            "applied_notional",
+        }
+        for order_id, item in reservations.items():
+            if not str(order_id).strip() or not isinstance(item, dict):
+                raise ValueError("在途预算预留格式无效")
+            normalized = {}
+            for field_name in numeric_fields:
+                value = float(item.get(field_name, 0) or 0)
+                if not math.isfinite(value) or value < 0:
+                    raise ValueError(f"预算预留字段无效: {field_name}")
+                normalized[field_name] = value
+            if normalized["applied_filled_qty"] > normalized["requested_qty"]:
+                raise ValueError("已成交数量超过请求数量")
+            validated[str(order_id)] = normalized
+        unbound = float(state.get("unbound_buy_reservation", 0) or 0)
+        if not math.isfinite(unbound) or unbound < 0:
+            raise ValueError("unbound_buy_reservation 必须是有限非负数")
+
+        self.total_spent = total_spent if state_date == today else 0.0
+        self._pending_buy_reservations = validated
+        self._reserved_buy_notional = unbound + sum(
+            item["reserved_notional"] for item in validated.values()
+        )
+        self._budget_state_valid = True
+        self._budget_state_error = ""
+        if state_date == today:
+            logger.info("Restored budget state: spent $%.2f today", self.total_spent)
+        elif self._reserved_buy_notional > 0:
+            logger.warning(
+                "Budget state rolled over from %s with $%.2f unresolved BUY reservation",
+                state.get("date"),
+                self._reserved_buy_notional,
+            )
+        else:
+            logger.info("Budget state from previous day (%s), starting fresh", state.get("date"))
+
+    def _load_budget_state(self) -> None:
+        """在跨进程锁内恢复最新预算状态；任何异常都阻断 BUY。"""
+        try:
+            with self._budget_state_lock():
+                self._load_budget_state_locked()
+        except Exception as exc:
+            self._budget_state_valid = False
+            self._budget_state_error = str(exc)
+            logger.error("Failed to load budget state; BUY 已阻断: %s", exc)
+
+    @contextmanager
+    def _budget_state_transaction(self) -> Iterator[None]:
+        """持锁完成最新账本重载、内存变更和原子保存。"""
+        with self._budget_state_lock():
+            try:
+                self._load_budget_state_locked()
+            except Exception as exc:
+                self._budget_state_valid = False
+                self._budget_state_error = str(exc)
+                raise
+            snapshot = self._budget_state_snapshot()
+            try:
+                yield
+            except Exception:
+                self._restore_budget_state_snapshot(snapshot)
+                raise
+            try:
+                self._save_budget_state()
+            except Exception as exc:
+                self._restore_budget_state_snapshot(snapshot)
+                self._budget_state_valid = False
+                self._budget_state_error = str(exc)
+                raise
+
+    def _reserve_buy_budget(self, reservation: float) -> tuple[bool, float]:
+        """在账户级事务中尝试预留买入额度。"""
+        if not math.isfinite(reservation) or reservation <= 0:
+            raise ValueError("买入预算预留必须是有限正数")
+        accepted = False
+        remaining = 0.0
+        with self._budget_state_transaction():
+            remaining = self.budget - self.total_spent - self._reserved_buy_notional
+            if reservation <= remaining + 1e-9:
+                self._reserved_buy_notional += reservation
+                accepted = True
+        return accepted, remaining
 
     def set_notify(self, func):
         """注入 Telegram 通知回调"""
@@ -593,6 +796,163 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
 
     # ============ 下单 ============
 
+    async def _estimate_buy_reservation_price(
+        self,
+        contract,
+        order_type: str,
+        limit_price: float,
+    ) -> float:
+        """下单前获取保守估价；无法估价时拒绝买入。"""
+        if order_type == "LMT" and limit_price > 0:
+            return float(limit_price)
+        try:
+            tickers = self.ib.reqTickers(contract)
+            await asyncio.sleep(IBKR_ORDER_POLL_INTERVAL)
+            ticker = tickers[0] if tickers else None
+            if ticker is None:
+                return 0.0
+            candidates = []
+            for raw in (
+                getattr(ticker, "ask", 0),
+                ticker.marketPrice() if hasattr(ticker, "marketPrice") else 0,
+                getattr(ticker, "last", 0),
+                getattr(ticker, "close", 0),
+            ):
+                try:
+                    value = float(raw or 0)
+                except (TypeError, ValueError):
+                    continue
+                if value > 0 and math.isfinite(value):
+                    candidates.append(value)
+            if not candidates:
+                return 0.0
+            buffer_pct = float(_os.getenv("IBKR_BUY_RESERVE_BUFFER_PCT", "2") or 2)
+            if not math.isfinite(buffer_pct) or buffer_pct < 0:
+                return 0.0
+            estimated_price = max(candidates) * (1 + buffer_pct / 100)
+            return estimated_price if math.isfinite(estimated_price) else 0.0
+        except Exception as exc:
+            logger.warning("[IBKR] 买入预算估价失败: %s", exc)
+            return 0.0
+
+    async def _settle_initial_buy_reservation(
+        self,
+        reservation: float,
+        estimated_unit_price: float,
+        quantity: float,
+        order_id: object,
+        status: str,
+        filled_qty: float,
+        avg_price: float,
+    ) -> None:
+        """按实际成交结算预算，并为仍未成交部分保留额度。"""
+        normalized_status = str(status or "").strip().lower()
+        terminal_statuses = {"filled", "cancelled", "apicancelled", "inactive"}
+        actual_notional = max(0.0, float(filled_qty)) * max(0.0, float(avg_price))
+        remaining_qty = max(0.0, float(quantity) - max(0.0, float(filled_qty)))
+        keep_pending = (
+            str(order_id or "")
+            and remaining_qty > 0
+            and normalized_status not in terminal_statuses
+        )
+        remaining_reservation = remaining_qty * estimated_unit_price if keep_pending else 0.0
+        async with self._budget_lock:
+            with self._budget_state_transaction():
+                self._reserved_buy_notional = max(
+                    0.0,
+                    self._reserved_buy_notional - reservation,
+                )
+                if actual_notional > 0:
+                    self.total_spent += actual_notional
+                order_key = str(order_id or "")
+                if keep_pending:
+                    self._pending_buy_reservations[order_key] = {
+                        "requested_qty": float(quantity),
+                        "estimated_unit_price": float(estimated_unit_price),
+                        "reserved_notional": float(remaining_reservation),
+                        "applied_filled_qty": float(filled_qty),
+                        "applied_notional": float(actual_notional),
+                    }
+                    self._reserved_buy_notional += remaining_reservation
+                elif order_key:
+                    self._pending_buy_reservations.pop(order_key, None)
+
+    async def _release_buy_reservation(self, reservation: float) -> None:
+        """下单失败时释放尚未绑定订单的预算预留。"""
+        if reservation <= 0:
+            return
+        async with self._budget_lock:
+            with self._budget_state_transaction():
+                self._reserved_buy_notional = max(
+                    0.0,
+                    self._reserved_buy_notional - reservation,
+                )
+
+    async def _reconcile_buy_reservations(self, snapshots: list[dict]) -> None:
+        """用券商累计成交状态结算仍在途的买入预算预留。"""
+        snapshot_map = {
+            str(item.get("order_id") or ""): item
+            for item in snapshots
+            if isinstance(item, dict) and item.get("order_id") is not None
+        }
+        terminal_statuses = {"filled", "cancelled", "apicancelled", "inactive"}
+        async with self._budget_lock:
+            with self._budget_state_transaction():
+                for order_id, reservation in list(self._pending_buy_reservations.items()):
+                    snapshot = snapshot_map.get(order_id)
+                    if snapshot is None:
+                        continue
+                    status = str(snapshot.get("status") or "").strip().lower()
+                    try:
+                        cumulative_filled = float(
+                            snapshot.get("filled_qty", snapshot.get("filled", 0)) or 0
+                        )
+                        cumulative_avg = float(snapshot.get("avg_price", 0) or 0)
+                        if (
+                            not math.isfinite(cumulative_filled)
+                            or cumulative_filled < 0
+                            or not math.isfinite(cumulative_avg)
+                            or cumulative_avg < 0
+                        ):
+                            raise ValueError("券商预算对账数值无效")
+                    except (TypeError, ValueError) as exc:
+                        self._budget_state_valid = False
+                        self._budget_state_error = str(exc)
+                        logger.critical("[IBKR] BUY 预算对账已阻断: %s", exc)
+                        continue
+                    applied_filled = float(reservation.get("applied_filled_qty", 0) or 0)
+                    applied_notional = float(reservation.get("applied_notional", 0) or 0)
+                    requested_qty = float(reservation.get("requested_qty", 0) or 0)
+                    old_reserved = float(reservation.get("reserved_notional", 0) or 0)
+                    if cumulative_filled > applied_filled and cumulative_avg <= 0:
+                        continue
+
+                    cumulative_notional = cumulative_filled * cumulative_avg
+                    incremental_notional = max(0.0, cumulative_notional - applied_notional)
+                    if incremental_notional > 0:
+                        self.total_spent += incremental_notional
+                    remaining_qty = max(0.0, requested_qty - cumulative_filled)
+                    is_terminal = status in terminal_statuses or remaining_qty <= 0
+                    new_reserved = 0.0
+                    if not is_terminal:
+                        new_reserved = remaining_qty * float(
+                            reservation.get("estimated_unit_price", 0) or 0
+                        )
+                    self._reserved_buy_notional = max(
+                        0.0,
+                        self._reserved_buy_notional - old_reserved + new_reserved,
+                    )
+                    if is_terminal:
+                        self._pending_buy_reservations.pop(order_id, None)
+                    else:
+                        reservation.update(
+                            {
+                                "reserved_notional": new_reserved,
+                                "applied_filled_qty": cumulative_filled,
+                                "applied_notional": cumulative_notional,
+                            }
+                        )
+
     async def _place_order(
         self,
         side: str,
@@ -604,40 +964,100 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         reason: str = "",
     ) -> dict:
         """统一下单逻辑（BUY/SELL 共用）"""
-        if quantity <= 0:
+        buy_reservation = 0.0
+        estimated_unit_price = 0.0
+        reservation_active = False
+        budget_persistence_error = ""
+        order_submitted = False
+        submitted_order_id: object = ""
+        effective_order_type = str(order_type or "MKT").strip().upper()
+        effective_limit_price = 0.0
+        try:
+            quantity = float(quantity)
+            limit_price = float(limit_price)
+        except (TypeError, ValueError):
+            return {"error": "数量和价格必须是有效数字"}
+        if not math.isfinite(quantity) or quantity <= 0:
             return {"error": f"数量必须大于零 (got {quantity})"}
+        if not math.isfinite(limit_price) or limit_price < 0:
+            return {"error": f"限价必须是有限非负数 (got {limit_price})"}
+        if side == "BUY" and not self._budget_state_valid:
+            return {
+                "error": (
+                    "预算状态不可用，BUY 已阻断；请检查状态文件后显式 reset_budget"
+                    f" ({self._budget_state_error or 'unknown'})"
+                )
+            }
         if not await self.ensure_connected():
             return {"error": "未连接到IBKR"}
 
         # 买入时检查预算（加锁保证原子读取）
         if side == "BUY":
             async with self._budget_lock:
-                remaining = self.budget - self.total_spent
+                remaining = self.budget - self.total_spent - self._reserved_buy_notional
             if remaining <= 0:
                 return {"error": f"预算已用完 (${self.total_spent:.2f}/${self.budget:.2f})"}
 
         try:
+            order_type = str(order_type or "MKT").strip().upper()
+            effective_order_type = order_type
+            effective_limit_price = limit_price
+            if side == "BUY" and order_type == "LMT" and limit_price <= 0:
+                return {"error": "限价买单价格必须大于零，已拒绝退化为市价单"}
             contract = self._make_contract(symbol)
             qualified = await self.ib.qualifyContractsAsync(contract)
             if not qualified:
                 return {"error": f"无法识别合约: {symbol}"}
 
-            if order_type == "LMT" and limit_price > 0:
-                order = LimitOrder(side, quantity, limit_price)
+            if side == "BUY":
+                estimated_unit_price = await self._estimate_buy_reservation_price(
+                    qualified[0],
+                    order_type,
+                    limit_price,
+                )
+                if estimated_unit_price <= 0:
+                    return {"error": f"无法估算 {symbol} 买入成本，已拒绝下单"}
+                if order_type != "LMT":
+                    # 自动买单必须先形成券商侧硬上限，再按该上限预留预算。
+                    effective_order_type = "LMT"
+                    effective_limit_price = _ceil_buy_limit_price(estimated_unit_price)
+                    if effective_limit_price <= 0:
+                        return {"error": f"无法生成 {symbol} 的有效买入限价，已拒绝下单"}
+                    estimated_unit_price = effective_limit_price
+                buy_reservation = float(quantity) * estimated_unit_price
+                if not math.isfinite(buy_reservation) or buy_reservation <= 0:
+                    return {"error": "订单预估成本必须是有限正数，已拒绝下单"}
+                async with self._budget_lock:
+                    accepted, remaining = self._reserve_buy_budget(buy_reservation)
+                    if not accepted:
+                        return {
+                            "error": (
+                                f"订单预估成本 ${buy_reservation:.2f} 超过剩余预算 "
+                                f"${max(0.0, remaining):.2f}"
+                            )
+                        }
+                    reservation_active = True
+
+            if side == "BUY" or (
+                effective_order_type == "LMT" and effective_limit_price > 0
+            ):
+                order = LimitOrder(side, quantity, effective_limit_price)
             else:
                 order = MarketOrder(side, quantity)
 
             order.account = self.account
             trade = self.ib.placeOrder(contract, order)
+            order_submitted = True
+            submitted_order_id = getattr(getattr(trade, "order", None), "orderId", "")
 
             # P0#7: 市价单等待更长时间(30s)，限价单等确认提交后再多等5s捕获快速成交
-            max_wait = 60 if order_type != "LMT" else 40
+            max_wait = 60 if effective_order_type != "LMT" else 40
             lmt_submitted = False
             for _ in range(max_wait):
                 await asyncio.sleep(IBKR_ORDER_POLL_INTERVAL)
                 if trade.orderStatus.status == "Filled":
                     break
-                if trade.orderStatus.status in ("Submitted", "PreSubmitted") and order_type == "LMT":
+                if trade.orderStatus.status in ("Submitted", "PreSubmitted") and effective_order_type == "LMT":
                     if not lmt_submitted:
                         lmt_submitted = True
                         # 限价单已提交，再等10秒看是否快速成交
@@ -646,20 +1066,77 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                         break
 
             status = trade.orderStatus.status
-            filled_qty = trade.orderStatus.filled
-            avg_price = trade.orderStatus.avgFillPrice
             order_id = trade.order.orderId
+            try:
+                filled_qty = float(trade.orderStatus.filled)
+                avg_price = float(trade.orderStatus.avgFillPrice)
+                if (
+                    not math.isfinite(filled_qty)
+                    or filled_qty < 0
+                    or filled_qty > quantity
+                    or not math.isfinite(avg_price)
+                    or avg_price < 0
+                ):
+                    raise ValueError("券商返回了非有限或越界的成交数值")
+            except (TypeError, ValueError) as exc:
+                self._budget_state_valid = False
+                self._budget_state_error = str(exc)
+                if side == "BUY":
+                    async with self._budget_lock:
+                        try:
+                            with self._budget_state_transaction():
+                                self._pending_buy_reservations[str(order_id)] = {
+                                    "requested_qty": quantity,
+                                    "estimated_unit_price": estimated_unit_price,
+                                    "reserved_notional": buy_reservation,
+                                    "applied_filled_qty": 0.0,
+                                    "applied_notional": 0.0,
+                                }
+                        except Exception:
+                            logger.critical("[IBKR] 无效成交回报对应的预算预留无法落盘")
+                    self._budget_state_valid = False
+                    self._budget_state_error = str(exc)
+                    reservation_active = False
+                return {
+                    "action": side,
+                    "symbol": symbol.upper(),
+                    "quantity": quantity,
+                    "order_type": effective_order_type,
+                    "limit_price": effective_limit_price if effective_order_type == "LMT" else None,
+                    "status": str(status or "unknown"),
+                    "filled_qty": 0.0,
+                    "avg_price": 0.0,
+                    "order_id": order_id,
+                    "broker_result_invalid": True,
+                    "budget_persistence_error": str(exc),
+                    "decided_by": decided_by,
+                    "reason": reason,
+                }
 
             logger.info(
                 "[IBKR] %s %s x%s -> %s (filled=%s @ %s)", side, symbol, quantity, status, filled_qty, avg_price
             )
 
             # 预算追踪（加锁保证 read-modify-write 原子性）
-            if filled_qty > 0 and avg_price > 0:
-                if side == "BUY":
-                    async with self._budget_lock:
-                        self.total_spent += filled_qty * avg_price
-                        self._save_budget_state()
+            if side == "BUY":
+                try:
+                    await self._settle_initial_buy_reservation(
+                        reservation=buy_reservation,
+                        estimated_unit_price=estimated_unit_price,
+                        quantity=quantity,
+                        order_id=order_id,
+                        status=status,
+                        filled_qty=filled_qty,
+                        avg_price=avg_price,
+                    )
+                except Exception as exc:
+                    budget_persistence_error = str(exc)
+                    self._budget_state_valid = False
+                    self._budget_state_error = str(exc)
+                    logger.critical("[IBKR] 买入已提交，但预算结算落盘失败: %s", exc)
+                finally:
+                    reservation_active = False
+                if filled_qty > 0 and avg_price > 0:
                     # 滑点估算日志（仅买入）
                     try:
                         slippage_est = await self.estimate_slippage(symbol, quantity, side="BUY")
@@ -672,34 +1149,40 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                         )
                     except Exception as e:
                         logger.debug("[IBKR] 滑点估算跳过: %s", e)
-                else:
-                    # 卖出：按买入成本释放预算（而非卖出收入，避免盈亏扭曲预算）
-                    # 尝试从持仓获取买入成本，回退到卖出价
-                    entry_cost = filled_qty * avg_price  # 默认用卖出价
+            elif filled_qty > 0 and avg_price > 0:
+                # 卖出：按买入成本释放预算（而非卖出收入，避免盈亏扭曲预算）
+                # 尝试从持仓获取买入成本，回退到卖出价
+                entry_cost = filled_qty * avg_price  # 默认用卖出价
+                try:
+                    positions = self.ib.positions() if self.ib else []
+                    for pos in positions:
+                        if pos.contract.symbol == symbol:
+                            if pos.avgCost > 0:
+                                entry_cost = filled_qty * pos.avgCost
+                            break
+                except Exception as e:
+                    logger.warning("[IBKR] 获取 %s 成本基准失败，使用卖出价计算预算: %s", symbol, e)
+                async with self._budget_lock:
                     try:
-                        positions = self.ib.positions() if self.ib else []
-                        for pos in positions:
-                            if pos.contract.symbol == symbol:
-                                if pos.avgCost > 0:
-                                    entry_cost = filled_qty * pos.avgCost
-                                break
-                    except Exception as e:
-                        logger.warning("[IBKR] 获取 %s 成本基准失败，使用卖出价计算预算: %s", symbol, e)
-                    async with self._budget_lock:
-                        self.total_spent = max(0, self.total_spent - entry_cost)
-                        self._save_budget_state()
-                    logger.info(
-                        "[IBKR] 预算释放 $%.2f (成本基准)，剩余预算 $%.2f", entry_cost, self.budget - self.total_spent
-                    )
-            elif side == "BUY" and order_type != "LMT":
+                        with self._budget_state_transaction():
+                            self.total_spent = max(0, self.total_spent - entry_cost)
+                    except Exception as exc:
+                        budget_persistence_error = str(exc)
+                        self._budget_state_valid = False
+                        self._budget_state_error = str(exc)
+                        logger.critical("[IBKR] 卖出已成交，但预算落盘失败: %s", exc)
+                logger.info(
+                    "[IBKR] 预算释放 $%.2f (成本基准)，剩余预算 $%.2f", entry_cost, self.budget - self.total_spent
+                )
+            if side == "BUY" and filled_qty <= 0 and effective_order_type != "LMT":
                 logger.warning("[IBKR] BUY %s 市价单未成交 (status=%s)，预算未扣除", symbol, status)
 
-            return {
+            result = {
                 "action": side,
                 "symbol": symbol.upper(),
                 "quantity": quantity,
-                "order_type": order_type,
-                "limit_price": limit_price if order_type == "LMT" else None,
+                "order_type": effective_order_type,
+                "limit_price": effective_limit_price if effective_order_type == "LMT" else None,
                 "status": status,
                 "filled_qty": filled_qty,
                 "avg_price": avg_price,
@@ -707,7 +1190,35 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                 "decided_by": decided_by,
                 "reason": reason,
             }
+            if budget_persistence_error:
+                result["budget_persistence_error"] = budget_persistence_error
+            return result
         except Exception as e:
+            if order_submitted:
+                if side == "BUY":
+                    self._budget_state_valid = False
+                    self._budget_state_error = str(e)
+                logger.critical(
+                    "[IBKR] 订单已提交但结果读取异常，保留未决状态防止重复下单: %s",
+                    e,
+                )
+                return {
+                    "action": side,
+                    "symbol": symbol.upper(),
+                    "quantity": quantity,
+                    "order_type": effective_order_type,
+                    "limit_price": effective_limit_price if effective_order_type == "LMT" else None,
+                    "status": "Submitted",
+                    "filled_qty": 0.0,
+                    "avg_price": 0.0,
+                    "order_id": submitted_order_id,
+                    "broker_result_ambiguous": True,
+                    "budget_persistence_error": str(e) if side == "BUY" else "",
+                    "decided_by": decided_by,
+                    "reason": reason,
+                }
+            if reservation_active:
+                await self._release_buy_reservation(buy_reservation)
             action_cn = "买入" if side == "BUY" else "卖出"
             logger.error("[IBKR] %s失败: %s", action_cn, e)
             return {"error": f"{action_cn}失败: {e}"}
@@ -766,26 +1277,39 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             return []
 
     async def get_trade_snapshots(self) -> list[dict]:
-        """获取当前会话内订单快照（含已提交/已成交/已取消状态）"""
+        """获取当前与已完成订单快照，供进程重启后的订单对账。"""
         if not await self.ensure_connected():
             return []
 
         try:
-            result = []
-            for trade in self.ib.trades():
-                result.append(
-                    {
-                        "order_id": int(getattr(trade.order, "orderId", 0) or 0),
-                        "symbol": str(getattr(trade.contract, "symbol", "") or "").upper(),
-                        "action": str(getattr(trade.order, "action", "") or ""),
-                        "quantity": float(getattr(trade.order, "totalQuantity", 0) or 0),
-                        "status": str(getattr(trade.orderStatus, "status", "") or ""),
-                        "filled": float(getattr(trade.orderStatus, "filled", 0) or 0),
-                        "remaining": float(getattr(trade.orderStatus, "remaining", 0) or 0),
-                        "avg_price": float(getattr(trade.orderStatus, "avgFillPrice", 0) or 0),
-                        "last_fill_price": float(getattr(trade.orderStatus, "lastFillPrice", 0) or 0),
-                    }
-                )
+            trades = list(self.ib.trades())
+            try:
+                completed = await self.ib.reqCompletedOrdersAsync(False)
+                if completed:
+                    trades.extend(completed)
+            except Exception as exc:
+                logger.warning("[IBKR] 获取跨会话已完成订单失败，保留当前会话快照: %s", exc)
+
+            by_order_id: dict[int, dict] = {}
+            for trade in trades:
+                order_id = int(getattr(trade.order, "orderId", 0) or 0)
+                if order_id <= 0:
+                    continue
+                filled_qty = float(getattr(trade.orderStatus, "filled", 0) or 0)
+                by_order_id[order_id] = {
+                    "order_id": order_id,
+                    "symbol": str(getattr(trade.contract, "symbol", "") or "").upper(),
+                    "action": str(getattr(trade.order, "action", "") or ""),
+                    "quantity": float(getattr(trade.order, "totalQuantity", 0) or 0),
+                    "status": str(getattr(trade.orderStatus, "status", "") or ""),
+                    "filled": filled_qty,
+                    "filled_qty": filled_qty,
+                    "remaining": float(getattr(trade.orderStatus, "remaining", 0) or 0),
+                    "avg_price": float(getattr(trade.orderStatus, "avgFillPrice", 0) or 0),
+                    "last_fill_price": float(getattr(trade.orderStatus, "lastFillPrice", 0) or 0),
+                }
+            result = list(by_order_id.values())
+            await self._reconcile_buy_reservations(result)
             return result
         except Exception as e:
             logger.error("[IBKR] 获取订单快照失败: %s", e)
@@ -890,9 +1414,13 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
 
     def get_budget_status(self) -> str:
         """获取预算使用情况"""
-        remaining = self.budget - self.total_spent
+        remaining = self.budget - self.total_spent - self._reserved_buy_notional
         pct = (self.total_spent / self.budget * 100) if self.budget > 0 else 0
-        return (f"IBKR 预算状态\n\n预算上限: ${self.budget:.2f}\n已使用: ${self.total_spent:.2f} ({pct:.1f}%)\n剩余: ${remaining:.2f}")
+        return (
+            f"IBKR 预算状态\n\n预算上限: ${self.budget:.2f}\n"
+            f"已使用: ${self.total_spent:.2f} ({pct:.1f}%)\n"
+            f"在途预留: ${self._reserved_buy_notional:.2f}\n剩余: ${remaining:.2f}"
+        )
 
     def reset_budget(self, new_budget: float = 0.0):
         """重置预算（total_spent 归零）
@@ -903,24 +1431,45 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         """
         if new_budget <= 0:
             new_budget = float(_os.getenv("IBKR_BUDGET", "2000"))
-        self.budget = new_budget
-        self.total_spent = 0.0
-        self._save_budget_state()
+        parsed_budget = float(new_budget)
+        if not math.isfinite(parsed_budget) or parsed_budget < 0:
+            raise ValueError("IBKR budget 必须是有限非负数")
+        with self._budget_state_transaction():
+            if self._pending_buy_reservations or self._reserved_buy_notional > 1e-9:
+                raise RuntimeError("存在未决 BUY 订单或未绑定预留，已拒绝重置预算")
+            self.configured_budget = parsed_budget
+            self.budget = self.configured_budget
+            self.total_spent = 0.0
+            self._reserved_buy_notional = 0.0
+            self._pending_buy_reservations = {}
 
     async def sync_capital(self) -> float:
-        """从IBKR账户同步实际可用资金，返回可用资金金额"""
+        """同步可用资金，但绝不突破用户配置的预算硬上限。"""
         summary = await self.get_account_summary()
         if "error" in summary:
             logger.warning("[IBKR] 同步资金失败: %s", summary["error"])
             return self.budget
-        available = summary.get("AvailableFunds", {}).get("value", 0)
-        net_liq = summary.get("NetLiquidation", {}).get("value", 0)
+        try:
+            available = float(summary.get("AvailableFunds", {}).get("value", 0) or 0)
+            net_liq = float(summary.get("NetLiquidation", {}).get("value", 0) or 0)
+        except (TypeError, ValueError):
+            logger.error("[IBKR] 账户资金包含无效数值，保持现有预算")
+            return self.budget
+        if not math.isfinite(available) or not math.isfinite(net_liq):
+            logger.error("[IBKR] 账户资金包含 NaN/Inf，保持现有预算")
+            return self.budget
         if available > 0:
+            account_limit = min(available, net_liq) if net_liq > 0 else available
             async with self._budget_lock:
-                self.budget = min(available, net_liq) if net_liq > 0 else available
-                self.total_spent = 0.0
-                self._save_budget_state()
-            logger.info("[IBKR] 资金同步: 可用=$%.2f, 净值=$%.2f, 预算设为=$%.2f", available, net_liq, self.budget)
+                self.budget = min(self.configured_budget, account_limit)
+            logger.info(
+                "[IBKR] 资金同步: 可用=$%.2f, 净值=$%.2f, 配置上限=$%.2f, 有效预算=$%.2f, 已用=$%.2f",
+                available,
+                net_liq,
+                self.configured_budget,
+                self.budget,
+                self.total_spent,
+            )
         return self.budget
 
     def is_connected(self) -> bool:

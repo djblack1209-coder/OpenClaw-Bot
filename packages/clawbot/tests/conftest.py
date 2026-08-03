@@ -63,8 +63,18 @@ def risk_manager(risk_config, mock_journal):
 def mock_broker():
     """Mock IBKR broker."""
     b = AsyncMock()
-    b.buy.return_value = {"status": "filled", "avg_price": 150.0, "quantity": 10}
-    b.sell.return_value = {"status": "filled", "avg_price": 155.0, "quantity": 10}
+    b.buy.return_value = {
+        "status": "filled",
+        "filled_qty": 5,
+        "avg_price": 150.0,
+        "quantity": 5,
+    }
+    b.sell.return_value = {
+        "status": "filled",
+        "filled_qty": 5,
+        "avg_price": 155.0,
+        "quantity": 5,
+    }
     # is_connected is a sync method on the real broker — use MagicMock to avoid
     # returning a coroutine (which is always truthy and triggers RuntimeWarning).
     b.is_connected = MagicMock(return_value=True)

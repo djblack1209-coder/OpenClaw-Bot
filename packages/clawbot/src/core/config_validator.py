@@ -7,7 +7,13 @@ import logging
 import os
 from pathlib import Path
 
+from src.bot.config import parse_ids
+
 logger = logging.getLogger(__name__)
+
+
+class StartupConfigError(RuntimeError):
+    """启动配置不满足安全要求。"""
 
 # ── 必须设置的环境变量 ──
 REQUIRED_ENV_VARS: list[tuple[str, str]] = [
@@ -74,8 +80,29 @@ def validate_startup_config() -> tuple[list[str], list[str]]:
 
     # 1. 必须的环境变量
     for var, desc in REQUIRED_ENV_VARS:
-        if not os.getenv(var):
-            warnings.append(f"环境变量 {var} 未设置 — {desc}")
+        raw_value = os.getenv(var, "")
+        if var == "ALLOWED_USER_IDS":
+            if not parse_ids(raw_value):
+                errors.append(
+                    f"环境变量 {var} 未设置或没有有效的正整数用户 ID — {desc}"
+                )
+            else:
+                invalid_values = [
+                    value.strip()
+                    for value in raw_value.split(",")
+                    if value.strip()
+                    and not (
+                        value.strip().isascii()
+                        and value.strip().isdigit()
+                        and int(value.strip()) > 0
+                    )
+                ]
+                if invalid_values:
+                    warnings.append(
+                        f"环境变量 {var} 含 {len(invalid_values)} 个无效值，已忽略"
+                    )
+        elif not raw_value:
+            errors.append(f"环境变量 {var} 未设置 — {desc}")
 
     # 2. 至少需要一个的组
     for var_group, desc in REQUIRED_ONE_OF:
@@ -87,7 +114,12 @@ def validate_startup_config() -> tuple[list[str], list[str]]:
     for rel_path, desc in REQUIRED_FILES:
         full_path = base / rel_path
         if not full_path.exists():
-            if rel_path == "config/omega.yaml":
+            if rel_path == "config/.env":
+                # 容器与 LaunchAgent 可直接注入环境变量，不要求磁盘密钥文件。
+                warnings.append(
+                    f"文件不存在: {rel_path} — {desc} (将使用已注入的环境变量)"
+                )
+            elif rel_path == "config/omega.yaml":
                 # omega.yaml 缺失不阻塞 — brain.py 有内置默认值
                 warnings.append(f"文件不存在: {rel_path} — {desc} (将使用默认配置)")
             else:
@@ -132,3 +164,12 @@ def log_validation_results(errors: list[str], warnings: list[str]) -> bool:
         return False
 
     return True
+
+
+def require_valid_startup_config() -> None:
+    """验证并记录启动配置；存在严重问题时立即阻止启动。"""
+    errors, warnings = validate_startup_config()
+    if not log_validation_results(errors, warnings):
+        raise StartupConfigError(
+            f"启动配置验证失败，共 {len(errors)} 个严重问题"
+        )

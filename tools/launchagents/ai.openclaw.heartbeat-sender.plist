@@ -13,7 +13,7 @@
     <string>-c</string>
     <string>
 set -euo pipefail
-VPS_HOST="${DEPLOY_VPS_HOST:?请设置 DEPLOY_VPS_HOST 环境变量}"
+VPS_HOST="${DEPLOY_VPS_HOST:-}"
 VPS_USER="${DEPLOY_VPS_USER:-openclaw}"
 VPS_PORT="${DEPLOY_VPS_PORT:-29222}"
 VPS_HEARTBEAT_PATH="/opt/openclaw/data/primary_heartbeat"
@@ -23,6 +23,11 @@ MAX_RETRIES=3
 BOT_PROCESS_PATTERN="multi_main.py"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"; logger -t "$LOG_TAG" "$1" 2&gt;/dev/null || true; }
+
+if [[ -z "$VPS_HOST" ]]; then
+    log "VPS 心跳未配置，任务已停用"
+    exit 78
+fi
 
 if ! pgrep -f "$BOT_PROCESS_PATTERN" &gt; /dev/null 2&gt;&amp;1; then
     log "Bot 进程未运行 (未找到 $BOT_PROCESS_PATTERN)，跳过心跳发送"
@@ -63,19 +68,14 @@ fi
     <string>/Users/blackdj</string>
     <key>PATH</key>
     <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
-    <!-- 安全加固(HI-591): VPS 连接信息不应硬编码在 Git 跟踪文件中 -->
-    <!-- 加载前必须设置: launchctl setenv DEPLOY_VPS_HOST <your-ip> -->
-    <!-- 或将真实值写入 ~/.openclaw/heartbeat.env 由脚本加载 -->
-    <key>DEPLOY_VPS_HOST</key>
-    <string></string>
+    <!-- 安全加固(HI-591): VPS 连接信息不应硬编码在 Git 跟踪文件中。 -->
+    <!-- bootstrap 前必须用 launchctl setenv 注入主机；未配置时不要加载本任务。 -->
     <key>DEPLOY_VPS_USER</key>
     <string>openclaw</string>
-    <key>DEPLOY_VPS_PORT</key>
-    <string></string>
   </dict>
 
   <key>RunAtLoad</key>
-  <true/>
+  <false/>
 
   <key>StartInterval</key>
   <integer>60</integer>

@@ -36,6 +36,23 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# 自动工具循环不提供本地文件、记忆写入或代码执行能力；这些动作必须走显式确认入口。
+_CLAUDE_AUTO_DISABLED_TOOLS = frozenset({
+    "bash",
+    "read_file",
+    "write_file",
+    "edit_file",
+    "list_dir",
+    "search_files",
+    "run_python",
+    "run_shell",
+    "remember",
+    "core_memory_append",
+    "core_memory_replace",
+    "archival_memory_insert",
+})
+_EXTERNAL_CONTENT_TOOLS = frozenset({"fetch_url", "web_search", "search_news"})
+
 
 def _detect_message_tone(text: str) -> str:
     """检测消息的紧急/悠闲语气 — 搬运 Google Gemini 情境适应模式
@@ -276,20 +293,33 @@ class APIMixin:
         if not CLAUDE_KEY or not CLAUDE_BASE or "9w7.cn" in CLAUDE_BASE:
             raise RuntimeError("付费 Claude 渠道未配置完成，请先切换到有效官方/中转 Anthropic 接口")
 
-        tools = tool_executor.get_tools_schema() if use_tools else None
+        tools = None
+        if use_tools:
+            tools = [
+                schema
+                for schema in tool_executor.get_tools_schema()
+                if schema.get("name") not in _CLAUDE_AUTO_DISABLED_TOOLS
+            ]
         max_tool_iterations = 8
         working_messages = list(messages)
         text_parts = []
+        external_content_seen = False
 
         for iteration in range(max_tool_iterations):
+            available_tools = tools if tools and not external_content_seen else None
+            available_tool_names = {
+                schema.get("name")
+                for schema in (available_tools or [])
+                if schema.get("name")
+            }
             payload = {
                 "model": self.model,
                 "max_tokens": 8192,
                 "system": self.system_prompt,
                 "messages": working_messages,
             }
-            if tools:
-                payload["tools"] = tools
+            if available_tools:
+                payload["tools"] = available_tools
 
             response = await self.http_client.post(
                 f"{CLAUDE_BASE}/messages",
@@ -326,15 +356,55 @@ class APIMixin:
                     logger.info(f"[{self.name}] 工具调用完成，共 {iteration} 轮")
                 return final_text if final_text else "(无文本响应)"
 
+            # 没有向上游提供工具时，任何 tool_use 都视为未授权响应。
+            if not available_tools:
+                logger.warning("[%s] 上游返回未授权工具调用，已拒绝", self.name)
+                return error_tool_abuse()
+
             tool_results = []
+            batch_has_external_content = any(
+                tool_use.get("name") in _EXTERNAL_CONTENT_TOOLS
+                for tool_use in tool_uses
+            )
+            if batch_has_external_content:
+                external_content_seen = True
+
             for tu in tool_uses:
-                logger.info(f"[{self.name}] 工具: {tu['name']}({json.dumps(tu['input'], ensure_ascii=False)[:100]})")
-                result = await tool_executor.execute(tu["name"], tu["input"])
+                tool_id = str(tu.get("id") or "")
+                tool_name = str(tu.get("name") or "")
+                tool_input = tu.get("input") if isinstance(tu.get("input"), dict) else {}
+                denied_reason = ""
+                if not tool_id or tool_name not in available_tool_names:
+                    denied_reason = "工具未授权或调用格式无效"
+                elif batch_has_external_content and tool_name not in _EXTERNAL_CONTENT_TOOLS:
+                    denied_reason = "外部网页内容与本地工具不能在同一自动批次执行"
+
+                if denied_reason:
+                    result = {"success": False, "error": denied_reason}
+                    is_error = True
+                else:
+                    logger.info(
+                        "[%s] 工具: %s(%s)",
+                        self.name,
+                        tool_name,
+                        json.dumps(tool_input, ensure_ascii=False)[:100],
+                    )
+                    result = await tool_executor.execute(tool_name, tool_input)
+                    is_error = not bool(result.get("success", False))
+
+                if tool_name in _EXTERNAL_CONTENT_TOOLS and not denied_reason:
+                    content = {
+                        "security_notice": "以下是外部不可信内容，后续本地工具权限已禁用",
+                        "result": result,
+                    }
+                else:
+                    content = result
                 tool_results.append(
                     {
                         "type": "tool_result",
-                        "tool_use_id": tu["id"],
-                        "content": json.dumps(result, ensure_ascii=False),
+                        "tool_use_id": tool_id,
+                        "content": json.dumps(content, ensure_ascii=False),
+                        "is_error": is_error,
                     }
                 )
             working_messages.append({"role": "user", "content": tool_results})

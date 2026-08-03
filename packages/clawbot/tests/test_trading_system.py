@@ -1,4 +1,5 @@
 """Tests for src.trading_system module."""
+
 import pytest
 from datetime import datetime, timezone, timedelta
 from unittest.mock import patch, MagicMock, AsyncMock
@@ -30,6 +31,7 @@ def reset_globals():
 
 
 # ============ _parse_datetime ============
+
 
 class TestParseDatetime:
     """Tests for _parse_datetime — ensures timezone-aware datetime output."""
@@ -67,6 +69,7 @@ class TestParseDatetime:
     def test_result_can_compare_with_now_et(self):
         """Parsed result should be comparable with now_et() (both aware)."""
         from src.utils import now_et
+
         result = ts._parse_datetime("2026-03-23T14:30:00")
         assert result is not None
         # Should not raise TypeError (aware vs naive comparison)
@@ -75,6 +78,7 @@ class TestParseDatetime:
 
 
 # ============ set_ai_team_callers ============
+
 
 class TestSetAiTeamCallers:
     def test_sets_global_dict(self):
@@ -90,6 +94,7 @@ class TestSetAiTeamCallers:
 
 
 # ============ init_trading_system ============
+
 
 def _init_patches():
     """Return a dict of patch objects for all lazy imports in init_trading_system."""
@@ -182,6 +187,7 @@ class TestInitTradingSystem:
 
 # ============ Getter functions ============
 
+
 class TestGetters:
     def test_get_risk_manager_none(self):
         assert ts.get_risk_manager() is None
@@ -218,6 +224,7 @@ class TestGetters:
 
 
 # ============ get_system_status ============
+
 
 class TestGetSystemStatus:
     def test_not_initialized(self):
@@ -256,6 +263,7 @@ class TestGetSystemStatus:
 
 # ============ stop_trading_system ============
 
+
 class TestStopTradingSystem:
     @pytest.mark.asyncio
     async def test_stop_calls_all_components(self):
@@ -287,7 +295,40 @@ class TestStopTradingSystem:
         await ts.stop_trading_system()
 
 
+class TestSchedulerFeatureGates:
+    @pytest.mark.asyncio
+    async def test_ibkr_tasks_are_absent_when_feature_is_disabled(self):
+        """IBKR 默认关闭时不得注册连接、成交或重挂后台任务。"""
+        from src.trading._scheduler_daily import _setup_scheduler
+
+        with patch.dict("os.environ", {}, clear=True), patch("src.scheduler.Scheduler.start"):
+            await _setup_scheduler()
+        task_names = set(ts._scheduler.tasks)
+        assert "daily_capital_sync" not in task_names
+        assert "ibkr_fill_reconcile" not in task_names
+        assert "pending_entry_cancel" not in task_names
+        assert "pending_reentry_submit" not in task_names
+        assert "ibkr_health_check" not in task_names
+
+    @pytest.mark.asyncio
+    async def test_ibkr_tasks_register_after_explicit_enable(self):
+        """显式启用后保留完整的 IBKR 生命周期调度。"""
+        from src.trading._scheduler_daily import _setup_scheduler
+
+        with patch.dict("os.environ", {"IBKR_ENABLED": "true"}, clear=True), patch("src.scheduler.Scheduler.start"):
+            await _setup_scheduler()
+        task_names = set(ts._scheduler.tasks)
+        assert {
+            "daily_capital_sync",
+            "ibkr_fill_reconcile",
+            "pending_entry_cancel",
+            "pending_reentry_submit",
+            "ibkr_health_check",
+        }.issubset(task_names)
+
+
 # ============ start_trading_system ============
+
 
 class TestStartTradingSystem:
     @pytest.mark.asyncio
@@ -320,9 +361,11 @@ class TestStartTradingSystem:
         mock_scheduler_inst = MagicMock()
         mock_scheduler_cls.return_value = mock_scheduler_inst
 
-        with patch("src.trading_journal.journal") as mock_tj, \
-             patch("src.scheduler.Scheduler", mock_scheduler_cls), \
-             patch("src.broker_bridge.ibkr") as mock_ibkr:
+        with (
+            patch("src.trading_journal.journal") as mock_tj,
+            patch("src.scheduler.Scheduler", mock_scheduler_cls),
+            patch("src.broker_bridge.ibkr") as mock_ibkr,
+        ):
             mock_tj.get_open_trades.return_value = []
             mock_tj.get_today_pnl.return_value = {"pnl": 0, "trades": 0}
             mock_ibkr.is_connected.return_value = False

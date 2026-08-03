@@ -19,6 +19,8 @@ Social Autopilot Scheduler
 import asyncio
 import json
 import logging
+import os
+import tempfile
 import threading
 import uuid
 from pathlib import Path
@@ -114,12 +116,50 @@ def _save_state(state: dict[str, Any]) -> None:
     with _state_lock:
         try:
             _STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-            _STATE_FILE.write_text(
-                json.dumps(state, ensure_ascii=False, indent=2, default=str),
-                encoding="utf-8",
+            descriptor, temp_name = tempfile.mkstemp(
+                prefix=f".{_STATE_FILE.name}.",
+                dir=_STATE_FILE.parent,
             )
+            try:
+                with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                    json.dump(state, handle, ensure_ascii=False, indent=2, default=str)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(temp_name, _STATE_FILE)
+            finally:
+                if os.path.exists(temp_name):
+                    os.unlink(temp_name)
         except Exception as e:
             logger.warning("[Autopilot] 状态保存失败: %s", e)
+            raise
+
+
+def _mutate_state(mutator):
+    """在统一跨进程事务内更新自动运营状态。"""
+    from src.execution.social.publish_gate import mutate_state_transaction
+
+    return mutate_state_transaction(_load_state, _save_state, mutator)
+
+
+def _has_active_publish_authorization(draft: dict[str, Any]) -> bool:
+    """识别不能被定时草稿刷新覆盖的审核或发布中状态。"""
+    return bool(
+        draft.get("review_status") == "approved"
+        or draft.get("confirmation_token_hash")
+        or str(draft.get("status") or "").lower() in {"approved", "publishing"}
+    )
+
+
+def _replace_generated_drafts(state: dict[str, Any], generated: list[dict[str, Any]]) -> None:
+    """替换普通候选草稿，同时保留已经审核或正在发布的草稿。"""
+    generated_ids = {str(item.get("id") or "") for item in generated}
+    protected = [
+        item
+        for item in state.get("drafts", []) or []
+        if _has_active_publish_authorization(item)
+        and str(item.get("id") or "") not in generated_ids
+    ]
+    state["drafts"] = [*protected, *generated]
 
 
 # ─── WebSocket notification helper ────────────────────────────
@@ -198,12 +238,13 @@ def job_morning_scan() -> None:
                 reverse=True,
             )[:3]
 
-        state = _load_state()
-        state["last_scan_topics"] = selected
-        state["drafts"] = []  # reset daily drafts
-        state["today_published"] = []
-        state["stats"] = {"posts_today": 0, "engagement_today": 0}
-        _save_state(state)
+        def reset_daily_state(state: dict[str, Any]) -> None:
+            state["last_scan_topics"] = selected
+            _replace_generated_drafts(state, [])
+            state["today_published"] = []
+            state["stats"] = {"posts_today": 0, "engagement_today": 0}
+
+        _mutate_state(reset_daily_state)
 
         # Synergy: 社交热点 → 交易标的扫描（通过 EventBus）
         try:
@@ -363,8 +404,7 @@ def job_evening_produce() -> None:
                         e,
                     )
 
-        state["drafts"] = drafts
-        _save_state(state)
+        _mutate_state(lambda latest: _replace_generated_drafts(latest, drafts))
         _notify(
             f"内容生产完成: {len(drafts)} 篇草稿待发",
             {"draft_count": len(drafts)},
@@ -379,146 +419,22 @@ def job_evening_produce() -> None:
 
 
 def job_night_publish() -> None:
-    """20:30 — 自动发布 (双平台)"""
+    """20:30 — 整理待审草稿并提醒最终确认，绝不自动发布。"""
 
     async def _run() -> None:
-        from src.execution.social.worker_bridge import run_social_worker_async
-
-        state = _load_state()
-        drafts = state.get("drafts", [])
-
-        ready_drafts = [
-            d
-            for d in drafts
-            if d.get("status") == "ready" and d.get("review_status") == "approved"
-        ]
-        if _REVIEW_MODE:
+        def require_owner_review(state: dict[str, Any]) -> int:
+            drafts = state.get("drafts", [])
             for draft in drafts:
                 if draft.get("status") == "ready" and draft.get("review_status") != "approved":
                     draft["status"] = "needs_review"
                     draft["review_status"] = draft.get("review_status") or "pending"
                     draft["review_required_at"] = now_et().isoformat()
                     draft["review_required_reason"] = "发布前请先确认人设和内容"
-            _save_state(state)
-            _notify("跳过发布: 审核模式已开启，请在桌面端点击最终发布确认")
-            return
-        for draft in drafts:
-            if draft.get("status") == "ready" and draft.get("review_status") != "approved":
-                draft["status"] = "needs_review"
-                draft["review_status"] = draft.get("review_status") or "pending"
-                draft["review_required_at"] = now_et().isoformat()
-                draft["review_required_reason"] = "发布前请先确认人设和内容"
-        if any(d.get("status") == "needs_review" for d in drafts):
-            _save_state(state)
-        if not ready_drafts:
-            _notify("跳过发布: 无待发草稿")
-            return
+            state["drafts"] = drafts
+            return len(drafts)
 
-        published: list[dict] = []
-        failed: list[dict] = []
-
-        for draft in ready_drafts:
-            platform = draft.get("platform", "x")
-            text = draft.get("text", "")
-            draft_id = draft.get("id", "?")
-
-            # 防重发: 先标记为 publishing 并持久化
-            draft["status"] = "publishing"
-            _save_state(state)
-
-            try:
-                # 通过适配器统一分发到对应平台
-                from src.execution.social.platform_adapter import get_adapter
-
-                adapter = get_adapter(platform)
-                if adapter:
-                    title, body = adapter.normalize_content(text)
-                    payload = adapter.build_worker_payload(body, title)
-                    result = await run_social_worker_async(adapter.worker_action, payload)
-                else:
-                    result = {"success": False, "error": f"未知平台: {platform}"}
-
-                if result.get("success"):
-                    draft["status"] = "published"
-                    draft["published_at"] = now_et().isoformat()
-                    published.append(draft)
-                    logger.info("[Autopilot] 发布成功: %s/%s", platform, draft_id)
-                else:
-                    draft["status"] = "failed"
-                    draft["error"] = result.get("error", "unknown")
-                    failed.append(draft)
-                    logger.warning(
-                        "[Autopilot] 发布失败: %s/%s - %s",
-                        platform,
-                        draft_id,
-                        result.get("error"),
-                    )
-                    # 发布返回失败，通知管理员
-                    _alert_admin(
-                        f"⚠️ 社媒自动发布失败: {platform}\n"
-                        f"错误: {str(result.get('error', 'unknown'))[:100]}\n\n"
-                        f"手动发布: 说「发文到{platform}」"
-                    )
-            except Exception as e:
-                draft["status"] = "failed"
-                draft["error"] = str(e)
-                failed.append(draft)
-                logger.error("[Autopilot] 发布异常: %s/%s - %s", platform, draft_id, e)
-                # 单篇发布失败，通知管理员
-                _alert_admin(
-                    f"⚠️ 社媒自动发布失败: {platform}\n错误: {str(e)[:100]}\n\n手动发布: 说「发文到{platform}」"
-                )
-
-            _save_state(state)
-
-        state["drafts"] = drafts  # updated statuses
-        state["today_published"].extend(published)
-        state["stats"]["posts_today"] = len(state["today_published"])
-        _save_state(state)
-
-        # sau_bridge: 将已发布内容同步到抖音/B站等平台（如果 sau 可用）
-        try:
-            from src.sau_bridge import publish_multi_platform
-
-            # 把已成功发布的内容通过 sau 同步到更多平台
-            for draft in published:
-                text = draft.get("text", "")
-                title = text.strip().splitlines()[0].strip()[:100] if text.strip() else "OpenClaw 自动发布"
-                sau_results = await publish_multi_platform(
-                    platforms=["douyin", "xiaohongshu"],
-                    title=title,
-                    description=text[:500],
-                )
-                sau_ok = sum(1 for r in sau_results.values() if r.get("success"))
-                if sau_ok:
-                    logger.info("[Autopilot] sau 多平台同步: %d 个平台成功", sau_ok)
-        except ImportError:
-            logger.info("[SocialAutopilot] sau_bridge 未配置，跳过自动发布")
-        except Exception as e:
-            logger.warning("[Autopilot] sau 多平台同步异常: %s", e)
-
-        # EventBus: 社媒发布事件（逐篇发射，触发主动引擎 1 小时后跟进）
-        if published:
-            try:
-                from src.core.event_bus import EventType, get_event_bus
-
-                bus = get_event_bus()
-                for draft in published:
-                    _platform = draft.get("platform", "")
-                    _text = draft.get("text", "")
-                    _title = _text.strip().splitlines()[0].strip()[:50] if _text.strip() else "无标题"
-                    await bus.publish(
-                        EventType.SOCIAL_PUBLISHED,
-                        {"platform": _platform, "title": _title},
-                        source="social_scheduler",
-                    )
-            except Exception as e:
-                logger.debug("[SocialScheduler] 发布事件发射失败: %s", e)
-
-        _notify(
-            f"发布完成: {len(published)} 成功, {len(failed)} 失败",
-            {"published": len(published), "failed": len(failed)},
-        )
+        draft_count = _mutate_state(require_owner_review)
+        _notify("跳过自动发布: 请在审核页完成最终确认", {"draft_count": draft_count})
 
     logger.info("[Autopilot] === 晚间自动发布 ===")
     try:
@@ -735,8 +651,8 @@ def job_late_review() -> None:
             # 6. 动态调整发布时间
             _review_adjust_schedule()
 
-        state["last_review"] = now_et().isoformat()
-        _save_state(state)
+        reviewed_at = now_et().isoformat()
+        _mutate_state(lambda latest: latest.__setitem__("last_review", reviewed_at))
 
         _notify(
             f"复盘完成: 今日发布 {kpi_summary['posts_today']} 篇"
@@ -875,9 +791,7 @@ class SocialAutopilot:
         self._scheduler.start()
 
         # Persist enabled flag
-        state = _load_state()
-        state["enabled"] = True
-        _save_state(state)
+        _mutate_state(lambda state: state.__setitem__("enabled", True))
 
         _notify("社交自动驾驶已启动 (5 个日程任务)")
         logger.info("[Autopilot] APScheduler 已启动, %d 个任务", len(self._scheduler.get_jobs()))
@@ -891,9 +805,7 @@ class SocialAutopilot:
         self._scheduler.shutdown(wait=False)
         self._scheduler = None
 
-        state = _load_state()
-        state["enabled"] = False
-        _save_state(state)
+        _mutate_state(lambda state: state.__setitem__("enabled", False))
 
         _notify("社交自动驾驶已停止")
         logger.info("[Autopilot] APScheduler 已停止")
@@ -928,8 +840,8 @@ class SocialAutopilot:
         return {
             "running": running,
             "enabled": state.get("enabled", False),
-            "review_mode": _REVIEW_MODE,
-            "external_actions_locked": _REVIEW_MODE,
+            "review_mode": True,
+            "external_actions_locked": True,
             "jobs": jobs,
             "next_action": next_action,
             "next_time": next_time,

@@ -284,9 +284,10 @@ class TestExecuteTradeBrokerTimeout:
         # Fell back to simulation portfolio
         mock_portfolio.buy.assert_called_once()
 
-        # Trade still executed via simulation (标记为 simulated 而非 executed，见 HI-569)
+        # 模拟降级只保留模拟结果，不能创建真实交易日志或监控仓位。
         assert result["status"] == "simulated"
-        assert result["trade_id"] == 99
+        assert "trade_id" not in result
+        mock_journal.open_trade.assert_not_called()
 
         # Steps should contain the broker error
         broker_error_steps = [

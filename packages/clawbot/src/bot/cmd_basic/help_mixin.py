@@ -10,6 +10,7 @@
 
 import logging
 
+from src.bot.auth import requires_auth
 from src.telegram_ux import with_typing
 
 logger = logging.getLogger(__name__)
@@ -105,6 +106,7 @@ class _HelpMixin:
             except Exception as e:
                 logger.debug("Telegram消息操作失败(用户可能已删除): %s", e)
 
+    @requires_auth
     async def handle_help_callback(self, update, context):
         """处理 help:* 按钮回调（帮助分类菜单）"""
         query = update.callback_query

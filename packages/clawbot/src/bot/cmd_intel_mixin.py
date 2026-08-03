@@ -262,6 +262,7 @@ class IntelCommandMixin:
             except Exception as e:
                 logger.debug("Telegram消息操作失败(用户可能已删除): %s", e)
 
+    @requires_auth
     async def handle_intel_callback(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:

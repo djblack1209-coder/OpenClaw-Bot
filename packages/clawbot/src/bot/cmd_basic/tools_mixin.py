@@ -3,6 +3,7 @@
 """
 import logging
 import os
+import shlex
 
 from src.bot.auth import requires_auth
 from src.bot.error_messages import error_generic
@@ -17,6 +18,24 @@ from src.message_format import format_error
 from src.telegram_ux import ProgressTracker, with_typing
 
 logger = logging.getLogger(__name__)
+
+
+def _build_claude_terminal_launch(claude_path: str, project_dir: str) -> list[str]:
+    """用 AppleScript argv 传递固定命令，避免把值拼进脚本源码。"""
+    terminal_cmd = (
+        f"cd -- {shlex.quote(project_dir)} && "
+        f"exec {shlex.join([claude_path, '--resume', 'auto'])}"
+    )
+    applescript = """
+on run argv
+    set terminalCommand to item 1 of argv
+    tell application "Terminal"
+        activate
+        do script terminalCommand
+    end tell
+end run
+"""
+    return ["osascript", "-e", applescript, "--", terminal_cmd]
 
 
 class _ToolsMixin:
@@ -228,9 +247,13 @@ class _ToolsMixin:
 
     async def handle_inline_query(self, update, context):
         """处理 @bot <query> 内联搜索 — 在任何聊天中即时查股票/记忆"""
+        query = update.inline_query
+        user = getattr(update, "effective_user", None) or getattr(query, "from_user", None)
+        if user is None or not self._is_authorized(user.id):
+            return
+
         from telegram import InlineQueryResultArticle, InputTextMessageContent
 
-        query = update.inline_query
         text = (query.query or "").strip()
         if not text or len(text) < 1:
             return
@@ -325,7 +348,8 @@ class _ToolsMixin:
 
         用法:
           /claude code           — 在项目目录打开 Claude Code 交互终端
-          /claude code <消息>    — 打开终端并自动发送初始消息
+
+        安全边界：Telegram 文本不会传入本机 Shell 或 Claude Code 参数。
         """
         import shutil
         import subprocess
@@ -336,7 +360,12 @@ class _ToolsMixin:
         if args and args[0].lower() == "code":
             args = args[1:]
 
-        prompt = " ".join(args) if args else ""
+        if args:
+            await update.message.reply_text(
+                "⚠️ 为避免远程命令注入，已关闭带消息启动 Claude Code。\n"
+                "请只发送 /claude code，然后在桌面终端中输入内容。"
+            )
+            return
 
         # 查找 claude 路径
         claude_path = shutil.which("claude")
@@ -353,38 +382,16 @@ class _ToolsMixin:
             await update.message.reply_text("⚠️ Claude Code CLI 未安装。请先运行: npm install -g @anthropic-ai/claude-code")
             return
 
-        # 构建终端命令
+        # 仅允许启动固定的交互命令，不接收 Telegram 文本参数。
         project_dir = os.path.expanduser("~/Desktop/OpenEverything")
-        if prompt:
-            # 有初始消息：用 -p 执行后保持终端打开
-            # 使用 --resume 避免"已在运行"冲突
-            terminal_cmd = f'cd "{project_dir}" && "{claude_path}" --resume auto -p "{prompt.replace(chr(34), chr(92)+chr(34))}"'
-        else:
-            # 无消息：直接打开交互式 Claude Code
-            terminal_cmd = f'cd "{project_dir}" && "{claude_path}" --resume auto'
-
-        # 用 osascript 在桌面打开 Terminal 窗口
-        applescript = f'''
-tell application "Terminal"
-    activate
-    do script "{terminal_cmd}"
-end tell
-'''
         try:
-            subprocess.Popen(["osascript", "-e", applescript])
+            subprocess.Popen(_build_claude_terminal_launch(claude_path, project_dir))
 
-            if prompt:
-                await update.message.reply_text(
-                    f"🖥 Claude Code 已在桌面终端启动\n\n"
-                    f"> {prompt[:100]}{'...' if len(prompt) > 100 else ''}\n\n"
-                    f"请切换到 Terminal 窗口查看执行结果"
-                )
-            else:
-                await update.message.reply_text(
-                    "🖥 Claude Code 已在桌面终端启动\n\n"
-                    "请切换到 Terminal 窗口开始对话\n"
-                    "项目目录: ~/Desktop/OpenEverything"
-                )
+            await update.message.reply_text(
+                "🖥 Claude Code 已在桌面终端启动\n\n"
+                "请切换到 Terminal 窗口开始对话\n"
+                "项目目录: ~/Desktop/OpenEverything"
+            )
 
             # 微信同步通知
             try:
@@ -392,7 +399,7 @@ end tell
 
                 from src.wechat_bridge import send_to_wechat
                 asyncio.create_task(send_to_wechat(  # noqa: RUF006
-                    f"🖥 Claude Code 已在桌面启动{(f'\n> {prompt[:80]}' if prompt else '')}"
+                    "🖥 Claude Code 已在桌面启动"
                 ))
             except Exception:
                 pass  # 合理保留：该分支只用于显式跳过并继续后续降级/清理流程

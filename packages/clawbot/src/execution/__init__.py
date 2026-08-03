@@ -230,18 +230,23 @@ class ExecutionHub:
         ]
 
     async def publish_persona_x(self, topic=None, content=None, **kwargs):
-        from src.execution.social.x_platform import publish_x_post
-        persona = self.load_social_persona()
-        return await publish_x_post(
-            topic=topic, content=content, persona=persona, **kwargs
-        )
+        """旧正文直发入口已降级为待审草稿创建。"""
+        draft = self.save_social_draft("x", "", content or "", topic=topic or "")
+        return {
+            **draft,
+            "requires_owner_review": True,
+            "requires_final_confirmation": True,
+        }
 
     async def publish_persona_xhs(self, topic=None, content=None, **kwargs):
-        from src.execution.social.xhs_platform import publish_xhs_article
-        persona = self.load_social_persona()
-        return await publish_xhs_article(
-            topic=topic, content=content, persona=persona, **kwargs
-        )
+        """旧正文直发入口已降级为待审草稿创建。"""
+        title = str(kwargs.get("title") or topic or "")[:50]
+        draft = self.save_social_draft("xiaohongshu", title, content or "", topic=topic or "")
+        return {
+            **draft,
+            "requires_owner_review": True,
+            "requires_final_confirmation": True,
+        }
 
     async def reply_to_x_post(self, post_url=None, reply_text=None):
         from src.execution.social.x_platform import reply_to_x_post
@@ -363,13 +368,21 @@ class ExecutionHub:
             target = platform or "all"
             if target in ("all", "x"):
                 render = self._run_social_worker("render", {"topic": topic, "platform": "x"})
-                published = self._run_social_worker("publish_x", {"text": x_body, "images": []})
+                published = {
+                    "success": False,
+                    "requires_owner_review": True,
+                    "requires_final_confirmation": True,
+                }
                 results["x"] = {"success": True, "body": x_body,
                                 "draft_id": x_draft.get("draft_id", 0) if x_draft else 0,
                                 "rendered": render, "published": published}
             if target in ("all", "xiaohongshu"):
                 render = self._run_social_worker("render", {"topic": topic, "platform": "xiaohongshu"})
-                published = self._run_social_worker("publish_xhs", {"title": xhs_title, "body": xhs_body, "images": []})
+                published = {
+                    "success": False,
+                    "requires_owner_review": True,
+                    "requires_final_confirmation": True,
+                }
                 results["xiaohongshu"] = {"success": True, "body": xhs_body, "title": xhs_title,
                                           "draft_id": xhs_draft.get("draft_id", 0) if xhs_draft else 0,
                                           "rendered": render, "published": published}
@@ -378,14 +391,21 @@ class ExecutionHub:
             logger.error(f"[AutopostTopic] failed: {scrub_secrets(str(e))}")
             return {"success": False, "error": str(e)}
 
-    def publish_social_draft(self, platform=None, draft_id=None):
-        """发布社媒草稿"""
+    def publish_social_draft(self, platform=None, draft_id=None, confirmation_token=""):
+        """使用一次性确认发布已审核草稿。"""
         from src.execution.social.drafts import publish_social_draft
         from src.execution.social.worker_bridge import run_social_worker
         return publish_social_draft(
             platform=platform, draft_id=draft_id,
             worker_fn=run_social_worker,
+            confirmation_token=confirmation_token,
         )
+
+    def final_confirm_social_draft(self, draft_id=None, reviewer="owner"):
+        """为已审核本地草稿签发一次性发布确认。"""
+        from src.execution.social.drafts import final_confirm_social_draft
+
+        return final_confirm_social_draft(draft_id, reviewer=reviewer)
 
     async def autopost_hot_content(self, platform=None, topic=None):
         """自动发布热门内容"""
@@ -421,12 +441,20 @@ class ExecutionHub:
         if target in ("all", "x"):
             x_draft = self.save_social_draft("x", "", x_body, topic=hot_topic)
             render = self._run_social_worker("render", {"topic": hot_topic, "platform": "x"})
-            published = self._run_social_worker("publish_x", {"text": x_body, "images": []})
+            published = {
+                "success": False,
+                "requires_owner_review": True,
+                "requires_final_confirmation": True,
+            }
             results["x"] = {"body": x_body, "draft": x_draft, "rendered": render, "published": published}
         if target in ("all", "xiaohongshu"):
             xhs_draft = self.save_social_draft("xiaohongshu", xhs_title, xhs_body, topic=hot_topic)
             render = self._run_social_worker("render", {"topic": hot_topic, "platform": "xiaohongshu"})
-            published = self._run_social_worker("publish_xhs", {"title": xhs_title, "body": xhs_body, "images": []})
+            published = {
+                "success": False,
+                "requires_owner_review": True,
+                "requires_final_confirmation": True,
+            }
             results["xiaohongshu"] = {"body": xhs_body, "title": xhs_title, "draft": xhs_draft, "rendered": render, "published": published}
         return {"success": True, "topic": hot_topic, "strategy": strategy, "results": results}
 

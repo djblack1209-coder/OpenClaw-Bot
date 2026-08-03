@@ -185,10 +185,11 @@ class SecurityGate:
         Returns:
             PermissionResult
         """
-        # 白名单检查
-        if self._admin_ids and user_id not in self._admin_ids:
+        # 白名单为空也拒绝，避免漏配时退化为公开控制面。
+        if not self._admin_ids or user_id not in self._admin_ids:
             return PermissionResult(
-                allowed=False, reason="用户不在白名单中",
+                allowed=False,
+                reason="管理员白名单未配置或用户不在白名单中",
                 permission_level="denied",
             )
 

@@ -12,7 +12,7 @@
 set -euo pipefail
 
 # ── 配置 ──
-VPS_HOST="${DEPLOY_VPS_HOST:?请设置 DEPLOY_VPS_HOST 环境变量}"
+VPS_HOST="${DEPLOY_VPS_HOST:-}"
 VPS_USER="${DEPLOY_VPS_USER:-openclaw}"
 VPS_PORT="${DEPLOY_VPS_PORT:-29222}"
 VPS_HEARTBEAT_PATH="/opt/openclaw/data/primary_heartbeat"
@@ -22,6 +22,11 @@ MAX_RETRIES=3
 BOT_PROCESS_PATTERN="multi_main.py"
 
 log() { logger -t "$LOG_TAG" "$1" 2>/dev/null || echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"; }
+
+if [[ -z "$VPS_HOST" ]]; then
+    log "VPS 心跳未配置，拒绝启动"
+    exit 78
+fi
 
 # ── 检查 Bot 进程是否存活 ──
 if ! pgrep -f "$BOT_PROCESS_PATTERN" > /dev/null 2>&1; then

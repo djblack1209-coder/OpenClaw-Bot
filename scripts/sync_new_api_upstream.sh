@@ -29,7 +29,19 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
-latest_json="$(curl -fsSL "$API_URL")"
+curl_args=(
+  -fsSL
+  --retry 3
+  --retry-delay 2
+  --retry-all-errors
+  -H "Accept: application/vnd.github+json"
+  -H "X-GitHub-Api-Version: 2022-11-28"
+  -H "User-Agent: OpenClaw-Bot-New-API-Sync"
+)
+if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+  curl_args+=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
+fi
+latest_json="$(curl "${curl_args[@]}" "$API_URL")"
 latest_info="$(printf '%s' "$latest_json" | python3 -c '
 import json
 import sys

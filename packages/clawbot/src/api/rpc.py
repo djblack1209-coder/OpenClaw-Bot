@@ -952,6 +952,78 @@ def _active_x_auto_status(status: str) -> bool:
     return status in {"ready", "needs_review", "approved", "edited", "failed", "publishing"}
 
 
+def _social_draft_mutation_guard(draft: dict, action: str) -> dict | None:
+    """发布中或已发布草稿不可再编辑、删除或重新审核。"""
+    status = str(draft.get("status") or "").strip().lower()
+    if status not in {"publishing", "published"}:
+        return None
+    return {
+        "success": False,
+        "immutable_status": status,
+        "error": f"草稿处于 {status} 状态，不能{action}；请先核对平台发布结果",
+    }
+
+
+def _append_social_publish_outcome(
+    state: dict,
+    *,
+    source: str,
+    draft_id: str,
+    snapshot_hash: str,
+    result: dict,
+    reason: str,
+) -> dict:
+    """追加不可变的外部发布结果，供状态冲突后的人工对账。"""
+    outcomes = state.setdefault("publish_outcomes", [])
+    if not isinstance(outcomes, list):
+        raise ValueError("publish_outcomes 审计区格式无效")
+    event_id = f"{source}:{draft_id}:{snapshot_hash}"
+    existing = next(
+        (item for item in outcomes if isinstance(item, dict) and item.get("event_id") == event_id),
+        None,
+    )
+    if existing is not None:
+        return existing
+    event = {
+        "event_id": event_id,
+        "source": source,
+        "draft_id": draft_id,
+        "snapshot_hash": snapshot_hash,
+        "external_success": bool(result.get("success")),
+        "url": str(result.get("url") or result.get("post_url") or "").strip(),
+        "status": str(result.get("status") or "").strip(),
+        "error": str(result.get("error") or "")[:300],
+        "state_update_rejected": True,
+        "reason": reason,
+        "completed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    outcomes.append(event)
+    return event
+
+
+def _social_publish_reconciliation_response(
+    result: dict,
+    *,
+    reason: str,
+    outcome: dict | None = None,
+    audit_persisted: bool,
+) -> dict:
+    """如实返回平台结果，同时把本地异常标为必须人工对账。"""
+    external_success = bool(result.get("success"))
+    response = {
+        "success": external_success,
+        "state_update_rejected": True,
+        "external_result": result,
+        "audit_persisted": audit_persisted,
+        "manual_reconciliation_required": True,
+        "warning": reason,
+        "error": "" if external_success else str(result.get("error") or reason),
+    }
+    if outcome is not None:
+        response["publish_outcome"] = outcome
+    return response
+
+
 def _is_social_review_display_safe(draft: dict) -> bool:
     """过滤旧策略和报错草稿，避免污染用户确认入口。"""
     text = str(draft.get("text") or draft.get("content") or draft.get("body") or "")
@@ -1023,6 +1095,17 @@ def _resolve_social_draft_ref(index: int) -> dict | None:
     refs = _merged_social_draft_refs()
     if 0 <= index < len(refs):
         return refs[index]
+    return None
+
+
+def _resolve_social_draft_ref_by_id(draft_id: str) -> tuple[int, dict] | None:
+    """按稳定草稿 ID 解析引用，避免列表重排导致发布错稿。"""
+    clean_id = str(draft_id or "").strip()
+    if not clean_id:
+        return None
+    for index, ref in enumerate(_merged_social_draft_refs()):
+        if str(ref["draft"].get("id") or "") == clean_id:
+            return index, ref
     return None
 
 
@@ -2127,7 +2210,6 @@ class ClawBotRPC:
 
         from src.execution.social import x_auto_ops
 
-        state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)
         digest_raw = json.dumps(
             {
                 "platform": platform,
@@ -2189,11 +2271,15 @@ class ClawBotRPC:
             "external_actions_locked": True,
             "publishIntent": False,
         }
-        drafts = list(state.get("drafts", []) or [])
-        drafts.append(draft)
-        state["drafts"] = drafts[-100:]
-        state["last_run"] = created_at
-        x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)
+        committed = x_auto_ops._mutate_state(
+            x_auto_ops._STATE_FILE,
+            lambda state: x_auto_ops._merge_generated_drafts(
+                state,
+                [draft],
+                limit=100,
+            ),
+        )
+        draft = committed[0]
 
         status = _sanitize_social_extension_payload({
             **payload,
@@ -2215,6 +2301,22 @@ class ClawBotRPC:
 
     @staticmethod
     def _rpc_social_extension_draft_update(draft_id: str, text: str = "", title: str = "") -> dict:
+        """跨进程串行化插件草稿编辑。"""
+        from src.execution.social.publish_gate import publish_state_lock
+
+        with publish_state_lock:
+            return ClawBotRPC._rpc_social_extension_draft_update_locked(
+                draft_id,
+                text=text,
+                title=title,
+            )
+
+    @staticmethod
+    def _rpc_social_extension_draft_update_locked(
+        draft_id: str,
+        text: str = "",
+        title: str = "",
+    ) -> dict:
         """按草稿 ID 更新插件生成的待审草稿；确认前仍不外发。"""
         clean_id = str(draft_id or "").strip()
         if not clean_id:
@@ -2231,8 +2333,11 @@ class ClawBotRPC:
                 draft["body"] = str(text)[:4000]
             if title:
                 draft["title"] = str(title)[:160]
+            from src.execution.social.publish_gate import invalidate_publish_authorization
+
             draft["status"] = "edited"
             draft["review_status"] = "pending"
+            invalidate_publish_authorization(draft)
             draft["edited_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
             state["drafts"] = drafts
             x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)
@@ -2247,6 +2352,22 @@ class ClawBotRPC:
 
     @staticmethod
     def _rpc_social_extension_draft_review(draft_id: str, approved: bool, reviewer: str = "owner") -> dict:
+        """跨进程串行化插件草稿审核。"""
+        from src.execution.social.publish_gate import publish_state_lock
+
+        with publish_state_lock:
+            return ClawBotRPC._rpc_social_extension_draft_review_locked(
+                draft_id,
+                approved=approved,
+                reviewer=reviewer,
+            )
+
+    @staticmethod
+    def _rpc_social_extension_draft_review_locked(
+        draft_id: str,
+        approved: bool,
+        reviewer: str = "owner",
+    ) -> dict:
         """按草稿 ID 审核插件草稿；只改变审核状态，不触发发布。"""
         clean_id = str(draft_id or "").strip()
         if not clean_id:
@@ -2262,6 +2383,15 @@ class ClawBotRPC:
             draft["status"] = "approved" if approved else "rejected"
             draft["reviewed_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
             draft["approved_by"] = reviewer if approved else ""
+            from src.execution.social.publish_gate import (
+                invalidate_publish_authorization,
+                seal_approved_draft,
+            )
+
+            if approved:
+                seal_approved_draft(draft)
+            else:
+                invalidate_publish_authorization(draft)
             state["drafts"] = drafts
             x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)
             return {
@@ -2277,6 +2407,22 @@ class ClawBotRPC:
 
     @staticmethod
     def _rpc_social_extension_draft_schedule(draft_id: str, scheduled_at: str = "", reviewer: str = "owner") -> dict:
+        """跨进程串行化插件排程写入。"""
+        from src.execution.social.publish_gate import publish_state_lock
+
+        with publish_state_lock:
+            return ClawBotRPC._rpc_social_extension_draft_schedule_locked(
+                draft_id,
+                scheduled_at=scheduled_at,
+                reviewer=reviewer,
+            )
+
+    @staticmethod
+    def _rpc_social_extension_draft_schedule_locked(
+        draft_id: str,
+        scheduled_at: str = "",
+        reviewer: str = "owner",
+    ) -> dict:
         """把已确认的插件草稿加入待发布排程；只登记队列，不触发外部发布。"""
         clean_id = str(draft_id or "").strip()
         if not clean_id:
@@ -2361,6 +2507,14 @@ class ClawBotRPC:
 
     @staticmethod
     def _rpc_social_extension_schedule_queue(limit: int = 20) -> dict:
+        """跨进程串行化到期状态的读改写。"""
+        from src.execution.social.publish_gate import publish_state_lock
+
+        with publish_state_lock:
+            return ClawBotRPC._rpc_social_extension_schedule_queue_locked(limit)
+
+    @staticmethod
+    def _rpc_social_extension_schedule_queue_locked(limit: int = 20) -> dict:
         """读取 Chrome 插件排程队列；到点只标记待最终确认，不触发发布。"""
         try:
             from datetime import datetime
@@ -2474,6 +2628,17 @@ class ClawBotRPC:
 
     @staticmethod
     def _rpc_social_extension_schedule_final_confirm(draft_id: str, reviewer: str = "owner") -> dict:
+        """在同一进程原子事务中签发插件草稿的一次性确认。"""
+        from src.execution.social.publish_gate import publish_state_lock
+
+        with publish_state_lock:
+            return ClawBotRPC._rpc_social_extension_schedule_final_confirm_locked(
+                draft_id,
+                reviewer=reviewer,
+            )
+
+    @staticmethod
+    def _rpc_social_extension_schedule_final_confirm_locked(draft_id: str, reviewer: str = "owner") -> dict:
         """排程到点后的最终确认；只标记可手动发布，不调用发布 worker。"""
         clean_id = str(draft_id or "").strip()
         if not clean_id:
@@ -2522,6 +2687,21 @@ class ClawBotRPC:
                 "external_actions_locked": True,
             }
         now_iso = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        from src.execution.social.publish_gate import issue_publish_confirmation
+
+        confirmation = issue_publish_confirmation(draft)
+        if not confirmation.get("success"):
+            state["drafts"] = drafts
+            state["extension_schedule"] = queue
+            x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)
+            return {
+                **confirmation,
+                "draft": draft,
+                "schedule_item": schedule_item,
+                "manual_publish_ready": False,
+                "auto_publish_enabled": False,
+                "external_actions_locked": True,
+            }
         schedule_item["status"] = "ready_for_manual_publish"
         schedule_item["final_confirmed_at"] = now_iso
         schedule_item["final_confirmed_by"] = _bounded_str(reviewer, 80) or "owner"
@@ -2538,6 +2718,8 @@ class ClawBotRPC:
         x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)
         return {
             "success": True,
+            "confirmation_token": confirmation["confirmation_token"],
+            "confirmation_expires_at": confirmation["expires_at"],
             "draft": draft,
             "schedule_item": schedule_item,
             "manual_publish_ready": True,
@@ -2737,11 +2919,6 @@ class ClawBotRPC:
         record = _sanitize_social_performance_payload(payload)
         from src.execution.social import x_auto_ops
 
-        state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)
-        performance_log = list(state.get("extension_performance", []) or [])
-        performance_log.append(record)
-        state["extension_performance"] = performance_log[-300:]
-
         growth_feedback = {
             "platform": record["platform"],
             "draft_id": record["draft_id"],
@@ -2751,19 +2928,24 @@ class ClawBotRPC:
             "updated_at": record["recorded_at"],
             "next_action": "把高信号选题结构加入后续热点权重；仍不自动发布或互动。",
         }
-        drafts = list(state.get("drafts", []) or [])
-        for draft in drafts:
-            if str(draft.get("id") or "") != record["draft_id"]:
-                continue
-            snapshots = list(draft.get("performance_snapshots", []) or [])
-            snapshots.insert(0, record)
-            draft["performance_snapshots"] = snapshots[:20]
-            draft["growth_feedback"] = growth_feedback
-            break
-        state["drafts"] = drafts
-        state["growth_feedback"] = growth_feedback
-        state["last_run"] = record["recorded_at"]
-        x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)
+        def record_performance(state: dict) -> None:
+            performance_log = list(state.get("extension_performance", []) or [])
+            performance_log.append(record)
+            state["extension_performance"] = performance_log[-300:]
+            drafts = list(state.get("drafts", []) or [])
+            for draft in drafts:
+                if str(draft.get("id") or "") != record["draft_id"]:
+                    continue
+                snapshots = list(draft.get("performance_snapshots", []) or [])
+                snapshots.insert(0, record)
+                draft["performance_snapshots"] = snapshots[:20]
+                draft["growth_feedback"] = growth_feedback
+                break
+            state["drafts"] = drafts
+            state["growth_feedback"] = growth_feedback
+            state["last_run"] = record["recorded_at"]
+
+        x_auto_ops._mutate_state(x_auto_ops._STATE_FILE, record_performance)
 
         status = _load_social_extension_status(_SOCIAL_EXTENSION_STATUS_FILE)
         status["online"] = True
@@ -3365,46 +3547,38 @@ class ClawBotRPC:
 
     @staticmethod
     async def _rpc_social_publish(
-        platform: str,
-        content: str,
+        platform: str = "",
+        content: str = "",
+        draft_id: str = "",
+        confirmation_token: str = "",
     ) -> dict:
-        """Publish content to a social platform via adapter pattern.
-
-        通过适配器注册表统一分发，支持 "both" 同时发布到所有平台。
-        """
-        from src.execution.social.platform_adapter import get_adapter, get_all_adapters
-        from src.execution.social.worker_bridge import run_social_worker_async
-
-        try:
-            if platform == "both":
-                # 同时发布到所有已注册平台
-                results = {}
-                any_success = False
-                for pid, adapter in get_all_adapters().items():
-                    try:
-                        title, body = adapter.normalize_content(content)
-                        payload = adapter.build_worker_payload(body, title)
-                        result = await run_social_worker_async(adapter.worker_action, payload)
-                        results[pid] = result
-                        if result.get("success"):
-                            any_success = True
-                    except Exception as e:
-                        logger.warning("发布到 %s 失败: %s", adapter.display_name, e)
-                        results[pid] = {"success": False, "error": str(e)}
-                results["success"] = any_success
-                return results
-
-            # 单平台发布
-            adapter = get_adapter(platform)
-            if adapter:
-                title, body = adapter.normalize_content(content)
-                payload = adapter.build_worker_payload(body, title)
-                return await run_social_worker_async(adapter.worker_action, payload)
-            else:
-                return {"success": False, "error": f"Unknown platform: {platform}"}
-        except Exception as e:
-            logger.error("Social publish failed: %s", e)
-            return {"success": False, "error": _safe_error(e)}
+        """只允许通过已审核草稿和一次性确认发布，禁止正文直发。"""
+        if content or not draft_id:
+            return {
+                "success": False,
+                "requires_approved_draft": True,
+                "requires_final_confirmation": True,
+                "error": "正文直发已关闭，请提交已审核草稿和一次性发布确认",
+            }
+        resolved = _resolve_social_draft_ref_by_id(draft_id)
+        if not resolved:
+            return {
+                "success": False,
+                "requires_approved_draft": True,
+                "error": "找不到指定草稿",
+            }
+        index, ref = resolved
+        immutable_platform = str(ref["draft"].get("platform") or "")
+        if platform and platform not in {immutable_platform, "twitter" if immutable_platform == "x" else immutable_platform}:
+            return {
+                "success": False,
+                "requires_review": True,
+                "error": "发布平台与审核草稿不一致",
+            }
+        return await ClawBotRPC._rpc_social_draft_publish(
+            index,
+            confirmation_token=confirmation_token,
+        )
 
     @staticmethod
     async def _rpc_social_research(topic: str, count: int = 10) -> dict:
@@ -3454,10 +3628,21 @@ class ClawBotRPC:
 
     @staticmethod
     def _rpc_social_draft_update(index: int, text: str) -> dict:
+        """跨进程串行化统一草稿编辑。"""
+        from src.execution.social.publish_gate import publish_state_lock
+
+        with publish_state_lock:
+            return ClawBotRPC._rpc_social_draft_update_locked(index, text)
+
+    @staticmethod
+    def _rpc_social_draft_update_locked(index: int, text: str) -> dict:
         """Update a draft's text content."""
         ref = _resolve_social_draft_ref(index)
         if not ref:
             return {"success": False, "error": "Invalid draft index"}
+        mutation_error = _social_draft_mutation_guard(ref["draft"], "编辑")
+        if mutation_error:
+            return mutation_error
 
         if ref["source"] == "x_auto_ops":
             from src.execution.social import x_auto_ops
@@ -3466,9 +3651,15 @@ class ClawBotRPC:
             drafts = state.get("drafts", [])
             idx = ref["index"]
             if 0 <= idx < len(drafts):
+                mutation_error = _social_draft_mutation_guard(drafts[idx], "编辑")
+                if mutation_error:
+                    return mutation_error
+                from src.execution.social.publish_gate import invalidate_publish_authorization
+
                 drafts[idx]["text"] = text
                 drafts[idx]["status"] = "edited"
                 drafts[idx]["review_status"] = "pending"
+                invalidate_publish_authorization(drafts[idx])
                 drafts[idx]["edited_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
                 state["drafts"] = drafts
                 x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)
@@ -3480,9 +3671,15 @@ class ClawBotRPC:
         drafts = state.get("drafts", [])
         idx = ref["index"]
         if 0 <= idx < len(drafts):
+            mutation_error = _social_draft_mutation_guard(drafts[idx], "编辑")
+            if mutation_error:
+                return mutation_error
+            from src.execution.social.publish_gate import invalidate_publish_authorization
+
             drafts[idx]["text"] = text
             drafts[idx]["status"] = "edited"
             drafts[idx]["review_status"] = "pending"
+            invalidate_publish_authorization(drafts[idx])
             state["drafts"] = drafts
             _save_state(state)
             return {"success": True}
@@ -3490,10 +3687,21 @@ class ClawBotRPC:
 
     @staticmethod
     def _rpc_social_draft_delete(index: int) -> dict:
+        """跨进程串行化统一草稿删除。"""
+        from src.execution.social.publish_gate import publish_state_lock
+
+        with publish_state_lock:
+            return ClawBotRPC._rpc_social_draft_delete_locked(index)
+
+    @staticmethod
+    def _rpc_social_draft_delete_locked(index: int) -> dict:
         """Delete a draft by index."""
         ref = _resolve_social_draft_ref(index)
         if not ref:
             return {"success": False, "error": "Invalid draft index"}
+        mutation_error = _social_draft_mutation_guard(ref["draft"], "删除")
+        if mutation_error:
+            return mutation_error
 
         if ref["source"] == "x_auto_ops":
             from src.execution.social import x_auto_ops
@@ -3502,6 +3710,9 @@ class ClawBotRPC:
             drafts = state.get("drafts", [])
             idx = ref["index"]
             if 0 <= idx < len(drafts):
+                mutation_error = _social_draft_mutation_guard(drafts[idx], "删除")
+                if mutation_error:
+                    return mutation_error
                 drafts[idx]["status"] = "rejected"
                 drafts[idx]["review_status"] = "rejected"
                 drafts[idx]["rejected_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
@@ -3515,6 +3726,9 @@ class ClawBotRPC:
         drafts = state.get("drafts", [])
         idx = ref["index"]
         if 0 <= idx < len(drafts):
+            mutation_error = _social_draft_mutation_guard(drafts[idx], "删除")
+            if mutation_error:
+                return mutation_error
             drafts.pop(idx)
             state["drafts"] = drafts
             _save_state(state)
@@ -3523,10 +3737,29 @@ class ClawBotRPC:
 
     @staticmethod
     def _rpc_social_draft_review(index: int, approved: bool, reviewer: str = "owner") -> dict:
+        """跨进程串行化统一草稿审核。"""
+        from src.execution.social.publish_gate import publish_state_lock
+
+        with publish_state_lock:
+            return ClawBotRPC._rpc_social_draft_review_locked(
+                index,
+                approved=approved,
+                reviewer=reviewer,
+            )
+
+    @staticmethod
+    def _rpc_social_draft_review_locked(
+        index: int,
+        approved: bool,
+        reviewer: str = "owner",
+    ) -> dict:
         """审核社媒草稿：只有 approved 草稿允许进入发布。"""
         ref = _resolve_social_draft_ref(index)
         if not ref:
             return {"success": False, "error": "Invalid draft index"}
+        mutation_error = _social_draft_mutation_guard(ref["draft"], "重新审核")
+        if mutation_error:
+            return mutation_error
 
         if ref["source"] == "x_auto_ops":
             from src.execution.social import x_auto_ops
@@ -3549,85 +3782,139 @@ class ClawBotRPC:
             return {"success": False, "error": "Invalid draft index"}
 
         draft = drafts[idx]
+        mutation_error = _social_draft_mutation_guard(draft, "重新审核")
+        if mutation_error:
+            return mutation_error
+        from src.execution.social.publish_gate import (
+            invalidate_publish_authorization,
+            seal_approved_draft,
+        )
+
         draft["review_status"] = "approved" if approved else "rejected"
         draft["reviewed_at"] = now_et().isoformat()
         draft["approved_by"] = reviewer if approved else ""
         if approved and draft.get("status") in {"draft", "ready", "edited", "needs_review", "rejected", "failed"}:
             draft["status"] = "approved"
+            seal_approved_draft(draft)
         elif not approved:
             draft["status"] = "rejected"
+            invalidate_publish_authorization(draft)
         state["drafts"] = drafts
         _save_state(state)
         return {"success": True, "draft": draft}
 
     @staticmethod
-    async def _rpc_social_draft_publish(index: int) -> dict:
-        """Publish a reviewed draft immediately.
+    def _rpc_social_draft_final_confirm(index: int, reviewer: str = "owner") -> dict:
+        """在同一进程原子事务中签发一次性发布确认。"""
+        from src.execution.social.publish_gate import publish_state_lock
 
-        安全闸口：社媒外部发布属于高风险动作，必须先由用户在人设/内容确认页
-        将草稿标记为 approved，禁止后台任务或旧 UI 直接绕过审核发布。
-        """
-        import asyncio
+        with publish_state_lock:
+            return ClawBotRPC._rpc_social_draft_final_confirm_locked(index, reviewer=reviewer)
 
-        from src.execution.social.worker_bridge import run_social_worker
-
+    @staticmethod
+    def _rpc_social_draft_final_confirm_locked(index: int, reviewer: str = "owner") -> dict:
+        """为已审核且未变更的草稿签发一次性发布确认。"""
         ref = _resolve_social_draft_ref(index)
         if not ref:
             return {"success": False, "error": "Invalid draft index"}
 
+        from src.execution.social.publish_gate import issue_publish_confirmation
+
         if ref["source"] == "x_auto_ops":
-            draft = ref["draft"]
-            if draft.get("review_status") != "approved":
-                from src.execution.social import x_auto_ops
+            from src.execution.social import x_auto_ops
 
-                return x_auto_ops.require_draft_review(draft, state_path=x_auto_ops._STATE_FILE)
-            platform = str(draft.get("platform") or "x").lower()
-            content = draft.get("text") or draft.get("content") or draft.get("body") or ""
-            if platform in {"xhs", "xiaohongshu"}:
-                title = draft.get("title") or content.split("\n")[0][:50]
-                body = draft.get("body") or content[len(str(title)) :].strip() or content
-                result = await asyncio.to_thread(run_social_worker, "publish_xhs", {"title": title, "body": body})
-            else:
-                result = await asyncio.to_thread(run_social_worker, "publish_x", {"text": content})
-            if result.get("success"):
-                from src.execution.social import x_auto_ops
+            state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)
+            drafts = state.get("drafts", [])
+            idx = ref["index"]
+            if not (0 <= idx < len(drafts)):
+                return {"success": False, "error": "Invalid draft index"}
+            draft = drafts[idx]
+            confirmation = issue_publish_confirmation(draft)
+            if confirmation.get("success"):
+                draft["final_confirmed_by"] = reviewer or "owner"
+            state["drafts"] = drafts
+            x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)
+        else:
+            from src.social_scheduler import _load_state, _save_state
 
-                x_auto_ops.mark_published(draft, result, state_path=x_auto_ops._STATE_FILE)
-            else:
-                from src.execution.social import x_auto_ops
-
-                x_auto_ops.mark_failed(
-                    draft,
-                    result.get("error") or result.get("status") or "unknown",
-                    state_path=x_auto_ops._STATE_FILE,
-                )
-            return result
-
-        from src.social_scheduler import _load_state, _save_state
-
-        state = _load_state()
-        drafts = state.get("drafts", [])
-        idx = ref["index"]
-        if not (0 <= idx < len(drafts)):
-            return {"success": False, "error": "Invalid draft index"}
-
-        draft = drafts[idx]
-        if draft.get("review_status") != "approved":
-            draft["status"] = "needs_review"
+            state = _load_state()
+            drafts = state.get("drafts", [])
+            idx = ref["index"]
+            if not (0 <= idx < len(drafts)):
+                return {"success": False, "error": "Invalid draft index"}
+            draft = drafts[idx]
+            confirmation = issue_publish_confirmation(draft)
+            if confirmation.get("success"):
+                draft["final_confirmed_by"] = reviewer or "owner"
             state["drafts"] = drafts
             _save_state(state)
-            return {
-                "success": False,
-                "requires_review": True,
-                "error": "发布前请先确认人设和内容，草稿审核通过后才允许发布",
-                "draft": draft,
-            }
 
-        platform = draft.get("platform", "x")
-        content = draft.get("text") or draft.get("content") or draft.get("body") or ""
-        draft["status"] = "publishing"
-        state["drafts"] = drafts
-        _save_state(state)
+        return {**confirmation, "draft_id": draft.get("id"), "platform": draft.get("platform")}
+
+    @staticmethod
+    async def _rpc_social_draft_publish(index: int, confirmation_token: str = "") -> dict:
+        """原子消费一次性确认后，发布审核快照对应的草稿。"""
+        import asyncio
+
+        from src.execution.social.publish_gate import (
+            consume_publish_confirmation,
+            draft_content_hash,
+            publish_state_lock,
+        )
+        from src.execution.social.worker_bridge import run_social_worker
+
+        with publish_state_lock:
+            ref = _resolve_social_draft_ref(index)
+            if not ref:
+                return {"success": False, "error": "Invalid draft index"}
+
+            source = str(ref["source"])
+            idx = int(ref["index"])
+            draft_id = str(ref["draft"].get("id") or "").strip()
+            if not draft_id:
+                return {"success": False, "error": "草稿缺少稳定 ID，已阻止发布"}
+            if source == "x_auto_ops":
+                from src.execution.social import x_auto_ops
+
+                state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)
+                drafts = state.get("drafts", [])
+                if not (0 <= idx < len(drafts)):
+                    return {"success": False, "error": "Invalid draft index"}
+                draft = drafts[idx]
+                if str(draft.get("id") or "") != draft_id:
+                    return {"success": False, "error": "草稿队列已变化，请刷新后重试"}
+                authorization = consume_publish_confirmation(draft, confirmation_token)
+                if not authorization.get("success"):
+                    state["drafts"] = drafts
+                    x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)
+                    return authorization
+                draft["status"] = "publishing"
+                state["drafts"] = drafts
+                x_auto_ops._save_state(state, x_auto_ops._STATE_FILE)
+            else:
+                from src.social_scheduler import _load_state, _save_state
+
+                state = _load_state()
+                drafts = state.get("drafts", [])
+                if not (0 <= idx < len(drafts)):
+                    return {"success": False, "error": "Invalid draft index"}
+                draft = drafts[idx]
+                if str(draft.get("id") or "") != draft_id:
+                    return {"success": False, "error": "草稿队列已变化，请刷新后重试"}
+                authorization = consume_publish_confirmation(draft, confirmation_token)
+                if not authorization.get("success"):
+                    state["drafts"] = drafts
+                    _save_state(state)
+                    return authorization
+                draft["status"] = "publishing"
+                state["drafts"] = drafts
+                _save_state(state)
+
+            approved_snapshot_hash = draft_content_hash(draft)
+            platform = str(draft.get("platform") or "x").lower()
+            content = str(draft.get("text") or draft.get("content") or draft.get("body") or "")
+            title = str(draft.get("title") or content.split("\n")[0][:50])
+            body = str(draft.get("body") or content[len(title) :].strip() or content)
 
         if platform in ("x", "twitter"):
             result = await asyncio.to_thread(run_social_worker, "publish_x", {"text": content})
@@ -3638,13 +3925,131 @@ class ClawBotRPC:
         else:
             result = {"success": False, "error": f"Unknown platform: {platform}"}
 
-        latest_state = _load_state()
-        latest_drafts = latest_state.get("drafts", [])
-        if 0 <= idx < len(latest_drafts):
-            latest_drafts[idx]["status"] = "published" if result.get("success") else "failed"
-            latest_drafts[idx]["publish_result"] = result
-            latest_state["drafts"] = latest_drafts
-            _save_state(latest_state)
+        with publish_state_lock:
+            conflict_reason = "发布期间草稿被删除、重排或变更，拒绝回写其他草稿"
+            if source == "x_auto_ops":
+                from src.execution.social import x_auto_ops
+
+                latest_state = x_auto_ops._load_state(x_auto_ops._STATE_FILE)
+                latest_draft = next(
+                    (
+                        item
+                        for item in latest_state.get("drafts", [])
+                        if str(item.get("id") or "") == draft_id
+                    ),
+                    None,
+                )
+                if (
+                    latest_draft is None
+                    or str(latest_draft.get("status") or "") != "publishing"
+                    or draft_content_hash(latest_draft) != approved_snapshot_hash
+                ):
+                    if latest_draft is not None:
+                        from src.execution.social.publish_gate import invalidate_publish_authorization
+
+                        invalidate_publish_authorization(latest_draft)
+                        latest_draft["status"] = "manual_reconciliation_required"
+                        latest_draft["review_status"] = "pending"
+                    outcome = _append_social_publish_outcome(
+                        latest_state,
+                        source=source,
+                        draft_id=draft_id,
+                        snapshot_hash=approved_snapshot_hash,
+                        result=result,
+                        reason=conflict_reason,
+                    )
+                    try:
+                        x_auto_ops._save_state(latest_state, x_auto_ops._STATE_FILE)
+                    except Exception as exc:
+                        logger.error("社媒外发结果审计落盘失败，必须人工对账: %s", exc)
+                        return _social_publish_reconciliation_response(
+                            result,
+                            reason="平台已返回发布结果，但本地冲突审计落盘失败；禁止重试，请人工核对",
+                            outcome=outcome,
+                            audit_persisted=False,
+                        )
+                    return _social_publish_reconciliation_response(
+                        result,
+                        reason=conflict_reason,
+                        outcome=outcome,
+                        audit_persisted=True,
+                    )
+                try:
+                    if result.get("success"):
+                        x_auto_ops.mark_published(latest_draft, result, state_path=x_auto_ops._STATE_FILE)
+                    else:
+                        x_auto_ops.mark_failed(
+                            latest_draft,
+                            result.get("error") or result.get("status") or "unknown",
+                            state_path=x_auto_ops._STATE_FILE,
+                        )
+                except Exception as exc:
+                    logger.error("社媒外发完成后状态落盘失败，必须人工对账: %s", exc)
+                    return _social_publish_reconciliation_response(
+                        result,
+                        reason="平台已返回发布结果，但本地状态落盘失败；草稿保持发布中，禁止重试，请人工核对",
+                        audit_persisted=False,
+                    )
+            else:
+                from src.social_scheduler import _load_state, _save_state
+
+                latest_state = _load_state()
+                latest_drafts = latest_state.get("drafts", [])
+                latest_draft = next(
+                    (
+                        item
+                        for item in latest_drafts
+                        if str(item.get("id") or "") == draft_id
+                    ),
+                    None,
+                )
+                if (
+                    latest_draft is None
+                    or str(latest_draft.get("status") or "") != "publishing"
+                    or draft_content_hash(latest_draft) != approved_snapshot_hash
+                ):
+                    if latest_draft is not None:
+                        from src.execution.social.publish_gate import invalidate_publish_authorization
+
+                        invalidate_publish_authorization(latest_draft)
+                        latest_draft["status"] = "manual_reconciliation_required"
+                        latest_draft["review_status"] = "pending"
+                    outcome = _append_social_publish_outcome(
+                        latest_state,
+                        source=source,
+                        draft_id=draft_id,
+                        snapshot_hash=approved_snapshot_hash,
+                        result=result,
+                        reason=conflict_reason,
+                    )
+                    try:
+                        _save_state(latest_state)
+                    except Exception as exc:
+                        logger.error("社媒外发结果审计落盘失败，必须人工对账: %s", exc)
+                        return _social_publish_reconciliation_response(
+                            result,
+                            reason="平台已返回发布结果，但本地冲突审计落盘失败；禁止重试，请人工核对",
+                            outcome=outcome,
+                            audit_persisted=False,
+                        )
+                    return _social_publish_reconciliation_response(
+                        result,
+                        reason=conflict_reason,
+                        outcome=outcome,
+                        audit_persisted=True,
+                    )
+                latest_draft["status"] = "published" if result.get("success") else "failed"
+                latest_draft["publish_result"] = result
+                latest_state["drafts"] = latest_drafts
+                try:
+                    _save_state(latest_state)
+                except Exception as exc:
+                    logger.error("社媒外发完成后状态落盘失败，必须人工对账: %s", exc)
+                    return _social_publish_reconciliation_response(
+                        result,
+                        reason="平台已返回发布结果，但本地状态落盘失败；草稿保持发布中，禁止重试，请人工核对",
+                        audit_persisted=False,
+                    )
 
         return result
 

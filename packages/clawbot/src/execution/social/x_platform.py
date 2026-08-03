@@ -373,39 +373,13 @@ async def publish_x_post(
     worker_fn=None,
     image_path: str | None = None,
 ) -> dict:
-    """发布推文
-
-    v3.0 三级降级: twikit Cookie → tweepy API → browser worker
-    """
-    if not content:
-        return {"success": False, "error": "内容不能为空"}
-
-    # 方式0: twikit Cookie 发布（v3.0 新增）
-    if _HAS_TWIKIT and _twikit_client:
-        media_paths = [image_path] if image_path else None
-        result = await twikit_post_tweet(content, media_paths=media_paths)
-        if result.get("success"):
-            _emit_flow("twikit", "social", "success", "X 推文发布完成 (twikit)", {"platform": "x"})
-            return result
-        # Cookie 过期则降级到下一种方式
-        logger.info("[X] twikit 发布失败，尝试降级: %s", result.get("error"))
-
-    # 方式1: browser worker (现有逻辑)
-    if not worker_fn:
-        return {"success": False, "error": "browser worker 未配置，且 twikit 未认证"}
-    try:
-        payload = {"text": content}
-        if image_path:
-            payload["image"] = image_path
-        _emit_flow("llm", "browser", "running", "启动浏览器发布 X 推文", {"length": len(content)})
-        # 浏览器自动化是同步阻塞操作（5-30秒），必须丢到线程池避免冻结事件循环
-        result = await asyncio.to_thread(worker_fn, "publish_x", payload)
-        _emit_flow("browser", "social", "success", "X 推文发布完成", {"platform": "x"})
-        return {"success": True, "result": result}
-    except Exception as e:
-        _emit_flow("browser", "social", "error", f"X 发布失败: {e}", {"platform": "x"})
-        logger.error(f"[X.publish] failed: {scrub_secrets(str(e))}")
-        return {"success": False, "error": str(e)}
+    """旧正文直发入口已关闭，统一发布门位于 API RPC 草稿服务。"""
+    return {
+        "success": False,
+        "requires_approved_draft": True,
+        "requires_final_confirmation": True,
+        "error": "X 正文直发已关闭，请使用已审核草稿和一次性确认",
+    }
 
 
 async def reply_to_x_post(

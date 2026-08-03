@@ -85,6 +85,7 @@ class _MemoryMixin:
             reply_markup=InlineKeyboardMarkup(keyboard) if keyboard else None,
         )
 
+    @requires_auth
     async def handle_feedback_callback(self, update, context):
         """处理 反馈按钮 — 搬运自 karfly 的 callback 模式"""
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -128,6 +129,7 @@ class _MemoryMixin:
             ]])
         )
 
+    @requires_auth
     async def handle_memory_callback(self, update, context):
         """处理记忆管理的分页/删除回调"""
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
