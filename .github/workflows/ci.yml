@@ -201,5 +201,5 @@ jobs:
       - name: Rust tests and compile check
         working-directory: apps/openclaw-manager-src/src-tauri
         run: |
-          cargo test
-          cargo check
+          cargo test --locked
+          cargo check --locked

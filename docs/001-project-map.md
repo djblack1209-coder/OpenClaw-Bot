@@ -42,7 +42,7 @@
 ### 桌面端 (Tauri + React)
 | 技术 | 版本 | 用途 |
 |---|---|---|
-| Tauri 2 | 2.10 | Rust 桌面壳 |
+| Tauri 2 | 2.11 | Rust 桌面壳（Cargo.lock 固定） |
 | React | 18.3 | UI 框架 |
 | TypeScript | 5.7 | 类型安全 |
 | Tailwind CSS | 3.4 | 原子化样式 |
@@ -308,7 +308,7 @@ OpenClaw Bot/
 |---|---:|---|---|
 | 架构与边界 | 8.3 | Telegram、工具、交易、社媒、Frist、Tauri 均有单一入口或显式状态机；跨进程锁统一复用 | 双文件配置不具备强制终止级原子提交（HI-922） |
 | 代码质量 | 8.2 | Ruff、Python 语法、TypeScript、`cargo fmt --check` 全绿；删除全仓零引用旧 Gateway 启动脚本 | 历史大文件仍需按风险渐进拆分 |
-| 测试与工程化 | 8.8 | Python 2,182 项、Frist 200 项、桌面合同 18 项、Rust 34 项；CI 任一失败即阻断 | GitHub 干净环境结果以本次 PR CI 为最终远端证据 |
+| 测试与工程化 | 8.8 | Python 2,182 项、Frist 200 项、桌面合同 18 项、Rust 34 项；Tauri `Cargo.lock` 入库且 CI 使用 `--locked`；任一失败即阻断 | GitHub 干净环境结果以本次 PR CI 为最终远端证据 |
 | 安全 | 8.6 | 白名单/Token/归属/额度均 fail-closed；三类依赖审计 0 漏洞，gitleaks 0 泄漏 | RestrictedPython 不是内核沙箱，FileTool 保留理论竞态（HI-919/920） |
 | 可靠性与性能 | 8.3 | 交易预算/订单/成交对账和社媒发布均具备幂等、claim/tombstone 与跨进程互斥；禁用服务不再重启风暴 | 强制终止后的券商/社媒结果仍需人工对账 |
 | 运维与发布 | 8.1 | 健康检查区分核心/可选能力；桌面构建采用备份、清理、安装、失败恢复事务；Frist 有备份与回滚步骤 | 生产与桌面实装证据在部署后写回 HEALTH/CHANGELOG |
