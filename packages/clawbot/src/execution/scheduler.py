@@ -229,7 +229,15 @@ class ExecutionScheduler:
             scheduled_time=intel_brief_time,
             last_run_date=self._last_intel_brief_date,
         )
-        if gate["reason"] in {"disabled", "before_scheduled_time", "already_ran_today"}:
+        if gate["reason"] in {
+            "disabled",
+            "before_scheduled_time",
+            "skipped_before_window",
+            "already_ran_today",
+        }:
+            return {"status": "skipped", "gate": gate}
+        if gate["reason"] == "skipped_late_trigger":
+            self._last_intel_brief_date = str(gate["run_date"])
             return {"status": "skipped", "gate": gate}
         today = str(gate["run_date"])
         if not gate["should_run"]:
@@ -392,7 +400,7 @@ class ExecutionScheduler:
                 name = alert.get("account_name", "")
                 msg = (
                     f"⚠️ {emoji} {label}余额不足!\n"
-                    f"{f"— {name}{chr(10)}" if name else ''}"
+                    f"{f'— {name}{chr(10)}' if name else ''}"
                     f"💰 余额: ¥{alert['balance']:.1f} (阈值: ¥{alert['low_threshold']:.0f})\n"
                     f"请尽快充值!"
                 )
@@ -435,7 +443,7 @@ class ExecutionScheduler:
                     name = rem.get("account_name", "")
                     msg = (
                         f"🔔 {emoji} {label}查询提醒\n"
-                        f"{f"— {name}{chr(10)}" if name else ''}"
+                        f"{f'— {name}{chr(10)}' if name else ''}"
                         f"上次余额: ¥{rem['balance']:.1f}\n"
                         f"请查询最新余额并告诉我"
                     )
@@ -668,6 +676,7 @@ def _run_daily_db_backup():
 
         try:
             from src.shopping.deal_scanner import scheduled_deal_scan
+
             await scheduled_deal_scan()
         except Exception as e:
             logger.warning("[Scheduler] 折扣扫描失败: %s", e)

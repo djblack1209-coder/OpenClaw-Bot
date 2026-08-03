@@ -41,7 +41,12 @@ class _TrendingParser(HTMLParser):
         self._article_depth += 1
         if tag == "h2":
             self._in_repo_heading = True
-        if tag == "a" and self._in_repo_heading and not self._current.get("repo") and attr.get("href", "").count("/") >= 2:
+        if (
+            tag == "a"
+            and self._in_repo_heading
+            and not self._current.get("repo")
+            and attr.get("href", "").count("/") >= 2
+        ):
             href = attr.get("href", "")
             parts = [part for part in href.strip("/").split("/") if part]
             if len(parts) == 2:
@@ -69,7 +74,11 @@ class _TrendingParser(HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         if not self._in_article:
             return
-        if self._capture and ((self._capture == "repo" and tag == "a") or (self._capture == "description" and tag == "p") or (self._capture == "language" and tag == "span")):
+        if self._capture and (
+            (self._capture == "repo" and tag == "a")
+            or (self._capture == "description" and tag == "p")
+            or (self._capture == "language" and tag == "span")
+        ):
             text = _space(" ".join(self._buffer))
             if self._capture == "description":
                 self._current["description"] = text
@@ -107,9 +116,12 @@ def _finalize_item(raw: dict[str, str]) -> dict[str, str]:
         stars_today = match.group(1).replace(",", "")
     return {
         "source": "github_trending_daily",
+        "provider": "github",
         "repo": repo,
+        "title": repo,
         "url": raw.get("url", "https://github.com/" + repo),
         "description": _space(raw.get("description", "")),
+        "summary": _space(raw.get("description", "")),
         "language": _space(raw.get("language", "")),
         "stars_today": stars_today,
     }

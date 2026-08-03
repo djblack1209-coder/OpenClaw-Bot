@@ -57,7 +57,7 @@ def test_grant_subscription_profile_records_expiry_preferences_and_schedule(tmp_
         user_id=subscriber["user_id"],
         frequency="daily",
         delivery_time="08:30",
-        timezone="America/Denver",
+        timezone="Asia/Singapore",
     )
 
     profile = get_subscription_profile(db_path, user_id=subscriber["user_id"], now="2026-07-08T00:00:00+00:00")
@@ -70,7 +70,8 @@ def test_grant_subscription_profile_records_expiry_preferences_and_schedule(tmp_
     assert profile["delivery_preferences"] == {
         "frequency": "daily",
         "delivery_time": "08:30",
-        "timezone": "America/Denver",
+        "timezone": "Asia/Singapore",
+        "content_language": "zh",
     }
 
 
@@ -81,9 +82,15 @@ def test_eligible_subscribers_respects_expiry_status_and_enabled_categories(tmp_
     active = upsert_telegram_subscriber(db_path, telegram_user_id="active", chat_id="chat-active")
     expired = upsert_telegram_subscriber(db_path, telegram_user_id="expired", chat_id="chat-expired")
     disabled_pref = upsert_telegram_subscriber(db_path, telegram_user_id="disabled", chat_id="chat-disabled")
-    grant_subscription(db_path, user_id=active["user_id"], plan_name="intel_mvp_monthly", expires_at="2026-08-07T00:00:00+00:00")
-    grant_subscription(db_path, user_id=expired["user_id"], plan_name="intel_mvp_monthly", expires_at="2026-07-01T00:00:00+00:00")
-    grant_subscription(db_path, user_id=disabled_pref["user_id"], plan_name="intel_mvp_monthly", expires_at="2026-08-07T00:00:00+00:00")
+    grant_subscription(
+        db_path, user_id=active["user_id"], plan_name="intel_mvp_monthly", expires_at="2026-08-07T00:00:00+00:00"
+    )
+    grant_subscription(
+        db_path, user_id=expired["user_id"], plan_name="intel_mvp_monthly", expires_at="2026-07-01T00:00:00+00:00"
+    )
+    grant_subscription(
+        db_path, user_id=disabled_pref["user_id"], plan_name="intel_mvp_monthly", expires_at="2026-08-07T00:00:00+00:00"
+    )
     set_source_preferences(db_path, user_id=active["user_id"], enabled_categories=["akshare"])
     set_source_preferences(db_path, user_id=expired["user_id"], enabled_categories=["akshare"])
     set_source_preferences(db_path, user_id=disabled_pref["user_id"], enabled_categories=["senate_trading"])
@@ -103,7 +110,9 @@ def test_telegram_menu_contract_reflects_subscription_state_and_supported_comman
     db_path = tmp_path / "intel_mvp.db"
     upsert_subscription_plan(db_path, plan_name="intel_mvp_monthly", categories=DEFAULT_MVP_CATEGORIES)
     subscriber = upsert_telegram_subscriber(db_path, telegram_user_id="1001", chat_id="2001")
-    grant_subscription(db_path, user_id=subscriber["user_id"], plan_name="intel_mvp_monthly", expires_at="2026-08-07T00:00:00+00:00")
+    grant_subscription(
+        db_path, user_id=subscriber["user_id"], plan_name="intel_mvp_monthly", expires_at="2026-08-07T00:00:00+00:00"
+    )
     set_source_preferences(db_path, user_id=subscriber["user_id"], enabled_categories=["senate_trading", "akshare"])
     profile = get_subscription_profile(db_path, user_id=subscriber["user_id"], now="2026-07-08T00:00:00+00:00")
 
@@ -120,10 +129,12 @@ def test_telegram_menu_contract_reflects_subscription_state_and_supported_comman
         {"command": "schedule", "description": "推送时间"},
         {"command": "track", "description": "添加追踪"},
         {"command": "pause", "description": "暂停简报"},
+        {"command": "language", "description": "资讯语言"},
         {"command": "help", "description": "帮助"},
     ]
     assert "700 今日简报" in menu["text"]
     assert "706 添加追踪" in menu["text"]
+    assert "709 资讯语言" in menu["text"]
     assert "订阅状态：" not in menu["text"]
     assert "命令：/sources" not in menu["text"]
     labels = [button["text"] for row in menu["reply_markup"]["inline_keyboard"] for button in row]

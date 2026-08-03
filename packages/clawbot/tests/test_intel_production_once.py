@@ -33,7 +33,11 @@ def test_production_once_blocks_without_gates_and_makes_no_network(tmp_path):
         summary_evidence_path=summary,
         evidence_path=evidence,
         now=datetime(2026, 7, 7, 8, 31, tzinfo=UTC),
-        env={"INTEL_BRIEF_ENABLED": "true", "INTEL_BRIEF_MODE": "production"},
+        env={
+            "INTEL_BRIEF_ENABLED": "true",
+            "INTEL_BRIEF_MODE": "production",
+            "INTEL_BRIEF_SCHEDULER_TIMEZONE": "UTC",
+        },
     )
 
     assert result["status"] == "blocked"
@@ -62,6 +66,7 @@ def test_production_once_calls_sender_when_gates_ready_with_injected_runner(tmp_
         env={
             "INTEL_BRIEF_ENABLED": "true",
             "INTEL_BRIEF_MODE": "production",
+            "INTEL_BRIEF_SCHEDULER_TIMEZONE": "UTC",
             "INTEL_BRIEF_TELEGRAM_BOT_TOKEN": "123456:SECRET-DO-NOT-LEAK",
             "INTEL_BRIEF_TELEGRAM_CHAT_ID": "987654321",
             "INTEL_BRIEF_TELEGRAM_SANDBOX_SEND_ACK": TELEGRAM_SANDBOX_ACK_VALUE,
@@ -87,7 +92,9 @@ def test_production_once_cli_writes_blocked_evidence(tmp_path, monkeypatch):
     _write_summary(summary)
     monkeypatch.delenv("INTEL_BRIEF_TELEGRAM_BOT_TOKEN", raising=False)
 
-    exit_code = main(["--summary-evidence", str(summary), "--evidence", str(evidence), "--now", "2026-07-07T08:31:00+00:00"])
+    exit_code = main(
+        ["--summary-evidence", str(summary), "--evidence", str(evidence), "--now", "2026-07-07T08:31:00+00:00"]
+    )
 
     assert exit_code == 2
     saved = json.loads(evidence.read_text(encoding="utf-8"))
@@ -128,6 +135,7 @@ def test_production_once_loads_private_env_for_real_delivery_runner(tmp_path):
         env={
             "INTEL_BRIEF_ENABLED": "true",
             "INTEL_BRIEF_PRIVATE_ENV": str(private_env),
+            "INTEL_BRIEF_SCHEDULER_TIMEZONE": "UTC",
             "INTEL_BRIEF_SCHEDULER_PRODUCTION_ACK": PRODUCTION_ACK_VALUE,
         },
         project_root=tmp_path,
@@ -142,7 +150,6 @@ def test_production_once_loads_private_env_for_real_delivery_runner(tmp_path):
     saved_text = evidence.read_text(encoding="utf-8")
     assert "PRIVATE-ENV-SECRET" not in saved_text
     assert "123456789" not in saved_text
-
 
 
 def test_production_once_defaults_to_fixed_chat_delivery_when_subscription_delivery_disabled(tmp_path):
@@ -169,6 +176,7 @@ def test_production_once_defaults_to_fixed_chat_delivery_when_subscription_deliv
         env={
             "INTEL_BRIEF_ENABLED": "true",
             "INTEL_BRIEF_MODE": "production",
+            "INTEL_BRIEF_SCHEDULER_TIMEZONE": "UTC",
             "INTEL_BRIEF_TELEGRAM_BOT_TOKEN": "123456:SECRET-DO-NOT-LEAK",
             "INTEL_BRIEF_TELEGRAM_CHAT_ID": "987654321",
             "INTEL_BRIEF_TELEGRAM_SANDBOX_SEND_ACK": TELEGRAM_SANDBOX_ACK_VALUE,
@@ -216,6 +224,7 @@ def test_production_once_uses_subscription_filtered_delivery_when_enabled(tmp_pa
         env={
             "INTEL_BRIEF_ENABLED": "true",
             "INTEL_BRIEF_MODE": "production",
+            "INTEL_BRIEF_SCHEDULER_TIMEZONE": "UTC",
             "INTEL_BRIEF_TELEGRAM_BOT_TOKEN": "123456:SECRET-DO-NOT-LEAK",
             "INTEL_BRIEF_TELEGRAM_CHAT_ID": "987654321",
             "INTEL_BRIEF_TELEGRAM_SANDBOX_SEND_ACK": TELEGRAM_SANDBOX_ACK_VALUE,
@@ -260,6 +269,7 @@ def test_production_once_blocks_subscription_delivery_without_db_path(tmp_path):
         env={
             "INTEL_BRIEF_ENABLED": "true",
             "INTEL_BRIEF_MODE": "production",
+            "INTEL_BRIEF_SCHEDULER_TIMEZONE": "UTC",
             "INTEL_BRIEF_TELEGRAM_BOT_TOKEN": "123456:SECRET-DO-NOT-LEAK",
             "INTEL_BRIEF_TELEGRAM_CHAT_ID": "987654321",
             "INTEL_BRIEF_TELEGRAM_SANDBOX_SEND_ACK": TELEGRAM_SANDBOX_ACK_VALUE,
@@ -298,6 +308,7 @@ def test_production_once_blocks_subscription_delivery_when_db_path_missing_file(
         env={
             "INTEL_BRIEF_ENABLED": "true",
             "INTEL_BRIEF_MODE": "production",
+            "INTEL_BRIEF_SCHEDULER_TIMEZONE": "UTC",
             "INTEL_BRIEF_TELEGRAM_BOT_TOKEN": "123456:SECRET-DO-NOT-LEAK",
             "INTEL_BRIEF_TELEGRAM_CHAT_ID": "987654321",
             "INTEL_BRIEF_TELEGRAM_SANDBOX_SEND_ACK": TELEGRAM_SANDBOX_ACK_VALUE,

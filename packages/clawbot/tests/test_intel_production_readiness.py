@@ -81,6 +81,7 @@ def test_production_readiness_report_blocks_when_production_summary_file_missing
         env={
             "INTEL_BRIEF_ENABLED": "true",
             "INTEL_BRIEF_MODE": "production",
+            "INTEL_BRIEF_SCHEDULER_TIMEZONE": "UTC",
             "INTEL_BRIEF_TELEGRAM_BOT_TOKEN": FAKE_TOKEN,
             "INTEL_BRIEF_TELEGRAM_CHAT_ID": FAKE_CHAT_ID,
             "INTEL_BRIEF_TELEGRAM_SANDBOX_SEND_ACK": TELEGRAM_SANDBOX_ACK_VALUE,
@@ -134,6 +135,7 @@ def test_production_readiness_report_scheduler_gate_is_ready_when_all_runtime_ga
         env={
             "INTEL_BRIEF_ENABLED": "true",
             "INTEL_BRIEF_MODE": "production",
+            "INTEL_BRIEF_SCHEDULER_TIMEZONE": "UTC",
             "INTEL_BRIEF_TELEGRAM_BOT_TOKEN": FAKE_TOKEN,
             "INTEL_BRIEF_TELEGRAM_CHAT_ID": FAKE_CHAT_ID,
             "INTEL_BRIEF_TELEGRAM_SANDBOX_SEND_ACK": TELEGRAM_SANDBOX_ACK_VALUE,
@@ -181,6 +183,7 @@ def test_production_readiness_report_loads_private_env_for_all_gates(tmp_path):
         env={
             "INTEL_BRIEF_ENABLED": "true",
             "INTEL_BRIEF_PRIVATE_ENV": str(private_env),
+            "INTEL_BRIEF_SCHEDULER_TIMEZONE": "UTC",
         },
         project_root=tmp_path,
     )

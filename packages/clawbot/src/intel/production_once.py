@@ -82,7 +82,9 @@ def run_intel_production_once(
     subscription_delivery_gate: dict[str, Any] | None = None
     network_calls = 0
     status = "blocked"
-    delivery_mode = "subscription_filtered" if _truthy(env_map.get("INTEL_BRIEF_SUBSCRIPTION_DELIVERY_ENABLED")) else "fixed_chat"
+    delivery_mode = (
+        "subscription_filtered" if _truthy(env_map.get("INTEL_BRIEF_SUBSCRIPTION_DELIVERY_ENABLED")) else "fixed_chat"
+    )
     if gate.get("should_run"):
         if delivery_mode == "subscription_filtered":
             db_text = str(env_map.get("INTEL_BRIEF_DB_PATH") or "").strip()
@@ -122,6 +124,8 @@ def run_intel_production_once(
                         summary_evidence_path=summary_evidence_path,
                         sender=sender,
                         now=now_value.isoformat(),
+                        env=env_map,
+                        enforce_delivery_window=True,
                     )
                 else:
                     delivery = subscription_delivery_runner(

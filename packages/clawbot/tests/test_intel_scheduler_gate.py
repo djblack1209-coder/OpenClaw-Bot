@@ -30,6 +30,7 @@ def test_intel_scheduler_gate_blocks_production_without_all_hard_gates(tmp_path)
         env={
             "INTEL_BRIEF_ENABLED": "true",
             "INTEL_BRIEF_MODE": "production",
+            "INTEL_BRIEF_SCHEDULER_TIMEZONE": "UTC",
             "INTEL_BRIEF_TELEGRAM_BOT_TOKEN": "123456:SECRET-DO-NOT-LEAK",
             "INTEL_BRIEF_TELEGRAM_CHAT_ID": "987654",
             "INTEL_BRIEF_WORKER_PLACEMENT_CONFIRMED": "false",
@@ -54,6 +55,7 @@ def test_intel_scheduler_gate_blocks_production_when_summary_evidence_missing(tm
         env={
             "INTEL_BRIEF_ENABLED": "true",
             "INTEL_BRIEF_MODE": "production",
+            "INTEL_BRIEF_SCHEDULER_TIMEZONE": "UTC",
             "INTEL_BRIEF_TELEGRAM_BOT_TOKEN": "123456:SECRET-DO-NOT-LEAK",
             "INTEL_BRIEF_TELEGRAM_CHAT_ID": "987654",
             "INTEL_BRIEF_WORKER_PLACEMENT_CONFIRMED": "true",
@@ -78,6 +80,7 @@ def test_intel_scheduler_gate_requires_telegram_sandbox_ack_for_production_send(
         env={
             "INTEL_BRIEF_ENABLED": "true",
             "INTEL_BRIEF_MODE": "production",
+            "INTEL_BRIEF_SCHEDULER_TIMEZONE": "UTC",
             "INTEL_BRIEF_TELEGRAM_BOT_TOKEN": "123456:SECRET-DO-NOT-LEAK",
             "INTEL_BRIEF_TELEGRAM_CHAT_ID": "987654",
             "INTEL_BRIEF_WORKER_PLACEMENT_CONFIRMED": "true",
@@ -116,6 +119,7 @@ def test_intel_scheduler_gate_loads_private_env_file_for_production(tmp_path):
         env={
             "INTEL_BRIEF_ENABLED": "true",
             "INTEL_BRIEF_MODE": "production",
+            "INTEL_BRIEF_SCHEDULER_TIMEZONE": "UTC",
             "INTEL_BRIEF_PRIVATE_ENV": str(private_env),
             "INTEL_BRIEF_SCHEDULER_PRODUCTION_ACK": PRODUCTION_ACK_VALUE,
             "INTEL_BRIEF_SUMMARY_EVIDENCE": str(summary),
@@ -140,6 +144,7 @@ def test_intel_scheduler_gate_allows_production_when_all_external_gates_present(
         env={
             "INTEL_BRIEF_ENABLED": "true",
             "INTEL_BRIEF_MODE": "production",
+            "INTEL_BRIEF_SCHEDULER_TIMEZONE": "UTC",
             "INTEL_BRIEF_TELEGRAM_BOT_TOKEN": "123456:SECRET-DO-NOT-LEAK",
             "INTEL_BRIEF_TELEGRAM_CHAT_ID": "987654",
             "INTEL_BRIEF_WORKER_PLACEMENT_CONFIRMED": "true",
@@ -173,6 +178,7 @@ async def test_execution_scheduler_runs_intel_production_through_injected_runner
 
     monkeypatch.setenv("INTEL_BRIEF_ENABLED", "true")
     monkeypatch.setenv("INTEL_BRIEF_MODE", "production")
+    monkeypatch.setenv("INTEL_BRIEF_SCHEDULER_TIMEZONE", "UTC")
     monkeypatch.setenv("INTEL_BRIEF_TELEGRAM_BOT_TOKEN", "123456:SECRET-DO-NOT-LEAK")
     monkeypatch.setenv("INTEL_BRIEF_TELEGRAM_CHAT_ID", "987654")
     monkeypatch.setenv("INTEL_BRIEF_WORKER_PLACEMENT_CONFIRMED", "true")
@@ -204,6 +210,7 @@ def test_intel_scheduler_gate_allows_sandbox_when_collect_evidence_exists(tmp_pa
         env={
             "INTEL_BRIEF_ENABLED": "1",
             "INTEL_BRIEF_MODE": "sandbox",
+            "INTEL_BRIEF_SCHEDULER_TIMEZONE": "UTC",
             "INTEL_BRIEF_COLLECT_EVIDENCE": str(collect),
             "INTEL_BRIEF_EVIDENCE_DIR": str(tmp_path / "phasej"),
         },
@@ -227,6 +234,7 @@ def test_intel_scheduler_gate_prevents_duplicate_run_same_day(tmp_path):
         env={
             "INTEL_BRIEF_ENABLED": "1",
             "INTEL_BRIEF_MODE": "sandbox",
+            "INTEL_BRIEF_SCHEDULER_TIMEZONE": "UTC",
             "INTEL_BRIEF_COLLECT_EVIDENCE": str(collect),
         },
         last_run_date="2026-07-07",
@@ -249,6 +257,7 @@ async def test_execution_scheduler_runs_intel_sandbox_only_through_injected_runn
 
     monkeypatch.setenv("INTEL_BRIEF_ENABLED", "true")
     monkeypatch.setenv("INTEL_BRIEF_MODE", "sandbox")
+    monkeypatch.setenv("INTEL_BRIEF_SCHEDULER_TIMEZONE", "UTC")
     monkeypatch.setenv("INTEL_BRIEF_COLLECT_EVIDENCE", str(collect))
     monkeypatch.setenv("INTEL_BRIEF_EVIDENCE_DIR", str(tmp_path / "phasej"))
 
@@ -271,6 +280,7 @@ async def test_execution_scheduler_marks_blocked_gate_without_running(monkeypatc
 
     monkeypatch.setenv("INTEL_BRIEF_ENABLED", "true")
     monkeypatch.setenv("INTEL_BRIEF_MODE", "production")
+    monkeypatch.setenv("INTEL_BRIEF_SCHEDULER_TIMEZONE", "UTC")
 
     scheduler = ExecutionScheduler()
     scheduler.intel_brief_sandbox_runner = lambda **kwargs: calls.append(kwargs)
@@ -290,6 +300,7 @@ def test_intel_scheduler_gate_probe_cli_writes_redacted_evidence(monkeypatch, tm
     output = tmp_path / "gate.json"
     monkeypatch.setenv("INTEL_BRIEF_ENABLED", "true")
     monkeypatch.setenv("INTEL_BRIEF_MODE", "production")
+    monkeypatch.setenv("INTEL_BRIEF_SCHEDULER_TIMEZONE", "UTC")
     monkeypatch.setenv("INTEL_BRIEF_TELEGRAM_BOT_TOKEN", "123456:SECRET-DO-NOT-LEAK")
 
     exit_code = main(
@@ -321,6 +332,7 @@ async def test_execution_scheduler_default_sandbox_runner_works_inside_async_loo
 
     monkeypatch.setenv("INTEL_BRIEF_ENABLED", "true")
     monkeypatch.setenv("INTEL_BRIEF_MODE", "sandbox")
+    monkeypatch.setenv("INTEL_BRIEF_SCHEDULER_TIMEZONE", "UTC")
     monkeypatch.setenv("INTEL_BRIEF_COLLECT_EVIDENCE", str(collect))
     monkeypatch.setenv("INTEL_BRIEF_EVIDENCE_DIR", str(evidence_dir))
     monkeypatch.setenv("INTEL_BRIEF_LLM_MODE", "fallback-only")
@@ -332,3 +344,80 @@ async def test_execution_scheduler_default_sandbox_runner_works_inside_async_loo
     assert (evidence_dir / "20260707T083100Z-scheduled-sandbox.json").exists()
     assert result["steps"]["llm_summary"]["llm"]["llm_attempted"] is False
     assert result["steps"]["delivery"]["network_calls"] == 0
+
+
+def test_intel_scheduler_gate_uses_singapore_window_by_default(tmp_path):
+    collect = tmp_path / "collect.json"
+    collect.write_text('{"status":"success","runs":[]}', encoding="utf-8")
+    env = {
+        "INTEL_BRIEF_ENABLED": "1",
+        "INTEL_BRIEF_MODE": "sandbox",
+        "INTEL_BRIEF_COLLECT_EVIDENCE": str(collect),
+    }
+
+    before = build_intel_brief_scheduler_gate(
+        now=datetime(2026, 8, 4, 0, 29, tzinfo=UTC),
+        scheduled_time=(8, 30),
+        env=env,
+        project_root=tmp_path,
+    )
+    inside = build_intel_brief_scheduler_gate(
+        now=datetime(2026, 8, 4, 0, 30, tzinfo=UTC),
+        scheduled_time=(8, 30),
+        env=env,
+        project_root=tmp_path,
+    )
+    late = build_intel_brief_scheduler_gate(
+        now=datetime(2026, 8, 4, 2, 1, tzinfo=UTC),
+        scheduled_time=(8, 30),
+        env=env,
+        project_root=tmp_path,
+    )
+
+    assert before["reason"] == "skipped_before_window"
+    assert before["should_run"] is False
+    assert inside["reason"] == "sandbox_ready"
+    assert inside["should_run"] is True
+    assert inside["scheduler_timezone"] == "Asia/Singapore"
+    assert inside["scheduler_now_iso"].startswith("2026-08-04T08:30:00+08:00")
+    assert late["reason"] == "skipped_late_trigger"
+    assert late["should_run"] is False
+
+
+def test_intel_scheduler_gate_honors_timezone_and_window_end_configuration(tmp_path):
+    collect = tmp_path / "collect.json"
+    collect.write_text('{"status":"success","runs":[]}', encoding="utf-8")
+    gate = build_intel_brief_scheduler_gate(
+        now=datetime(2026, 8, 4, 9, 16, tzinfo=UTC),
+        scheduled_time=(9, 0),
+        env={
+            "INTEL_BRIEF_ENABLED": "1",
+            "INTEL_BRIEF_MODE": "sandbox",
+            "INTEL_BRIEF_SCHEDULER_TIMEZONE": "UTC",
+            "INTEL_BRIEF_SCHEDULER_WINDOW_END": "09:15",
+            "INTEL_BRIEF_COLLECT_EVIDENCE": str(collect),
+        },
+        project_root=tmp_path,
+    )
+
+    assert gate["reason"] == "skipped_late_trigger"
+    assert gate["should_run"] is False
+    assert gate["window_start"] == "09:00"
+    assert gate["window_end"] == "09:15"
+
+
+def test_intel_scheduler_gate_blocks_invalid_timezone_without_leaking_config(tmp_path):
+    gate = build_intel_brief_scheduler_gate(
+        now=datetime(2026, 8, 4, 0, 30, tzinfo=UTC),
+        scheduled_time=(8, 30),
+        env={
+            "INTEL_BRIEF_ENABLED": "1",
+            "INTEL_BRIEF_MODE": "production",
+            "INTEL_BRIEF_SCHEDULER_TIMEZONE": "Mars/Olympus",
+        },
+        project_root=tmp_path,
+    )
+
+    assert gate["reason"] == "blocked_by_hard_gate"
+    assert gate["should_run"] is False
+    assert gate["missing_gates"] == ["invalid_scheduler_timezone"]

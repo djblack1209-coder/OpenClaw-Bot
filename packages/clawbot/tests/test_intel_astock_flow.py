@@ -20,8 +20,8 @@ class _FakeAkshare:
     def stock_lhb_detail_em():
         return _FakeFrame(
             [
-                {"代码": "000021", "名称": "深科技", "解读": "机构买入", "收盘价": 26.5},
-                {"代码": "000001", "名称": "平安银行", "解读": "资金净流入", "收盘价": 12.3},
+                {"上榜日": "2026-08-04", "代码": "000021", "名称": "深科技", "解读": "机构买入", "收盘价": 26.5},
+                {"上榜日": "2026-08-03", "代码": "000001", "名称": "平安银行", "解读": "资金净流入", "收盘价": 12.3},
             ]
         )
 
@@ -29,8 +29,13 @@ class _FakeAkshare:
 def test_normalize_lhb_records_maps_common_chinese_columns():
     rows = normalize_lhb_records(
         [
-            {"代码": "000021", "名称": "深科技", "解读": "机构买入", "收盘价": 26.5},
-            {"SECURITY_CODE": "000001", "SECURITY_NAME_ABBR": "平安银行", "EXPLAIN": "资金净流入"},
+            {"上榜日": "2026-08-04", "代码": "000021", "名称": "深科技", "解读": "机构买入", "收盘价": 26.5},
+            {
+                "TRADE_DATE": "2026-08-03",
+                "SECURITY_CODE": "000001",
+                "SECURITY_NAME_ABBR": "平安银行",
+                "EXPLAIN": "资金净流入",
+            },
         ],
         limit=2,
     )
@@ -38,6 +43,8 @@ def test_normalize_lhb_records_maps_common_chinese_columns():
     assert rows == [
         {
             "source": "akshare_stock_lhb_detail_em",
+            "trade_date": "2026-08-04",
+            "trade_date_raw": "2026-08-04",
             "code": "000021",
             "name": "深科技",
             "reason": "机构买入",
@@ -45,6 +52,8 @@ def test_normalize_lhb_records_maps_common_chinese_columns():
         },
         {
             "source": "akshare_stock_lhb_detail_em",
+            "trade_date": "2026-08-03",
+            "trade_date_raw": "2026-08-03",
             "code": "000001",
             "name": "平安银行",
             "reason": "资金净流入",
@@ -63,4 +72,33 @@ def test_akshare_lhb_adapter_returns_domestic_source_result():
     assert result.health_status == "success"
     assert result.raw_count == 1
     assert result.items[0]["code"] == "000021"
+    assert result.items[0]["trade_date"] == "2026-08-04"
     assert result.evidence_path.endswith("yanhuoyun-akshare.jsonl")
+
+
+def test_normalize_lhb_records_normalizes_and_sorts_trade_dates_before_limit():
+    rows = normalize_lhb_records(
+        [
+            {"TRADE_DATE": "08/03/2026", "代码": "000001", "名称": "旧记录"},
+            {"TRADE_DATE": "2026/08/04", "代码": "000021", "名称": "新记录"},
+        ],
+        limit=1,
+    )
+
+    assert rows[0]["trade_date"] == "2026-08-04"
+    assert rows[0]["trade_date_raw"] == "2026/08/04"
+    assert rows[0]["code"] == "000021"
+
+
+def test_invalid_trade_date_is_preserved_for_audit_but_sorted_after_valid_date():
+    rows = normalize_lhb_records(
+        [
+            {"TRADE_DATE": "unknown", "代码": "999999", "名称": "坏日期"},
+            {"TRADE_DATE": "2026-08-04", "代码": "000021", "名称": "有效日期"},
+        ],
+        limit=2,
+    )
+
+    assert [row["code"] for row in rows] == ["000021", "999999"]
+    assert rows[1]["trade_date"] == ""
+    assert rows[1]["trade_date_raw"] == "unknown"

@@ -17,6 +17,7 @@ def test_multichannel_menu_has_click_and_number_variants():
     assert telegram["inline_keyboard"][0][0] == {"text": "🧭 今日简报", "callback_data": "today"}
     assert telegram["numbered_commands"][0]["number"] == 700
     assert "700 今日简报" in telegram["text"]
+    assert "709 资讯语言" in telegram["text"]
 
     for menu in (wechat, feishu, dingtalk):
         assert menu["supports_click_menu"] is False
@@ -24,19 +25,34 @@ def test_multichannel_menu_has_click_and_number_variants():
         assert "回复数字即可操作" in menu["text"]
         assert "700 今日简报" in menu["text"]
         assert "706 添加追踪" in menu["text"]
+        assert "709 资讯语言" in menu["text"]
 
 
 def test_numbered_intel_command_router_updates_preferences(tmp_path):
     from src.intel.channel_menu import handle_numbered_intel_command
 
     db_path = tmp_path / "intel-numbered.db"
-    start = handle_numbered_intel_command(db_path, channel="wechat", external_user_id="wx-user", number=700, arg="", now=NOW)
-    stock = handle_numbered_intel_command(db_path, channel="wechat", external_user_id="wx-user", number=702, arg="", now=NOW)
-    tech = handle_numbered_intel_command(db_path, channel="wechat", external_user_id="wx-user", number=703, arg="", now=NOW)
-    schedule = handle_numbered_intel_command(db_path, channel="wechat", external_user_id="wx-user", number=705, arg="", now=NOW)
-    custom_prompt = handle_numbered_intel_command(db_path, channel="wechat", external_user_id="wx-user", number=706, arg="", now=NOW)
-    custom = handle_numbered_intel_command(db_path, channel="wechat", external_user_id="wx-user", number=706, arg="英伟达", now=NOW)
-    status = handle_numbered_intel_command(db_path, channel="wechat", external_user_id="wx-user", number=701, arg="", now=NOW)
+    start = handle_numbered_intel_command(
+        db_path, channel="wechat", external_user_id="wx-user", number=700, arg="", now=NOW
+    )
+    stock = handle_numbered_intel_command(
+        db_path, channel="wechat", external_user_id="wx-user", number=702, arg="", now=NOW
+    )
+    tech = handle_numbered_intel_command(
+        db_path, channel="wechat", external_user_id="wx-user", number=703, arg="", now=NOW
+    )
+    schedule = handle_numbered_intel_command(
+        db_path, channel="wechat", external_user_id="wx-user", number=705, arg="", now=NOW
+    )
+    custom_prompt = handle_numbered_intel_command(
+        db_path, channel="wechat", external_user_id="wx-user", number=706, arg="", now=NOW
+    )
+    custom = handle_numbered_intel_command(
+        db_path, channel="wechat", external_user_id="wx-user", number=706, arg="英伟达", now=NOW
+    )
+    status = handle_numbered_intel_command(
+        db_path, channel="wechat", external_user_id="wx-user", number=701, arg="", now=NOW
+    )
 
     assert start["status"] == "success"
     assert "CARVEN 情报简报" in start["reply_text"]
@@ -49,6 +65,49 @@ def test_numbered_intel_command_router_updates_preferences(tmp_path):
     assert "英伟达" in custom["reply_text"]
     assert "A股资金流向" in status["reply_text"]
     assert "AI模型动态" in status["reply_text"]
+
+
+def test_numbered_language_command_switches_cross_channel_menu_copy(tmp_path):
+    from src.intel.channel_menu import handle_numbered_intel_command
+    from src.intel.subscriptions import get_subscription_profile
+
+    db_path = tmp_path / "intel-numbered-language.db"
+    handle_numbered_intel_command(db_path, channel="telegram", external_user_id="language-user", number=700, now=NOW)
+
+    prompt = handle_numbered_intel_command(
+        db_path,
+        channel="telegram",
+        external_user_id="language-user",
+        number=709,
+        now=NOW,
+    )
+    english = handle_numbered_intel_command(
+        db_path,
+        channel="telegram",
+        external_user_id="language-user",
+        number=709,
+        arg="English",
+        now=NOW,
+    )
+    menu = handle_numbered_intel_command(
+        db_path,
+        channel="telegram",
+        external_user_id="language-user",
+        number=707,
+        now=NOW,
+    )
+
+    assert prompt["status"] == "prompt"
+    assert prompt["reply_markup"]["inline_keyboard"][0][1]["callback_data"] == "language_en"
+    assert english["content_language"] == "en"
+    assert "CARVEN Intelligence Brief" in menu["reply_text"]
+    assert "709 Language" in menu["reply_text"]
+    assert (
+        get_subscription_profile(db_path, user_id="tg:language-user", now=NOW)["delivery_preferences"][
+            "content_language"
+        ]
+        == "en"
+    )
 
 
 @pytest.mark.asyncio
@@ -91,18 +150,20 @@ async def test_wechat_intel_brief_two_step_schedule_and_tracking(monkeypatch, tm
     wechat._wechat_pending_actions.clear()
 
     schedule_prompt = await wechat.wechat_incoming(wechat.WeChatIncomingRequest(from_user="wx-openid-3", text="705"))
-    schedule_choice = await wechat.wechat_incoming(wechat.WeChatIncomingRequest(from_user="wx-openid-3", text="2"))
+    schedule_choice = await wechat.wechat_incoming(wechat.WeChatIncomingRequest(from_user="wx-openid-3", text="1"))
     track_prompt = await wechat.wechat_incoming(wechat.WeChatIncomingRequest(from_user="wx-openid-3", text="706"))
     track_name = await wechat.wechat_incoming(wechat.WeChatIncomingRequest(from_user="wx-openid-3", text="英伟达"))
 
     assert "回复数字即可设置" in schedule_prompt.reply
-    assert "每天 09:00" in schedule_choice.reply
+    assert "每天 08:30" in schedule_choice.reply
     weekly_prompt = await wechat.wechat_incoming(wechat.WeChatIncomingRequest(from_user="wx-openid-3", text="705"))
-    weekly_choice = await wechat.wechat_incoming(wechat.WeChatIncomingRequest(from_user="wx-openid-3", text="每周 09:00"))
+    weekly_choice = await wechat.wechat_incoming(
+        wechat.WeChatIncomingRequest(from_user="wx-openid-3", text="每周 08:30")
+    )
     weekly_status = await wechat.wechat_incoming(wechat.WeChatIncomingRequest(from_user="wx-openid-3", text="701"))
     assert "回复数字即可设置" in weekly_prompt.reply
-    assert "每周 09:00" in weekly_choice.reply
-    assert "推送时间：每周 09:00" in weekly_status.reply
+    assert "每周 08:30" in weekly_choice.reply
+    assert "推送时间：每周 08:30" in weekly_status.reply
     assert "下一条直接回复名字" in track_prompt.reply
     assert "706 英伟达" in track_prompt.reply
     assert "已添加追踪：英伟达" in track_name.reply

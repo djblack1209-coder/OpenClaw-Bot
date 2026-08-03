@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from src.intel.subscriptions import TELEGRAM_COMMANDS
+from src.intel.subscriptions import telegram_commands_for_language
 from src.intel.telegram_delivery import TELEGRAM_SANDBOX_ACK_VALUE, TelegramTransport
 
 TELEGRAM_API_ENDPOINT_TEMPLATE = "https://api.telegram.org/bot{token}/{method}"
@@ -51,9 +51,10 @@ def _default_transport(url: str, payload: dict[str, object], timeout: int) -> di
         return {"ok": False, "description": str(exc.reason)[:300]}
 
 
-def intel_brief_bot_commands() -> list[dict[str, str]]:
+def intel_brief_bot_commands(language_code: str = "") -> list[dict[str, str]]:
     """Return Telegram Bot API command definitions for Intel Brief."""
-    return [{"command": item["command"], "description": item["description"]} for item in TELEGRAM_COMMANDS]
+    language = "en" if _clean(language_code).lower().startswith("en") else "zh"
+    return telegram_commands_for_language(language)
 
 
 def build_bot_runtime_gate(
@@ -104,17 +105,47 @@ class TelegramBotApiRuntimeClient:
             return {"ok": False, "description": str(exc)[:300]}
         return response if isinstance(response, dict) else {"ok": False, "description": "non_json_response"}
 
-    def set_my_commands(self, commands: list[dict[str, str]] | None = None) -> dict[str, Any]:
-        command_list = commands or intel_brief_bot_commands()
-        response = self._method("setMyCommands", {"commands": command_list})
+    def set_my_commands(
+        self,
+        commands: list[dict[str, str]] | None = None,
+        *,
+        language_code: str = "",
+    ) -> dict[str, Any]:
+        command_list = commands or intel_brief_bot_commands(language_code)
+        payload: dict[str, object] = {"commands": command_list}
+        normalized_language = _clean(language_code).lower()
+        if normalized_language:
+            payload["language_code"] = normalized_language
+        response = self._method("setMyCommands", payload)
         return {
             "success": bool(response.get("ok")),
             "method": "setMyCommands",
             "network": self.network_label,
             "network_calls": self.network_calls,
             "command_count": len(command_list),
+            "language_code": normalized_language or "default",
             "error_code": _clean(response.get("error_code")),
             "error": _clean(response.get("description"))[:300],
+        }
+
+    def set_localized_commands(self) -> dict[str, Any]:
+        """注册 default、zh、en 三套原生命令菜单。"""
+        results = [
+            self.set_my_commands(intel_brief_bot_commands("zh")),
+            self.set_my_commands(intel_brief_bot_commands("zh"), language_code="zh"),
+            self.set_my_commands(intel_brief_bot_commands("en"), language_code="en"),
+        ]
+        return {
+            "success": all(bool(item.get("success")) for item in results),
+            "method": "setMyCommands",
+            "network": self.network_label,
+            "network_calls": self.network_calls,
+            "command_count": len(intel_brief_bot_commands()),
+            "language_scope_count": len(results),
+            "languages": [str(item.get("language_code")) for item in results],
+            "results": results,
+            "error_code": next((_clean(item.get("error_code")) for item in results if item.get("error_code")), ""),
+            "error": next((_clean(item.get("error")) for item in results if item.get("error")), ""),
         }
 
     def get_updates(
@@ -232,11 +263,13 @@ def build_telegram_bot_runtime_probe(
             transport=transport,
         )
         if set_commands:
-            set_result = client.set_my_commands(intel_brief_bot_commands())
+            set_result = client.set_localized_commands()
         updates_internal = client.get_updates(limit=limit, timeout_seconds=timeout_seconds)
         updates_result = _public_get_updates_result(updates_internal)
         network_calls = int(client.network_calls)
-        status = "success" if (not set_result or set_result.get("success")) and updates_result.get("success") else "failed"
+        status = (
+            "success" if (not set_result or set_result.get("success")) and updates_result.get("success") else "failed"
+        )
 
     payload = {
         "timestamp": _now_iso(),

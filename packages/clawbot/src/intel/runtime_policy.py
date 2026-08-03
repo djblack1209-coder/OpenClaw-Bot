@@ -7,6 +7,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+DEFAULT_INTEL_BRIEF_SCHEDULER_TIMEZONE = "Asia/Singapore"
+DEFAULT_INTEL_BRIEF_DELIVERY_TIME = "08:30"
+DEFAULT_INTEL_BRIEF_WINDOW_START = (8, 30)
+DEFAULT_INTEL_BRIEF_WINDOW_END = (10, 0)
+
+
+class IntelBriefRuntimePolicyError(ValueError):
+    """每日资讯运行策略配置错误，并携带可审计的稳定错误码。"""
+
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
 
 
 @dataclass(frozen=True)
@@ -29,6 +44,18 @@ class SocialAuthStrategy:
     unattended_first: bool
     qrcode_mode: str
     note: str
+
+
+@dataclass(frozen=True)
+class IntelBriefDeliveryWindowDecision:
+    """每日资讯在指定业务时区内的投递窗口判定。"""
+
+    scheduler_timezone: str
+    local_now: datetime
+    window_start: tuple[int, int]
+    window_end: tuple[int, int]
+    should_run: bool
+    reason: str
 
 
 _DOMESTIC_SOURCES = {
@@ -96,6 +123,73 @@ _SOCIAL_AUTH_STRATEGIES = {
 def _normalize_source_name(source_name: str) -> str:
     """统一数据源名称，便于配置和代码里复用。"""
     return str(source_name or "").strip().lower().replace("-", "_")
+
+
+def _validate_hhmm(value: tuple[int, int], *, field_name: str) -> tuple[int, int]:
+    """校验小时和分钟，避免错误配置绕过投递窗口。"""
+    try:
+        hour, minute = int(value[0]), int(value[1])
+    except (IndexError, TypeError, ValueError) as exc:
+        raise IntelBriefRuntimePolicyError(
+            "invalid_scheduler_window",
+            f"{field_name} must be a valid HH:MM value",
+        ) from exc
+    if not 0 <= hour <= 23 or not 0 <= minute <= 59:
+        raise IntelBriefRuntimePolicyError(
+            "invalid_scheduler_window",
+            f"{field_name} must be a valid HH:MM value",
+        )
+    return hour, minute
+
+
+def evaluate_intel_brief_delivery_window(
+    *,
+    now: datetime,
+    scheduler_timezone: str = DEFAULT_INTEL_BRIEF_SCHEDULER_TIMEZONE,
+    window_start: tuple[int, int] = DEFAULT_INTEL_BRIEF_WINDOW_START,
+    window_end: tuple[int, int] = DEFAULT_INTEL_BRIEF_WINDOW_END,
+) -> IntelBriefDeliveryWindowDecision:
+    """把当前时刻换算到业务时区，并判断是否位于允许投递的分钟窗口。"""
+    timezone_name = str(scheduler_timezone or DEFAULT_INTEL_BRIEF_SCHEDULER_TIMEZONE).strip()
+    try:
+        scheduler_zone = ZoneInfo(timezone_name)
+    except (ValueError, ZoneInfoNotFoundError) as exc:
+        raise IntelBriefRuntimePolicyError(
+            "invalid_scheduler_timezone",
+            "scheduler_timezone must be a valid IANA timezone",
+        ) from exc
+
+    start = _validate_hhmm(window_start, field_name="window_start")
+    end = _validate_hhmm(window_end, field_name="window_end")
+    start_minute = start[0] * 60 + start[1]
+    end_minute = end[0] * 60 + end[1]
+    if end_minute < start_minute:
+        raise IntelBriefRuntimePolicyError(
+            "invalid_scheduler_window",
+            "window_end must not be earlier than window_start",
+        )
+
+    # 无时区输入按配置的业务墙钟解释；有时区输入按同一绝对时刻换算。
+    local_now = now.replace(tzinfo=scheduler_zone) if now.tzinfo is None else now.astimezone(scheduler_zone)
+    current_minute = local_now.hour * 60 + local_now.minute
+    if current_minute < start_minute:
+        reason = "skipped_before_window"
+        should_run = False
+    elif current_minute > end_minute:
+        reason = "skipped_late_trigger"
+        should_run = False
+    else:
+        reason = "inside_delivery_window"
+        should_run = True
+
+    return IntelBriefDeliveryWindowDecision(
+        scheduler_timezone=timezone_name,
+        local_now=local_now,
+        window_start=start,
+        window_end=end,
+        should_run=should_run,
+        reason=reason,
+    )
 
 
 def resolve_runtime_policy(source_name: str) -> RuntimePolicy:

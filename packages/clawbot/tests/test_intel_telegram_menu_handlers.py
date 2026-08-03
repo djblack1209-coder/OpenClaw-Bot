@@ -37,6 +37,7 @@ def test_start_creates_telegram_subscriber_and_returns_menu_without_network(tmp_
         "schedule",
         "track",
         "pause",
+        "language",
         "help",
     ]
     assert [item["description"] for item in result["menu"]["commands"]] == [
@@ -49,6 +50,7 @@ def test_start_creates_telegram_subscriber_and_returns_menu_without_network(tmp_
         "推送时间",
         "添加追踪",
         "暂停简报",
+        "资讯语言",
         "帮助",
     ]
 
@@ -86,7 +88,7 @@ def test_sources_schedule_and_status_commands_update_active_profile(tmp_path):
         db_path,
         user=user,
         command="/schedule",
-        args=["daily", "08:30", "America/Denver"],
+        args=["daily", "08:30", "Asia/Singapore"],
         now=NOW,
     )
     status = handle_intel_telegram_command(db_path, user=user, command="/status", args=[], now=NOW)
@@ -98,7 +100,7 @@ def test_sources_schedule_and_status_commands_update_active_profile(tmp_path):
     assert schedule["delivery_preferences"] == {
         "frequency": "daily",
         "delivery_time": "08:30",
-        "timezone": "America/Denver",
+        "timezone": "Asia/Singapore",
     }
     assert "08:30" in schedule["reply_text"]
     assert status["subscription_status"] == "active"
@@ -110,10 +112,10 @@ def test_sources_schedule_and_status_commands_update_active_profile(tmp_path):
     profile = get_subscription_profile(db_path, user_id="tg:active-user", now=NOW)
     assert profile["eligible"] is True
     assert profile["enabled_categories"] == ["akshare", "senate_trading"]
-    assert profile["delivery_preferences"]["timezone"] == "America/Denver"
+    assert profile["delivery_preferences"]["timezone"] == "Asia/Singapore"
 
 
-def test_schedule_accepts_time_only_argument_like_a_normal_user(tmp_path):
+def test_schedule_rejects_time_not_served_by_single_daily_dispatcher(tmp_path):
     from src.intel.telegram_menu import TelegramUserContext, handle_intel_telegram_command
 
     db_path = tmp_path / "intel_menu_schedule_time_only.db"
@@ -122,14 +124,10 @@ def test_schedule_accepts_time_only_argument_like_a_normal_user(tmp_path):
 
     result = handle_intel_telegram_command(db_path, user=user, command="/schedule", args=["09:00"], now=NOW)
 
-    assert result["status"] == "success"
+    assert result["status"] == "error"
     assert result["command"] == "schedule"
-    assert result["delivery_preferences"] == {
-        "frequency": "daily",
-        "delivery_time": "09:00",
-        "timezone": "America/Denver",
-    }
-    assert "09:00" in result["reply_text"]
+    assert result["error"] == "unsupported_delivery_schedule"
+    assert "08:30" in result["reply_text"]
 
 
 def test_slash_menu_aliases_match_numbered_menu_for_users_after_chat_cleanup(tmp_path):
@@ -162,7 +160,14 @@ def test_slash_menu_aliases_match_numbered_menu_for_users_after_chat_cleanup(tmp
     assert "今日简报" in today["reply_text"]
     assert market["enabled_categories"] == ["akshare", "institutional_13f", "senate_trading"]
     assert ai["enabled_categories"] == ["ai_model_updates", "github_trending"]
-    assert weather["enabled_categories"] == ["air_quality", "disaster_alerts", "humidity", "rainfall", "temperature", "weather"]
+    assert weather["enabled_categories"] == [
+        "air_quality",
+        "disaster_alerts",
+        "humidity",
+        "rainfall",
+        "temperature",
+        "weather",
+    ]
     assert track_prompt["status"] == "prompt"
     assert "下一条直接回复名字" in track_prompt["reply_text"]
     assert track["status"] == "success"
@@ -179,18 +184,18 @@ def test_schedule_two_step_flow_accepts_number_and_plain_language_frequency(tmp_
     handle_intel_telegram_command(db_path, user=user, command="/start", args=[], now=NOW)
 
     prompt = handle_intel_telegram_command(db_path, user=user, command="705", args=[], now=NOW)
-    quick_choice = handle_intel_telegram_command(db_path, user=user, command="2", args=[], now=NOW)
+    quick_choice = handle_intel_telegram_command(db_path, user=user, command="1", args=[], now=NOW)
     prompt_again = handle_intel_telegram_command(db_path, user=user, command="/schedule", args=[], now=NOW)
-    weekly = handle_intel_telegram_command(db_path, user=user, command="每周 09:00", args=[], now=NOW)
+    weekly = handle_intel_telegram_command(db_path, user=user, command="每周 08:30", args=[], now=NOW)
 
     assert prompt["status"] == "prompt"
     assert "回复数字即可设置" in prompt["reply_text"]
     assert quick_choice["status"] == "success"
     assert quick_choice["delivery_preferences"]["frequency"] == "daily"
-    assert quick_choice["delivery_preferences"]["delivery_time"] == "09:00"
+    assert quick_choice["delivery_preferences"]["delivery_time"] == "08:30"
     assert prompt_again["status"] == "prompt"
     assert weekly["delivery_preferences"]["frequency"] == "weekly"
-    assert weekly["delivery_preferences"]["delivery_time"] == "09:00"
+    assert weekly["delivery_preferences"]["delivery_time"] == "08:30"
 
 
 def test_today_shortcut_returns_latest_brief_instead_of_reopening_menu(tmp_path):
@@ -285,6 +290,98 @@ def test_pause_is_not_silently_cancelled_by_status_or_menu(tmp_path):
     assert profile_after_resume["status"] == "active"
 
 
+def test_language_command_persists_english_without_changing_subscription_or_other_preferences(tmp_path):
+    from src.intel.subscriptions import get_subscription_profile, set_delivery_preferences, set_source_preferences
+    from src.intel.telegram_menu import TelegramUserContext, handle_intel_telegram_command
+
+    db_path = tmp_path / "intel_menu_language.db"
+    user = TelegramUserContext(telegram_user_id="language-user", chat_id="language-chat")
+    start = handle_intel_telegram_command(db_path, user=user, command="/start", args=[], now=NOW)
+    upsert_subscription_plan(db_path, plan_name="intel_mvp_monthly", categories=["akshare"])
+    grant_subscription(
+        db_path,
+        user_id=start["subscriber"]["user_id"],
+        plan_name="intel_mvp_monthly",
+        starts_at="2026-07-07T00:00:00+00:00",
+        expires_at="2026-08-07T00:00:00+00:00",
+        source="language_test",
+    )
+    set_source_preferences(db_path, user_id=start["subscriber"]["user_id"], enabled_categories=["akshare"])
+    set_delivery_preferences(
+        db_path,
+        user_id=start["subscriber"]["user_id"],
+        frequency="weekly",
+        delivery_time="08:30",
+        timezone="Asia/Singapore",
+    )
+    handle_intel_telegram_command(db_path, user=user, command="/pause", args=[], now=NOW)
+
+    switched = handle_intel_telegram_command(db_path, user=user, command="/language", args=["English"], now=NOW)
+    profile = get_subscription_profile(db_path, user_id=start["subscriber"]["user_id"], now=NOW)
+    menu = handle_intel_telegram_command(db_path, user=user, command="/start", args=[], now=NOW)
+    today = handle_intel_telegram_command(db_path, user=user, command="🧭 Today's Brief", args=[], now=NOW)
+    schedule_prompt = handle_intel_telegram_command(db_path, user=user, command="/schedule", args=[], now=NOW)
+    schedule_update = handle_intel_telegram_command(db_path, user=user, command="2", args=[], now=NOW)
+
+    assert switched["status"] == "success"
+    assert switched["command"] == "language"
+    assert switched["content_language"] == "en"
+    assert switched["delivery_preferences"]["language_persisted"] is True
+    assert profile["status"] == "paused"
+    assert profile["enabled_categories"] == ["akshare"]
+    assert profile["delivery_preferences"] == {
+        "frequency": "weekly",
+        "delivery_time": "08:30",
+        "timezone": "Asia/Singapore",
+        "content_language": "en",
+    }
+    assert "CARVEN Intelligence Brief" in menu["reply_text"]
+    assert "709 Language" in menu["reply_text"]
+    assert menu["menu"]["commands"][-2:] == [
+        {"command": "language", "description": "Brief language"},
+        {"command": "help", "description": "Help"},
+    ]
+    assert menu["reply_markup"]["inline_keyboard"][0][0]["text"] == "🧭 Today's Brief"
+    assert today["command"] == "today"
+    assert "Today's Brief" in today["reply_text"]
+    assert "Set delivery time" in schedule_prompt["reply_text"]
+    assert "Delivery time updated: Weekly 08:30" in schedule_update["reply_text"]
+    assert get_subscription_profile(db_path, user_id=start["subscriber"]["user_id"], now=NOW)["status"] == "paused"
+
+
+def test_709_prompt_and_language_buttons_switch_between_english_and_chinese(tmp_path):
+    from src.intel.subscriptions import get_subscription_profile
+    from src.intel.telegram_menu import TelegramUserContext, handle_intel_telegram_command
+
+    db_path = tmp_path / "intel_menu_language_buttons.db"
+    user = TelegramUserContext(telegram_user_id="language-button-user", chat_id="language-button-chat")
+    handle_intel_telegram_command(db_path, user=user, command="/start", args=[], now=NOW)
+
+    prompt = handle_intel_telegram_command(db_path, user=user, command="709", args=[], now=NOW)
+    handle_intel_telegram_command(db_path, user=user, command="705", args=[], now=NOW)
+    english = handle_intel_telegram_command(db_path, user=user, command="language_en", args=[], now=NOW)
+    pending_interrupted = handle_intel_telegram_command(db_path, user=user, command="2", args=[], now=NOW)
+    chinese = handle_intel_telegram_command(db_path, user=user, command="language_zh", args=[], now=NOW)
+    invalid = handle_intel_telegram_command(db_path, user=user, command="/language", args=["fr"], now=NOW)
+
+    assert prompt["status"] == "prompt"
+    assert "709 English" in prompt["reply_text"]
+    assert english["content_language"] == "en"
+    assert english["reply_text"] == "News language switched to English."
+    assert pending_interrupted["command"] == "2"
+    assert "Keyword received: 2" in pending_interrupted["reply_text"]
+    assert chinese["content_language"] == "zh"
+    assert chinese["reply_text"] == "资讯语言已切换为中文。"
+    assert invalid["status"] == "error"
+    assert invalid["error"] == "unsupported_content_language"
+    assert (
+        get_subscription_profile(db_path, user_id="tg:language-button-user", now=NOW)["delivery_preferences"][
+            "content_language"
+        ]
+        == "zh"
+    )
+
+
 def test_custom_command_subscribes_open_tracking_target_and_writes_audit_without_scraping(tmp_path):
     from src.intel.telegram_menu import TelegramUserContext, handle_intel_telegram_command
 
@@ -320,7 +417,14 @@ def test_sandbox_evidence_builder_simulates_user_menu_flow_without_network(tmp_p
     assert evidence["status"] == "success"
     assert evidence["phase"] == "Z-telegram-menu-handler-contract"
     assert evidence["network_calls"] == 0
-    assert [step["command"] for step in evidence["steps"]] == ["start", "grant", "sources", "schedule", "custom", "status"]
+    assert [step["command"] for step in evidence["steps"]] == [
+        "start",
+        "grant",
+        "sources",
+        "schedule",
+        "custom",
+        "status",
+    ]
     assert evidence["final_profile"]["status"] == "active"
     assert evidence["final_profile"]["enabled_categories"] == ["akshare", "senate_trading"]
     assert evidence["tracking_target"]["name"] == "周杰伦"
@@ -355,6 +459,7 @@ def test_start_returns_inline_keyboard_card_menu_like_reference(tmp_path):
         ["📈 市场资金", "🤖 AI科技"],
         ["🌦 天气预警", "⏰ 推送时间"],
         ["➕ 添加追踪", "❓ 帮助"],
+        ["中文", "English"],
     ]
     assert "命令：/sources" not in result["reply_text"]
     assert "订阅状态：" not in result["reply_text"]
@@ -365,6 +470,10 @@ def test_start_returns_inline_keyboard_card_menu_like_reference(tmp_path):
     assert keyboard[2][1] == {"text": "⏰ 推送时间", "callback_data": "schedule"}
     assert keyboard[3][0] == {"text": "➕ 添加追踪", "callback_data": "custom"}
     assert keyboard[3][1] == {"text": "❓ 帮助", "callback_data": "help"}
+    assert keyboard[4] == [
+        {"text": "中文", "callback_data": "language_zh"},
+        {"text": "English", "callback_data": "language_en"},
+    ]
     assert result["menu"]["menu_style"] == "product_numbered_inline_card_with_persistent_shortcuts"
 
 
@@ -413,12 +522,18 @@ def test_native_menu_buttons_map_to_commands(tmp_path):
     assert "直接发送关键词" in search["reply_text"]
     assert market["enabled_categories"] == ["akshare", "institutional_13f", "senate_trading"]
     assert ai_tech["enabled_categories"] == ["ai_model_updates", "github_trending"]
-    assert weather_alerts["enabled_categories"] == ["air_quality", "disaster_alerts", "humidity", "rainfall", "temperature", "weather"]
+    assert weather_alerts["enabled_categories"] == [
+        "air_quality",
+        "disaster_alerts",
+        "humidity",
+        "rainfall",
+        "temperature",
+        "weather",
+    ]
     assert hot["command"] == "start"
     assert hot["reply_markup"]["inline_keyboard"][0][0]["text"] == "🧭 今日简报"
     assert nav["command"] == "start"
     assert nav["reply_markup"]["inline_keyboard"][0][0]["text"] == "🧭 今日简报"
-
 
 
 def test_706_prompt_accepts_next_plain_keyword_as_tracking_target(tmp_path):
@@ -430,7 +545,9 @@ def test_706_prompt_accepts_next_plain_keyword_as_tracking_target(tmp_path):
 
     prompt = handle_intel_telegram_command(db_path, user=user, command="706", args=[], now=NOW)
     follow_up = handle_intel_telegram_command(db_path, user=user, command="英伟达", args=[], now=NOW)
-    normal_keyword_after_consumed = handle_intel_telegram_command(db_path, user=user, command="黄仁勋", args=[], now=NOW)
+    normal_keyword_after_consumed = handle_intel_telegram_command(
+        db_path, user=user, command="黄仁勋", args=[], now=NOW
+    )
 
     assert prompt["status"] == "prompt"
     assert prompt["command"] == "custom"
@@ -442,6 +559,7 @@ def test_706_prompt_accepts_next_plain_keyword_as_tracking_target(tmp_path):
     assert normal_keyword_after_consumed["status"] == "prompt"
     assert normal_keyword_after_consumed["command"] == "黄仁勋"
     assert "已收到关键词：黄仁勋" in normal_keyword_after_consumed["reply_text"]
+
 
 def test_plain_keyword_text_is_treated_as_search_prompt(tmp_path):
     from src.intel.telegram_menu import TelegramUserContext, handle_intel_telegram_command

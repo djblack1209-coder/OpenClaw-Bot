@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from src.intel.content_contract import normalize_source_batch, parse_content_datetime
+from src.intel.content_pipeline import ContentPipeline
 from src.intel.quality.content_moderation import FILTER_PLACEHOLDER, moderate_items
 
 _ALLOWED_MODERATION_STATUSES = {"allowed", "allowed_after_review"}
@@ -182,7 +184,9 @@ def normalize_collect_evidence(payload: dict[str, Any]) -> list[dict[str, Any]]:
         worker = _clean(run.get("worker"))
         evidence_path = _clean(run.get("evidence_path"))
         response = run.get("response") if isinstance(run.get("response"), dict) else {}
-        fetched_at = _clean(response.get("fetched_at") if isinstance(response, dict) else "") or _clean(payload.get("timestamp"))
+        fetched_at = _clean(response.get("fetched_at") if isinstance(response, dict) else "") or _clean(
+            payload.get("timestamp")
+        )
         items = response.get("items", []) if isinstance(response, dict) else []
         for index, raw in enumerate(items if isinstance(items, list) else []):
             if not isinstance(raw, dict):
@@ -214,6 +218,145 @@ def normalize_collect_evidence(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 )
             normalized.append(item)
     return normalized
+
+
+def normalize_collect_evidence_v2(payload: dict[str, Any]) -> tuple[list[Any], list[dict[str, Any]]]:
+    """把全部采集结果转换为统一事实契约，并隔离坏行。"""
+    normalized: list[Any] = []
+    rejected: list[dict[str, Any]] = []
+    for run in payload.get("runs", []) or []:
+        if not isinstance(run, dict):
+            continue
+        source = _clean(run.get("source"))
+        response = run.get("response") if isinstance(run.get("response"), dict) else {}
+        rows = response.get("items", []) if isinstance(response, dict) else []
+        if not isinstance(rows, list):
+            rows = []
+        batch = normalize_source_batch(
+            source,
+            rows,
+            fetched_at=_clean(response.get("fetched_at")) or _clean(payload.get("timestamp")),
+            evidence_path=_clean(run.get("evidence_path")),
+        )
+        normalized.extend(batch.items)
+        rejected.extend(
+            {
+                "source": source,
+                "index": item.index,
+                "reason": item.reason,
+            }
+            for item in batch.rejected
+        )
+    return normalized, rejected
+
+
+def _pipeline_display_item(
+    candidate: Any,
+    workers: dict[str, dict[str, str]],
+    *,
+    rank_position: int,
+) -> dict[str, Any]:
+    """把可审计候选转换为现有摘要和投递层兼容的公开字典。"""
+    item = candidate.item
+    source_meta = workers.get(item.source_name, {})
+    stable_key = item.event_key
+    return {
+        **candidate.to_dict(),
+        "source": item.source_name,
+        "source_label": _label_for_source(item.source_name),
+        "stable_key": stable_key,
+        "stable_key_hash": _stable_hash(stable_key),
+        "rank_score": candidate.score,
+        "rank_position": rank_position,
+        "worker": source_meta.get("worker", ""),
+        "fetched_at": source_meta.get("fetched_at", item.observed_at.isoformat()),
+        "detail_lines": [
+            value
+            for value in (
+                f"时间：{item.published_at.isoformat()}" if item.published_at else "",
+                f"来源：{item.provider}" if item.provider else "",
+                f"链接：{item.source_url}" if item.source_url else "",
+                f"摘要：{item.summary}" if item.summary else "",
+            )
+            if value
+        ],
+    }
+
+
+def _run_content_pipeline_v2(
+    payload: dict[str, Any],
+    *,
+    seen_event_keys: list[str] | None = None,
+    recent_entity_observations: dict[str, str] | None = None,
+    tracked_terms: list[str] | None = None,
+    baseline_only_sources: list[str] | None = None,
+    db_path: str | Path | None = None,
+    run_key: str = "",
+    source_coverage: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """执行生产内容 V2，并返回入选条目与全流程原因统计。"""
+    normalized, normalization_rejections = normalize_collect_evidence_v2(payload)
+    now = parse_content_datetime(payload.get("timestamp")) or datetime.now(timezone.utc)  # noqa: UP017
+    pipeline = ContentPipeline().process(
+        normalized,
+        now=now,
+        seen_event_keys=seen_event_keys or [],
+        recent_entity_observations=recent_entity_observations or {},
+        tracked_terms=tracked_terms or [],
+        baseline_only_sources=baseline_only_sources or [],
+    )
+    if db_path is not None and run_key:
+        from src.intel.db.store import persist_content_pipeline_run
+
+        persist_content_pipeline_run(
+            db_path,
+            run_key=run_key,
+            brief_date=now.date().isoformat(),
+            items=list(normalized),
+            pipeline_result=pipeline,
+            source_coverage=source_coverage,
+            baseline_only=bool(baseline_only_sources),
+        )
+    workers: dict[str, dict[str, str]] = {}
+    for run in payload.get("runs", []) or []:
+        if not isinstance(run, dict):
+            continue
+        response = run.get("response") if isinstance(run.get("response"), dict) else {}
+        workers[_clean(run.get("source"))] = {
+            "worker": _clean(run.get("worker")),
+            "fetched_at": _clean(response.get("fetched_at")),
+        }
+    items = [
+        _pipeline_display_item(candidate, workers, rank_position=rank_position)
+        for rank_position, candidate in enumerate(pipeline.selected, 1)
+    ]
+    audit = {
+        "enabled": True,
+        "normalized_count": len(normalized),
+        "normalization_rejected_count": len(normalization_rejections),
+        "normalization_rejections": normalization_rejections,
+        "seen_event_key_count": len(set(seen_event_keys or [])),
+        "recent_entity_observation_count": len(recent_entity_observations or {}),
+        "pipeline_counts": pipeline.counts,
+        "rejected": [
+            {
+                "source": entry.item.source_name,
+                "event_key": entry.item.event_key,
+                "reason": entry.reason,
+                "detail": entry.detail,
+            }
+            for entry in pipeline.rejected
+        ],
+        "excluded": [
+            {
+                "source": entry.item.source_name,
+                "event_key": entry.item.event_key,
+                "reason": entry.reason,
+            }
+            for entry in pipeline.excluded
+        ],
+    }
+    return items, audit
 
 
 def deduplicate_brief_items(items: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
@@ -348,6 +491,14 @@ def build_brief_dry_run(
     markdown_output_path: str | Path,
     json_output_path: str | Path,
     stamp: str | None = None,
+    content_pipeline_v2: bool = False,
+    seen_event_keys: list[str] | None = None,
+    recent_entity_observations: dict[str, str] | None = None,
+    tracked_terms: list[str] | None = None,
+    baseline_only_sources: list[str] | None = None,
+    db_path: str | Path | None = None,
+    run_key: str = "",
+    source_coverage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build Markdown/JSON dry-run evidence from collect-once evidence."""
     collect_path = Path(collect_evidence_path)
@@ -355,8 +506,24 @@ def build_brief_dry_run(
     json_path = Path(json_output_path)
     payload = json.loads(collect_path.read_text(encoding="utf-8"))
 
-    normalized = normalize_collect_evidence(payload)
-    deduped, dropped = deduplicate_brief_items(normalized)
+    content_quality: dict[str, Any] = {"enabled": False}
+    if content_pipeline_v2:
+        normalized, content_quality = _run_content_pipeline_v2(
+            payload,
+            seen_event_keys=seen_event_keys,
+            recent_entity_observations=recent_entity_observations,
+            tracked_terms=tracked_terms,
+            baseline_only_sources=baseline_only_sources,
+            db_path=db_path,
+            run_key=run_key,
+            source_coverage=source_coverage,
+        )
+        deduped = normalized
+        pipeline_counts = content_quality.get("pipeline_counts", {})
+        dropped = int(pipeline_counts.get("rejected", 0)) + int(pipeline_counts.get("excluded", 0))
+    else:
+        normalized = normalize_collect_evidence(payload)
+        deduped, dropped = deduplicate_brief_items(normalized)
     moderated, moderated_count = _apply_moderation(deduped)
     public_items = _public_items(moderated)
     source_summaries = _source_summaries(payload, public_items)
@@ -373,13 +540,14 @@ def build_brief_dry_run(
         "json_evidence": str(json_path),
         "summary": {
             "source_count": source_count,
-            "item_count_before_dedup": len(normalized),
+            "item_count_before_dedup": int(content_quality.get("normalized_count", len(normalized))),
             "deduped_count": dropped,
             "moderated_count": moderated_count,
             "rendered_count": len(public_items),
         },
         "source_summaries": source_summaries,
         "items": public_items,
+        "content_quality": content_quality,
         "limits": [
             "No LLM call.",
             "No Telegram push.",

@@ -68,10 +68,7 @@ def _subscriber_rows(db_path: Path, *, now: str) -> list[dict[str, Any]]:
             ORDER BY s.id
             """
         ).fetchall()
-        prefs = {
-            int(row[0]): []
-            for row in conn.execute("SELECT id FROM subscribers").fetchall()
-        }
+        prefs = {int(row[0]): [] for row in conn.execute("SELECT id FROM subscribers").fetchall()}
         for row in conn.execute(
             "SELECT subscriber_id, category FROM source_preferences WHERE enabled=1 ORDER BY category"
         ).fetchall():
@@ -100,7 +97,7 @@ def _subscriber_rows(db_path: Path, *, now: str) -> list[dict[str, Any]]:
                 "delivery_preferences": {
                     "frequency": _clean(row["frequency"]) or "daily",
                     "delivery_time": _clean(row["delivery_time"]) or "08:30",
-                    "timezone": _clean(row["timezone"]) or "America/Denver",
+                    "timezone": _clean(row["timezone"]) or "Asia/Singapore",
                 },
             }
         )

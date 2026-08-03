@@ -11,9 +11,7 @@ from src.intel.runtime_policy import resolve_runtime_policy
 from src.intel.sources.base import IntelSourceResult
 
 SENATE_RAW_URL = (
-    "https://raw.githubusercontent.com/"
-    "timothycarambat/senate-stock-watcher-data/"
-    "master/aggregate/all_transactions.json"
+    "https://raw.githubusercontent.com/timothycarambat/senate-stock-watcher-data/master/aggregate/all_transactions.json"
 )
 
 
@@ -32,7 +30,7 @@ def parse_transactions(payload: bytes | str, limit: int = 20) -> list[dict[str, 
     else:
         records = raw
     normalized: list[dict[str, Any]] = []
-    for item in list(records)[: max(0, int(limit))]:
+    for item in list(records):
         if not isinstance(item, dict):
             continue
         normalized.append(
@@ -50,7 +48,27 @@ def parse_transactions(payload: bytes | str, limit: int = 20) -> list[dict[str, 
                 "ptr_link": str(item.get("ptr_link", "") or item.get("link", "") or ""),
             }
         )
-    return normalized
+    normalized.sort(
+        key=lambda item: (
+            _parse_source_date(item.get("disclosure_date")),
+            _parse_source_date(item.get("transaction_date")),
+            str(item.get("person", "")).casefold(),
+            str(item.get("ticker", "")).casefold(),
+        ),
+        reverse=True,
+    )
+    return normalized[: max(0, int(limit))]
+
+
+def _parse_source_date(value: Any) -> datetime:
+    """把 Senate 的日期转为可排序 UTC 时间，坏值稳定排在最后。"""
+    raw = str(value or "").strip()
+    for format_string in ("%m/%d/%Y", "%Y-%m-%d", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(raw, format_string).replace(tzinfo=timezone.utc)  # noqa: UP017
+        except ValueError:
+            continue
+    return datetime.min.replace(tzinfo=timezone.utc)  # noqa: UP017 - Python 3.10 兼容
 
 
 def fetch_senate_transactions(
@@ -71,6 +89,7 @@ def fetch_senate_transactions(
     with open_fn(request, timeout=timeout) as response:
         payload = response.read()
     return parse_transactions(payload, limit=limit)
+
 
 class SenateTransactionsAdapter:
     """Senate raw GitHub source adapter.

@@ -59,6 +59,91 @@ class FakeReplySender:
         }
 
 
+class SequencedReplySender(FakeReplySender):
+    def __init__(self, outcomes: list[bool]) -> None:
+        super().__init__()
+        self.outcomes = list(outcomes)
+
+    def send(
+        self,
+        chat_id: str,
+        text: str,
+        *,
+        parse_mode: str = "HTML",
+        reply_markup: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        self.sent.append({"chat_id": chat_id, "text": text, "parse_mode": parse_mode})
+        success = self.outcomes.pop(0)
+        return {
+            "success": success,
+            "network": "fake_sender",
+            "network_calls": 0,
+            "chat_id_present": bool(chat_id),
+            "message_id": f"fake-{len(self.sent)}" if success else "",
+            "endpoint": "fake://telegram/sendMessage",
+            "reply_markup_present": bool(reply_markup),
+            "error_code": "" if success else "retryable_test_failure",
+            "error": "" if success else "temporary failure",
+        }
+
+
+class AmbiguousReplySender(FakeReplySender):
+    def send(
+        self,
+        chat_id: str,
+        text: str,
+        *,
+        parse_mode: str = "HTML",
+        reply_markup: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        self.sent.append({"chat_id": chat_id, "text": text, "parse_mode": parse_mode})
+        raise TimeoutError("timeout")
+
+
+class CallbackFailureSender(FakeReplySender):
+    def __init__(self) -> None:
+        super().__init__()
+        self.callback_answers = 0
+
+    def answer_callback_query(self, callback_query_id: str, *, text: str = "") -> dict[str, object]:
+        self.callback_answers += 1
+        return {
+            "success": False,
+            "network": "fake_sender",
+            "network_calls": 0,
+            "callback_query_id_present": bool(callback_query_id),
+            "text_present": bool(text),
+            "error": "callback answer unavailable",
+        }
+
+
+class CallbackOrderSender(FakeReplySender):
+    def __init__(self) -> None:
+        super().__init__()
+        self.events: list[str] = []
+
+    def send(
+        self,
+        chat_id: str,
+        text: str,
+        *,
+        parse_mode: str = "HTML",
+        reply_markup: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        self.events.append("sendMessage")
+        return super().send(chat_id, text, parse_mode=parse_mode, reply_markup=reply_markup)
+
+    def answer_callback_query(self, callback_query_id: str, *, text: str = "") -> dict[str, object]:
+        self.events.append("answerCallbackQuery")
+        return {
+            "success": True,
+            "network": "fake_sender",
+            "network_calls": 0,
+            "callback_query_id_present": bool(callback_query_id),
+            "text_present": bool(text),
+        }
+
+
 def _update(update_id: int, text: str, *, user_id: str = "processor-user") -> dict[str, object]:
     return {
         "update_id": update_id,
@@ -67,6 +152,21 @@ def _update(update_id: int, text: str, *, user_id: str = "processor-user") -> di
             "text": text,
             "from": {"id": user_id, "username": "processor_tester"},
             "chat": {"id": CHAT_ID, "type": "private"},
+        },
+    }
+
+
+def _callback_update(update_id: int, data: str, *, user_id: str = "processor-user") -> dict[str, object]:
+    return {
+        "update_id": update_id,
+        "callback_query": {
+            "id": f"callback-{update_id}",
+            "data": data,
+            "from": {"id": user_id, "username": "processor_tester"},
+            "message": {
+                "message_id": update_id + 100,
+                "chat": {"id": CHAT_ID, "type": "private"},
+            },
         },
     }
 
@@ -116,12 +216,156 @@ def test_update_processor_persists_offset_and_skips_duplicate_updates(tmp_path):
     assert get_telegram_offset(db_path) == 11
 
 
+def test_set_telegram_offset_is_monotonic(tmp_path):
+    from src.intel.telegram_update_processor import get_telegram_offset, set_telegram_offset
+
+    db_path = tmp_path / "processor.db"
+
+    assert set_telegram_offset(db_path, 100)["last_update_id"] == 100
+    assert set_telegram_offset(db_path, 90)["last_update_id"] == 100
+    assert get_telegram_offset(db_path) == 100
+
+
+def test_update_processor_commits_each_sorted_update_and_stops_on_retryable_failure(tmp_path):
+    from src.intel.telegram_update_processor import (
+        get_telegram_offset,
+        process_telegram_updates_once,
+        set_telegram_offset,
+    )
+
+    db_path = tmp_path / "processor.db"
+    set_telegram_offset(db_path, 9)
+    sender = SequencedReplySender([True, False])
+    client = FakeBotClient([_update(12, "/status"), _update(10, "/status"), _update(11, "/status")])
+
+    first = process_telegram_updates_once(db_path, client=client, sender=sender, now=NOW)
+
+    assert first["status"] == "failed"
+    assert first["attempted_update_count"] == 2
+    assert first["committed_update_count"] == 1
+    assert first["retryable_failure_count"] == 1
+    assert first["new_offset"] == 10
+    assert get_telegram_offset(db_path) == 10
+    assert len(sender.sent) == 2
+
+    replay_sender = SequencedReplySender([True, True])
+    replay = process_telegram_updates_once(db_path, client=client, sender=replay_sender, now=NOW)
+
+    assert replay["status"] == "success"
+    assert replay["request_offset"] == 11
+    assert replay["attempted_update_count"] == 2
+    assert replay["committed_update_count"] == 2
+    assert replay["new_offset"] == 12
+    assert get_telegram_offset(db_path) == 12
+
+
+def test_update_processor_advances_past_explicitly_skipped_update(tmp_path):
+    from src.intel.telegram_update_processor import get_telegram_offset, process_telegram_updates_once
+
+    db_path = tmp_path / "processor.db"
+    sender = FakeReplySender()
+    unsupported = {"update_id": 30, "my_chat_member": {"new_chat_member": {"status": "member"}}}
+    client = FakeBotClient([_update(31, "/status"), unsupported])
+
+    result = process_telegram_updates_once(db_path, client=client, sender=sender, now=NOW)
+
+    assert result["status"] == "success"
+    assert result["attempted_update_count"] == 2
+    assert result["committed_update_count"] == 2
+    assert result["runtime"]["skipped_count"] == 1
+    assert result["runtime"]["handled_count"] == 1
+    assert get_telegram_offset(db_path) == 31
+
+
+def test_update_processor_commits_body_after_callback_answer_failure(tmp_path):
+    from src.intel.telegram_update_processor import get_telegram_offset, process_telegram_updates_once
+
+    db_path = tmp_path / "processor.db"
+    update = _callback_update(40, "status")
+    client = FakeBotClient([update])
+    sender = CallbackFailureSender()
+
+    first = process_telegram_updates_once(db_path, client=client, sender=sender, now=NOW)
+    replay = process_telegram_updates_once(db_path, client=client, sender=sender, now=NOW)
+
+    assert first["status"] == "completed_with_warnings"
+    assert first["committed_update_count"] == 1
+    assert first["retryable_failure_count"] == 0
+    assert first["runtime"]["send_success_count"] == 1
+    assert first["runtime"]["callback_answer_failure_count"] == 1
+    assert first["runtime"]["handled_updates"][0]["body_delivery_state"] == "sent"
+    assert get_telegram_offset(db_path) == 40
+    assert replay["status"] == "no_new_updates"
+    assert len(sender.sent) == 1
+    assert sender.callback_answers == 1
+
+
+def test_update_processor_answers_callback_before_building_and_sending_reply(tmp_path):
+    from src.intel.telegram_update_processor import process_telegram_updates_once
+
+    db_path = tmp_path / "processor.db"
+    sender = CallbackOrderSender()
+
+    result = process_telegram_updates_once(
+        db_path,
+        client=FakeBotClient([_callback_update(45, "status")]),
+        sender=sender,
+        now=NOW,
+    )
+
+    assert result["status"] == "success"
+    assert sender.events == ["answerCallbackQuery", "sendMessage"]
+
+
+def test_update_processor_commits_ambiguous_timeout_without_automatic_replay(tmp_path):
+    from src.intel.telegram_update_processor import get_telegram_offset, process_telegram_updates_once
+
+    db_path = tmp_path / "processor.db"
+    client = FakeBotClient([_update(50, "/status")])
+    sender = AmbiguousReplySender()
+
+    first = process_telegram_updates_once(db_path, client=client, sender=sender, now=NOW)
+    replay = process_telegram_updates_once(db_path, client=client, sender=sender, now=NOW)
+
+    assert first["status"] == "completed_with_warnings"
+    assert first["committed_update_count"] == 1
+    assert first["retryable_failure_count"] == 0
+    assert first["runtime"]["delivery_unknown_count"] == 1
+    assert first["runtime"]["handled_updates"][0]["body_delivery_state"] == "unknown"
+    assert get_telegram_offset(db_path) == 50
+    assert replay["status"] == "no_new_updates"
+    assert len(sender.sent) == 1
+
+
+def test_update_processor_commits_partial_multireply_without_replaying_sent_part(tmp_path):
+    from src.intel.telegram_update_processor import get_telegram_offset, process_telegram_updates_once
+
+    db_path = tmp_path / "processor.db"
+    client = FakeBotClient([_update(60, "/start")])
+    sender = SequencedReplySender([True, False])
+
+    first = process_telegram_updates_once(db_path, client=client, sender=sender, now=NOW)
+    replay = process_telegram_updates_once(db_path, client=client, sender=sender, now=NOW)
+
+    assert first["status"] == "completed_with_warnings"
+    assert first["committed_update_count"] == 1
+    assert first["retryable_failure_count"] == 0
+    assert first["runtime"]["delivery_unknown_count"] == 1
+    assert first["runtime"]["handled_updates"][0]["body_delivery_state"] == "partial"
+    assert first["runtime"]["handled_updates"][0]["reply_success_count"] == 1
+    assert get_telegram_offset(db_path) == 60
+    assert replay["status"] == "no_new_updates"
+    assert len(sender.sent) == 2
+
+
 def test_update_processor_handles_active_user_configuration_after_manual_grant(tmp_path):
     from src.intel.telegram_update_processor import process_telegram_updates_once
 
     db_path = tmp_path / "processor.db"
     sender = FakeReplySender()
-    first = process_telegram_updates_once(db_path, client=FakeBotClient([_update(20, "/start")]), sender=sender, now=NOW)
+    first = process_telegram_updates_once(
+        db_path, client=FakeBotClient([_update(20, "/start")]), sender=sender, now=NOW
+    )
     user_id = first["runtime"]["handled_updates"][0]["subscriber_user_id"]
     upsert_subscription_plan(db_path, plan_name="intel_mvp_monthly", categories=["akshare", "senate_trading"])
     grant_subscription(
@@ -139,7 +383,7 @@ def test_update_processor_handles_active_user_configuration_after_manual_grant(t
             [
                 _update(20, "/start"),
                 _update(21, "/sources akshare senate_trading"),
-                _update(22, "/schedule daily 08:30 America/Denver"),
+                _update(22, "/schedule daily 08:30 Asia/Singapore"),
                 _update(23, "/custom 周杰伦"),
             ]
         ),

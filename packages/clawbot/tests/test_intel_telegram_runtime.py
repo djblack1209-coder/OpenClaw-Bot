@@ -80,6 +80,23 @@ def test_runtime_processes_telegram_update_with_injected_sender_and_redacted_evi
     assert profile["channel_type"] == "telegram"
 
 
+def test_runtime_escapes_tracking_name_before_html_reply(tmp_path):
+    from src.intel.telegram_runtime import process_intel_telegram_updates
+
+    sender = FakeReplySender()
+    result = process_intel_telegram_updates(
+        tmp_path / "runtime.db",
+        updates=[_update(1, "/custom <b&signal")],
+        sender=sender,
+        now=NOW,
+    )
+
+    assert result["status"] == "success"
+    assert len(sender.sent) == 1
+    assert "&lt;b&amp;signal" in str(sender.sent[0]["text"])
+    assert "<b&signal" not in str(sender.sent[0]["text"])
+
+
 def test_runtime_handles_active_user_configuration_commands(tmp_path):
     from src.intel.telegram_runtime import process_intel_telegram_updates
 
@@ -100,7 +117,7 @@ def test_runtime_handles_active_user_configuration_commands(tmp_path):
         db_path,
         updates=[
             _update(2, "/sources akshare senate_trading"),
-            _update(3, "/schedule daily 08:30 America/Denver"),
+            _update(3, "/schedule daily 08:30 Asia/Singapore"),
             _update(4, "/custom 周杰伦"),
             _update(5, "/status"),
         ],
@@ -121,7 +138,8 @@ def test_runtime_handles_active_user_configuration_commands(tmp_path):
     assert profile["delivery_preferences"] == {
         "frequency": "daily",
         "delivery_time": "08:30",
-        "timezone": "America/Denver",
+        "timezone": "Asia/Singapore",
+        "content_language": "zh",
     }
 
 

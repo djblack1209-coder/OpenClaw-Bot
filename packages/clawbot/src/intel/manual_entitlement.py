@@ -36,11 +36,11 @@ def _clean(value: Any) -> str:
     return str(value or "").strip()
 
 
-
 def _source_with_order_fingerprint(source: str, order_ref: str) -> str:
     source_label = _clean(source) or "manual_order"
     fingerprint = hashlib.sha256(_clean(order_ref).encode("utf-8")).hexdigest()[:12]
     return f"{source_label}:order_ref_sha256:{fingerprint}"
+
 
 def _parse_dt(value: str | datetime | None, *, fallback: datetime | None = None) -> datetime:
     if isinstance(value, datetime):
@@ -101,7 +101,7 @@ def grant_manual_entitlement(
     source: str = "manual_order",
     apply: bool = False,
     delivery_time: str = "08:30",
-    timezone_name: str = "America/Denver",
+    timezone_name: str = "Asia/Singapore",
 ) -> dict[str, Any]:
     """Grant or preview a manual subscription entitlement.
 

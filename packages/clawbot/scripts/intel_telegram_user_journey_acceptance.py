@@ -115,9 +115,9 @@ def build_user_journey_acceptance(
     slash_today = handle_intel_telegram_command(db, user=user, command="/today", args=[], now=now)
     status = handle_intel_telegram_command(db, user=user, command="📌 我的订阅", args=[], now=now)
     schedule_prompt = handle_intel_telegram_command(db, user=user, command="/schedule", args=[], now=now)
-    schedule_quick = handle_intel_telegram_command(db, user=user, command="2", args=[], now=now)
+    schedule_quick = handle_intel_telegram_command(db, user=user, command="1", args=[], now=now)
     schedule_prompt_again = handle_intel_telegram_command(db, user=user, command="705", args=[], now=now)
-    schedule_weekly = handle_intel_telegram_command(db, user=user, command="每周 09:00", args=[], now=now)
+    schedule_weekly = handle_intel_telegram_command(db, user=user, command="每周 08:30", args=[], now=now)
     custom = handle_intel_telegram_command(db, user=user, command="706 英伟达", args=[], now=now)
     custom_prompt = handle_intel_telegram_command(db, user=user, command="706", args=[], now=now)
     custom_follow_up = handle_intel_telegram_command(db, user=user, command="周杰伦", args=[], now=now)
@@ -163,19 +163,19 @@ def build_user_journey_acceptance(
             expectation="用户能看懂自己是否开通、选了什么、几点推送。",
         ),
         _step(
-            "点推送时间 /schedule → 回复 2",
+            "点推送时间 /schedule → 回复 1",
             schedule_quick,
             ok=schedule_prompt.get("status") == "prompt"
             and "回复数字即可设置" in _clean(schedule_prompt.get("reply_text"))
-            and schedule_quick.get("delivery_preferences", {}).get("delivery_time") == "09:00",
+            and schedule_quick.get("delivery_preferences", {}).get("delivery_time") == "08:30",
             expectation="小白用户不用记格式，点推送时间后回复数字就能设置。",
         ),
         _step(
-            "数字备用 705 → 回复 每周 09:00",
+            "数字备用 705 → 回复 每周 08:30",
             schedule_weekly,
             ok=schedule_prompt_again.get("status") == "prompt"
             and schedule_weekly.get("delivery_preferences", {}).get("frequency") == "weekly"
-            and schedule_weekly.get("delivery_preferences", {}).get("delivery_time") == "09:00",
+            and schedule_weekly.get("delivery_preferences", {}).get("delivery_time") == "08:30",
             expectation="数字备用菜单也支持自然语言式频率和时间。",
         ),
         _step(
@@ -219,13 +219,15 @@ def build_user_journey_acceptance(
         _step(
             "暂停后查看状态 701",
             paused_status,
-            ok=paused_status.get("profile", {}).get("status") == "paused" and "已暂停" in _clean(paused_status.get("reply_text")),
+            ok=paused_status.get("profile", {}).get("status") == "paused"
+            and "已暂停" in _clean(paused_status.get("reply_text")),
             expectation="暂停后看状态，不会偷偷恢复。",
         ),
         _step(
             "暂停后打开菜单 /start",
             paused_menu,
-            ok=profile_after_passive_checks.get("status") == "paused" and "当前状态：已暂停" in _clean(paused_menu.get("reply_text")),
+            ok=profile_after_passive_checks.get("status") == "paused"
+            and "当前状态：已暂停" in _clean(paused_menu.get("reply_text")),
             expectation="暂停后只是打开菜单，也不会偷偷恢复。",
         ),
         _step(
