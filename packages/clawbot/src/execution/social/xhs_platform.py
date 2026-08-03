@@ -231,39 +231,13 @@ async def publish_xhs_article(
     worker_fn=None,
     image_path: str | None = None,
 ) -> dict:
-    """发布小红书笔记
-
-    v2.0 二级降级: xhs API → browser worker
-    """
-    if not title or not body:
-        return {"success": False, "error": "标题和正文不能为空"}
-
-    # 方式0: xhs API 直发（v2.0 新增）
-    if _HAS_XHS and _xhs_client:
-        images = [image_path] if image_path and Path(image_path).exists() else None
-        result = xhs_create_note(
-            title=title,
-            content=body,
-            images=images,
-        )
-        if result.get("success"):
-            return result
-        # API 失败则降级到 browser worker
-        logger.info("[XHS] xhs API 发布失败，尝试降级到 browser worker: %s", result.get("error"))
-
-    # 方式1: browser worker（现有逻辑）
-    if not worker_fn:
-        return {"success": False, "error": "browser worker 未配置，且 xhs 未认证"}
-    try:
-        payload = {"title": title, "body": body}
-        if image_path:
-            payload["image"] = image_path
-        # 浏览器自动化是同步阻塞操作（5-30秒），必须丢到线程池避免冻结事件循环
-        result = await asyncio.to_thread(worker_fn, "publish_xhs", payload)
-        return {"success": True, "result": result}
-    except Exception as e:
-        logger.error(f"[XHS.publish] failed: {scrub_secrets(str(e))}")
-        return {"success": False, "error": str(e)}
+    """旧正文直发入口已关闭，统一发布门位于 API RPC 草稿服务。"""
+    return {
+        "success": False,
+        "requires_approved_draft": True,
+        "requires_final_confirmation": True,
+        "error": "小红书正文直发已关闭，请使用已审核草稿和一次性确认",
+    }
 
 
 async def reply_to_xhs_comment(

@@ -144,6 +144,16 @@
 | `packages/clawbot/config/omega.yaml` | OMEGA 成本控制 + 模型路由映射 |
 | `packages/clawbot/src/core/cost_control.py` | 日预算 + 成本跟踪 |
 
+运行时能力必须显式启用，关闭时不得进入模型路由、fallback 或交易调度：
+
+| 开关 | 默认值 | 启用后要求 |
+|---|---|---|
+| `G4F_ENABLED` | `false` | G4F 可复现虚拟环境存在，LaunchAgent 运行且 18891 可达 |
+| `KIRO_GATEWAY_ENABLED` | `false` | Kiro Gateway 虚拟环境和 Key 存在，LaunchAgent 运行且 18793 可达 |
+| `OLLAMA_ENABLED` | `false` | 本机 11434 可达；`OLLAMA_API_KEY` 可选，`LOCAL_HF_MODEL_ENDPOINT` 可覆盖地址 |
+| `IBKR_ENABLED` | `false` | IB Gateway/TWS 端口可达；才注册连接、资金、成交、撤单和健康任务 |
+| `HEARTBEAT_SENDER_ENABLED` | `false` | 目标主机/端口已配置并完成主备实机验收 |
+
 ---
 
 ## 二、命令注册表
@@ -295,6 +305,7 @@
 | `FRIST_API_DATA_ENCRYPTION_KEY` | runtime 敏感字段加密密钥 | 公开模式必填；用于加密用户 Key 和上游 rawKey；旧 key 不可恢复的历史 `enc:v1:` 字段会被隔离并提示重新生成 |
 | `FRIST_API_PUBLIC_GATEWAY_BASE_URL` | 用户导出和邮件使用的公网 `/v1` 网关地址 | 当前 CC中转生产内测值为 `https://jiyu.245334.xyz/v1`；旧数字域名和 nip.io 只保留跳转/冷回滚排障，不是当前用户导出入口；`https://www.inroi.shop/v1` 是上游请求地址，不是用户导出入口 |
 | `FRIST_API_REQUIRE_CSRF` | Cookie 登录态非幂等接口 CSRF 校验开关 | 生产建议 `1`；公开模式和 `NODE_ENV=production` 会自动启用 |
+| `FRIST_API_SESSION_TTL_MS` | 客户服务端会话有效期 | 默认 `604800000`（7 天），最短 5 分钟、最长 30 天；过期会话和旧版无 TTL 会话均要求重新登录 |
 | `FRIST_API_REQUIRE_ADMIN_2FA` | 是否强制管理端 TOTP 二次验证 | 生产强制模式必须为 `1`；Oracle 生产已开启 |
 | `FRIST_API_ADMIN_TOTP_SECRETS` | 管理员 TOTP Base32 Secret 列表 | 逗号分隔；只放服务器环境变量或 root-only 安全文件，不写文档正文 |
 | `FRIST_API_ADMIN_2FA_SESSION_TTL_MS` | 管理员 2FA 会话有效期 | 默认 `3600000`，即 1 小时 |
@@ -372,8 +383,9 @@
 | `FRIST_API_NEWAPI_ACCESS_TOKEN` | New-API 用户 access token | 只放服务器环境变量，禁止写入仓库 |
 | `FRIST_API_NEWAPI_USER_ID` | access token 所属 New-API 用户 ID | v1 会校验 `New-Api-User` 头 |
 | `FRIST_API_NEWAPI_DEFAULT_GROUP` | New-API 新建 Token 默认分组 | 默认 `default` |
-| `FRIST_API_NEWAPI_DEFAULT_TOKEN_QUOTA` | New-API 新建 Token 默认额度 | `0` 配合 `unlimited_quota=true` |
-| `FRIST_API_NEWAPI_GATEWAY_ENABLED` | 是否让 Frist-API `/v1` 直接代理 New-API 网关 | `1` 启用；默认关闭以保留自研路由兜底 |
+| `FRIST_API_NEWAPI_DEFAULT_TOKEN_QUOTA` | 单次从客户本地已购余额划转到 New-API Key 的本地人民币分上限 | 生产必须在 systemd 实际读取的 `/etc/frist-api/frist-api.env` 显式配置正整数，例如 `7200` 表示 72 元；`0` 或缺失会拒绝创建。服务端取“客户可用人民币分、配置上限”的较小值，再按 `500000 New-API units / 元` 换算；归属记录同时保存 `allocatedCents` 与 `upstreamQuotaUnits`，忽略客户端自报额度 |
+| `FRIST_API_NEWAPI_REQUEST_TIMEOUT_MS` | Frist 调用 New-API 管理接口的响应头超时 | 默认 `15000` 毫秒，下限 1000；超时返回 504，流式网关在收到响应头后继续按流传输 |
+| `FRIST_API_NEWAPI_GATEWAY_ENABLED` | 是否让 Frist-API `/v1` 代理 New-API 网关 | `1` 启用；仅作用于 Frist 3180 桥接面。代理前精确查 bearer，仅允许唯一有效本地用户的完整 active owner，以及 enabled、`unlimited_quota=false`、剩余额度为正的上游 Token；不改变 Apache 主域直连 New-API 的产品拓扑 |
 | `FRIST_API_NEWAPI_GATEWAY_BASE_URL` | New-API 网关地址 | Oracle 生产为 `http://127.0.0.1:13000/v1`；Docker/本地开发通常为 `http://openclaw-newapi:3000/v1` |
 | `FRIST_API_NEWAPI_REDEMPTION_STATUS_SYNC_ENABLED` | 是否自动回写 New-API 原生兑换状态 | 生产为 `1`；服务端按卡密哈希把 New-API 已兑换记录同步回 Frist 闲鱼履约 |
 | `FRIST_API_NEWAPI_REDEMPTION_STATUS_SYNC_INTERVAL_MS` | New-API 兑换状态回写间隔 | 默认 `60000` 毫秒；正式售卖期保持开启 |
@@ -396,15 +408,18 @@
 | 本机启动 | `new-api-up` / `frist-api-up` | `Makefile` | `make new-api-up` 先备份 `data/newapi` 再启动 QuantumNous/new-api；`make frist-api-up` 先运行本机桥接配置，再同时启动 New-API 与 Frist-API |
 | 本机桥接配置 | `setup_local_newapi_bridge.mjs` | `scripts/setup_local_newapi_bridge.mjs` | 从 `data/newapi/one-api.db` 读取已生成 access token 用户，写入 `.env` 的 Frist-API/New-API 桥接变量；密钥不打印到终端 |
 | 定时同步 | `New-API Scheduled Sync` | `.github/workflows/new-api-sync.yml` | 每天检查最新 release，落后时自动开 `codex/new-api-scheduled-sync` PR；不会直接升级生产数据库 |
-| Frist-API 桥接 | `newApiBridge.js` | `apps/frist-api/server/newApiBridge.js` | 通过 New-API HTTP 接口承接用户看板、Token、日志、兑换、订阅、邀请和可选网关代理；生产开启桥接时，`POST /v1/*` 与 `GET /v1/models` 均代理到 New-API，避免用户新建 API Key 后模型列表 401；Oracle 生产调用 `127.0.0.1:13000` |
+| Frist-API 桥接 | `newApiBridge.js` | `apps/frist-api/server/newApiBridge.js` | 通过共享 New-API 管理账号承接看板、Token、日志、兑换和可选网关代理；本地 runtime 保存 `token_id → customer_id` 归属，看板/日志/更新/删除/导入按归属过滤。创建 Key 先持久化人民币分预留，再创建零额度上游 Token；只有归属落盘后才激活换算后的 New-API units，失败会撤销暂存 Token 并回滚余额。Frist `/v1` 也按 owner 完整性、唯一用户、active 状态和上游 finite/enabled/正余额共同鉴权；历史无归属或无限 Token 默认隔离。Oracle Frist 调用 `127.0.0.1:13000`，Apache 主域仍直接代理 New-API |
 | 迁移/回滚 | `frist_api_newapi_migration_dry_run.mjs` | `scripts/frist_api_newapi_migration_dry_run.mjs` | 默认只读 Frist-API runtime；`--package` 生成带时间戳的 runtime 备份、幂等迁移计划和回滚脚本；2026-07-03 已授权并执行生产 `--apply`，回滚目录在服务器 `/opt/frist-api/backups/newapi-migration-20260703T005433Z` |
+| 历史 Token 归属映射 | `frist_api_newapi_ownership_map.mjs` | `scripts/frist_api_newapi_ownership_map.mjs` | 只接受显式 `--token-id + --user-id + --reason`，默认 dry-run；`--apply` 还必须提供 `--newapi-db`，用 `sqlite3 -readonly` 验证目标 Token 为 `unlimited_quota=0` 且有限额度为正。从读取到备份、原子写入全程持有同目录独占锁，已有锁、未知用户和已有归属一律拒绝，不按邮箱、名称或顺序自动猜测。生产 Token 1–9 当前全是无限 Token，全部不映射进 Frist，也不禁用/迁移，客户改为重建有限 Key |
 | Chrome 运营书签修复 | `cc_zhongzhuan_chrome_bookmarks.mjs` | `scripts/cc_zhongzhuan_chrome_bookmarks.mjs` | 修复/重建本机 Chrome 各 Profile 的 `CC中转运营` 书签文件夹，只写入 2 个老板可点入口：本机操作台、用户主站；`/ops-links` 保留兼容但不再默认收藏。写入前在 Chrome Profile 目录生成 `.codex-backup-*` 备份；加 `--open-window` 可直接打开 2 个运营入口窗口；2026-07-07 复验 `Default/Profile 1/Profile 2/Profile 3` 均为 2 个入口且 `chromeBookmarks.ok=true` |
 | CC中转卖家 Chromium 启动器 | `cc-seller-chrome` / `cc_zhongzhuan_launch_seller_chrome.mjs` | `make cc-seller-chrome` / `scripts/cc_zhongzhuan_launch_seller_chrome.mjs` | 准备卖家专用 Profile `~/.openclaw/cc-zhongzhuan-seller-chromium-v2`、运行版插件目录 `~/.openclaw/cc-social-pilot-runtime-extension` 和本机 `runtime-config.json`，打开本机操作台、用户主站与闲鱼。优先使用 Playwright Chromium 自动加载插件并带 Local Network Access 兼容参数；若 Chromium 缓存缺失，则降级到普通 Google Chrome 并提示安装 Chromium |
 | CC中转卖家本机桥接器 | `cc-seller-bridge` / `cc_zhongzhuan_seller_bridge.mjs` | `make cc-seller-bridge` / `scripts/cc_zhongzhuan_seller_bridge.mjs` | 本机 DevTools 桥接器，读取 18800 队列并注入闲鱼页面执行器，负责付款页发卡、点击发送、确认发货和恢复可售巡检；`--scan-only --require-real-order-id` 会只读捕获闲鱼 `message.headinfo` 真实订单号/商品 ID；`--one-shot-override` 会强制 delivery-only/只跑一次/只允许 1 个闲鱼页，并且优先把已发 `xy_browser_*` 临时单接管为 `xy_oid_*`，不重复发卡；不建议在重复发卡事故未完全验收前恢复 `ai.openclaw.cc-seller-bridge` 常驻 LaunchAgent |
 | 生产闭环审计 | `cc_zhongzhuan_readiness_audit.mjs` | `scripts/cc_zhongzhuan_readiness_audit.mjs` | 默认只读检查 Chrome 运营入口、本机闲鱼助手、本机 GUI 状态、本机配置、Oracle 服务/库存/公网安全门；GUI 检查覆盖 WebSocket、Cookie、CC自动发货配置和补救待处理数量；当前只读巡检已转绿，正式售卖仍需 `--require-real-order` 真实小额单严格门；加 `--webhook-smoke` 会临时跑一次低权限闲鱼已付款 webhook 并清理恢复库存；不输出 token、卡密或用户 Key |
 | 老板统一运营入口 | `/dashboard` / `/api/export-status` / `/api/cc-paid-order-probe` / `/api/cc-operator-mode/one-shot-delivery` / `/api/cc-seller-bridge/page-scan` / `/api/cc-seller-bridge/one-shot-delivery` / `/api/cc-simulation-gate` / `/api/cc-replacement-mode-test-pack` | `http://127.0.0.1:18800/dashboard` | 单一入口展示首页总览、闲鱼售卖、每日简报、系统维护、帮助中心；状态报告导出会脱敏订单、卡密、Token、买家昵称和 API Key；“真实待发货扫单”只读确认闲鱼待发货候选，不发卡、不点击发货；“只放行一次发卡”在暂停状态下只允许当前已付款页发送 1 条卡密；严格模拟门 v2 追踪真实发卡、商品模板/上架、兑换、API Key、CC Switch、模型调用、渠道/服务器状态，但不解锁 `xy_oid_*` 真实订单严格门 |
-| 本机自动健康与灾备脚本 | `auto_health_check.sh` / `auto_recovery.sh` / `local_backup.sh` / `disaster_recovery.sh` | `scripts/` | 健康检查默认只读并输出“怎么办”；恢复脚本支持 `--dry-run` 预演；本地备份排除 `.env`、虚拟环境、node_modules 和日志，默认保留 30 天；灾备恢复必须显式 `--confirm` 才覆盖文件 |
+| 本机自动健康与灾备脚本 | `auto_health_check.sh` / `auto_recovery.sh` / `local_backup.sh` / `disaster_recovery.sh` | `scripts/` | 健康检查默认只读，要求五个核心 LaunchAgent 同时具备 `running + PID`，并验证 18789/18790/18800、生产只读巡检和公网入口；可选能力按 ENABLED 开关区分禁用与故障。恢复脚本支持 `--dry-run` 预演；本地备份排除 `.env`、虚拟环境、node_modules 和日志，默认保留 30 天；灾备恢复必须显式 `--confirm` 才覆盖文件 |
+| 桌面事务构建安装 | `tauri-build` / `tauri_build_install.sh` | `make tauri-build` / `scripts/tauri_build_install.sh` | 唯一允许的 macOS 打包入口；构建前备份并清理三个历史 App 名称，失败自动恢复，成功只安装 `/Applications/OpenClaw.app`。禁止直接执行 `tauri build` |
 | 文档治理检查 | `docs-check` / `check_docs_layout.sh` | `make docs-check` | 检查项目根目录散落文档、`docs/` 子目录、非 `XXX-kebab-case.md` 命名、索引漏登记和索引陈旧引用；已纳入 `make ci-local` |
+| 本地完整门禁 | `ci-local` | `make ci-local` | 依次执行 Ruff、Python 全量测试、Python 语法、Frist-API 全量测试、桌面安全边界、TypeScript、Tauri Rust 测试/编译和文档治理；任一失败立即返回非 0 |
 | Oracle 生产运行 | `openclaw-newapi.service` / `frist-api.service` | Oracle ARM `/opt/frist-api` | New-API v1.0.0-rc.4 ARM64 release 二进制监听 `127.0.0.1:13000`，Apache/Cloudflare 公开 `jiyu.245334.xyz`；Frist-API 监听 `127.0.0.1:3180`，通过 `frist-api-oracle.245334.xyz` 提供兑换码/闲鱼运营台；旧 `frist-api.245334.xyz` 仅跳转到主站 |
 | 腾讯冷回滚 | `frist-api-server` / `openclaw-newapi` | 腾讯云 `/opt/frist-api` | 旧 Docker 容器已停止、R2 timer 已禁用，仅保留数据和备份；回滚时先恢复容器/timer，再把 Cloudflare A 记录切回 `101.43.41.96` |
 
@@ -446,7 +461,7 @@
 | 17 | `/qr` | `cmd_qr` | 生成二维码 | N |
 | 18 | `/keyhealth` | `cmd_keyhealth` | API Key 健康验证报告 (Admin) | N |
 | 19 | `/tts` | `cmd_tts` | 文字转语音 (edge-tts, 支持6种中文音色) | N |
-| 20 | `/claude` | `cmd_claude` | Claude Code CLI 桥接，启动/停止 Claude Code 开发环境 | N |
+| 20 | `/claude code` | `cmd_claude_code` | 仅在固定项目目录打开本机 Claude Code 交互终端；任何 Telegram 提示词参数都会被拒绝 | N |
 | 21 | `/cli` | `cmd_cli` | CLI-Anything 工具入口，支持 list/run/install/help/status；已补启动注册回归 | N |
 
 ### 1.2 投资命令 — `InvestCommandsMixin` (cmd_invest_mixin.py, 498 行)
@@ -532,17 +547,17 @@
 | 71 | `/social_repost` | `cmd_social_repost` | 双平台改写草稿 | N |
 | 72 | `/social_launch` | `cmd_social_launch` | 数字生命首发包 | N |
 | 73 | `/social_persona` | `cmd_social_persona` | 当前社媒人设 | N |
-| 74 | `/post_social` | `cmd_post_social` | 双平台发文 (→cmd_post) | N |
-| 75 | `/post_x` | `cmd_post_x` | 发 X (→cmd_xpost) | N |
-| 76 | `/post_xhs` | `cmd_post_xhs` | 发小红书 (→cmd_xhspost) | N |
+| 74 | `/post_social` | `cmd_post_social` | 生成双平台草稿并进入审核队列，不直接外发 | N |
+| 75 | `/post_x` | `cmd_post_x` | 进入 X 草稿/审核流程；无一次性最终确认时拒绝发布 | N |
+| 76 | `/post_xhs` | `cmd_post_xhs` | 进入小红书草稿/审核流程；无一次性最终确认时拒绝发布 | N |
 | 77 | `/xwatch` | `cmd_xwatch` | X 博主监控导入 | N |
 | 78 | `/xbrief` | `cmd_xbrief` | X 博主更新摘要 | N |
 | 79 | `/xdraft` | `cmd_xdraft` | 生成 X 草稿 | N |
-| 80 | `/xpost` | `cmd_xpost` | 自动发 X | N |
+| 80 | `/xpost` | `cmd_xpost` | 仅发布已审核 X 草稿；必须携带短时一次性最终确认 | Y |
 | 81 | `/xhsdraft` | `cmd_xhsdraft` | 生成小红书草稿 | N |
-| 82 | `/xhspost` | `cmd_xhspost` | 自动发小红书 | N |
-| 83 | `/dualpost` | `cmd_post` | 一键双平台发文 (`/post` 的别名) | N |
-| 84 | `/publish` | `cmd_publish` | 社媒多平台发布 — sau_bridge (抖音/B站/小红书/快手) | N |
+| 82 | `/xhspost` | `cmd_xhspost` | 仅发布已审核小红书草稿；必须携带短时一次性最终确认 | Y |
+| 83 | `/dualpost` | `cmd_post` | 生成双平台待审草稿（`/post` 的别名），不直接外发 | N |
+| 84 | `/publish` | `cmd_publish` | 多媒体直发关闭；现有素材没有可持久化审核快照和一次性令牌，因此不会调用 Sau 发布器 | Y |
 | 85 | `/xianyu` | `cmd_xianyu` | 闲鱼 AI 客服控制 (start/stop/status/reload/floor) | N |
 | 86 | `/social_calendar` | `cmd_social_calendar` | 内容日历(DB优先+AI生成)，支持 `done N` 标记完成 | N |
 | 87 | `/social_report` | `cmd_social_report` | 社媒效果报告 + A/B 测试 | N |
@@ -554,7 +569,7 @@
 | 87f | `/social_review_schedule <序号或ID> [时间]` | `cmd_social_review_schedule` | Telegram 中控把已确认插件草稿加入待发布排程；到点仍需最终确认，不自动外发 | Y |
 | 87g | `/social_review_schedule_queue` | `cmd_social_review_schedule_queue` | Telegram 中控查看待发布排程队列；到点只提示最终确认 | Y |
 | 87h | `/social_review_final_confirm <序号或ID>` | `cmd_social_review_final_confirm` | Telegram 中控对到点排程做最终确认；只标记可手动发布，不点击平台发布按钮 | Y |
-| 88 | `/agent` | `cmd_agent` | 智能 Agent — 自然语言驱动多工具链 (smolagents) | N |
+| 88 | `/agent` | `cmd_agent` | 智能 Agent — smolagents ToolCallingAgent 串联行情/搜索/风控等显式只读工具，不执行模型生成的本地代码 | N |
 | 89 | `/novel` | `cmd_novel` | AI 小说工坊 — 网文大纲/续写/导出/TTS (inkos+MuMuAINovel) | N |
 | 90 | `/ship` | `cmd_ship` | 闲鱼卡券管理 — add/stock/rule/stats/test (auto_shipper) | N |
 | 91 | `/xianyu_report` | `cmd_xianyu_report` | 闲鱼收入报表 — 日报/周报/月报 + 爆款排行 + BI三板块(热销排行/高峰时段/转化漏斗) | N |
@@ -869,7 +884,7 @@
 ## 三、依赖清单
 
 
-> 最后更新: 2026-06-22 | Dependabot 安全升级：前端地图依赖替换、测试/Node 依赖补丁收口
+> 最后更新: 2026-08-03 | P0 闭环依赖审计：桌面生产与开发依赖、Python JSON 修复库安全下限收口
 
 
 ## OSS 安全依赖收口 (2026-06-22)
@@ -885,7 +900,8 @@
 | `react-simple-maps` | 已移除 | 桌面端世界地图 | 替换为 `d3-geo` + `topojson-client`，清理旧 d3 漏洞链 |
 | `d3-geo` | `^3.1.1` | 地理投影和 SVG path 生成 | `WorldMonitor` 直接渲染本地 TopoJSON |
 | `topojson-client` | `^3.1.0` | TopoJSON → GeoJSON | `WorldMonitor` 读取 `countries-110m.json` |
-| `vite` / `postcss` / `vitest` | 安全补丁版本 | 前端构建/测试 | 更新 lockfile 并加必要 overrides |
+| `postcss` / `nanoid` | `8.5.25` / `3.3.16` | 桌面前端构建 | 修复 source map 路径穿越公告并同步安全的传递依赖 |
+| `brace-expansion` / `fast-uri` / `hono` / `js-yaml` / `minimatch` | `5.0.8` / `3.1.4` / `4.12.27` / `4.3.0` / `10.2.6` | 桌面开发与构建工具链 | 保持同一主版本的最小安全 override；全量 `npm audit` 为 0 |
 | `hono` / `undici` / `markdown-it` / `tar` / `@opentelemetry/sdk-node` | 安全补丁版本 | `packages/openclaw-npm` 上游包 | 修复 Hono、Undici、Markdown、tar、OTel 相关 Dependabot 告警 |
 | `@mariozechner/pi-coding-agent` | 已从 `packages/openclaw-npm` 直接依赖移除 | 历史上游 Agent 包 | 源码未直接 import；上游暂无 patched version，移除可降低公开告警面 |
 
@@ -969,7 +985,7 @@
 | requests | HTTP 客户端 (同步) | ~=2.32.0 |
 | flask | 部署服务器 (deployer/) | >=3.0.0 |
 | aiohttp | 异步 HTTP (evolution/) | >=3.9.0 |
-| json-repair | JSON 容错解析 (LLM 输出修复) | ~=0.30.0 |
+| json-repair | JSON 容错解析（LLM 输出修复；0.60.1 起修复已知资源消耗漏洞） | ~=0.60.1 |
 | pydantic-settings | 配置管理 (类型校验+env) | ~=2.7.0 |
 | websockets | 闲鱼 WebSocket 实时聊天 | ~=13.0 |
 | openai | OpenAI SDK (闲鱼/Agent) | >=1.68.2 |
@@ -2087,7 +2103,7 @@
 | api_mixin.py | `src/bot/api_mixin.py` | 371 | LLM API 调用 (流式/非流式) |
 | rate_limiter.py | `src/bot/rate_limiter.py` | 243 | 消息频率限制 + Token 预算 |
 | sau_bridge.py | `src/sau_bridge.py` | 175 | 社媒发布桥接层 — CLI 调用 social-auto-upload (抖音/B站/小红书/快手) |
-| x_auto_morning_post.py | `scripts/x_auto_morning_post.py` | 161 | X 自动运营全天入口 — 构建热点草稿、列出待审核内容、审核通过后才调用 twikit/browser worker 发布，并可写入 6 时段 launchd 任务 |
+| x_auto_morning_post.py | `scripts/x_auto_morning_post.py` | 121 | X 自动运营草稿入口 — 构建/列出待审核内容；`--publish`、`--publish-next` 和 LaunchAgent 均拒绝外发，真实发布只能走 App/Telegram 最终确认 |
 | message_mixin.py | `src/bot/message_mixin.py` | 1128 | 消息处理 + 流式输出 + 链式工作流 (从1914行拆分) |
 | chinese_nlp_mixin.py | `src/bot/chinese_nlp_mixin.py` | 790 | 中文NLP命令匹配(模糊容错) + ticker映射 + 噪音清洗 + "你是不是想说"建议；含社媒待审草稿查看/确认/打回/排程/排程队列/最终确认自然语言路由 |
 | ocr_mixin.py | `src/bot/ocr_mixin.py` | 325 | 图片/文档OCR处理 (从message_mixin提取) |
@@ -2111,7 +2127,7 @@
 | monitoring/ | `src/monitoring/` | 1394 (7文件) | Prometheus 监控包 — metrics.py(采集) + health.py(健康检查) + alerts.py(告警) + anomaly_detector.py(异常检测) + cost_analyzer.py(成本分析) + logger.py(日志) |
 | message_format.py | `src/message_format.py` | 528 | OMEGA 结构化响应 + 格式化 |
 | message_sender.py | `src/message_sender.py` | 135 | Telegram 消息清洗 + 分割 |
-| social_scheduler.py | `src/social_scheduler.py` | 542+ | APScheduler 社交自动驾驶；当前默认审核模式，X/小红书草稿只进入 `needs_review/pending`，自动回复/蹭评/晚间自动发布外部动作均锁住，最终发布需桌面端确认 |
+| social_scheduler.py | `src/social_scheduler.py` | 542+ | APScheduler 社交自动驾驶；只生成/排程待审草稿，夜间直发分支已移除，最终发布必须走一次性确认门 |
 | quote_cache.py | `src/quote_cache.py` | 220 | 行情缓存 |
 | llm_cache.py | `src/llm_cache.py` | 273 | LLM 响应缓存 |
 | structured_llm.py | `src/structured_llm.py` | 273 | instructor 结构化 LLM 输出 |
@@ -2122,7 +2138,7 @@
 | **核心引擎 (src/core/)** | | | |
 | brain.py | `src/core/brain.py` | 848 | ✅ OMEGA 核心大脑: 对话入口(process_message) + 复合意图拆解 + DAG编排 + 响应合成 + 追问建议 + asyncio.Lock竞态保护 |
 | intent_parser.py | `src/core/intent_parser.py` | 611 | ✅ 三级意图解析: 快速正则(60%命中) → LLM+instructor结构化 → legacy JSON解析 |
-| task_graph.py | `src/core/task_graph.py` | 374 | ✅ DAG任务图: TaskGraphBuilder流式API + 并行调度 + 死锁检测 + 指数退避重试 + 超时 + fallback |
+| task_graph.py | `src/core/task_graph.py` | 374+ | ✅ DAG任务图: 深拷贝输入/上游快照，顶层及 `data/result/details` 业务失败识别，缺失依赖/备选在执行前拒绝，上游失败阻断，fallback 仅主路径失败后激活并正确收口 |
 | executor.py | `src/core/executor.py` | 542 | ✅ 统一执行器: API→浏览器→语音→Composio→Skyvern→人工 6条路径 + 平台熔断器 |
 | event_bus.py | `src/core/event_bus.py` | 346 | ✅ 事件总线: 发布/订阅 + 通配符匹配 + 优先级排序 + 异常隔离 + JSONL审计日志 + 线程安全单例 |
 | cost_control.py | `src/core/cost_control.py` | 247 | ✅ 成本控制: 模型定价表(8模型) + 日预算检查 + 80%阈值告警 + 成本感知模型路由 + 周报 |
@@ -2131,9 +2147,10 @@
 | security.py | `src/core/security.py` | 349 | ✅ 安全防护层: 输入消毒(sanitize_input) + PIN(PBKDF2+盐+频率限制) + 审计日志(JSONL) + 权限三级分控(auto/confirm/always_human) + XSS/SQL注入/路径遍历/命令注入防护 |
 | **核心工具 (src/ 根级)** | | | |
 | utils.py | `src/utils.py` | 101 | 共享工具函数 (时间/环境变量/样板代码消除) |
+| cross_process_lock.py | `src/cross_process_lock.py` | 125 | 跨进程文件锁与原子状态更新基础设施，供交易预算、订单 claim、成交对账和社媒发布门复用；锁超时 fail-closed |
 | scheduler.py | `src/scheduler.py` | 186 | 定时任务调度器 (早报推送/提醒, 美东时间) |
 | pipeline_helper.py | `src/pipeline_helper.py` | 130 | 交易管道桥接 (dict→TradeProposal + ATR 止损止盈) |
-| agent_tools.py | `src/agent_tools.py` | 397 | 自主 Agent 工具集 (smolagents 搬运, CodeAgent 降级链) |
+| agent_tools.py | `src/agent_tools.py` | 400 | 自主 Agent 工具集（smolagents `ToolCallingAgent`，仅串联显式只读工具，不启用本地代码执行器） |
 | langfuse_obs.py | `src/langfuse_obs.py` | 285 | Langfuse 观测层 (LLM 调用追踪/成本/延迟上报) |
 | monitoring_extras.py | `src/monitoring_extras.py` | 166 | 监控增强 (g4f 健康检查/AlertManager/系统资源) |
 | **执行层 (src/execution/)** | | | |
@@ -2145,7 +2162,8 @@
 | project_report.py | `src/execution/project_report.py` | 51 | 项目周报生成 (基于 git log 自动汇总) |
 | **社媒 (src/execution/social/)** | | | |
 | content_pipeline.py | `src/execution/social/content_pipeline.py` | 638 | 社媒内容管道 (自动发布/话题研究/创意生成/人设组合/日历持久化+查询+标记完成) |
-| drafts.py | `src/execution/social/drafts.py` | 293 | 社媒草稿管理 (保存/去重检测/状态更新/发布) |
+| drafts.py | `src/execution/social/drafts.py` | 293+ | 社媒草稿持久化、去重和审核状态；发布只消费 `publish_gate` 签发的一次性确认，worker 失败向调用方传播 |
+| publish_gate.py | `src/execution/social/publish_gate.py` | 285 | 社媒发布授权门：审核内容哈希、10 分钟一次性 Token、编辑失效、原子消费和跨线程/进程文件锁；`publishing/published` 禁止修改，状态冲突追加 `publish_outcomes` 对账审计 |
 | worker_bridge.py | `src/execution/social/worker_bridge.py` | 187 | 社媒浏览器 Worker 桥接 (独立于 ExecutionHub 调用) |
 | persona_review.py | `src/execution/social/persona_review.py` | 124 | 社媒人设确认 — 热点抽象号提案、样稿、确认/打回状态持久化；确认人设不触发发布 |
 | x_auto_ops.py | `src/execution/social/x_auto_ops.py` | 1891 | X / 小红书热点运营闭环 — 中英文热点聚合（微博/百度/知乎/B站/Google News/HN）、热点评分、抽象短推、小红书笔记草稿、语言配额、旧队列替换、安全过滤、审核闸口、失败重试和 6 时段排程配置 |
@@ -2153,8 +2171,8 @@
 | docling_service.py | `src/tools/docling_service.py` | 217 | 文档理解 (PDF/DOCX/PPTX→Markdown, Docling 56.3k⭐ 搬运) |
 | tavily_search.py | `src/tools/tavily_search.py` | 206 | 智能搜索 (Tavily SDK — QnA/RAG 上下文/深度研究) |
 | vision.py | `src/tools/vision.py` | 65 | 图片理解 (LiteLLM Vision 多模型, 零新依赖) |
-| code_tool.py | `src/tools/code_tool.py` | 155 | ✅ Python/Node.js 代码沙箱: import hook 禁用14个危险模块 + open()禁用 + subclasses阻断 + Node.js 12模块黑名单 + 代码长度限制(10KB) |
-| bash_tool.py | `src/tools/bash_tool.py` | 161 | ✅ 安全 Shell 执行: 白名单命令模式(35个安全命令) + shell=False + shlex.split 解析 + 进程组超时终止 + execute_dangerous 已禁用 |
+| code_tool.py | `src/tools/code_tool.py` | 300+ | ✅ Python 仅执行 RestrictedPython 受限字节码并使用子进程资源限制/环境清洗；禁用 import/open，Node.js 与 Shell 代码执行 fail-closed |
+| bash_tool.py | `src/tools/bash_tool.py` | 277 | ✅ 只读命令白名单 + `shell=False` + 项目内路径限制 + 固定系统 PATH；Git 整体禁用，危险或难安全解析的命令/参数拒绝 |
 | **交易 (src/trading/)** | | | |
 | _helpers.py | `src/trading/_helpers.py` | 142 | 交易工具函数 (纯工具，无全局状态依赖) |
 | _init_system.py | `src/trading/_init_system.py` | 358 | 交易系统初始化 + AI 团队配置 |
@@ -2267,7 +2285,7 @@
 | journal_targets.py | `src/journal_targets.py` | 115 | 交易日志 Mixin — 盈利目标设定/进度更新/格式化展示 | 自研 |
 | journal_review.py | `src/journal_review.py` | 221 | 交易日志 Mixin — 复盘会议/复盘数据/迭代改进报告 | 自研 |
 | novel_writer.py | `src/novel_writer.py` | ~450 | AI 小说工坊 — 大纲/续写/TTS | inkos + MuMuAINovel |
-| position_monitor.py | `src/position_monitor.py` | ~700 | 持仓实时监控 — 止损/止盈/异动告警 | 自研 |
+| position_monitor.py | `src/position_monitor.py` | ~850 | 持仓实时监控；失败/取消/零成交不删除持仓，未决退出防重复下单并按订单 ID、累计成交量和加权价格对账 | 自研 |
 | data_providers.py | `src/data_providers.py` | ~400 | 多市场数据源聚合 (yfinance/Alpha Vantage) | yfinance (16k⭐) |
 | backtester.py | `src/backtester.py` | ~350 | 回测引擎主模块 | vectorbt (5.4k⭐) |
 
@@ -2331,7 +2349,7 @@
 |------|------|------|------|
 | server.py | `src/api/server.py` | 122 | FastAPI 服务器 — 应用工厂/中间件/生命周期 |
 | routers/evolution.py | `src/api/routers/evolution.py` | 189 | 进化端点 — 自我进化/指标/报告 |
-| routers/social.py | `src/api/routers/social.py` | 588 | 社媒端点 — 发布/日历/分析/草稿审核/统一运营工作台/人设确认，`GET /api/v1/social/ops-workspace` 返回 X / 小红书 / 闲鱼 SaaS 插件状态、no-code 运营打法 `strategy_summary`、下一步、真实样稿、增长复盘和审核锁状态，`GET /api/v1/social/review-pack` 返回人设 + X/小红书样稿 + skill 审计的只读审核包，`POST /api/v1/social/persona-review` 支持 JSON body 确认/打回人设且不触发发布，`POST /api/v1/social/browser-control` 只允许打开/登录/状态类安全动作并阻断发布/回复/删除/自动互动，`GET/POST /api/v1/social/persona-review` 用于确认热点抽象号人设方向，`GET/POST /api/v1/social/extension/status` 用于 Chrome Social Pilot 插件状态只读/上报并返回 no-code 运营打法 `strategy_summary`，`POST /api/v1/social/extension/strategy` 用于 App/Telegram 中控保存 no-code 运营打法且不触发发布，`POST /api/v1/social/extension/page-probe` 用于保存真实页面填入点校准摘要且不触发发布，`GET /api/v1/social/extension/trends` 用于 Chrome 插件读取热点池候选选题并按历史高信号表现加权，`GET /api/v1/social/extension/growth-feedback` 用于读取增长复盘摘要，`POST /api/v1/social/extension/growth-drafts` 用于基于高信号复盘或冷启动热点池批量生成待审热点草稿，`POST /api/v1/social/extension/drafts` 用于把当前页、热点或互动扫描信号生成待审草稿并返回平台化内容/素材计划，`PATCH/POST /api/v1/social/extension/drafts/{draft_id}` 用于插件内编辑、确认或打回草稿，`GET /api/v1/social/extension/schedule` 用于插件读取排程提醒队列并回填草稿素材计划，`POST /api/v1/social/extension/drafts/{draft_id}/schedule` 用于把已确认草稿加入待发布排程，`POST /api/v1/social/extension/drafts/{draft_id}/final-confirm` 用于排程到点后的最终确认，`POST /api/v1/social/extension/performance` 用于记录只读表现快照和增长反馈，`POST /api/v1/social/drafts/{index}/review` 用于确认内容后才允许进入最终发布确认 |
+| routers/social.py | `src/api/routers/social.py` | 588+ | 社媒端点 — 研究、草稿、审核、排程和分析；正文直发关闭。发布必须先审核草稿，再调用 final-confirm 取得短时一次性 Token，最后用同一 `draft_id + confirmation_token` 发布；内容变化或重复消费均拒绝 |
 | routers/store.py | `src/api/routers/store.py` | 358 | 统一插件商店端点 — `/store/catalog` 和 `/store/categories` |
 | routers/trading.py | `src/api/routers/trading.py` | 86 | 交易端点 — 下单/持仓/历史 |
 | routers/ws.py | `src/api/routers/ws.py` | 120 | WebSocket 端点 — 实时消息推送 |
@@ -2348,7 +2366,7 @@
 | 模块 | 路径 | 行数 | 说明 |
 |------|------|------|------|
 | crawl4ai_engine.py | `src/shopping/crawl4ai_engine.py` | 650 | Crawl4AI 比价引擎 — 多电商平台爬取/价格对比 |
-| telegram_gateway.py | `src/gateway/telegram_gateway.py` | 528 | OMEGA 网关 Bot — 统一入口/路由分发到 7 Bot |
+| telegram_gateway.py | `src/gateway/telegram_gateway.py` | 528 | OMEGA 网关 Bot — 统一入口/路由分发到 7 Bot；管理员白名单为空时 fail-closed |
 | license_manager.py | `src/deployer/license_manager.py` | 240 | 授权管理 — License 生成/验证/过期检查 |
 | deploy_server.py | `src/deployer/deploy_server.py` | 157 | 部署服务器 — 远程部署/更新/回滚 |
 
@@ -2422,7 +2440,7 @@
 | help_mixin.py | `src/bot/cmd_basic/help_mixin.py` | 350 | 帮助菜单 — /help 命令 + help 回调 + 老用户 /start 欢迎（向导逻辑已移至 onboarding_mixin）；社媒分组已补待审草稿审核/排程/最终确认命令 |
 | onboarding_mixin.py | `src/bot/cmd_basic/onboarding_mixin.py` | 258 | 新用户引导向导 — ConversationHandler 3步交互式引导（选兴趣→选风格→个性化推荐） |
 | status_mixin.py | `src/bot/cmd_basic/status_mixin.py` | 237 | 状态查询 — /status, /metrics, /model, /pool, /keyhealth 系统信息 |
-| tools_mixin.py | `src/bot/cmd_basic/tools_mixin.py` | 306 | 工具命令 — /draw, /news, /qr, /tts, /agent + inline query 处理 |
+| tools_mixin.py | `src/bot/cmd_basic/tools_mixin.py` | 409 | 工具命令 — /draw、/news、/qr、/tts、只读 /agent、固定无参 /claude code 与鉴权后的 inline query |
 | memory_mixin.py | `src/bot/cmd_basic/memory_mixin.py` | 178 | 记忆管理 — /memory 命令 + 记忆分页/清除回调 + 反馈回调 |
 | callback_mixin.py | `src/bot/cmd_basic/callback_mixin.py` | 161 | 回调处理 — 通知操作按钮 + 卡片操作按钮 + 追问建议按钮 |
 | settings_mixin.py | `src/bot/cmd_basic/settings_mixin.py` | 144 | 用户设置 — /settings 命令及其 Inline 回调 |

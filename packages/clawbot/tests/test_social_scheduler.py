@@ -263,7 +263,7 @@ def test_social_draft_publish_requires_review_approval(isolate_state_file):
 
     assert result["success"] is False
     assert result["requires_review"] is True
-    assert "先确认" in result["error"]
+    assert "审核" in result["error"]
 
 
 def test_social_draft_approve_then_publish(isolate_state_file):
@@ -285,8 +285,16 @@ def test_social_draft_approve_then_publish(isolate_state_file):
     assert approved_state["drafts"][0]["review_status"] == "approved"
     assert approved_state["drafts"][0]["approved_by"] == "owner"
 
+    confirmation = ClawBotRPC._rpc_social_draft_final_confirm(0, reviewer="owner")
+    assert confirmation["success"] is True
+
     with patch("src.execution.social.worker_bridge.run_social_worker", return_value={"success": True, "url": "https://x.com/demo/status/1"}) as worker:
-        result = __import__("asyncio").run(ClawBotRPC._rpc_social_draft_publish(0))
+        result = __import__("asyncio").run(
+            ClawBotRPC._rpc_social_draft_publish(
+                0,
+                confirmation_token=confirmation["confirmation_token"],
+            )
+        )
 
     assert result["success"] is True
     worker.assert_called_once()
@@ -398,6 +406,36 @@ def test_job_night_publish_does_not_auto_publish_approved_drafts_in_review_mode(
     assert calls == []
     assert loaded["drafts"][0]["status"] == "ready"
     assert loaded["drafts"][0]["review_status"] == "approved"
+
+
+def test_job_night_publish_never_publishes_even_when_review_flag_is_disabled(isolate_state_file, monkeypatch):
+    """旧配置开关不能重新打开已删除的自动发布旁路。"""
+    state = ss_module._load_state()
+    state["drafts"] = [
+        {
+            "id": "approved-review-flag-off",
+            "status": "ready",
+            "platform": "x",
+            "text": "即使旧开关关闭也不能自动发布",
+            "review_status": "approved",
+        }
+    ]
+    ss_module._save_state(state)
+    calls = []
+
+    async def fake_worker(action, payload):
+        calls.append((action, payload))
+        return {"success": True}
+
+    monkeypatch.setattr(ss_module, "_REVIEW_MODE", False)
+    monkeypatch.setattr("src.execution.social.worker_bridge.run_social_worker_async", fake_worker)
+    monkeypatch.setattr(ss_module, "_notify", lambda *args, **kwargs: None)
+
+    ss_module.job_night_publish()
+
+    loaded = ss_module._load_state()
+    assert calls == []
+    assert loaded["drafts"][0]["status"] == "ready"
     assert loaded["stats"]["posts_today"] == 0
 
 def test_social_drafts_merges_x_auto_review_queue(isolate_state_file, tmp_path, monkeypatch):

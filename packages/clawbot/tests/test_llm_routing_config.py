@@ -205,6 +205,15 @@ class TestResolveKeys:
             keys = _resolve_keys(cfg)
         assert keys == ["dummy"]
 
+    def test_必填key缺失时本地url不能生成dummy(self):
+        """必填凭据缺失必须排除 provider，不能注册一个注定失败的端点。"""
+        cfg = {
+            "env_key": "REQUIRED_LOCAL_KEY",
+            "base_url_default": "http://127.0.0.1:18793/v1",
+        }
+        with patch.dict(os.environ, {}, clear=True):
+            assert _resolve_keys(cfg) == []
+
     def test_无key但有base_url返回dummy(self):
         """没有 env_key 但有 base_url_default 时返回 dummy（本地服务）"""
         cfg = {"base_url_default": "http://localhost:1337/v1"}
@@ -406,6 +415,41 @@ class TestBuildDeployments:
         deps = build_deployments_from_config(config, self._fake_dep)
         assert len(deps) == 1
         assert deps[0]["base"] == "http://localhost:1337/v1"
+
+    def test_显式开关关闭时本地provider不注册(self):
+        """可选本地服务默认关闭，避免死端点进入 LiteLLM fallback。"""
+        config = {
+            "providers": {
+                "local": {
+                    "enabled_env": "LOCAL_PROVIDER_ENABLED",
+                    "env_key_optional": "LOCAL_PROVIDER_KEY",
+                    "base_url_default": "http://localhost:1337/v1",
+                    "models": [{"id": "auto", "family": "local", "tier": "C"}],
+                }
+            }
+        }
+        with patch.dict(os.environ, {"LOCAL_PROVIDER_KEY": "dummy"}, clear=True):
+            assert build_deployments_from_config(config, self._fake_dep) == []
+
+    def test_显式开关开启后本地provider正常注册(self):
+        """配置、凭据和开关齐全时保留现有本地 provider 能力。"""
+        config = {
+            "providers": {
+                "local": {
+                    "enabled_env": "LOCAL_PROVIDER_ENABLED",
+                    "env_key_optional": "LOCAL_PROVIDER_KEY",
+                    "base_url_default": "http://localhost:1337/v1",
+                    "models": [{"id": "auto", "family": "local", "tier": "C"}],
+                }
+            }
+        }
+        with patch.dict(
+            os.environ,
+            {"LOCAL_PROVIDER_ENABLED": "true", "LOCAL_PROVIDER_KEY": "dummy"},
+            clear=True,
+        ):
+            deps = build_deployments_from_config(config, self._fake_dep)
+        assert len(deps) == 1
 
 
 # ============ build_fallbacks_from_config 测试 ============

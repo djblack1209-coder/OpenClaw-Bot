@@ -26,6 +26,8 @@ jobs:
       - name: Check current New-API release
         id: check
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set +e
           scripts/sync_new_api_upstream.sh check >new-api-check.log 2>&1

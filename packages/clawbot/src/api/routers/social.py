@@ -325,14 +325,12 @@ async def compose_content(
 
 @router.post("/social/publish", response_model=dict[str, Any])
 async def publish_content(req: SocialPublishRequest):
-    """发布内容到社交平台（通过浏览器 worker）。
-
-    需要浏览器 worker 已配置，否则返回明确的错误消息。
-    """
+    """使用已审核草稿和一次性确认发布，禁止正文直发。"""
     try:
         result = await ClawBotRPC._rpc_social_publish(
             platform=req.platform,
-            content=req.content,
+            draft_id=req.draft_id,
+            confirmation_token=req.confirmation_token,
         )
 
         # Push social published event via WebSocket (best-effort)
@@ -340,7 +338,7 @@ async def publish_content(req: SocialPublishRequest):
             if result.get("success"):
                 push_event(WSMessageType.SOCIAL_PUBLISHED, {
                     "platform": req.platform,
-                    "content_preview": req.content[:120],
+                    "draft_id": req.draft_id,
                     "success": True,
                 })
         except Exception as e:
@@ -551,10 +549,16 @@ def review_draft(
 
 
 @router.post("/social/drafts/{index}/publish", response_model=dict[str, Any])
-async def publish_draft(index: int = Path(ge=0, description="草稿索引")):
-    """立即发布指定草稿"""
+async def publish_draft(
+    index: int = Path(ge=0, description="草稿索引"),
+    payload: dict[str, Any] | None = Body(default=None),
+):
+    """消费一次性确认并发布指定草稿。"""
     try:
-        result = await ClawBotRPC._rpc_social_draft_publish(index)
+        result = await ClawBotRPC._rpc_social_draft_publish(
+            index,
+            confirmation_token=str((payload or {}).get("confirmation_token") or ""),
+        )
 
         # Push social published event via WebSocket (best-effort)
         try:
@@ -572,6 +576,19 @@ async def publish_draft(index: int = Path(ge=0, description="草稿索引")):
     except Exception as e:
         logger.exception("发布草稿失败 (index=%d)", index)
         raise HTTPException(status_code=502, detail=_safe_error(e)) from e
+
+
+@router.post("/social/drafts/{index}/final-confirm", response_model=dict[str, Any])
+def final_confirm_draft(
+    index: int = Path(ge=0, description="草稿索引"),
+    reviewer: str = "owner",
+):
+    """签发绑定当前审核快照的短时一次性发布确认。"""
+    try:
+        return ClawBotRPC._rpc_social_draft_final_confirm(index, reviewer=reviewer)
+    except Exception as e:
+        logger.exception("最终确认草稿失败 (index=%d)", index)
+        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
 # ──────────────────────────────────────────────

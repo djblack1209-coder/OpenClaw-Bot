@@ -1,6 +1,6 @@
 import { normalizeBaseUrl } from './core.js';
 
-const DEFAULT_QUOTA_PER_CNY = 100;
+const DEFAULT_QUOTA_PER_CNY = 500_000;
 const DEFAULT_USD_TO_CNY = 7.2;
 const DEFAULT_HISTORY_SIZE = 12;
 const USER_ENDPOINTS = {

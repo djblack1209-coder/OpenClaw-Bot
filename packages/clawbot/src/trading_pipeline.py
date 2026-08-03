@@ -222,6 +222,7 @@ class TradingPipeline:
 
         # Step 2: 执行下单
         order_result = None
+        used_simulation_fallback = False
         if self.broker:
             try:
                 if proposal.action == "BUY":
@@ -247,6 +248,7 @@ class TradingPipeline:
                             order_result.get("error", ""),
                         )
                         result["steps"].append({"broker_fallback": "sim"})
+                        used_simulation_fallback = True
                         order_result = None  # 清除错误，走下面的模拟逻辑
                     else:
                         # 无模拟组合可用，直接返回错误
@@ -261,6 +263,7 @@ class TradingPipeline:
                 if self.portfolio:
                     logger.warning("[Pipeline] IBKR异常(%s)，回退到模拟组合（注意：后续为模拟执行）", e)
                     result["steps"].append({"broker_error": str(e)})
+                    used_simulation_fallback = True
                     order_result = None  # 走下面的模拟逻辑
                 else:
                     # 无模拟组合可用，直接返回错误
@@ -270,6 +273,7 @@ class TradingPipeline:
                     return result
 
         if order_result is None and self.portfolio:
+            used_simulation_fallback = self.broker is not None
             if proposal.action == "BUY":
                 order_result = self.portfolio.buy(
                     symbol=proposal.symbol,
@@ -309,16 +313,40 @@ class TradingPipeline:
             return result
 
         order_status = str(order_result.get("status", "") or "") if order_result else ""
-        filled_qty = float(order_result.get("filled_qty", 0) or 0) if order_result else 0.0
-        pending_statuses = {"Submitted", "PreSubmitted", "PendingSubmit", "ApiPending", "PendingCancel"}
-        is_entry_pending = (
-            proposal.action == "BUY"
-            and self.broker is not None
+        try:
+            filled_qty = float(order_result.get("filled_qty", 0) or 0) if order_result else 0.0
+        except (TypeError, ValueError):
+            filled_qty = 0.0
+        normalized_status = order_status.strip().lower()
+        pending_statuses = {"submitted", "presubmitted", "pendingsubmit", "apipending", "pendingcancel"}
+        terminal_unfilled_statuses = {"cancelled", "apicancelled", "inactive", "filled"}
+        is_real_broker_result = (
+            self.broker is not None
+            and not used_simulation_fallback
+            and order_result is not None
+        )
+        is_order_pending = (
+            is_real_broker_result
             and order_result is not None
             and bool(order_result.get("order_id"))
-            and order_status in pending_statuses
+            and normalized_status in pending_statuses
             and filled_qty <= 0
         )
+        is_confirmed_real_fill = (
+            is_real_broker_result
+            and filled_qty > 0
+        )
+
+        # 券商订单只有确认存在实际成交数量，才允许进入真实持仓流程。
+        if is_real_broker_result and not is_confirmed_real_fill and not is_order_pending:
+            result["status"] = "error" if normalized_status in terminal_unfilled_statuses else "pending_confirmation"
+            result["reason"] = (
+                f"订单未确认成交 (status={order_status or 'unknown'}, filled_qty={filled_qty:g})"
+            )
+            result["order_id"] = order_result.get("order_id")
+            result["filled_qty"] = filled_qty
+            self._execution_log.append(result)
+            return result
 
         # P0#3: 使用实际成交价（而非AI提议价）作为后续所有计算的基准
         fill_price = proposal.entry_price
@@ -338,15 +366,11 @@ class TradingPipeline:
                     )
 
         # P0#6: 检测是否为模拟降级交易
-        is_simulated_fallback = False
-        if self.broker and order_result:  # noqa: SIM102
-            # 有 broker 但结果来自模拟组合（无 order_id 或有 sim 标记）
-            if "sim_order" in str(result.get("steps", [])):
-                is_simulated_fallback = True
+        is_simulated_fallback = used_simulation_fallback
 
         # Step 3: 记录到交易日志
         trade_id = None
-        if self.journal and proposal.action == "BUY":
+        if self.journal and proposal.action == "BUY" and not is_simulated_fallback:
             try:
                 entry_order_id = str(order_result.get("order_id", "")) if order_result else ""
                 trade_id = self.journal.open_trade(
@@ -360,7 +384,7 @@ class TradingPipeline:
                     entry_reason=proposal.reason,
                     decided_by=proposal.decided_by,
                     entry_order_id=entry_order_id,
-                    status="pending" if is_entry_pending else "open",
+                    status="pending" if is_order_pending else "open",
                 )
                 result["trade_id"] = trade_id
                 # 管道1: 记录AI预测，供收盘验证准确率
@@ -387,7 +411,7 @@ class TradingPipeline:
                             logger.warning("[Pipeline] 记录个体投票失败: %s", ve)
                 except Exception as e:
                     logger.warning("[Pipeline] 记录AI预测失败: %s", e)
-                if is_entry_pending:
+                if is_order_pending:
                     result["steps"].append({"journal": f"trade #{trade_id} (pending)"})
                 else:
                     result["steps"].append({"journal": f"trade #{trade_id}"})
@@ -395,7 +419,7 @@ class TradingPipeline:
                 logger.error("[Pipeline] 记录日志失败: %s", e)
 
         # Step 4: 添加到持仓监控
-        if self.monitor and trade_id and proposal.action == "BUY" and not is_entry_pending:
+        if self.monitor and trade_id and proposal.action == "BUY" and is_confirmed_real_fill:
             try:
                 from src.position_monitor import MonitoredPosition, _now_et
                 mon_pos = MonitoredPosition(
@@ -416,7 +440,7 @@ class TradingPipeline:
             except Exception as e:
                 logger.error("[Pipeline] 添加监控失败: %s", e)
 
-        if is_entry_pending:
+        if is_order_pending:
             pending_order_id = (
                 order_result.get("order_id", "?")
                 if isinstance(order_result, dict)
@@ -581,4 +605,3 @@ def parse_trade_proposal(text: str, symbol: str = "") -> TradeProposal | None:
         take_profit=target,
         reason=text[:200],
     )
-

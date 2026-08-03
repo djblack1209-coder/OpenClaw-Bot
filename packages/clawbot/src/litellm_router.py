@@ -249,6 +249,7 @@ def _load_model_ranking() -> dict:
     """从 JSON 配置加载模型评分，加载失败时回退到硬编码默认值"""
     try:
         from src.llm_routing_config import load_routing_config
+
         config = load_routing_config()
         if config and config.get("model_ranking"):
             ranking = config["model_ranking"]
@@ -292,6 +293,7 @@ def _load_bot_model_family() -> dict:
     """从 JSON 配置加载 Bot→模型族映射，加载失败时回退到硬编码默认值"""
     try:
         from src.llm_routing_config import load_routing_config
+
         config = load_routing_config()
         if config and config.get("bot_model_family"):
             mapping = config["bot_model_family"]
@@ -357,6 +359,7 @@ def _record_iflow_key_usage() -> None:
         current_key = os.getenv("SILICONFLOW_UNLIMITED_KEY", "")
         # 用 key 的 SHA256 前8位做指纹（不存明文前缀，防止缩小暴力搜索范围）
         import hashlib
+
         key_fingerprint = hashlib.sha256(current_key.encode()).hexdigest()[:8] if current_key else ""
 
         if _IFLOW_TIMESTAMP_FILE.exists():
@@ -394,6 +397,7 @@ def _trigger_iflow_auto_renew() -> None:
     def _run():
         try:
             import sys as _sys  # 仅此函数内使用
+
             logger.info("[iflow] 🔄 后台启动自动续期脚本...")
             _sp.Popen(
                 [_sys.executable, str(renew_script), "--restart"],
@@ -655,7 +659,13 @@ class LiteLLMPool:
         # Kiro Gateway
         kk = _env("KIRO_API_KEY")
         kb = _env("KIRO_BASE_URL", "http://127.0.0.1:18793/v1")
-        if kk:
+        kiro_enabled = _env("KIRO_GATEWAY_ENABLED", "false").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        if kiro_enabled and kk:
             deps.append(
                 self._dep(
                     "kiro",
@@ -695,9 +705,15 @@ class LiteLLMPool:
             ]:
                 deps.append(
                     self._dep(
-                        "sambanova", f"openai/{m}", sk, sb,
-                        rpm=10, tier=t, family=fam,
-                        timeout=to, stream_timeout=to + 30,
+                        "sambanova",
+                        f"openai/{m}",
+                        sk,
+                        sb,
+                        rpm=10,
+                        tier=t,
+                        family=fam,
+                        timeout=to,
+                        stream_timeout=to + 30,
                         note="Sambanova Cloud",
                     )
                 )
@@ -727,7 +743,9 @@ class LiteLLMPool:
                 ("@cf/meta/llama-3.3-70b-instruct-fp8-fast", "llama", TIER_A),
             ]:
                 deps.append(
-                    self._dep("cloudflare", f"openai/{m}", cfk, cfb, rpm=30, tier=t, family=fam, note="Cloudflare Workers AI")
+                    self._dep(
+                        "cloudflare", f"openai/{m}", cfk, cfb, rpm=30, tier=t, family=fam, note="Cloudflare Workers AI"
+                    )
                 )
 
         # ⚠️ iflow Token 有效期仅 7 天，过期需去 https://platform.iflow.cn/docs/api-key-management 重置
@@ -856,40 +874,40 @@ class LiteLLMPool:
                     self._dep("gpt_free", f"openai/{m}", gpk, gpb, rpm=r, tier=t, family=fam, note="GPT_API_Free")
                 )
 
-        # g4f 兜底（降级为 TIER_C，仅作最后手段）
-        # 2026-04: g4f 响应较慢(30-90s)，超时设为 90s 防止误判不可用
-        # 2026-04-13: g4f 服务端现在要求 API Key 认证，从环境变量读取
-        g4f_base = _env("G4F_BASE_URL", "http://127.0.0.1:18891/v1")
-        g4f_key = _env("G4F_API_KEY", "dummy")
-        deps.append(
-            self._dep(
-                "g4f",
-                "openai/auto",
-                g4f_key,
-                g4f_base,
-                tier=TIER_C,
-                family="g4f",
-                note="g4f fallback (TIER_C)",
-                timeout=LLM_TIMEOUT_REASONING,
-                stream_timeout=LLM_STREAM_TIMEOUT_REASONING,
+        # g4f 依赖独立本地服务；未显式启用时不能进入真实 fallback 链。
+        if _env("G4F_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}:
+            g4f_base = _env("G4F_BASE_URL", "http://127.0.0.1:18891/v1")
+            g4f_key = _env("G4F_API_KEY", "dummy")
+            deps.append(
+                self._dep(
+                    "g4f",
+                    "openai/auto",
+                    g4f_key,
+                    g4f_base,
+                    tier=TIER_C,
+                    family="g4f",
+                    note="g4f fallback (TIER_C)",
+                    timeout=LLM_TIMEOUT_REASONING,
+                    stream_timeout=LLM_STREAM_TIMEOUT_REASONING,
+                )
             )
-        )
 
-        # Ollama 本地模型（零成本兜底，仅在所有远程模型不可用时使用）
-        ollama_base = _env("LOCAL_HF_MODEL_ENDPOINT", "http://127.0.0.1:11434")
-        deps.append(
-            self._dep(
-                "ollama_local",
-                "ollama/gemma4:e4b-optimized",
-                "ollama",  # ollama 不需要真实 key
-                ollama_base,
-                rpm=999,  # 本地无限制
-                tier=TIER_D,
-                family="gemma",
-                timeout=60,
-                note="本地 Ollama (零成本)",
+        # Ollama 也必须显式启用，避免未安装机器把死端点加入 fallback。
+        if _env("OLLAMA_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}:
+            ollama_base = _env("LOCAL_HF_MODEL_ENDPOINT", "http://127.0.0.1:11434")
+            deps.append(
+                self._dep(
+                    "ollama_local",
+                    "ollama/gemma4:e4b-optimized",
+                    "ollama",  # Ollama 不需要真实 key
+                    ollama_base,
+                    rpm=999,
+                    tier=TIER_D,
+                    family="gemma",
+                    timeout=60,
+                    note="本地 Ollama (零成本)",
+                )
             )
-        )
 
         return deps
 
@@ -940,7 +958,10 @@ class LiteLLMPool:
                     chain.append("qwen")
                 if f != "deepseek" and "deepseek" in families:
                     chain.append("deepseek")
-                chain.append("g4f")
+                if "g4f" in families:
+                    chain.append("g4f")
+                if not chain:
+                    continue
                 fallbacks.append({f: chain})
 
         families = {d["model_name"] for d in deps}
@@ -998,14 +1019,16 @@ class LiteLLMPool:
         deployments = []
         for dep in self._router.model_list:
             info = dep.get("litellm_params", {})
-            deployments.append({
-                "model_group": dep.get("model_name", "unknown"),
-                "model_id": info.get("model", ""),
-                "base_url": _scrub_secrets(str(info.get("api_base", ""))) if info.get("api_base") else None,
-                "has_api_key": bool(info.get("api_key")),
-                "timeout": info.get("timeout"),
-                "stream_timeout": info.get("stream_timeout"),
-            })
+            deployments.append(
+                {
+                    "model_group": dep.get("model_name", "unknown"),
+                    "model_id": info.get("model", ""),
+                    "base_url": _scrub_secrets(str(info.get("api_base", ""))) if info.get("api_base") else None,
+                    "has_api_key": bool(info.get("api_key")),
+                    "timeout": info.get("timeout"),
+                    "stream_timeout": info.get("stream_timeout"),
+                }
+            )
 
         return {
             "exported_at": datetime.now().isoformat(),
@@ -1274,9 +1297,7 @@ class LiteLLMPool:
         avail.sort(key=lambda s: -get_model_score(s.model))
         return avail[0]
 
-    def get_any_source(
-        self, min_tier: str = TIER_C, routing: str | None = None
-    ) -> tuple[str, FreeAPISource] | None:
+    def get_any_source(self, min_tier: str = TIER_C, routing: str | None = None) -> tuple[str, FreeAPISource] | None:
         min_val = _TIER_ORDER.get(min_tier, 3)
         best, best_score, best_fam = None, -1, ""
         for fam, sources in self._sources.items():

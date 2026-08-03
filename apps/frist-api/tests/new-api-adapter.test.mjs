@@ -139,15 +139,15 @@ describe('CC中转 New-API adapter', () => {
         data: {
           username: 'blackdj',
           display_name: 'DJ Black',
-          quota: '8158',
-          used_quota: 42890,
+          quota: '40790000',
+          used_quota: 214450000,
           request_count: 186,
           group: 'monthly_pro',
-          today_quota: 1842,
+          today_quota: 9210000,
           subscription_expires_at: 1779926400,
         },
       },
-      { quotaPerCny: 100, planNames: { monthly_pro: '月卡 Pro' } },
+      { planNames: { monthly_pro: '月卡 Pro' } },
     );
 
     assert.deepEqual(summary, {
@@ -173,8 +173,8 @@ describe('CC中转 New-API adapter', () => {
           name: 'Claude 主力',
           key: ['fk-live', 'real', 'secret', '9x2a'].join('-'),
           status: 1,
-          used_quota: 42890,
-          remain_quota: 8158,
+          used_quota: 214450000,
+          remain_quota: 40790000,
           accessed_time: 1770000000,
           expired_time: -1,
         },
@@ -200,12 +200,11 @@ describe('CC中转 New-API adapter', () => {
     const usage = normalizeNewApiUsage(
       {
         data: [
-          { model_name: 'claude-sonnet-4-5', quota: 2000, prompt_tokens: 1000000, completion_tokens: 500000, count: 10 },
-          { model_name: 'gpt-5.5', quota: 1000, prompt_tokens: 400000, completion_tokens: 100000, count: 4 },
-          { model_name: 'claude-haiku-4-5', quota: 1000, prompt_tokens: 600000, completion_tokens: 300000, count: 6 },
+          { model_name: 'claude-sonnet-4-5', quota: 10_000_000, prompt_tokens: 1000000, completion_tokens: 500000, count: 10 },
+          { model_name: 'gpt-5.5', quota: 5_000_000, prompt_tokens: 400000, completion_tokens: 100000, count: 4 },
+          { model_name: 'claude-haiku-4-5', quota: 5_000_000, prompt_tokens: 600000, completion_tokens: 300000, count: 6 },
         ],
       },
-      { quotaPerCny: 100 },
     );
 
     assert.deepEqual(usage, [

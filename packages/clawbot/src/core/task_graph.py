@@ -6,6 +6,7 @@ OpenClaw OMEGA — 任务DAG引擎 (Task Graph)
 如果后续需要更复杂的状态机，可以引入 LangGraph 替换。
 """
 import asyncio
+import copy
 import logging
 import time
 import uuid
@@ -93,6 +94,7 @@ class TaskGraph:
     name: str = ""                              # 任务图名称
     nodes: dict[str, TaskNode] = field(default_factory=dict)
     created_at: float = field(default_factory=time.time)
+    activated_fallbacks: set[str] = field(default_factory=set, repr=False)
 
     def add_node(self, node: TaskNode) -> None:
         """添加节点"""
@@ -112,8 +114,25 @@ class TaskGraph:
     def get_ready_nodes(self) -> list[TaskNode]:
         """获取所有依赖已满足、可以执行的节点"""
         ready = []
+        fallback_targets = {
+            node.fallback_node_id
+            for node in self.nodes.values()
+            if node.fallback_node_id
+        }
         for node in self.nodes.values():
             if node.status != NodeStatus.PENDING:
+                continue
+            missing_dependencies = [
+                dependency_id
+                for dependency_id in node.dependencies
+                if dependency_id not in self.nodes
+            ]
+            if missing_dependencies:
+                node.status = NodeStatus.FAILED
+                node.error = f"依赖节点不存在: {', '.join(missing_dependencies)}"
+                continue
+            # 备选节点只有在主路径失败后才能激活，不能在首轮并发执行。
+            if node.id in fallback_targets and node.id not in self.activated_fallbacks:
                 continue
             # 检查所有依赖是否完成
             deps_met = all(
@@ -130,6 +149,11 @@ class TaskGraph:
             if deps_failed:
                 node.status = NodeStatus.SKIPPED
                 node.error = "依赖节点失败，已跳过"
+                if node.fallback_node_id and node.fallback_node_id in self.nodes:
+                    fallback = self.nodes[node.fallback_node_id]
+                    if fallback.status == NodeStatus.PENDING:
+                        fallback.status = NodeStatus.SKIPPED
+                        fallback.error = "主节点依赖失败，备选节点未激活"
             elif deps_met:
                 ready.append(node)
         return ready
@@ -228,7 +252,7 @@ class TaskGraphExecutor:
                 break
 
             # 并行执行所有就绪节点
-            tasks = [self._execute_node(node) for node in ready_nodes]
+            tasks = [self._execute_node(graph, node) for node in ready_nodes]
             await asyncio.gather(*tasks, return_exceptions=True)
 
             # 推送进度
@@ -246,7 +270,96 @@ class TaskGraphExecutor:
                     f"成功={graph.is_success}")
         return graph
 
-    async def _execute_node(self, node: TaskNode) -> None:
+    @staticmethod
+    def _business_failure_reason(result: Any, _depth: int = 0) -> str | None:
+        """把明确的业务失败或未完成合同转换为节点失败。"""
+        if not isinstance(result, dict):
+            return None
+        if result.get("success") is False:
+            return str(result.get("error") or result.get("reason") or result.get("note") or "业务执行失败")
+        if result.get("ok") is False:
+            return str(result.get("error") or result.get("reason") or result.get("message") or "业务执行失败")
+        if result.get("approved") is False:
+            return str(result.get("error") or result.get("reason") or "业务审核未通过")
+        if result.get("confirmed") is False:
+            return str(result.get("error") or result.get("reason") or "业务结果尚未确认")
+        if result.get("error"):
+            return str(result.get("error"))
+        status = str(result.get("status") or "").strip().lower()
+        unsuccessful_statuses = {
+            "failed",
+            "error",
+            "cancelled",
+            "rejected",
+            "blocked",
+            "pending_confirmation",
+            "pending",
+            "awaiting_confirmation",
+            "requires_confirmation",
+            "awaiting_review",
+            "needs_review",
+            "ready_for_manual_publish",
+            "queued",
+            "submitted",
+            "initiated",
+            "processing",
+            "publishing",
+        }
+        if status in unsuccessful_statuses:
+            return str(
+                result.get("error")
+                or result.get("reason")
+                or result.get("note")
+                or f"业务状态未成功: {status}"
+            )
+        if _depth < 3:
+            for envelope_key in ("data", "result", "details"):
+                nested = result.get(envelope_key)
+                nested_error = TaskGraphExecutor._business_failure_reason(nested, _depth + 1)
+                if nested_error:
+                    return f"{envelope_key} 返回失败: {nested_error}"
+        return None
+
+    @staticmethod
+    def _execution_params(graph: TaskGraph, node: TaskNode) -> dict[str, Any]:
+        """构造单次执行参数，并注入不可变的上游结果快照。"""
+        params = copy.deepcopy(node.params)
+        upstream = {
+            dependency_id: copy.deepcopy(graph.nodes[dependency_id].result)
+            for dependency_id in node.dependencies
+            if dependency_id in graph.nodes
+        }
+        for dependency_id in node.dependencies:
+            dependency_result = upstream.get(dependency_id)
+            if isinstance(dependency_result, dict):
+                for key, value in dependency_result.items():
+                    params.setdefault(key, value)
+        params["_upstream_results"] = upstream
+        return params
+
+    @staticmethod
+    def _resolve_fallback_primary(graph: TaskGraph, fallback: TaskNode, succeeded: bool) -> None:
+        """把备选节点结果回写到等待中的主节点。"""
+        for primary in graph.nodes.values():
+            if primary.status != NodeStatus.WAITING or primary.fallback_node_id != fallback.id:
+                continue
+            primary.finished_at = time.time()
+            if succeeded:
+                primary.status = NodeStatus.SUCCESS
+                primary.error = None
+                if isinstance(fallback.result, dict):
+                    primary.result = copy.deepcopy(fallback.result)
+                    primary.result["fallback_node_id"] = fallback.id
+                else:
+                    primary.result = {
+                        "fallback_node_id": fallback.id,
+                        "result": copy.deepcopy(fallback.result),
+                    }
+            else:
+                primary.status = NodeStatus.FAILED
+                primary.error = f"主路径和备选路径均失败: {fallback.error or 'unknown'}"
+
+    async def _execute_node(self, graph: TaskGraph, node: TaskNode) -> None:
         """执行单个节点（带重试）"""
         node.status = NodeStatus.RUNNING
         node.started_at = time.time()
@@ -260,12 +373,33 @@ class TaskGraphExecutor:
 
                 # 带超时执行
                 result = await asyncio.wait_for(
-                    node.execute_fn(node.params),
+                    node.execute_fn(self._execution_params(graph, node)),
                     timeout=node.timeout_seconds,
                 )
                 node.result = result
+                business_error = self._business_failure_reason(result)
+                if business_error:
+                    node.error = business_error
+                    logger.warning("节点业务失败: %s: %s", node.name, business_error)
+                    _emit_flow(
+                        node.id,
+                        "hub",
+                        "error",
+                        f"业务失败: {node.name}",
+                        {"node": node.id, "error": business_error},
+                    )
+                    break
                 node.status = NodeStatus.SUCCESS
                 node.finished_at = time.time()
+
+                # 主路径成功后，未激活的备选节点直接跳过。
+                if node.fallback_node_id and node.fallback_node_id in graph.nodes:
+                    fallback = graph.nodes[node.fallback_node_id]
+                    if fallback.status == NodeStatus.PENDING:
+                        fallback.status = NodeStatus.SKIPPED
+                        fallback.error = "主路径成功，无需执行备选节点"
+
+                self._resolve_fallback_primary(graph, node, succeeded=True)
 
                 logger.info(f"节点完成: {node.name} ({node.elapsed_seconds:.1f}s)")
                 _emit_flow(node.id, "hub", "success", f"完成: {node.name}",
@@ -303,13 +437,16 @@ class TaskGraphExecutor:
         # 尝试备选节点
         if node.fallback_node_id:
             logger.info(f"节点 {node.name} 失败，尝试备选: {node.fallback_node_id}")
-            # 将备选节点的状态重置为 PENDING，下一轮调度时会被执行
-            fallback = self.nodes.get(node.fallback_node_id)
+            fallback = graph.nodes.get(node.fallback_node_id)
             if fallback:
+                node.status = NodeStatus.WAITING
                 fallback.status = NodeStatus.PENDING
+                graph.activated_fallbacks.add(fallback.id)
                 logger.info(f"备选节点 {fallback.name} 已重置为 PENDING")
             else:
                 logger.warning(f"备选节点 {node.fallback_node_id} 不存在于任务图中")
+        else:
+            self._resolve_fallback_primary(graph, node, succeeded=False)
 
 
 # ── 任务图构建器（常用模式）──────────────────────────────
@@ -372,4 +509,15 @@ class TaskGraphBuilder:
                 fallback_node_id=n.get("fallback_node_id"),
             )
             graph.add_node(node)
+        node_ids = set(graph.nodes)
+        for node in graph.nodes.values():
+            missing_dependencies = [item for item in node.dependencies if item not in node_ids]
+            if missing_dependencies:
+                raise ValueError(
+                    f"节点 {node.id} 依赖不存在: {', '.join(missing_dependencies)}"
+                )
+            if node.fallback_node_id and node.fallback_node_id not in node_ids:
+                raise ValueError(
+                    f"节点 {node.id} 的备选节点不存在: {node.fallback_node_id}"
+                )
         return graph

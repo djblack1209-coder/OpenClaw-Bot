@@ -9,27 +9,18 @@ OMEGA 核心流水线端到端集成测试。
 
 pytest.ini 已配置 asyncio_mode = auto，async 测试不需要装饰器。
 """
-import asyncio
-import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.core.executor import MultiPathExecutor
 from src.core.intent_parser import IntentParser, ParsedIntent, TaskType
 from src.core.task_graph import (
     ExecutorType,
     NodeStatus,
-    TaskGraph,
     TaskGraphBuilder,
     TaskGraphExecutor,
-    TaskNode,
 )
-from src.core.executor import (
-    ExecutionResult,
-    MultiPathExecutor,
-    PlatformCircuitBreaker,
-)
-
 
 # ════════════════════════════════════════════════════════════
 #  A. IntentParser 单元测试
@@ -192,6 +183,146 @@ class TestTaskGraph:
         # A 一定在 B 之前执行
         assert call_log == ["a", "b"]
 
+    async def test_dependency_results_are_passed_without_mutating_declared_params(self):
+        """下游节点应收到依赖结果，同时保留构建时声明的参数。"""
+        received = {}
+
+        async def _fn_a(params):
+            return {"strategy": {"angle": "practical"}, "source": "a"}
+
+        async def _fn_b(params):
+            received.update(params)
+            return {"success": True}
+
+        builder = TaskGraphBuilder("结果传递")
+        builder.add("a", "节点A", ExecutorType.LOCAL, _fn_a, params={"seed": 1})
+        builder.add("b", "节点B", ExecutorType.LOCAL, _fn_b, params={"platform": "x"}, after=["a"])
+        graph = builder.build()
+
+        await TaskGraphExecutor().execute(graph)
+
+        assert received["strategy"] == {"angle": "practical"}
+        assert received["_upstream_results"]["a"]["source"] == "a"
+        assert graph.nodes["b"].params == {"platform": "x"}
+
+    async def test_dependency_result_snapshot_cannot_mutate_upstream_result(self):
+        """下游修改嵌套参数时，不得污染上游节点保存的原始结果。"""
+
+        async def _fn_a(params):
+            return {"items": [{"symbol": "AAPL"}]}
+
+        async def _fn_b(params):
+            params["items"][0]["symbol"] = "MUTATED"
+            params["_upstream_results"]["a"]["items"].append({"symbol": "TSLA"})
+            return {"success": True}
+
+        builder = TaskGraphBuilder("深拷贝结果")
+        builder.add("a", "节点A", ExecutorType.LOCAL, _fn_a)
+        builder.add("b", "节点B", ExecutorType.LOCAL, _fn_b, after=["a"])
+        graph = await TaskGraphExecutor().execute(builder.build())
+
+        assert graph.nodes["a"].result == {"items": [{"symbol": "AAPL"}]}
+
+    @pytest.mark.parametrize(
+        "result",
+        [
+            {"success": False},
+            {"ok": False},
+            {"error": "明确失败"},
+            {"approved": False},
+            {"confirmed": False},
+            {"status": "pending"},
+            {"status": "pending_confirmation"},
+            {"status": "queued"},
+            {"status": "submitted"},
+            {"status": "cancelled"},
+            {"source": "wrapper", "data": {"success": False, "error": "嵌套业务失败"}},
+        ],
+    )
+    async def test_business_failure_blocks_dependents(self, result):
+        """协程正常返回但业务拒绝时，也必须阻止依赖节点。"""
+        dependent = AsyncMock(return_value={"success": True})
+
+        async def _business_failure(params):
+            return result
+
+        builder = TaskGraphBuilder("业务失败")
+        builder.add("gate", "业务闸口", ExecutorType.LOCAL, _business_failure, retry=1)
+        builder.add("dependent", "依赖节点", ExecutorType.LOCAL, dependent, after=["gate"])
+
+        graph = await TaskGraphExecutor().execute(builder.build())
+
+        assert graph.nodes["gate"].status == NodeStatus.FAILED
+        assert graph.nodes["dependent"].status == NodeStatus.SKIPPED
+        dependent.assert_not_called()
+
+    async def test_life_reminder_failure_is_promoted_to_top_level(self):
+        """提醒落库失败不能被包装成 OMEGA 节点成功。"""
+        from src.core.brain_exec_life import LifeExecutorMixin
+
+        reminder_result = {"success": False, "error": "数据库只读"}
+        with patch(
+            "src.execution.life_automation.create_reminder",
+            new=AsyncMock(return_value=reminder_result),
+        ):
+            result = await LifeExecutorMixin()._exec_life_service({"goal": "提醒我明天交报告"})
+
+        assert result["success"] is False
+        assert result["error"] == "数据库只读"
+        assert TaskGraphExecutor._business_failure_reason(result) == "数据库只读"
+
+    def test_builder_rejects_missing_dependency_and_fallback(self):
+        """依赖或备选 ID 拼错时必须在执行前报错。"""
+        missing_dependency = TaskGraphBuilder("缺失依赖")
+        missing_dependency.add(
+            "dangerous",
+            "危险下游",
+            ExecutorType.LOCAL,
+            AsyncMock(return_value={"success": True}),
+            after=["missing-risk-gate"],
+        )
+        with pytest.raises(ValueError, match="依赖不存在"):
+            missing_dependency.build()
+
+        missing_fallback = TaskGraphBuilder("缺失备选")
+        missing_fallback.add(
+            "primary",
+            "主路径",
+            ExecutorType.LOCAL,
+            AsyncMock(return_value={"success": False}),
+            fallback="missing-fallback",
+        )
+        with pytest.raises(ValueError, match="备选节点不存在"):
+            missing_fallback.build()
+
+    async def test_fallback_starts_only_after_primary_failure(self):
+        """备选节点不能与主节点并发，成功后应恢复主依赖链。"""
+        call_order = []
+
+        async def _primary(params):
+            call_order.append("primary")
+            return {"success": False, "error": "主路径失败"}
+
+        async def _fallback(params):
+            call_order.append("fallback")
+            return {"success": True, "channel": "phone"}
+
+        async def _confirm(params):
+            call_order.append("confirm")
+            return {"success": True, "received": params["_upstream_results"]["primary"]}
+
+        builder = TaskGraphBuilder("备选时序")
+        builder.add("primary", "主路径", ExecutorType.API, _primary, retry=1, fallback="fallback")
+        builder.add("fallback", "备选路径", ExecutorType.VOICE_CALL, _fallback, retry=1)
+        builder.add("confirm", "确认", ExecutorType.LOCAL, _confirm, after=["primary"])
+
+        graph = await TaskGraphExecutor().execute(builder.build())
+
+        assert call_order == ["primary", "fallback", "confirm"]
+        assert graph.is_success is True
+        assert graph.nodes["primary"].result["fallback_node_id"] == "fallback"
+        assert graph.nodes["primary"].result["success"] is True
+
     # ── B4. 失败传播 — A 失败 → B 被 SKIPPED ──────────
 
     async def test_failure_propagation(self):
@@ -250,6 +381,25 @@ class TestTaskGraph:
         assert 0 <= progress["progress_pct"] <= 100
         assert isinstance(progress["nodes"], list)
         assert len(progress["nodes"]) == 4
+
+
+class TestToolsExecutor:
+    """OMEGA 工具节点必须传播沙箱的真实执行状态。"""
+
+    async def test_code_task_propagates_sandbox_failure_without_awaiting_sync_method(self):
+        from src.core.brain_exec_tools import ToolsExecutorMixin
+
+        executor = ToolsExecutorMixin()
+        sandbox_result = {"success": False, "error": "代码安全检查未通过"}
+        with patch(
+            "src.tools.code_tool.CodeTool.execute_python",
+            return_value=sandbox_result,
+        ) as execute_python:
+            result = await executor._exec_code_task({"task": "print(1)"})
+
+        assert result["success"] is False
+        assert result["output"] == sandbox_result
+        execute_python.assert_called_once_with("print(1)")
 
 
 # ════════════════════════════════════════════════════════════

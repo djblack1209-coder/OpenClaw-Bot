@@ -23,7 +23,7 @@ import logging
 import time
 from datetime import datetime
 
-from src.utils import now_et, scrub_secrets
+from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -176,8 +176,22 @@ class SynergyPipelines:
                 f"⚠️ 以上仅为AI分析观点，不构成投资建议。"
             )
 
-            # 写入社媒草稿
-            await self._save_social_draft(draft, symbol=symbol, source="trade_signal")
+            # 写入统一社媒草稿存储
+            from src.execution.social.drafts import save_social_draft
+
+            saved = save_social_draft(
+                platform="both",
+                title="",
+                body=draft,
+                topic=f"{symbol}投资分析",
+            )
+            if not saved.get("success"):
+                logger.info(
+                    "[协同] 交易信号草稿未创建: %s (%s)",
+                    symbol,
+                    saved.get("error", "未知原因"),
+                )
+                return
             self._stats["social_drafts_created"] += 1
             logger.info(f"[协同] 交易信号→社媒草稿: {symbol} ({direction})")
 
@@ -487,17 +501,19 @@ class SynergyPipelines:
                 f"#投资日记 #交易心得"
             )
 
-            # 存为草稿
-            try:
-                from src.execution.social.drafts import save_social_draft
-                save_social_draft(
-                    platform="both", title="", body=content, topic="投资分享",
-                )
-            except Exception as e:
-                logger.debug("[协同] 庆祝帖草稿保存失败: %s", e)
+            # 写入统一社媒草稿存储
+            from src.execution.social.drafts import save_social_draft
 
-            # 同时写入 synergy 草稿文件（双保险）
-            await self._save_social_draft(content, symbol=symbol, source="profit_celebration")
+            saved = save_social_draft(
+                platform="both", title="", body=content, topic="投资分享",
+            )
+            if not saved.get("success"):
+                logger.info(
+                    "[协同] 盈利庆祝草稿未创建: %s (%s)",
+                    symbol,
+                    saved.get("error", "未知原因"),
+                )
+                return
             self._stats["social_drafts_created"] += 1
             logger.info(f"[协同] 盈利庆祝→社媒草稿: {symbol} +{pnl_pct:.1f}%")
 
@@ -558,25 +574,6 @@ class SynergyPipelines:
         return "\n".join(parts) if parts else ""
 
     # ── 内部工具 ──────────────────────────────────
-
-    async def _save_social_draft(self, content: str, symbol: str = "", source: str = "") -> None:
-        """保存社媒草稿"""
-        try:
-            from pathlib import Path
-            drafts_file = Path(__file__).resolve().parent.parent.parent / "data" / "social_drafts.json"
-            drafts = []
-            if drafts_file.exists():
-                drafts = json.loads(drafts_file.read_text())
-            drafts.append({
-                "content": content,
-                "symbol": symbol,
-                "source": source,
-                "created_at": now_et().isoformat(),
-                "published": False,
-            })
-            drafts_file.write_text(json.dumps(drafts[-50:], ensure_ascii=False, indent=2))
-        except Exception as e:
-            logger.debug(f"保存草稿失败: {e}")
 
     async def _save_to_memory(self, content: str, category: str = "") -> None:
         """保存到共享记忆"""

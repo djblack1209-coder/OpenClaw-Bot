@@ -52,6 +52,9 @@ class OpenClawGateway:
         if not self._token:
             logger.info("Gateway Bot 未配置Token，跳过启动")
             return
+        if not self._admin_ids:
+            logger.error("Gateway 管理员白名单为空，已拒绝启动")
+            return
 
         self._app = (
             Application.builder()
@@ -116,9 +119,7 @@ class OpenClawGateway:
 
     def _check_authorized(self, user_id: int) -> bool:
         """白名单检查"""
-        if not self._admin_ids:
-            return True  # 未配置白名单则允许所有
-        return user_id in self._admin_ids
+        return bool(self._admin_ids) and user_id in self._admin_ids
 
     def _subscribe_events(self) -> None:
         """订阅 EventBus 事件"""
@@ -529,13 +530,18 @@ _gateway: OpenClawGateway | None = None
 async def start_gateway() -> OpenClawGateway | None:
     """启动 Gateway Bot（从环境变量读取配置）"""
     global _gateway
+    from src.bot.config import parse_ids
+
     token = os.environ.get("OMEGA_GATEWAY_BOT_TOKEN", "")
     # 规范环境变量: ALLOWED_USER_IDS 为主, OMEGA_ADMIN_USER_IDS 向后兼容
     admin_ids_str = os.environ.get("ALLOWED_USER_IDS") or os.environ.get("OMEGA_ADMIN_USER_IDS", "")
-    admin_ids = [int(x.strip()) for x in admin_ids_str.split(",") if x.strip().isdigit()]
+    admin_ids = sorted(parse_ids(admin_ids_str))
 
     if not token:
         logger.info("OMEGA_GATEWAY_BOT_TOKEN 未设置，Gateway 未启动")
+        return None
+    if not admin_ids:
+        logger.error("Gateway 管理员白名单未配置或没有有效正整数 ID，已拒绝启动")
         return None
 
     _gateway = OpenClawGateway(token=token, admin_user_ids=admin_ids)

@@ -72,3 +72,24 @@ test('Social App 中控可以 no-code 保存运营打法但不授权自动发布
   assert.match(rust, /auto_publish_enabled"\s*:\s*false/, 'Rust 代理必须固定不授权自动发布');
   assert.match(main, /clawbot_api::clawbot_api_social_strategy_update/, 'Tauri invoke handler 需要注册策略更新命令');
 });
+
+test('桌面端最终确认后使用一次性令牌发布草稿', () => {
+  const social = read('apps/openclaw-manager-src/src/components/Social/index.tsx');
+  const api = read('apps/openclaw-manager-src/src/lib/api.ts');
+  const ipc = read('apps/openclaw-manager-src/src/lib/tauri-ipc.ts');
+  const rust = read('apps/openclaw-manager-src/src-tauri/src/commands/clawbot_api.rs');
+  const main = read('apps/openclaw-manager-src/src-tauri/src/main.rs');
+
+  assert.match(social, /clawbotSocialDraftFinalConfirm[\s\S]*clawbotSocialDraftPublish/, '同一次确认点击必须先签发令牌再发布');
+  assert.match(social, /confirmation\.confirmation_token/, '发布调用必须使用刚签发的一次性令牌');
+  assert.match(social, /state_update_rejected && externalResult\?\.success/, '外部已发布但状态冲突时不得提示用户重试');
+  assert.match(social, /social\.publishExternalSuccess/, '外部发布成功的冲突响应需要明确告知用户');
+  assert.match(social, /externalResult\?\.url \|\| externalResult\?\.post_url/, '发布结果需要展示外部 URL');
+  assert.match(api, /final-confirm\?reviewer=/, '浏览器模式需要代理最终确认端点');
+  assert.match(api, /confirmation_token: confirmationToken/, '浏览器发布请求必须提交一次性令牌');
+  assert.match(ipc, /clawbot_api_social_draft_final_confirm/, 'Tauri IPC 需要暴露最终确认命令');
+  assert.match(ipc, /confirmationToken/, 'Tauri 发布 IPC 必须接收令牌');
+  assert.match(rust, /clawbot_api_social_draft_final_confirm/, 'Rust 需要代理最终确认端点');
+  assert.match(rust, /"confirmation_token": confirmation_token/, 'Rust 发布代理必须把令牌放入 JSON body');
+  assert.match(main, /clawbot_api::clawbot_api_social_draft_final_confirm/, 'Tauri invoke handler 需要注册最终确认命令');
+});

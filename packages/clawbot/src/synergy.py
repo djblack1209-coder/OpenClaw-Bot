@@ -77,20 +77,23 @@ class SynergyEngine:
             result = await compose_post(topic=topic, platform="x", max_length=280)
 
             if result.get("success"):
-                from src.social_scheduler import _load_state, _save_state
+                from src.social_scheduler import _mutate_state
 
-                state = _load_state()
-                drafts = state.get("drafts", [])
-                drafts.append({
+                draft = {
                     "text": result["text"],
                     "platform": "x",
                     "status": "auto_generated",
                     "source": "trading_synergy",
                     "created_at": now_et().isoformat(),
                     "metadata": {"symbol": symbol, "signal": direction, "score": score},
-                })
-                state["drafts"] = drafts
-                _save_state(state)
+                }
+
+                def append_draft(state: dict) -> None:
+                    drafts = list(state.get("drafts", []) or [])
+                    drafts.append(draft)
+                    state["drafts"] = drafts
+
+                _mutate_state(append_draft)
                 logger.info("[Synergy] 交易→社交: %s %s 草稿已生成", symbol, direction)
                 _push("social_published", f"交易信号→社交草稿: {symbol} {direction}")
         except Exception as e:

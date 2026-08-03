@@ -1,10 +1,10 @@
-use crate::models::{AppResult, AppError};
+use crate::models::{AppError, AppResult};
 use crate::utils::{platform, shell};
+use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
-use tauri::command;
-use log::{info, warn, error, debug};
 use std::fs;
 use std::path::{Path, PathBuf};
+use tauri::command;
 
 /// 环境检查结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,33 +49,40 @@ pub struct InstallResult {
 #[command]
 pub async fn check_environment() -> AppResult<EnvironmentStatus> {
     info!("[环境检查] 开始检查系统环境...");
-    
+
     let os = platform::get_os();
     info!("[环境检查] 操作系统: {}", os);
-    
+
     // 检查 Node.js
     info!("[环境检查] 检查 Node.js...");
     let node_version = get_node_version();
     let node_installed = node_version.is_some();
     let node_version_ok = check_node_version_requirement(&node_version);
-    info!("[环境检查] Node.js: installed={}, version={:?}, version_ok={}", 
-        node_installed, node_version, node_version_ok);
-    
+    info!(
+        "[环境检查] Node.js: installed={}, version={:?}, version_ok={}",
+        node_installed, node_version, node_version_ok
+    );
+
     // 检查 OpenClaw
     info!("[环境检查] 检查 OpenClaw...");
     let openclaw_version = get_openclaw_version();
     let openclaw_installed = openclaw_version.is_some();
-    info!("[环境检查] OpenClaw: installed={}, version={:?}", 
-        openclaw_installed, openclaw_version);
-    
+    info!(
+        "[环境检查] OpenClaw: installed={}, version={:?}",
+        openclaw_installed, openclaw_version
+    );
+
     // 检查配置目录
     let config_dir = platform::get_config_dir();
     let config_dir_exists = std::path::Path::new(&config_dir).exists();
-    info!("[环境检查] 配置目录: {}, exists={}", config_dir, config_dir_exists);
-    
+    info!(
+        "[环境检查] 配置目录: {}, exists={}",
+        config_dir, config_dir_exists
+    );
+
     let ready = node_installed && node_version_ok && openclaw_installed;
     info!("[环境检查] 环境就绪状态: ready={}", ready);
-    
+
     Ok(EnvironmentStatus {
         node_installed,
         node_version,
@@ -100,7 +107,7 @@ fn get_node_version() -> Option<String> {
                 return Some(version);
             }
         }
-        
+
         // Windows: 检查常见的安装路径
         let possible_paths = get_windows_node_paths();
         for path in possible_paths {
@@ -116,14 +123,14 @@ fn get_node_version() -> Option<String> {
                 }
             }
         }
-        
+
         None
     } else {
         // 先尝试直接调用
         if let Ok(v) = shell::run_command_output("node", &["--version"]) {
             return Some(v.trim().to_string());
         }
-        
+
         // 检测常见的 Node.js 安装路径（macOS/Linux）
         let possible_paths = get_unix_node_paths();
         for path in possible_paths {
@@ -134,7 +141,7 @@ fn get_node_version() -> Option<String> {
                 }
             }
         }
-        
+
         // 尝试通过 shell 加载用户环境来检测
         if let Ok(output) = shell::run_bash_output("source ~/.zshrc 2>/dev/null || source ~/.bashrc 2>/dev/null; node --version 2>/dev/null") {
             if !output.is_empty() && output.starts_with('v') {
@@ -142,7 +149,7 @@ fn get_node_version() -> Option<String> {
                 return Some(output.trim().to_string());
             }
         }
-        
+
         None
     }
 }
@@ -150,18 +157,18 @@ fn get_node_version() -> Option<String> {
 /// 获取 Unix 系统上可能的 Node.js 路径
 fn get_unix_node_paths() -> Vec<String> {
     let mut paths = Vec::new();
-    
+
     // Homebrew (macOS)
     paths.push("/opt/homebrew/bin/node".to_string()); // Apple Silicon
-    paths.push("/usr/local/bin/node".to_string());     // Intel Mac
-    
+    paths.push("/usr/local/bin/node".to_string()); // Intel Mac
+
     // 系统安装
     paths.push("/usr/bin/node".to_string());
-    
+
     // nvm (检查常见版本)
     if let Some(home) = dirs::home_dir() {
         let home_str = home.display().to_string();
-        
+
         // nvm 默认版本
         paths.push(format!("{}/.nvm/versions/node/v22.0.0/bin/node", home_str));
         paths.push(format!("{}/.nvm/versions/node/v22.1.0/bin/node", home_str));
@@ -169,67 +176,88 @@ fn get_unix_node_paths() -> Vec<String> {
         paths.push(format!("{}/.nvm/versions/node/v22.11.0/bin/node", home_str));
         paths.push(format!("{}/.nvm/versions/node/v22.12.0/bin/node", home_str));
         paths.push(format!("{}/.nvm/versions/node/v23.0.0/bin/node", home_str));
-        
+
         // 尝试 nvm alias default（读取 nvm 的 default alias）
         let nvm_default = format!("{}/.nvm/alias/default", home_str);
         if let Ok(version) = std::fs::read_to_string(&nvm_default) {
             let version = version.trim();
             if !version.is_empty() {
-                paths.insert(0, format!("{}/.nvm/versions/node/v{}/bin/node", home_str, version));
+                paths.insert(
+                    0,
+                    format!("{}/.nvm/versions/node/v{}/bin/node", home_str, version),
+                );
             }
         }
-        
+
         // fnm
         paths.push(format!("{}/.fnm/aliases/default/bin/node", home_str));
-        
+
         // volta
         paths.push(format!("{}/.volta/bin/node", home_str));
-        
+
         // asdf
         paths.push(format!("{}/.asdf/shims/node", home_str));
-        
+
         // mise (formerly rtx)
         paths.push(format!("{}/.local/share/mise/shims/node", home_str));
     }
-    
+
     paths
 }
 
 /// 获取 Windows 系统上可能的 Node.js 路径
 fn get_windows_node_paths() -> Vec<String> {
     let mut paths = Vec::new();
-    
+
     // 1. 标准安装路径 (Program Files)
     paths.push("C:\\Program Files\\nodejs\\node.exe".to_string());
     paths.push("C:\\Program Files (x86)\\nodejs\\node.exe".to_string());
-    
+
     // 2. nvm for Windows (nvm4w) - 常见安装位置
     paths.push("C:\\nvm4w\\nodejs\\node.exe".to_string());
-    
+
     // 3. 用户目录下的各种安装
     if let Some(home) = dirs::home_dir() {
         let home_str = home.display().to_string();
-        
+
         // nvm for Windows 用户安装
-        paths.push(format!("{}\\AppData\\Roaming\\nvm\\current\\node.exe", home_str));
-        
+        paths.push(format!(
+            "{}\\AppData\\Roaming\\nvm\\current\\node.exe",
+            home_str
+        ));
+
         // fnm (Fast Node Manager) for Windows
-        paths.push(format!("{}\\AppData\\Roaming\\fnm\\aliases\\default\\node.exe", home_str));
-        paths.push(format!("{}\\AppData\\Local\\fnm\\aliases\\default\\node.exe", home_str));
+        paths.push(format!(
+            "{}\\AppData\\Roaming\\fnm\\aliases\\default\\node.exe",
+            home_str
+        ));
+        paths.push(format!(
+            "{}\\AppData\\Local\\fnm\\aliases\\default\\node.exe",
+            home_str
+        ));
         paths.push(format!("{}\\.fnm\\aliases\\default\\node.exe", home_str));
-        
+
         // volta
-        paths.push(format!("{}\\AppData\\Local\\Volta\\bin\\node.exe", home_str));
+        paths.push(format!(
+            "{}\\AppData\\Local\\Volta\\bin\\node.exe",
+            home_str
+        ));
         // volta 通过 shim 调用，检查 bin 目录即可
-        
+
         // scoop 安装
-        paths.push(format!("{}\\scoop\\apps\\nodejs\\current\\node.exe", home_str));
-        paths.push(format!("{}\\scoop\\apps\\nodejs-lts\\current\\node.exe", home_str));
-        
+        paths.push(format!(
+            "{}\\scoop\\apps\\nodejs\\current\\node.exe",
+            home_str
+        ));
+        paths.push(format!(
+            "{}\\scoop\\apps\\nodejs-lts\\current\\node.exe",
+            home_str
+        ));
+
         // chocolatey 安装
         paths.push("C:\\ProgramData\\chocolatey\\lib\\nodejs\\tools\\node.exe".to_string());
     }
-    
+
     // 4. 从注册表读取的安装路径（通过环境变量间接获取）
     if let Ok(program_files) = std::env::var("ProgramFiles") {
         paths.push(format!("{}\\nodejs\\node.exe", program_files));
@@ -237,12 +265,12 @@ fn get_windows_node_paths() -> Vec<String> {
     if let Ok(program_files_x86) = std::env::var("ProgramFiles(x86)") {
         paths.push(format!("{}\\nodejs\\node.exe", program_files_x86));
     }
-    
+
     // 5. nvm-windows 的符号链接路径（NVM_SYMLINK 环境变量）
     if let Ok(nvm_symlink) = std::env::var("NVM_SYMLINK") {
         paths.insert(0, format!("{}\\node.exe", nvm_symlink));
     }
-    
+
     // 6. nvm-windows 的 NVM_HOME 路径下的当前版本
     if let Ok(nvm_home) = std::env::var("NVM_HOME") {
         // 尝试读取当前激活的版本
@@ -260,7 +288,7 @@ fn get_windows_node_paths() -> Vec<String> {
             }
         }
     }
-    
+
     paths
 }
 
@@ -288,7 +316,10 @@ fn get_custom_openclaw_symlink() -> Option<(PathBuf, PathBuf)> {
     let resolved_target = if raw_target.is_absolute() {
         raw_target
     } else {
-        link_path.parent().unwrap_or_else(|| Path::new("/")).join(raw_target)
+        link_path
+            .parent()
+            .unwrap_or_else(|| Path::new("/"))
+            .join(raw_target)
     };
 
     if !resolved_target.exists() {
@@ -307,7 +338,8 @@ fn get_custom_openclaw_symlink() -> Option<(PathBuf, PathBuf)> {
 fn check_node_version_requirement(version: &Option<String>) -> bool {
     if let Some(v) = version {
         // 解析版本号 "v22.1.0" -> 22
-        let major = v.trim_start_matches('v')
+        let major = v
+            .trim_start_matches('v')
             .split('.')
             .next()
             .and_then(|s| s.parse::<u32>().ok())
@@ -324,20 +356,20 @@ pub async fn install_nodejs() -> AppResult<InstallResult> {
     info!("[安装Node.js] 开始安装 Node.js...");
     let os = platform::get_os();
     info!("[安装Node.js] 检测到操作系统: {}", os);
-    
+
     let result = match os.as_str() {
         "windows" => {
             info!("[安装Node.js] 使用 Windows 安装方式...");
             install_nodejs_windows().await
-        },
+        }
         "macos" => {
             info!("[安装Node.js] 使用 macOS 安装方式 (Homebrew)...");
             install_nodejs_macos().await
-        },
+        }
         "linux" => {
             info!("[安装Node.js] 使用 Linux 安装方式...");
             install_nodejs_linux().await
-        },
+        }
         _ => {
             error!("[安装Node.js] 不支持的操作系统: {}", os);
             Ok(InstallResult {
@@ -345,15 +377,15 @@ pub async fn install_nodejs() -> AppResult<InstallResult> {
                 message: "不支持的操作系统".to_string(),
                 error: Some(format!("不支持的操作系统: {}", os)),
             })
-        },
+        }
     };
-    
+
     match &result {
         Ok(r) if r.success => info!("[安装Node.js] ✓ 安装成功"),
         Ok(r) => warn!("[安装Node.js] ✗ 安装失败: {}", r.message),
         Err(e) => error!("[安装Node.js] ✗ 安装错误: {}", e),
     }
-    
+
     result
 }
 
@@ -405,7 +437,7 @@ if ($nodeVersion) {
     exit 1
 }
 "#;
-    
+
     match shell::run_powershell_output(script) {
         Ok(output) => {
             // 验证安装
@@ -455,7 +487,7 @@ brew link --overwrite node@22
 # 验证安装
 node --version
 "#;
-    
+
     match shell::run_bash_output(script) {
         Ok(output) => Ok(InstallResult {
             success: true,
@@ -498,7 +530,7 @@ fi
 # 验证安装
 node --version
 "#;
-    
+
     match shell::run_bash_output(script) {
         Ok(output) => Ok(InstallResult {
             success: true,
@@ -519,24 +551,24 @@ pub async fn install_openclaw() -> AppResult<InstallResult> {
     info!("[安装OpenClaw] 开始安装 OpenClaw...");
     let os = platform::get_os();
     info!("[安装OpenClaw] 检测到操作系统: {}", os);
-    
+
     let result = match os.as_str() {
         "windows" => {
             info!("[安装OpenClaw] 使用 Windows 安装方式...");
             install_openclaw_windows().await
-        },
+        }
         _ => {
             info!("[安装OpenClaw] 使用 Unix 安装方式 (npm)...");
             install_openclaw_unix().await
-        },
+        }
     };
-    
+
     match &result {
         Ok(r) if r.success => info!("[安装OpenClaw] ✓ 安装成功"),
         Ok(r) => warn!("[安装OpenClaw] ✗ 安装失败: {}", r.message),
         Err(e) => error!("[安装OpenClaw] ✗ 安装错误: {}", e),
     }
-    
+
     result
 }
 
@@ -565,7 +597,7 @@ if ($openclawVersion) {
     exit 1
 }
 "#;
-    
+
     match shell::run_powershell_output(script) {
         Ok(output) => {
             if get_openclaw_version().is_some() {
@@ -605,7 +637,7 @@ npm install -g openclaw@latest --unsafe-perm
 # 验证安装
 openclaw --version
 "#;
-    
+
     match shell::run_bash_output(script) {
         Ok(output) => Ok(InstallResult {
             success: true,
@@ -624,10 +656,10 @@ openclaw --version
 #[command]
 pub async fn init_openclaw_config() -> AppResult<InstallResult> {
     info!("[初始化配置] 开始初始化 OpenClaw 配置...");
-    
+
     let config_dir = platform::get_config_dir();
     info!("[初始化配置] 配置目录: {}", config_dir);
-    
+
     // 创建配置目录
     info!("[初始化配置] 创建配置目录...");
     if let Err(e) = std::fs::create_dir_all(&config_dir) {
@@ -638,7 +670,7 @@ pub async fn init_openclaw_config() -> AppResult<InstallResult> {
             error: Some(e.to_string()),
         });
     }
-    
+
     // 创建子目录
     let subdirs = ["agents/main/sessions", "agents/main/agent", "credentials"];
     for subdir in subdirs {
@@ -653,7 +685,7 @@ pub async fn init_openclaw_config() -> AppResult<InstallResult> {
             });
         }
     }
-    
+
     // 设置配置目录权限为 700（与 shell 脚本 chmod 700 一致）
     // 仅在 Unix 系统上执行
     #[cfg(unix)]
@@ -670,11 +702,11 @@ pub async fn init_openclaw_config() -> AppResult<InstallResult> {
             }
         }
     }
-    
+
     // 设置 gateway mode 为 local
     info!("[初始化配置] 执行: openclaw config set gateway.mode local");
     let result = shell::run_openclaw(&["config", "set", "gateway.mode", "local"]);
-    
+
     match result {
         Ok(output) => {
             info!("[初始化配置] ✓ 配置初始化成功");
@@ -684,7 +716,7 @@ pub async fn init_openclaw_config() -> AppResult<InstallResult> {
                 message: "配置初始化成功！".to_string(),
                 error: None,
             })
-        },
+        }
         Err(e) => {
             error!("[初始化配置] ✗ 配置初始化失败: {}", e);
             Ok(InstallResult {
@@ -692,7 +724,7 @@ pub async fn init_openclaw_config() -> AppResult<InstallResult> {
                 message: "配置初始化失败".to_string(),
                 error: Some(e),
             })
-        },
+        }
     }
 }
 
@@ -702,7 +734,10 @@ pub async fn open_install_terminal(install_type: String) -> AppResult<String> {
     match install_type.as_str() {
         "nodejs" => open_nodejs_install_terminal().await,
         "openclaw" => open_openclaw_install_terminal().await,
-        _ => Err(AppError::validation(format!("未知的安装类型: {}", install_type))),
+        _ => Err(AppError::validation(format!(
+            "未知的安装类型: {}",
+            install_type
+        ))),
     }
 }
 
@@ -768,21 +803,21 @@ node --version
 echo ""
 read -p "按回车键关闭此窗口..."
 "#;
-        
+
         let script_path = "/tmp/openclaw_install_nodejs.command";
         std::fs::write(script_path, script_content)
             .map_err(|e| AppError::io(format!("创建脚本失败: {}", e)))?;
-        
+
         std::process::Command::new("chmod")
             .args(["+x", script_path])
             .output()
             .map_err(|e| AppError::process(format!("设置权限失败: {}", e)))?;
-        
+
         std::process::Command::new("open")
             .arg(script_path)
             .spawn()
             .map_err(|e| AppError::process(format!("启动终端失败: {}", e)))?;
-        
+
         Ok("已打开安装终端".to_string())
     } else {
         Err(AppError::process("请手动安装 Node.js: https://nodejs.org/"))
@@ -840,21 +875,21 @@ openclaw --version
 echo ""
 read -p \"按回车键关闭此窗口...\"
 "#;
-        
+
         let script_path = "/tmp/openclaw_install_openclaw.command";
         std::fs::write(script_path, script_content)
             .map_err(|e| AppError::io(format!("创建脚本失败: {}", e)))?;
-        
+
         std::process::Command::new("chmod")
             .args(["+x", script_path])
             .output()
             .map_err(|e| AppError::process(format!("设置权限失败: {}", e)))?;
-        
+
         std::process::Command::new("open")
             .arg(script_path)
             .spawn()
             .map_err(|e| AppError::process(format!("启动终端失败: {}", e)))?;
-        
+
         Ok("已打开安装终端".to_string())
     } else {
         // Linux
@@ -882,16 +917,16 @@ openclaw --version
 echo ""
 read -p \"按回车键关闭...\"
 "#;
-        
+
         let script_path = "/tmp/openclaw_install_openclaw.sh";
         std::fs::write(script_path, script_content)
             .map_err(|e| AppError::io(format!("创建脚本失败: {}", e)))?;
-        
+
         std::process::Command::new("chmod")
             .args(["+x", script_path])
             .output()
             .map_err(|e| AppError::process(format!("设置权限失败: {}", e)))?;
-        
+
         // 尝试不同的终端
         let terminals = ["gnome-terminal", "xfce4-terminal", "konsole", "xterm"];
         for term in terminals {
@@ -903,8 +938,10 @@ read -p \"按回车键关闭...\"
                 return Ok("已打开安装终端".to_string());
             }
         }
-        
-        Err(AppError::process("无法启动终端，请手动运行: npm install -g openclaw"))
+
+        Err(AppError::process(
+            "无法启动终端，请手动运行: npm install -g openclaw",
+        ))
     }
 }
 
@@ -914,30 +951,30 @@ pub async fn uninstall_openclaw() -> AppResult<InstallResult> {
     info!("[卸载OpenClaw] 开始卸载 OpenClaw...");
     let os = platform::get_os();
     info!("[卸载OpenClaw] 检测到操作系统: {}", os);
-    
+
     // 先停止服务
     info!("[卸载OpenClaw] 尝试停止服务...");
     let _ = shell::run_openclaw(&["gateway", "stop"]);
     // 异步等待服务停止完成，避免阻塞 tokio 线程池
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    
+
     let result = match os.as_str() {
         "windows" => {
             info!("[卸载OpenClaw] 使用 Windows 卸载方式...");
             uninstall_openclaw_windows().await
-        },
+        }
         _ => {
             info!("[卸载OpenClaw] 使用 Unix 卸载方式 (npm)...");
             uninstall_openclaw_unix().await
-        },
+        }
     };
-    
+
     match &result {
         Ok(r) if r.success => info!("[卸载OpenClaw] ✓ 卸载成功"),
         Ok(r) => warn!("[卸载OpenClaw] ✗ 卸载失败: {}", r.message),
         Err(e) => error!("[卸载OpenClaw] ✗ 卸载错误: {}", e),
     }
-    
+
     result
 }
 
@@ -945,11 +982,11 @@ pub async fn uninstall_openclaw() -> AppResult<InstallResult> {
 async fn uninstall_openclaw_windows() -> AppResult<InstallResult> {
     // 使用 cmd.exe 执行 npm uninstall，避免 PowerShell 执行策略问题
     info!("[卸载OpenClaw] 执行 npm uninstall -g openclaw...");
-    
+
     match shell::run_cmd_output("npm uninstall -g openclaw") {
         Ok(output) => {
             info!("[卸载OpenClaw] npm 输出: {}", output);
-            
+
             // 验证卸载是否成功
             // 异步等待卸载完成后再验证，避免阻塞 tokio 线程池
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -993,7 +1030,7 @@ else
     exit 0
 fi
 "#;
-    
+
     match shell::run_bash_output(script) {
         Ok(output) => Ok(InstallResult {
             success: true,
@@ -1025,11 +1062,11 @@ pub struct UpdateInfo {
 #[command]
 pub async fn check_openclaw_update() -> AppResult<UpdateInfo> {
     info!("[版本检查] 开始检查 OpenClaw 更新...");
-    
+
     // 获取当前版本
     let current_version = get_openclaw_version();
     info!("[版本检查] 当前版本: {:?}", current_version);
-    
+
     if current_version.is_none() {
         info!("[版本检查] OpenClaw 未安装");
         return Ok(UpdateInfo {
@@ -1039,11 +1076,11 @@ pub async fn check_openclaw_update() -> AppResult<UpdateInfo> {
             error: Some("OpenClaw 未安装".to_string()),
         });
     }
-    
+
     // 获取最新版本
     let latest_version = get_latest_openclaw_version();
     info!("[版本检查] 最新版本: {:?}", latest_version);
-    
+
     if latest_version.is_none() {
         return Ok(UpdateInfo {
             update_available: false,
@@ -1052,14 +1089,14 @@ pub async fn check_openclaw_update() -> AppResult<UpdateInfo> {
             error: Some("无法获取最新版本信息".to_string()),
         });
     }
-    
+
     // 比较版本（经过前面的 None 检查，此处理论上不会是 None，但用 unwrap_or_default 兜底）
     let current = current_version.clone().unwrap_or_default();
     let latest = latest_version.clone().unwrap_or_default();
     let update_available = compare_versions(&current, &latest);
-    
+
     info!("[版本检查] 是否有更新: {}", update_available);
-    
+
     Ok(UpdateInfo {
         update_available,
         current_version,
@@ -1076,7 +1113,7 @@ fn get_latest_openclaw_version() -> Option<String> {
     } else {
         shell::run_bash_output("npm view openclaw version 2>/dev/null")
     };
-    
+
     match result {
         Ok(version) => {
             let v = version.trim().to_string();
@@ -1100,17 +1137,11 @@ fn compare_versions(current: &str, latest: &str) -> bool {
     // 移除可能的 'v' 前缀和空白
     let current = current.trim().trim_start_matches('v');
     let latest = latest.trim().trim_start_matches('v');
-    
+
     // 分割版本号
-    let current_parts: Vec<u32> = current
-        .split('.')
-        .filter_map(|s| s.parse().ok())
-        .collect();
-    let latest_parts: Vec<u32> = latest
-        .split('.')
-        .filter_map(|s| s.parse().ok())
-        .collect();
-    
+    let current_parts: Vec<u32> = current.split('.').filter_map(|s| s.parse().ok()).collect();
+    let latest_parts: Vec<u32> = latest.split('.').filter_map(|s| s.parse().ok()).collect();
+
     // 比较每个部分
     for i in 0..3 {
         let c = current_parts.get(i).unwrap_or(&0);
@@ -1121,7 +1152,7 @@ fn compare_versions(current: &str, latest: &str) -> bool {
             return false;
         }
     }
-    
+
     false
 }
 
@@ -1130,47 +1161,50 @@ fn compare_versions(current: &str, latest: &str) -> bool {
 pub async fn update_openclaw() -> AppResult<InstallResult> {
     info!("[更新OpenClaw] 开始更新 OpenClaw...");
     let os = platform::get_os();
-    
+
     // 先停止服务
     info!("[更新OpenClaw] 尝试停止服务...");
     let _ = shell::run_openclaw(&["gateway", "stop"]);
     // 异步等待服务停止完成，避免阻塞 tokio 线程池
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    
+
     let result = match os.as_str() {
         "windows" => {
             info!("[更新OpenClaw] 使用 Windows 更新方式...");
             update_openclaw_windows().await
-        },
+        }
         _ => {
             info!("[更新OpenClaw] 使用 Unix 更新方式 (npm)...");
             update_openclaw_unix().await
-        },
+        }
     };
-    
+
     match &result {
         Ok(r) if r.success => info!("[更新OpenClaw] ✓ 更新成功"),
         Ok(r) => warn!("[更新OpenClaw] ✗ 更新失败: {}", r.message),
         Err(e) => error!("[更新OpenClaw] ✗ 更新错误: {}", e),
     }
-    
+
     result
 }
 
 /// Windows 更新 OpenClaw
 async fn update_openclaw_windows() -> AppResult<InstallResult> {
     info!("[更新OpenClaw] 执行 npm install -g openclaw@latest --force...");
-    
+
     match shell::run_cmd_output("npm install -g openclaw@latest --force") {
         Ok(output) => {
             info!("[更新OpenClaw] npm 输出: {}", output);
-            
+
             // 获取新版本
             let new_version = get_openclaw_version();
-            
+
             Ok(InstallResult {
                 success: true,
-                message: format!("OpenClaw 已更新到 {}", new_version.unwrap_or("最新版本".to_string())),
+                message: format!(
+                    "OpenClaw 已更新到 {}",
+                    new_version.unwrap_or("最新版本".to_string())
+                ),
                 error: None,
             })
         }
@@ -1202,7 +1236,8 @@ fi
         })
         .unwrap_or_default();
 
-    let script = format!(r#"
+    let script = format!(
+        r#"
 set -e
 
 echo "更新 OpenClaw..."
@@ -1214,8 +1249,9 @@ hash -r
 
 # 验证更新
 openclaw --version
-"#);
-    
+"#
+    );
+
     match shell::run_bash_output(&script) {
         Ok(output) => {
             let new_version = get_openclaw_version();

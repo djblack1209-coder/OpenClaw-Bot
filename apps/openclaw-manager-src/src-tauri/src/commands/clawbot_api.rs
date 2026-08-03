@@ -2,7 +2,7 @@
 //! Calls the FastAPI server running at localhost:18790
 //! Pattern: thin wrappers that proxy HTTP calls to the Python backend
 
-use crate::models::{AppResult, AppError};
+use crate::models::{AppError, AppResult};
 use serde_json::Value;
 use std::sync::LazyLock;
 use tauri::command;
@@ -33,9 +33,15 @@ fn get_api_token() -> Option<String> {
     // 尝试多个可能的 .env 位置
     let candidates = [
         // 通过 Cargo manifest 目录推断项目根
-        format!("{}/../../../packages/clawbot/config/.env", env!("CARGO_MANIFEST_DIR")),
+        format!(
+            "{}/../../../packages/clawbot/config/.env",
+            env!("CARGO_MANIFEST_DIR")
+        ),
         // 常见路径
-        format!("{}/Desktop/OpenEverything/packages/clawbot/config/.env", home),
+        format!(
+            "{}/Desktop/OpenEverything/packages/clawbot/config/.env",
+            home
+        ),
         format!("{}/.openclaw/config/.env", home),
     ];
     for env_path in &candidates {
@@ -71,7 +77,10 @@ async fn api_get(path: &str) -> AppResult<Value> {
         .map_err(|e| AppError::network(format!("ClawBot API unreachable ({}): {}", url, e)))?;
 
     if !resp.status().is_success() {
-        return Err(AppError::network(format!("ClawBot API error: HTTP {}", resp.status())));
+        return Err(AppError::network(format!(
+            "ClawBot API error: HTTP {}",
+            resp.status()
+        )));
     }
 
     resp.json::<Value>()
@@ -94,7 +103,10 @@ async fn api_post(path: &str, body: Value) -> AppResult<Value> {
         .map_err(|e| AppError::network(format!("ClawBot API unreachable ({}): {}", url, e)))?;
 
     if !resp.status().is_success() {
-        return Err(AppError::network(format!("ClawBot API error: HTTP {}", resp.status())));
+        return Err(AppError::network(format!(
+            "ClawBot API error: HTTP {}",
+            resp.status()
+        )));
     }
 
     resp.json::<Value>()
@@ -117,7 +129,10 @@ async fn api_patch(path: &str, body: Value) -> AppResult<Value> {
         .map_err(|e| AppError::network(format!("ClawBot API unreachable ({}): {}", url, e)))?;
 
     if !resp.status().is_success() {
-        return Err(AppError::network(format!("ClawBot API error: HTTP {}", resp.status())));
+        return Err(AppError::network(format!(
+            "ClawBot API error: HTTP {}",
+            resp.status()
+        )));
     }
 
     resp.json::<Value>()
@@ -245,7 +260,6 @@ pub async fn clawbot_api_social_review_pack(limit: Option<u32>) -> AppResult<Val
     api_get(&format!("/social/review-pack?limit={}", limit)).await
 }
 
-
 /// 从 App 中控更新 Chrome 插件 no-code 运营打法；只改设置摘要，不触发发布/评论
 #[command]
 pub async fn clawbot_api_social_strategy_update(
@@ -322,7 +336,8 @@ pub async fn clawbot_api_social_compose(
     let p = platform.unwrap_or_else(|| "x".to_string());
     let per = persona.unwrap_or_else(|| "default".to_string());
     api_post(
-        &format!("/social/compose?topic={}&platform={}&persona={}",
+        &format!(
+            "/social/compose?topic={}&platform={}&persona={}",
             urlencoding_encode(&topic),
             urlencoding_encode(&p),
             urlencoding_encode(&per),
@@ -333,14 +348,14 @@ pub async fn clawbot_api_social_compose(
 }
 
 #[command]
-pub async fn clawbot_api_social_publish(
-    platform: String,
-    content: String,
-) -> AppResult<Value> {
-    api_post("/social/publish", serde_json::json!({
-        "platform": platform,
-        "content": content,
-    }))
+pub async fn clawbot_api_social_publish(platform: String, content: String) -> AppResult<Value> {
+    api_post(
+        "/social/publish",
+        serde_json::json!({
+            "platform": platform,
+            "content": content,
+        }),
+    )
     .await
 }
 
@@ -348,7 +363,11 @@ pub async fn clawbot_api_social_publish(
 pub async fn clawbot_api_social_research(topic: String, count: Option<u32>) -> AppResult<Value> {
     let c = count.unwrap_or(10);
     api_post(
-        &format!("/social/research?topic={}&count={}", urlencoding_encode(&topic), c),
+        &format!(
+            "/social/research?topic={}&count={}",
+            urlencoding_encode(&topic),
+            c
+        ),
         serde_json::json!({}),
     )
     .await
@@ -388,7 +407,11 @@ pub async fn clawbot_api_autopilot_stop() -> AppResult<Value> {
 
 #[command]
 pub async fn clawbot_api_autopilot_trigger(job_id: String) -> AppResult<Value> {
-    api_post(&format!("/social/autopilot/trigger/{}", urlencoding_encode(&job_id)), serde_json::json!({})).await
+    api_post(
+        &format!("/social/autopilot/trigger/{}", urlencoding_encode(&job_id)),
+        serde_json::json!({}),
+    )
+    .await
 }
 
 // ──── Social Drafts ────
@@ -401,7 +424,11 @@ pub async fn clawbot_api_social_drafts() -> AppResult<Value> {
 #[command]
 pub async fn clawbot_api_social_draft_update(index: u32, text: String) -> AppResult<Value> {
     api_patch(
-        &format!("/social/drafts/{}?text={}", index, urlencoding_encode(&text)),
+        &format!(
+            "/social/drafts/{}?text={}",
+            index,
+            urlencoding_encode(&text)
+        ),
         serde_json::json!({}),
     )
     .await
@@ -451,10 +478,33 @@ pub async fn clawbot_api_social_draft_review(
 }
 
 #[command]
-pub async fn clawbot_api_social_draft_publish(index: u32) -> AppResult<Value> {
+pub async fn clawbot_api_social_draft_final_confirm(
+    index: u32,
+    reviewer: Option<String>,
+) -> AppResult<Value> {
+    let reviewer = reviewer.unwrap_or_else(|| "owner".to_string());
+    api_post(
+        &format!(
+            "/social/drafts/{}/final-confirm?reviewer={}",
+            index,
+            urlencoding_encode(&reviewer),
+        ),
+        serde_json::json!({}),
+    )
+    .await
+}
+
+#[command]
+pub async fn clawbot_api_social_draft_publish(
+    index: u32,
+    confirmation_token: String,
+) -> AppResult<Value> {
+    if confirmation_token.trim().is_empty() {
+        return Err(AppError::validation("发布草稿需要一次性最终确认令牌"));
+    }
     api_post(
         &format!("/social/drafts/{}/publish", index),
-        serde_json::json!({}),
+        serde_json::json!({ "confirmation_token": confirmation_token }),
     )
     .await
 }
@@ -463,7 +513,14 @@ pub async fn clawbot_api_social_draft_publish(index: u32) -> AppResult<Value> {
 
 #[command]
 pub async fn clawbot_api_generate_image(prompt: String) -> AppResult<Value> {
-    api_post(&format!("/social/generate-image?prompt={}", urlencoding_encode(&prompt)), serde_json::json!({})).await
+    api_post(
+        &format!(
+            "/social/generate-image?prompt={}",
+            urlencoding_encode(&prompt)
+        ),
+        serde_json::json!({}),
+    )
+    .await
 }
 
 #[command]
@@ -476,10 +533,15 @@ pub async fn clawbot_api_generate_persona_photo(
     let s = scenario.unwrap_or_else(|| "working in a cafe".to_string());
     let m = mood.unwrap_or_else(|| "natural".to_string());
     api_post(
-        &format!("/social/generate-persona-photo?persona={}&scenario={}&mood={}",
-            urlencoding_encode(&p), urlencoding_encode(&s), urlencoding_encode(&m)),
+        &format!(
+            "/social/generate-persona-photo?persona={}&scenario={}&mood={}",
+            urlencoding_encode(&p),
+            urlencoding_encode(&s),
+            urlencoding_encode(&m)
+        ),
         serde_json::json!({}),
-    ).await
+    )
+    .await
 }
 
 // ──── Memory ────
@@ -519,7 +581,11 @@ pub async fn clawbot_api_memory_delete(key: String) -> AppResult<Value> {
 /// 更新指定记忆条目
 #[command]
 pub async fn clawbot_api_memory_update(key: String, value: String) -> AppResult<Value> {
-    api_post("/memory/update", serde_json::json!({ "key": key, "value": value })).await
+    api_post(
+        "/memory/update",
+        serde_json::json!({ "key": key, "value": value }),
+    )
+    .await
 }
 
 // ──── API Pool ────
@@ -537,7 +603,10 @@ pub async fn clawbot_api_evolution_scan() -> AppResult<Value> {
 }
 
 #[command]
-pub async fn clawbot_api_evolution_proposals(status: Option<String>, limit: Option<u32>) -> AppResult<Value> {
+pub async fn clawbot_api_evolution_proposals(
+    status: Option<String>,
+    limit: Option<u32>,
+) -> AppResult<Value> {
     let mut url = format!("/evolution/proposals?limit={}", limit.unwrap_or(50));
     if let Some(s) = status {
         url.push_str(&format!("&status={}", urlencoding_encode(&s)));
@@ -556,11 +625,15 @@ pub async fn clawbot_api_evolution_stats() -> AppResult<Value> {
 }
 
 #[command]
-pub async fn clawbot_api_evolution_update_proposal(proposal_id: String, status: String) -> AppResult<Value> {
+pub async fn clawbot_api_evolution_update_proposal(
+    proposal_id: String,
+    status: String,
+) -> AppResult<Value> {
     api_patch(
         &format!("/evolution/proposals/{}", urlencoding_encode(&proposal_id)),
         serde_json::json!({"status": status}),
-    ).await
+    )
+    .await
 }
 
 // ──── Shopping (比价引擎) ────
@@ -619,7 +692,10 @@ pub async fn clawbot_api_omega_cost() -> AppResult<Value> {
 
 /// OMEGA 事件历史
 #[command]
-pub async fn clawbot_api_omega_events(event_type: Option<String>, limit: Option<u32>) -> AppResult<Value> {
+pub async fn clawbot_api_omega_events(
+    event_type: Option<String>,
+    limit: Option<u32>,
+) -> AppResult<Value> {
     let et = event_type.unwrap_or_default();
     let l = limit.unwrap_or(50);
     api_get(&format!("/omega/events?event_type={}&limit={}", et, l)).await
@@ -642,7 +718,10 @@ pub async fn clawbot_api_omega_tasks() -> AppResult<Value> {
 #[command]
 pub async fn clawbot_api_omega_process(message: String) -> AppResult<Value> {
     api_post(
-        &format!("/omega/process?message={}&source=tauri", urlencoding_encode(&message)),
+        &format!(
+            "/omega/process?message={}&source=tauri",
+            urlencoding_encode(&message)
+        ),
         serde_json::json!({}),
     )
     .await
@@ -656,10 +735,17 @@ pub async fn clawbot_api_omega_investment_team() -> AppResult<Value> {
 
 /// OMEGA 投资分析
 #[command]
-pub async fn clawbot_api_omega_investment_analyze(symbol: String, market: Option<String>) -> AppResult<Value> {
+pub async fn clawbot_api_omega_investment_analyze(
+    symbol: String,
+    market: Option<String>,
+) -> AppResult<Value> {
     let m = market.unwrap_or_else(|| "cn".to_string());
     api_post(
-        &format!("/omega/investment/analyze?symbol={}&market={}", urlencoding_encode(&symbol), m),
+        &format!(
+            "/omega/investment/analyze?symbol={}&market={}",
+            urlencoding_encode(&symbol),
+            m
+        ),
         serde_json::json!({}),
     )
     .await
@@ -667,10 +753,17 @@ pub async fn clawbot_api_omega_investment_analyze(symbol: String, market: Option
 
 /// OMEGA AI 图像生成
 #[command]
-pub async fn clawbot_api_omega_generate_image(prompt: String, model: Option<String>) -> AppResult<Value> {
+pub async fn clawbot_api_omega_generate_image(
+    prompt: String,
+    model: Option<String>,
+) -> AppResult<Value> {
     let m = model.unwrap_or_else(|| "fal-ai/flux/schnell".to_string());
     api_post(
-        &format!("/omega/tools/generate-image?prompt={}&model={}", urlencoding_encode(&prompt), urlencoding_encode(&m)),
+        &format!(
+            "/omega/tools/generate-image?prompt={}&model={}",
+            urlencoding_encode(&prompt),
+            urlencoding_encode(&m)
+        ),
         serde_json::json!({}),
     )
     .await
@@ -680,7 +773,10 @@ pub async fn clawbot_api_omega_generate_image(prompt: String, model: Option<Stri
 #[command]
 pub async fn clawbot_api_omega_generate_video(prompt: String) -> AppResult<Value> {
     api_post(
-        &format!("/omega/tools/generate-video?prompt={}", urlencoding_encode(&prompt)),
+        &format!(
+            "/omega/tools/generate-video?prompt={}",
+            urlencoding_encode(&prompt)
+        ),
         serde_json::json!({}),
     )
     .await

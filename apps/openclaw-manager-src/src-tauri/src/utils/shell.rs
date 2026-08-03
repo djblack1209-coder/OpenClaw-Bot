@@ -16,11 +16,32 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 /// 命令白名单 — 只有列表中的可执行程序才允许被 spawn
 /// 安全加固: 防止任意命令注入，所有 shell 调用必须经过白名单校验
 const ALLOWED_COMMANDS: &[&str] = &[
-    "lsof", "netstat", "kill", "taskkill", "tail",
-    "launchctl", "bash", "pgrep", "open", "xdg-open",
-    "cmd", "openclaw", "node", "npx", "npm",
-    "python3", "pip3", "chmod", "uname", "sw_vers",
-    "sysctl", "id", "which", "where", "nohup",
+    "lsof",
+    "netstat",
+    "kill",
+    "taskkill",
+    "tail",
+    "launchctl",
+    "bash",
+    "pgrep",
+    "open",
+    "xdg-open",
+    "cmd",
+    "openclaw",
+    "node",
+    "npx",
+    "npm",
+    "python3",
+    "pip3",
+    "chmod",
+    "uname",
+    "sw_vers",
+    "sysctl",
+    "id",
+    "which",
+    "where",
+    "nohup",
+    "ps",
     "powershell",
 ];
 
@@ -143,6 +164,205 @@ pub fn run_command_output(cmd: &str, args: &[&str]) -> Result<String, String> {
             }
         }
         Err(e) => Err(e.to_string()),
+    }
+}
+
+/// 读取指定 PID 的完整命令行，用于停止服务前核验进程身份。
+pub fn get_process_command_line(pid: u32) -> io::Result<String> {
+    if pid <= 1 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "拒绝查询系统关键 PID",
+        ));
+    }
+
+    #[cfg(unix)]
+    let output = {
+        validate_command("ps")
+            .map_err(|e| io::Error::new(io::ErrorKind::PermissionDenied, e.message))?;
+        Command::new("ps")
+            .args(["-p", &pid.to_string(), "-o", "command="])
+            .output()?
+    };
+
+    #[cfg(windows)]
+    let output = {
+        validate_command("powershell")
+            .map_err(|e| io::Error::new(io::ErrorKind::PermissionDenied, e.message))?;
+        let query = format!(
+            "(Get-CimInstance Win32_Process -Filter 'ProcessId = {}').CommandLine",
+            pid
+        );
+        let mut command = Command::new("powershell");
+        command
+            .args(["-NoProfile", "-NonInteractive", "-Command", &query])
+            .creation_flags(CREATE_NO_WINDOW);
+        command.output()?
+    };
+
+    if !output.status.success() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("无法读取 PID {} 的进程信息", pid),
+        ));
+    }
+    let command_line = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if command_line.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("PID {} 不存在或命令行不可读", pid),
+        ));
+    }
+    Ok(command_line)
+}
+
+/// 向已经完成身份核验的进程发送终止信号。
+pub fn signal_process(pid: u32, force: bool) -> io::Result<()> {
+    if pid <= 1 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "拒绝终止系统关键 PID",
+        ));
+    }
+
+    #[cfg(unix)]
+    let output = {
+        validate_command("kill")
+            .map_err(|e| io::Error::new(io::ErrorKind::PermissionDenied, e.message))?;
+        let signal = if force { "-KILL" } else { "-TERM" };
+        Command::new("kill")
+            .args([signal, &pid.to_string()])
+            .output()?
+    };
+
+    #[cfg(windows)]
+    let output = {
+        validate_command("taskkill")
+            .map_err(|e| io::Error::new(io::ErrorKind::PermissionDenied, e.message))?;
+        let mut command = Command::new("taskkill");
+        if force {
+            command.args(["/F", "/T", "/PID", &pid.to_string()]);
+        } else {
+            command.args(["/T", "/PID", &pid.to_string()]);
+        }
+        command.creation_flags(CREATE_NO_WINDOW);
+        command.output()?
+    };
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::Other,
+            String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        ))
+    }
+}
+
+/// 终止由管理器创建的独立进程组；调用前必须核验组长身份。
+pub fn signal_process_group(process_group_id: u32, force: bool) -> io::Result<()> {
+    if process_group_id <= 1 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "拒绝终止系统关键进程组",
+        ));
+    }
+
+    #[cfg(unix)]
+    let output = {
+        validate_command("kill")
+            .map_err(|e| io::Error::new(io::ErrorKind::PermissionDenied, e.message))?;
+        let signal = if force { "-KILL" } else { "-TERM" };
+        Command::new("kill")
+            .args([signal, &format!("-{}", process_group_id)])
+            .output()?
+    };
+
+    #[cfg(windows)]
+    let output = {
+        validate_command("taskkill")
+            .map_err(|e| io::Error::new(io::ErrorKind::PermissionDenied, e.message))?;
+        let mut command = Command::new("taskkill");
+        if force {
+            command.args(["/F", "/T", "/PID", &process_group_id.to_string()]);
+        } else {
+            command.args(["/T", "/PID", &process_group_id.to_string()]);
+        }
+        command.creation_flags(CREATE_NO_WINDOW);
+        command.output()?
+    };
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::Other,
+            String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        ))
+    }
+}
+
+/// 检查管理器进程组是否仍有成员存活。
+pub fn process_group_is_running(process_group_id: u32) -> bool {
+    if process_group_id <= 1 {
+        return false;
+    }
+
+    #[cfg(unix)]
+    {
+        if validate_command("kill").is_err() {
+            return false;
+        }
+        return Command::new("kill")
+            .args(["-0", &format!("-{}", process_group_id)])
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false);
+    }
+
+    #[cfg(windows)]
+    {
+        get_process_command_line(process_group_id).is_ok()
+    }
+}
+
+fn gateway_pid_file_path() -> String {
+    format!("{}/manager-pids/gateway.pid", platform::get_config_dir())
+}
+
+/// 读取由管理器直接启动并登记的 Gateway PID。
+pub fn read_managed_gateway_pid() -> io::Result<Option<u32>> {
+    let path = gateway_pid_file_path();
+    if !std::path::Path::new(&path).exists() {
+        return Ok(None);
+    }
+    let raw = file::read_file(&path)?;
+    let pid = raw
+        .trim()
+        .parse::<u32>()
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Gateway PID 记录格式无效"))?;
+    if pid <= 1 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Gateway PID 记录不安全",
+        ));
+    }
+    Ok(Some(pid))
+}
+
+/// 清除管理器拥有的 Gateway PID 记录。
+pub fn clear_managed_gateway_pid() -> io::Result<()> {
+    let path = gateway_pid_file_path();
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+fn clear_managed_gateway_pid_if_matches(pid: u32) {
+    if matches!(read_managed_gateway_pid(), Ok(Some(recorded_pid)) if recorded_pid == pid) {
+        let _ = clear_managed_gateway_pid();
     }
 }
 
@@ -336,14 +556,6 @@ fn get_unix_openclaw_paths() -> Vec<String> {
     if let Some(home) = dirs::home_dir() {
         let home_str = home.display().to_string();
 
-        // 项目本地 openclaw-cli（最高优先级），优先从环境变量获取项目路径
-        let project_dir = std::env::var("OPENCLAW_PROJECT_DIR")
-            .unwrap_or_else(|_| format!("{}/Desktop/OpenEverything", home_str));
-        let local_cli = format!("{}/apps/openclaw-cli", project_dir);
-        if std::path::Path::new(&local_cli).exists() {
-            paths.insert(0, local_cli);
-        }
-
         // npm 全局安装到用户目录
         paths.push(format!("{}/.npm-global/bin/openclaw", home_str));
 
@@ -430,6 +642,9 @@ pub fn run_openclaw(args: &[&str]) -> Result<String, String> {
     // 获取扩展的 PATH，确保能找到 node
     let extended_path = get_extended_path();
     debug!("[Shell] 扩展 PATH: {}", extended_path);
+    let gateway_token = crate::commands::config::get_gateway_token_env_override()
+        .map_err(|e| format!("准备 Gateway Token 失败: {}", e.message))?;
+    let user_env_vars = load_openclaw_env_vars();
 
     let output = if openclaw_path.ends_with(".cmd") {
         // Windows: .cmd 文件需要通过 cmd /c 执行
@@ -437,8 +652,9 @@ pub fn run_openclaw(args: &[&str]) -> Result<String, String> {
         cmd_args.extend(args);
         let mut cmd = Command::new("cmd");
         cmd.args(&cmd_args)
-            .env("OPENCLAW_GATEWAY_TOKEN", DEFAULT_GATEWAY_TOKEN)
-            .env("PATH", &extended_path);
+            .env("PATH", &extended_path)
+            .envs(&user_env_vars);
+        apply_gateway_token_env(&mut cmd, &gateway_token);
 
         #[cfg(windows)]
         cmd.creation_flags(CREATE_NO_WINDOW);
@@ -447,8 +663,9 @@ pub fn run_openclaw(args: &[&str]) -> Result<String, String> {
     } else {
         let mut cmd = Command::new(&openclaw_path);
         cmd.args(args)
-            .env("OPENCLAW_GATEWAY_TOKEN", DEFAULT_GATEWAY_TOKEN)
-            .env("PATH", &extended_path);
+            .env("PATH", &extended_path)
+            .envs(&user_env_vars);
+        apply_gateway_token_env(&mut cmd, &gateway_token);
 
         #[cfg(windows)]
         cmd.creation_flags(CREATE_NO_WINDOW);
@@ -476,8 +693,20 @@ pub fn run_openclaw(args: &[&str]) -> Result<String, String> {
     }
 }
 
-/// 默认的 Gateway Token
-pub const DEFAULT_GATEWAY_TOKEN: &str = "openclaw-manager-local-token";
+fn apply_gateway_token_env(
+    command: &mut Command,
+    gateway_token: &crate::commands::config::GatewayTokenEnv,
+) {
+    match gateway_token {
+        crate::commands::config::GatewayTokenEnv::Override(token) => {
+            command.env("OPENCLAW_GATEWAY_TOKEN", token);
+        }
+        crate::commands::config::GatewayTokenEnv::RemoveOverride => {
+            command.env_remove("OPENCLAW_GATEWAY_TOKEN");
+        }
+        crate::commands::config::GatewayTokenEnv::Inherit => {}
+    }
+}
 
 /// 从 ~/.openclaw/env 文件读取所有环境变量
 /// 与 shell 脚本 `source ~/.openclaw/env` 行为一致
@@ -487,18 +716,8 @@ fn load_openclaw_env_vars() -> HashMap<String, String> {
 
     if let Ok(content) = file::read_file(&env_path) {
         for line in content.lines() {
-            let line = line.trim();
-            // 跳过注释和空行
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
-            // 解析 export KEY=VALUE 或 KEY=VALUE 格式
-            let line = line.strip_prefix("export ").unwrap_or(line);
-            if let Some((key, value)) = line.split_once('=') {
-                let key = key.trim();
-                // 去除值周围的引号
-                let value = value.trim().trim_matches('"').trim_matches('\'');
-                env_vars.insert(key.to_string(), value.to_string());
+            if let Some((key, value)) = file::parse_env_assignment(line) {
+                env_vars.insert(key, value);
             }
         }
     }
@@ -508,7 +727,7 @@ fn load_openclaw_env_vars() -> HashMap<String, String> {
 
 /// 后台启动 openclaw gateway
 /// 与 shell 脚本行为一致：先加载 env 文件，再启动 gateway
-pub fn spawn_openclaw_gateway() -> io::Result<()> {
+pub fn spawn_openclaw_gateway() -> io::Result<u32> {
     info!("[Shell] 后台启动 openclaw gateway...");
 
     let openclaw_path = get_openclaw_path().ok_or_else(|| {
@@ -532,9 +751,10 @@ pub fn spawn_openclaw_gateway() -> io::Result<()> {
     // 获取扩展的 PATH，确保能找到 node
     let extended_path = get_extended_path();
     info!("[Shell] 扩展 PATH: {}", extended_path);
+    let gateway_token = crate::commands::config::ensure_gateway_token_env_override()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.message))?;
 
-    // Windows 上 .cmd 文件需要通过 cmd /c 来执行
-    // 设置环境变量 OPENCLAW_GATEWAY_TOKEN，这样所有子命令都能自动使用
+    // Windows 上 .cmd 文件需要通过 cmd /c 来执行。
     let mut cmd = if openclaw_path.ends_with(".cmd") {
         info!("[Shell] Windows 模式: 使用 cmd /c 执行");
         let mut c = Command::new("cmd");
@@ -552,9 +772,9 @@ pub fn spawn_openclaw_gateway() -> io::Result<()> {
         cmd.env(key, value);
     }
 
-    // 设置 PATH 和 gateway token
+    // 明文配置注入统一 Token；SecretRef 模式必须让 OpenClaw 官方运行时自行解析。
     cmd.env("PATH", &extended_path);
-    cmd.env("OPENCLAW_GATEWAY_TOKEN", DEFAULT_GATEWAY_TOKEN);
+    apply_gateway_token_env(&mut cmd, &gateway_token);
 
     // Windows: 隐藏控制台窗口
     #[cfg(windows)]
@@ -591,9 +811,22 @@ pub fn spawn_openclaw_gateway() -> io::Result<()> {
     let child = cmd.spawn();
 
     match child {
-        Ok(c) => {
-            info!("[Shell] ✓ Gateway 进程已启动, PID: {}", c.id());
-            Ok(())
+        Ok(mut child) => {
+            let pid = child.id();
+            if let Err(error) = file::write_file(&gateway_pid_file_path(), &pid.to_string()) {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(io::Error::new(
+                    error.kind(),
+                    format!("Gateway 已启动但 PID 登记失败，进程已终止: {}", error),
+                ));
+            }
+            std::thread::spawn(move || {
+                let _ = child.wait();
+                clear_managed_gateway_pid_if_matches(pid);
+            });
+            info!("[Shell] ✓ Gateway 进程已启动并登记所有权, PID: {}", pid);
+            Ok(pid)
         }
         Err(e) => {
             warn!("[Shell] ✗ Gateway 启动失败: {}", e);

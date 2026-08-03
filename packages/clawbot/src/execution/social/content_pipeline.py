@@ -294,7 +294,7 @@ async def autopost_topic_content(
     save_draft_fn=None,
     worker_fn=None,
 ) -> dict:
-    """按话题自动发布社媒内容 — 通过适配器统一分发"""
+    """按话题生成待审社媒内容，不执行外部发布。"""
     try:
         package = await create_topic_social_package(
             platform=platform, topic=topic,
@@ -319,16 +319,17 @@ async def autopost_topic_content(
             if adapter:
                 target_adapters = {adapter.platform_id: adapter}
 
-        for pid, adapter in target_adapters.items():
+        for pid in target_adapters:
             pkg_data = pkg_results.get(pid)
             if not pkg_data:
                 continue
             if worker_fn:
                 render = worker_fn("render", {"topic": topic, "platform": pid})
-                body = pkg_data.get("body", "")
-                title = pkg_data.get("title", "")
-                payload = adapter.build_worker_payload(body, title)
-                published = worker_fn(adapter.worker_action, payload)
+                published = {
+                    "success": False,
+                    "requires_owner_review": True,
+                    "requires_final_confirmation": True,
+                }
                 results[pid] = {**pkg_data, "rendered": render, "published": published}
             else:
                 results[pid] = pkg_data
@@ -346,7 +347,7 @@ async def autopost_hot_content(
     save_draft_fn=None,
     worker_fn=None,
 ) -> dict:
-    """自动发布热门内容"""
+    """生成热门内容待审草稿，不执行外部发布。"""
     if not discover_fn:
         return {"success": False, "error": "discover_fn not provided"}
 
@@ -397,14 +398,17 @@ async def autopost_hot_content(
         if adapter:
             target_adapters = {adapter.platform_id: adapter}
 
-    for pid, adapter in target_adapters.items():
+    for pid in target_adapters:
         content_data = platform_content.get(pid, {})
         body = content_data.get("body", "")
         title = content_data.get("title", "")
         draft = save_draft_fn(pid, title, body, topic=hot_topic) if save_draft_fn else {}
         rendered = worker_fn("render", {"topic": hot_topic, "platform": pid}) if worker_fn else {}
-        payload = adapter.build_worker_payload(body, title)
-        published = worker_fn(adapter.worker_action, payload) if worker_fn else {}
+        published = {
+            "success": False,
+            "requires_owner_review": True,
+            "requires_final_confirmation": True,
+        }
         results[pid] = {
             "body": body,
             "title": title,

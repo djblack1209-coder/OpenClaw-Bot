@@ -1,13 +1,13 @@
-import { spawnSync } from 'node:child_process';
-
 import { modelMatchesGroup, normalizeBaseUrl, normalizeClientAvailableModels, normalizeModelGroup } from '../src/core.js';
 
-const DEFAULT_QUOTA_PER_CNY = 100;
+const DEFAULT_QUOTA_PER_CNY = 500_000;
 const DEFAULT_USD_TO_CNY = 7.2;
 const TOKEN_STATUS_ENABLED = 1;
 const TOKEN_STATUS_DISABLED = 2;
 const TOKEN_STATUS_EXHAUSTED = 4;
 const PAGE_SIZE = 100;
+const MAX_TOKEN_PAGES = 100;
+const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 
 export function createNewApiBridge(options = {}) {
   const config = normalizeBridgeConfig(options);
@@ -20,8 +20,26 @@ export function createNewApiBridge(options = {}) {
     throw new Error('New-API 适配器需要 fetch 支持');
   }
 
+  async function fetchWithTimeout(url, fetchOptions = {}) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), config.requestTimeoutMs);
+    try {
+      return await fetchImpl(url, {
+        ...fetchOptions,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw publicBridgeError(504, 'New-API 请求超时，请稍后重试');
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   async function request(path, requestOptions = {}) {
-    const response = await fetchImpl(`${config.baseUrl}${path}`, {
+    const response = await fetchWithTimeout(`${config.baseUrl}${path}`, {
       method: requestOptions.method || 'GET',
       headers: {
         Accept: 'application/json',
@@ -44,44 +62,56 @@ export function createNewApiBridge(options = {}) {
     return payload;
   }
 
+  async function listAllTokens() {
+    const tokensById = new Map();
+    for (let page = 1; page <= MAX_TOKEN_PAGES; page += 1) {
+      const rows = unwrapArray(await request(`/api/token/?p=${page}&size=${PAGE_SIZE}`));
+      for (const token of rows) {
+        const tokenId = String(token.id || '').trim();
+        if (!tokenId) {
+          throw publicBridgeError(502, 'New-API 返回了缺少 ID 的 Token，已拒绝继续');
+        }
+        tokensById.set(tokenId, token);
+      }
+      if (rows.length < PAGE_SIZE) {
+        return [...tokensById.values()];
+      }
+    }
+    // 无法证明已经读到完整清单时，不能把未知历史 Token 误认成新客户资产。
+    throw publicBridgeError(503, 'New-API Token 数量超过安全扫描上限，已拒绝创建新 Key');
+  }
+
   return {
     config,
     async buildDashboard(localData, user, serverOptions) {
-      const [self, tokens, usage, stats, quotaData, subscriptions, topupInfo, affiliate] = await Promise.allSettled([
-        request('/api/user/self'),
-        request(`/api/token/?p=1&size=${PAGE_SIZE}`),
+      // Token 清单决定客户资产视图，读取失败时必须显式报错，不能伪装成空账户。
+      const tokenRows = (await listAllTokens()).filter((token) =>
+        bridgeTokenOwnedBy(localData, user.id, token.id),
+      );
+      const [usage, topupInfo] = await Promise.allSettled([
         request(`/api/log/self?p=1&size=${PAGE_SIZE}`),
-        request('/api/log/self/stat'),
-        request('/api/data/self'),
-        request('/api/subscription/self'),
         request('/api/user/topup/info'),
-        request('/api/user/aff'),
       ]);
-      const tokenRows = unwrapArray(settledValue(tokens));
-      const usageRows = unwrapArray(settledValue(usage));
-      const statPayload = settledValue(stats);
-      const quotaRows = unwrapArray(settledValue(quotaData));
+      const usageRows = filterBridgeUsageRows(unwrapArray(settledValue(usage)), tokenRows);
       const safeUser = {
         ...user,
-        newApiUserId: config.userId,
         newApiMode: true,
       };
       return {
         authenticated: true,
-        account: accountFromNewApi(settledValue(self), usageRows, statPayload, quotaRows),
-        user: sanitizeBridgeUser(safeUser, settledValue(self)),
+        account: accountFromBridgeTokens(safeUser, tokenRows, usageRows),
+        user: sanitizeBridgeUser(safeUser, {}),
         balanceAlert: sanitizeLocalBalanceAlert(user),
-        apiKeys: tokenRows.map((token) => sanitizeBridgeToken(token, { revealSecret: true })),
+        apiKeys: tokenRows.map((token) => sanitizeBridgeToken(token)),
         modelUsage: buildBridgeModelUsage(usageRows),
         channelChecks: [],
         modelCatalog: [],
         rechargeOptions: buildBridgeRechargeOptions(localData, settledValue(topupInfo)),
         usageRecords: buildBridgeUsageRecords(usageRows),
-        usageAnomalies: buildBridgeUsageAnomalies(usageRows, settledValue(self)),
-        recentLogs: buildBridgeRecentLogs(usageRows, {
-          subscriptions: settledValue(subscriptions),
-          affiliate: settledValue(affiliate),
+        usageAnomalies: buildBridgeUsageAnomalies(usageRows, {
+          quota: sum(tokenRows, (token) => numberFromAny(token.remain_quota ?? token.remaining_quota)),
         }),
+        recentLogs: buildBridgeRecentLogs(usageRows),
       };
     },
     async syncUpstreamBalance() {
@@ -101,15 +131,74 @@ export function createNewApiBridge(options = {}) {
         remainingUsd: moneyNumber(remainingQuota),
       };
     },
-    async createToken(body) {
+    async createToken(body, createOptions = {}) {
+      const beforeTokens = await listAllTokens();
+      const beforeIds = new Set(beforeTokens.map((token) => String(token.id || '')).filter(Boolean));
       const modelInventory = await fetchNewApiModelInventory(request);
-      const tokenPayload = tokenCreatePayload(body, config, modelInventory);
-      await request('/api/token/', { method: 'POST', body: tokenPayload });
-      const tokens = unwrapArray(await request(`/api/token/search?keyword=${encodeURIComponent(tokenPayload.name)}&p=1&size=10`));
-      const created = tokens.find((token) => String(token.name || '') === tokenPayload.name) || tokens[0] || tokenPayload;
+      const tokenPayload = tokenCreatePayload(body, config, modelInventory, createOptions);
+      const createResult = unwrapObject(await request('/api/token/', { method: 'POST', body: tokenPayload }));
+      const returnedId = String(createResult.id || '');
+      if (returnedId && beforeIds.has(returnedId)) {
+        throw publicBridgeError(502, 'New-API 返回了已存在的 Token ID，已拒绝覆盖客户归属');
+      }
+      let created = null;
+      if (returnedId) {
+        const persisted = unwrapObject(await request(`/api/token/${encodeURIComponent(returnedId)}`));
+        if (String(persisted.id || '') !== returnedId || String(persisted.name || '') !== tokenPayload.name) {
+          throw publicBridgeError(502, 'New-API 新 Key 校验失败，已拒绝建立客户归属');
+        }
+        assertTokenQuota(persisted, tokenPayload.remain_quota);
+        created = persisted;
+      } else {
+        const afterTokens = await listAllTokens();
+        const candidates = afterTokens.filter(
+          (token) => String(token.name || '') === tokenPayload.name && !beforeIds.has(String(token.id || '')),
+        );
+        if (candidates.length !== 1) {
+          throw publicBridgeError(502, 'New-API 未返回可唯一识别的新 Key，已拒绝建立错误归属');
+        }
+        [created] = candidates;
+        assertTokenQuota(created, tokenPayload.remain_quota);
+      }
       const keyPayload = created.id ? await request(`/api/token/${encodeURIComponent(created.id)}/key`, { method: 'POST' }) : {};
       const key = unwrapObject(keyPayload).key || created.key || '';
+      if (!created.id || !key) {
+        throw publicBridgeError(502, 'New-API 未返回完整的新 Key');
+      }
       return { key: sanitizeBridgeToken({ ...created, key }, { revealSecret: true }) };
+    },
+    async activateTokenQuota(keyId, quotaUnits) {
+      const safeQuota = Number(quotaUnits);
+      if (!Number.isSafeInteger(safeQuota) || safeQuota <= 0) {
+        throw publicBridgeError(503, 'New-API Key 激活额度无效');
+      }
+      const current = unwrapObject(await request(`/api/token/${encodeURIComponent(keyId)}`));
+      if (String(current.id || '') !== String(keyId)) {
+        throw publicBridgeError(502, 'New-API Key 激活前 ID 校验失败');
+      }
+      const patch = {
+        ...current,
+        id: Number(current.id),
+        name: String(current.name || '').trim().slice(0, 50),
+        expired_time: normalizeExpiredTime(current.expired_time),
+        remain_quota: safeQuota,
+        unlimited_quota: false,
+        model_limits_enabled: Boolean(current.model_limits_enabled),
+        model_limits: current.model_limits || '',
+        allow_ips: current.allow_ips || '',
+        group: current.group || config.defaultGroup,
+        cross_group_retry: Boolean(current.cross_group_retry),
+      };
+      if (!patch.name) {
+        throw publicBridgeError(502, 'New-API Key 激活前名称为空');
+      }
+      await request('/api/token/', { method: 'PUT', body: patch });
+      const latest = unwrapObject(await request(`/api/token/${encodeURIComponent(keyId)}`));
+      if (String(latest.id || '') !== String(keyId)) {
+        throw publicBridgeError(502, 'New-API Key 激活后 ID 校验失败');
+      }
+      assertTokenQuota(latest, safeQuota);
+      return { key: sanitizeBridgeToken(latest) };
     },
     async updateToken(keyId, body) {
       const current = unwrapObject(await request(`/api/token/${encodeURIComponent(keyId)}`));
@@ -125,7 +214,7 @@ export function createNewApiBridge(options = {}) {
           ? (body.enabled ? TOKEN_STATUS_ENABLED : TOKEN_STATUS_DISABLED)
           : Number(current.status || TOKEN_STATUS_ENABLED),
         expired_time: normalizeExpiredTime(current.expired_time),
-        remain_quota: Number(current.remain_quota ?? config.defaultTokenQuota),
+        remain_quota: Number(current.remain_quota ?? cnyCentsToNewApiQuota(config.defaultTokenQuotaCents)),
         unlimited_quota: Boolean(current.unlimited_quota),
         model_limits_enabled: Boolean(current.model_limits_enabled),
         model_limits: current.model_limits || '',
@@ -152,10 +241,32 @@ export function createNewApiBridge(options = {}) {
     async deleteToken(keyId) {
       // New-API 前端删除 Token 使用带尾斜杠的资源路径；无尾斜杠在部分版本不会真正删除。
       await request(`/api/token/${encodeURIComponent(keyId)}/`, { method: 'DELETE' });
-      // 生产内测使用 SQLite 作为 New-API 数据源。New-API 删除接口可能只写 deleted_at 软删除，
-      // 也可能让详情接口查不到但 tokens 表仍残留；这里做一次幂等硬删除，避免 E2E 临时 Key 越积越多。
-      if (config.sqliteDb || await newApiTokenStillExists(request, keyId)) {
-        deleteNewApiTokenFromSqlite(config.sqliteDb, keyId);
+      let remaining;
+      try {
+        remaining = unwrapObject(await request(`/api/token/${encodeURIComponent(keyId)}`));
+      } catch (error) {
+        if ([404, 410].includes(Number(error?.statusCode))) {
+          return { deletedKeyId: String(keyId) };
+        }
+        throw publicBridgeError(502, '无法确认 New-API Key 已删除，已保留本地归属');
+      }
+
+      if (!bridgeTokenIdMatches(remaining, keyId)) {
+        throw publicBridgeError(502, 'New-API 删除复验返回了错误 Key ID，已保留本地归属');
+      }
+      if (!bridgeTokenExplicitlyRevoked(remaining)) {
+        const numericId = Number(remaining.id || keyId);
+        if (!Number.isSafeInteger(numericId) || numericId <= 0) {
+          throw publicBridgeError(502, 'New-API 删除复验返回了无效 Key ID，已保留本地归属');
+        }
+        await request('/api/token/?status_only=true', {
+          method: 'PUT',
+          body: { id: numericId, status: TOKEN_STATUS_DISABLED },
+        });
+        const disabled = unwrapObject(await request(`/api/token/${encodeURIComponent(keyId)}`));
+        if (!bridgeTokenIdMatches(disabled, keyId) || !bridgeTokenExplicitlyRevoked(disabled)) {
+          throw publicBridgeError(502, 'New-API Key 删除后没有明确撤销，已保留本地归属');
+        }
       }
       return { deletedKeyId: String(keyId) };
     },
@@ -165,21 +276,17 @@ export function createNewApiBridge(options = {}) {
         throw publicBridgeError(400, '兑换码不能为空');
       }
       const redeemed = await request('/api/user/topup', { method: 'POST', body: { key: code } });
-      const [self, usage] = await Promise.allSettled([
-        request('/api/user/self'),
-        request(`/api/log/self?p=1&size=${PAGE_SIZE}`),
-      ]);
       return {
-        account: accountFromNewApi(settledValue(self), unwrapArray(settledValue(usage)), {}, []),
-        user: null,
         newApiQuota: unwrapObject(redeemed),
       };
     },
-    async buildImportUrl(requestUrl, buildUrl) {
-      const tokens = unwrapArray(await request(`/api/token/?p=1&size=${PAGE_SIZE}`));
-      const key = tokens.find((token) => tokenEnabled(token.status ?? token.enabled));
-      if (!key) {
-        throw publicBridgeError(409, '没有可用的 API Key');
+    async buildImportUrl(requestUrl, keyId, buildUrl) {
+      if (!keyId) {
+        throw publicBridgeError(400, '请选择要导入的 API Key');
+      }
+      const key = unwrapObject(await request(`/api/token/${encodeURIComponent(keyId)}`));
+      if (!key.id || !tokenEnabled(key.status ?? key.enabled)) {
+        throw publicBridgeError(409, '所选 API Key 不可用');
       }
       const keyPayload = await request(`/api/token/${encodeURIComponent(key.id)}/key`, { method: 'POST' });
       const secret = unwrapObject(keyPayload).key || key.key || '';
@@ -217,20 +324,13 @@ export function createNewApiBridge(options = {}) {
       if (!token) {
         throw publicBridgeError(401, 'API Key 不可用');
       }
-      const [self, usage, stats, quotaData] = await Promise.allSettled([
-        request('/api/user/self'),
+      const [usage] = await Promise.allSettled([
         request(`/api/log/self?p=1&size=${PAGE_SIZE}`),
-        request('/api/log/self/stat'),
-        request('/api/data/self'),
       ]);
-      const account = accountFromNewApi(
-        settledValue(self),
-        unwrapArray(settledValue(usage)),
-        settledValue(stats),
-        unwrapArray(settledValue(quotaData)),
-      );
-      const remainingQuota = numberFromAny(token.remain_quota ?? token.remaining_quota ?? unwrapObject(settledValue(self)).quota);
-      const usedQuota = numberFromAny(token.used_quota ?? token.usedQuota ?? unwrapObject(settledValue(self)).used_quota);
+      const usageRows = filterBridgeUsageRows(unwrapArray(settledValue(usage)), [token]);
+      const account = accountFromBridgeTokens({}, [token], usageRows);
+      const remainingQuota = numberFromAny(token.remain_quota ?? token.remaining_quota);
+      const usedQuota = numberFromAny(token.used_quota ?? token.usedQuota);
       return {
         ok: true,
         valid: true,
@@ -250,7 +350,8 @@ export function createNewApiBridge(options = {}) {
         successRate: account.successRate,
       };
     },
-    async proxyGateway({ request, response, url, bodyText }) {
+    async proxyGateway({ request, response, url, bodyText, localData }) {
+      await requireAuthorizedGatewayToken(request, localData);
       const upstreamRequest = {
         method: request.method,
         headers: filterGatewayHeaders(request.headers),
@@ -258,7 +359,10 @@ export function createNewApiBridge(options = {}) {
       if (!['GET', 'HEAD'].includes(String(request.method || '').toUpperCase())) {
         upstreamRequest.body = bodyText;
       }
-      const upstream = await fetchImpl(`${config.gatewayBaseUrl}${gatewayPath(url.pathname)}`, upstreamRequest);
+      const upstream = await fetchWithTimeout(
+        `${config.gatewayBaseUrl}${gatewayPath(url.pathname)}`,
+        upstreamRequest,
+      );
       response.writeHead(upstream.status, {
         'content-type': upstream.headers.get('content-type') || 'application/json; charset=utf-8',
         'access-control-allow-origin': '*',
@@ -273,6 +377,35 @@ export function createNewApiBridge(options = {}) {
       return true;
     },
   };
+
+  async function requireAuthorizedGatewayToken(clientRequest, localData) {
+    const secret = readBearerToken(clientRequest);
+    if (!secret) {
+      throw publicBridgeError(401, 'API Key 不可用');
+    }
+    const matches = unwrapArray(
+      await request(`/api/token/search?keyword=&token=${encodeURIComponent(secret)}&p=1&size=${PAGE_SIZE}`),
+    ).filter((item) => String(item.key || item.token || '') === secret);
+    if (matches.length !== 1) {
+      throw publicBridgeError(401, 'API Key 不可用');
+    }
+    const tokenId = String(matches[0].id || '').trim();
+    const owner = localData?.newApiTokenOwners?.[tokenId];
+    if (!tokenId || !validGatewayOwner(localData, owner)) {
+      throw publicBridgeError(401, 'API Key 不可用');
+    }
+    const token = unwrapObject(await request(`/api/token/${encodeURIComponent(tokenId)}`));
+    const remainingQuota = numberFromAny(token.remain_quota ?? token.remaining_quota ?? token.quota);
+    if (
+      String(token.id || '') !== tokenId ||
+      !tokenEnabled(token.status ?? token.enabled) ||
+      !tokenExplicitlyFinite(token) ||
+      remainingQuota <= 0
+    ) {
+      throw publicBridgeError(401, 'API Key 不可用');
+    }
+    return token;
+  }
 }
 
 function normalizeBridgeConfig(options) {
@@ -287,6 +420,9 @@ function normalizeBridgeConfig(options) {
     throw new Error('启用 New-API 适配器时必须配置 FRIST_API_NEWAPI_BASE_URL / ACCESS_TOKEN / USER_ID');
   }
   const baseUrl = normalizeBaseUrl(baseUrlInput);
+  const requestTimeoutMs = Number(
+    options.newApiRequestTimeoutMs ?? process.env.FRIST_API_NEWAPI_REQUEST_TIMEOUT_MS ?? DEFAULT_REQUEST_TIMEOUT_MS,
+  );
   return {
     enabled,
     baseUrl,
@@ -294,33 +430,14 @@ function normalizeBridgeConfig(options) {
     accessToken: /^Bearer\s+/i.test(accessToken) ? accessToken : `Bearer ${accessToken}`,
     userId,
     sqliteDb: String(options.newApiSqliteDb || process.env.FRIST_API_NEWAPI_SQLITE_DB || '').trim(),
-    defaultTokenQuota: Number(options.newApiDefaultTokenQuota ?? process.env.FRIST_API_NEWAPI_DEFAULT_TOKEN_QUOTA ?? 0),
+    defaultTokenQuotaCents: Number(
+      options.newApiDefaultTokenQuota ?? process.env.FRIST_API_NEWAPI_DEFAULT_TOKEN_QUOTA ?? 0,
+    ),
     defaultGroup: String(options.newApiDefaultGroup || process.env.FRIST_API_NEWAPI_DEFAULT_GROUP || 'default'),
+    requestTimeoutMs: Number.isFinite(requestTimeoutMs)
+      ? Math.max(1000, requestTimeoutMs)
+      : DEFAULT_REQUEST_TIMEOUT_MS,
   };
-}
-
-async function newApiTokenStillExists(request, keyId) {
-  try {
-    const token = unwrapObject(await request(`/api/token/${encodeURIComponent(keyId)}`));
-    return String(token.id || '') === String(keyId);
-  } catch {
-    return false;
-  }
-}
-
-function deleteNewApiTokenFromSqlite(sqliteDb, keyId) {
-  const id = Number(keyId);
-  if (!sqliteDb || !Number.isSafeInteger(id) || id <= 0) {
-    return;
-  }
-  const result = spawnSync('sqlite3', [sqliteDb], {
-    input: `delete from tokens where id=${id};\n`,
-    encoding: 'utf8',
-    maxBuffer: 1024 * 1024,
-  });
-  if (result.status !== 0) {
-    throw publicBridgeError(502, `New-API API Key 删除兜底失败: ${String(result.stderr || result.stdout || 'sqlite3_failed').split('\n')[0].slice(0, 120)}`);
-  }
 }
 
 function booleanOption(value, envValue) {
@@ -344,20 +461,70 @@ function extractNewApiModelNames(payload) {
   );
 }
 
-function tokenCreatePayload(body, config, modelInventory = []) {
+function tokenCreatePayload(body, config, modelInventory = [], options = {}) {
   const modelGroup = normalizeModelGroup(body.modelGroup);
   const modelLimits = modelLimitsForGroup(modelGroup, modelInventory);
+  const requestedQuota = body.remainQuota ?? body.remain_quota;
+  const remainQuota = Number(
+    requestedQuota === undefined
+      ? cnyCentsToNewApiQuota(config.defaultTokenQuotaCents)
+      : requestedQuota,
+  );
+  if (!Number.isFinite(remainQuota) || remainQuota < 0 || (!options.allowZeroQuota && remainQuota === 0)) {
+    throw publicBridgeError(503, 'New-API 默认 Key 额度未配置，已拒绝创建无限额度 Key');
+  }
   return {
     name: String(body.name || `CC Key ${Date.now()}`).trim().slice(0, 50),
     expired_time: normalizeExpiredTime(body.expiredTime ?? body.expired_time),
-    remain_quota: Number(body.remainQuota ?? body.remain_quota ?? config.defaultTokenQuota),
-    unlimited_quota: body.unlimitedQuota ?? body.unlimited_quota ?? true,
+    remain_quota: remainQuota,
+    unlimited_quota: false,
     model_limits_enabled: modelLimits.length > 0,
     model_limits: modelLimits.join(','),
     allow_ips: '',
     group: config.defaultGroup,
     cross_group_retry: true,
   };
+}
+
+function bridgeTokenOwnedBy(localData, userId, tokenId) {
+  const owner = localData?.newApiTokenOwners?.[String(tokenId)];
+  const ownerId = typeof owner === 'string' ? owner : owner?.userId;
+  return Boolean(ownerId && ownerId === userId);
+}
+
+function filterBridgeUsageRows(rows, tokens) {
+  const tokenIds = new Set(tokens.map((token) => String(token.id || '')).filter(Boolean));
+  return rows.filter((row) => {
+    const rowTokenId = String(row.token_id ?? row.tokenId ?? row.token?.id ?? '').trim();
+    // Token 名称可被不同客户重复使用；没有明确 Token ID 的日志宁可不展示，也不能猜归属。
+    return Boolean(rowTokenId && tokenIds.has(rowTokenId));
+  });
+}
+
+function accountFromBridgeTokens(localUser, tokens, usageRows) {
+  const unallocatedQuota = cnyCentsToNewApiQuota(
+    numberFromAny(
+      localUser.balanceCents ??
+        (numberFromAny(localUser.packageQuotaCents) + numberFromAny(localUser.boosterQuotaCents)),
+    ),
+  );
+  const remainingQuota = unallocatedQuota + sum(
+    tokens,
+    (token) => numberFromAny(token.remain_quota ?? token.remaining_quota ?? token.quota),
+  );
+  const usedQuota = sum(tokens, (token) => numberFromAny(token.used_quota ?? token.usedQuota));
+  return accountFromNewApi(
+    {
+      group: localUser.plan || 'New-API',
+      expired_time: localUser.planExpiresAt || localUser.renewalDate || '',
+      quota: remainingQuota,
+      used_quota: usedQuota,
+      request_count: usageRows.length,
+    },
+    usageRows,
+    {},
+    [],
+  );
 }
 
 function modelLimitsForGroup(group, modelInventory = []) {
@@ -629,6 +796,58 @@ function tokenEnabled(status) {
   return [TOKEN_STATUS_ENABLED, true, '1', 'enabled', 'active', 'normal'].includes(status);
 }
 
+function tokenExplicitlyFinite(token) {
+  const unlimited = token?.unlimited_quota ?? token?.unlimitedQuota;
+  return [false, 0, '0', 'false'].includes(
+    typeof unlimited === 'string' ? unlimited.toLowerCase() : unlimited,
+  );
+}
+
+function validGatewayOwner(localData, owner) {
+  if (!owner || typeof owner !== 'object' || Array.isArray(owner) || owner.state !== 'active') {
+    return false;
+  }
+  const userId = String(owner.userId || '').trim();
+  const matchingUsers = Array.isArray(localData?.users)
+    ? localData.users.filter((user) => String(user?.id || '') === userId)
+    : [];
+  if (!userId || matchingUsers.length !== 1) {
+    return false;
+  }
+  const upstreamQuotaUnits = Number(owner.upstreamQuotaUnits);
+  if (!Number.isSafeInteger(upstreamQuotaUnits) || upstreamQuotaUnits <= 0) {
+    return false;
+  }
+  if (owner.source === 'explicit_manual_mapping') {
+    return Boolean(String(owner.mappingReason || '').trim() && Date.parse(owner.finiteVerifiedAt || ''));
+  }
+  const allocatedCents = Number(owner.allocatedCents);
+  return Number.isSafeInteger(allocatedCents) && allocatedCents > 0;
+}
+
+function bridgeTokenIdMatches(token, expectedId) {
+  return Boolean(token?.id) && String(token.id) === String(expectedId);
+}
+
+function bridgeTokenExplicitlyRevoked(token) {
+  if (token?.enabled === false) return true;
+  const status = token?.status;
+  return [
+    TOKEN_STATUS_DISABLED,
+    TOKEN_STATUS_EXHAUSTED,
+    3,
+    '2',
+    '3',
+    '4',
+    'disabled',
+    'exhausted',
+    'expired',
+    'deleted',
+    'revoked',
+    'inactive',
+  ].includes(typeof status === 'string' ? status.toLowerCase() : status);
+}
+
 function settledValue(result) {
   return result && result.status === 'fulfilled' ? result.value : {};
 }
@@ -701,6 +920,17 @@ function numberFromAny(value) {
   if (value === null || value === undefined || value === '') return 0;
   const parsed = Number(String(value).replace(/[^\d.-]/g, ''));
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function cnyCentsToNewApiQuota(cents) {
+  return Math.max(0, Math.round((numberFromAny(cents) / 100) * DEFAULT_QUOTA_PER_CNY));
+}
+
+function assertTokenQuota(token, expectedQuota) {
+  const actualQuota = numberFromAny(token.remain_quota ?? token.remaining_quota ?? token.quota);
+  if (actualQuota !== Number(expectedQuota) || Boolean(token.unlimited_quota)) {
+    throw publicBridgeError(502, 'New-API Key 额度校验失败');
+  }
 }
 
 function sum(rows, mapper) {

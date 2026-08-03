@@ -234,13 +234,13 @@ class Logger {
   }
 
   // 记录 API 响应
-  apiResponse(method: string, result: unknown): void {
-    this.debug(`✅ API 响应: ${method}`, result);
+  apiResponse(method: string, ...results: unknown[]): void {
+    this.debug(`✅ API 响应: ${method}`, ...results);
   }
 
   // 记录 API 错误
-  apiError(method: string, error: unknown): void {
-    this.error(`❌ API 错误: ${method}`, error);
+  apiError(method: string, ...errors: unknown[]): void {
+    this.error(`❌ API 错误: ${method}`, ...errors);
   }
 
   // 记录用户操作

@@ -4,6 +4,7 @@ ClawBot 多机器人版 v5.0 - Mixin 架构版
 - MultiBot 类已拆分到 src/bot/ 目录（Mixin 架构）
 - 本文件仅保留：Bot 配置、main() 启动逻辑、信号处理
 """
+
 import os
 import sys
 
@@ -11,10 +12,9 @@ import sys
 if sys.platform == "darwin":
     try:
         import AppKit
+
         _NSApplicationActivationPolicyProhibited = 2
-        AppKit.NSApplication.sharedApplication().setActivationPolicy_(
-            _NSApplicationActivationPolicyProhibited
-        )
+        AppKit.NSApplication.sharedApplication().setActivationPolicy_(_NSApplicationActivationPolicyProhibited)
     except Exception:
         pass  # 非 macOS 或 AppKit 不可用时静默跳过
 
@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 # ── loguru 日志系统 (23.7k⭐) — 必须在所有业务 import 之前初始化 ──
 from src.log_config import setup_logging
+
 setup_logging(
     level=os.environ.get("LOG_LEVEL", "INFO"),
     json_log_dir=str(Path(__file__).parent / "logs"),
@@ -38,7 +39,7 @@ from dotenv import load_dotenv
 from telegram import BotCommand
 
 # 加载配置
-config_path = Path(__file__).parent / 'config' / '.env'
+config_path = Path(__file__).parent / "config" / ".env"
 load_dotenv(config_path)
 
 logger = logging.getLogger(__name__)
@@ -48,18 +49,29 @@ logger = logging.getLogger(__name__)
 # 导入重构后的 MultiBot 和全局共享组件
 from src.bot.multi_bot import MultiBot
 from src.bot.globals import (
-    SILICONFLOW_KEYS, CLAUDE_KEY, ALLOWED_USER_IDS,
-    history_store, chat_router, collab_orchestrator,
-    metrics, health_checker, shared_memory,
-    bot_registry, execution_hub,
-    get_stock_quote, context_manager,
+    SILICONFLOW_KEYS,
+    CLAUDE_KEY,
+    ALLOWED_USER_IDS,
+    history_store,
+    chat_router,
+    collab_orchestrator,
+    metrics,
+    health_checker,
+    shared_memory,
+    bot_registry,
+    execution_hub,
+    get_stock_quote,
+    context_manager,
 )
+
 # 幻影导入修复: ibkr/portfolio/warmup 从实际定义模块导入
 from src.broker_selector import ibkr
 from src.invest_tools import portfolio, warmup as invest_warmup
 from src.monitoring import AutoRecovery, start_metrics_server, AlertManager, AlertRule
 from src.trading_system import (
-    init_trading_system, start_trading_system, stop_trading_system,
+    init_trading_system,
+    start_trading_system,
+    stop_trading_system,
     set_ai_team_callers,
 )
 from src.trading_journal import journal
@@ -150,8 +162,8 @@ _FREE_LLM_COMMANDS = [
 BOTS = [
     {
         "id": "qwen235b",
-        "token": os.getenv('QWEN235B_TOKEN', ''),
-        "username": os.getenv('QWEN235B_USERNAME', 'carven_Qwen235B_Bot'),
+        "token": os.getenv("QWEN235B_TOKEN", ""),
+        "username": os.getenv("QWEN235B_USERNAME", "carven_Qwen235B_Bot"),
         "model": "qwen-3-235b",
         "api_type": "free_pool",
         "is_claude": False,
@@ -160,8 +172,8 @@ BOTS = [
     },
     {
         "id": "gptoss",
-        "token": os.getenv('GPTOSS_TOKEN', ''),
-        "username": os.getenv('GPTOSS_USERNAME', 'carven_GPTOSS120B_Bot'),
+        "token": os.getenv("GPTOSS_TOKEN", ""),
+        "username": os.getenv("GPTOSS_USERNAME", "carven_GPTOSS120B_Bot"),
         "model": "gpt-oss-120b",
         "api_type": "free_pool",
         "is_claude": False,
@@ -170,8 +182,8 @@ BOTS = [
     },
     {
         "id": "claude_sonnet",
-        "token": os.getenv('CLAUDE_SONNET_TOKEN', ''),
-        "username": os.getenv('CLAUDE_SONNET_USERNAME', 'carven_ClaudeSonnet_Bot'),
+        "token": os.getenv("CLAUDE_SONNET_TOKEN", ""),
+        "username": os.getenv("CLAUDE_SONNET_USERNAME", "carven_ClaudeSonnet_Bot"),
         "model": "claude-sonnet-4-5",
         "api_type": "free_pool",
         "is_claude": False,
@@ -180,8 +192,8 @@ BOTS = [
     },
     {
         "id": "claude_haiku",
-        "token": os.getenv('CLAUDE_HAIKU_TOKEN', ''),
-        "username": os.getenv('CLAUDE_HAIKU_USERNAME', 'carven_ClaudeHaiku_Bot'),
+        "token": os.getenv("CLAUDE_HAIKU_TOKEN", ""),
+        "username": os.getenv("CLAUDE_HAIKU_USERNAME", "carven_ClaudeHaiku_Bot"),
         "model": "claude-haiku-4-5",
         "api_type": "free_pool",
         "is_claude": False,
@@ -190,8 +202,8 @@ BOTS = [
     },
     {
         "id": "deepseek_v3",
-        "token": os.getenv('DEEPSEEK_V3_TOKEN', ''),
-        "username": os.getenv('DEEPSEEK_V3_USERNAME', 'carven_DeepSeekV3_Bot'),
+        "token": os.getenv("DEEPSEEK_V3_TOKEN", ""),
+        "username": os.getenv("DEEPSEEK_V3_USERNAME", "carven_DeepSeekV3_Bot"),
         "model": "deepseek-v3.2",
         "api_type": "free_pool",
         "is_claude": False,
@@ -200,8 +212,8 @@ BOTS = [
     },
     {
         "id": "claude_opus",
-        "token": os.getenv('CLAUDE_OPUS_TOKEN', ''),
-        "username": os.getenv('CLAUDE_OPUS_USERNAME', 'carven_ClaudeOpus_Bot'),
+        "token": os.getenv("CLAUDE_OPUS_TOKEN", ""),
+        "username": os.getenv("CLAUDE_OPUS_USERNAME", "carven_ClaudeOpus_Bot"),
         "model": "claude-opus-4-5",
         "api_type": "free_first",
         "is_claude": False,
@@ -210,8 +222,8 @@ BOTS = [
     },
     {
         "id": "free_llm",
-        "token": os.getenv('FREE_LLM_TOKEN', ''),
-        "username": os.getenv('FREE_LLM_USERNAME', 'Free_LLM_Bot'),
+        "token": os.getenv("FREE_LLM_TOKEN", ""),
+        "username": os.getenv("FREE_LLM_USERNAME", "Free_LLM_Bot"),
         "model": "free-pool-best",
         "api_type": "free_pool",
         "is_claude": False,
@@ -230,6 +242,7 @@ auto_recovery: Optional[AutoRecovery] = None
 
 # ============ 主函数 ============
 
+
 async def main():
     global bots, auto_recovery
 
@@ -238,17 +251,14 @@ async def main():
     logger.info("=" * 60)
 
     # === 启动前配置验证 ===
-    from src.core.config_validator import validate_startup_config, log_validation_results
-    _cfg_errors, _cfg_warnings = validate_startup_config()
-    _cfg_ok = log_validation_results(_cfg_errors, _cfg_warnings)
-    if not _cfg_ok:
-        logger.critical("配置验证失败 — 请检查 config/.env 和环境变量后重试")
-        # 不阻止启动但记录严重告警，让运维人员决定
+    from src.core.config_validator import require_valid_startup_config
+
+    require_valid_startup_config()
 
     logger.info(f"配置文件: {config_path}")
     logger.info(f"硅基流动 Keys: {len(SILICONFLOW_KEYS)} 个")
     logger.info(f"Claude API: {'已配置' if CLAUDE_KEY else '未配置'}")
-    logger.info(f"允许用户: {ALLOWED_USER_IDS or '所有'}")
+    logger.info(f"允许用户: {sorted(ALLOWED_USER_IDS)}")
     logger.info(f"存储: SQLite ({history_store.db_path})")
     logger.info("=" * 60)
 
@@ -276,7 +286,9 @@ async def main():
 
     # 4. 初始化策略引擎 → 注入全局
     g.strategy_engine_instance = create_default_engine()
-    logger.info(f"  策略引擎已初始化 ({len(g.strategy_engine_instance._strategies)} 个内置策略) → globals.strategy_engine_instance")
+    logger.info(
+        f"  策略引擎已初始化 ({len(g.strategy_engine_instance._strategies)} 个内置策略) → globals.strategy_engine_instance"
+    )
 
     # 5. 初始化优先级消息队列 → 注入全局
     g.priority_message_queue = PriorityMessageQueue()
@@ -292,6 +304,7 @@ async def main():
     # 7.5 初始化闲鱼监控（可选）
     try:
         from src.xianyu.goofish_monitor import init_goofish_monitor
+
         init_goofish_monitor()
         logger.info("  闲鱼监控已初始化")
     except Exception as e:
@@ -300,6 +313,7 @@ async def main():
     # 7.6 初始化 CookieCloud 自动同步（可选）
     try:
         from src.xianyu.cookie_cloud import get_cookie_cloud_manager
+
         cc_manager = get_cookie_cloud_manager()
         if cc_manager.enabled:
             asyncio.ensure_future(cc_manager.run_sync_loop())
@@ -322,6 +336,7 @@ async def main():
         active = stats.get("active_sources", 0)
         total = stats.get("total_sources", 1)
         return active < total * 0.5  # 超过一半源不可用
+
     def _msg_high_errors():
         stats = free_pool.get_stats()
         return f"⚠️ [告警] API 池健康度下降: {stats.get('active_sources', 0)}/{stats.get('total_sources', 0)} 源可用"
@@ -330,6 +345,7 @@ async def main():
     def _check_heartbeat_lost():
         status = health_checker.check_all()
         return any(not healthy for healthy in status.values()) if status else False
+
     def _msg_heartbeat_lost():
         status = health_checker.get_status()
         unhealthy = [bid for bid, s in status.items() if not s["healthy"]]
@@ -348,23 +364,28 @@ async def main():
             msg += "\n" + "\n".join(details)
         return msg
 
-    alert_mgr.add_rule(AlertRule(
-        name="high_error_rate",
-        condition_fn=_check_high_errors,
-        message_fn=_msg_high_errors,
-        cooldown=300,
-    ))
-    alert_mgr.add_rule(AlertRule(
-        name="heartbeat_lost",
-        condition_fn=_check_heartbeat_lost,
-        message_fn=_msg_heartbeat_lost,
-        cooldown=120,
-    ))
+    alert_mgr.add_rule(
+        AlertRule(
+            name="high_error_rate",
+            condition_fn=_check_high_errors,
+            message_fn=_msg_high_errors,
+            cooldown=300,
+        )
+    )
+    alert_mgr.add_rule(
+        AlertRule(
+            name="heartbeat_lost",
+            condition_fn=_check_heartbeat_lost,
+            message_fn=_msg_heartbeat_lost,
+            cooldown=120,
+        )
+    )
     logger.info(f"  告警管理器已初始化 ({len(alert_mgr.rules)} 条规则)")
 
     # 8.5 初始化全局错误处理器 + Telegram 告警通知
     from src.error_handler import init_error_handler
     from src.monitoring_extras import TelegramAlertNotifier
+
     admin_chat_id = int(os.environ.get("ADMIN_CHAT_ID", "0")) or None
     first_token = BOTS[0]["token"] if BOTS else None
     if admin_chat_id and first_token:
@@ -446,30 +467,35 @@ async def main():
                         logger.warning(f"  [Key验证] ⚠️ {prov}: dead keys #{info['dead_indices']}")
         except Exception as e:
             logger.warning(f"  [Key验证] 启动验证跳过: {e}")
+
     # 辅助: 为 fire-and-forget 任务统一添加异常回调
     def _task_done_cb(label: str):
         def _cb(t):
             if not t.cancelled() and t.exception():
                 logger.critical("[%s] 后台任务失败: %s", label, t.exception())
+
         return _cb
 
-    asyncio.create_task(_background_key_validation()).add_done_callback(
-        _task_done_cb("KeyValidation")
-    )
+    asyncio.create_task(_background_key_validation()).add_done_callback(_task_done_cb("KeyValidation"))
 
     # 注册 LLM 路由（使用 qwen235b 作为路由模型，免费无限）
     router_instance = next((b for b in bots if b.bot_id == "qwen235b"), None)
     if router_instance:
+
         async def _llm_router_call(chat_id: int, prompt: str) -> str:
             return await router_instance._call_api(chat_id, prompt, save_history=False)
+
         chat_router.register_llm_router(_llm_router_call)
         logger.info("  LLM 路由已注册 (使用 qwen235b/qwen-3-235b, 不保存历史)")
 
     # 初始化智能记忆管道（搬运自 mem0 模式）
     from src.smart_memory import init_smart_memory
+
     if router_instance:
+
         async def _memory_llm(prompt: str) -> str:
             return await router_instance._call_api(-998, prompt, save_history=False)
+
         smart_mem = init_smart_memory(shared_memory, llm_fn=_memory_llm)
         logger.info("  智能记忆管道已初始化 (mem0 模式, LLM=qwen235b)")
     else:
@@ -482,6 +508,7 @@ async def main():
     # 初始化主动智能引擎 (搬运自 BasedHardware/omi 17k⭐ 的 proactive_notification 三步管道)
     try:
         from src.core.proactive_engine import get_proactive_engine, setup_proactive_listeners
+
         proactive = get_proactive_engine()
         await setup_proactive_listeners(proactive)
         logger.info("  主动智能引擎已启动 (Gate→Generate→Critic 三步管道)")
@@ -491,6 +518,7 @@ async def main():
     # 启动自选股异动监控（搬运交易类产品标配告警模式）
     try:
         from src.watchlist_monitor import get_watchlist_monitor
+
         _wm = get_watchlist_monitor()
         await _wm.start()
     except Exception as e:
@@ -518,6 +546,7 @@ async def main():
     _omega_gateway = None
     try:
         from src.core.event_bus import get_event_bus
+
         _omega_event_bus = get_event_bus()
         logger.info("  OMEGA 事件总线已初始化")
     except Exception as e:
@@ -526,6 +555,7 @@ async def main():
     # === 统一通知系统 (搬运 Apprise 16.1k⭐) — 订阅 EventBus 事件 ===
     try:
         from src.notifications import get_notification_manager
+
         _notification_manager = get_notification_manager()
         await _notification_manager.register_event_handlers()
         logger.info("  统一通知系统已初始化 (EventBus 事件订阅已注册)")
@@ -534,6 +564,7 @@ async def main():
 
     try:
         from src.core.brain import init_brain
+
         _omega_brain = init_brain()
         logger.info("  OMEGA 核心编排器 (Brain) 已初始化")
     except Exception as e:
@@ -541,6 +572,7 @@ async def main():
 
     try:
         from src.core.cost_control import get_cost_controller
+
         _omega_cost = get_cost_controller()
         logger.info(f"  OMEGA 成本控制已初始化 (日预算 ${_omega_cost._daily_budget:.2f})")
     except Exception as e:
@@ -548,6 +580,7 @@ async def main():
 
     try:
         from src.core.security import get_security_gate
+
         _omega_security = get_security_gate()
         logger.info(f"  OMEGA 安全门控已初始化 (管理员: {len(_omega_security._admin_ids)})")
     except Exception as e:
@@ -556,6 +589,7 @@ async def main():
     # 协同管道 — 跨模块飞轮效应（借鉴 n8n 数据管道模式）
     try:
         from src.core.synergy_pipelines import init_synergy_pipelines
+
         _omega_synergy = await init_synergy_pipelines()
         logger.info(f"  OMEGA 协同管道已注册 ({_omega_synergy.get_stats()['active_pipelines']} 条管道)")
     except Exception as e:
@@ -564,6 +598,7 @@ async def main():
     _stop_gateway_fn = None
     try:
         from src.gateway.telegram_gateway import start_gateway, stop_gateway as _stop_gw
+
         _stop_gateway_fn = _stop_gw
         _omega_gateway = await start_gateway()
         if _omega_gateway:
@@ -580,6 +615,7 @@ async def main():
     # === 社交自动驾驶 — 检查是否需要自动恢复 (搬运 APScheduler 模式) ===
     try:
         from src.social_scheduler import SocialAutopilot, _load_state as _load_ap_state
+
         _autopilot = SocialAutopilot()
         _ap_state = _load_ap_state()
         if _ap_state.get("enabled", False):
@@ -600,15 +636,26 @@ async def main():
     _t = asyncio.create_task(invest_warmup())
     _t.add_done_callback(_task_done_cb("InvestWarmup"))
 
-    # 连接 IBKR Paper Trading
-    async def _connect_ibkr():
-        ok = await ibkr.connect()
-        if ok:
-            logger.info("[IBKR] Paper Trading 连接成功 (预算$%.0f)" % ibkr.budget)
-        else:
-            logger.warning("[IBKR] 连接失败，IBKR命令不可用（IB Gateway是否运行？）")
-    _t = asyncio.create_task(_connect_ibkr())
-    _t.add_done_callback(_task_done_cb("IBKR_Connect"))
+    # IBKR 是可选实盘能力；未显式启用时不连接，也不注册后台重试。
+    _ibkr_enabled = os.environ.get("IBKR_ENABLED", "false").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if _ibkr_enabled:
+
+        async def _connect_ibkr():
+            ok = await ibkr.connect()
+            if ok:
+                logger.info("[IBKR] Paper Trading 连接成功 (预算$%.0f)", ibkr.budget)
+            else:
+                logger.warning("[IBKR] 连接失败，IBKR命令不可用（IB Gateway是否运行？）")
+
+        _t = asyncio.create_task(_connect_ibkr())
+        _t.add_done_callback(_task_done_cb("IBKR_Connect"))
+    else:
+        logger.info("  - IBKR 未启用（设置 IBKR_ENABLED=true 后连接）")
 
     # 初始化自动交易系统
     _notify_chat_id = int(os.environ.get("NOTIFY_CHAT_ID", "0"))
@@ -633,71 +680,105 @@ async def main():
             reply_markup = None
             try:
                 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
                 text_lower = text.lower() if text else ""
 
                 if "交易执行成功" in text or "交易已成交" in text:
                     # 成交通知 → 查看持仓 / 查看风控
-                    reply_markup = InlineKeyboardMarkup([[
-                        InlineKeyboardButton("📊 持仓", callback_data="cmd:/monitor"),
-                        InlineKeyboardButton("🛡 风控", callback_data="cmd:/risk"),
-                        InlineKeyboardButton("📈 系统", callback_data="cmd:/tradingsystem"),
-                    ]])
+                    reply_markup = InlineKeyboardMarkup(
+                        [
+                            [
+                                InlineKeyboardButton("📊 持仓", callback_data="cmd:/monitor"),
+                                InlineKeyboardButton("🛡 风控", callback_data="cmd:/risk"),
+                                InlineKeyboardButton("📈 系统", callback_data="cmd:/tradingsystem"),
+                            ]
+                        ]
+                    )
                 elif "风控拒绝" in text or "决策验证拒绝" in text:
                     # 风控拒绝 → 查看风控详情
-                    reply_markup = InlineKeyboardMarkup([[
-                        InlineKeyboardButton("🛡 风控详情", callback_data="cmd:/risk"),
-                        InlineKeyboardButton("⚙️ 系统状态", callback_data="cmd:/tradingsystem"),
-                    ]])
+                    reply_markup = InlineKeyboardMarkup(
+                        [
+                            [
+                                InlineKeyboardButton("🛡 风控详情", callback_data="cmd:/risk"),
+                                InlineKeyboardButton("⚙️ 系统状态", callback_data="cmd:/tradingsystem"),
+                            ]
+                        ]
+                    )
                 elif "止损触发" in text or "止盈触发" in text or "追踪止损" in text:
                     # 平仓通知 → 查看持仓 / 今日PnL
-                    reply_markup = InlineKeyboardMarkup([[
-                        InlineKeyboardButton("📊 持仓", callback_data="cmd:/monitor"),
-                        InlineKeyboardButton("📋 日报", callback_data="cmd:/brief"),
-                    ]])
+                    reply_markup = InlineKeyboardMarkup(
+                        [
+                            [
+                                InlineKeyboardButton("📊 持仓", callback_data="cmd:/monitor"),
+                                InlineKeyboardButton("📋 日报", callback_data="cmd:/brief"),
+                            ]
+                        ]
+                    )
                 elif "订单已提交待成交" in text:
                     # 挂单通知 → 查看系统 / 取消
-                    reply_markup = InlineKeyboardMarkup([[
-                        InlineKeyboardButton("📈 系统状态", callback_data="cmd:/tradingsystem"),
-                        InlineKeyboardButton("🚫 取消挂单", callback_data="cmd:/autotrader cancel"),
-                    ]])
+                    reply_markup = InlineKeyboardMarkup(
+                        [
+                            [
+                                InlineKeyboardButton("📈 系统状态", callback_data="cmd:/tradingsystem"),
+                                InlineKeyboardButton("🚫 取消挂单", callback_data="cmd:/autotrader cancel"),
+                            ]
+                        ]
+                    )
                 elif "告警" in text or "⚠️" in text:
                     # 告警通知 → 查看状态
-                    reply_markup = InlineKeyboardMarkup([[
-                        InlineKeyboardButton("📊 状态", callback_data="cmd:/status"),
-                        InlineKeyboardButton("🔧 系统", callback_data="cmd:/tradingsystem"),
-                    ]])
+                    reply_markup = InlineKeyboardMarkup(
+                        [
+                            [
+                                InlineKeyboardButton("📊 状态", callback_data="cmd:/status"),
+                                InlineKeyboardButton("🔧 系统", callback_data="cmd:/tradingsystem"),
+                            ]
+                        ]
+                    )
             except Exception:
                 pass  # inline keyboard 构建失败不影响通知发送
 
             await app.bot.send_message(
-                chat_id=_notify_chat_id, text=text,
+                chat_id=_notify_chat_id,
+                text=text,
                 reply_markup=reply_markup,
             )
 
             # Push to WebSocket live event feed alongside Telegram
             try:
                 from src.api.routers.ws import push_event
+
                 if "交易执行" in text or "交易已成交" in text:
                     push_event(WSMessageType.TRADE_EXECUTED, {"message": text})
                     # EventBus: 交易执行事件 → 协同管道自动生成社媒草稿
                     try:
                         from src.core.event_bus import get_event_bus, EventType as EvtType
+
                         direction = "BUY" if "买入" in text else "SELL" if "卖出" in text else "HOLD"
-                        _t = asyncio.create_task(get_event_bus().publish(
-                            EvtType.TRADE_EXECUTED,
-                            {"signal": direction, "reason": text[:100], "message": text},
-                            source="trading_system",
-                        ))
+                        _t = asyncio.create_task(
+                            get_event_bus().publish(
+                                EvtType.TRADE_EXECUTED,
+                                {"signal": direction, "reason": text[:100], "message": text},
+                                source="trading_system",
+                            )
+                        )
                         _t.add_done_callback(_task_done_cb("EventBus_TradeExec"))
                     except Exception as e:
                         logger.debug("EventBus publish failed (TradeExec): %s", e, exc_info=True)
                     # 旧 Synergy 兼容（逐步迁移到 EventBus）
                     try:
                         from src.synergy import get_synergy
+
                         direction = "BUY" if "买入" in text else "SELL" if "卖出" in text else "HOLD"
-                        _t = asyncio.create_task(get_synergy().on_trade_signal({
-                            "signal": direction, "reason": text[:100], "score": 80, "symbol": "",
-                        }))
+                        _t = asyncio.create_task(
+                            get_synergy().on_trade_signal(
+                                {
+                                    "signal": direction,
+                                    "reason": text[:100],
+                                    "score": 80,
+                                    "symbol": "",
+                                }
+                            )
+                        )
                         _t.add_done_callback(_task_done_cb("Synergy_TradeSignal"))
                     except Exception as e:
                         logger.debug("EventBus publish failed (Synergy_TradeSignal): %s", e, exc_info=True)
@@ -706,11 +787,14 @@ async def main():
                     # EventBus: 风控事件
                     try:
                         from src.core.event_bus import get_event_bus, EventType as EvtType
-                        _t = asyncio.create_task(get_event_bus().publish(
-                            EvtType.RISK_ALERT,
-                            {"message": text},
-                            source="trading_system",
-                        ))
+
+                        _t = asyncio.create_task(
+                            get_event_bus().publish(
+                                EvtType.RISK_ALERT,
+                                {"message": text},
+                                source="trading_system",
+                            )
+                        )
                         _t.add_done_callback(_task_done_cb("EventBus_RiskAlert"))
                     except Exception as e:
                         logger.debug("EventBus publish failed (RiskAlert): %s", e, exc_info=True)
@@ -719,11 +803,14 @@ async def main():
                     # EventBus: 交易信号
                     try:
                         from src.core.event_bus import get_event_bus, EventType as EvtType
-                        _t = asyncio.create_task(get_event_bus().publish(
-                            EvtType.TRADE_SIGNAL,
-                            {"message": text},
-                            source="trading_system",
-                        ))
+
+                        _t = asyncio.create_task(
+                            get_event_bus().publish(
+                                EvtType.TRADE_SIGNAL,
+                                {"message": text},
+                                source="trading_system",
+                            )
+                        )
                         _t.add_done_callback(_task_done_cb("EventBus_TradeSignal"))
                     except Exception as e:
                         logger.debug("EventBus publish failed (TradeSignal): %s", e, exc_info=True)
@@ -737,6 +824,7 @@ async def main():
         # 微信同步推送 — 日报/交易等通知同步发送到微信
         try:
             from src.wechat_bridge import send_to_wechat
+
             _t = asyncio.create_task(send_to_wechat(text))
             _t.add_done_callback(_task_done_cb("WeChat_Notify"))
         except Exception as e:
@@ -744,6 +832,7 @@ async def main():
 
     # 通知批量合并器 — 防止 auto_trader 刷屏
     from src.telegram_ux import NotificationBatcher
+
     _notify_batcher = NotificationBatcher(
         send_func=_notify_telegram,
         flush_interval=20.0,
@@ -759,8 +848,16 @@ async def main():
         auto_notify = user_prefs.get(_notify_chat_id, "auto_trade_notify", True)
 
         force_keywords = (
-            "交易执行成功", "交易已成交", "止损触发", "止盈触发", "追踪止损",
-            "风控拒绝", "自动停机", "熔断", "告警", "⚠️",
+            "交易执行成功",
+            "交易已成交",
+            "止损触发",
+            "止盈触发",
+            "追踪止损",
+            "风控拒绝",
+            "自动停机",
+            "熔断",
+            "告警",
+            "⚠️",
         )
         is_critical = any(kw in (text or "") for kw in force_keywords)
 
@@ -785,6 +882,7 @@ async def main():
         # 微信镜像推送 — 定时推送（晨报/周报/闲鱼/预算等）也要到达微信
         try:
             from src.wechat_bridge import send_to_wechat
+
             _t = asyncio.create_task(send_to_wechat(text))
             _t.add_done_callback(_task_done_cb("WeChat_Private"))
         except Exception as e:
@@ -795,25 +893,29 @@ async def main():
         auto_recovery._notify_func = _notify_batched
 
     init_trading_system(
-        broker=ibkr,
+        broker=ibkr if _ibkr_enabled else None,
         journal=journal,
         portfolio=portfolio,
         get_quote_func=get_stock_quote,
         notify_func=_notify_batched,
         capital=float(os.environ.get("IBKR_BUDGET", "2000.0")),
-        auto_mode=os.environ.get("AUTO_TRADE_MODE", "true").lower() == "true",
+        auto_mode=os.environ.get("AUTO_TRADE_MODE", "false").lower() == "true",
         scan_interval=int(os.environ.get("SCAN_INTERVAL", "30")),
     )
-    ibkr.set_notify(_notify_batched)
+    if _ibkr_enabled:
+        ibkr.set_notify(_notify_batched)
 
     # 注入AI团队API callers
     ai_callers = {}
     for bot in bots:
         if bot.bot_id in ("claude_haiku", "qwen235b", "gptoss", "deepseek_v3", "claude_sonnet", "claude_opus"):
+
             async def _make_caller(b):
                 async def _call(chat_id, prompt):
                     return await b._call_api(chat_id, prompt, save_history=False)
+
                 return _call
+
             ai_callers[bot.bot_id] = await _make_caller(bot)
     if ai_callers:
         set_ai_team_callers(ai_callers)
@@ -831,10 +933,12 @@ async def main():
     def _on_alert(rule_name, message):
         _t = asyncio.create_task(_notify_telegram(message))
         _t.add_done_callback(_task_done_cb("AlertNotify"))
+
     alert_mgr.on_alert(_on_alert)
 
     # 注册告警回调 -> WebSocket 实时推送
     from src.api.routers.ws import push_event
+
     alert_mgr.on_alert(lambda name, msg: push_event(WSMessageType.RISK_ALERT, {"rule": name, "message": msg}))
 
     _heartbeat_interval = int(os.environ.get("HEARTBEAT_INTERVAL", "60"))
@@ -843,7 +947,6 @@ async def main():
     _alert_check_interval = int(os.environ.get("ALERT_CHECK_INTERVAL", "30"))
     _evolution_interval = int(os.environ.get("EVOLUTION_SCAN_INTERVAL", "86400"))  # 24h
     _proactive_interval = int(os.environ.get("PROACTIVE_CHECK_INTERVAL", "1800"))  # 30分钟
-
 
     try:
         cleanup_counter = 0
@@ -871,6 +974,7 @@ async def main():
                 chat_router.cleanup_stale_sessions(max_age_seconds=1800)
                 try:
                     from src.core.brain import get_brain
+
                     get_brain().cleanup_pending_callbacks(max_age_seconds=600)
                 except Exception as e:
                     logger.debug("清理过期回调时异常(可忽略): %s", e)
@@ -880,12 +984,14 @@ async def main():
             # 进化引擎定时扫描（默认每24小时，懒加载）
             if evolution_counter >= _evolution_interval:
                 evolution_counter = 0
+
                 async def _run_evolution_scan():
                     nonlocal _evolution_engine
                     try:
                         # 懒加载: 首次扫描时才导入和实例化
                         if _evolution_engine is None:
                             from src.evolution.engine import EvolutionEngine
+
                             _evolution_engine = EvolutionEngine()
                             logger.info("[Evolution] 进化引擎已懒加载初始化")
                         proposals = await _evolution_engine.daily_scan()
@@ -893,14 +999,14 @@ async def main():
                             logger.info("[Evolution] 发现 %d 个进化提案", len(proposals))
                     except Exception as e:
                         logger.debug("[Evolution] 扫描异常: %s", e)
-                asyncio.create_task(_run_evolution_scan()).add_done_callback(
-                    _task_done_cb("EvolutionScan")
-                )
+
+                asyncio.create_task(_run_evolution_scan()).add_done_callback(_task_done_cb("EvolutionScan"))
             # 主动智能定时检查（默认每30分钟）
             if proactive_counter >= _proactive_interval:
                 proactive_counter = 0
                 try:
                     from src.core.proactive_engine import get_proactive_engine, periodic_proactive_check
+
                     _pe = get_proactive_engine()
                     asyncio.create_task(periodic_proactive_check(_pe)).add_done_callback(
                         _task_done_cb("ProactiveCheck")
@@ -919,13 +1025,14 @@ async def main():
     for bot in bots:
         try:
             await bot.stop_async()
-            logger.info("  Bot %s 已停止接收消息", getattr(bot, 'bot_id', '?'))
+            logger.info("  Bot %s 已停止接收消息", getattr(bot, "bot_id", "?"))
         except Exception as e:
-            logger.warning("停止 Bot polling 失败 (%s): %s", getattr(bot, 'bot_id', '?'), e)
+            logger.warning("停止 Bot polling 失败 (%s): %s", getattr(bot, "bot_id", "?"), e)
 
     # ── 第 1 步: 关机通知 (VPS + Telegram 管理员) ──
     try:
         import subprocess
+
         vps_host = os.getenv("DEPLOY_VPS_HOST", "")
         vps_user = os.getenv("DEPLOY_VPS_USER", "openclaw")
         if not vps_host:
@@ -934,10 +1041,17 @@ async def main():
         # 1. 通知 VPS: 写入 shutdown 标记文件，VPS failover 可秒级切换
         await asyncio.to_thread(
             subprocess.run,
-            ["ssh", "-o", "ConnectTimeout=3", "-o", "StrictHostKeyChecking=accept-new",
-             f"{vps_user}@{vps_host}",
-             "touch /opt/openclaw/data/primary_shutdown"],
-            timeout=5, capture_output=True,
+            [
+                "ssh",
+                "-o",
+                "ConnectTimeout=3",
+                "-o",
+                "StrictHostKeyChecking=accept-new",
+                f"{vps_user}@{vps_host}",
+                "touch /opt/openclaw/data/primary_shutdown",
+            ],
+            timeout=5,
+            capture_output=True,
         )
         logger.info("  已通知 VPS 主节点关机")
     except Exception as e:
@@ -959,6 +1073,7 @@ async def main():
     # 停止自选股异动监控
     try:
         from src.watchlist_monitor import get_watchlist_monitor
+
         await get_watchlist_monitor().stop()
     except Exception as e:
         logger.debug("关闭自选股监控时异常(可忽略): %s", e)
@@ -978,6 +1093,7 @@ async def main():
     # 停止 OMEGA 执行引擎
     try:
         from src.core.executor import get_executor
+
         await get_executor().close()
     except Exception as e:
         logger.debug("关闭OMEGA执行引擎时异常(可忽略): %s", e)
@@ -997,6 +1113,7 @@ async def main():
     # Langfuse 刷新 — 确保所有观测数据上报
     try:
         from src.langfuse_obs import shutdown as langfuse_shutdown
+
         langfuse_shutdown()
         logger.info("  Langfuse 观测层已关闭")
     except Exception as e:
@@ -1007,6 +1124,7 @@ async def main():
     # 关闭 LLM 缓存（sqlite3 缓存需要显式 close 才能刷盘）
     try:
         from src.litellm_router import _fallback_cache
+
         if _fallback_cache:
             _fallback_cache.close()
             logger.info("  LLM 缓存已关闭")
@@ -1015,14 +1133,16 @@ async def main():
     # 关闭 httpx 长生命周期客户端（防止 TCP 连接泄漏）
     try:
         from src.xianyu.goofish_monitor import _monitor as _gm
-        if _gm and hasattr(_gm, 'close'):
+
+        if _gm and hasattr(_gm, "close"):
             await _gm.close()
             logger.info("  GoofishMonitor httpx 客户端已关闭")
     except Exception as e:
         logger.debug("GoofishMonitor 关闭跳过: %s", e)
     try:
         from src.execution.social.media_crawler_bridge import MediaCrawlerBridge
-        if hasattr(MediaCrawlerBridge, '_instance') and MediaCrawlerBridge._instance:
+
+        if hasattr(MediaCrawlerBridge, "_instance") and MediaCrawlerBridge._instance:
             await MediaCrawlerBridge._instance.close()
             logger.info("  MediaCrawlerBridge httpx 客户端已关闭")
     except Exception as e:
@@ -1030,6 +1150,7 @@ async def main():
     # 关闭社交自动化的 headless Chrome 浏览器
     try:
         import subprocess as _sp
+
         _sp.run(["pkill", "-f", "remote-debugging-port=19222"], capture_output=True, timeout=5)
         logger.info("  社交浏览器已终止")
     except Exception:
@@ -1048,7 +1169,7 @@ def signal_handler(sig, frame):
     stop_event.set()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
@@ -1060,7 +1181,9 @@ if __name__ == '__main__':
         # 捕获所有未处理的异常，记录到日志后让 LaunchAgent 重启进程
         logger.critical(f"主进程意外崩溃，LaunchAgent 将自动重启: {type(e).__name__}: {e}")
         import traceback
+
         logger.critical(traceback.format_exc())
         # 退出码 1 让 LaunchAgent 知道是异常退出需要重启
         import sys
+
         sys.exit(1)

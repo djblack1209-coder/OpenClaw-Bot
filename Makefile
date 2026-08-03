@@ -118,17 +118,8 @@ tauri-clean: ## 构建前清理所有历史残留应用 (防止 Launchpad 出现
 	find .worktrees -path "*/bundle/macos/*.app" -type d -exec rm -rf {} + 2>/dev/null || true
 	@echo "✅ 历史残留已清理"
 
-tauri-build: tauri-clean ## 构建 Tauri 桌面端 (含自动清理历史残留)
-	@echo "══════ 构建 Tauri 桌面端 ══════"
-	cd $(FRONTEND) && npm run tauri:build
-	@echo "✅ Tauri 构建完成"
-	@echo "══════ 安装到 /Applications ══════"
-	cp -R apps/openclaw-manager-src/src-tauri/target/release/bundle/macos/OpenClaw.app /Applications/
-	@# 安装完毕后删除构建目录的 .app 副本，防止 Spotlight 索引出重复
-	rm -rf apps/openclaw-manager-src/src-tauri/target/release/bundle/macos/OpenClaw.app
-	@# 刷新 Launchpad 缓存
-	defaults write com.apple.dock ResetLaunchPad -bool true && killall Dock 2>/dev/null || true
-	@echo "✅ OpenClaw.app 已安装到 /Applications (构建副本已清理, Launchpad 已刷新)"
+tauri-build: ## 构建并事务式安装 Tauri 桌面端（失败自动恢复旧版）
+	bash scripts/tauri_build_install.sh
 
 ## ─── 清理 ───
 clean: ## 清理缓存和临时文件
@@ -163,21 +154,33 @@ deep-clean: clean ## 深度清理（释放 GB 级空间，不影响代码）
 
 ## ─── CI 本地验证（和 GitHub Actions 一致） ───
 ci-local: ## 一键本地 CI 验证 (等同 GitHub Actions 全部检查)
-	@echo "══════ [1/5] Python Lint (ruff) ══════"
+	@echo "══════ [1/8] Python Lint (ruff) ══════"
 	cd $(CLAWBOT) && $(PYTHON) -m ruff check src/ --config ruff.toml
 	@echo ""
-	@echo "══════ [2/5] Python Tests (pytest) ══════"
+	@echo "══════ [2/8] Python Tests (pytest) ══════"
 	cd $(CLAWBOT) && $(PYTHON) -m pytest tests/ --tb=short -q \
 		-x --timeout=120
 	@echo ""
-	@echo "══════ [3/5] Python Syntax Check ══════"
+	@echo "══════ [3/8] Python Syntax Check ══════"
 	cd $(CLAWBOT) && $(PYTHON) -m py_compile multi_main.py
 	cd $(CLAWBOT) && find src/ -name "*.py" -exec $(PYTHON) -m py_compile {} +
 	@echo ""
-	@echo "══════ [4/5] Frontend TypeScript Check ══════"
+	@echo "══════ [4/8] Frist-API Tests ══════"
+	cd $(FRIST_API) && npm test
+	@echo ""
+	@echo "══════ [5/8] Desktop Security Boundary Tests ══════"
+	node --test \
+		$(FRONTEND)/src/lib/security-hardening.static.test.mjs \
+		$(FRONTEND)/src/components/Social/social-growth-feedback.static.test.mjs \
+		scripts/auto_ops_scripts.test.mjs
+	@echo ""
+	@echo "══════ [6/8] Frontend TypeScript Check ══════"
 	cd $(FRONTEND) && npx tsc --noEmit
 	@echo ""
-	@echo "══════ [5/5] Docs Governance Check ══════"
+	@echo "══════ [7/8] Desktop Rust Tests + Compile Check ══════"
+	cd $(FRONTEND)/src-tauri && cargo test && cargo check
+	@echo ""
+	@echo "══════ [8/8] Docs Governance Check ══════"
 	bash scripts/check_docs_layout.sh
 	@echo ""
 	@echo "✅ 本地 CI 全部通过"

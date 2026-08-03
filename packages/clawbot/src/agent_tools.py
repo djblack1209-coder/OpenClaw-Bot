@@ -1,11 +1,11 @@
 """
-OpenClaw 自主 Agent — 搬运 smolagents (26.2k⭐, HuggingFace)
-让 LLM 自主决定调用哪些工具，用代码串联多步操作。
+OpenClaw 自主 Agent — 搬运 smolagents (HuggingFace)
+让 LLM 自主决定调用哪些只读工具，不允许执行本地生成代码。
 
 用户说: "检查我的持仓，如果亏损超过5%就建议止损"
 Agent: 调用 check_portfolio → 分析结果 → 调用 risk_analysis → 生成建议
 
-降级链: smolagents CodeAgent → 直接 LLM 回答 (零中断)
+执行链: smolagents ToolCallingAgent → 只读工具调用
 
 Usage:
     from src.agent_tools import run_agent
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 HAS_SMOLAGENTS = False
 
 try:
-    from smolagents import CodeAgent, LiteLLMModel, Tool
+    from smolagents import LiteLLMModel, Tool, ToolCallingAgent
     HAS_SMOLAGENTS = True
     logger.info("[SmolAgents] SDK 可用")
 except ImportError:
@@ -369,7 +369,7 @@ async def run_agent(query: str, model_name: str = "") -> str:
 
     tools = _get_all_tools()
 
-    # Run the sync smolagents CodeAgent in a thread executor
+    # 在线程池中运行只读工具 Agent，避免阻塞 Bot 事件循环。
     loop = asyncio.get_running_loop()
     result = await loop.run_in_executor(None, _run_agent_sync, query, model_name, tools)
     return result
@@ -380,19 +380,17 @@ def _run_agent_sync(query: str, model_name: str, tools: list) -> str:
     try:
         model = LiteLLMModel(model_id=model_name)
 
-        agent = CodeAgent(
+        agent = ToolCallingAgent(
             tools=tools,
             model=model,
             max_steps=6,
             verbosity_level=0,
-            additional_authorized_imports=[
-                "json", "math", "statistics", "datetime", "re",
-            ],
+            max_tool_threads=1,
         )
 
         result = agent.run(query)
 
-        # CodeAgent.run() may return various types
+        # Agent.run() 可能返回不同类型，统一转换为文本。
         if result is None:
             return "Agent 执行完成，但未产生输出。"
         return str(result)

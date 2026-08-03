@@ -8,6 +8,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+
 class FileTool:
     """文件读写操作"""
 
@@ -40,7 +41,54 @@ class FileTool:
                 f"路径越权: {path} 解析为 {resolved}，不在允许范围 {self.base_dir} 内"
             ) from e
 
+        if self._is_sensitive_path(resolved):
+            raise PermissionError(f"拒绝访问敏感文件: {path}")
+
         return resolved
+
+    def _is_sensitive_path(self, path: Path) -> bool:
+        """识别密钥、凭据、数据库及指向这些目标的软链接。"""
+        resolved = path.resolve()
+        try:
+            relative = resolved.relative_to(self.base_dir)
+        except ValueError:
+            return True
+
+        lowered_parts = tuple(part.lower() for part in relative.parts)
+        if any(part in {".ssh", ".gnupg"} for part in lowered_parts):
+            return True
+
+        name = resolved.name.lower()
+        sensitive_names = {
+            ".netrc",
+            ".npmrc",
+            ".pypirc",
+            "credentials",
+            "credentials.json",
+            "service-account.json",
+        }
+        private_key_prefixes = ("id_rsa", "id_dsa", "id_ecdsa", "id_ed25519")
+        sensitive_suffixes = (
+            ".db",
+            ".sqlite",
+            ".sqlite3",
+            ".pem",
+            ".key",
+            ".p12",
+            ".pfx",
+            ".jks",
+            ".keystore",
+        )
+        return (
+            name == ".env"
+            or name.startswith(".env.")
+            or name == ".envrc"
+            or name in sensitive_names
+            or name.startswith(private_key_prefixes)
+            or name.endswith(sensitive_suffixes)
+            or ".db-" in name
+            or ".sqlite-" in name
+        )
 
     def read(self, path: str, offset: int = 0, limit: int = 2000) -> dict[str, Any]:
         """读取文件内容"""
@@ -140,6 +188,8 @@ class FileTool:
             dirs = []
 
             for item in sorted(dir_path.glob(pattern)):
+                if self._is_sensitive_path(item):
+                    continue
                 if item.is_file():
                     files.append({"name": item.name, "size": item.stat().st_size, "path": str(item)})
                 elif item.is_dir():
@@ -164,6 +214,8 @@ class FileTool:
 
             for file_path in dir_path.rglob(pattern):
                 if not file_path.is_file():
+                    continue
+                if self._is_sensitive_path(file_path):
                     continue
 
                 if len(matches) >= 100:

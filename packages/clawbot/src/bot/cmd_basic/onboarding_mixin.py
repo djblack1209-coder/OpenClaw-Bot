@@ -24,6 +24,7 @@ from telegram.ext import (
     filters,
 )
 
+from src.bot.auth import requires_auth
 from src.bot.globals import history_store
 
 logger = logging.getLogger(__name__)
@@ -169,6 +170,7 @@ class _OnboardingMixin:
 
     # ── Step 1: 选择兴趣领域 ──────────────────────────
 
+    @requires_auth
     async def onboard_interests(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """用户选择了感兴趣的功能领域"""
         query = update.callback_query
@@ -211,6 +213,7 @@ class _OnboardingMixin:
 
     # ── Step 2: 选择沟通风格 → 完成 ─────────────────
 
+    @requires_auth
     async def onboard_style(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """用户选择了沟通风格 → 展示个性化欢迎，结束向导"""
         query = update.callback_query
@@ -307,6 +310,7 @@ class _OnboardingMixin:
         except Exception as e:
             logger.debug("写入 onboarded 标记失败: %s", e)
 
+    @requires_auth
     async def onboard_cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """用户发送 /cancel → 跳过向导"""
         from src.bot.cmd_basic.help_mixin import _build_help_main_keyboard
@@ -326,6 +330,7 @@ class _OnboardingMixin:
             reply_markup=_build_help_main_keyboard(),
         )
 
+    @requires_auth
     async def _onboard_text_fallback(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """用户在向导中途发了文字消息 → 提示完成或跳过"""
         await update.message.reply_text("👆 先点上面的按钮完成设置（就剩一步了），\n或者输入 /cancel 跳过引导。")

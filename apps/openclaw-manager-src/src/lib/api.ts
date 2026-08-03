@@ -144,8 +144,18 @@ export const api = {
     isTauri() ? ipc.clawbotSocialDraftDelete(index) : clawbotFetchJson(`/api/v1/social/drafts/${index}`, { method: 'DELETE' }),
   clawbotSocialDraftReview: (index: number, approved = true, reviewer = 'owner') =>
     isTauri() ? ipc.clawbotSocialDraftReview(index, approved, reviewer) : clawbotFetchJson(`/api/v1/social/drafts/${index}/review?approved=${approved}&reviewer=${encodeURIComponent(reviewer)}`, { method: 'POST' }),
-  clawbotSocialDraftPublish: (index: number) =>
-    isTauri() ? ipc.clawbotSocialDraftPublish(index) : clawbotFetchJson(`/api/v1/social/drafts/${index}/publish`, { method: 'POST' }),
+  clawbotSocialDraftFinalConfirm: (index: number, reviewer = 'owner') =>
+    isTauri()
+      ? ipc.clawbotSocialDraftFinalConfirm(index, reviewer)
+      : clawbotFetchJson(`/api/v1/social/drafts/${index}/final-confirm?reviewer=${encodeURIComponent(reviewer)}`, { method: 'POST' }),
+  clawbotSocialDraftPublish: (index: number, confirmationToken: string) =>
+    isTauri()
+      ? ipc.clawbotSocialDraftPublish(index, confirmationToken)
+      : clawbotFetchJson(`/api/v1/social/drafts/${index}/publish`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ confirmation_token: confirmationToken }),
+        }),
 
   // ── 图像生成 ──
   clawbotGenerateImage: ipc.clawbotGenerateImage,

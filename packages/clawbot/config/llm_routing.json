@@ -289,6 +289,7 @@
       ]
     },
     "kiro_gateway": {
+      "enabled_env": "KIRO_GATEWAY_ENABLED",
       "env_key": "KIRO_API_KEY",
       "base_url_env": "KIRO_BASE_URL",
       "base_url_default": "http://127.0.0.1:18793/v1",
@@ -603,8 +604,10 @@
       ]
     },
     "ollama_local": {
-      "env_key": "LOCAL_HF_MODEL_ENDPOINT",
-      "base_url": "http://127.0.0.1:11434",
+      "enabled_env": "OLLAMA_ENABLED",
+      "env_key_optional": "OLLAMA_API_KEY",
+      "base_url_env": "LOCAL_HF_MODEL_ENDPOINT",
+      "base_url_default": "http://127.0.0.1:11434",
       "timeout": 60,
       "stream_timeout": 90,
       "note": "本地 Ollama (timeout 30→20s 性能优化)",
@@ -625,6 +628,7 @@
       ]
     },
     "g4f": {
+      "enabled_env": "G4F_ENABLED",
       "env_key_optional": "G4F_API_KEY",
       "base_url_env": "G4F_BASE_URL",
       "base_url_default": "http://127.0.0.1:18891/v1",

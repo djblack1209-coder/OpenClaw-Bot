@@ -435,12 +435,10 @@ class ToolExecutor:
         """分发工具调用到具体实现"""
 
         if tool_name == "bash":
-            if self.bash_tool.is_dangerous(tool_input.get("command", "")):
-                return {
-                    "success": False,
-                    "error": "检测到危险命令，已拒绝执行。请使用更安全的替代方案。",
-                }
-            return self.bash_tool.execute(tool_input["command"], tool_input.get("workdir"))
+            return self.bash_tool.execute(
+                tool_input.get("command", ""),
+                tool_input.get("workdir"),
+            )
 
         elif tool_name == "read_file":
             return self.file_tool.read(

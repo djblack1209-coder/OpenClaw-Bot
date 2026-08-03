@@ -6,8 +6,8 @@ from src.execution.social.x_auto_ops import (
     TrendSeed,
     VideoSeed,
     build_daily_drafts,
-    build_xhs_review_drafts,
     build_next_draft,
+    build_xhs_review_drafts,
     choose_seed,
     choose_seeds,
     compose_x_post,
@@ -20,10 +20,10 @@ from src.execution.social.x_auto_ops import (
     get_or_build_next_ready_draft,
     is_draft_approved,
     mark_draft_review,
-    require_draft_review,
-    score_content_seed,
     next_morning_at,
     parse_daily_times,
+    require_draft_review,
+    score_content_seed,
     summarize_transcript,
     write_launchd_plist,
     x_weighted_length,
@@ -935,7 +935,9 @@ def test_write_launchd_plist_defaults_to_daily_calendar_time(tmp_path):
     assert "<key>Day</key>" not in text
     assert "<key>Hour</key><integer>8</integer>" in text
     assert "<key>Minute</key><integer>30</integer>" in text
-    assert "--publish-next" in text
+    assert "--publish-next" not in text
+    assert "--draft" in text
+    assert "--draft-count" in text
 
 
 def test_write_launchd_plist_supports_multiple_daily_times(tmp_path):

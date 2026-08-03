@@ -79,11 +79,14 @@ async def test_discover_hot_social_topics_prefers_openclaw_practical_candidates(
 
 
 @pytest.mark.asyncio
-async def test_autopost_hot_content_publishes_both_platforms(monkeypatch, tmp_path):
+async def test_autopost_hot_content_creates_review_drafts_without_publishing(monkeypatch, tmp_path):
     monkeypatch.setattr(execution_hub_module, "DB_PATH", tmp_path / "execution_hub.db")
     hub = ExecutionHub(news_fetcher=cast(NewsFetcher, StubFetcher()))
 
+    worker_actions = []
+
     def fake_run_social_worker(action, payload):
+        worker_actions.append(action)
         if action == "bootstrap":
             return {"success": True, "browser_running": True, "x_ready": True, "xiaohongshu_ready": True, "tabs": 4}
         if action == "render":
@@ -100,8 +103,12 @@ async def test_autopost_hot_content_publishes_both_platforms(monkeypatch, tmp_pa
 
     assert ret["success"] is True
     assert ret["topic"].startswith("OpenClaw")
-    assert ret["results"]["x"]["published"]["success"] is True
-    assert ret["results"]["xiaohongshu"]["published"]["success"] is True
+    assert ret["results"]["x"]["published"]["success"] is False
+    assert ret["results"]["x"]["published"]["requires_owner_review"] is True
+    assert ret["results"]["xiaohongshu"]["published"]["success"] is False
+    assert ret["results"]["xiaohongshu"]["published"]["requires_final_confirmation"] is True
+    assert "publish_x" not in worker_actions
+    assert "publish_xhs" not in worker_actions
     assert "For You" in ret["results"]["x"]["body"] or "热点" in ret["results"]["x"]["body"]
     assert "AI" in ret["results"]["x"]["body"] or "OpenClaw" in ret["results"]["x"]["body"]
     assert "SOP" in ret["results"]["x"]["body"] or "选题" in ret["results"]["x"]["body"]
@@ -236,4 +243,3 @@ def test_extract_json_object_parses_operator_payload(monkeypatch, tmp_path):
     assert payload is not None
     assert payload["action"]["type"] == "observe"
     assert payload["next_check_minutes"] == 180
-

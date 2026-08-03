@@ -12,12 +12,11 @@ All subprocess calls are MOCKED — no real dangerous commands are executed.
 """
 import os
 import subprocess
-
-import pytest
 from unittest.mock import MagicMock, patch
 
-from src.tools.bash_tool import BashTool
+import pytest
 
+from src.tools.bash_tool import BashTool
 
 # ── Fixtures ────────────────────────────────────────────
 
@@ -38,10 +37,10 @@ class TestSafeCommandAllowed:
         assert tool.is_allowed("echo hello") is True
 
     def test_ls_allowed(self, tool):
-        assert tool.is_allowed("ls -la /tmp") is True
+        assert tool.is_allowed("ls -la .") is True
 
     def test_cat_allowed(self, tool):
-        assert tool.is_allowed("cat /etc/hostname") is True
+        assert tool.is_allowed("cat local.txt") is True
 
     def test_python_not_allowed(self, tool):
         """R27 安全加固后 python3 已从白名单移除"""
@@ -59,8 +58,14 @@ class TestSafeCommandAllowed:
         assert result["success"] is True
         assert "hello" in result["stdout"]
 
-    def test_git_status_allowed(self, tool):
-        assert tool.is_allowed("git status") is True
+    def test_git_commands_not_allowed(self, tool):
+        assert tool.is_allowed("git status") is False
+
+    def test_git_push_not_allowed(self, tool):
+        assert tool.is_allowed("git push origin main") is False
+
+    def test_mutating_file_command_not_allowed(self, tool):
+        assert tool.is_allowed("cp source target") is False
 
     def test_pip_not_allowed(self, tool):
         """R27 安全加固后 pip 已从白名单移除"""
@@ -118,6 +123,34 @@ class TestNonWhitelistedBlocked:
         with patch("subprocess.Popen") as mock_popen:
             tool.execute("rm -rf /")
             mock_popen.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "find . -delete",
+            "find . -exec cat {} ;",
+            "find -L /etc",
+            "find -O3 /etc",
+            "sort -o output.txt input.txt",
+            "sort --random-source=/etc/hosts input.txt",
+            "grep -f /etc/hosts local.txt",
+            "grep -f/etc/hosts local.txt",
+            "grep -R secret .",
+            "wc --files0-from=/etc/hosts",
+            "du --files0-from=/etc/hosts",
+            "git diff --no-index /etc/hosts local.txt",
+            "git grep -O/bin/echo class local.txt",
+            "cat /etc/hosts",
+            "cat ../outside.txt",
+            "/tmp/ls",
+        ],
+    )
+    def test_dangerous_arguments_and_paths_are_blocked(self, tool, command):
+        with patch("subprocess.Popen") as mock_popen:
+            result = tool.execute(command)
+
+        assert result["success"] is False
+        mock_popen.assert_not_called()
 
 
 # ── 3. Timeout enforced ────────────────────────────────
@@ -240,7 +273,8 @@ class TestEnvVarsNotLeaked:
 
         with patch("subprocess.Popen", side_effect=fake_popen), \
              patch.dict("os.environ", {"SECRET_API_KEY": "sk-12345",
-                                       "HOME": "/Users/test"}, clear=False):
+                                       "HOME": "/Users/test",
+                                       "PATH": "/tmp/untrusted"}, clear=False):
             result = tool.execute("echo hello")
 
         assert result["success"] is True
@@ -248,6 +282,30 @@ class TestEnvVarsNotLeaked:
         assert "SECRET_API_KEY" not in captured_env
         # 白名单变量应正常传递
         assert captured_env.get("HOME") == "/Users/test"
+        assert captured_env.get("PATH") == os.defpath
+
+    def test_git_never_reaches_subprocess(self, tool):
+        with patch("subprocess.Popen") as mock_popen:
+            result = tool.execute("git diff")
+
+        assert result["success"] is False
+        mock_popen.assert_not_called()
+
+    def test_untrusted_path_cannot_hijack_allowed_command(self, tool, tmp_path, monkeypatch):
+        malicious_dir = tmp_path / "malicious-bin"
+        malicious_dir.mkdir()
+        marker = tmp_path / "hijacked"
+        fake_cat = malicious_dir / "cat"
+        fake_cat.write_text(f"#!/bin/sh\ntouch {marker}\n")
+        fake_cat.chmod(0o755)
+        (tmp_path / "safe.txt").write_text("safe-content")
+        monkeypatch.setenv("PATH", str(malicious_dir))
+
+        result = tool.execute("cat safe.txt")
+
+        assert result["success"] is True
+        assert "safe-content" in result["stdout"]
+        assert not marker.exists()
 
 
 # ── 6. Edge cases ──────────────────────────────────────
@@ -268,16 +326,13 @@ class TestBashToolEdgeCases:
         assert "不在允许列表" in result["error"]
 
     def test_workdir_override(self, tool):
-        """项目范围内的 workdir 可以正常使用."""
+        """配置根目录内的 workdir 可以正常使用。"""
         mock_proc = MagicMock()
         mock_proc.communicate.return_value = (b"ok", b"")
         mock_proc.returncode = 0
 
-        # 使用项目内目录作为 workdir
-        project_dir = os.path.realpath(
-            os.path.join(os.path.dirname(__file__), '..')
-        )
-        custom_dir = os.path.join(project_dir, "src")
+        custom_dir = os.path.join(tool.working_dir, "nested")
+        os.makedirs(custom_dir)
 
         with patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
             tool.execute("ls", workdir=custom_dir)

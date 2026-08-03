@@ -21,14 +21,23 @@ v2.0 变更 (2026-03-24):
 """
 
 import asyncio
+import copy
+import json
 import logging
+import math
+import os
+import secrets
+import tempfile
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
+from src.cross_process_lock import CrossProcessFileRLock, cross_process_file_lock
 from src.utils import now_et as _now_et_fn
 
 
@@ -37,6 +46,8 @@ def _now_et() -> datetime:
 
 
 logger = logging.getLogger(__name__)
+
+PENDING_EXIT_STATE_FILE = Path(__file__).resolve().parents[1] / "data" / "position_monitor_exit_state.json"
 
 
 class ExitReason(Enum):
@@ -221,6 +232,8 @@ class PositionMonitor:
         notify_func: Callable | None = None,
         risk_manager: Any = None,
         journal: Any = None,
+        get_order_snapshots_func: Callable | None = None,
+        pending_exit_state_path: str | Path | None = None,
     ):
         self.check_interval = check_interval
         self.get_quote = get_quote_func
@@ -228,20 +241,529 @@ class PositionMonitor:
         self.notify = notify_func
         self.risk_manager = risk_manager
         self.journal = journal
+        self.get_order_snapshots = get_order_snapshots_func
+        self._pending_exit_state_path = (
+            Path(pending_exit_state_path) if pending_exit_state_path is not None else None
+        )
         self.positions: dict[int, MonitoredPosition] = {}
         self._running = False
         self._task: asyncio.Task | None = None
         self._exit_history: list[ExitSignal] = []
         self._exit_retry_count: dict[int, int] = {}  # trade_id -> 重试次数
         self._max_exit_retries = 3  # 最大重试次数
+        self._pending_exit_orders: dict[int, dict] = {}
+        self._manual_exit_required: set[int] = set()
+        self._completed_exit_trades: set[int] = set()
+        self._exit_fill_totals: dict[int, dict[str, float]] = {}
+        self._load_pending_exit_state()
         # v2.0: 通知节流 (搬运 PanWatch throttle 模式)
         # key: (trade_id, AlertLevel) -> last_alert_timestamp
         self._alert_cooldowns: dict[tuple, float] = {}
         logger.info("[PositionMonitor] 初始化完成 | 检查间隔=%ds", check_interval)
 
+    def _pending_exit_state_lock(self) -> CrossProcessFileRLock | None:
+        """返回与未决平仓账本绑定的跨进程锁。"""
+        path = self._pending_exit_state_path
+        if path is None:
+            return None
+        return cross_process_file_lock(path.with_name(f".{path.name}.lock"))
+
+    def _load_pending_exit_state_locked(self, *, reset_if_missing: bool = False) -> None:
+        """持锁读取未决平仓账本并更新内存状态。"""
+        path = self._pending_exit_state_path
+        if path is None:
+            return
+        if not path.exists():
+            if reset_if_missing:
+                self._pending_exit_orders = {}
+                self._exit_fill_totals = {}
+                self._exit_retry_count = {}
+                self._manual_exit_required = set()
+                self._completed_exit_trades = set()
+            return
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            raise ValueError("待确认平仓状态根节点必须是对象")
+        pending = raw.get("pending_exit_orders", {})
+        fill_totals = raw.get("exit_fill_totals", {})
+        retry_count = raw.get("exit_retry_count", {})
+        manual_required = raw.get("manual_exit_required", [])
+        completed_trades = raw.get("completed_exit_trades", [])
+        if not isinstance(pending, dict) or not isinstance(fill_totals, dict):
+            raise ValueError("待确认平仓状态字段格式无效")
+        if (
+            not isinstance(retry_count, dict)
+            or not isinstance(manual_required, list)
+            or not isinstance(completed_trades, list)
+        ):
+            raise ValueError("待确认平仓重试字段格式无效")
+        self._pending_exit_orders = {
+            int(trade_id): dict(order)
+            for trade_id, order in pending.items()
+            if str(trade_id).isdigit() and isinstance(order, dict)
+        }
+        self._exit_fill_totals = {
+            int(trade_id): {
+                "quantity": float(total.get("quantity", 0) or 0),
+                "notional": float(total.get("notional", 0) or 0),
+            }
+            for trade_id, total in fill_totals.items()
+            if str(trade_id).isdigit() and isinstance(total, dict)
+        }
+        self._exit_retry_count = {
+            int(trade_id): int(count)
+            for trade_id, count in retry_count.items()
+            if str(trade_id).isdigit()
+        }
+        self._manual_exit_required = {
+            int(trade_id)
+            for trade_id in manual_required
+            if str(trade_id).isdigit()
+        }
+        self._completed_exit_trades = {
+            int(trade_id)
+            for trade_id in completed_trades
+            if str(trade_id).isdigit()
+        }
+
+    def _load_pending_exit_state(self) -> None:
+        """恢复未决平仓订单，确保进程重启后不会重复下单。"""
+        lock = self._pending_exit_state_lock()
+        if lock is None:
+            return
+        try:
+            with lock:
+                self._load_pending_exit_state_locked()
+            if self._pending_exit_orders:
+                logger.warning(
+                    "[Monitor] 从磁盘恢复 %d 个待确认平仓单，将先向券商对账",
+                    len(self._pending_exit_orders),
+                )
+        except Exception as exc:
+            logger.error("[Monitor] 恢复待确认平仓状态失败，已进入禁止覆盖模式: %s", exc)
+            raise RuntimeError("待确认平仓状态损坏，拒绝启动自动平仓") from exc
+
+    def _persist_pending_exit_state_locked(self) -> None:
+        """持锁原子保存未决订单及累计成交。"""
+        path = self._pending_exit_state_path
+        if path is None:
+            return
+        for trade_id, pending in self._pending_exit_orders.items():
+            pos = self.positions.get(trade_id)
+            if pos is not None and not pending.get("reconcile_claim"):
+                pending["remaining_position_qty"] = float(pos.quantity)
+                pending["symbol"] = pos.symbol
+                pending["position_side"] = pos.side
+        payload = {
+            "version": 2,
+            "pending_exit_orders": {
+                str(trade_id): order for trade_id, order in self._pending_exit_orders.items()
+            },
+            "exit_fill_totals": {
+                str(trade_id): total for trade_id, total in self._exit_fill_totals.items()
+            },
+            "exit_retry_count": {
+                str(trade_id): count for trade_id, count in self._exit_retry_count.items()
+            },
+            "manual_exit_required": sorted(self._manual_exit_required),
+            "completed_exit_trades": sorted(self._completed_exit_trades),
+        }
+        path.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, ensure_ascii=False, sort_keys=True)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp_name, path)
+        finally:
+            if os.path.exists(temp_name):
+                os.unlink(temp_name)
+
+    def _persist_pending_exit_state(self) -> None:
+        """在跨进程锁内保存当前未决平仓状态。"""
+        lock = self._pending_exit_state_lock()
+        if lock is None:
+            return
+        with lock:
+            self._persist_pending_exit_state_locked()
+
+    def _pending_exit_state_snapshot(
+        self,
+    ) -> tuple[dict, dict, dict, set[int], set[int]]:
+        """复制未决平仓账本，事务失败时恢复内存状态。"""
+        return (
+            copy.deepcopy(self._pending_exit_orders),
+            copy.deepcopy(self._exit_fill_totals),
+            copy.deepcopy(self._exit_retry_count),
+            set(self._manual_exit_required),
+            set(self._completed_exit_trades),
+        )
+
+    def _restore_pending_exit_state_snapshot(
+        self,
+        snapshot: tuple[dict, dict, dict, set[int], set[int]],
+    ) -> None:
+        """恢复事务开始时的未决平仓内存账本。"""
+        (
+            self._pending_exit_orders,
+            self._exit_fill_totals,
+            self._exit_retry_count,
+            self._manual_exit_required,
+            self._completed_exit_trades,
+        ) = snapshot
+
+    @contextmanager
+    def _pending_exit_state_transaction(self) -> Iterator[None]:
+        """持锁重载、修改并原子保存最新未决平仓账本。"""
+        lock = self._pending_exit_state_lock()
+        if lock is None:
+            yield
+            return
+        with lock:
+            self._load_pending_exit_state_locked(reset_if_missing=True)
+            snapshot = self._pending_exit_state_snapshot()
+            try:
+                yield
+                self._persist_pending_exit_state_locked()
+            except Exception:
+                self._restore_pending_exit_state_snapshot(snapshot)
+                raise
+
+    def _claim_exit_submission(
+        self,
+        signal: ExitSignal,
+        sell_qty: float,
+    ) -> dict:
+        """在下单前持久化唯一 claim，阻断其他进程重复平仓。"""
+        trade_id = signal.position.trade_id
+        submission_id = secrets.token_hex(16)
+        result: dict = {}
+        with self._pending_exit_state_transaction():
+            if trade_id in self._completed_exit_trades:
+                result = {
+                    "claimed": False,
+                    "status": "already_closed",
+                    "success": True,
+                }
+                return result
+            pending = self._pending_exit_orders.get(trade_id)
+            if pending:
+                result = {
+                    "claimed": False,
+                    "status": "pending_confirmation",
+                    "order": dict(pending),
+                }
+                return result
+            if trade_id in self._manual_exit_required:
+                result = {
+                    "claimed": False,
+                    "status": "manual_action_required",
+                    "error": "自动平仓多次失败，真实仓位仍在监控中",
+                }
+                return result
+            retry_count = self._exit_retry_count.get(trade_id, 0)
+            if retry_count >= self._max_exit_retries:
+                self._manual_exit_required.add(trade_id)
+                result = {
+                    "claimed": False,
+                    "status": "manual_action_required",
+                    "error": "自动平仓重试耗尽，真实仓位未确认关闭",
+                    "retry_count": retry_count,
+                    "newly_exhausted": True,
+                }
+                return result
+            self._pending_exit_orders[trade_id] = {
+                "status": "Submitting",
+                "submission_claim": True,
+                "submission_id": submission_id,
+                "requested_qty": float(sell_qty),
+                "remaining_position_qty": float(signal.position.quantity),
+                "symbol": signal.position.symbol,
+                "position_side": signal.position.side,
+                "reason": signal.reason.value,
+                "trigger_price": float(signal.trigger_price),
+                "message": signal.message,
+                "claimed_at": _now_et().isoformat(),
+            }
+            result = {
+                "claimed": True,
+                "submission_id": submission_id,
+                "retry_count": retry_count,
+            }
+        return result
+
+    def _release_exit_submission(
+        self,
+        trade_id: int,
+        submission_id: str,
+        *,
+        increment_retry: bool,
+        clear_trade_state: bool = False,
+    ) -> None:
+        """释放本人持有的下单 claim，并按需累计失败次数。"""
+        local_fill_total = copy.deepcopy(self._exit_fill_totals.get(trade_id))
+        with self._pending_exit_state_transaction():
+            pending = self._pending_exit_orders.get(trade_id, {})
+            if pending.get("submission_id") != submission_id:
+                return
+            self._pending_exit_orders.pop(trade_id, None)
+            if clear_trade_state:
+                self._exit_retry_count.pop(trade_id, None)
+                self._manual_exit_required.discard(trade_id)
+                self._exit_fill_totals.pop(trade_id, None)
+                self._completed_exit_trades.add(trade_id)
+            elif increment_retry:
+                self._exit_retry_count[trade_id] = self._exit_retry_count.get(trade_id, 0) + 1
+            elif local_fill_total is not None:
+                self._exit_fill_totals[trade_id] = local_fill_total
+
+    def _replace_exit_submission(
+        self,
+        trade_id: int,
+        submission_id: str,
+        pending_order: dict,
+    ) -> None:
+        """把本人持有的下单 claim 原子替换为券商未决订单。"""
+        local_fill_total = copy.deepcopy(self._exit_fill_totals.get(trade_id))
+        with self._pending_exit_state_transaction():
+            pending = self._pending_exit_orders.get(trade_id, {})
+            if pending.get("submission_id") != submission_id:
+                raise RuntimeError("平仓 submission claim 已变化，拒绝覆盖")
+            self._pending_exit_orders[trade_id] = dict(pending_order)
+            if local_fill_total is not None:
+                self._exit_fill_totals[trade_id] = local_fill_total
+
+    def _claim_pending_exit_reconciliation(
+        self,
+        trade_id: int,
+        order_result: dict,
+    ) -> dict:
+        """原子占用一次券商累计成交增量，防止多实例重复结算。"""
+        result: dict = {}
+        with self._pending_exit_state_transaction():
+            pending = self._pending_exit_orders.get(trade_id)
+            pos = self.positions.get(trade_id)
+            if not pending or not pos:
+                return {
+                    "claimed": False,
+                    "status": "not_found",
+                    "error": "没有对应的待确认平仓单",
+                }
+            if pending.get("submission_claim"):
+                return {
+                    "claimed": False,
+                    "status": "pending_confirmation",
+                    "error": "平仓单仍处于提交确认阶段",
+                }
+            active_claim = pending.get("reconcile_claim")
+            if isinstance(active_claim, dict) and active_claim.get("claim_id"):
+                return {
+                    "claimed": False,
+                    "status": "reconcile_in_progress",
+                    "error": "同一平仓成交增量正在由另一个实例结算",
+                }
+
+            expected_order_id = str(pending.get("order_id") or "")
+            actual_order_id = str(order_result.get("order_id") or "")
+            if expected_order_id and actual_order_id and expected_order_id != actual_order_id:
+                return {
+                    "claimed": False,
+                    "status": "error",
+                    "error": "订单 ID 与待确认记录不一致",
+                }
+            if order_result.get("error"):
+                return {
+                    "claimed": False,
+                    "status": "pending_confirmation",
+                    "error": str(order_result.get("error")),
+                }
+            if order_result.get("simulated"):
+                return {
+                    "claimed": False,
+                    "status": "pending_confirmation",
+                    "error": "模拟结果不能回写真实平仓单",
+                }
+
+            normalized_status = str(order_result.get("status") or "").strip().lower()
+            try:
+                cumulative_filled = float(order_result.get("filled_qty", 0) or 0)
+                cumulative_avg_price = float(order_result.get("avg_price", 0) or 0)
+                applied_filled = float(pending.get("applied_filled_qty", 0) or 0)
+                requested_qty = float(pending.get("requested_qty", 0) or 0)
+                remaining_before = float(
+                    pending.get("remaining_position_qty", pos.quantity) or pos.quantity
+                )
+                applied_order_notional = float(
+                    pending.get("applied_order_notional")
+                    or applied_filled * float(pending.get("avg_price", 0) or 0)
+                )
+            except (TypeError, ValueError) as exc:
+                return {
+                    "claimed": False,
+                    "status": "error",
+                    "error": f"平仓对账数值无效: {exc}",
+                }
+            numeric_values = (
+                cumulative_filled,
+                cumulative_avg_price,
+                applied_filled,
+                requested_qty,
+                remaining_before,
+                applied_order_notional,
+            )
+            if any(not math.isfinite(value) or value < 0 for value in numeric_values):
+                return {
+                    "claimed": False,
+                    "status": "error",
+                    "error": "平仓对账数值必须是有限非负数",
+                }
+            if cumulative_filled < applied_filled - 1e-9:
+                return {
+                    "claimed": False,
+                    "status": "error",
+                    "error": "券商累计成交数量小于已结算数量",
+                }
+            if requested_qty > 0 and cumulative_filled > requested_qty + 1e-9:
+                return {
+                    "claimed": False,
+                    "status": "error",
+                    "error": "券商累计成交数量超过请求平仓数量",
+                }
+
+            incremental_fill = max(0.0, cumulative_filled - applied_filled)
+            if (
+                normalized_status in {"cancelled", "apicancelled", "inactive"}
+                and incremental_fill <= 0
+            ):
+                self._pending_exit_orders.pop(trade_id, None)
+                self._exit_retry_count[trade_id] = self._exit_retry_count.get(trade_id, 0) + 1
+                return {
+                    "claimed": False,
+                    "status": "error",
+                    "error": f"平仓单已终止且无新增成交 (status={order_result.get('status')})",
+                }
+            if incremental_fill <= 0:
+                pending.update(
+                    {key: value for key, value in order_result.items() if key != "filled_qty"}
+                )
+                return {
+                    "claimed": False,
+                    "status": "pending_confirmation",
+                    "filled_qty": 0.0,
+                    "remaining_qty": remaining_before,
+                }
+            if cumulative_avg_price <= 0 or incremental_fill > remaining_before + 1e-9:
+                return {
+                    "claimed": False,
+                    "status": "error",
+                    "error": "平仓新增成交价格或数量无效",
+                }
+
+            cumulative_order_notional = cumulative_filled * cumulative_avg_price
+            incremental_notional = cumulative_order_notional - applied_order_notional
+            if not math.isfinite(incremental_notional) or incremental_notional <= 0:
+                return {
+                    "claimed": False,
+                    "status": "error",
+                    "error": "平仓新增成交金额无效",
+                }
+            incremental_avg_price = incremental_notional / incremental_fill
+            remaining_after = max(0.0, remaining_before - incremental_fill)
+            claim_id = secrets.token_hex(16)
+            pending["applied_filled_qty"] = cumulative_filled
+            pending["applied_order_notional"] = cumulative_order_notional
+            pending["remaining_position_qty"] = remaining_after
+            pending.update(
+                {key: value for key, value in order_result.items() if key != "filled_qty"}
+            )
+            pending["reconcile_claim"] = {
+                "claim_id": claim_id,
+                "incremental_fill": incremental_fill,
+                "incremental_notional": incremental_notional,
+                "claimed_at": _now_et().isoformat(),
+            }
+            fill_total = self._exit_fill_totals.setdefault(
+                trade_id,
+                {"quantity": 0.0, "notional": 0.0},
+            )
+            fill_total["quantity"] += incremental_fill
+            fill_total["notional"] += incremental_notional
+            result = {
+                "claimed": True,
+                "claim_id": claim_id,
+                "pending": copy.deepcopy(pending),
+                "incremental_fill": incremental_fill,
+                "incremental_avg_price": incremental_avg_price,
+                "remaining_before": remaining_before,
+                "remaining_after": remaining_after,
+                "normalized_status": normalized_status,
+                "requested_qty": requested_qty,
+                "cumulative_filled": cumulative_filled,
+            }
+        return result
+
+    def _finalize_pending_exit_reconciliation(
+        self,
+        trade_id: int,
+        claim_id: str,
+        order_result: dict,
+    ) -> dict:
+        """原子完成本人占用的成交增量，并保留其他交易的最新状态。"""
+        result: dict = {}
+        with self._pending_exit_state_transaction():
+            pending = self._pending_exit_orders.get(trade_id)
+            if not pending:
+                return {
+                    "status": "not_found",
+                    "error": "待确认平仓单已不存在",
+                }
+            claim = pending.get("reconcile_claim")
+            if not isinstance(claim, dict) or claim.get("claim_id") != claim_id:
+                raise RuntimeError("平仓 reconcile claim 已变化，拒绝覆盖")
+            pending.pop("reconcile_claim", None)
+            pending.update(
+                {key: value for key, value in order_result.items() if key != "filled_qty"}
+            )
+            normalized_status = str(order_result.get("status") or "").strip().lower()
+            cumulative_filled = float(pending.get("applied_filled_qty", 0) or 0)
+            requested_qty = float(pending.get("requested_qty", 0) or 0)
+            remaining_qty = float(pending.get("remaining_position_qty", 0) or 0)
+            terminal_order = normalized_status in {
+                "filled",
+                "cancelled",
+                "apicancelled",
+                "inactive",
+            }
+            if terminal_order or cumulative_filled >= requested_qty > 0:
+                self._pending_exit_orders.pop(trade_id, None)
+                if remaining_qty <= 1e-9:
+                    self._completed_exit_trades.add(trade_id)
+                    self._exit_retry_count.pop(trade_id, None)
+                    self._manual_exit_required.discard(trade_id)
+                    self._exit_fill_totals.pop(trade_id, None)
+                result["status"] = (
+                    "partially_filled_terminal"
+                    if remaining_qty > 1e-9 and normalized_status != "filled"
+                    else "filled"
+                )
+            else:
+                self._pending_exit_orders[trade_id] = pending
+                result["status"] = "partially_filled_pending"
+            result["remaining_qty"] = remaining_qty
+        return result
+
     # ============ 持仓管理 ============
 
     def add_position(self, pos: MonitoredPosition) -> None:
+        restored_pending = self._pending_exit_orders.get(pos.trade_id)
+        if restored_pending:
+            try:
+                remaining_qty = float(restored_pending.get("remaining_position_qty", 0) or 0)
+            except (TypeError, ValueError):
+                remaining_qty = 0.0
+            if 0 < remaining_qty <= float(pos.quantity):
+                pos.quantity = remaining_qty
         self.positions[pos.trade_id] = pos
         pos.highest_price = pos.entry_price
         if pos.original_quantity <= 0:
@@ -259,10 +781,21 @@ class PositionMonitor:
             pos.trailing_stop_pct * 100,
         )
 
-    def remove_position(self, trade_id: int) -> None:
+    def remove_position(
+        self,
+        trade_id: int,
+        *,
+        preserve_pending_exit: bool = False,
+    ) -> None:
         if trade_id in self.positions:
             pos = self.positions.pop(trade_id)
             logger.info("[Monitor] 移除监控: %s (trade #%d)", pos.symbol, trade_id)
+        if preserve_pending_exit:
+            return
+        with self._pending_exit_state_transaction():
+            self._pending_exit_orders.pop(trade_id, None)
+            self._manual_exit_required.discard(trade_id)
+            self._exit_fill_totals.pop(trade_id, None)
 
     def update_stop_loss(self, trade_id: int, new_stop: float) -> None:
         if trade_id in self.positions:
@@ -293,6 +826,13 @@ class PositionMonitor:
             logger.warning("[Monitor] 已在运行中")
             return
         self._running = True
+        with self._pending_exit_state_transaction():
+            orphaned = set(self._pending_exit_orders) - set(self.positions)
+            for trade_id in orphaned:
+                self._pending_exit_orders.pop(trade_id, None)
+                self._exit_fill_totals.pop(trade_id, None)
+        if orphaned:
+            logger.info("[Monitor] 清理 %d 个已不在 journal 开仓列表的待确认订单", len(orphaned))
         self._task = asyncio.create_task(self._monitor_loop())
 
         def _monitor_done(t):
@@ -318,6 +858,8 @@ class PositionMonitor:
     async def _monitor_loop(self) -> None:
         while self._running:
             try:
+                if self._pending_exit_orders:
+                    await self._reconcile_pending_exit_orders()
                 if self.positions:
                     await self._check_all_positions()
             except asyncio.CancelledError:
@@ -326,6 +868,45 @@ class PositionMonitor:
             except Exception as e:
                 logger.error("[Monitor] 监控循环异常: %s — 将在 %ds 后重试", e, self.check_interval, exc_info=True)
             await asyncio.sleep(self.check_interval)
+
+    async def _reconcile_pending_exit_orders(self) -> None:
+        """每轮从券商订单快照对账未决平仓单。"""
+        if not self.get_order_snapshots or not self._pending_exit_orders:
+            return
+        try:
+            snapshots = await self.get_order_snapshots()
+        except Exception as exc:
+            logger.warning("[Monitor] 获取券商平仓订单快照失败: %s", exc)
+            return
+        if not isinstance(snapshots, list):
+            logger.warning("[Monitor] 券商订单快照格式无效，本轮保留未决状态")
+            return
+
+        snapshot_map = {
+            str(snapshot.get("order_id") or ""): snapshot
+            for snapshot in snapshots
+            if isinstance(snapshot, dict) and snapshot.get("order_id") is not None
+        }
+        for trade_id, pending in list(self._pending_exit_orders.items()):
+            order_id = str(pending.get("order_id") or "")
+            snapshot = snapshot_map.get(order_id)
+            if snapshot is None:
+                continue
+            normalized = dict(snapshot)
+            normalized["filled_qty"] = snapshot.get(
+                "filled_qty",
+                snapshot.get("filled", 0),
+            )
+            try:
+                await self.reconcile_pending_exit(trade_id, normalized)
+            except Exception as exc:
+                logger.error(
+                    "[Monitor] 平仓订单对账失败 trade#%d order#%s: %s",
+                    trade_id,
+                    order_id,
+                    exc,
+                    exc_info=True,
+                )
 
     async def _check_all_positions(self) -> None:
         if not self.get_quote:
@@ -510,84 +1091,353 @@ class PositionMonitor:
 
         return None
 
-    async def _execute_exit(self, signal: ExitSignal) -> None:
+    async def _execute_exit(self, signal: ExitSignal) -> dict:
         pos = signal.position
         trade_id = pos.trade_id
         logger.warning("[Monitor] %s", signal.message)
 
-        # 检查重试次数，超过上限则标记为需手动处理并停止重试
-        retry_count = self._exit_retry_count.get(trade_id, 0)
-        if retry_count >= self._max_exit_retries:
-            logger.error(
-                "[Monitor] %s (trade #%d) 平仓已失败%d次，停止重试，需手动处理", pos.symbol, trade_id, retry_count
-            )
-            if self.notify:
-                await self.notify(
-                    "🚨 紧急：平仓多次失败 🚨\n\n"  # noqa: UP031
-                    "标的: %s\n"
-                    "数量: %d 股\n"
-                    "入场价: $%.2f\n"
-                    "当前价: $%.2f\n"
-                    "浮动盈亏: $%.2f (%.1f%%)\n"
-                    "触发原因: %s\n\n"
-                    "已重试 %d 次均失败，系统已停止自动平仓。\n"
-                    "⚠️ 请立即手动卖出！"
-                    % (
-                        pos.symbol,
-                        int(pos.quantity),
-                        pos.entry_price,
-                        pos.current_price,
-                        pos.unrealized_pnl,
-                        pos.unrealized_pnl_pct,
-                        signal.reason.value,
-                        retry_count,
-                    )
-                )
-            # 移除监控，避免无限重试通知轰炸
-            self.remove_position(trade_id)
-            self._exit_retry_count.pop(trade_id, None)
-            return
-
-        # 1. 券商卖出
-        sell_result = None
-        # 分批止盈只卖50%
+        # 分批止盈只卖 50%，其余退出信号卖出当前全部仓位。
         sell_qty = pos.quantity
         is_partial = signal.reason == ExitReason.PARTIAL_TAKE_PROFIT
         if is_partial:
             sell_qty = max(1, int(pos.quantity * 0.5))
 
-        if self.execute_sell:
-            try:
-                sell_result = await self.execute_sell(
-                    symbol=pos.symbol,
-                    quantity=sell_qty,
-                    order_type="MKT",
-                    decided_by="PositionMonitor",
-                    reason=f'{signal.reason.value}: {signal.message}',
+        claim = self._claim_exit_submission(signal, sell_qty)
+        if not claim.get("claimed"):
+            if claim.get("status") == "already_closed":
+                self.positions.pop(trade_id, None)
+                return {
+                    "success": True,
+                    "status": "already_closed",
+                    "filled_qty": 0.0,
+                }
+            if claim.get("status") == "pending_confirmation":
+                pending = claim.get("order", {})
+                logger.warning(
+                    "[Monitor] %s (trade #%d) 已有待确认平仓单 %s，保留监控且不重复下单",
+                    pos.symbol,
+                    trade_id,
+                    pending.get("order_id") or pending.get("submission_id") or "?",
                 )
-                logger.info("[Monitor] 平仓执行结果: %s", sell_result)
-            except Exception as e:
-                self._exit_retry_count[trade_id] = retry_count + 1
-                logger.error("[Monitor] 平仓执行失败 (第%d次): %s", retry_count + 1, e)
+                return {
+                    "success": False,
+                    "status": "pending_confirmation",
+                    "order": pending,
+                }
+            retry_count = int(claim.get("retry_count", 0) or 0)
+            if claim.get("newly_exhausted"):
+                logger.error(
+                    "[Monitor] %s (trade #%d) 平仓已失败%d次，停止重试，需手动处理",
+                    pos.symbol,
+                    trade_id,
+                    retry_count,
+                )
                 if self.notify:
                     await self.notify(
-                        f'!! 平仓执行失败 (第{int(retry_count + 1):d}/{int(self._max_exit_retries):d}次) !!\n{signal.message}\n错误: {e}\n{self.check_interval}秒后重试...'
+                        "🚨 紧急：平仓多次失败 🚨\n\n"  # noqa: UP031
+                        "标的: %s\n"
+                        "数量: %d 股\n"
+                        "入场价: $%.2f\n"
+                        "当前价: $%.2f\n"
+                        "浮动盈亏: $%.2f (%.1f%%)\n"
+                        "触发原因: %s\n\n"
+                        "已重试 %d 次均失败，系统已停止自动平仓。\n"
+                        "⚠️ 请立即手动卖出！"
+                        % (
+                            pos.symbol,
+                            int(pos.quantity),
+                            pos.entry_price,
+                            pos.current_price,
+                            pos.unrealized_pnl,
+                            pos.unrealized_pnl_pct,
+                            signal.reason.value,
+                            retry_count,
+                        )
                     )
-                return
+            return {
+                "success": False,
+                "status": "manual_action_required",
+                "error": str(claim.get("error") or "自动平仓已转人工处理"),
+            }
+
+        submission_id = str(claim["submission_id"])
+        retry_count = int(claim.get("retry_count", 0) or 0)
+
+        if trade_id in self._pending_exit_orders:
+            pending = self._pending_exit_orders[trade_id]
+            if pending.get("submission_id") != submission_id:
+                self._release_exit_submission(
+                    trade_id,
+                    submission_id,
+                    increment_retry=False,
+                )
+                return {
+                    "success": False,
+                    "status": "pending_confirmation",
+                    "order": pending,
+                }
+
+        if trade_id in self._manual_exit_required:
+            self._release_exit_submission(
+                trade_id,
+                submission_id,
+                increment_retry=False,
+            )
+            return {
+                "success": False,
+                "status": "manual_action_required",
+                "error": "自动平仓多次失败，真实仓位仍在监控中",
+            }
+
+        if not self.execute_sell:
+            self._release_exit_submission(
+                trade_id,
+                submission_id,
+                increment_retry=True,
+            )
+            logger.error("[Monitor] 未配置真实卖出执行器，保留仓位监控")
+            return {
+                "success": False,
+                "status": "error",
+                "error": "未配置真实卖出执行器",
+            }
+
+        # claim 已在磁盘落盘；即使进程在券商受理后崩溃，其他进程也不会重复卖出。
+        try:
+            sell_result = await self.execute_sell(
+                symbol=pos.symbol,
+                quantity=sell_qty,
+                order_type="MKT",
+                decided_by="PositionMonitor",
+                reason=f'{signal.reason.value}: {signal.message}',
+            )
+            logger.info("[Monitor] 平仓执行结果: %s", sell_result)
+        except Exception as exc:
+            self._release_exit_submission(
+                trade_id,
+                submission_id,
+                increment_retry=True,
+            )
+            logger.error("[Monitor] 平仓执行失败 (第%d次): %s", retry_count + 1, exc)
+            if self.notify:
+                await self.notify(
+                    f'!! 平仓执行失败 (第{int(retry_count + 1):d}/{int(self._max_exit_retries):d}次) !!\n{signal.message}\n错误: {exc}\n{self.check_interval}秒后重试...'
+                )
+            return {"success": False, "status": "error", "error": str(exc)}
+
+        # 只有真实且已确认的成交数量可以改变仓位、日志和风控状态。
+        if not isinstance(sell_result, dict):
+            self._release_exit_submission(
+                trade_id,
+                submission_id,
+                increment_retry=True,
+            )
+            return {"success": False, "status": "error", "error": "平仓结果格式无效"}
+        if sell_result.get("simulated"):
+            self._release_exit_submission(
+                trade_id,
+                submission_id,
+                increment_retry=True,
+            )
+            return {
+                "success": False,
+                "status": "error",
+                "error": "模拟平仓结果不能关闭真实仓位",
+            }
+        if sell_result.get("error"):
+            self._release_exit_submission(
+                trade_id,
+                submission_id,
+                increment_retry=True,
+            )
+            return {
+                "success": False,
+                "status": "error",
+                "error": str(sell_result.get("error")),
+            }
+
+        order_status = str(sell_result.get("status") or "").strip()
+        normalized_status = order_status.lower()
+        try:
+            filled_qty = float(sell_result.get("filled_qty", 0) or 0)
+        except (TypeError, ValueError):
+            filled_qty = 0.0
+        if filled_qty <= 0:
+            if normalized_status in {
+                "submitted",
+                "presubmitted",
+                "pendingsubmit",
+                "apipending",
+                "pendingcancel",
+            } and sell_result.get("order_id"):
+                pending_order = {
+                    **dict(sell_result),
+                    "requested_qty": float(sell_qty),
+                    "applied_filled_qty": 0.0,
+                    "applied_order_notional": 0.0,
+                    "remaining_position_qty": float(pos.quantity),
+                    "reason": signal.reason.value,
+                    "trigger_price": signal.trigger_price,
+                    "message": signal.message,
+                }
+                self._replace_exit_submission(
+                    trade_id,
+                    submission_id,
+                    pending_order,
+                )
+                return {
+                    "success": False,
+                    "status": "pending_confirmation",
+                    "order": sell_result,
+                }
+            self._release_exit_submission(
+                trade_id,
+                submission_id,
+                increment_retry=True,
+            )
+            return {
+                "success": False,
+                "status": "error",
+                "error": f"平仓未成交 (status={order_status or 'unknown'}, filled_qty=0)",
+            }
+
+        result = await self._apply_confirmed_exit(signal, sell_result, filled_qty)
+        pending_statuses = {
+            "submitted",
+            "presubmitted",
+            "pendingsubmit",
+            "apipending",
+            "pendingcancel",
+        }
+        if normalized_status in pending_statuses and filled_qty < float(sell_qty):
+            pending_order = {
+                **dict(sell_result),
+                "requested_qty": float(sell_qty),
+                "applied_filled_qty": filled_qty,
+                "applied_order_notional": filled_qty * float(sell_result.get("avg_price", 0) or 0),
+                "remaining_position_qty": float(pos.quantity),
+                "reason": signal.reason.value,
+                "trigger_price": signal.trigger_price,
+                "message": signal.message,
+            }
+            self._replace_exit_submission(
+                trade_id,
+                submission_id,
+                pending_order,
+            )
+            result["status"] = "partially_filled_pending"
+        else:
+            self._release_exit_submission(
+                trade_id,
+                submission_id,
+                increment_retry=False,
+                clear_trade_state=trade_id not in self.positions,
+            )
+        return result
+
+    async def reconcile_pending_exit(self, trade_id: int, order_result: dict) -> dict:
+        """按券商累计成交回写待确认平仓单，只结算新增成交数量。"""
+        if not isinstance(order_result, dict):
+            return {"success": False, "status": "error", "error": "订单回写格式无效"}
+        claim = self._claim_pending_exit_reconciliation(trade_id, order_result)
+        if not claim.get("claimed"):
+            return {
+                "success": False,
+                "status": str(claim.get("status") or "pending_confirmation"),
+                "error": str(claim.get("error") or "本次没有新增成交需要结算"),
+                "filled_qty": float(claim.get("filled_qty", 0) or 0),
+                "remaining_qty": claim.get("remaining_qty"),
+            }
+
+        pos = self.positions.get(trade_id)
+        if pos is None:
+            return {
+                "success": False,
+                "status": "reconcile_in_progress",
+                "error": "本地仓位缺失，成交增量已占用并等待人工核对",
+            }
+        pos.quantity = float(claim["remaining_before"])
+        pending = dict(claim["pending"])
+        try:
+            reason = ExitReason(str(pending.get("reason") or ExitReason.MANUAL.value))
+        except ValueError:
+            reason = ExitReason.MANUAL
+        signal = ExitSignal(
+            position=pos,
+            reason=reason,
+            trigger_price=float(
+                pending.get("trigger_price") or pos.current_price or pos.entry_price
+            ),
+            message=str(pending.get("message") or "待确认平仓单成交回写"),
+        )
+        incremental_result = dict(order_result)
+        incremental_result["filled_qty"] = float(claim["incremental_fill"])
+        incremental_result["avg_price"] = float(claim["incremental_avg_price"])
+        try:
+            result = await self._apply_confirmed_exit(
+                signal,
+                incremental_result,
+                float(claim["incremental_fill"]),
+                fill_already_reserved=True,
+            )
+        except Exception as exc:
+            logger.critical(
+                "[Monitor] 平仓增量已占用但本地结算失败 trade#%d: %s",
+                trade_id,
+                exc,
+                exc_info=True,
+            )
+            return {
+                "success": False,
+                "status": "reconcile_in_progress",
+                "error": "成交增量已安全占用，本地结算失败，需人工核对",
+            }
+
+        finalized = self._finalize_pending_exit_reconciliation(
+            trade_id,
+            str(claim["claim_id"]),
+            order_result,
+        )
+        result["status"] = str(finalized.get("status") or result.get("status"))
+        result["remaining_qty"] = finalized.get("remaining_qty", result.get("remaining_qty"))
+        return result
+
+    async def _apply_confirmed_exit(
+        self,
+        signal: ExitSignal,
+        sell_result: dict,
+        confirmed_qty: float,
+        *,
+        fill_already_reserved: bool = False,
+    ) -> dict:
+        """把已确认的真实成交增量应用到日志、风控和监控仓位。"""
+        pos = signal.position
+        trade_id = pos.trade_id
+        actual_sell_qty = min(float(confirmed_qty), float(pos.quantity))
+        closes_entire_position = actual_sell_qty >= float(pos.quantity)
+        is_partial = signal.reason == ExitReason.PARTIAL_TAKE_PROFIT
+        exit_price = signal.trigger_price
+        if sell_result.get("avg_price", 0) > 0:
+            exit_price = float(sell_result["avg_price"])
+        fill_total = self._exit_fill_totals.setdefault(
+            trade_id,
+            {"quantity": 0.0, "notional": 0.0},
+        )
+        if not fill_already_reserved:
+            fill_total["quantity"] += actual_sell_qty
+            fill_total["notional"] += actual_sell_qty * exit_price
 
         # 2. 更新交易日志
         if self.journal:
             try:
-                exit_price = signal.trigger_price
-                if sell_result and sell_result.get("avg_price", 0) > 0:
-                    exit_price = sell_result["avg_price"]
-                if is_partial:
-                    # 分批止盈不关闭交易，只记录部分平仓
-                    logger.info("[Monitor] %s 分批止盈记录: %d股 @ $%.2f", pos.symbol, sell_qty, exit_price)
+                if not closes_entire_position:
+                    logger.info("[Monitor] %s 部分成交记录: %s股 @ $%.2f", pos.symbol, actual_sell_qty, exit_price)
                 else:
+                    weighted_exit_price = fill_total["notional"] / max(fill_total["quantity"], 1e-9)
                     self.journal.close_trade(
                         trade_id=trade_id,
-                        exit_price=exit_price,
+                        exit_price=weighted_exit_price,
+                        exit_order_id=str(sell_result.get("order_id") or ""),
                         exit_reason=signal.reason.value,
                     )
             except Exception as e:
@@ -596,30 +1446,31 @@ class PositionMonitor:
         # 3. 更新风控（用实际成交价计算PnL，而非报价浮亏）
         if self.risk_manager:
             # 部分平仓时按比例计算 PnL，避免用全仓浮亏误报
-            actual_pnl = pos.unrealized_pnl * (sell_qty / pos.quantity) if pos.quantity > 0 else 0
+            actual_pnl = pos.unrealized_pnl * (actual_sell_qty / pos.quantity) if pos.quantity > 0 else 0
             if sell_result and sell_result.get("avg_price", 0) > 0:
                 actual_exit = sell_result["avg_price"]
                 if pos.side == "BUY":
-                    actual_pnl = (actual_exit - pos.entry_price) * sell_qty
+                    actual_pnl = (actual_exit - pos.entry_price) * actual_sell_qty
                 else:
-                    actual_pnl = (pos.entry_price - actual_exit) * sell_qty
+                    actual_pnl = (pos.entry_price - actual_exit) * actual_sell_qty
             self.risk_manager.record_trade_result(actual_pnl)
 
         # 4. 分批止盈: 减少数量，移除止盈目标，保留尾部止损继续监控
-        if is_partial:
-            pos.quantity -= sell_qty
-            pos.partial_exit_done = True
-            pos.take_profit = 0  # 移除固定止盈，剩余仓位靠尾部止损
+        if not closes_entire_position:
+            pos.quantity -= actual_sell_qty
+            if is_partial:
+                pos.partial_exit_done = True
+                pos.take_profit = 0  # 分批止盈后，剩余仓位靠尾部止损
             logger.info(
-                "[Monitor] %s 分批止盈完成: 已卖%d股，剩余%d股，尾部止损$%.2f",
+                "[Monitor] %s 部分平仓成交: 已卖%s股，剩余%s股，尾部止损$%.2f",
                 pos.symbol,
-                sell_qty,
+                actual_sell_qty,
                 pos.quantity,
                 pos.trailing_stop_price,
             )
         else:
             # 全部平仓: 移除监控
-            self.remove_position(trade_id)
+            self.remove_position(trade_id, preserve_pending_exit=True)
             self._exit_retry_count.pop(trade_id, None)  # 清理重试计数
 
         # 5. 记录历史
@@ -638,6 +1489,13 @@ class PositionMonitor:
             emoji = emoji_map.get(signal.reason, "**")
             msg = f'{emoji} 自动平仓 {emoji}\n\n{signal.message}\n\n标的: {pos.symbol}\n方向: {pos.side}\n数量: {pos.quantity}\n入场: ${float(pos.entry_price):.2f}\n出场: ${float(signal.trigger_price):.2f}\n盈亏: ${float(pos.unrealized_pnl):.2f} ({float(pos.unrealized_pnl_pct):.1f}%)\n原因: {signal.reason.value}'
             await self.notify(msg)
+
+        return {
+            "success": True,
+            "status": "filled" if closes_entire_position else "partially_filled",
+            "filled_qty": actual_sell_qty,
+            "remaining_qty": 0 if closes_entire_position else pos.quantity,
+        }
 
     # ============ v2.0: 接近止损预警 (搬运 PanWatch throttle 模式) ============
 

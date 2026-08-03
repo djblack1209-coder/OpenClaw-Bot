@@ -14,7 +14,9 @@ Social — 草稿管理 (从 execution_hub.py 迁移)
 """
 import json
 import logging
+import os
 import re
+import tempfile
 import threading
 import uuid
 from pathlib import Path
@@ -53,11 +55,22 @@ def _save_drafts(drafts: list[dict]) -> None:
     """将草稿列表写入 JSON 文件，自动创建目录"""
     try:
         _DRAFTS_DIR.mkdir(parents=True, exist_ok=True)
-        tmp_file = _DRAFTS_FILE.with_suffix(".tmp")
-        tmp_file.write_text(json.dumps(drafts, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp_file.replace(_DRAFTS_FILE)
+        descriptor, temp_name = tempfile.mkstemp(
+            prefix=f".{_DRAFTS_FILE.name}.",
+            dir=_DRAFTS_DIR,
+        )
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                json.dump(drafts, handle, ensure_ascii=False, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp_name, _DRAFTS_FILE)
+        finally:
+            if os.path.exists(temp_name):
+                os.unlink(temp_name)
     except OSError as e:
         logger.error("[Drafts] 写入 drafts.json 失败: %s", e)
+        raise
 
 
 def _generate_draft_id() -> str:
@@ -71,7 +84,9 @@ class _DraftStoreProxy:
 
     def clear(self):
         """清空所有草稿（测试用）"""
-        with _lock:
+        from src.execution.social.publish_gate import publish_state_lock
+
+        with publish_state_lock, _lock:
             _save_drafts([])
 
     def __len__(self):
@@ -83,7 +98,9 @@ class _DraftStoreProxy:
             return iter(_load_drafts())
 
     def append(self, item):
-        with _lock:
+        from src.execution.social.publish_gate import publish_state_lock
+
+        with publish_state_lock, _lock:
             drafts = _load_drafts()
             drafts.append(item)
             _save_drafts(drafts)
@@ -147,7 +164,9 @@ def save_social_draft(
     title = title or ""
     topic = topic or title
 
-    with _lock:
+    from src.execution.social.publish_gate import publish_state_lock
+
+    with publish_state_lock, _lock:
         # 去重检测
         duplicate = _detect_duplicate(platform_name, str(title), content, topic=topic)
         if duplicate and duplicate.get("duplicate"):
@@ -168,6 +187,8 @@ def save_social_draft(
             "title": title,
             "body": content,
             "topic": topic,
+            "status": "needs_review",
+            "review_status": "pending",
             "updated_at": now_et().isoformat(),
         }
 
@@ -211,27 +232,54 @@ def get_social_draft(draft_id) -> dict | None:
 
 def update_social_draft_status(draft_id, status: str) -> dict:
     """更新草稿状态"""
-    with _lock:
+    from src.execution.social.publish_gate import publish_state_lock
+
+    with publish_state_lock, _lock:
         drafts = _load_drafts()
         for draft in drafts:
             if draft.get("id") == draft_id or str(draft.get("id")) == str(draft_id):
+                from src.execution.social.publish_gate import (
+                    invalidate_publish_authorization,
+                    seal_approved_draft,
+                )
+
                 draft["status"] = status
+                if status == "approved":
+                    draft["review_status"] = "approved"
+                    seal_approved_draft(draft)
+                elif status in {"draft", "edited", "needs_review", "rejected"}:
+                    draft["review_status"] = "pending" if status != "rejected" else "rejected"
+                    invalidate_publish_authorization(draft)
                 draft["updated_at"] = now_et().isoformat()
                 _save_drafts(drafts)
                 return {"success": True, "draft_id": draft_id, "status": status}
     return {"success": False, "error": f"草稿 {draft_id} 不存在"}
 
 
-def delete_social_draft(draft_id) -> dict:
-    """删除草稿"""
-    with _lock:
+def final_confirm_social_draft(draft_id, reviewer: str = "owner") -> dict:
+    """为本地草稿签发一次性确认，并在同一把锁内完成完整读改写。"""
+    from src.execution.social.publish_gate import (
+        issue_publish_confirmation,
+        publish_state_lock,
+    )
+
+    with publish_state_lock, _lock:
         drafts = _load_drafts()
-        original_len = len(drafts)
-        drafts = [d for d in drafts if not (d.get("id") == draft_id or str(d.get("id")) == str(draft_id))]
-        if len(drafts) < original_len:
-            _save_drafts(drafts)
-            return {"success": True, "draft_id": draft_id}
-    return {"success": False, "error": f"草稿 {draft_id} 不存在"}
+        draft = next(
+            (
+                item
+                for item in drafts
+                if item.get("id") == draft_id or str(item.get("id")) == str(draft_id)
+            ),
+            None,
+        )
+        if not draft:
+            return {"success": False, "error": f"草稿 {draft_id} 不存在"}
+        confirmation = issue_publish_confirmation(draft)
+        if confirmation.get("success"):
+            draft["final_confirmed_by"] = reviewer or "owner"
+        _save_drafts(drafts)
+        return {**confirmation, "draft_id": draft_id, "platform": draft.get("platform")}
 
 
 async def create_social_draft(
@@ -352,13 +400,40 @@ def publish_social_draft(
     platform: str | None = None,
     draft_id=None,
     worker_fn=None,
+    confirmation_token: str = "",
 ) -> dict:
-    """通过 browser worker 发布草稿 — 使用适配器统一分发"""
+    """通过统一授权门发布不可变草稿。"""
     draft = get_social_draft(draft_id) if draft_id else None
     if not draft:
         return {"success": False, "error": f"草稿 {draft_id} 不存在"}
     if not worker_fn:
         return {"success": False, "error": "browser worker 未配置"}
+
+    from src.execution.social.publish_gate import (
+        consume_publish_confirmation,
+        publish_state_lock,
+    )
+
+    with publish_state_lock, _lock:
+        drafts = _load_drafts()
+        stored = next(
+            (
+                item
+                for item in drafts
+                if item.get("id") == draft_id or str(item.get("id")) == str(draft_id)
+            ),
+            None,
+        )
+        if not stored:
+            return {"success": False, "error": f"草稿 {draft_id} 不存在"}
+        authorization = consume_publish_confirmation(stored, confirmation_token)
+        if authorization.get("success"):
+            stored["status"] = "publishing"
+        _save_drafts(drafts)
+    if not authorization.get("success"):
+        return authorization
+
+    draft = stored
 
     platform = platform or draft.get("platform", "x")
     body = draft.get("body", "")
@@ -376,8 +451,18 @@ def publish_social_draft(
 
         if result and result.get("success"):
             update_social_draft_status(draft_id, "published")
+            return {"success": True, "platform": platform, "draft_id": draft_id, "result": result}
 
-        return {"success": True, "platform": platform, "draft_id": draft_id, "result": result}
+        update_social_draft_status(draft_id, "failed")
+
+        return {
+            "success": False,
+            "platform": platform,
+            "draft_id": draft_id,
+            "error": str((result or {}).get("error") or "社媒 worker 发布失败"),
+            "result": result,
+        }
     except Exception as e:
+        update_social_draft_status(draft_id, "failed")
         logger.error(f"[PublishDraft] failed: {scrub_secrets(str(e))}")
         return {"success": False, "error": str(e)}

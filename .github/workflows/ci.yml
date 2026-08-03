@@ -1,6 +1,6 @@
-# Monorepo CI — Python 后端测试 + 前端类型检查 + Lint
-# 触发: push/PR 到 main 分支（排除纯文档变更）
-# 优化: uv 缓存 / npm 缓存 / 路径过滤 / 已知失败排除
+# Monorepo CI — Python 后端 + Frist-API + Tauri 桌面端 + 安全门禁
+# 触发: push/PR 到 main 分支
+# 优化: uv 缓存 / npm 缓存 / 同分支并发取消
 
 name: OpenClaw CI
 
@@ -8,23 +8,13 @@ on:
   push:
     branches: [main]
     paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - 'AUDIT_PLAN.md'
-      - 'AGENTS.md'
       - 'scripts/nightly-audit/**'
       - 'apps/openclaw/**'
-      - '!apps/openclaw-manager-src/**'
   pull_request:
     branches: [main]
     paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - 'AUDIT_PLAN.md'
-      - 'AGENTS.md'
       - 'scripts/nightly-audit/**'
       - 'apps/openclaw/**'
-      - '!apps/openclaw-manager-src/**'
 
 # 同一分支的新推送取消正在跑的旧 CI，节省 Actions 分钟数
 concurrency:
@@ -74,6 +64,9 @@ jobs:
           uv pip install --system pip-audit
           pip-audit -r requirements.txt -r requirements-dev.txt --vulnerability-service pypi --progress-spinner off --cache-dir /tmp/openclaw-pip-audit-cache --timeout 10
 
+      - name: Validate documentation governance
+        run: bash scripts/check_docs_layout.sh
+
   # ─── Python 后端测试 + Lint ───
   python-tests:
     runs-on: ubuntu-latest
@@ -113,21 +106,13 @@ jobs:
 
       - name: Run tests
         run: |
+          set -o pipefail
           python -m pytest tests/ \
             --tb=short -q \
             --cov=src --cov-report=term-missing \
             --timeout=120 \
             -o "addopts=" \
             2>&1 | tee pytest-output.txt
-          # 允许最多 15 个预存失败（当前已知 13 个）
-          # 如果失败数超过 15 说明引入了新回归
-          FAILED_COUNT=$(grep -oP '\d+ failed' pytest-output.txt | grep -oP '\d+' || echo "0")
-          echo "Failed tests: $FAILED_COUNT"
-          if [ "$FAILED_COUNT" -gt 15 ]; then
-            echo "::error::回归检测: 失败测试数 $FAILED_COUNT 超过阈值 15（预存已知 13 个）"
-            exit 1
-          fi
-          echo "✅ 测试通过 (失败数 $FAILED_COUNT <= 阈值 15)"
         env:
           # 测试环境变量，避免依赖外部服务
           TESTING: "true"
@@ -138,8 +123,35 @@ jobs:
           python -m py_compile multi_main.py
           find src/ -name "*.py" -exec python -m py_compile {} +
 
-  # ─── 前端 TypeScript 类型检查 ───
-  frontend-typecheck:
+  # ─── Frist-API 业务与多租户边界测试 ───
+  frist-api-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [18, 24]
+    defaults:
+      run:
+        working-directory: apps/frist-api
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+          cache-dependency-path: apps/frist-api/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Frist-API tests
+        run: npm test
+
+  # ─── 桌面端类型、编译与安全边界检查 ───
+  frontend-desktop-checks:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -160,3 +172,34 @@ jobs:
 
       - name: TypeScript type check
         run: npx tsc --noEmit
+
+      - name: Desktop security boundary tests
+        working-directory: .
+        run: >-
+          node --test
+          apps/openclaw-manager-src/src/lib/security-hardening.static.test.mjs
+          apps/openclaw-manager-src/src/components/Social/social-growth-feedback.static.test.mjs
+          scripts/auto_ops_scripts.test.mjs
+
+      - name: Set up Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Tauri Linux prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Rust tests and compile check
+        working-directory: apps/openclaw-manager-src/src-tauri
+        run: |
+          cargo test
+          cargo check

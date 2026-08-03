@@ -27,9 +27,12 @@ class OCRHandlerMixin:
 
     async def handle_photo(self, update, context):
         '''处理图片消息 — 私聊默认 Vision / 群聊走 OCR+场景路由'''
+        user = getattr(update, "effective_user", None)
+        if user is None or not self._is_authorized(user.id):
+            return
+
         try:
             chat_id = update.effective_chat.id
-            user = update.effective_user
             caption = update.message.caption or ""
             is_group = update.effective_chat.type in ("group", "supergroup")
 
@@ -243,9 +246,12 @@ class OCRHandlerMixin:
 
     async def handle_document_ocr(self, update, context):
         '''处理文档消息（PDF/DOCX/PPTX/XLSX/图片）— Docling 结构化理解 + OCR 降级'''
+        user = getattr(update, "effective_user", None)
+        if user is None or not self._is_authorized(user.id):
+            return
+
         try:
             chat_id = update.effective_chat.id
-            user = update.effective_user
             doc = update.message.document
             mime = doc.mime_type or ""
             fname = doc.file_name or "document"

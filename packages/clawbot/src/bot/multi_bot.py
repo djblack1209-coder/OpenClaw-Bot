@@ -236,9 +236,7 @@ class MultiBot(
         return mode_prompts.get(mode, "")
 
     def _is_authorized(self, user_id: int) -> bool:
-        if not ALLOWED_USER_IDS:
-            return True
-        return user_id in ALLOWED_USER_IDS
+        return bool(ALLOWED_USER_IDS) and user_id in ALLOWED_USER_IDS
 
     async def delegate_tool_to_claude(self, tool_name: str, tool_input: dict) -> dict:
         """委托工具调用给 Claude（供其他 Bot 使用）"""

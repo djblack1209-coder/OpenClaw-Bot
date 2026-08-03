@@ -10,13 +10,13 @@
   <array>
     <string>/bin/bash</string>
     <string>-c</string>
-    <string>cd "/Users/blackdj/Desktop/OpenEverything/packages/clawbot/browser-agent" &amp;&amp; exec "/Users/blackdj/Desktop/OpenEverything/packages/clawbot/browser-agent/.venv/bin/python" -m g4f api --port 18891 --g4f-api-key dummy --no-gui</string>
+    <string>PYTHON="/Users/blackdj/Desktop/OpenEverything/packages/clawbot/browser-agent/.venv/bin/python"; if [[ ! -x "$PYTHON" ]]; then echo "g4f disabled: reproducible runtime is not installed"; exit 0; fi; cd "/Users/blackdj/Desktop/OpenEverything/packages/clawbot/browser-agent" &amp;&amp; exec "$PYTHON" -m g4f api --port 18891 --g4f-api-key dummy --no-gui</string>
   </array>
 
   <!-- WorkingDirectory 已移入 -c 的 cd 命令中：避免 Sandbox 拦截 provenance 路径 -->
 
   <key>RunAtLoad</key>
-  <true/>
+  <false/>
 
   <key>KeepAlive</key>
   <dict>

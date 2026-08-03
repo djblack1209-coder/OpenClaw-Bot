@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "OpenClaw 默认权限配置 — 安全加固: fs scope 限制 + shell scope 限制",
+  "description": "OpenClaw 默认权限配置 — WebView 不直接读写本地文件",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -11,23 +11,6 @@
         { "url": "https://**" },
         { "url": "http://127.0.0.1:**" },
         { "url": "http://localhost:**" }
-      ]
-    },
-    "fs:default",
-    {
-      "identifier": "fs:allow-read",
-      "allow": [
-        { "path": "$HOME/Desktop/OpenEverything/**" },
-        { "path": "$HOME/.openclaw/**" },
-        { "path": "$APPCONFIG/**" }
-      ]
-    },
-    {
-      "identifier": "fs:allow-write",
-      "allow": [
-        { "path": "$HOME/Desktop/OpenEverything/**" },
-        { "path": "$HOME/.openclaw/**" },
-        { "path": "$APPCONFIG/**" }
       ]
     },
     "process:default",

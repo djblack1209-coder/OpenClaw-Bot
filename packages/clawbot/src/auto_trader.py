@@ -91,7 +91,7 @@ class AutoTrader(AutoTraderFiltersMixin, AutoTraderReviewMixin):
         self._forced_trades_today = 0
 
         # 防空仓策略：连续空仓后，允许执行小规模探索交易（仍经过风控）
-        self.force_trade_on_idle = env_bool("FORCE_TRADE_ON_IDLE", True)
+        self.force_trade_on_idle = env_bool("FORCE_TRADE_ON_IDLE", False)
         self.force_trade_after_idle_cycles = env_int("FORCE_TRADE_AFTER_IDLE_CYCLES", 3, minimum=1)
         self.force_trade_min_score = env_int("FORCE_TRADE_MIN_SCORE", 30, minimum=10)
         self.max_forced_trades_per_day = env_int("MAX_FORCED_TRADES_PER_DAY", 1, minimum=0)

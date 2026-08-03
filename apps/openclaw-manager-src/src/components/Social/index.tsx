@@ -644,13 +644,54 @@ export function Social() {
         await api.clawbotSocialDraftReview(pendingAction.index, false, 'owner');
         toast.success(t('social.reviewRejected'), { channel: 'log' });
       } else {
-        const result = await api.clawbotSocialDraftPublish(pendingAction.index) as any;
-        if (result?.success === false && result?.requires_review) {
+        const confirmation = await api.clawbotSocialDraftFinalConfirm(
+          pendingAction.index,
+          'owner',
+        ) as {
+          success?: boolean;
+          confirmation_token?: string;
+          requires_review?: boolean;
+          error?: string;
+        };
+        if (confirmation?.success === false || !confirmation?.confirmation_token) {
+          if (confirmation?.requires_review) {
+            toast.error(t('social.reviewRequired'), { channel: 'notification' });
+          } else {
+            toast.error(String(confirmation?.error || t('social.operationFailed')), { channel: 'notification' });
+          }
+          return;
+        }
+        const result = await api.clawbotSocialDraftPublish(
+          pendingAction.index,
+          confirmation.confirmation_token,
+        ) as {
+          success?: boolean;
+          requires_review?: boolean;
+          state_update_rejected?: boolean;
+          error?: string;
+          url?: string;
+          external_result?: { success?: boolean; url?: string; post_url?: string };
+        };
+        const externalResult = result?.external_result;
+        const publishedUrl = String(
+          result?.url || externalResult?.url || externalResult?.post_url || '',
+        ).trim();
+        if (result?.state_update_rejected && externalResult?.success) {
+          toast.warning(
+            `${t('social.publishExternalSuccess')}${publishedUrl ? `: ${publishedUrl}` : ''}`,
+            { channel: 'notification' },
+          );
+        } else if (result?.success === false && result?.requires_review) {
           toast.error(t('social.reviewRequired'), { channel: 'notification' });
+          return;
         } else if (result?.success === false) {
           toast.error(String(result?.error || t('social.operationFailed')), { channel: 'notification' });
+          return;
         } else {
-          toast.success(t('social.publishSubmitted'), { channel: 'log' });
+          toast.success(
+            `${t('social.publishSubmitted')}${publishedUrl ? `: ${publishedUrl}` : ''}`,
+            { channel: 'log' },
+          );
         }
       }
       setPendingAction(null);

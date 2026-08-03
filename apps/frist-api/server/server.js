@@ -128,6 +128,7 @@ const DEFAULT_MODEL_CATALOG = [
 const SESSION_COOKIE = 'frist_session';
 const CSRF_COOKIE = 'frist_csrf';
 const ADMIN_2FA_COOKIE = 'frist_admin_2fa';
+const DEFAULT_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const TOTP_STEP_SECONDS = 30;
 const TOTP_DIGITS = 6;
 const DEFAULT_SLA_RETENTION_DAYS = 30;
@@ -164,7 +165,11 @@ const DEFAULT_NEWAPI_REDEMPTION_STATUS_SYNC_INTERVAL_MS = 60_000;
 export function createFristApiServer(options = {}) {
   const serverOptions = normalizeServerOptions(options);
   const newApiBridge = createNewApiBridge(serverOptions);
-  const store = createRuntimeStore(serverOptions.dataFile, serverOptions.dataEncryptionKey);
+  const store = createRuntimeStore(
+    serverOptions.dataFile,
+    serverOptions.dataEncryptionKey,
+    serverOptions.runtimeBeforeSave,
+  );
   const securityState = createSecurityState();
   let stopChannelMonitor = null;
   let stopRedemptionStatusSync = null;
@@ -307,7 +312,24 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
       requireCsrfIfEnabled(data, request, serverOptions);
       return changeCustomerPassword(data, request, body, serverOptions);
     });
-    writeJson(response, 200, result);
+    writeJson(response, 200, result.body, {
+      'set-cookie': sessionCookies(result.sessionToken, result.csrfToken, request, serverOptions),
+    });
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/frist/logout') {
+    const result = await store.mutate((data) => {
+      requireCsrfIfEnabled(data, request, serverOptions);
+      const { token, user } = requireSession(data, request);
+      delete data.sessions[token];
+      delete data.sessionCsrfTokens[token];
+      data.events.push({ type: 'logged_out', userId: user.id, at: currentDate(serverOptions).toISOString() });
+      return { ok: true };
+    });
+    writeJson(response, 200, result, {
+      'set-cookie': expiredSessionCookies(request, serverOptions),
+    });
     return;
   }
 
@@ -410,6 +432,7 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
         recordLocalRedemptionAfterNewApiTopup(currentData, request, body, serverOptions),
       );
       result.user = localResult.user || sanitizeUser(user);
+      result.account = localResult.account;
       result.localRedemption = localResult.redemption;
       writeJson(response, 200, result);
       return;
@@ -425,13 +448,14 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
   if (request.method === 'POST' && url.pathname === '/api/frist/token') {
     const body = await readJsonBody(request);
     if (newApiBridge) {
-      const data = await store.load();
-      requireCsrfIfEnabled(data, request, serverOptions);
-      const { user } = requireSession(data, request);
-      if (serverOptions.requireEmailVerification && !user.emailVerified) {
-        throw publicError(403, '请先完成邮箱验证');
-      }
-      writeJson(response, 200, await newApiBridge.createToken(body));
+      const result = await createOwnedNewApiToken({
+        store,
+        request,
+        body,
+        serverOptions,
+        newApiBridge,
+      });
+      writeJson(response, 200, result);
       return;
     }
     const result = await store.mutate((data) => {
@@ -446,10 +470,13 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
   if (request.method === 'PATCH' && tokenMatch) {
     const body = await readJsonBody(request);
     if (newApiBridge) {
-      const data = await store.load();
-      requireCsrfIfEnabled(data, request, serverOptions);
-      requireSession(data, request);
-      writeJson(response, 200, await newApiBridge.updateToken(tokenMatch[1], body));
+      const result = await store.mutate(async (data) => {
+        requireCsrfIfEnabled(data, request, serverOptions);
+        const { user } = requireSession(data, request);
+        requireNewApiTokenOwner(data, user, tokenMatch[1]);
+        return newApiBridge.updateToken(tokenMatch[1], body);
+      });
+      writeJson(response, 200, result);
       return;
     }
     const result = await store.mutate((data) => {
@@ -462,10 +489,21 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
 
   if (request.method === 'DELETE' && tokenMatch) {
     if (newApiBridge) {
-      const data = await store.load();
-      requireCsrfIfEnabled(data, request, serverOptions);
-      requireSession(data, request);
-      writeJson(response, 200, await newApiBridge.deleteToken(tokenMatch[1]));
+      const result = await store.mutate(async (data) => {
+        requireCsrfIfEnabled(data, request, serverOptions);
+        const { user } = requireSession(data, request);
+        requireNewApiTokenOwner(data, user, tokenMatch[1]);
+        const deleted = await newApiBridge.deleteToken(tokenMatch[1]);
+        delete data.newApiTokenOwners[String(tokenMatch[1])];
+        data.events.push({
+          type: 'newapi_token_deleted',
+          userId: user.id,
+          keyId: String(tokenMatch[1]),
+          at: currentDate(serverOptions).toISOString(),
+        });
+        return deleted;
+      });
+      writeJson(response, 200, result);
       return;
     }
     const result = await store.mutate((data) => {
@@ -480,7 +518,12 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
     const data = await store.load();
     if (newApiBridge) {
       const { user } = requireSession(data, request);
-      const result = await newApiBridge.buildImportUrl(url, ({ target, apiKey, modelGroup, availableModels, defaultModel }) => {
+      const keyId = String(url.searchParams.get('keyId') || '').trim();
+      if (!keyId) {
+        throw publicError(400, '请选择要导入的 API Key');
+      }
+      requireNewApiTokenOwner(data, user, keyId);
+      const result = await newApiBridge.buildImportUrl(url, keyId, ({ target, apiKey, modelGroup, availableModels, defaultModel }) => {
         const baseUrl = serverOptions.publicGatewayBaseUrl || `${requestOrigin(request)}/v1`;
         const requestedModel = url.searchParams.get('model') || '';
         const config = buildClientConfig({
@@ -527,12 +570,19 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
 
   if (request.method === 'GET' && url.pathname === '/api/frist/dashboard') {
     const data = await store.load();
-    const { user } = findSession(data, request);
+    const { token, user } = findSession(data, request);
     if (user && newApiBridge) {
-      writeJson(response, 200, await newApiBridge.buildDashboard(data, user, serverOptions));
+      expireUserPlanIfNeeded(data, user, serverOptions, { recordEvent: false });
+      const dashboard = await newApiBridge.buildDashboard(data, user, serverOptions);
+      dashboard.csrfToken = String(data.sessionCsrfTokens?.[token] || '');
+      writeJson(response, 200, dashboard);
       return;
     }
-    writeJson(response, 200, user ? buildDashboard(data, user, serverOptions) : buildGuestDashboard(data, serverOptions));
+    const dashboard = user ? buildDashboard(data, user, serverOptions) : buildGuestDashboard(data, serverOptions);
+    if (user) {
+      dashboard.csrfToken = String(data.sessionCsrfTokens?.[token] || '');
+    }
+    writeJson(response, 200, dashboard);
     return;
   }
 
@@ -894,7 +944,8 @@ async function handleGatewayApi({ request, response, url, store, serverOptions, 
       (request.method === 'GET' && url.pathname === '/v1/models');
     if (canProxyNewApiGateway) {
       const bodyText = request.method === 'POST' ? await readRequestText(request) : '';
-      if (await newApiBridge.proxyGateway({ request, response, url, bodyText })) {
+      const localData = await store.load();
+      if (await newApiBridge.proxyGateway({ request, response, url, bodyText, localData })) {
         return;
       }
     }
@@ -984,6 +1035,30 @@ async function handleGatewayApi({ request, response, url, store, serverOptions, 
   response.end(result.bodyText);
 }
 
+function issueCustomerSession(data, user, serverOptions) {
+  const sessionToken = createId('sess');
+  const csrfToken = createId('csrf');
+  const issuedAt = new Date();
+  const ttlMs = Number(serverOptions.sessionTtlMs || DEFAULT_SESSION_TTL_MS);
+  data.sessions[sessionToken] = {
+    userId: user.id,
+    issuedAt: issuedAt.toISOString(),
+    expiresAt: new Date(issuedAt.getTime() + ttlMs).toISOString(),
+  };
+  data.sessionCsrfTokens[sessionToken] = csrfToken;
+  return { sessionToken, csrfToken };
+}
+
+function revokeCustomerSessions(data, userId) {
+  for (const [token, session] of Object.entries(data.sessions || {})) {
+    const sessionUserId = typeof session === 'string' ? session : session?.userId;
+    if (sessionUserId === userId) {
+      delete data.sessions[token];
+      delete data.sessionCsrfTokens[token];
+    }
+  }
+}
+
 async function registerCustomer(data, body, serverOptions) {
   const email = String(body.email || '').trim().toLowerCase();
   const password = String(body.password || '');
@@ -1020,10 +1095,7 @@ async function registerCustomer(data, body, serverOptions) {
   };
   data.users.push(user);
 
-  const sessionToken = createId('sess');
-  const csrfToken = createId('csrf');
-  data.sessions[sessionToken] = user.id;
-  data.sessionCsrfTokens[sessionToken] = csrfToken;
+  const { sessionToken, csrfToken } = issueCustomerSession(data, user, serverOptions);
   data.events.push({ type: 'registered', userId: user.id, at: now });
 
   const responseUser = sanitizeUser(user);
@@ -1069,10 +1141,7 @@ function loginCustomer(data, body, serverOptions) {
     user.passwordHash = hashPassword(password, serverOptions.passwordHashSecret);
     data.events.push({ type: 'password_hash_upgraded', userId: user.id, at: now });
   }
-  const sessionToken = createId('sess');
-  const csrfToken = createId('csrf');
-  data.sessions[sessionToken] = user.id;
-  data.sessionCsrfTokens[sessionToken] = csrfToken;
+  const { sessionToken, csrfToken } = issueCustomerSession(data, user, serverOptions);
   user.updatedAt = now;
   data.events.push({ type: 'logged_in', userId: user.id, at: now });
   return {
@@ -1100,8 +1169,14 @@ function changeCustomerPassword(data, request, body, serverOptions) {
   const now = new Date().toISOString();
   user.passwordHash = hashPassword(newPassword, serverOptions.passwordHashSecret);
   user.updatedAt = now;
+  revokeCustomerSessions(data, user.id);
+  const { sessionToken, csrfToken } = issueCustomerSession(data, user, serverOptions);
   data.events.push({ type: 'password_changed', userId: user.id, at: now });
-  return { user: sanitizeUser(user), account: accountFromUser(data, user) };
+  return {
+    sessionToken,
+    csrfToken,
+    body: { user: sanitizeUser(user), account: accountFromUser(data, user), csrfToken },
+  };
 }
 
 async function requestCustomerPasswordReset(data, body, serverOptions) {
@@ -1175,6 +1250,7 @@ function confirmCustomerPasswordReset(data, body, serverOptions) {
   user.passwordHash = hashPassword(newPassword, serverOptions.passwordHashSecret);
   user.passwordReset = { ...reset, usedAt: now };
   user.updatedAt = now;
+  revokeCustomerSessions(data, user.id);
   data.events.push({ type: 'password_reset_confirmed', userId: user.id, at: now });
   return { ok: true, message: '密码已重置，请用新密码登录。' };
 }
@@ -1498,6 +1574,7 @@ function adminResetCustomerPassword(data, body, serverOptions) {
     requestedAt: now,
   };
   user.updatedAt = now;
+  revokeCustomerSessions(data, user.id);
   data.events.push({ type: 'admin_password_reset', userId: user.id, email: maskEmail(email), at: now });
   return {
     ok: true,
@@ -2629,6 +2706,17 @@ function recordLocalRedemptionAfterNewApiTopup(data, request, body, serverOption
       source: 'new-api',
       at: now,
     });
+    const planType = normalizeRechargePlan(rule.plan);
+    if (planType === 'day' || planType === 'month' || rule.displayPlan) {
+      user.plan = rule.displayPlan || (planType === 'month' ? '月卡' : '日卡');
+      const expiresAt = addDays(currentDate(serverOptions), Number(rule.days || 0));
+      user.renewalDate = formatDate(expiresAt);
+      user.planExpiresAt = expiresAt.toISOString();
+    }
+    user.packageQuotaCents += Number(rule.packageCents || 0);
+    user.boosterQuotaCents += Number(rule.boosterCents || 0);
+    user.balanceCents += Number(rule.packageCents || 0) + Number(rule.boosterCents || 0);
+    reconcileUserBalance(user);
   }
 
   if (['unused', 'sold', 'redeemed'].includes(card.status)) {
@@ -2655,6 +2743,7 @@ function recordLocalRedemptionAfterNewApiTopup(data, request, body, serverOption
   });
 
   return {
+    account: accountFromUser(data, user),
     user: sanitizeUser(user),
     redemption: {
       code: maskCardCode(code),
@@ -2797,6 +2886,221 @@ function importRtAccounts(data, body, serverOptions) {
     summary: buildRtAccountSummary(data.rtAccounts),
     events: sanitizeAdminEvents(data.events),
   };
+}
+
+async function createOwnedNewApiToken({ store, request, body, serverOptions, newApiBridge }) {
+  const reservation = await store.mutate((data) =>
+    reserveNewApiTokenCreation(data, request, body, serverOptions, newApiBridge),
+  );
+  let created = null;
+  try {
+    // 先创建零额度 Token；只有客户归属持久化后才激活，避免留下可用的无主 Token。
+    created = await newApiBridge.createToken({
+      ...body,
+      remainQuota: 0,
+      unlimitedQuota: false,
+    }, { allowZeroQuota: true });
+    await store.mutate((data) => persistStagedNewApiTokenOwner(data, reservation, created.key));
+  } catch (error) {
+    if (created?.key?.id) {
+      await compensateStagedNewApiToken(newApiBridge, created.key.id).catch((compensationError) => {
+        process.emitWarning(`New-API 零额度暂存 Key 清理失败: ${compensationError.message}`, {
+          code: 'FRIST_API_NEWAPI_STAGED_TOKEN_CLEANUP_FAILED',
+        });
+      });
+    }
+    await rollbackNewApiTokenReservation(store, reservation, 'create_failed').catch((rollbackError) => {
+      process.emitWarning(`New-API Key 创建预留回滚失败: ${rollbackError.message}`, {
+        code: 'FRIST_API_NEWAPI_RESERVATION_ROLLBACK_FAILED',
+      });
+    });
+    throw error;
+  }
+
+  try {
+    const activated = await newApiBridge.activateTokenQuota(created.key.id, reservation.upstreamQuotaUnits);
+    try {
+      await store.mutate((data) => markNewApiTokenOwnerActive(data, reservation, created.key.id));
+    } catch (error) {
+      // 归属和扣款已先落盘；状态标记失败不把已拥有的 Key 误报为创建失败，避免客户重试产生重复 Key。
+      process.emitWarning(`New-API Key 已激活但状态标记失败: ${error.message}`, {
+        code: 'FRIST_API_NEWAPI_OWNER_STATE_WRITE_FAILED',
+      });
+    }
+    return {
+      key: {
+        ...activated.key,
+        preview: created.key.preview,
+        secret: created.key.secret,
+      },
+    };
+  } catch (error) {
+    try {
+      await compensateStagedNewApiToken(newApiBridge, created.key.id);
+    } catch (compensationError) {
+      // 无法确认上游已撤销时保留客户归属和额度预留，禁止把不确定 Token 变成无主或免费资产。
+      process.emitWarning(`New-API Key 激活失败且补偿状态不确定: ${compensationError.message}`, {
+        code: 'FRIST_API_NEWAPI_ACTIVATION_COMPENSATION_FAILED',
+      });
+      throw publicError(502, 'API Key 激活状态不确定，已保留归属和额度，请联系管理员对账');
+    }
+    await rollbackNewApiTokenReservation(store, reservation, 'activation_failed', created.key.id);
+    throw error;
+  }
+}
+
+function reserveNewApiTokenCreation(data, request, body, serverOptions, newApiBridge) {
+  requireCsrfIfEnabled(data, request, serverOptions);
+  const { user } = requireSession(data, request);
+  if (serverOptions.requireEmailVerification && !user.emailVerified) {
+    throw publicError(403, '请先完成邮箱验证');
+  }
+  const hasPendingCreation = Object.values(data.newApiTokenCreateIntents || {}).some(
+    (intent) => intent?.userId === user.id,
+  ) || Object.values(data.newApiTokenOwners || {}).some(
+    (owner) => owner?.userId === user.id && owner?.state === 'pending_activation',
+  );
+  if (hasPendingCreation) {
+    throw publicError(409, '已有 API Key 正在创建或等待对账，请勿重复提交');
+  }
+  const allocation = allocateNewApiTokenQuota(data, user, serverOptions, newApiBridge);
+  const deducted = deductUserQuota(user, allocation.allocatedCents);
+  const intentId = createId('newapi-token-intent');
+  const now = currentDate(serverOptions).toISOString();
+  data.newApiTokenCreateIntents[intentId] = {
+    id: intentId,
+    userId: user.id,
+    name: String(body.name || '').trim().slice(0, 80),
+    allocatedCents: allocation.allocatedCents,
+    upstreamQuotaUnits: allocation.upstreamQuotaUnits,
+    deductedPackageCents: deducted.packageCents,
+    deductedBoosterCents: deducted.boosterCents,
+    createdAt: now,
+  };
+  data.events.push({
+    type: 'newapi_token_create_reserved',
+    userId: user.id,
+    intentId,
+    allocatedCents: allocation.allocatedCents,
+    upstreamQuotaUnits: allocation.upstreamQuotaUnits,
+    at: now,
+  });
+  return { ...data.newApiTokenCreateIntents[intentId] };
+}
+
+function allocateNewApiTokenQuota(data, user, serverOptions, newApiBridge) {
+  expireUserPlanIfNeeded(data, user, serverOptions);
+  const availableCents = Math.floor(availableQuotaCents(user));
+  const configuredCents = Math.floor(Number(newApiBridge?.config?.defaultTokenQuotaCents || 0));
+  if (!Number.isSafeInteger(configuredCents) || configuredCents <= 0) {
+    throw publicError(503, 'New-API 默认 Key 额度未正确配置');
+  }
+  if (!Number.isSafeInteger(availableCents) || availableCents <= 0) {
+    throw publicError(402, '余额不足，请先兑换或充值后再创建 API Key');
+  }
+  const allocatedCents = Math.min(availableCents, configuredCents);
+  const upstreamQuotaUnits = newApiQuotaFromCents(allocatedCents);
+  if (!Number.isSafeInteger(upstreamQuotaUnits) || upstreamQuotaUnits <= 0) {
+    throw publicError(503, 'New-API Key 上游额度换算失败');
+  }
+  return { allocatedCents, upstreamQuotaUnits };
+}
+
+function persistStagedNewApiTokenOwner(data, reservation, key) {
+  const intent = data.newApiTokenCreateIntents?.[reservation.id];
+  if (!intent || intent.userId !== reservation.userId) {
+    throw publicError(409, 'API Key 创建预留不存在或已变化');
+  }
+  const user = data.users.find((item) => item.id === reservation.userId);
+  if (!user) {
+    throw publicError(409, 'API Key 创建用户不存在');
+  }
+  const keyId = String(key?.id || '').trim();
+  if (!keyId) {
+    throw publicError(502, 'New-API 未返回可登记的 Key ID');
+  }
+  if (data.newApiTokenOwners[keyId]) {
+    throw publicError(502, 'New-API Key ID 已存在归属，已拒绝覆盖');
+  }
+  data.newApiTokenOwners[keyId] = {
+    userId: user.id,
+    name: String(key.name || '').slice(0, 80),
+    allocatedCents: reservation.allocatedCents,
+    upstreamQuotaUnits: reservation.upstreamQuotaUnits,
+    state: 'pending_activation',
+    intentId: reservation.id,
+    createdAt: new Date().toISOString(),
+  };
+  data.events.push({
+    type: 'newapi_token_owned',
+    userId: user.id,
+    keyId,
+    allocatedCents: reservation.allocatedCents,
+    upstreamQuotaUnits: reservation.upstreamQuotaUnits,
+    at: data.newApiTokenOwners[keyId].createdAt,
+  });
+}
+
+function markNewApiTokenOwnerActive(data, reservation, keyId) {
+  const owner = data.newApiTokenOwners?.[String(keyId)];
+  if (!owner || owner.userId !== reservation.userId || owner.intentId !== reservation.id) {
+    throw publicError(409, 'API Key 归属状态已变化，拒绝覆盖');
+  }
+  owner.state = 'active';
+  owner.activatedAt = new Date().toISOString();
+  delete owner.intentId;
+  delete data.newApiTokenCreateIntents[reservation.id];
+  data.events.push({
+    type: 'newapi_token_activated',
+    userId: reservation.userId,
+    keyId: String(keyId),
+    at: owner.activatedAt,
+  });
+}
+
+async function compensateStagedNewApiToken(newApiBridge, keyId) {
+  await newApiBridge.deleteToken(keyId);
+}
+
+async function rollbackNewApiTokenReservation(store, reservation, reason, keyId = '') {
+  await store.mutate((data) => {
+    const intent = data.newApiTokenCreateIntents?.[reservation.id];
+    if (!intent || intent.userId !== reservation.userId) {
+      return;
+    }
+    const user = data.users.find((item) => item.id === reservation.userId);
+    if (!user) {
+      throw publicError(409, 'API Key 创建用户不存在，无法回滚额度');
+    }
+    user.packageQuotaCents = Number(user.packageQuotaCents || 0) + Number(intent.deductedPackageCents || 0);
+    user.boosterQuotaCents = Number(user.boosterQuotaCents || 0) + Number(intent.deductedBoosterCents || 0);
+    reconcileUserBalance(user);
+    if (keyId) {
+      const owner = data.newApiTokenOwners?.[String(keyId)];
+      if (owner?.intentId === reservation.id && owner.userId === reservation.userId) {
+        delete data.newApiTokenOwners[String(keyId)];
+      }
+    }
+    delete data.newApiTokenCreateIntents[reservation.id];
+    data.events.push({
+      type: 'newapi_token_create_rolled_back',
+      userId: reservation.userId,
+      intentId: reservation.id,
+      keyId: String(keyId || ''),
+      reason,
+      at: new Date().toISOString(),
+    });
+  });
+}
+
+function requireNewApiTokenOwner(data, user, keyId) {
+  const owner = data.newApiTokenOwners?.[String(keyId)];
+  const ownerId = typeof owner === 'string' ? owner : owner?.userId;
+  if (!ownerId || ownerId !== user.id) {
+    // 不区分“不存在”和“属于他人”，避免泄露共享上游 Token ID。
+    throw publicError(404, 'API Key 不存在');
+  }
+  return owner;
 }
 
 function createCustomerToken(data, request, body, serverOptions) {
@@ -5235,7 +5539,7 @@ async function writeFileAtomic(filePath, text) {
   await rename(tempPath, filePath);
 }
 
-function createRuntimeStore(dataFile, encryptionKey = '') {
+function createRuntimeStore(dataFile, encryptionKey = '', beforeSave = null) {
   let writeQueue = Promise.resolve();
   const encryption = createRuntimeEncryption(encryptionKey);
 
@@ -5254,6 +5558,9 @@ function createRuntimeStore(dataFile, encryptionKey = '') {
   async function save(data) {
     await mkdir(dirname(dataFile), { recursive: true });
     const normalized = normalizeRuntimeData(data);
+    if (typeof beforeSave === 'function') {
+      await beforeSave(normalized);
+    }
     await writeFileAtomic(dataFile, `${JSON.stringify(encryptRuntimeData(normalized, encryption), null, 2)}\n`);
   }
 
@@ -5285,6 +5592,11 @@ function normalizeRuntimeData(data) {
     sessions: data.sessions && typeof data.sessions === 'object' ? data.sessions : {},
     sessionCsrfTokens: data.sessionCsrfTokens && typeof data.sessionCsrfTokens === 'object' ? data.sessionCsrfTokens : {},
     adminSecondFactorSessions: data.adminSecondFactorSessions && typeof data.adminSecondFactorSessions === 'object' ? data.adminSecondFactorSessions : {},
+    newApiTokenOwners: data.newApiTokenOwners && typeof data.newApiTokenOwners === 'object' ? data.newApiTokenOwners : {},
+    newApiTokenCreateIntents:
+      data.newApiTokenCreateIntents && typeof data.newApiTokenCreateIntents === 'object'
+        ? data.newApiTokenCreateIntents
+        : {},
     userKeys: Array.isArray(data.userKeys) ? data.userKeys : [],
     credentials: Array.isArray(data.credentials) ? data.credentials.map(normalizeCredentialRecord) : [],
     supplierProfiles: Array.isArray(data.supplierProfiles) ? data.supplierProfiles.map(normalizeSupplierProfileRecord) : [],
@@ -5798,6 +6110,7 @@ function normalizeServerOptions(options) {
       options.adminClaimCodes ?? process.env.FRIST_API_ADMIN_CLAIM_CODES ?? process.env.FRIST_API_ADMIN_CLAIM_CODE ?? '',
     ).map(hashAdminClaimCode),
     dataFile: options.dataFile || process.env.FRIST_API_DATA_FILE || join(root, '../data/runtime.json'),
+    runtimeBeforeSave: options.runtimeBeforeSave,
     exposeVerificationCode,
     fetchImpl: options.fetchImpl,
     authRateLimitMax: Number(options.authRateLimitMax ?? process.env.FRIST_API_AUTH_RATE_LIMIT_MAX ?? 20),
@@ -5821,6 +6134,13 @@ function normalizeServerOptions(options) {
       options.turnstileAllowedHostnames ?? process.env.FRIST_API_TURNSTILE_ALLOWED_HOSTNAMES ?? '',
     ),
     passwordResetTtlMs: Number(options.passwordResetTtlMs ?? process.env.FRIST_API_PASSWORD_RESET_TTL_MS ?? 900_000),
+    sessionTtlMs: Math.min(
+      30 * 24 * 60 * 60 * 1000,
+      Math.max(
+        5 * 60 * 1000,
+        Number(options.sessionTtlMs ?? process.env.FRIST_API_SESSION_TTL_MS ?? DEFAULT_SESSION_TTL_MS),
+      ),
+    ),
     keepAliveTimeoutMs:
       options.keepAliveTimeoutMs === undefined && process.env.FRIST_API_KEEP_ALIVE_TIMEOUT_MS === undefined
         ? Number.NaN
@@ -5862,6 +6182,9 @@ function normalizeServerOptions(options) {
     newApiDefaultGroup: options.newApiDefaultGroup || process.env.FRIST_API_NEWAPI_DEFAULT_GROUP || 'default',
     newApiDefaultTokenQuota: Number(
       options.newApiDefaultTokenQuota ?? process.env.FRIST_API_NEWAPI_DEFAULT_TOKEN_QUOTA ?? 0,
+    ),
+    newApiRequestTimeoutMs: Number(
+      options.newApiRequestTimeoutMs ?? process.env.FRIST_API_NEWAPI_REQUEST_TIMEOUT_MS ?? 15_000,
     ),
     newApiGatewayBaseUrl:
       options.newApiGatewayBaseUrl || process.env.FRIST_API_NEWAPI_GATEWAY_BASE_URL || '',
@@ -6043,6 +6366,9 @@ function validatePublicModeOptions(serverOptions) {
   }
   if (!serverOptions.requireCsrf) {
     problems.push('公开模式必须开启 CSRF 防护');
+  }
+  if (serverOptions.newApiEnabled && (!Number.isFinite(serverOptions.newApiDefaultTokenQuota) || serverOptions.newApiDefaultTokenQuota <= 0)) {
+    problems.push('New-API 默认 Key 额度必须显式配置为正数，禁止无限额度 Key');
   }
   if (serverOptions.requireTurnstile && (!serverOptions.turnstileSiteKey || !serverOptions.turnstileSecret)) {
     problems.push('人机验证必须同时配置站点 Key 和服务端密钥');
@@ -6348,9 +6674,15 @@ function requireSession(data, request) {
 
 function findSession(data, request) {
   const token = parseCookies(request.headers.cookie || '')[SESSION_COOKIE];
-  const userId = token ? data.sessions[token] : '';
+  const session = token ? data.sessions[token] : null;
+  // 旧版明文 userId 会话没有生命周期信息，升级后安全退出并要求重新登录。
+  const userId = session && typeof session === 'object' ? String(session.userId || '') : '';
+  const expiresAt = Date.parse(session?.expiresAt || '');
+  if (!userId || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+    return { token, user: undefined, session: null };
+  }
   const user = data.users.find((item) => item.id === userId);
-  return { token, user };
+  return { token, user, session };
 }
 
 function requireCsrfIfEnabled(data, request, serverOptions, options = {}) {
@@ -6748,22 +7080,34 @@ function adminSecondFactorCookie(sessionToken, request, serverOptions) {
 }
 
 function sessionCookie(sessionToken, request, serverOptions) {
+  const maxAge = Math.max(300, Math.floor(Number(serverOptions.sessionTtlMs || DEFAULT_SESSION_TTL_MS) / 1000));
   return [
     `${SESSION_COOKIE}=${sessionToken}`,
     'Path=/',
     'HttpOnly',
     'SameSite=Lax',
+    `Max-Age=${maxAge}`,
     shouldUseSecureCookie(request, serverOptions) ? 'Secure' : '',
   ].filter(Boolean).join('; ');
 }
 
 function csrfCookie(csrfToken, request, serverOptions) {
+  const maxAge = Math.max(300, Math.floor(Number(serverOptions.sessionTtlMs || DEFAULT_SESSION_TTL_MS) / 1000));
   return [
     `${CSRF_COOKIE}=${csrfToken}`,
     'Path=/',
     'SameSite=Lax',
+    `Max-Age=${maxAge}`,
     shouldUseSecureCookie(request, serverOptions) ? 'Secure' : '',
   ].filter(Boolean).join('; ');
+}
+
+function expiredSessionCookies(request, serverOptions) {
+  const secure = shouldUseSecureCookie(request, serverOptions) ? 'Secure' : '';
+  return [
+    [`${SESSION_COOKIE}=`, 'Path=/', 'HttpOnly', 'SameSite=Lax', 'Max-Age=0', secure].filter(Boolean).join('; '),
+    [`${CSRF_COOKIE}=`, 'Path=/', 'SameSite=Lax', 'Max-Age=0', secure].filter(Boolean).join('; '),
+  ];
 }
 
 function shouldUseSecureCookie(request, serverOptions) {
@@ -6981,10 +7325,12 @@ function deductUserQuota(user, quotaCost) {
   const packageDeduction = Math.min(Number(user.packageQuotaCents || 0), remaining);
   user.packageQuotaCents = Math.max(0, Number(user.packageQuotaCents || 0) - packageDeduction);
   remaining -= packageDeduction;
+  const boosterDeduction = Math.min(Number(user.boosterQuotaCents || 0), Math.max(0, remaining));
   if (remaining > 0) {
-    user.boosterQuotaCents = Math.max(0, Number(user.boosterQuotaCents || 0) - remaining);
+    user.boosterQuotaCents = Math.max(0, Number(user.boosterQuotaCents || 0) - boosterDeduction);
   }
   reconcileUserBalance(user);
+  return { packageCents: packageDeduction, boosterCents: boosterDeduction };
 }
 
 function resolveQuotaCostCents(data, model, body, upstream, serverOptions) {

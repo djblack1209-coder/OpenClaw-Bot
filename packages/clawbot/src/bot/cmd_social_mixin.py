@@ -896,7 +896,7 @@ class SocialCommandsMixin:
                 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
                 keyboard = InlineKeyboardMarkup([
                     [
-                        InlineKeyboardButton("✅ 确认发布", callback_data="social_confirm:publish"),
+                        InlineKeyboardButton("✅ 确认内容", callback_data="social_confirm:publish"),
                         InlineKeyboardButton("❌ 取消", callback_data="social_confirm:cancel"),
                     ],
                     [
@@ -1092,36 +1092,104 @@ class SocialCommandsMixin:
     @requires_auth
     @with_typing
     async def cmd_xpost(self, update, context):
+        await self._cmd_gated_social_post(update, context, platform="x")
+
+    async def _cmd_gated_social_post(self, update, context, platform: str) -> None:
+        """执行 Telegram 两步审核发布，绝不接受正文直发。"""
+        platform_name = "xiaohongshu" if platform in {"xhs", "xiaohongshu"} else "x"
+        command = "/xhspost" if platform_name == "xiaohongshu" else "/xpost"
+        label = "小红书" if platform_name == "xiaohongshu" else "X"
         try:
             args = context.args or []
-            draft_id = 0
-            topic = ""
-            if args and str(args[0]).isdigit():
-                draft_id = int(args[0])
-            else:
-                topic = " ".join(args).strip()
-            if draft_id <= 0:
-                draft = await execution_hub.create_social_draft("x", topic=topic, max_items=3)
-                if not draft.get("success"):
-                    await update.message.reply_text(error_service_failed("X 发帖", draft.get('error', '')))
+            action = str(args[0]).strip().lower() if args else ""
+            explicit_id = str(args[1]).strip() if action in {"approve", "publish"} and len(args) > 1 else ""
+            if not explicit_id and args:
+                candidate = str(args[0]).strip()
+                if execution_hub.get_social_draft(candidate):
+                    explicit_id = candidate
+                    action = "publish"
+
+            if action == "approve" and explicit_id:
+                draft = execution_hub.get_social_draft(explicit_id)
+                if not draft or str(draft.get("platform") or "") != platform_name:
+                    await update.message.reply_text(f"找不到对应的{label}草稿: {explicit_id}")
                     return
-                draft_id = int(draft.get("draft_id", 0) or 0)
-            await update.message.reply_text("正在拉起 OpenClaw 专用浏览器并自动发 X...")
-            ret = await asyncio.to_thread(execution_hub.publish_social_draft, "x", draft_id)
-            if ret.get("success"):
-                await update.message.reply_text(f"X 已尝试自动发出，草稿ID: {ret.get('draft_id')}\n页面: {ret.get('url', '')}")
-            else:
-                await update.message.reply_text(
-                    f"X 自动发帖未完成: {ret.get('status', ret.get('error', '未知错误'))}\n"
-                    f"页面: {ret.get('url', '')}"
-                    f"{self._social_login_retry_hint(ret, f"/post_x {topic}" if topic else '/post_x')}"
+                approval = await asyncio.to_thread(
+                    execution_hub.update_social_draft_status,
+                    explicit_id,
+                    "approved",
                 )
+                if not approval.get("success"):
+                    await update.message.reply_text(f"{label}草稿审核失败: {approval.get('error', '未知错误')}")
+                    return
+                await update.message.reply_text(
+                    f"{label}草稿已审核通过，但尚未发布。\n"
+                    f"最终发布请执行: {command} publish {explicit_id}"
+                )
+                return
+
+            if action == "publish" and explicit_id:
+                draft = execution_hub.get_social_draft(explicit_id)
+                if not draft or str(draft.get("platform") or "") != platform_name:
+                    await update.message.reply_text(f"找不到对应的{label}草稿: {explicit_id}")
+                    return
+                confirmation = await asyncio.to_thread(
+                    execution_hub.final_confirm_social_draft,
+                    explicit_id,
+                    "telegram",
+                )
+                if not confirmation.get("success"):
+                    await update.message.reply_text(
+                        f"{label}尚不能发布: {confirmation.get('error', '请先审核草稿')}\n"
+                        f"先执行: {command} approve {explicit_id}"
+                    )
+                    return
+                ret = await asyncio.to_thread(
+                    execution_hub.publish_social_draft,
+                    platform_name,
+                    explicit_id,
+                    confirmation["confirmation_token"],
+                )
+                if ret.get("success"):
+                    await update.message.reply_text(
+                        f"{label} 已发布，草稿ID: {explicit_id}\n页面: {ret.get('url', '')}"
+                    )
+                else:
+                    await update.message.reply_text(
+                        f"{label}发布未完成: {ret.get('status', ret.get('error', '未知错误'))}"
+                    )
+                return
+
+            topic = " ".join(args).strip()
+            max_items = 5 if platform_name == "xiaohongshu" else 3
+            draft = await execution_hub.create_social_draft(
+                platform_name,
+                topic=topic,
+                max_items=max_items,
+            )
+            if not draft.get("success"):
+                await update.message.reply_text(error_service_failed(f"{label}草稿", draft.get('error', '')))
+                return
+            draft_id = str(draft.get("draft_id") or draft.get("id") or "")
+            preview = str(draft.get("body") or draft.get("text") or "")
+            title = str(draft.get("title") or "")
+            lines = [f"{label}待审草稿", f"草稿ID: {draft_id}"]
+            if title:
+                lines.append(f"标题: {title}")
+            lines.extend(["", preview, "", f"审核: {command} approve {draft_id}"])
+            lines.append(f"审核后最终发布: {command} publish {draft_id}")
+            await send_long_message(update.effective_chat.id, "\n".join(lines), context)
         except Exception as e:
-            logger.warning("[cmd_xpost] 执行失败: %s", e)
+            logger.warning("[%s] 执行失败: %s", command, e)
             try:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception as e:
-                logger.debug("消息发送失败: %s", e)
+            except Exception as send_error:
+                logger.debug("消息发送失败: %s", send_error)
+
+    @requires_auth
+    @with_typing
+    async def cmd_xhspost(self, update, context):
+        await self._cmd_gated_social_post(update, context, platform="xiaohongshu")
 
     @requires_auth
     @with_typing
@@ -1148,44 +1216,10 @@ class SocialCommandsMixin:
 
     @requires_auth
     @with_typing
-    async def cmd_xhspost(self, update, context):
-        try:
-            args = context.args or []
-            draft_id = 0
-            topic = ""
-            if args and str(args[0]).isdigit():
-                draft_id = int(args[0])
-            else:
-                topic = " ".join(args).strip()
-            if draft_id <= 0:
-                draft = await execution_hub.create_social_draft("xiaohongshu", topic=topic, max_items=5)
-                if not draft.get("success"):
-                    await update.message.reply_text(error_service_failed("小红书发帖", draft.get('error', '')))
-                    return
-                draft_id = int(draft.get("draft_id", 0) or 0)
-            await update.message.reply_text("正在拉起 OpenClaw 专用浏览器并自动发小红书...")
-            ret = await asyncio.to_thread(execution_hub.publish_social_draft, "xiaohongshu", draft_id)
-            if ret.get("success"):
-                await update.message.reply_text(f"小红书已尝试自动发出，草稿ID: {ret.get('draft_id')}\n页面: {ret.get('url', '')}")
-            else:
-                await update.message.reply_text(
-                    f"小红书自动发帖未完成: {ret.get('status', ret.get('error', '未知错误'))}\n"
-                    f"页面: {ret.get('url', '')}"
-                    f"{self._social_login_retry_hint(ret, f"/post_xhs {topic}" if topic else '/post_xhs')}"
-                )
-        except Exception as e:
-            logger.warning("[cmd_xhspost] 执行失败: %s", e)
-            try:
-                await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
-            except Exception as e:
-                logger.debug("消息发送失败: %s", e)
-
-    @requires_auth
-    @with_typing
     async def cmd_publish(self, update, context):
-        """发布内容到社交媒体 — /publish <平台> <视频/图片路径> [标题]"""
+        """多媒体直发暂时禁用，等待可持久化的素材审核快照。"""
         try:
-            from src.sau_bridge import PLATFORMS, get_supported_platforms, publish_note, publish_video
+            from src.sau_bridge import PLATFORMS, get_supported_platforms
 
             args = context.args or []
             if len(args) < 2:
@@ -1205,25 +1239,14 @@ class SocialCommandsMixin:
                 return
 
             platform = args[0].lower()
-            file_path = args[1]
-            title = " ".join(args[2:]) if len(args) > 2 else "OpenClaw 自动发布"
-
             if platform not in PLATFORMS:
                 await update.message.reply_text(f"❓ 不支持的平台: {platform}\n支持: {', '.join(PLATFORMS.keys())}")
                 return
-
-            await update.message.reply_text(f"📤 正在发布到 {PLATFORMS[platform]['name']}...")
-
-            if file_path.lower().endswith(('.mp4', '.mov', '.avi')):
-                result = await publish_video(platform, file_path, title)
-            else:
-                result = await publish_note(platform, [file_path], title)
-
-            if result.get("success"):
-                await update.message.reply_text(f"✅ 发布到 {PLATFORMS[platform]['name']} 成功!")
-            else:
-                error = result.get("error", result.get("stderr", "未知错误"))
-                await update.message.reply_text(f"⚠️ 发布失败: {error[:100]}")
+            await update.message.reply_text(
+                "⛔ 已阻止多媒体直发。\n"
+                "当前视频/图文素材还没有可持久化的审核快照和一次性确认令牌，"
+                "因此不会调用 Sau 发布器。"
+            )
         except Exception as e:
             logger.warning("[cmd_publish] 执行失败: %s", e)
             try:
@@ -1616,14 +1639,18 @@ class SocialCommandsMixin:
         if not data.startswith("social_confirm:"):
             return
 
-        action = data.split(":")[1]
-        package = context.user_data.pop("pending_social_package", None)
+        action = data.split(":", 2)[1]
+        package = context.user_data.get("pending_social_package")
 
         if action == "cancel":
+            context.user_data.pop("pending_social_package", None)
+            context.user_data.pop("pending_social_final_drafts", None)
             await query.edit_message_text("❌ 已取消发布。")
             return
 
         if action == "regenerate":
+            context.user_data.pop("pending_social_package", None)
+            context.user_data.pop("pending_social_final_drafts", None)
             await query.edit_message_text("🔄 重新生成中...")
             # 重新触发 /hot --preview
             context.args = ["--preview"]
@@ -1634,20 +1661,66 @@ class SocialCommandsMixin:
             if not package:
                 await query.edit_message_text("⚠️ 预览已过期，请重新执行 /hot --preview")
                 return
+            approved: list[dict[str, str]] = []
+            for platform, item in (package.get("results") or {}).items():
+                if not isinstance(item, dict):
+                    continue
+                draft = item.get("draft") if isinstance(item.get("draft"), dict) else {}
+                draft_id = str(draft.get("draft_id") or draft.get("id") or item.get("draft_id") or "")
+                if not draft_id:
+                    continue
+                result = await asyncio.to_thread(
+                    execution_hub.update_social_draft_status,
+                    draft_id,
+                    "approved",
+                )
+                if result.get("success"):
+                    approved.append({"draft_id": draft_id, "platform": str(platform)})
+            context.user_data.pop("pending_social_package", None)
+            if not approved:
+                await query.edit_message_text("⚠️ 未找到可持久化审核的草稿，已阻止发布。")
+                return
+            context.user_data["pending_social_final_drafts"] = approved
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-            await query.edit_message_text("📤 正在发布...")
-            try:
-                ret = execution_hub._publish_social_package(package)
-                if ret and ret.get("success"):
-                    await query.edit_message_text(
-                        "✅ 发布成功\n\n" +
-                        "\n".join(
-                            f"{'𝕏' if p == 'x' else '📕'} {p}: {r.get('url', '已发布')}"
-                            for p, r in (ret.get("results") or {}).items()
-                        )
-                    )
-                else:
-                    error = ret.get("error", "未知错误") if ret else "无返回"
-                    await query.edit_message_text(f"⚠️ 发布失败: {error}")
-            except Exception as e:
-                await query.edit_message_text(format_error(e, "发布内容"))
+            keyboard = InlineKeyboardMarkup(
+                [[InlineKeyboardButton("📤 最终确认并发布", callback_data="social_confirm:final_all")]]
+            )
+            await query.edit_message_text(
+                "✅ 内容已审核，但尚未发布。\n请再次点击“最终确认并发布”签发一次性令牌。",
+                reply_markup=keyboard,
+            )
+            return
+
+        if action == "final_all":
+            pending = context.user_data.pop("pending_social_final_drafts", None)
+            if not isinstance(pending, list) or not pending:
+                await query.edit_message_text("⚠️ 最终确认已过期，请重新生成预览。")
+                return
+            results = []
+            for item in pending:
+                draft_id = str(item.get("draft_id") or "")
+                platform = str(item.get("platform") or "x")
+                confirmation = await asyncio.to_thread(
+                    execution_hub.final_confirm_social_draft,
+                    draft_id,
+                    "telegram",
+                )
+                if not confirmation.get("success"):
+                    results.append({"success": False, "platform": platform, "error": confirmation.get("error")})
+                    continue
+                result = await asyncio.to_thread(
+                    execution_hub.publish_social_draft,
+                    platform,
+                    draft_id,
+                    confirmation["confirmation_token"],
+                )
+                results.append({**result, "platform": platform})
+            lines = ["社媒最终发布结果"]
+            for result in results:
+                icon = "✅" if result.get("success") else "⚠️"
+                lines.append(
+                    f"{icon} {_social_review_platform_label(str(result.get('platform') or ''))}: "
+                    f"{result.get('url') or result.get('error') or result.get('status') or '完成'}"
+                )
+            await query.edit_message_text("\n".join(lines))

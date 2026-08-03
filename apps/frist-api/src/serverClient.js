@@ -53,6 +53,7 @@ export function createFristApiBrowserClient(options = {}) {
   return {
     register: (body) => request('/api/frist/register', { method: 'POST', body }),
     login: (body) => request('/api/frist/login', { method: 'POST', body }),
+    logout: () => request('/api/frist/logout', { method: 'POST' }),
     challenge: () => request('/api/frist/challenge'),
     claimAdmin: (body) => request('/api/frist/admin/claim', { method: 'POST', body }),
     changePassword: (body) => request('/api/frist/password', { method: 'POST', body }),

@@ -27,11 +27,16 @@ if load_dotenv:
 
 # ============ 工具函数 ============
 
-def parse_ids(s):
-    """把逗号分隔的数字字符串解析为 int 集合"""
+def parse_ids(s: str | None) -> set[int]:
+    """把逗号分隔的正整数 Telegram 用户 ID 解析为集合。"""
     if not s:
         return set()
-    return {int(x.strip()) for x in s.split(',') if x.strip().isdigit()}
+    parsed: set[int] = set()
+    for raw_value in s.split(','):
+        value = raw_value.strip()
+        if value.isascii() and value.isdigit() and int(value) > 0:
+            parsed.add(int(value))
+    return parsed
 
 
 # ============ 环境变量 / API 配置 ============

@@ -247,9 +247,9 @@ class TeamVoteRequest(BaseModel):
 
 
 class SocialPublishRequest(BaseModel):
-    platform: str  # "x", "xhs", "both"
-    content: str
-    schedule_at: str | None = None
+    draft_id: str
+    confirmation_token: str
+    platform: str = ""
 
 
 class MemorySearchRequest(BaseModel):

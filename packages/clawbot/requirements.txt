@@ -27,7 +27,7 @@ flask>=3.0.0,<4.0.0
 aiohttp>=3.14.1,<4.0.0
 
 # JSON 容错解析（4.6k⭐）— 替代 json.loads 解析 LLM 输出
-json-repair~=0.30.0
+json-repair~=0.60.1
 
 # loguru — 结构化日志 (23.7k⭐, MIT)
 # 搬运: 拦截 stdlib logging → 彩色控制台 + JSON 文件日志 + 自动轮转
@@ -229,7 +229,7 @@ qrcode[pil]>=7.0
 tavily-python>=0.5.0
 
 # smolagents — 轻量 AI Agent 框架 (26.2k⭐, Apache 2.0)
-# 搬运: HuggingFace 出品，CodeAgent 模式让 LLM 写代码串联工具调用
+# 搬运: HuggingFace 出品，仅使用 ToolCallingAgent 串联显式只读工具
 # 用途: /agent 命令，自然语言驱动多工具链 (行情+分析+搜索+风控)
 smolagents>=1.0.0,<2.0.0
 

@@ -80,7 +80,7 @@ def init_trading_system(
     logger.info("[TradingSystem] 风控引擎已初始化 (资金基准=$%.0f)", effective_capital)
 
     # 2. 持仓监控器 — 包含卖出降级逻辑
-    from src.position_monitor import PositionMonitor
+    from src.position_monitor import PENDING_EXIT_STATE_FILE, PositionMonitor
 
     sell_func = None
     if broker:
@@ -139,6 +139,12 @@ def init_trading_system(
         notify_func=notify_func,
         risk_manager=_ts._risk_manager,
         journal=journal,
+        get_order_snapshots_func=(
+            broker.get_trade_snapshots
+            if broker and hasattr(broker, "get_trade_snapshots")
+            else None
+        ),
+        pending_exit_state_path=PENDING_EXIT_STATE_FILE,
     )
     logger.info("[TradingSystem] 持仓监控器已初始化")
 

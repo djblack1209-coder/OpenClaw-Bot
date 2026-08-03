@@ -71,8 +71,18 @@ def mock_portfolio():
 def mock_broker():
     """AsyncMock broker with buy/sell."""
     b = AsyncMock()
-    b.buy.return_value = {"status": "filled", "avg_price": 150.0, "quantity": 5}
-    b.sell.return_value = {"status": "filled", "avg_price": 155.0, "quantity": 5}
+    b.buy.return_value = {
+        "status": "filled",
+        "filled_qty": 3,
+        "avg_price": 150.0,
+        "quantity": 3,
+    }
+    b.sell.return_value = {
+        "status": "filled",
+        "filled_qty": 3,
+        "avg_price": 155.0,
+        "quantity": 3,
+    }
     # is_connected is a sync method on the real broker — use MagicMock to avoid
     # returning a coroutine (which is always truthy and triggers RuntimeWarning).
     b.is_connected = MagicMock(return_value=True)

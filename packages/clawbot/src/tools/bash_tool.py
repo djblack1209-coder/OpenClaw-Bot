@@ -17,48 +17,153 @@ _SAFE_ENV_KEYS = frozenset({
     "TERM", "TMPDIR", "TZ", "SHELL",
 })
 
+
 class BashTool:
     """执行Bash命令 (白名单模式)"""
 
-    # 允许执行的命令白名单
-    # 安全原则: 只保留只读/信息查询类命令，移除可执行任意代码的命令
-    # 已移除: python3, node, npm (可绕过沙箱执行任意代码)
-    # 已移除: ssh, scp, rsync (可访问远程系统)
-    # 已移除: docker (可逃逸到宿主机)
-    # 已移除: pip (可安装恶意包)
+    # 只保留只读命令；文件写入必须走显式确认的专用能力。
     ALLOWED_COMMANDS = frozenset({
-        # 文件查看 (只读)
-        "ls", "cat", "head", "tail", "grep", "find", "wc", "sort", "uniq",
-        "file",
-        # 系统信息 (只读)
-        "echo", "pwd", "date", "whoami", "uname", "df", "du",
-        "which", "ps", "free",
-        # 安全的文件操作 (用户工作目录内)
-        "mkdir", "cp", "mv", "touch",
-        # 安全修复: 移除 curl/wget — 可通过 -d/--data/--upload-file 外泄数据，也可用于 SSRF
-        # 压缩/解压
-        "tar", "zip", "unzip", "gzip",
-        # 版本控制 (只读操作)
-        "git",
+        "ls", "cat", "head", "tail", "grep", "uniq",
+        "echo", "pwd", "date", "whoami", "uname", "df",
+        "which", "free",
+    })
+    PATH_COMMANDS = frozenset({
+        "ls", "cat", "head", "tail", "grep", "uniq", "df",
+    })
+    SAFE_GREP_SHORT_FLAGS = frozenset("EFGHhilLnoqrsvwxc")
+    SAFE_GREP_LONG_OPTIONS = frozenset({
+        "--basic-regexp", "--extended-regexp", "--fixed-strings", "--perl-regexp",
+        "--ignore-case", "--no-ignore-case", "--word-regexp", "--line-regexp",
+        "--invert-match", "--line-number", "--with-filename", "--no-filename",
+        "--files-with-matches", "--files-without-match", "--only-matching",
+        "--quiet", "--silent", "--no-messages", "--text", "--binary",
+        "--recursive", "--count",
     })
 
     def __init__(self, working_dir: str | None = None, timeout: int = 120):
-        self.working_dir = working_dir or str(Path.home())
+        self.working_dir = str(Path(working_dir or Path.home()).resolve())
         self.timeout = timeout
         self.current_process: subprocess.Popen | None = None
 
     def is_allowed(self, command: str) -> bool:
-        """检查命令是否在白名单中 (基于 shlex 拆分后的第一个 token)"""
+        """检查命令、参数和路径是否满足只读白名单。"""
+        allowed, _error, _args, _cwd = self._validate(command, None)
+        return allowed
+
+    @staticmethod
+    def _is_within(path: Path, root: Path) -> bool:
+        """判断解析后的路径是否位于配置根目录内。"""
+        try:
+            path.relative_to(root)
+            return True
+        except ValueError:
+            return False
+
+    def _resolve_workdir(self, workdir: str | None) -> tuple[Path | None, str]:
+        """解析工作目录并阻断目录穿越和同前缀目录绕过。"""
+        root = Path(self.working_dir).resolve()
+        candidate = Path(workdir) if workdir else root
+        if not candidate.is_absolute():
+            candidate = root / candidate
+        resolved = candidate.resolve()
+        if not self._is_within(resolved, root):
+            return None, "错误: 工作目录超出项目范围"
+        if not resolved.is_dir():
+            return None, "错误: 工作目录不存在或不是目录"
+        return resolved, ""
+
+    def _validate_path(self, token: str, cwd: Path) -> bool:
+        """验证单个文件参数，现有软链接也必须解析在根目录内。"""
+        if token in {"", "-"}:
+            return True
+        path = Path(token)
+        if not path.is_absolute():
+            path = cwd / path
+        return self._is_within(path.resolve(), Path(self.working_dir).resolve())
+
+    def _grep_path_operands(self, args: list[str]) -> list[str] | None:
+        """只接受无需附加参数的 grep 选项，并返回显式文件操作数。"""
+        positional: list[str] = []
+        parsing_options = True
+        for token in args[1:]:
+            if parsing_options and token == "--":
+                parsing_options = False
+                continue
+            if parsing_options and token.startswith("--"):
+                if token not in self.SAFE_GREP_LONG_OPTIONS:
+                    return None
+                continue
+            if parsing_options and token.startswith("-") and token != "-":
+                if not token[1:] or not set(token[1:]).issubset(self.SAFE_GREP_SHORT_FLAGS):
+                    return None
+                continue
+            positional.append(token)
+
+        if not positional:
+            return None
+        return positional[1:]
+
+    def _path_operands(self, command: str, args: list[str]) -> list[str]:
+        """提取需要限制在工作目录内的路径参数。"""
+        values = args[1:]
+        if command == "uniq":
+            positional = [token for token in values if not token.startswith("-")]
+            # uniq 的第二个位置参数是输出文件，自动工具不允许该形式。
+            return positional
+
+        return [token for token in values if not token.startswith("-")]
+
+    def _validate(
+        self,
+        command: str,
+        workdir: str | None,
+    ) -> tuple[bool, str, list[str], Path | None]:
+        """统一验证命令，返回可直接交给 shell=False 的参数。"""
+        if not command or len(command) > 4096 or any(char in command for char in ("\x00", "\r", "\n")):
+            return False, "空命令或命令长度/字符不合法", [], None
+
         try:
             args = shlex.split(command)
-            if not args:
-                return False
-            # 取命令名 (去掉路径前缀，如 /usr/bin/ls → ls)
-            cmd_name = os.path.basename(args[0])
-            return cmd_name in self.ALLOWED_COMMANDS
-        except ValueError as e:  # noqa: F841
-            # shlex 解析失败 (如未闭合引号)，拒绝执行
-            return False
+        except ValueError as e:
+            return False, f"命令解析失败: {e}", [], None
+        if not args or len(args) > 128 or any(len(arg) > 2048 for arg in args):
+            return False, "命令参数数量或长度超限", [], None
+
+        executable = args[0]
+        command_name = os.path.basename(executable)
+        if executable != command_name or command_name not in self.ALLOWED_COMMANDS:
+            return (
+                False,
+                f"命令 '{command_name}' 不在允许列表中。允许的命令: {', '.join(sorted(self.ALLOWED_COMMANDS))}",
+                [],
+                None,
+            )
+
+        cwd, workdir_error = self._resolve_workdir(workdir)
+        if cwd is None:
+            return False, workdir_error, [], None
+
+        if command_name in {"pwd", "whoami", "date"} and len(args) != 1:
+            return False, f"{command_name} 不接受自动工具参数", [], None
+        if command_name == "which" and any(
+            not token.replace("-", "").replace("_", "").replace(".", "").isalnum()
+            for token in args[1:]
+        ):
+            return False, "which 仅接受简单命令名", [], None
+
+        if command_name == "grep":
+            grep_operands = self._grep_path_operands(args)
+            if grep_operands is None:
+                return False, "grep 参数不在只读安全选项列表中", [], None
+            operands = grep_operands
+        else:
+            operands = self._path_operands(command_name, args) if command_name in self.PATH_COMMANDS else []
+        if command_name == "uniq" and len(operands) > 1:
+            return False, "uniq 输出文件参数已禁用", [], None
+        if any(not self._validate_path(token, cwd) for token in operands):
+            return False, "文件参数超出项目范围", [], None
+
+        return True, "", args, cwd
 
     def execute(self, command: str, workdir: str | None = None, timeout: int | None = None) -> dict:
         """
@@ -73,47 +178,14 @@ class BashTool:
             dict: {success, stdout, stderr, returncode, error}
         """
         try:
-            cwd = workdir or self.working_dir
             cmd_timeout = timeout or self.timeout
-
-            # 验证工作目录在项目范围内，防止路径遍历攻击
-            if workdir:
-                resolved = os.path.realpath(workdir)
-                project_root = os.path.realpath(
-                    os.path.join(os.path.dirname(__file__), '..', '..')
-                )
-                if not resolved.startswith(project_root):
-                    return {
-                        "success": False,
-                        "error": "错误: 工作目录超出项目范围",
-                        "command": command,
-                    }
-
-            # 使用 shlex 拆分命令
-            try:
-                args = shlex.split(command)
-            except ValueError as e:
-                return {
-                    "success": False,
-                    "error": f"命令解析失败: {e}",
-                    "command": command
-                }
-
-            if not args:
-                return {
-                    "success": False,
-                    "error": "空命令",
-                    "command": command
-                }
-
-            # 白名单检查
-            cmd_name = os.path.basename(args[0])
-            if cmd_name not in self.ALLOWED_COMMANDS:
+            allowed, error, args, cwd = self._validate(command, workdir)
+            if not allowed or cwd is None:
                 return {
                     "success": False,
                     "blocked": True,
-                    "error": f"命令 '{cmd_name}' 不在允许列表中。允许的命令: {', '.join(sorted(self.ALLOWED_COMMANDS))}",
-                    "command": command
+                    "error": error,
+                    "command": command,
                 }
 
             # 执行命令 (shell=False，安全模式)
@@ -122,7 +194,7 @@ class BashTool:
                 shell=False,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                cwd=cwd,
+                cwd=str(cwd),
                 env=_make_safe_env(),
                 preexec_fn=os.setsid if os.name != 'nt' else None
             )
@@ -193,4 +265,13 @@ class BashTool:
 
 def _make_safe_env() -> dict:
     """构建安全的子进程环境变量 (只保留白名单内的 key, 阻止敏感信息泄漏)"""
-    return {k: v for k, v in os.environ.items() if k in _SAFE_ENV_KEYS}
+    env = {k: v for k, v in os.environ.items() if k in _SAFE_ENV_KEYS and k != "PATH"}
+    # 固定命令搜索路径，并禁止 Git 加载系统/用户配置或外部分页器。
+    env.update({
+        "PATH": os.defpath,
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_PAGER": "cat",
+        "PAGER": "cat",
+    })
+    return env

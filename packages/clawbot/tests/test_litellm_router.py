@@ -3,6 +3,7 @@ Tests for LiteLLM Router — ALL LLM calls flow through this module.
 
 Covers: FreeAPISource, _scrub_secrets, get_model_score, LiteLLMPool core methods.
 """
+
 import asyncio
 import time
 
@@ -24,6 +25,7 @@ from src.litellm_router import (
 
 # ============ Fixtures ============
 
+
 @pytest.fixture
 def pool():
     """LiteLLMPool with no env keys — empty sources, no real Router."""
@@ -35,60 +37,80 @@ def pool():
 @pytest.fixture
 def pool_with_sources(pool):
     """Pool pre-loaded with a few fake sources for testing."""
-    pool._reg("qwen", FreeAPISource(
-        provider="test_qwen", base_url="http://fake", api_key="sk-fake",
-        model="Qwen/Qwen3-235B-A22B", tier=TIER_S,
-    ))
-    pool._reg("deepseek", FreeAPISource(
-        provider="test_ds", base_url="http://fake", api_key="sk-fake",
-        model="deepseek-v3", tier=TIER_A,
-    ))
-    pool._reg("llama", FreeAPISource(
-        provider="test_llama", base_url="http://fake", api_key="sk-fake",
-        model="llama-3.3-70b-versatile", tier=TIER_B,
-    ))
-    pool._reg("g4f", FreeAPISource(
-        provider="g4f", base_url="http://127.0.0.1:18891/v1", api_key="dummy",
-        model="auto", tier=TIER_A,
-    ))
+    pool._reg(
+        "qwen",
+        FreeAPISource(
+            provider="test_qwen",
+            base_url="http://fake",
+            api_key="sk-fake",
+            model="Qwen/Qwen3-235B-A22B",
+            tier=TIER_S,
+        ),
+    )
+    pool._reg(
+        "deepseek",
+        FreeAPISource(
+            provider="test_ds",
+            base_url="http://fake",
+            api_key="sk-fake",
+            model="deepseek-v3",
+            tier=TIER_A,
+        ),
+    )
+    pool._reg(
+        "llama",
+        FreeAPISource(
+            provider="test_llama",
+            base_url="http://fake",
+            api_key="sk-fake",
+            model="llama-3.3-70b-versatile",
+            tier=TIER_B,
+        ),
+    )
+    pool._reg(
+        "g4f",
+        FreeAPISource(
+            provider="g4f",
+            base_url="http://127.0.0.1:18891/v1",
+            api_key="dummy",
+            model="auto",
+            tier=TIER_A,
+        ),
+    )
     return pool
 
 
 # ============ FreeAPISource.can_accept_request ============
 
+
 class TestCanAcceptRequest:
     """Tests for FreeAPISource.can_accept_request()."""
 
     def test_enabled_source_accepts(self):
-        src = FreeAPISource(provider="test", base_url="", api_key="k",
-                            model="m", disabled=False, consecutive_errors=0)
+        src = FreeAPISource(provider="test", base_url="", api_key="k", model="m", disabled=False, consecutive_errors=0)
         assert src.can_accept_request() is True
 
     def test_disabled_source_rejects(self):
-        src = FreeAPISource(provider="test", base_url="", api_key="k",
-                            model="m", disabled=True)
+        src = FreeAPISource(provider="test", base_url="", api_key="k", model="m", disabled=True)
         assert src.can_accept_request() is False
 
     def test_too_many_errors_rejects(self):
-        src = FreeAPISource(provider="test", base_url="", api_key="k",
-                            model="m", consecutive_errors=5)
+        src = FreeAPISource(provider="test", base_url="", api_key="k", model="m", consecutive_errors=5)
         assert src.can_accept_request() is False
 
     def test_daily_limit_exhausted_rejects(self):
-        src = FreeAPISource(provider="test", base_url="", api_key="k",
-                            model="m", daily_limit=10, used_today=10)
+        src = FreeAPISource(provider="test", base_url="", api_key="k", model="m", daily_limit=10, used_today=10)
         assert src.can_accept_request() is False
 
     def test_daily_limit_not_reached_accepts(self):
-        src = FreeAPISource(provider="test", base_url="", api_key="k",
-                            model="m", daily_limit=10, used_today=5)
+        src = FreeAPISource(provider="test", base_url="", api_key="k", model="m", daily_limit=10, used_today=5)
         assert src.can_accept_request() is True
 
 
 # ============ get_model_score ============
 
-class TestGetModelScore:
 
+class TestGetModelScore:
     def test_known_model_returns_correct_score(self):
         assert get_model_score("gemini-2.5-pro") == 98
 
@@ -101,8 +123,8 @@ class TestGetModelScore:
 
 # ============ _scrub_secrets ============
 
-class TestScrubSecrets:
 
+class TestScrubSecrets:
     def test_removes_api_key_sk_prefix(self):
         msg = "Error calling sk-abcdef1234567890 at endpoint"
         cleaned = _scrub_secrets(msg)
@@ -142,8 +164,8 @@ class TestScrubSecrets:
 
 # ============ LiteLLMPool.acompletion ============
 
-class TestAcompletion:
 
+class TestAcompletion:
     async def test_raises_when_not_initialized(self, pool):
         """acompletion raises RuntimeError when _router is None."""
         with pytest.raises(RuntimeError, match="未初始化"):
@@ -158,9 +180,7 @@ class TestAcompletion:
         pool_with_sources._router = mock_router
 
         messages = [{"role": "user", "content": "hello"}]
-        result = await pool_with_sources.acompletion(
-            "qwen", messages, system_prompt="You are helpful", temperature=0.5
-        )
+        result = await pool_with_sources.acompletion("qwen", messages, system_prompt="You are helpful", temperature=0.5)
 
         assert result is mock_response
         call_args = mock_router.acompletion.call_args
@@ -215,8 +235,8 @@ class TestAcompletion:
 
 # ============ LiteLLMPool.get_stats ============
 
-class TestGetStats:
 
+class TestGetStats:
     def test_returns_correct_structure(self, pool_with_sources):
         stats = pool_with_sources.get_stats()
         assert "total_sources" in stats
@@ -236,8 +256,8 @@ class TestGetStats:
 
 # ============ _pick_strongest_family ============
 
-class TestPickStrongestFamily:
 
+class TestPickStrongestFamily:
     def test_selects_highest_scored_model(self, pool_with_sources):
         """Should pick the family containing the highest-scored available model."""
         best = pool_with_sources._pick_strongest_family()
@@ -253,25 +273,37 @@ class TestPickStrongestFamily:
     def test_all_disabled_falls_back_to_g4f(self):
         """If all sources disabled, should return 'g4f' as default."""
         pool = LiteLLMPool()
-        pool._reg("qwen", FreeAPISource(
-            provider="t", base_url="", api_key="k", model="qwen3",
-            disabled=True,
-        ))
+        pool._reg(
+            "qwen",
+            FreeAPISource(
+                provider="t",
+                base_url="",
+                api_key="k",
+                model="qwen3",
+                disabled=True,
+            ),
+        )
         best = pool._pick_strongest_family()
         assert best == "g4f"
 
 
 # ============ health_check ============
 
-class TestHealthCheck:
 
+class TestHealthCheck:
     async def test_marks_failed_source_as_disabled(self):
         """health_check disables sources whose provider fails the ping."""
         pool = LiteLLMPool()
-        pool._reg("test_fam", FreeAPISource(
-            provider="failing_prov", base_url="http://fake", api_key="k",
-            model="some-model", tier=TIER_B,
-        ))
+        pool._reg(
+            "test_fam",
+            FreeAPISource(
+                provider="failing_prov",
+                base_url="http://fake",
+                api_key="k",
+                model="some-model",
+                tier=TIER_B,
+            ),
+        )
         mock_router = AsyncMock()
         mock_router.acompletion.side_effect = Exception("Connection refused")
         pool._router = mock_router
@@ -286,14 +318,17 @@ class TestHealthCheck:
 
 # ============ validate_keys ============
 
-class TestValidateKeys:
 
+class TestValidateKeys:
     async def test_disables_auth_error_keys(self):
         """validate_keys disables sources that return 401/403 auth errors."""
         pool = LiteLLMPool()
         src = FreeAPISource(
-            provider="bad_key_prov", base_url="http://fake", api_key="bad-key",
-            model="some-model", tier=TIER_B,
+            provider="bad_key_prov",
+            base_url="http://fake",
+            api_key="bad-key",
+            model="some-model",
+            tier=TIER_B,
         )
         pool._reg("test_fam", src)
 
@@ -308,14 +343,18 @@ class TestValidateKeys:
 
 # ============ _build_all_deployments ==========
 
-class TestBuildAllDeployments:
 
+class TestBuildAllDeployments:
     def test_uses_current_gemini_models_and_enables_cerebras(self):
         """Gemini 应切到 2.5 系，Cerebras key 存在时应真正注册 deployment。"""
-        with patch.dict("os.environ", {
-            "GEMINI_API_KEY": "AIza-test-key",
-            "CEREBRAS_API_KEY": "csk-test-key",
-        }, clear=True):
+        with patch.dict(
+            "os.environ",
+            {
+                "GEMINI_API_KEY": "AIza-test-key",
+                "CEREBRAS_API_KEY": "csk-test-key",
+            },
+            clear=True,
+        ):
             pool = LiteLLMPool()
             deps = pool._build_all_deployments()
 
@@ -326,9 +365,49 @@ class TestBuildAllDeployments:
         assert "gemini/gemini-2.0-flash" not in models
         assert any(model.startswith("cerebras/") for model in models)
 
+    def test_g4f_requires_explicit_enable_flag(self):
+        """存在旧 API Key 也不能让未安装的 g4f 自动进入 fallback。"""
+        with patch.dict("os.environ", {"G4F_API_KEY": "dummy"}, clear=True):
+            deps = LiteLLMPool()._build_all_deployments()
+        assert all(dep["model_name"] != "g4f" for dep in deps)
+
+    def test_g4f_registers_after_explicit_enable(self):
+        """显式启用时仍可注册可选 g4f deployment。"""
+        with patch.dict(
+            "os.environ",
+            {"G4F_ENABLED": "true", "G4F_API_KEY": "dummy"},
+            clear=True,
+        ):
+            deps = LiteLLMPool()._build_all_deployments()
+        assert any(dep["model_name"] == "g4f" for dep in deps)
+
+    def test_kiro_and_ollama_require_explicit_enable_flags(self):
+        """本地 Kiro/Ollama 端点只有开关与配置同时满足时才注册。"""
+        with patch.dict(
+            "os.environ",
+            {"KIRO_API_KEY": "kiro-test", "LOCAL_HF_MODEL_ENDPOINT": "http://127.0.0.1:11434"},
+            clear=True,
+        ):
+            disabled = LiteLLMPool()._build_all_deployments()
+        assert all(not dep["model_info"]["id"].startswith(("kiro/", "ollama_local/")) for dep in disabled)
+
+        with patch.dict(
+            "os.environ",
+            {
+                "KIRO_GATEWAY_ENABLED": "true",
+                "KIRO_API_KEY": "kiro-test",
+                "OLLAMA_ENABLED": "true",
+                "LOCAL_HF_MODEL_ENDPOINT": "http://127.0.0.1:11434",
+            },
+            clear=True,
+        ):
+            enabled = LiteLLMPool()._build_all_deployments()
+        deployment_ids = {dep["model_info"]["id"] for dep in enabled}
+        assert any(deployment_id.startswith("kiro/") for deployment_id in deployment_ids)
+        assert any(deployment_id.startswith("ollama_local/") for deployment_id in deployment_ids)
+
 
 class TestClaudeDirectApiGuard:
-
     def test_scrub_secrets_masks_gemini_key_prefix(self):
         """Google AI Studio key 也应被脱敏，避免日志直接打出真实 key。"""
         msg = "Gemini failed with key AIzaSyABCDEFGHIJKLMN1234567890"

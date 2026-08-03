@@ -50,16 +50,6 @@ export const CONFIG_FIELD_META: Record<string, { label: string; hint?: string; p
     label: '🏷️ IBKR 自动启动',
     hint: '全部启动/重启时是否自动拉起 IB Gateway',
   },
-  IBKR_START_CMD: {
-    label: '🏷️ IBKR 启动命令',
-    hint: '自定义启动 IB Gateway 的系统命令',
-    placeholder: '默认: open -a "IB Gateway"',
-  },
-  IBKR_STOP_CMD: {
-    label: '🏷️ IBKR 停止命令',
-    hint: '自定义停止 IB Gateway 的系统命令',
-    placeholder: '默认: pkill -f "IB Gateway" || pkill -f "Trader Workstation" || true',
-  },
   NOTIFY_CHAT_ID: {
     label: '🏷️ 通知群/频道 ID',
     hint: 'Telegram 群组或频道的 Chat ID，用于接收系统通知',
@@ -84,8 +74,6 @@ export const DEFAULT_RUNTIME_CONFIG: ClawbotRuntimeConfig = {
   IBKR_ACCOUNT: '',
   IBKR_BUDGET: '',
   IBKR_AUTOSTART: 'true',
-  IBKR_START_CMD: '',
-  IBKR_STOP_CMD: '',
   NOTIFY_CHAT_ID: '',
 };
 
