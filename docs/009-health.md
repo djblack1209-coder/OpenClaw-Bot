@@ -53,7 +53,7 @@
 | HI-978 | `ARCH_LIMIT` | 🟡 一般 | 本地已关闭 | Frist 原子文件写、串行 mutation 和敏感字段加密曾继续占据 HTTP 巨型入口；现集中到 `server/runtime-store.js`，入口只注入数据规范化边界，直接合同 `3/3`、Frist 全量 `234/234`。 |
 | HI-979 | `SECURITY` | 🟡 一般 | 外部凭据待办 | 离机备份已经强制 GPG，但本机尚未配置用户选择的公钥指纹和真正独立的同步/远端目录；缺任一项时 `--require-offsite` 固定失败，当前只保留本机加密权限边界内的备份。 |
 | HI-980 | `TECH_DEBT` | 🔵 低优先 | 上游隔离 | New-API 子模块未部署的 Electron dev 依赖仍有上游审计告警，三个参考 MCP server 已 deprecated；生产 Go 容器和受管 npm runtime 审计为 0，旧包只读展示、不执行。替换需跟随上游方案，不在本轮伪造重写。 |
-| HI-981 | `BUG` | 🟠 重要 | 已关闭 | 首次推送后的 Linux CI 暴露两处本机未触发的兼容问题：健康脚本 heredoc 组合写法在 Linux Bash 解析失败并触发 ShellCheck SC2015，Node 24 在后台巡检最后一次原子写期间清理测试目录会偶发 `ENOTEMPTY`。现健康巡检使用明确子 shell 并始终产出可解析失败 JSON，测试夹具对已停止服务的在途文件写执行有限重试；Linux 容器聚焦回归和远程 CI 用于锁定跨平台合同。 |
+| HI-981 | `BUG` | 🟠 重要 | 已关闭 | 首次推送后的 Linux CI 暴露三处本机未触发的兼容问题：健康脚本 heredoc 组合写法在 Linux Bash 解析失败并触发 ShellCheck SC2015，Node 24 在后台巡检最后一次原子写期间清理测试目录会偶发 `ENOTEMPTY`，文档门禁假设 CI 预装 `rg`。现健康巡检使用明确子 shell 并始终产出可解析失败 JSON，测试夹具对已停止服务的在途文件写执行有限重试，文档门禁在无 `rg` 时回退到 `grep`；Linux 容器聚焦回归和远程 CI 用于锁定跨平台合同。 |
 
 ## 全维度 8 分目标整改（2026-08-04，历史基线）
 

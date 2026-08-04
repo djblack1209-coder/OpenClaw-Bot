@@ -18,13 +18,13 @@
 - 重建本机灾备：SQLite 在线 `.backup`、包内逐文件 manifest、包外 SHA-256、原子 `.ready`、安全 tar、恢复 dry-run/drill/confirm、GPG 离机密文和数量/天数保留。`ai.openclaw.daily-backup` 已实装为每天 03:30 自动备份后强制恢复演练。
 - 修复 Intel Brief 旧 schema v3 缺 `content_delivery_attempts.event_key` 导致的真实定时任务崩溃；真实库先做 root-only SQLite 备份，再迁移到 v4 并通过 quick_check。为避免提前发送真实消息，LaunchAgent 只重新加载，等待 08:30 自然验证。
 - 修复 Bot 假健康、Tauri 可预测 `/tmp` WhatsApp 脚本和容器内 store 项目根定位；桌面本机进程临时文件改为随机 0700、用后清理，容器完整构建后以非 root 导入冒烟。
-- 修复首次远程 CI 暴露的 Linux 差异：健康脚本 heredoc 改为可移植子 shell，并在审计命令无输出时生成结构化失败 JSON；Node 24 测试夹具对已停止后台巡检的在途原子写执行有限目录清理重试。
+- 修复首次远程 CI 暴露的 Linux 差异：健康脚本 heredoc 改为可移植子 shell，并在审计命令无输出时生成结构化失败 JSON；Node 24 测试夹具对已停止后台巡检的在途原子写执行有限目录清理重试；文档门禁在最小 CI 镜像未安装 `rg` 时自动回退到 `grep`。
 ### 验证
 - 聚焦回归：闲鱼投影/履约/owner/API `208/208`，Intel schema/订阅投递/生产链 `37/37`，Frist `234/234`，自动运维 `21/21`，新增 runtime store `3/3`；Ruff、ShellCheck、Node/Bash 语法和 `git diff --check` 通过。
 - 安全门：四套 npm production audit 为 0，Linux/macOS pip-audit 无已知漏洞，RustSec 为 0 vulnerability（17 条目标平台/上游 informational allow warning），35 个仓库 Shell 脚本零告警；Gitleaks 当前树和 859 提交历史均无泄漏。
 - 容器：完整 amd64 镜像从哈希锁构建成功，最终以 `uid=999 gid=999` 运行并完成 `imports=ok` 冒烟；SSRF/浏览器组合回归与真实 `https://example.com` 请求均通过。
 - 实机：`ai.openclaw.daily-backup` 已加载并退出 0；`openeverything-20260805-034824.tgz` 完整 restore drill 通过。Intel 真实数据库备份 SHA-256 为 `db845bc5ce4e380086090eeef38bd5e27f54dbf89af3cb2d59e88cc496f036cf`，迁移后 schema v4 与 quick_check 通过。
-- 跨平台：Linux Node 24 健康脚本聚焦回归、Frist Node 24 后台巡检用例和 GitHub PR 五项检查作为推送后发布门，避免 macOS 本机绿灯掩盖 Bash/文件系统差异。
+- 跨平台：Linux Node 24 健康脚本聚焦回归、Frist Node 24 后台巡检用例、无 `rg` 文档治理检查和 GitHub PR 五项检查作为推送后发布门，避免 macOS 本机绿灯掩盖 Bash/文件系统差异。
 - 最终 `make ci-local`、桌面构建/唯一安装和截图数字集中记录在 `docs/086-release-evidence.md`，避免多处复制漂移。
 ### 文件变更
 - `packages/clawbot/src/http_client.py`、`src/tools/web_tool.py`、`src/api/server.py`、`src/log_config.py`、`src/integrations/cli_anything_bridge.py` 与测试 — SSRF、限流、日志和动态安装边界。
