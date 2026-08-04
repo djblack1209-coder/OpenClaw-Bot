@@ -210,7 +210,10 @@ fi
 
 # CC中转生产内测巡检：复用现有只读审计脚本。
 if command -v node >/dev/null 2>&1 && [[ -f "$ROOT_DIR/scripts/cc_zhongzhuan_readiness_audit.mjs" ]]; then
-  audit_output=$(cd "$ROOT_DIR" && python3 - <<'PY_AUDIT' 2>/dev/null || true
+  if ! audit_output="$(
+    cd "$ROOT_DIR" || exit 1
+    python3 - <<'PY_AUDIT' 2>/dev/null
+import json
 import subprocess
 try:
     result = subprocess.run(
@@ -220,11 +223,17 @@ try:
         text=True,
         timeout=20,
     )
-    print(result.stdout)
+    output = result.stdout.strip()
+    if output:
+        print(output)
+    else:
+        print(json.dumps({"ok": False, "error": "readiness_audit_no_output", "exit_code": result.returncode}))
 except subprocess.TimeoutExpired:
     print('{"ok":false,"error":"readiness_audit_timeout_20s"}')
 PY_AUDIT
-)
+  )"; then
+    audit_output='{"ok":false,"error":"readiness_audit_exec_failed"}'
+  fi
   if printf '%s' "$audit_output" | python3 -c 'import json,sys; d=json.load(sys.stdin); raise SystemExit(0 if d.get("ok") else 1)' >/dev/null 2>&1; then
     add_check "cc_readiness" "ok" "生产内测只读巡检 ok=true" "无需处理"
   elif printf '%s' "$audit_output" | grep -q 'readiness_audit_timeout_20s'; then

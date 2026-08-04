@@ -7945,7 +7945,7 @@ async function createServerFixture(options = {}) {
       server.closeIdleConnections?.();
       server.closeAllConnections?.();
       await closed;
-      await rm(dir, { force: true, recursive: true });
+      await rm(dir, { force: true, recursive: true, maxRetries: 5, retryDelay: 25 });
     },
   };
 }
