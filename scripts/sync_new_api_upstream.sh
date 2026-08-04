@@ -29,6 +29,11 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! command -v docker >/dev/null 2>&1; then
+  echo "缺少 docker，无法解析 New-API 镜像 digest。" >&2
+  exit 1
+fi
+
 curl_args=(
   -fsSL
   --retry 3
@@ -66,6 +71,12 @@ if [[ -z "$latest_tag" ]]; then
   exit 1
 fi
 
+latest_digest="$(docker buildx imagetools inspect "calciumion/new-api:${latest_tag}" --format '{{json .Manifest.Digest}}' | tr -d '"')"
+if [[ ! "$latest_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+  echo "无法解析 New-API ${latest_tag} 的镜像 digest。" >&2
+  exit 1
+fi
+
 if [[ ! -d "$UPSTREAM_DIR/.git" && ! -f "$UPSTREAM_DIR/.git" ]]; then
   echo "New-API submodule 不存在，请先执行: git submodule update --init packages/new-api-upstream" >&2
   exit 1
@@ -92,16 +103,18 @@ git -C "$UPSTREAM_DIR" fetch --tags origin >/dev/null
 current_ref="$(git -C "$UPSTREAM_DIR" describe --tags --exact-match 2>/dev/null || git -C "$UPSTREAM_DIR" rev-parse --short=12 HEAD)"
 latest_sha="$(git -C "$UPSTREAM_DIR" rev-list -n 1 "$latest_tag")"
 current_sha="$(git -C "$UPSTREAM_DIR" rev-parse HEAD)"
-compose_tag="$(sed -n 's/^[[:space:]]*image:[[:space:]]*calciumion\/new-api:\([^[:space:]]*\).*/\1/p' "$COMPOSE_FILE" | head -1)"
+compose_ref="$(sed -n 's/^[[:space:]]*image:[[:space:]]*calciumion\/new-api:\([^[:space:]]*\).*/\1/p' "$COMPOSE_FILE" | head -1)"
+compose_tag="${compose_ref%@*}"
+compose_digest="${compose_ref#*@}"
 
 echo "New-API 上游: $REMOTE_URL"
 echo "GitHub 最新: $latest_tag ($latest_sha, $published_at, prerelease=$prerelease)"
 echo "本地源码: $current_ref ($current_sha)"
-echo "Compose 镜像: calciumion/new-api:${compose_tag:-未找到}"
+echo "Compose 镜像: calciumion/new-api:${compose_tag:-未找到}@${compose_digest:-未找到}"
 check_brand_patch_compatibility
 
 if [[ "$MODE" == "check" ]]; then
-  if [[ "$current_sha" == "$latest_sha" && "$compose_tag" == "$latest_tag" ]]; then
+  if [[ "$current_sha" == "$latest_sha" && "$compose_tag" == "$latest_tag" && "$compose_digest" == "$latest_digest" ]]; then
     echo "状态: 已同步到最新 release。"
     exit 0
   else
@@ -114,7 +127,7 @@ git -C "$UPSTREAM_DIR" checkout "$latest_tag" >/dev/null
 check_brand_patch_compatibility
 
 tmp_file="$(mktemp)"
-sed "s#image:[[:space:]]*calciumion/new-api:[^[:space:]]*#image: calciumion/new-api:$latest_tag#" "$COMPOSE_FILE" >"$tmp_file"
+sed "s#image:[[:space:]]*calciumion/new-api:[^[:space:]]*#image: calciumion/new-api:$latest_tag@$latest_digest#" "$COMPOSE_FILE" >"$tmp_file"
 mv "$tmp_file" "$COMPOSE_FILE"
 
 echo "已更新 New-API 到 $latest_tag。"

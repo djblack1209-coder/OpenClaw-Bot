@@ -4,6 +4,107 @@
 
 ---
 
+## 全维度审计与软件闭环目标（2026-08-05）
+
+### Destination
+
+目标：对 OpenEverything/OpenClaw 完成功能、架构、并发、安全、供应链、测试、发布、灾备、运维和用户可感知体验审计；持续修复并验证所有可在软件侧闭环的问题。最终只保留必须由资产所有者完成的硬件/账号续费、平台凭据、真实付费或不可逆生产操作。
+
+完成标准：本地 CI、聚焦回归、安全门、容器冒烟、桌面构建、真实本机备份与恢复演练均有新证据；`HEALTH`、注册表、运维手册、CHANGELOG 和发布证据互相一致；健康检查不把关闭能力或历史失败伪装成当前故障/成功。
+
+### Notes
+
+- 用户授权按产品经理视角补全模糊需求并主动执行；资金、真实外部消息、商户支付、第三方凭据轮换和公开发行签名仍遵守不可逆操作边界。
+- 本轮使用 mattpocock/skills 的 `wayfinder` 管理目标与前沿，使用 `to-tickets` 把审计发现登记为下表 HI 项，使用 `improve-codebase-architecture` 与 `codebase-design` 形成源码证据和渐进式架构方案。
+- 上游技能默认建议创建 `CONTEXT.md` 和分层文档，但本仓库硬规则只允许 `docs/` 根目录编号文档，因此目标地图合并到本文件，架构可视化保留为本机验收产物，不制造第二套事实源。
+
+### Decisions so far
+
+- 优先级固定为：资金/身份/履约安全 > 数据可恢复 > 并发与事件循环正确性 > 供应链可复现 > 架构深度 > 视觉与文档。
+- 采用渐进迁移而非大重写：Frist 把持久化事务深模块化；闲鱼把运行对象收口为不可变快照和纯投影；`api/rpc.py` 冻结为兼容门面，新行为继续进入领域 router。
+- 关闭功能不是故障：G4F、Kiro、Ollama、IBKR 和 VPS heartbeat 只有显式启用后才进入健康红灯。
+- 本机备份默认落在 `~/.local/share/openclaw/backups`；离机目录只允许 GPG 加密包，绝不向同步盘发布明文密钥或 Cookie。
+
+### Frontier
+
+| 前沿 | 状态 | 证据 / 下一步 |
+|---|---|---|
+| 软件审计发现 | 已闭环 | HI-965 至 HI-978 均有代码、聚焦测试或实机证据；最终全量数字以 `docs/086-release-evidence.md` 为准。 |
+| 每日备份 | 已实装 | `ai.openclaw.daily-backup` 已加载；每天 03:30 执行一致性备份后强制 restore drill，首次实机运行退出 0。 |
+| Intel Brief 旧库迁移 | 已修复，待自然确认 | 真实数据库已先备份再升级到 schema v4；旧 `event_key` 缺列回归已关闭。为避免提前发送真实 Telegram 消息，08:30 定时任务只重新加载，首次自然运行前健康状态保持黄色。 |
+| 长期 SLI | 自然观察 | HI-933 的 7 日可用率/投递率必须由时间积累，系统自动记录，不需要老板手工操作。 |
+| 外部资产 | 仅剩老板边界 | 离机 GPG 公钥/同步目标、第三方历史凭据轮换回执、Developer ID/公证、真实商户或闲鱼小额单均不能由代码伪造。 |
+
+| 编号 | 分类 | 严重度 | 状态 | 当前结论 |
+|---|---|---|---|---|
+| HI-965 | `SECURITY` | 🔴 阻塞 | 本地已关闭 | 通用 HTTP 客户端和浏览器链路曾可被 DNS 重绑定、重定向或子资源绕过 SSRF 限制；现逐跳解析并固定已验证地址，浏览器主文档、子资源和 WebSocket 均按精确主机拦截，相关组合回归通过。 |
+| HI-966 | `SECURITY` | 🟠 重要 | 本地已关闭 | Frist 邮箱验证、重置、2FA、会话和限流存在可枚举、容量或持久令牌风险；现会话只存 SHA-256 指纹，重置/2FA 叠加账号与 IP 桶，限流表满时失败关闭，公共占位配置不再伪装可用。 |
+| HI-967 | `SECURITY` | 🟠 重要 | 本地已关闭 | 闲鱼管理页曾把根 Token 暴露给浏览器持久存储并允许宽松脚本渲染；现根 Token 只换取 15 分钟、最多 128 个随机 HttpOnly 会话，写请求同源校验，逐响应 nonce CSP，动态内容只走 DOM `textContent`。 |
+| HI-968 | `ARCH_LIMIT` | 🟠 重要 | 本地已关闭 | 闲鱼管理线程曾直接读取 owner-loop 内实时对象，三套运营摘要重复组合同一事实；现 owner 只导出普通不可变快照，`operations_projection.py` 一次生成售卖、循环观察和买家进度投影，运行对象输入固定拒绝。 |
+| HI-969 | `BUG` | 🟠 重要 | 本地已关闭 | Bot 运行状态与自动健康脚本曾把进程存在或 LaunchAgent 已加载误报为服务健康；现必需服务同时验证 `running + PID + 真实端点`，可选能力按显式开关区分 disabled 与 bad。 |
+| HI-970 | `SECURITY` | 🟠 重要 | 本地已关闭 | 日志脱敏曾只处理参数而遗漏最终渲染文本、异常源码行和文件权限；现最终 record、异常链和落盘路径统一清洗，目录 0700、日志 0600。 |
+| HI-971 | `SECURITY` | 🟠 重要 | 本地已关闭 | API 限流曾无条件信任代理头且状态表可无界增长；现只信显式可信代理链，所有桶有硬容量上限，容量耗尽拒绝新桶。 |
+| HI-972 | `SECURITY` | 🟠 重要 | 本地已关闭 | CLIAnything 管理 API 曾可从远端请求触发动态 pip 安装；现远程安装入口永久 403，桥接器不再启动 pip 子进程，只允许预装且注册的适配器。 |
+| HI-973 | `SECURITY` | 🟠 重要 | 本地已关闭 | npm/Python/Rust/Docker 工件存在旧漏洞或不可复算安装面；现直接依赖与 override 升级到零已知高危组合，Linux/macOS Python 哈希锁、354 包 npm 锁、固定镜像 digest 和 RustSec 审计全部进入门禁。 |
+| HI-974 | `TECH_DEBT` | 🟠 重要 | 本地已关闭 | PR CI 曾只覆盖主分支且缺 ShellCheck、Gitleaks、完整依赖/供应链和 cargo audit；现所有 PR 目标分支执行只读权限、固定 Action SHA 和本地同构安全门。 |
+| HI-975 | `SECURITY` | 🟠 重要 | 本地已关闭 | 主容器曾允许平台/源码根定位漂移，依赖安装也不能证明来自哈希锁；现固定 amd64 构建平台、哈希锁安装和非 root 用户，容器内 API store 根定位有回归，完整镜像构建与导入冒烟通过。 |
+| HI-976 | `BUG` | 🔴 阻塞 | 本机已关闭 | 旧备份只是文件复制，活动 SQLite、半成品、路径穿越、明文同步盘和不可恢复包均可能被误当成功；现在线 `.backup`、双层 SHA-256、原子 `.ready`、安全 tar、SQLite quick_check、GPG 离机加密、恢复 drill 和每日 LaunchAgent 全部闭环。 |
+| HI-977 | `BUG` | 🟠 重要 | 本机已关闭 | Intel Brief 生产库停在 schema v3，`content_delivery_attempts` 缺 `event_key`，导致 2026-08-04 定时投递崩溃；现 schema v4 原子重建并保留旧投递记录，真实库备份/quick_check/迁移成功，旧库红绿测试与 37 项链路回归通过。 |
+| HI-978 | `ARCH_LIMIT` | 🟡 一般 | 本地已关闭 | Frist 原子文件写、串行 mutation 和敏感字段加密曾继续占据 HTTP 巨型入口；现集中到 `server/runtime-store.js`，入口只注入数据规范化边界，直接合同 `3/3`、Frist 全量 `234/234`。 |
+| HI-979 | `SECURITY` | 🟡 一般 | 外部凭据待办 | 离机备份已经强制 GPG，但本机尚未配置用户选择的公钥指纹和真正独立的同步/远端目录；缺任一项时 `--require-offsite` 固定失败，当前只保留本机加密权限边界内的备份。 |
+| HI-980 | `TECH_DEBT` | 🔵 低优先 | 上游隔离 | New-API 子模块未部署的 Electron dev 依赖仍有上游审计告警，三个参考 MCP server 已 deprecated；生产 Go 容器和受管 npm runtime 审计为 0，旧包只读展示、不执行。替换需跟随上游方案，不在本轮伪造重写。 |
+
+## 全维度 8 分目标整改（2026-08-04，历史基线）
+
+当前结论：审计确认的 P0 已全部关闭，影响当前 macOS 单机 + Oracle 内测拓扑的 P1 已修复、失败关闭或以可核验证据降级为 P2。实盘卖出、闲鱼并发履约、生产管理面鉴权、旧事件循环关闭、Frist 外部 I/O 写队列和桌面异版本回滚已追加红绿回归；最终全量数字和五维二元评分以 `docs/086-release-evidence.md` 为唯一事实源。
+
+| 编号 | 分类 | 严重度 | 状态 | 当前结论 |
+|---|---|---|---|---|
+| HI-934 | `SECURITY` | 🔴 阻塞 | 本地已关闭 | 支付宝缺少平台公钥时曾仍显示就绪且异步通知跳过验签；现要求完整公私钥配置，通知无公钥固定失败关闭。旧代码安全用例 `0/2`，修复后支付宝聚焦链路 `4/4`。 |
+| HI-935 | `BUG` | 🔴 阻塞 | 本地已关闭 | Portfolio 曾单击即提交整仓 MKT 卖出，并把 HTTP 200 的 `success=false` 误报为成功；现增加危险操作复核、同步防重复锁和严格业务结果校验，危险框默认聚焦取消。桌面合同红绿通过，桌面/移动截图无溢出。 |
+| HI-936 | `SECURITY` | 🟠 重要 | 本地已关闭 | 闲鱼单次放行票曾以无锁 JSON 读改写，并在状态缺失/损坏时默认恢复发货；现使用跨进程事务锁、原子替换和失败关闭。旧代码并发实测一张票可成功消费 5 次，修复后只允许 1 次。 |
+| HI-937 | `SECURITY` | 🟠 重要 | 本地已关闭 | Frist 曾无条件信任最左侧 `X-Forwarded-For`，密码重置确认只有 IP 限流且限流表无容量边界；现默认只信 socket 对端，仅对显式可信代理从右侧解析链路，重置确认叠加账号 HMAC 桶，限流表满时拒绝新桶。旧代码三项安全用例 `0/3`，修复后 `3/3`。 |
+| HI-938 | `SECURITY` | 🟠 重要 | 本地已关闭 | WebSocket 在未配置 Token 时曾无条件放行，和 HTTP 的生产/外网失败关闭策略不一致；现 HTTP/WS 共用同一判定，`production`、`prod` 或非本机绑定均拒绝，仅本机开发模式可无 Token。 |
+| HI-939 | `SECURITY` | 🟠 重要 | 本地已关闭 | Frist 管理员根令牌曾长期写入 `localStorage`；现只保存在页面内存，刷新或关闭页面即失效，所有管理操作统一从当前密码框捕获，不再写浏览器持久存储。 |
+| HI-940 | `BUG` | 🟠 重要 | 本地已关闭 | 隔夜取消的 BUY 单曾默认加入队列并在次日自动提交，绕过自动交易默认关闭与人工确认；现默认关闭重挂，且显式开关和 `AutoTrader.auto_mode=true` 缺一不可。 |
+| HI-941 | `BUG` | 🟠 重要 | 本地已关闭 | Intel Brief runner 返回 `failed/partial_failed` 时曾仍写入当天已运行，导致全天漏发；现只有明确 `status=success` 才封存日期，失败结果保留后续调度重试机会。 |
+| HI-942 | `SECURITY` | 🔴 阻塞 | 本地已关闭 | 支付回调曾只验签和金额，不绑定本机 `appid/mchid`、订单原渠道与平台交易号唯一性；现商户身份、渠道、订单状态、交易号和金额缺一即拒绝。错误微信 App ID/商户号、错误支付宝 App ID、手工订单渠道错配和跨订单复用交易号均保持未入账。 |
+| HI-943 | `SECURITY` | 🟠 重要 | 本地已关闭 | 微信渠道曾可生成付款二维码但缺平台公钥时无法验签履约；现平台公钥进入统一就绪条件，配置不完整固定返回 503，不允许客户先付款。 |
+| HI-944 | `SECURITY` | 🟠 重要 | 本地已关闭 | 桌面安装器和 MCP 曾只固定 npm 版本号，传递依赖与下载内容未锁；现内嵌 lockfileVersion 3 的 354 包 SHA-512 图，统一执行 `npm ci --ignore-scripts`，MCP Store 只从类型化注册表展示锁内目录，不伪装 stdio 启停。版本只从内嵌 manifest 读取，Rust 不复制版本字符串。OpenClaw 稳定版因高危传递漏洞被拒绝，当前精确锁到审计为 0 的 `2026.7.2-beta.7`，并保留桌面回滚副本。 |
+| HI-945 | `SECURITY` | 🟠 重要 | 本地已关闭 | 两个 GitHub 工作流的 16 个 Action 曾使用可移动主版本/分支标签；现全部固定 40 位 commit SHA，写权限只留在 New-API 同步 job，checkout 不持久化写凭据；静态门会拒绝任何新可移动引用。 |
+| HI-946 | `BUG` | 🟠 重要 | 本地已关闭 | Scheduler 切换曾漏传目标状态，Store 同时维护第二份插件事实，Assistant 停止按钮不能中止流；现后端确认目标状态、Store 读取 Tauri MCP 配置、Assistant 使用 AbortController 保留已接收内容。调度异常字段不再击穿整页。 |
+| HI-947 | `ARCH_LIMIT` | 🟠 重要 | 本地已关闭 | Brain、EventBus、SocialAutopilot、IBKR、闲鱼、WebSocket 推送、CLI bridge、LiteLLM Router 和 resilience primitive 曾可跨事件循环复用；现显式绑定所有者循环，停止/提交竞态失败关闭，loop.close 前取消并排空已启动任务，未就绪返回 503/504，API 在交易/调度状态服务就绪后才监听。 |
+| HI-948 | `TECH_DEBT` | 🟠 重要 | 本地已关闭 | Python 曾无可复算平台锁，CI 缺前端 lint/build、关键覆盖率、文档真实性和供应链门；现 Linux/macOS 双哈希锁可复算，总覆盖率门 40%，高风险聚合门 80%，逐文件下限、Action SHA、npm/Python 审计和文档事实检查均进入本地/远端 CI。 |
+| HI-949 | `TECH_DEBT` | 🟡 一般 | 持续收窄 | Frist 的支付、会话/CSRF、限流、共享规则和 runtime store 已下沉，`server.js` 当前 7,943 行；闲鱼运营纯投影下沉后 `xianyu_admin.py` 为 5,557 行。`api/rpc.py` 冻结为兼容门面，其余热点继续按域渐进拆分，不以一次大重写冒险。 |
+| HI-950 | `TECH_DEBT` | 🔵 低优先 | 已降级 | 三个旧 MCP server 包已被上游标记 deprecated；桌面 Store 已明确降级为受管目录只读展示，不声称建立 stdio 会话。真实 MCP 仍需用户通过 CC Switch/OpenClaw 官方配置链显式启用，版本与传递工件保持锁定且 npm audit 为 0。 |
+| HI-951 | `ARCH_LIMIT` | 🔵 低优先 | 已降级 | OpenClaw 当前安全工件是精确 beta 版本，不作为公开发行承诺；其 CLI 版本、gateway token/password、配置校验和插件枚举已在干净 HOME 冒烟通过。新稳定版只有在完整性锁、0 高危审计和同组回归全绿后才可替换。 |
+| HI-952 | `SECURITY` | 🟠 重要 | 本地已关闭 | 微信/支付宝下单曾接受未验平台签名的 HTTP 200 响应，可能把伪造二维码交给客户；现外部请求硬超时、订单总额字段优先于折扣展示字段，微信校验时间戳、nonce、平台序列号和原始响应 RSA-SHA256，支付宝校验响应 `sign`，缺失、过期、序列号不符或验签失败均返回 502。重复成功回调不重复追加事件。 |
+| HI-953 | `SECURITY` | 🟠 重要 | 本地已关闭 | Frist 辅助模块曾保留可接受 `enc:v1:` 占位 API Key、绕过 2FA 的管理员接口以及弱化的代理头、流式断连和 SLA 实现；现加密占位值固定拒绝，旧接口和零调用重复事实源已删除，并由 8 项安全合同防止回归。 |
+| HI-954 | `SECURITY` | 🟠 重要 | 本地已关闭 | MCP Store 曾读取用户旧配置并把凭据带入 WebView 日志，且空配置可能伪装成可用 stdio；现目录 DTO 不包含 command/args/env，桌面只展示受管注册表，不读旧配置、不启动子进程，Rust/TypeScript 静态合同锁住该边界。 |
+| HI-955 | `SECURITY` | 🟠 重要 | 本地已关闭 | 充值路由曾在全局写队列内等待外部支付渠道，渠道挂起会阻塞所有订单；现采用准备事务 → 外部请求（硬超时）→ 成功/失败落库的两阶段流程，并保留支付入账竞态合同。 |
+| HI-956 | `TECH_DEBT` | 🟡 一般 | 本地已关闭 | 供应链门曾允许 Compose 只写可移动 tag、临时安装复用本机缓存，且桌面构建可能在备份失败时先删旧 App；现镜像固定 tag+digest、干净临时目录安装门和备份就绪闸门均有自动化回归。 |
+| HI-957 | `ARCH_LIMIT` | 🟡 一般 | 本地已关闭 | Bulkhead 动态重配曾替换 semaphore，旧持有者与新对象可叠加突破并发上限；现原位调整容量并以持有期间重配测试锁定上限。 |
+| HI-958 | `ARCH_LIMIT` | 🟡 一般 | 本地已关闭 | SocialAutopilot 关闭路径曾遗漏 APScheduler 和 owner 引用；现主循环关机阶段调用 owner-only `close()`，释放调度器和循环引用但保留持久化意图。 |
+| HI-959 | `BUG` | 🟠 重要 | 本地已关闭 | 实盘 SELL 的 LMT 缺价格曾静默退化为市价单，且接口把 Cancelled/Inactive/零成交 Filled 误报成功，也未核对真实可卖持仓。现未知订单类型和无价格限价单失败关闭，SELL 在所有者循环内串行核对真实持仓、未完成卖单和本地保留量；只有券商明确接收或正成交量才返回成功。 |
+| HI-960 | `SECURITY` | 🟠 重要 | 本地已关闭 | 闲鱼消息缺真实订单标识时曾用包含时间戳等易变字段生成履约键；同一付款事件并发到达时主 webhook 仍可能双发，暂停分支还能覆盖已发送状态。现只接受真实订单/交易 ID，无法证明唯一性即不发；webhook 分配、轮询复用、人工发送均先原子领取，发送异常进入不可自动重试的不确定态，终态禁止被暂停覆盖。 |
+| HI-961 | `SECURITY` | 🟠 重要 | 本地已关闭 | 闲鱼管理面曾只识别 `ENV=production`，并用配置主机而非实际监听地址判断外网，`ENV=prod` 或实际外网绑定存在无 Token 放行风险。现 `prod/production` 与实际 bind host 统一进入失败关闭，HTTP/WS 共用边界。 |
+| HI-962 | `ARCH_LIMIT` | 🟠 重要 | 本地已关闭 | 旧 owner loop 的 close guard 曾在对象已重绑新循环后仍设置全局关闭标记并清空新 owner。现只回收属于正在关闭循环的任务，且仅当该循环仍是当前 owner 时更新关闭状态；重绑竞态有专门回归。 |
+| HI-963 | `ARCH_LIMIT` | 🟠 重要 | 本地已关闭 | Frist 注册/重置邮件、补货探测、渠道巡检、上游余额和 Token 外部调用曾可占用全局 runtime 写队列。现普通 `mutate` 拒绝 Promise，外部 I/O 均在队列外执行并以短事务准备/落库；生产禁止本地旧网关兼容链，重置邮件另有账号级 3 次/15 分钟限流。 |
+| HI-964 | `BUG` | 🟠 重要 | 本地已关闭 | 桌面重复构建会把同一 CDHash 同时保存为当前版和“上一版”，`rollback_ready=true` 不能证明可回退。现清单要求当前/上一版指纹不同，记录源码补丁与 DMG SHA-256；0.1.1/0.1.0 已真实双向交换，同指纹自动化用例固定拒绝。 |
+
+### 五维最终评分
+
+| 维度 | 分数 | 复核证据 | 保留边界 |
+|---|---:|---|---|
+| 功能完整度 | 9.0 | 10 项二元门通过 9 项；支付、实盘交易、闲鱼履约、认证、Scheduler、MCP 目录、Assistant、桌面安装和恢复均有成功/失败合同 | 缺真实商户小额支付验收，F10 计 0 |
+| 测试与发布 | 9.0 | 10 项二元门通过 9 项；本地 CI、覆盖率、前端/Rust、干净安装、供应链、签名、DMG、异版本回滚和截图可复核 | 本工作树未在远端 Linux runner 新跑，T10 计 0 |
+| 系统架构 | 8.0 | 10 项二元门通过 8 项；所有者循环、事务外 I/O、原子履约、单一注册表和生命周期边界有回归 | Frist/RPC 巨型入口与 JSON runtime 兼容层各计 0 |
+| 安全边界 | 8.0 | 10 项二元门通过 8 项；资金、支付、履约、身份、本机执行、限流、供应链和密钥扫描失败关闭 | 历史第三方凭据轮换无平台侧证明、无 Developer ID/公证，各计 0 |
+| 可维护性 | 8.0 | 10 项二元门通过 8 项；锁、lint/build、覆盖率、文档门、注册表、热点命令、版本源和回滚清单可复现 | 巨型热点未清零、未取得当前工作树远端 CI 产物，各计 0 |
+| **综合** | **8.4** | `(9+9+8+8+8)/5`；逐项定义和命令证据集中在 `docs/086-release-evidence.md` | 评分只覆盖当前 macOS 单机 + Oracle 内测拓扑 |
+
+当前保留边界：Assistant 的“快速/深度/创意”仍只影响界面选中态，后端语义等待产品规格确认；macOS 仍是 ad-hoc 内测签名而非 Developer ID/公证；当前未提交工作树没有远端 Linux runner 新产物；HI-817/818 的第三方平台凭据轮换缺平台侧证明；巨型热点继续按登记的聚焦门拆分。这些均为 P2/明确降级，不开放资金、履约、身份或本机执行旁路。
+
 ## 每日资讯 V2 健康基线（2026-08-04）
 
 当前结论：工程发布门为绿色，七个维度均达到 8 分；7 日周期可用率和投递成功率需要从 V2 部署后自然积累，当前标记为 `warmup`，不能写成已达到 95%/99%。下表中的关闭状态均有 345 项 Intel 回归、八阶段本地 CI、同视口视觉证据或真实 Telegram `sendPhoto` 证据；生产实装结果记录在 `docs/007-operations.md`。
@@ -70,9 +171,9 @@
 
 2026-07-08 追加微信中文快捷词体验修复：在无法视觉接管微信窗口后，继续从插件桥和本机入口排查真实用户路径，发现 OpenClaw Weixin 插件会把“今日简报/我的订阅”转发到本机，但 `/wechat/incoming` 之前只识别 700/701，中文快捷词会掉入普通 LLM 闲聊；同时用户在 `705` 设置时间过程中回复“菜单”，会被误当作推送时间参数。已修复：微信入口支持“今日简报/每日简报/我的订阅/订阅状态/市场资金/AI科技/天气预警/推送时间/添加追踪/暂停简报”和带参数人话格式；显式菜单/中文快捷词会打断两步式 pending，避免误吃参数；OpenClaw Weixin 插件源码和当前 dist 产物已同步扩展快捷词并重启 Gateway。复验：新增回归 `11 passed`；微信本地用户旅程验收 `verified=true`、`passed_steps=18`；live HTTP 覆盖 `菜单 → 今日简报 → 我的订阅 → 705 → 菜单 → 705 → 2 → 706 → 今日简报 → 706 → 英伟达 → 708 → 701 → 702 → 701` 全部 HTTP 200 且不落 LLM。live 验证临时微信测试用户已从真实库清理。边界不变：这仍证明本机处理器和插件桥就绪，不等于 Codex 已在真实微信窗口里亲自发出消息。
 
-2026-07-08 追加真实微信桥接证据闭环准备：为绕开微信窗口 `kCGWindowSharingState=0` 导致 Codex 无法视觉读取的问题，已把“真实微信入站是否走了每日简报桥”改成插件桥自证据。OpenClaw Weixin 插件桥现在在命中每日简报数字/中文快捷词并成功回发后，会写入 `packages/clawbot/data/intel_evidence/phasefix/wechat-bridge/runtime.json`，只保存快捷词类型、文本长度、sender hash、`/wechat/incoming` HTTP 状态、回复特征和是否已回发微信，不保存聊天原文、原始用户 ID 或 Token。新增 `scripts/intel_wechat_bridge_runtime_acceptance.py` 会读取该证据并要求最近一次事件为 `status=handled`、`reason=sent_reply`、HTTP 200、`sent_reply_success=true`、未落 LLM；旧证据、失败证据、未回发证据都会失败。当前 OpenClaw Gateway 已重启，`openclaw-weixin` 仍 `enabled, configured, running`；因本轮没有新的真实微信消息触发，默认验收报告按预期为 `verified=false`，blocker 为“未找到微信桥接证据文件”。下一次真实微信发送 `今日简报` 或 `700` 后，运行该脚本即可形成最终实机入站证据。
+2026-07-08 追加真实微信桥接证据闭环准备：为绕开微信窗口 `kCGWindowSharingState=0` 导致 Codex 无法视觉读取的问题，已把“真实微信入站是否走了每日简报桥”改成插件桥自证据。OpenClaw Weixin 插件桥现在在命中每日简报数字/中文快捷词并成功回发后，会写入 `packages/clawbot/data/intel_evidence/phasefix/wechat-bridge/runtime.json`，只保存快捷词类型、文本长度、sender hash、`/wechat/incoming` HTTP 状态、回复特征和是否已回发微信，不保存聊天原文、原始用户 ID 或 Token。新增 `packages/clawbot/scripts/intel_wechat_bridge_runtime_acceptance.py` 会读取该证据并要求最近一次事件为 `status=handled`、`reason=sent_reply`、HTTP 200、`sent_reply_success=true`、未落 LLM；旧证据、失败证据、未回发证据都会失败。当前 OpenClaw Gateway 已重启，`openclaw-weixin` 仍 `enabled, configured, running`；因本轮没有新的真实微信消息触发，默认验收报告按预期为 `verified=false`，blocker 为“未找到微信桥接证据文件”。下一次真实微信发送 `今日简报` 或 `700` 后，运行该脚本即可形成最终实机入站证据。
 
-2026-07-08 追加等待式真实微信验收：`scripts/intel_wechat_bridge_runtime_acceptance.py` 已支持 `--wait-seconds` 和 `--poll-seconds`。后续 Codex 可以先运行 `--wait-seconds 120 --poll-seconds 2`，再让老板在微信里发 `今日简报` 或 `700`，脚本会自动轮询插件桥证据直到 `verified=true`；若超时，会明确输出“等待 N 秒后仍未看到新的真实微信桥接成功证据”。复验：单测扩展为 `5 passed`；本机无真实入站时 `--wait-seconds 1 --poll-seconds 0.2` 返回 `timed_out=true`，边界清晰。
+2026-07-08 追加等待式真实微信验收：`packages/clawbot/scripts/intel_wechat_bridge_runtime_acceptance.py` 已支持 `--wait-seconds` 和 `--poll-seconds`。后续 Codex 可以先运行 `--wait-seconds 120 --poll-seconds 2`，再让老板在微信里发 `今日简报` 或 `700`，脚本会自动轮询插件桥证据直到 `verified=true`；若超时，会明确输出“等待 N 秒后仍未看到新的真实微信桥接成功证据”。复验：单测扩展为 `5 passed`；本机无真实入站时 `--wait-seconds 1 --poll-seconds 0.2` 返回 `timed_out=true`，边界清晰。
 
 2026-07-08 追加每日简报入口收口：已修复“清理 Telegram 聊天后 `/start` 不回菜单”的根因，新增并加载常驻监听器 `ai.openclaw.intel-brief.telegram-listener`；当前 `launchctl` 显示 running，心跳 `last_status=no_new_updates`，表示机器人正在等新消息而不是只等每天 08:30 定时推送。Telegram `/start` 菜单已改为产品化入口：`700 今日简报 / 701 我的订阅 / 702 市场资金 / 703 AI科技 / 704 天气预警 / 705 推送时间 / 706 添加追踪 / 707 帮助 / 708 暂停简报`，同时保留按钮点击和旧按钮兼容。
 
@@ -432,12 +533,12 @@
 | HI-907 | AI_POOL/INFRA | CC中转生产内测曾因 New-API 与 Frist 本地库存均无健康上游而阻塞正式售卖；2026-07-05 用户补充的 3 条 86Game 上游 Key 已脱敏探测并接入生产内测，New-API 当前 3 个可用渠道/15 个模型，OpenAI 与 Claude 真实调用 200，readiness 返回 `ready=true`；本机闲鱼助手已具备已付款自动发货、稳定 `orderId` 幂等防重复发卡（含 URL 参数真实订单号识别）和已付款状态变体/字段位置识别、补救队列、浏览器发货助手、后台只读巡检、CC Switch 导入入口上架锁、后台严格门观察、实单验收包、运营统一快照和 macOS 状态提醒；2026-07-06 真实测试单因闲鱼推送漏单仍处于 `manual_delivery_ready/pending_rescue=1`，需要打开对应闲鱼聊天页由插件/人工发出后再继续买家兑换、创建 API Key、CC Switch 导入和模型调用严格门 | 2026-07-05 | 🟡 生产内测可发货但当前有待补发真单，正式售卖锁等待真实小额订单闭环 |
 | HI-872 | UX | Frist-API `#switch` 页面曾因导出模型展开逻辑被部分上游库存裁掉 `gpt-5.4`、`gpt-5.4-mini`、`gpt-image-2`、`gpt-5.3-codex`，且品牌标被 Tabcode 皮肤覆盖；已补完整 OpenAI 模型族可见逻辑、恢复原品牌标并加回归 | 2026-05-05 | ✅ 已处理 |
 | HI-873 | INFRA | Frist-API 免费 nip.io 裸域名 `101-43-41-96.nip.io` 曾和品牌域名并列直接服务同一页面，用户误以为有两个网站；历史阶段已收口裸域名跳转。2026-07-04 后正式入口改为 `https://jiyu.245334.xyz`，旧 `https://frist-api.245334.xyz` 跳转，旧 nip.io 只保留腾讯冷回滚排障，不再作为用户内容入口 | 2026-05-05 | ✅ 已处理 |
-| HI-817 | SECURITY | 公开 Git 历史曾提交 `.openclaw/openclaw.json*`、`.openclaw/devices/paired.json` 和数据库文件；当前代码侧已增加 CI gitleaks 和本地 tracked-tree 扫描门禁，防止新增明文残留。真实历史凭证轮换只能由账号所有者到对应平台完成；用户本轮选择暂不推进轮换，风险继续保留为人工事项。 | 2026-04-28 | 🟠 人工风险项，代码侧已加门禁 |
-| HI-818 | SECURITY | 本机 ignored `.env` 与浏览器 profile 日志曾含真实 API token；当前跟踪文件不新增明文，CI 已补 secret scan，ignored 本机配置继续不提交。真实 token 是否轮换只能由账号所有者在对应平台处理；用户本轮选择暂不推进轮换，风险继续保留为人工事项。 | 2026-04-28 | 🟠 人工风险项，代码侧已加门禁 |
+| HI-817 | SECURITY | 公开 Git 历史曾提交 `.openclaw/openclaw.json*`、`.openclaw/devices/paired.json` 和数据库文件；当前工作树、可达历史和发布工件扫描未发现新增明文，CI 已阻断复发。第三方平台是否完成历史凭据轮换没有平台侧回执，不能宣称关闭；因当前生产凭据只从 root-only/ignored 配置加载且无代码旁路，降级为 P2 人工残余。 | 2026-04-28 | 🟡 P2 人工残余，平台轮换待证明 |
+| HI-818 | SECURITY | 本机 ignored `.env` 与浏览器 profile 日志曾含真实 API token；当前跟踪文件和发布工件无新增明文，生产读取边界不把值写日志或 WebView。第三方平台轮换仍缺平台侧证明，按 P2 人工残余登记，不计入“已关闭”安全项。 | 2026-04-28 | 🟡 P2 人工残余，平台轮换待证明 |
 | HI-885 | BUG | 后端全量测试发现 `src.api.routers.store` 被删除但 `api/server.py` 仍挂载，导致 APIServer 初始化失败；已恢复 `/api/v1/store/catalog` 和 `/api/v1/store/categories` 最小兼容路由，并用 1491 passed 回归确认 | 2026-05-08 | ✅ 已处理 |
 | HI-886 | INFRA | `make new-api-check` 显示 New-API 本地源码和 Compose 镜像曾为 `v1.0.0-rc.2`，GitHub 最新为 `v1.0.0-rc.4`；已通过自动同步 PR #1 更新 submodule 和 Compose 镜像到 `v1.0.0-rc.4`，并复验 compose 配置通过。2026-07-03 生产 New-API 已迁到 Oracle ARM release 二进制 `openclaw-newapi.service`，腾讯 Compose 只保留冷回滚 | 2026-05-08 | ✅ 已处理 |
 | HI-887 | AI_POOL/PERF | 86GameStore/余额站类渠道已补日消费限额、当日消费高于剩余额度且慢线时自动熔断、慢线降级到备用健康渠道和一次性告警；补号入库可保存 `dailySpendLimitCents` / `slowLatencyThresholdMs` / `costSensitive`。充值本身仍由用户付款处理。 | 2026-05-08 | ✅ 已处理（充值为人工事项） |
-| HI-890 | SECURITY | 服务器 root 密码曾在对话中明文出现，视同泄露；当前仓库未写入该密码，CI/本地 gitleaks 门禁可防新增明文。真实 root 密码轮换、登录审计、禁用密码登录只能由服务器账号所有者执行；用户本轮选择暂不推进轮换，风险继续保留为人工事项。 | 2026-05-08 | 🟠 人工风险项，代码侧已加门禁 |
+| HI-890 | SECURITY | 服务器 root 密码曾在对话中明文出现。2026-08-04 只读复核确认 Oracle root 密码修改日期晚于暴露日期且 fail2ban 活跃；腾讯冷回滚机禁止密码认证并限制 root 为密钥登录，fail2ban 活跃。仓库和历史扫描无该值，因此从 P1 降为 P2 运维观察；Oracle 仍允许 root 密码登录，后续应迁移为密钥专用，但当前暴露密码已失效。 | 2026-05-08 | 🟡 P2 运维观察，已验证暴露口令不可用 |
 | HI-891 | INFRA | `New-API Scheduled Sync` 最近失败 run `25576027773` 卡在 `docker compose -f docker-compose.newapi.yml config`：CI 缺少 `NEWAPI_INITIAL_TOKEN`，导致已完成的 New-API 同步无法进入创建 PR；已给 compose 校验注入 CI 占位 token，并让检查脚本用退出码 `2` 明确表示“需要同步”、其他非零表示真实错误；复验 run `25588894721` 已成功并创建 PR #1 | 2026-05-08 | ✅ 已处理 |
 | HI-892 | UX | 内置浏览器审计发现 Frist-API 隐藏视图的多个返回按钮文本箭头会在可访问性快照中聚合为 `← ← ←`，对屏幕阅读器和自动化审计产生噪音；已将 `.back-home::before` 改为纯 CSS 图形箭头，本地浏览器复验不再出现箭头文本且控制台无 error/warn | 2026-05-08 | ✅ 已处理 |
 | HI-893 | UX | 内置浏览器复审发现账户弹窗密码字段不在真实 `form` 内，浏览器密码管理器会给出结构提示；已将登录/注册、改密码、重置密码和身份码激活拆成独立 `data-auth-form`，补齐 `autocomplete`，并让回车提交复用原处理逻辑 | 2026-05-08 | ✅ 已处理 |
@@ -518,7 +619,7 @@
 | HI-850 | SECURITY | Frist-API runtime.json 明文存储用户 fk-live Key 和上游 rawKey；已新增 AES-256-GCM 字段加密，兼容旧明文读取并在保存时迁移 | 2026-05-04 |
 | HI-853 | UX | Frist-API 无"忘记密码"功能，用户丢失密码后无法自助恢复；已新增 SMTP 重置验证码和确认改密接口 | 2026-05-04 |
 | HI-854 | UX | Frist-API 前端服务不可用时静默降级无重试入口，用户看不到明确恢复指引 | 2026-05-03 |
-| HI-856 | ARCH_LIMIT | Frist-API 已抽取 shared/catalog/newApiBridge/email/auth/payments/store 等职责；本轮进一步把 SMTP DNS 轮询、注册/重置/余额预警邮件模板和邮箱归一化迁入 `server/email.js`，`server.js` 从 7881 行降到 7247 行并通过 Frist-API `161/161` 回归。核心账号/网关路由仍在主入口，继续完整拆分属于高风险重构，应按独立 PR 分批做，不作为本轮生产收口阻塞。 | 2026-05-03 |
+| HI-856 | ARCH_LIMIT | Frist-API 当时抽取 shared/catalog/newApiBridge/email/auth/payments/store 等职责，并把 SMTP DNS 轮询、注册/重置/余额预警邮件模板和邮箱归一化迁入 `server/email.js`，阶段回归为 `161/161`。2026-08-04 复核发现旧 `store.js` 未被使用且会丢运行字段，现已删除；当前权威存储安全超集仍保留在 `server.js`，完整拆分继续按独立批次推进。 | 2026-05-03 |
 | HI-857 | ARCH_LIMIT | 当前 Frist-API 单实例部署下，轻量 captcha/rateLimit 内存态可接受；生产水平扩展或多进程部署前必须迁移到 Redis/SQLite。已在运维文档写明判断依据和触发条件。 | 2026-05-03 |
 | HI-863 | INFRA | Frist-API 长期入口已复用 VPS-Config 既有域名和 Cloudflare 资产闭环：`jiyu.245334.xyz` 当前通过 Cloudflare proxied A 指向 Oracle ARM `150.136.73.15`，旧 `frist-api.245334.xyz` 跳转到 CC中转主站，旧 `frist-api.101-43-41-96.nip.io` 只保留冷回滚排障语境，不再作为生产兜底入口 | 2026-05-04 |
 | HI-864 | UX/COMMERCE | Frist-API 个人阶段不再推进个人收款码自动识别；已改为管理端批量生成一次性兑换码、用户端专属兑换页核销自动到账，并预留闲鱼商品链接位置 | 2026-05-04 |
@@ -580,7 +681,7 @@
 
 ### Intel Brief 规划基线 — 已冻结先规划后生产变更
 
-2026-07-06 用户明确要求先完成整体方案、开源社区高星轮子调研和搬运规划，再推进生产变更。已新增 `docs/052-intel-brief-master-plan.md`，并在 VPS-Config 写入 `docs/indexes/intel-brief-runtime-placement.public.md`。当前基线：国内源优先炎火云 worker，海外源优先低负载 Oracle 新加坡西 worker，OpenEverything 保持 controller。后续若直接改生产、部署 worker、写 Cookie/Token 或跳过目标节点真实验证，均视为偏离基线。
+2026-07-06 用户明确要求先完成整体方案、开源社区高星轮子调研和搬运规划，再推进生产变更。已新增 `docs/052-intel-brief-master-plan.md`，并在独立 VPS-Config 仓库写入 `/Users/blackdj/Documents/VPS-Config/docs/indexes/intel-brief-runtime-placement.public.md`。当前基线：国内源优先炎火云 worker，海外源优先低负载 Oracle 新加坡西 worker，OpenEverything 保持 controller。后续若直接改生产、部署 worker、写 Cookie/Token 或跳过目标节点真实验证，均视为偏离基线。
 
 
 ### Intel Brief Phase B 目标节点验证 — 已起步，SGW 管理路径阻塞
@@ -739,7 +840,7 @@ Collect-once 多源编排验证完成：`ruff` 为 `All checks passed!`，Intel 
 
 ### Intel Brief Scheduled sandbox — 本地定时排练已闭合（未生产调度）
 
-2026-07-07 追加完成 scheduled controller rehearsal。新增 `src/intel/scheduled_pipeline.py` 与 `scripts/intel_scheduled_sandbox.py`，在不注册 cron/systemd/ExecutionScheduler 生产任务的前提下，验证到点判断后可从既有 Phase F 真实 collect evidence 串联 brief dry-run、LLM fallback-only summary、delivery sandbox。证据：`packages/clawbot/data/intel_evidence/phasei/20260707T011556Z-scheduled-sandbox.json`，结果 schedule reason=`due`，brief rendered=2，LLM `llm_attempted=false`，delivery `eligible=1 / sent=1 / failed=0`，fake sender `network_calls=0`。
+2026-07-07 追加完成 scheduled controller rehearsal。新增 `src/intel/scheduled_pipeline.py` 与 `packages/clawbot/scripts/intel_scheduled_sandbox.py`，在不注册 cron/systemd/ExecutionScheduler 生产任务的前提下，验证到点判断后可从既有 Phase F 真实 collect evidence 串联 brief dry-run、LLM fallback-only summary、delivery sandbox。证据：`packages/clawbot/data/intel_evidence/phasei/20260707T011556Z-scheduled-sandbox.json`，结果 schedule reason=`due`，brief rendered=2，LLM `llm_attempted=false`，delivery `eligible=1 / sent=1 / failed=0`，fake sender `network_calls=0`。
 
 健康边界：这只证明本地 scheduled sandbox controller 链路可跑通；不证明真实 Telegram Bot API、第8个 bot token、生产 scheduler、常驻 worker、自然日演练、SGW preferred worker 或 MediaCrawler 社媒登录态已闭合。最终验证 evidence：`packages/clawbot/data/intel_evidence/phasei/20260707T011701Z-scheduled-sandbox-verification.json`。
 

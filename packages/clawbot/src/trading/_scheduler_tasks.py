@@ -24,6 +24,13 @@ from src.utils import env_bool, env_int
 logger = logging.getLogger(__name__)
 
 
+def _auto_reentry_authorized(auto_trader) -> bool:
+    """仅在显式开关与自动交易模式同时开启时允许隔夜重挂。"""
+    return env_bool("AUTO_RESUBMIT_PENDING_NEXT_SESSION", False) and bool(
+        auto_trader and getattr(auto_trader, "auto_mode", False)
+    )
+
+
 # ============ IBKR 成交回写 ============
 
 
@@ -295,7 +302,7 @@ async def _cancel_stale_pending_entries():
 
         tj.cancel_trade(trade_id, cancel_reason)
         queued = False
-        if env_bool("AUTO_RESUBMIT_PENDING_NEXT_SESSION", True):
+        if _auto_reentry_authorized(_ts._auto_trader):
             queued = _queue_reentry_from_trade(trade, reason=cancel_reason)
 
         if _ts._position_monitor:
@@ -333,7 +340,7 @@ async def _submit_pending_reentry_queue():
     import src.trading_system as _ts
     from src.trading._helpers import _save_pending_reentry_queue
 
-    if not env_bool("AUTO_RESUBMIT_PENDING_NEXT_SESSION", True):
+    if not _auto_reentry_authorized(_ts._auto_trader):
         return
     if not _ts._pending_reentry_queue:
         return
@@ -436,4 +443,3 @@ async def _submit_pending_reentry_queue():
 
     _ts._pending_reentry_queue = next_queue
     _save_pending_reentry_queue(_ts._pending_reentry_queue)
-

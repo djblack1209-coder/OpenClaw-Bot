@@ -395,31 +395,29 @@ export async function scheduleEmailDelivery({
   serverOptions,
   to,
   message,
-  data,
   successType,
   failureType,
   eventBase = {},
 }) {
   const sender = serverOptions.accountEmailSender || serverOptions.balanceAlertEmailSender;
   if (typeof sender !== 'function') {
-    data.events.push({
+    return {
       type: failureType,
       ...eventBase,
       reason: 'SMTP 邮件服务未配置',
       at: new Date().toISOString(),
-    });
-    return;
+    };
   }
   try {
     await sender({ ...message, to });
-    data.events.push({ type: successType, ...eventBase, at: new Date().toISOString() });
+    return { type: successType, ...eventBase, at: new Date().toISOString() };
   } catch (error) {
-    data.events.push({
+    return {
       type: failureType,
       ...eventBase,
       reason: String(error?.message || error).slice(0, 300),
       at: new Date().toISOString(),
-    });
+    };
   }
 }
 

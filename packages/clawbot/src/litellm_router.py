@@ -10,10 +10,13 @@ LiteLLM 统一路由层 — 替代自研 free_api_pool.py (935行 → ~450行)
 """
 
 import asyncio
+import copy
 import json
 import logging
 import os
+import threading
 import time
+import weakref
 from dataclasses import dataclass
 from datetime import UTC
 from pathlib import Path
@@ -429,6 +432,13 @@ class LiteLLMPool:
 
     def __init__(self):
         self._router: Router | None = None
+        self._router_is_template = False
+        self._template_claimed = False
+        self._router_model_list: list[dict[str, Any]] = []
+        self._router_fallbacks: list[dict[str, list[str]]] = []
+        self._router_options: dict[str, Any] = {}
+        self._loop_routers: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, Router] = weakref.WeakKeyDictionary()
+        self._router_lock = threading.Lock()
         self._sources: dict[str, list[FreeAPISource]] = {}
         self.default_routing: str = ROUTE_BALANCED
         self._call_count = 0
@@ -437,8 +447,8 @@ class LiteLLMPool:
         self._total_input_tokens = 0
         self._total_output_tokens = 0
         self._total_cost = 0.0
-        # 并发统计锁 — 多个 Bot 同时调用 LLM 时保护计数器原子更新
-        self._stats_lock = asyncio.Lock()
+        # Uvicorn 与 Telegram 使用不同事件循环，统计锁必须跨线程、跨循环安全。
+        self._stats_lock = threading.Lock()
 
         # Phoenix OTEL — 与 Langfuse 并行运行，OpenTelemetry 标准协议
         try:
@@ -454,6 +464,51 @@ class LiteLLMPool:
 
     def _reg(self, family: str, src: FreeAPISource):
         self._sources.setdefault(family, []).append(src)
+
+    def _create_router(self) -> Router:
+        """按已验证配置创建仅供当前事件循环使用的 Router。"""
+        from litellm.router import RetryPolicy
+
+        # 参考 LiteLLM 1.90.2 Router 文档：Router 持有异步客户端，按事件循环隔离实例。
+        options = self._router_options
+        return Router(
+            model_list=copy.deepcopy(self._router_model_list),
+            fallbacks=copy.deepcopy(self._router_fallbacks),
+            num_retries=options.get("num_retries", 3),
+            timeout=options.get("timeout", LLM_TIMEOUT_DEFAULT),
+            stream_timeout=options.get("stream_timeout", LLM_STREAM_TIMEOUT_DEFAULT),
+            allowed_fails=options.get("allowed_fails", 3),
+            cooldown_time=options.get("cooldown_time", LLM_COOLDOWN_TIME),
+            retry_after=options.get("retry_after", LLM_RETRY_AFTER),
+            routing_strategy=options.get("routing_strategy", "simple-shuffle"),
+            retry_policy=RetryPolicy(
+                RateLimitErrorRetries=3,
+                TimeoutErrorRetries=2,
+                ContentPolicyViolationErrorRetries=0,
+                AuthenticationErrorRetries=0,
+                InternalServerErrorRetries=2,
+            ),
+        )
+
+    def router_for_current_loop(self) -> Router:
+        """为当前事件循环返回独立 Router，避免复用异步客户端状态。"""
+        if self._router is None:
+            raise RuntimeError("LiteLLMPool 未初始化")
+        if not self._router_is_template:
+            return self._router
+
+        loop = asyncio.get_running_loop()
+        with self._router_lock:
+            existing = self._loop_routers.get(loop)
+            if existing is not None:
+                return existing
+            if not self._template_claimed:
+                router = self._router
+                self._template_claimed = True
+            else:
+                router = self._create_router()
+            self._loop_routers[loop] = router
+            return router
 
     def _dep(
         self,
@@ -968,37 +1023,29 @@ class LiteLLMPool:
 
         try:
             # 从 JSON router_config 读取参数（T5-2: 消除硬编码，JSON 为单一真相源）
-            from litellm.router import RetryPolicy
-
             rc = {}
             if hasattr(self, "_routing_config") and self._routing_config:
                 rc = get_router_config(self._routing_config)
 
-            self._router = Router(
-                model_list=deps,
-                fallbacks=fallbacks,
-                num_retries=rc.get("num_retries", 3),
-                timeout=rc.get("timeout", LLM_TIMEOUT_DEFAULT),
-                stream_timeout=rc.get("stream_timeout", LLM_STREAM_TIMEOUT_DEFAULT),
-                allowed_fails=rc.get("allowed_fails", 3),
-                cooldown_time=rc.get("cooldown_time", LLM_COOLDOWN_TIME),
-                retry_after=rc.get("retry_after", LLM_RETRY_AFTER),
-                routing_strategy=rc.get("routing_strategy", "simple-shuffle"),
-                # 按错误类型区分重试策略（官方推荐）
-                retry_policy=RetryPolicy(
-                    RateLimitErrorRetries=3,  # 429 限速适当重试
-                    TimeoutErrorRetries=2,  # 超时少量重试（已有 fallback 兜底）
-                    ContentPolicyViolationErrorRetries=0,  # 内容违规不重试
-                    AuthenticationErrorRetries=0,  # 认证错误不重试
-                    InternalServerErrorRetries=2,  # 服务器错误少量重试
-                ),
-            )
+            self._router_model_list = copy.deepcopy(deps)
+            self._router_fallbacks = copy.deepcopy(fallbacks)
+            self._router_options = dict(rc)
+            router = self._create_router()
+            with self._router_lock:
+                self._router = router
+                self._router_is_template = True
+                self._template_claimed = False
+                self._loop_routers = weakref.WeakKeyDictionary()
             logger.info(f"[LiteLLMPool] Router OK: {len(deps)} deployments, {len(families)} groups")
             # 标记待发送启动健康摘要（等第一次 async 调用时发送）
             self._startup_summary_pending = True
         except Exception as e:
             logger.error(f"[LiteLLMPool] Router init failed: {_scrub_secrets(str(e))}")
-            self._router = None
+            with self._router_lock:
+                self._router = None
+                self._router_is_template = False
+                self._template_claimed = False
+                self._loop_routers = weakref.WeakKeyDictionary()
 
     def export_config_snapshot(self) -> dict:
         """导出当前路由配置快照（用于前端展示、审计和备份）
@@ -1060,8 +1107,7 @@ class LiteLLMPool:
             cache_ttl: Cache TTL in seconds (default 3600). 0 disables cache.
             no_cache: Force bypass cache for this request.
         """
-        if not self._router:
-            raise RuntimeError("LiteLLMPool 未初始化")
+        router = self.router_for_current_loop()
 
         # 首次被调用时，在后台发送启动健康摘要（不阻塞当前请求）
         if getattr(self, "_startup_summary_pending", False):
@@ -1101,7 +1147,7 @@ class LiteLLMPool:
             if stream:
                 kwargs.setdefault("stream_options", {"include_usage": True})
 
-            response = await self._router.acompletion(
+            response = await router.acompletion(
                 model=model,
                 messages=all_msgs,
                 temperature=temperature,
@@ -1115,18 +1161,23 @@ class LiteLLMPool:
                 return self._wrap_streaming(response, model, start)
 
             latency = (time.time() - start) * 1000
-            async with self._stats_lock:
+            prompt_tokens = 0
+            completion_tokens = 0
+            response_cost = 0.0
+            if hasattr(response, "usage") and response.usage:
+                prompt_tokens = getattr(response.usage, "prompt_tokens", 0)
+                completion_tokens = getattr(response.usage, "completion_tokens", 0)
+                try:
+                    response_cost = litellm.completion_cost(completion_response=response)
+                except Exception:
+                    logger.debug("Silenced exception", exc_info=True)  # 免费模型可能没有成本数据
+
+            with self._stats_lock:
                 self._call_count += 1
                 self._total_latency += latency
-                if hasattr(response, "usage") and response.usage:
-                    self._total_input_tokens += getattr(response.usage, "prompt_tokens", 0)
-                    self._total_output_tokens += getattr(response.usage, "completion_tokens", 0)
-                    # Calculate cost from LiteLLM response
-                    try:
-                        cost = litellm.completion_cost(completion_response=response)
-                        self._total_cost += cost
-                    except Exception:
-                        logger.debug("Silenced exception", exc_info=True)  # Free models have no cost data
+                self._total_input_tokens += prompt_tokens
+                self._total_output_tokens += completion_tokens
+                self._total_cost += response_cost
 
             # ---- Store to cache ----
             if use_cache:
@@ -1137,7 +1188,7 @@ class LiteLLMPool:
 
             return response
         except Exception as e:
-            async with self._stats_lock:
+            with self._stats_lock:
                 self._error_count += 1
             scrubbed = _scrub_secrets(str(e))
             logger.error(f"[LiteLLMPool] acompletion failed (model={model}): {scrubbed}")
@@ -1264,22 +1315,23 @@ class LiteLLMPool:
 
         # After stream completes, record metrics（加锁保护统计计数器）
         latency = (time.time() - start_time) * 1000
-        async with self._stats_lock:
+        cost = 0.0
+        if total_tokens > 0 or (prompt_tokens + completion_tokens) > 0:
+            try:
+                cost = litellm.completion_cost(
+                    model=model,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                )
+            except Exception:
+                logger.debug("Silenced exception", exc_info=True)
+
+        with self._stats_lock:
             self._call_count += 1
             self._total_latency += latency
-
-            if total_tokens > 0 or (prompt_tokens + completion_tokens) > 0:
-                self._total_input_tokens += prompt_tokens
-                self._total_output_tokens += completion_tokens
-                try:
-                    cost = litellm.completion_cost(
-                        model=model,
-                        prompt_tokens=prompt_tokens,
-                        completion_tokens=completion_tokens,
-                    )
-                    self._total_cost += cost
-                except Exception:
-                    logger.debug("Silenced exception", exc_info=True)
+            self._total_input_tokens += prompt_tokens
+            self._total_output_tokens += completion_tokens
+            self._total_cost += cost
 
     # ---- 兼容旧接口 ----
 
@@ -1323,20 +1375,27 @@ class LiteLLMPool:
     def get_stats(self) -> dict:
         total = sum(len(v) for v in self._sources.values())
         active = sum(1 for v in self._sources.values() for s in v if s.can_accept_request())
-        avg_lat = self._total_latency / max(self._call_count, 1)
+        with self._stats_lock:
+            call_count = self._call_count
+            error_count = self._error_count
+            total_latency = self._total_latency
+            total_input_tokens = self._total_input_tokens
+            total_output_tokens = self._total_output_tokens
+            total_cost = self._total_cost
+        avg_lat = total_latency / max(call_count, 1)
         return {
             "total_sources": total,
             "active_sources": active,
             "model_families": len(self._sources),
             "routing_strategy": "litellm-router",
-            "total_input_tokens": self._total_input_tokens,
-            "total_output_tokens": self._total_output_tokens,
-            "total_tokens": self._total_input_tokens + self._total_output_tokens,
-            "total_cost_usd": round(self._total_cost, 6),
+            "total_input_tokens": total_input_tokens,
+            "total_output_tokens": total_output_tokens,
+            "total_tokens": total_input_tokens + total_output_tokens,
+            "total_cost_usd": round(total_cost, 6),
             "avg_latency_ms": round(avg_lat, 1),
-            "total_calls": self._call_count,
-            "total_errors": self._error_count,
-            "success_rate": round((self._call_count - self._error_count) / max(self._call_count, 1), 3),
+            "total_calls": call_count,
+            "total_errors": error_count,
+            "success_rate": round((call_count - error_count) / max(call_count, 1), 3),
             "families": {
                 k: {
                     "total": len(v),

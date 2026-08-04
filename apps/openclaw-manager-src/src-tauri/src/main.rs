@@ -83,18 +83,10 @@ fn main() {
             installer::install_openclaw,
             installer::init_openclaw_config,
             installer::open_install_terminal,
-            installer::uninstall_openclaw,
             // 版本更新
             installer::check_openclaw_update,
-            installer::update_openclaw,
             // MCP Plugins
             mcp::get_mcp_plugins,
-            mcp::save_mcp_plugin,
-            mcp::toggle_mcp_plugin_status,
-            mcp::remove_mcp_plugin,
-            mcp::start_mcp_plugin,
-            mcp::stop_mcp_plugin,
-            mcp::get_mcp_plugin_status,
             // ClawBot Internal API (FastAPI :18790)
             clawbot_api::clawbot_api_ping,
             clawbot_api::clawbot_api_status,

@@ -28,6 +28,7 @@ def _proposal() -> TradeProposal:
 
 async def test_sync_capital_never_expands_configured_budget_or_resets_spent(tmp_path):
     bridge = IBKRBridge(budget=2_000.0)
+    bridge.bind_current_loop()
     bridge.total_spent = 450.0
     bridge.get_account_summary = AsyncMock(
         return_value={
@@ -46,6 +47,7 @@ async def test_sync_capital_never_expands_configured_budget_or_resets_spent(tmp_
 
 async def test_sync_capital_lowers_budget_to_available_funds_and_preserves_spent(tmp_path):
     bridge = IBKRBridge(budget=2_000.0)
+    bridge.bind_current_loop()
     bridge.total_spent = 450.0
     bridge.get_account_summary = AsyncMock(
         return_value={

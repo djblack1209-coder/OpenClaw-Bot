@@ -5,7 +5,7 @@ httpx~=0.27.0
 loguru~=0.7.2
 python-dotenv~=1.0.0
 tiktoken~=0.8.0
-json-repair~=0.30.0
+json-repair~=0.60.1
 
 # Testing dependencies
 pytest~=8.3.0

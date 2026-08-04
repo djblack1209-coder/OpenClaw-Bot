@@ -276,10 +276,11 @@ class ProactiveEngine:
             from src.structured_llm import structured_completion
 
             result = await structured_completion(
-                model_class=model_class,
+                response_model=model_class,
+                messages=[{"role": "user", "content": prompt}],
                 system_prompt=SOUL_CORE,
-                user_prompt=prompt,
                 model_family=model,
+                max_tokens=max_tok,
             )
             return result
         except ImportError:

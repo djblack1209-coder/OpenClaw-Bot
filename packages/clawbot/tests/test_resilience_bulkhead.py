@@ -13,9 +13,10 @@ Bulkhead 并发隔离舱 — 单元测试
 """
 
 import asyncio
-import sys
 import os
-import time
+import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -23,15 +24,14 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from src.resilience import (
+    _BULKHEAD_LIMITS,
+    _bulkhead_lock,
+    _bulkhead_semaphores,
+    _bulkhead_stats,
     bulkhead,
     configure_bulkhead,
     get_bulkhead_stats,
-    _bulkhead_semaphores,
-    _bulkhead_stats,
-    _BULKHEAD_LIMITS,
-    _bulkhead_lock,
 )
-
 
 # ══════════════════════════════════════════════════════
 # 辅助工具
@@ -211,6 +211,36 @@ class TestBulkheadConcurrency:
         finally:
             _cleanup_service(svc)
 
+    def test_同一服务可跨多个事件循环保持并发上限(self):
+        """进程级隔离舱在多个线程事件循环中仍只能放行配置数量。"""
+        svc = _fresh_service()
+        configure_bulkhead(svc, 1)
+        barrier = threading.Barrier(4)
+        state_lock = threading.Lock()
+        current = 0
+        peak = 0
+
+        async def enter_once() -> None:
+            nonlocal current, peak
+            async with bulkhead(svc, timeout=2.0):
+                with state_lock:
+                    current += 1
+                    peak = max(peak, current)
+                await asyncio.sleep(0.02)
+                with state_lock:
+                    current -= 1
+
+        def worker() -> None:
+            barrier.wait(timeout=2)
+            asyncio.run(enter_once())
+
+        try:
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                list(pool.map(lambda _index: worker(), range(4)))
+            assert peak == 1
+        finally:
+            _cleanup_service(svc)
+
 
 # ══════════════════════════════════════════════════════
 # 溢出/超时行为测试
@@ -283,6 +313,33 @@ class TestBulkheadOverflow:
             except asyncio.CancelledError:
                 pass
         finally:
+            _cleanup_service(svc)
+
+    async def test_超时等待者不会释放持有者的容量(self):
+        """未成功 acquire 的超时任务不能把可用容量从 0 增加到 1。"""
+        svc = _fresh_service()
+        configure_bulkhead(svc, 1)
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def blocker():
+            async with bulkhead(svc, timeout=1.0):
+                entered.set()
+                await release.wait()
+
+        task = asyncio.create_task(blocker())
+        try:
+            await entered.wait()
+            with pytest.raises(asyncio.TimeoutError):
+                async with bulkhead(svc, timeout=0.02):
+                    pytest.fail("隔离舱已满时不应进入临界区")
+
+            stats = get_bulkhead_stats()[svc]
+            assert stats["available"] == 0
+            assert stats["in_use"] == 1
+        finally:
+            release.set()
+            await task
             _cleanup_service(svc)
 
     async def test_短超时不影响后续任务(self):
@@ -426,27 +483,59 @@ class TestBulkheadConfigure:
         finally:
             _cleanup_service(svc)
 
-    async def test_重新配置清除旧缓存(self):
-        """重新配置后旧的 semaphore 应该被清除"""
+    async def test_重新配置保留同一隔离舱(self):
+        """重新配置不能替换有持有者的隔离舱对象。"""
         svc = _fresh_service()
         try:
             configure_bulkhead(svc, 2)
 
-            # 先使用一次，触发 semaphore 创建
+            # 先使用一次，触发 semaphore 创建并保存对象身份。
             async with bulkhead(svc, timeout=1.0):
                 pass
 
             assert svc in _bulkhead_semaphores
+            old_sem = _bulkhead_semaphores[svc]
 
             # 重新配置
             configure_bulkhead(svc, 5)
 
-            # 旧的 semaphore 应该被清除
-            assert svc not in _bulkhead_semaphores
+            # 旧对象保留，避免旧持有者和新对象叠加放行。
+            assert _bulkhead_semaphores[svc] is old_sem
 
             # 新配置应该生效
             assert _BULKHEAD_LIMITS[svc] == 5
         finally:
+            _cleanup_service(svc)
+
+    async def test_持有期间重配不会突破新上限(self):
+        """降低容量时，旧持有者退出前新调用仍必须等待。"""
+        svc = _fresh_service()
+        entered = asyncio.Event()
+        release = asyncio.Event()
+        second_entered = asyncio.Event()
+        configure_bulkhead(svc, 2)
+
+        async def holder() -> None:
+            async with bulkhead(svc, timeout=1.0):
+                entered.set()
+                await release.wait()
+
+        async def contender() -> None:
+            async with bulkhead(svc, timeout=1.0):
+                second_entered.set()
+
+        try:
+            first = asyncio.create_task(holder())
+            await entered.wait()
+            configure_bulkhead(svc, 1)
+            second = asyncio.create_task(contender())
+            await asyncio.sleep(0.03)
+            assert second_entered.is_set() is False
+            release.set()
+            await asyncio.gather(first, second)
+            assert second_entered.is_set() is True
+        finally:
+            release.set()
             _cleanup_service(svc)
 
     async def test_重新配置后新限制生效(self):

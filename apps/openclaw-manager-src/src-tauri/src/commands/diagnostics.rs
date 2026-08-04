@@ -2,7 +2,68 @@ use crate::models::{AITestResult, ChannelTestResult, DiagnosticResult, SystemInf
 use crate::models::{AppError, AppResult};
 use crate::utils::{platform, shell};
 use log::{debug, info, warn};
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use tauri::command;
+
+/// 在系统临时目录中原子创建仅当前用户可执行的登录脚本。
+fn create_private_login_script(extension: &str, content: &str) -> AppResult<PathBuf> {
+    let mut random = [0_u8; 16];
+    getrandom::getrandom(&mut random)
+        .map_err(|error| AppError::io(format!("生成登录脚本随机名称失败: {}", error)))?;
+    let token: String = random.iter().map(|byte| format!("{:02x}", byte)).collect();
+    let path = std::env::temp_dir().join(format!("openclaw-login-{}.{}", token, extension));
+
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o700);
+    }
+
+    let mut file = options
+        .open(&path)
+        .map_err(|error| AppError::io(format!("安全创建登录脚本失败: {}", error)))?;
+    if let Err(error) = file
+        .write_all(content.as_bytes())
+        .and_then(|()| file.sync_all())
+    {
+        let _ = fs::remove_file(&path);
+        return Err(AppError::io(format!("写入登录脚本失败: {}", error)));
+    }
+    Ok(path)
+}
+
+/// 依次尝试终端启动器；全部失败时删除尚未被使用的临时脚本。
+fn launch_login_script(commands: &[&str], args: &[&str], script_path: &Path) -> AppResult<()> {
+    let mut last_error = None;
+    for command in commands {
+        match std::process::Command::new(command)
+            .args(args)
+            .arg(script_path)
+            .spawn()
+        {
+            Ok(_) => return Ok(()),
+            Err(error) => last_error = Some(error),
+        }
+    }
+
+    let launch_error = last_error
+        .map(|error| error.to_string())
+        .unwrap_or_else(|| "未配置终端启动命令".to_string());
+    if let Err(cleanup_error) = fs::remove_file(script_path) {
+        return Err(AppError::process(format!(
+            "无法启动终端: {}; 清理临时登录脚本失败: {}",
+            launch_error, cleanup_error
+        )));
+    }
+    Err(AppError::process(format!(
+        "无法启动终端，请手动运行 openclaw channels login --channel whatsapp: {}",
+        launch_error
+    )))
+}
 
 /// 去除 ANSI 转义序列（颜色代码等）
 fn strip_ansi_codes(input: &str) -> String {
@@ -639,6 +700,7 @@ pub async fn get_system_info() -> AppResult<SystemInfo> {
 }
 
 /// 启动渠道登录（如 WhatsApp 扫码）
+// 参考 Tauri v2 Commands（2026-08-05 复核）：脚本生命周期完全由 Rust 命令侧管理。
 #[command]
 pub async fn start_channel_login(channel_type: String) -> AppResult<String> {
     info!("[渠道登录] 开始渠道登录流程: {}", channel_type);
@@ -731,21 +793,10 @@ read -p "按回车键关闭此窗口..."
                     env_path
                 );
 
-                let script_path = "/tmp/openclaw_whatsapp_login.command";
-                std::fs::write(script_path, script_content)
-                    .map_err(|e| AppError::io(format!("创建脚本失败: {}", e)))?;
-
-                // 设置可执行权限
-                std::process::Command::new("chmod")
-                    .args(["+x", script_path])
-                    .output()
-                    .map_err(|e| AppError::process(format!("设置权限失败: {}", e)))?;
+                let script_path = create_private_login_script("command", &script_content)?;
 
                 // 使用 open 命令打开 .command 文件（会自动在新终端窗口中执行）
-                std::process::Command::new("open")
-                    .arg(script_path)
-                    .spawn()
-                    .map_err(|e| AppError::process(format!("启动终端失败: {}", e)))?;
+                launch_login_script(&["open"], &[], &script_path)?;
             }
 
             #[cfg(target_os = "linux")]
@@ -765,35 +816,11 @@ read -p "按回车键关闭..."
                     env_path
                 );
 
-                let script_path = "/tmp/openclaw_whatsapp_login.sh";
-                std::fs::write(script_path, &script_content)
-                    .map_err(|e| AppError::io(format!("创建脚本失败: {}", e)))?;
-
-                std::process::Command::new("chmod")
-                    .args(["+x", script_path])
-                    .output()
-                    .map_err(|e| AppError::process(format!("设置权限失败: {}", e)))?;
+                let script_path = create_private_login_script("sh", &script_content)?;
 
                 // 尝试不同的终端模拟器
                 let terminals = ["gnome-terminal", "xfce4-terminal", "konsole", "xterm"];
-                let mut launched = false;
-
-                for term in terminals {
-                    let result = std::process::Command::new(term)
-                        .args(["--", script_path])
-                        .spawn();
-
-                    if result.is_ok() {
-                        launched = true;
-                        break;
-                    }
-                }
-
-                if !launched {
-                    return Err(AppError::process(
-                        "无法启动终端，请手动运行: openclaw channels login --channel whatsapp",
-                    ));
-                }
+                launch_login_script(&terminals, &["--"], &script_path)?;
             }
 
             #[cfg(target_os = "windows")]
@@ -807,5 +834,61 @@ read -p "按回车键关闭..."
             "不支持 {} 的登录向导",
             channel_type
         ))),
+    }
+}
+
+#[cfg(test)]
+mod login_script_security_tests {
+    use super::*;
+
+    const SOURCE: &str = include_str!("diagnostics.rs");
+
+    #[test]
+    fn login_scripts_do_not_use_predictable_shared_paths_or_external_chmod() {
+        let macos_path = ["/tmp/", "openclaw_whatsapp_login.command"].concat();
+        let linux_path = ["/tmp/", "openclaw_whatsapp_login.sh"].concat();
+        let external_chmod = ["Command::new(", "\"chmod\"", ")"].concat();
+
+        assert!(!SOURCE.contains(&macos_path));
+        assert!(!SOURCE.contains(&linux_path));
+        assert!(!SOURCE.contains(&external_chmod));
+        assert!(SOURCE.contains("create_new(true)"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn temporary_login_scripts_are_unique_private_and_complete() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let first = create_private_login_script("sh", "#!/bin/bash\nexit 0\n").unwrap();
+        let second = create_private_login_script("sh", "#!/bin/bash\nexit 0\n").unwrap();
+
+        assert_ne!(first, second);
+        assert_eq!(first.parent(), Some(std::env::temp_dir().as_path()));
+        assert_eq!(
+            std::fs::read_to_string(&first).unwrap(),
+            "#!/bin/bash\nexit 0\n"
+        );
+        assert_eq!(
+            std::fs::metadata(&first).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+
+        std::fs::remove_file(first).unwrap();
+        std::fs::remove_file(second).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn terminal_launch_failure_removes_temporary_login_script() {
+        let script = create_private_login_script("sh", "#!/bin/bash\nexit 0\n").unwrap();
+        let missing_command = script.with_extension("missing-terminal");
+        assert!(!missing_command.exists());
+
+        let result =
+            launch_login_script(&[missing_command.to_str().unwrap()], &[], script.as_path());
+
+        assert!(result.is_err());
+        assert!(!script.exists());
     }
 }

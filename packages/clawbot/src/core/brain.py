@@ -16,8 +16,10 @@ OpenClaw OMEGA — 核心编排器 (Brain)
 import asyncio
 import importlib.util
 import logging
+import threading
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
@@ -30,6 +32,7 @@ from src.core.brain_executors import BrainExecutorMixin
 from src.core.brain_graph_builders import BrainGraphBuilderMixin
 from src.core.event_bus import EventType, get_event_bus
 from src.core.intent_parser import IntentParser, ParsedIntent, TaskType
+from src.core.loop_owner import AsyncLoopOwner, OwnerLoopNotReady
 from src.core.response_synthesizer import (
     get_context_collector,
     get_response_synthesizer,
@@ -132,6 +135,7 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
     """
 
     def __init__(self):
+        self._loop_owner = AsyncLoopOwner("brain")
         self._intent_parser = IntentParser()
         self._event_bus = get_event_bus()
         self._active_tasks: dict[str, TaskResult] = {}
@@ -148,6 +152,24 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
         )
 
         logger.info("OpenClawBrain 初始化完成")
+
+    def bind_current_loop(self) -> None:
+        """把 Brain 的所有有状态异步操作固定到当前主事件循环。"""
+        self._loop_owner.bind_current()
+
+    async def _run_on_owner(self, operation: Callable[[], Awaitable[Any]]) -> Any:
+        """把操作转发到 Brain 所有者循环，且不因调用方取消而截断副作用。"""
+        if not self._loop_owner.is_bound:
+            with _brain_lock:
+                is_global_instance = _brain is self
+            if is_global_instance:
+                raise OwnerLoopNotReady("Brain 主事件循环尚未就绪")
+            self.bind_current_loop()
+        return await self._loop_owner.run(
+            operation,
+            timeout=None,
+            cancel_on_timeout=False,
+        )
 
     def _load_config(self) -> dict:
         """加载 omega.yaml 配置，不存在则用默认值"""
@@ -188,8 +210,29 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
 
     # ── 主入口 ──────────────────────────────────────────
 
-    @perf_timer("brain.process_message")
     async def process_message(
+        self,
+        source: str,
+        message: str,
+        message_type: str = "text",
+        context: dict | None = None,
+        pre_parsed_intent: Optional["ParsedIntent"] = None,
+        skip_chat_fallback: bool = False,
+    ) -> TaskResult:
+        """在 Brain 所有者循环处理一条用户消息。"""
+        return await self._run_on_owner(
+            lambda: self._process_message_on_owner(
+                source=source,
+                message=message,
+                message_type=message_type,
+                context=context,
+                pre_parsed_intent=pre_parsed_intent,
+                skip_chat_fallback=skip_chat_fallback,
+            )
+        )
+
+    @perf_timer("brain.process_message")
+    async def _process_message_on_owner(
         self,
         source: str,
         message: str,
@@ -573,6 +616,10 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
         return self._pending_clarifications.get(chat_id)
 
     async def resume_with_answer(self, task_id: str, answer: str, context: dict) -> TaskResult:
+        """在 Brain 所有者循环恢复追问任务。"""
+        return await self._run_on_owner(lambda: self._resume_with_answer_on_owner(task_id, answer, context))
+
+    async def _resume_with_answer_on_owner(self, task_id: str, answer: str, context: dict) -> TaskResult:
         """用用户的文本回答恢复被追问中断的任务。
 
         工作流:
@@ -669,6 +716,10 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
     # ── 回调处理 ──────────────────────────────────────
 
     async def handle_callback(self, callback_id: str, data: str) -> TaskResult:
+        """在 Brain 所有者循环处理 Telegram 按钮回调。"""
+        return await self._run_on_owner(lambda: self._handle_callback_on_owner(callback_id, data))
+
+    async def _handle_callback_on_owner(self, callback_id: str, data: str) -> TaskResult:
         """
         处理 Telegram Inline Keyboard 回调。
 
@@ -719,6 +770,17 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
     def get_active_tasks(self) -> list[dict]:
         """获取所有活跃任务状态（用快照迭代防止字典大小变化）"""
         return [r.to_dict() for r in list(self._active_tasks.values())]
+
+    async def get_runtime_state(self) -> dict[str, Any]:
+        """在所有者循环读取供 API 使用的 Brain 状态快照。"""
+        return await self._run_on_owner(self._get_runtime_state_on_owner)
+
+    async def _get_runtime_state_on_owner(self) -> dict[str, Any]:
+        """构造不跨线程共享可变字典的 Brain 状态快照。"""
+        return {
+            "active_tasks": self.get_active_tasks(),
+            "pending_callbacks": len(self._pending_callbacks),
+        }
 
     def cancel_task(self, task_id: str) -> bool:
         """取消一个任务"""
@@ -784,22 +846,30 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
 # ── 全局单例 ──────────────────────────────────────────────
 
 _brain: OpenClawBrain | None = None
+_brain_lock = threading.Lock()
 
 
 def get_brain() -> OpenClawBrain:
-    """获取全局 Brain 实例"""
-    global _brain
-    if _brain is None:
-        _brain = OpenClawBrain()
-    return _brain
+    """获取已经由主事件循环初始化的全局 Brain 实例。"""
+    with _brain_lock:
+        brain = _brain
+    if brain is None or not brain._loop_owner.is_bound:
+        raise OwnerLoopNotReady("Brain 主事件循环尚未就绪")
+    return brain
 
 
 def init_brain() -> OpenClawBrain:
-    """初始化并返回 Brain 实例（用于 multi_main.py 启动时调用）"""
+    """在主事件循环幂等初始化 Brain，禁止请求线程制造第二实例。"""
     global _brain
-    _brain = OpenClawBrain()
-    logger.info("OpenClawBrain 已初始化")
-    return _brain
+    with _brain_lock:
+        if _brain is None:
+            brain = OpenClawBrain()
+            brain.bind_current_loop()
+            _brain = brain
+            logger.info("OpenClawBrain 已初始化")
+        else:
+            _brain.bind_current_loop()
+        return _brain
 
 
 # ── 复合意图拆解 — 搬运 ChatGPT multi-tool / AutoGPT task chain ──────

@@ -5,6 +5,7 @@ Covers: _load_state, _save_state, roundtrip persistence,
         draft status transitions, dedup, scheduler lifecycle.
 """
 import json
+import asyncio
 import threading
 
 import pytest
@@ -45,6 +46,16 @@ def isolate_state_file(tmp_path, monkeypatch):
 def autopilot():
     """Fresh SocialAutopilot instance (singleton reset per test)."""
     return ss_module.SocialAutopilot()
+
+
+@pytest.fixture
+def local_job_runner(monkeypatch):
+    """仅为同步单测显式提供临时执行器；生产 job 仍必须走 owner loop。"""
+    def run(coro):
+        return asyncio.run(coro)
+
+    monkeypatch.setattr(ss_module, "_run_async", run)
+    return run
 
 
 # ============ _load_state / _save_state ============
@@ -305,7 +316,9 @@ def test_social_draft_approve_then_publish(isolate_state_file):
 
 
 
-def test_job_evening_produce_marks_drafts_as_needs_review(isolate_state_file, monkeypatch):
+def test_job_evening_produce_marks_drafts_as_needs_review(
+    isolate_state_file, monkeypatch, local_job_runner
+):
     """旧 autopilot 生产的 X/小红书草稿应直接进入待确认队列。"""
     state = ss_module._load_state()
     state["last_scan_topics"] = [{"title": "网友把周一早会称为灵魂出厂设置", "score": 9}]
@@ -346,7 +359,9 @@ def test_job_noon_engage_skips_external_interactions_in_review_mode(monkeypatch)
 
     assert calls == []
 
-def test_job_night_publish_skips_unreviewed_ready_drafts(isolate_state_file, monkeypatch):
+def test_job_night_publish_skips_unreviewed_ready_drafts(
+    isolate_state_file, monkeypatch, local_job_runner
+):
     """旧 autopilot 晚间发布任务也不能绕过内容审核闸口。"""
     state = ss_module._load_state()
     state["drafts"] = [
@@ -378,7 +393,9 @@ def test_job_night_publish_skips_unreviewed_ready_drafts(isolate_state_file, mon
     assert loaded["stats"]["posts_today"] == 0
 
 
-def test_job_night_publish_does_not_auto_publish_approved_drafts_in_review_mode(isolate_state_file, monkeypatch):
+def test_job_night_publish_does_not_auto_publish_approved_drafts_in_review_mode(
+    isolate_state_file, monkeypatch, local_job_runner
+):
     """审核模式下，已确认内容也必须由桌面端最终发布确认触发。"""
     state = ss_module._load_state()
     state["drafts"] = [
@@ -408,7 +425,9 @@ def test_job_night_publish_does_not_auto_publish_approved_drafts_in_review_mode(
     assert loaded["drafts"][0]["review_status"] == "approved"
 
 
-def test_job_night_publish_never_publishes_even_when_review_flag_is_disabled(isolate_state_file, monkeypatch):
+def test_job_night_publish_never_publishes_even_when_review_flag_is_disabled(
+    isolate_state_file, monkeypatch, local_job_runner
+):
     """旧配置开关不能重新打开已删除的自动发布旁路。"""
     state = ss_module._load_state()
     state["drafts"] = [

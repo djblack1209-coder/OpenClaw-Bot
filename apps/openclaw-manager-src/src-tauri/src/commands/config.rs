@@ -3062,10 +3062,9 @@ pub async fn install_feishu_plugin() -> AppResult<String> {
         ));
     }
 
-    // 安装飞书插件
-    // 注意：使用 @m1heng-clawd/feishu 包名
-    info!("[飞书插件] 执行 openclaw plugins install @m1heng-clawd/feishu ...");
-    match shell::run_openclaw(&["plugins", "install", "@m1heng-clawd/feishu"]) {
+    // npm 已禁止覆盖已发布版本；固定版本可避免按钮在不同日期安装不同代码。
+    info!("[飞书插件] 执行 openclaw plugins install @m1heng-clawd/feishu@0.1.19 ...");
+    match shell::run_openclaw(&["plugins", "install", "@m1heng-clawd/feishu@0.1.19"]) {
         Ok(output) => {
             info!("[飞书插件] 安装输出: {}", output);
 
@@ -3087,7 +3086,7 @@ pub async fn install_feishu_plugin() -> AppResult<String> {
         Err(e) => {
             error!("[飞书插件] ✗ 安装失败: {}", e);
             Err(AppError::process(format!(
-                "安装飞书插件失败: {}\n\n请手动执行: openclaw plugins install @m1heng-clawd/feishu",
+                "安装飞书插件失败: {}\n\n请手动执行: openclaw plugins install @m1heng-clawd/feishu@0.1.19",
                 e
             )))
         }

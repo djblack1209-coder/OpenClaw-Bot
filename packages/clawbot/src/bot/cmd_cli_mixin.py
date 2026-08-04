@@ -6,7 +6,7 @@
 让用户通过 Telegram 控制桌面软件:
 - /cli list          — 列出可用工具
 - /cli run gimp project new --width 1920 --height 1080
-- /cli install blender
+- /cli install <tool> — 远程安装已禁用，仅返回本机预装指引
 - /cli help <tool>   — 显示工具帮助
 
 搬运 HKUDS/CLI-Anything (31K★) — 把任何桌面 GUI 变成命令行。
@@ -15,7 +15,10 @@
 import logging
 
 from src.bot.auth import requires_auth
-from src.integrations.cli_anything_bridge import CLIAnythingManager
+from src.integrations.cli_anything_bridge import (
+    CLI_REMOTE_INSTALL_DISABLED_MESSAGE,
+    CLIAnythingManager,
+)
 from src.telegram_ux import with_typing
 
 logger = logging.getLogger(__name__)
@@ -32,7 +35,7 @@ class CLICommandsMixin:
         子命令:
             list                — 列出已安装的 CLI 工具
             run <tool> [args]   — 执行工具命令
-            install <tool>      — 安装新工具
+            install <tool>      — 显示远程安装禁用策略
             help <tool>         — 查看工具帮助
             status              — 查看 CLI-Anything 状态
         """
@@ -64,8 +67,8 @@ class CLICommandsMixin:
             elif sub_cmd in {"install", "安装"}:
                 if not rest:
                     await update.message.reply_text(
-                        "❌ 用法: /cli install <工具名>\n"
-                        "例如: /cli install blender"
+                        f"{CLI_REMOTE_INSTALL_DISABLED_MESSAGE}\n"
+                        "工具名参数不再触发任何安装操作。"
                     )
                     return
                 await self._cli_install(update, context, rest[0])
@@ -98,8 +101,7 @@ class CLICommandsMixin:
         if not tools:
             await update.message.reply_text(
                 "📭 还没有安装任何 CLI-Anything 工具\n\n"
-                "可以用 /cli install <工具名> 安装\n"
-                "例如: /cli install gimp"
+                f"{CLI_REMOTE_INSTALL_DISABLED_MESSAGE}"
             )
             return
 
@@ -148,16 +150,8 @@ class CLICommandsMixin:
             )
 
     async def _cli_install(self, update, context, tool_name: str):
-        """安装 CLI-Anything 工具"""
-        status_msg = await update.message.reply_text(
-            f"📦 正在安装 cli-anything-{tool_name} ...\n"
-            "这可能需要一点时间"
-        )
-
-        mgr = CLIAnythingManager.get_instance()
-        result = await mgr.install(tool_name)
-
-        await status_msg.edit_text(result["message"])
+        """明确拒绝 Telegram 远程安装，不修改主 Python 环境。"""
+        await update.message.reply_text(CLI_REMOTE_INSTALL_DISABLED_MESSAGE)
 
     async def _cli_tool_help(self, update, context, tool_name: str):
         """显示某个工具的帮助信息"""
@@ -204,7 +198,7 @@ class CLICommandsMixin:
                 "⚠️ CLI-Anything 未安装\n\n"
                 "CLI-Anything 可以把桌面软件（如 GIMP、Blender）变成命令行工具，\n"
                 "然后你就能在 Telegram 里远程控制它们。\n\n"
-                "安装: pip install cli-anything"
+                f"{CLI_REMOTE_INSTALL_DISABLED_MESSAGE}"
             )
 
     @staticmethod
@@ -216,10 +210,10 @@ class CLICommandsMixin:
             "<b>命令:</b>\n"
             "  /cli list          — 列出已安装的工具\n"
             "  /cli run <工具> [参数]  — 执行命令\n"
-            "  /cli install <工具>    — 安装新工具\n"
+            "  /cli install <工具>    — 远程安装已禁用，仅显示本机预装指引\n"
             "  /cli help <工具>       — 查看工具帮助\n"
             "  /cli status            — 查看状态\n\n"
             "<b>示例:</b>\n"
-            "  /cli run gimp project new --width 1920\n"
-            "  /cli install blender\n"
+            "  /cli run gimp project new --width 1920\n\n"
+            f"{CLI_REMOTE_INSTALL_DISABLED_MESSAGE}"
         )

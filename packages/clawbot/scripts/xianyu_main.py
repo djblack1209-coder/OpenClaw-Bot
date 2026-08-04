@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """闲鱼 AI 客服启动入口 — 含日志轮转 + Cookie 热更新"""
+
 import asyncio
 import logging
 import logging.handlers
@@ -12,7 +13,7 @@ from dotenv import load_dotenv
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from src.xianyu.xianyu_live import XianyuLive
+from src.xianyu.xianyu_live import XianyuLive  # noqa: E402
 
 LOG_DIR = os.path.join(ROOT, "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -61,9 +62,12 @@ def _try_browser_login() -> str:
 
     try:
         import subprocess
+
         result = subprocess.run(
             [sys.executable, script_path],
-            capture_output=True, text=True, timeout=660,
+            capture_output=True,
+            text=True,
+            timeout=660,
             cwd=ROOT,
         )
         if result.returncode == 0:
@@ -84,6 +88,14 @@ def _try_browser_login() -> str:
         logger.error("启动登录浏览器失败: %s", e)
 
     return ""
+
+
+async def _run_live(live) -> None:
+    """在同一个事件循环运行并关闭闲鱼实时服务。"""
+    try:
+        await live.run()
+    finally:
+        await live.close()
 
 
 def main():
@@ -110,6 +122,7 @@ def main():
     admin_port = int(os.getenv("XIANYU_ADMIN_PORT", "18800"))
     try:
         from src.xianyu.xianyu_admin import start_admin_server
+
         start_admin_server(
             ctx_manager=live.ctx,
             reply_bot=live.bot,
@@ -127,35 +140,26 @@ def main():
         _load_env()
         new_cookies = os.getenv("XIANYU_COOKIES", "")
         if new_cookies and new_cookies != live.cookies_str:
-            from src.xianyu.utils import trans_cookies
-            live.cookies_str = new_cookies
-            live.cookies = trans_cookies(new_cookies)
-            # 同步更新 API 客户端的 Cookie（XianyuApis 使用 self.client，不是 self.session）
-            live.api.client.cookies.update(live.cookies)
-            live.myid = live.cookies.get("unb", "")
-            live.restart_flag = True
-            if live.ws:
-                try:
-                    asyncio.get_event_loop().call_soon_threadsafe(live.ws.close)
-                except RuntimeError:
-                    # 事件循环不可用时，仅设置 restart_flag 让主循环处理
-                    logger.debug("事件循环不可用，依赖 restart_flag 重连")
-            logger.info("Cookie 已热更新，正在重连...")
+            try:
+                future = live.submit_on_owner("reload_cookies", cookies_str=new_cookies)
+
+                def _report_reload(done_future):
+                    try:
+                        done_future.result()
+                        logger.info("Cookie 已在实时连接循环中热更新，正在重连...")
+                    except Exception as e:
+                        logger.error("Cookie 热更新失败: %s", e)
+
+                future.add_done_callback(_report_reload)
+            except RuntimeError as e:
+                logger.warning("闲鱼实时连接尚未就绪，Cookie 热更新未执行: %s", e)
         else:
             logger.info("Cookie 未变化，跳过")
 
     signal.signal(signal.SIGUSR1, _reload_cookies)
 
     logger.info("闲鱼 AI 客服启动中... (发送 SIGUSR1 可热更新 Cookie)")
-    try:
-        asyncio.run(live.run())
-    finally:
-        # 确保关闭底层 HTTP 连接，防止 TCP 泄漏（HI-410）
-        try:
-            asyncio.run(live.close())
-        except RuntimeError:
-            # 事件循环已关闭时忽略
-            pass
+    asyncio.run(_run_live(live))
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useLanguage } from '@/i18n';
 
@@ -42,16 +42,18 @@ export function ConfirmDialog({
   const { t } = useLanguage();
   const resolvedConfirmText = confirmText ?? t('common.confirm');
   const resolvedCancelText = cancelText ?? t('common.cancel');
+  const titleId = useId();
+  const cancelRef = useRef<HTMLButtonElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
 
-  // 打开时自动聚焦确认按钮
+  // 危险操作默认聚焦取消，避免用户误按回车直接执行。
   useEffect(() => {
     if (open) {
-      // 延迟聚焦，等待动画开始后
-      const timer = setTimeout(() => confirmRef.current?.focus(), 50);
+      const target = destructive ? cancelRef.current : confirmRef.current;
+      const timer = setTimeout(() => target?.focus(), 50);
       return () => clearTimeout(timer);
     }
-  }, [open]);
+  }, [destructive, open]);
 
   // ESC 键关闭
   useEffect(() => {
@@ -77,6 +79,9 @@ export function ConfirmDialog({
           onClick={() => !loading && onClose()}
         >
           <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
@@ -84,12 +89,13 @@ export function ConfirmDialog({
             className="bg-dark-800 border border-dark-600 rounded-xl shadow-2xl p-6 w-full max-w-sm mx-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-white font-semibold text-base mb-2">{title}</h3>
+            <h3 id={titleId} className="text-white font-semibold text-base mb-2">{title}</h3>
             {description && (
               <p className="text-gray-400 text-sm mb-5 leading-relaxed">{description}</p>
             )}
             <div className="flex justify-end gap-3">
               <button
+                ref={cancelRef}
                 onClick={onClose}
                 disabled={loading}
                 className="px-4 py-2 text-sm text-gray-300 bg-dark-700 hover:bg-dark-600 rounded-lg border border-dark-500 transition-colors disabled:opacity-50"

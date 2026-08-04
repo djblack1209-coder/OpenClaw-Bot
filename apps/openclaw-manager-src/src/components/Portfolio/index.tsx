@@ -11,6 +11,7 @@ import { Loader2 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { clawbotFetch, clawbotFetchJson, LONG_TIMEOUT_MS } from '../../lib/tauri-core';
 import { useLanguage } from '../../i18n';
+import { ConfirmDialog } from '../ui/confirm-dialog';
 
 /* ====== 类型定义 ====== */
 
@@ -214,6 +215,8 @@ export function Portfolio() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sellingSymbol, setSellingSymbol] = useState<string | null>(null);
+  const [pendingSell, setPendingSell] = useState<{ symbol: string; quantity: number; orderType: 'MKT' } | null>(null);
+  const sellSubmittingRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   /* IBKR 连接状态 — 独立于 portfolioSummary，由 /api/v1/status 实时更新 */
   const [ibkrConnected, setIbkrConnected] = useState(false);
@@ -295,20 +298,30 @@ export function Portfolio() {
     };
   }, [fetchData]);
 
-  /* ====== 卖出操作（带 Toast 反馈） ====== */
-  const handleSell = async (symbol: string, quantity: number) => {
-    setSellingSymbol(symbol);
+  /* ====== 卖出操作：先复核整仓数量，再阻止重复提交 ====== */
+  const requestSell = (symbol: string, quantity: number) => {
+    if (sellSubmittingRef.current || sellingSymbol) return;
+    setPendingSell({ symbol, quantity, orderType: 'MKT' });
+  };
+
+  const handleConfirmSell = async () => {
+    const order = pendingSell;
+    if (!order || sellSubmittingRef.current) return;
+    sellSubmittingRef.current = true;
+    setSellingSymbol(order.symbol);
     try {
-      await api.tradingSell(symbol, quantity, 'MKT');
-      toast.success(`${symbol} ${t('portfolio.sell.success')}`, { description: `${t('portfolio.sell.quantity')}: ${quantity}`, channel: 'log' });
+      await api.tradingSell(order.symbol, order.quantity, order.orderType);
+      toast.success(`${order.symbol} ${t('portfolio.sell.success')}`, { description: `${t('portfolio.sell.quantity')}: ${order.quantity}`, channel: 'log' });
       /* 刷新数据 */
       fetchData(true);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : t('portfolio.error.unknown');
-      toast.error(`${symbol} ${t('portfolio.sell.failed')}`, { description: msg, channel: 'notification' });
-      console.error(`[Portfolio] 卖出失败: ${symbol}`, msg);
+      toast.error(`${order.symbol} ${t('portfolio.sell.failed')}`, { description: msg, channel: 'notification' });
+      console.error(`[Portfolio] 卖出失败: ${order.symbol}`, msg);
     } finally {
+      sellSubmittingRef.current = false;
       setSellingSymbol(null);
+      setPendingSell(null);
     }
   };
 
@@ -688,8 +701,8 @@ export function Portfolio() {
                           </span>
                           {/* 卖出按钮（演示模式下禁用） */}
                           <button
-                            disabled={demoMode || sellingSymbol === h.symbol}
-                            onClick={e => { e.stopPropagation(); handleSell(h.symbol, h.quantity); }}
+                            disabled={demoMode || Boolean(sellingSymbol)}
+                            onClick={e => { e.stopPropagation(); requestSell(h.symbol, h.quantity); }}
                             className="font-mono text-[10px] px-2 py-1 rounded transition-colors flex-shrink-0"
                             style={{
                               color: demoMode || sellingSymbol === h.symbol ? 'var(--text-disabled)' : 'var(--accent-red)',
@@ -1677,6 +1690,16 @@ export function Portfolio() {
           </motion.div>
         )}
       </div>
+      <ConfirmDialog
+        open={Boolean(pendingSell)}
+        onClose={() => !sellingSymbol && setPendingSell(null)}
+        onConfirm={handleConfirmSell}
+        title={pendingSell ? `${pendingSell.symbol} ${t('portfolio.sell')}` : t('portfolio.sell')}
+        description={pendingSell ? `${t('portfolio.sell.quantity')}: ${pendingSell.quantity} · MKT` : ''}
+        confirmText={`${t('common.confirm')} ${t('portfolio.sell')}`}
+        destructive
+        loading={Boolean(sellingSymbol)}
+      />
     </div>
   );
 }

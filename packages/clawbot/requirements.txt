@@ -11,7 +11,7 @@ urllib3>=2.7.0,<3.0.0  # 参考 urllib3 CHANGES 2.7.x，收口 2026 高危漏洞
 charset-normalizer>=3.0.0,<4.0.0  # requests 官方字符集检测依赖上限
 chardet>=5.0.0,<6.0.0  # 保留兼容旧库导入，避免 7.x 触发 requests 依赖告警
 
-# 依赖安全下限 — 参考 2026-07-02 PyPI/官方 changelog，避免 pip 回退到已知漏洞版本。
+# 依赖安全下限 — 参考 2026-08-04 PyPI/官方安全公告，避免 pip 回退到已知漏洞版本。
 pillow>=12.2.0,<13.0.0
 lxml>=6.1.0,<7.0.0
 pydantic-settings>=2.14.2,<3.0.0
@@ -19,12 +19,13 @@ pypdf>=6.13.3,<7.0.0
 python-multipart>=0.0.31,<1.0.0
 tornado>=6.5.7,<7.0.0
 curl-cffi>=0.15.0,<1.0.0
+cryptography>=50.0.0,<51.0.0
 
 # Flask — 部署服务器 (deployer/deploy_server.py, web_installer.py)
 flask>=3.0.0,<4.0.0
 
 # aiohttp — 异步 HTTP (evolution/github_trending.py)
-aiohttp>=3.14.1,<4.0.0
+aiohttp>=3.14.3,<4.0.0
 
 # JSON 容错解析（4.6k⭐）— 替代 json.loads 解析 LLM 输出
 json-repair~=0.60.1
@@ -65,7 +66,7 @@ mem0ai>=0.1.30
 
 # browser-use — AI 浏览器代理 (81k⭐, MIT)
 # 替换自研 ai_browser.py: DOM 解析、LLM 决策循环、反检测
-# browser-use 默认不再安装：0.13.3 固定 aiohttp 3.13.4，与 aiohttp 3.14.1 安全修复冲突；代码会回退 Playwright/DrissionPage。
+# browser-use 默认不再安装：0.13.3 固定 aiohttp 3.13.4，与 aiohttp 3.14.3 安全修复冲突；代码会回退 Playwright/DrissionPage。
 # 需要自然语言浏览器代理时，请在隔离环境安装 browser-use>=0.13.3 并单独审计。
 
 # Playwright — 浏览器自动化 (browser-use 底层依赖)

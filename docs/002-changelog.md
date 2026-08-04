@@ -5,6 +5,149 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
+## [2026-08-05] 全维度审计闭环：安全、供应链、架构与自动灾备
+> 领域: `backend` | `frontend` | `deploy` | `infra` | `docs` | `xianyu`
+> 影响模块: `HTTP/浏览器安全`, `Frist runtime`, `闲鱼管理面`, `Intel Brief`, `Docker`, `CI`, `本机灾备`, `AI 开发 SOP`
+> 关联问题: HI-965, HI-966, HI-967, HI-968, HI-969, HI-970, HI-971, HI-972, HI-973, HI-974, HI-975, HI-976, HI-977, HI-978, HI-979, HI-980
+### 变更内容
+- 使用 mattpocock/skills 的 Wayfinder 目标地图、审计 ticket 和架构深模块原则完成全维度审计；在仓库文档规则下把 Destination / Notes / Decisions / Frontier 合并到 HEALTH，修正 `AGENTS.md` 中不存在或已改名的 Skill 路由。
+- HTTP 客户端逐跳验证 DNS、重定向和固定地址，浏览器主文档/子资源/WebSocket 共用精确主机边界；API 限流只信显式可信代理并限制状态容量，最终日志 record/异常链统一脱敏并以 0700/0600 落盘。
+- Frist 邮箱、重置、2FA、会话指纹和限流失败关闭；闲鱼根 Token 只换取 15 分钟、最多 128 个 HttpOnly 会话，写请求同源校验，页面使用 nonce CSP 和安全 DOM；CLIAnything 远程动态安装固定 403。
+- 闲鱼运行对象先转换为不可变 snapshot，`operations_projection.py` 一次生成售卖、循环观察和买家进度；Frist 原子文件写、串行 mutation 与 AES-256-GCM 字段加密迁入 `runtime-store.js`，两个热点入口分别减少 223 行和 180 行。
+- 更新 npm 直接/传递依赖、双平台 Python 哈希锁、Docker 固定 digest/amd64/非 root 安装和 RustSec 门；PR CI 覆盖全部目标分支，固定 Action SHA，并执行 ShellCheck、Gitleaks、npm/pip/cargo 与供应链检查。
+- 重建本机灾备：SQLite 在线 `.backup`、包内逐文件 manifest、包外 SHA-256、原子 `.ready`、安全 tar、恢复 dry-run/drill/confirm、GPG 离机密文和数量/天数保留。`ai.openclaw.daily-backup` 已实装为每天 03:30 自动备份后强制恢复演练。
+- 修复 Intel Brief 旧 schema v3 缺 `content_delivery_attempts.event_key` 导致的真实定时任务崩溃；真实库先做 root-only SQLite 备份，再迁移到 v4 并通过 quick_check。为避免提前发送真实消息，LaunchAgent 只重新加载，等待 08:30 自然验证。
+- 修复 Bot 假健康、Tauri 可预测 `/tmp` WhatsApp 脚本和容器内 store 项目根定位；桌面本机进程临时文件改为随机 0700、用后清理，容器完整构建后以非 root 导入冒烟。
+### 验证
+- 聚焦回归：闲鱼投影/履约/owner/API `208/208`，Intel schema/订阅投递/生产链 `37/37`，Frist `234/234`，自动运维 `21/21`，新增 runtime store `3/3`；Ruff、ShellCheck、Node/Bash 语法和 `git diff --check` 通过。
+- 安全门：四套 npm production audit 为 0，Linux/macOS pip-audit 无已知漏洞，RustSec 为 0 vulnerability（17 条目标平台/上游 informational allow warning），35 个仓库 Shell 脚本零告警；Gitleaks 当前树和 859 提交历史均无泄漏。
+- 容器：完整 amd64 镜像从哈希锁构建成功，最终以 `uid=999 gid=999` 运行并完成 `imports=ok` 冒烟；SSRF/浏览器组合回归与真实 `https://example.com` 请求均通过。
+- 实机：`ai.openclaw.daily-backup` 已加载并退出 0；`openeverything-20260805-034824.tgz` 完整 restore drill 通过。Intel 真实数据库备份 SHA-256 为 `db845bc5ce4e380086090eeef38bd5e27f54dbf89af3cb2d59e88cc496f036cf`，迁移后 schema v4 与 quick_check 通过。
+- 最终 `make ci-local`、桌面构建/唯一安装和截图数字集中记录在 `docs/086-release-evidence.md`，避免多处复制漂移。
+### 文件变更
+- `packages/clawbot/src/http_client.py`、`src/tools/web_tool.py`、`src/api/server.py`、`src/log_config.py`、`src/integrations/cli_anything_bridge.py` 与测试 — SSRF、限流、日志和动态安装边界。
+- `packages/clawbot/src/xianyu/operations_projection.py`、`xianyu_admin.py`、`xianyu_live.py` 与测试 — owner 快照、纯投影和管理会话安全。
+- `packages/clawbot/src/intel/db/store.py` 与测试 — schema v4 真实旧库迁移。
+- `apps/frist-api/server/runtime-store.js`、认证/安全/支付模块与测试 — 深模块、会话、限流和资金链失败关闭。
+- `scripts/local_backup.sh`、`disaster_recovery.sh`、`manage_backup_launchagent.sh`、`auto_health_check.sh`、`auto_ops_scripts.test.mjs`、`Makefile` — 自动备份、恢复演练和健康门。
+- `.github/workflows/`、依赖锁、Docker/Compose、`scripts/check_supply_chain.mjs`、`scripts/check_clean_install.sh` — 可复现构建与安全门。
+- `AGENTS.md`、`docs/001-project-map.md`、`docs/002-changelog.md`、`docs/006-registries.md`、`docs/007-operations.md`、`docs/009-health.md`、`docs/086-release-evidence.md` — 目标、事实源、运维和发布证据。
+
+## [2026-08-04] 8 分目标复审收口：实盘、履约、写队列与真实回滚
+> 领域: `backend` | `frontend` | `trading` | `xianyu` | `deploy` | `infra` | `docs`
+> 影响模块: `IBKR SELL`, `闲鱼履约`, `owner-loop`, `Frist runtime`, `认证限流`, `Tauri 回滚`, `五维评分`
+> 关联问题: HI-817, HI-818, HI-890, HI-959, HI-960, HI-961, HI-962, HI-963, HI-964
+### 变更内容
+- 实盘 SELL 严格区分 MKT/LMT，限价缺价格不再退化为市价单；下单前串行核对真实多头持仓、未完成卖单和本地保留量，取消、失效、零成交和结果不确定均不再返回成功。
+- 闲鱼只从真实订单/交易 ID 生成履约键；主 webhook、订单轮询复用、浏览器和人工补发统一使用 SQLite 原子领取。发送异常停在 `message_send_uncertain` 并禁止自动重试，暂停分支不能覆盖已发送或不确定终态。
+- `AsyncLoopOwner` 的旧循环关闭只回收本循环任务，不再清空已经重绑的新 owner；闲鱼管理 HTTP/WS 以实际 bind host 和 `prod/production` 统一失败关闭。
+- Frist 普通 runtime `mutate` 强制同步，注册/重置邮件、补货探测、渠道巡检、上游余额和 New-API Token 外部请求移出全局写队列；生产禁止本地旧网关兼容链，密码重置请求增加账号级 3 次/15 分钟限流。
+- 桌面版本升至 0.1.1；构建只把 CDHash 不同的签名 App 计为上一版，清单新增源码补丁与 DMG SHA-256。同指纹检查固定拒绝，0.1.1/0.1.0 已真实双向交换后恢复 0.1.1。
+- 五维评分改为每维 10 个二元证据门；历史第三方凭据轮换、Developer ID/公证、当前工作树远端 Linux 产物和巨型热点不再主观加分，明确记为 P2/未通过项。
+### 验证
+- 交易/API/owner-loop 聚焦回归 `145/145`，闲鱼自动发货与 owner-loop `133/133`，均在 `PYTHONASYNCIODEBUG=1` 和 `RuntimeWarning` 失败门下通过；相关 Ruff、Node 语法和 `git diff --check` 通过。
+- Frist 全量 `228/228`，账号级重置限流、SMTP 队列解耦、补货探测和渠道巡检均有回归。
+- 运维脚本 `11/11`；两个不同 ad-hoc 签名测试 App 可双向交换，同指纹固定拒绝。真实 `make tauri-build` 生成 `OpenClaw_0.1.1_aarch64.dmg`，0.1.1 `42799197…` 与 0.1.0 `39fb9e44…` 不同，真实回滚后已恢复 0.1.1；最终源码补丁和 DMG SHA-256 由构建后的 root-only 回滚清单记录，避免文档复制值漂移。
+### 文件变更
+- `packages/clawbot/src/broker_bridge.py`、`src/api/routers/trading.py`、`src/core/loop_owner.py` 与对应测试 — SELL 持仓/状态和旧循环关闭边界。
+- `packages/clawbot/src/xianyu/xianyu_live.py`、`xianyu_context.py`、`xianyu_admin.py` 与对应测试 — 稳定订单身份、原子分配/发送和生产鉴权。
+- `apps/frist-api/server/server.js`、`security.js`、`email.js`、生产环境示例和测试 — 外部 I/O 队列拆分与重置请求限流。
+- `scripts/tauri_build_install.sh`、`tauri_rollback.sh`、`auto_ops_scripts.test.mjs`、桌面版本文件 — 真实异版本回滚与发布指纹。
+- `docs/001-project-map.md`、`docs/002-changelog.md`、`docs/006-registries.md`、`docs/007-operations.md`、`docs/009-health.md`、`docs/086-release-evidence.md` — 事实源、P2 残余和二元评分。
+
+## [2026-08-04] 8 分目标最终收口：失败关闭、供应链与发布证据校准
+> 领域: `backend` | `frontend` | `deploy` | `infra` | `docs`
+> 影响模块: `owner-loop`, `SocialAutopilot`, `Bulkhead`, `闲鱼只读探测`, `Frist 支付`, `MCP Store`, `桌面构建`, `CI`
+> 关联问题: HI-947, HI-952, HI-954, HI-955, HI-956, HI-957, HI-958
+### 变更内容
+- owner-loop 提交改为 Future 登记 + owner 线程惰性创建协程；停止/提交竞态失败关闭，`loop.close()` 前取消并排空已启动任务，避免 pending Task 被销毁。
+- Bulkhead 动态重配原位调整同一隔离舱，闲鱼只读扫单明确映射 owner 未就绪/超时为 503/504；SocialAutopilot 关机阶段释放 APScheduler 和循环引用但不篡改持久化 `enabled` 意图。
+- Frist 充值拆为准备事务、事务外渠道请求、成功/失败落库三段；渠道请求有硬超时，金额校验使用订单总额字段，微信回调增加时间戳/平台序列号，重复成功回调不重复追加事件。
+- Tauri MCP Store 降级为受管目录只读展示：从唯一 `MANAGED_MCP_PACKAGES` 注册表派生版本和元数据，不读取旧配置、不返回 command/args/env、不提供伪 stdio 启停入口；真实 MCP 会话由 CC Switch/OpenClaw 官方配置链负责。
+- Compose 镜像固定 `tag@sha256`，新增临时目录干净安装门；桌面构建在所有备份就绪前不删除现有 App。
+- 桌面开发工具链安全 override 更新为 `brace-expansion@5.0.9`、`fast-uri@4.1.2`、`hono@4.13.0`、`ip-address@10.4.0`；完整桌面/生产依赖 `npm audit` 重新归零。
+- 忽略闲鱼运营状态文件旁的进程锁临时文件，避免测试或异常退出把本机运行态带入工作树。
+- 文档真实性检查区分仓库事实与明确受 Git 忽略的本机运行资产；干净检出不再因私有 `.env`、生产 SQLite 或历史情报 evidence 缺席而误报，源码、脚本和发布文档路径仍逐项校验。
+### 验证
+- owner-loop、Brain/EventBus、Social、IBKR、闲鱼和 WebSocket 聚焦回归在 `PYTHONASYNCIODEBUG=1` 下通过；Bulkhead、SocialAutopilot、闲鱼自动发货聚焦回归通过；最终 `make ci-local` 为 Python `2,364` 收集、`2,362` 通过、`2` 预期跳过、`0` 失败，总覆盖率 `44.34%`、关键聚合 `88%`；Frist `226/226`、桌面合同 `27/27`、Rust `44/44`，TypeScript、ESLint、Vite 和文档门全绿。
+- 供应链检查验证 2 个工作流、16 个 Action SHA、354 个 npm 锁定包和 3 个 Compose 文件的 digest；临时目录 npm/Python 哈希锁安装通过；桌面完整/生产、Frist、runtime npm audit 和 Linux/macOS pip-audit 均为 0；Gitleaks 扫描 859 commits、约 55.11 MB 无泄漏。
+- `make tauri-build` 生成 `OpenClaw.app` 与 `OpenClaw_0.1.0_aarch64.dmg`；严格 ad-hoc 签名、DMG checksum、`rollback_ready=true`、唯一安装和旧 App 删除前备份闸门均通过。原生首屏为 `output/playwright/openclaw-installed-app-final.png`，Vite 桌面/移动验收为 `openclaw-vite-desktop-final.png` / `openclaw-vite-mobile-final.png`。
+### 文件变更
+- `packages/clawbot/src/core/loop_owner.py`、`resilience.py`、`social_scheduler.py`、`xianyu/xianyu_admin.py` 与对应测试 — 关闭竞态、重配和生命周期边界。
+- `apps/frist-api/server/server.js`、`payments.js`、`shared.js` 与支付测试 — 两阶段充值、超时、金额与回调时效/去重。
+- `apps/openclaw-manager-src/src-tauri/src/commands/mcp.rs`、`npm_runtime.rs`、Store IPC/UI、供应链脚本和 Compose 文件 — 只读 MCP 目录、唯一注册表和 digest 门。
+- `scripts/tauri_build_install.sh`、`check_clean_install.sh`、`check_docs_layout.sh`、`Makefile`、`docs/` — 构建备份闸门、干净安装、干净检出文档检查和证据口径。
+
+## [2026-08-04] 8 分目标第三阶段：事件循环、供应链与发布证据收口
+> 领域: `backend` | `frontend` | `deploy` | `infra` | `docs`
+> 影响模块: `Brain/EventBus`, `交易与闲鱼所有者循环`, `Frist 支付与会话`, `Tauri npm/MCP 运行时`, `CI 与覆盖率`, `桌面发布回滚`
+> 关联问题: HI-942, HI-943, HI-944, HI-945, HI-946, HI-947, HI-948, HI-949, HI-950, HI-951, HI-952, HI-953
+### 变更内容
+- 把 Brain、EventBus、SocialAutopilot、IBKR、闲鱼实时链、WebSocket 推送、CLI bridge、LiteLLM Router 和 resilience primitive 收口到显式所有者循环；跨线程入口转发，未就绪失败关闭，FastAPI 在交易和调度服务初始化后才监听。
+- Frist 支付回调新增本机商户身份、订单原渠道、状态、金额和平台交易号唯一性五重校验；微信/支付宝下单响应也校验平台签名，缺失、过期、序列号不符或验签失败统一返回 502。微信平台公钥进入可下单就绪门。
+- Frist 将可信代理/限流、会话/CSRF、支付、共享规则和目录规则分别收口到 `security.js`、`auth.js`、`payments.js`、`shared.js` 和 `catalog.js`；删除会丢运行字段的未使用 `store.js`、绕过完整管理员校验的旧接口及弱化的重复安全实现。`server.js` 从审计基线 9,263 行降至 7,795 行；加密占位 API Key 固定拒绝。
+- 闲鱼补发与浏览器助手统一复用原子领取、发送、不确定态停机和完成落库状态机；发送异常不能自动重试，仍需人工核对。
+- 桌面安装器改用内嵌 npm package-lock：354 个运行包及传递依赖具备 SHA-512，安装执行 `npm ci --ignore-scripts`；MCP 运行时注册表和 Store 目录现在由最终收口条目统一描述。已拒绝含高危项的 OpenClaw 稳定包，精确采用审计为 0 且配置合同冒烟通过的 `2026.7.2-beta.7`。
+- 两个 GitHub 工作流的 16 个 Action 全部固定完整 commit SHA；New-API 同步 checkout 不持久化写凭据。新增 `make supply-chain-check`，同时验证 Action SHA、npm 直接/传递完整性和高危漏洞门。
+- Python 增加 Linux/macOS 双哈希锁与复算门；`aiohttp` 升至 3.14.3、`cryptography` 升至 50.0.0，pip-audit 对完整锁使用无二次解析模式并回到 0 已知漏洞。覆盖率增加总体、高风险聚合及逐文件下限。
+- Scheduler 修复切换请求和异常字段失败关闭，并补 390px 自动图标侧栏；Store 统一读取 Tauri MCP 配置；Assistant 支持真实取消。Tauri 构建保存签名回滚副本、CDHash 清单并提供只读/显式回滚入口。
+### 验证
+- 该阶段的历史基线为 Python 2,360 个节点、Frist `222/222`、桌面/Social/运维合同 `26/26`、Rust `45/45`；最终收口后的数字以本次 `make ci-local` 输出和 `docs/086-release-evidence.md` 为准，避免把阶段基线误报为当前结果。
+- 支付提供商创建响应聚焦合同 `5/5`；Frist 新增 8 项静态安全合同，覆盖加密占位 Key、危险旧接口和弱安全重复事实源；闲鱼发货与所有者循环聚焦回归全绿。
+- npm 三组审计均为 0；受管运行时 `354` 包完整性检查、Python 双锁复算与 `pip-audit` 均通过；Gitleaks 扫描 859 个提交、约 55 MB 历史无泄漏。干净 HOME 运行 `OpenClaw 2026.7.2-beta.7`，配置写入/校验、Gateway 帮助和插件枚举均退出 0。
+- `make tauri-build` 生成并安装 `OpenClaw.app` 与 `OpenClaw_0.1.0_aarch64.dmg`；App 严格 ad-hoc 签名、DMG 校验、唯一安装和当前/上一版回滚签名均通过，`rollback_ready=true`。真实安装包首屏截图为 `output/playwright/openclaw-installed-app.png`；Scheduler 与实盘卖出桌面/移动截图同时保留。
+### 文件变更
+- `packages/clawbot/src/core/loop_owner.py`、`brain.py`、`event_bus.py`、`social_scheduler.py`、`broker_bridge.py`、`xianyu/`、`api/routers/` 与对应测试 — 所有者循环和失败关闭。
+- `apps/frist-api/server/auth.js`、`security.js`、`payments.js`、`shared.js`、`catalog.js`、`server.js`、删除的 `store.js` 与 `tests/` — 安全域拆分、危险重复事实清理和支付全链路负向门。
+- `apps/openclaw-manager-src/src-tauri/npm-runtime-lock/`、`src/commands/npm_runtime.rs`、`installer.rs`、`mcp.rs` — 受管 npm 完整性锁与本地 MCP 入口。
+- `.github/workflows/`、`Makefile`、`scripts/check_supply_chain.mjs`、`scripts/check_docs_layout.sh`、`packages/clawbot/requirements*.txt` — CI、供应链、文档事实与依赖锁。
+- `apps/openclaw-manager-src/src/components/`、`src/lib/` — 调度、Store、Assistant、交易确认和移动端布局合同。
+- `scripts/tauri_build_install.sh`、`scripts/tauri_rollback.sh` — 签名构建、持久回滚副本与清单校验。
+
+## [2026-08-04] 8 分目标第二阶段：认证与定时任务失败关闭
+> 领域: `backend` | `trading` | `infra` | `docs`
+> 影响模块: `Frist-API 认证限流`, `FastAPI WebSocket`, `管理员控制台`, `交易重挂`, `Intel Brief 调度`
+> 关联问题: HI-937, HI-938, HI-939, HI-940, HI-941
+### 变更内容
+- Frist 默认忽略客户端自报的转发头；只有 socket 对端命中显式可信代理名单时才从右向左解析 `X-Forwarded-For`。密码重置确认叠加账号 HMAC 限流，限流表增加过期清理和 10000 桶容量上限，满容量时失败关闭。
+- HTTP 与 WebSocket 共用无 Token 本机开发判定；`production`、`prod` 和非本机绑定都拒绝连接，避免实时事件流绕过 HTTP 安全边界。
+- 管理员根令牌从浏览器长期存储改为仅在页面内存使用，管理端按钮和提示明确“本次会话”，刷新或关闭页面自动清空。
+- 隔夜 BUY 重挂默认关闭；只有显式开关与自动交易模式同时启用才允许入队和提交，人工确认模式不继承旧订单授权。
+- Intel Brief 只有 runner 明确返回 `status=success` 才记录当天完成；Telegram 或沙箱投递失败不会再封死当天重试。
+### 验证
+- Frist 可信代理、账号级重置限流和容量边界在旧代码为 `0/3`，修复后 `3/3`；管理员存储合同旧代码红灯、修复后 `1/1`。
+- WebSocket/HTTP 无 Token 策略新增 `prod` 和一致性用例，旧代码 `2` 项失败，修复后聚焦用例 `6/6`，Ruff 与 Python 编译通过。
+- 交易重挂新增两项失败关闭用例，旧代码 `2/2` 失败；Intel 失败重试旧代码第二次返回 `skipped`。修复后两份调度测试合计 `46/46`。
+- 最终 `make ci-local` 八阶段退出码 0：Python 全仓跑到 100% 且仅 2 项预期跳过，Frist `206/206`，桌面合同 `22/22`，TypeScript、Rust `34/34` 与文档 `23/23` 全部通过；前端 ESLint 与 Vite 正式构建通过，Gitleaks 对当前差异扫描为 0 泄漏。
+### 文件变更
+- `apps/frist-api/server/server.js`、`src/admin.js`、`admin.html`、`deploy/production.env.example`、`tests/server.test.mjs`、`tests/business-flow.test.mjs` — 可信代理、限流容量、账号重置保护和管理员临时令牌。
+- `packages/clawbot/src/api/auth.py`、`tests/test_api_routes_regression.py` — HTTP/WS 统一无 Token 策略。
+- `packages/clawbot/src/trading/_scheduler_tasks.py`、`tests/test_trading_system.py` — 隔夜重挂双重授权门。
+- `packages/clawbot/src/execution/scheduler.py`、`tests/test_intel_scheduler_gate.py` — 成功后才封存当天。
+- `docs/002-changelog.md`、`docs/006-registries.md`、`docs/007-operations.md`、`docs/009-health.md` — 同步变更、配置、运维和健康状态。
+
+## [2026-08-04] 8 分目标第一阶段：支付、实盘卖出与闲鱼放行安全门
+> 领域: `backend` | `frontend` | `trading` | `xianyu` | `docs`
+> 影响模块: `Frist-API 支付`, `Portfolio 实盘卖出`, `CC中转闲鱼运营状态`, `桌面安全回归`
+> 关联问题: HI-934, HI-935, HI-936
+### 变更内容
+- 支付宝渠道必须同时配置 App ID、商户私钥和平台公钥才会进入就绪状态；异步通知缺少平台公钥时固定返回 503，不能再绕过签名验证进入入账链路。
+- Portfolio 的整仓市价卖出改为“首次点击只打开危险操作确认框 → 展示股票、数量和 MKT 类型 → 确认后才提交”；同步提交锁阻止同一渲染帧重复下单，所有卖出按钮在请求中统一禁用。
+- 桌面 API 不再把任意 HTTP 2xx 当作卖出成功；只有合法 JSON 且业务字段 `success=true` 才显示成功，`success=false`、缺少字段或非法响应均显示失败。
+- 危险确认框补齐标准 `dialog` 语义，并把默认焦点从红色确认按钮移到取消按钮，降低键盘误触真实资金操作的风险。
+- 闲鱼单次发卡票的授权、读取、消费和写回统一进入跨线程/跨进程可重入锁；状态使用同目录临时文件、`fsync` 和原子替换，缺失或损坏时默认暂停，只有显式环境配置或人工恢复才能解除。
+### 验证
+- 支付红绿回归：旧代码新增用例 `0/2`，修复后聚焦与现有支付宝链路合计 `4/4` 通过。
+- 桌面安全合同：旧代码 `7/8`，修复后 `8/8`；`npx tsc --noEmit` 通过。
+- 闲鱼并发红灯在旧代码中观测到一张票被成功消费 5 次；修复后缺失/损坏失败关闭、并发唯一消费及既有单次发卡链路 4 项通过，完整闲鱼自动发货测试文件跑到 100%。
+- Playwright 在 1440×900 和 390×844 验证确认框无溢出/重叠且取消按钮默认聚焦；模拟 HTTP 200 + `success=false` 后页面显示“卖出失败”，未误报成功。截图：`output/playwright/portfolio-sell-confirm-desktop.png`、`portfolio-sell-confirm-mobile.png`。
+- 最终 `make ci-local` 八阶段退出码 0：Python Ruff、全仓测试与语法通过，Frist `202/202`，桌面安全/Social/运维合同 `22/22`，TypeScript、Rust `34/34`、`cargo check --locked` 和 23 份文档治理全部通过；前端 lint 与 Vite 正式构建通过。Git diff 与两个新增文件的 Gitleaks 扫描均为 0 泄漏。
+### 文件变更
+- `apps/frist-api/server/payments.js`、`tests/payments.test.mjs` — 支付宝就绪与通知验签失败关闭。
+- `apps/openclaw-manager-src/src/components/Portfolio/index.tsx`、`src/components/ui/confirm-dialog.tsx`、`src/lib/api.ts`、`src/lib/trading-sell.ts`、`src/lib/security-hardening.static.test.mjs` — 卖出复核、同步防重、危险焦点和业务成功校验。
+- `packages/clawbot/src/xianyu/cc_operator_state.py`、`tests/test_xianyu_cc_auto_ship.py` — 运营状态原子持久化、跨进程事务和并发回归。
+- `docs/002-changelog.md`、`docs/006-registries.md`、`docs/009-health.md` — 同步变更、操作入口与风险关闭证据。
+
 ## [2026-08-04] 每日资讯 V2 内容正确性、双语与富媒体闭环
 > 领域: `backend` | `ai-pool` | `deploy` | `infra` | `docs`
 > 影响模块: `Intel Brief 内容管道`, `Telegram 菜单与投递`, `CC Switch 翻译池`, `SQLite V3`, `LaunchAgent`, `运行健康`

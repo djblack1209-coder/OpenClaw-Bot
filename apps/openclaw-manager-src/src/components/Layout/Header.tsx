@@ -71,7 +71,7 @@ export function Header({ currentPage }: HeaderProps) {
 
   return (
     <header
-      className="h-12 flex items-center justify-between px-6 titlebar-drag"
+      className="h-12 flex items-center justify-between gap-2 px-3 titlebar-drag sm:px-6"
       style={{
         background: 'rgba(2, 2, 2, 0.6)',
         backdropFilter: 'blur(12px)',
@@ -80,9 +80,9 @@ export function Header({ currentPage }: HeaderProps) {
       }}
     >
       {/* 左侧：页面标题 */}
-      <div className="titlebar-no-drag flex items-center gap-3">
+      <div className="titlebar-no-drag flex min-w-0 items-center gap-3">
         <h2
-          className="font-display font-bold text-base"
+          className="truncate font-display font-bold text-sm sm:text-base"
           style={{ color: 'var(--text-primary)' }}
         >
           {title}
@@ -90,10 +90,10 @@ export function Header({ currentPage }: HeaderProps) {
       </div>
 
       {/* 右侧：时钟 + 连接状态 + 控制面板按钮 */}
-      <div className="flex items-center gap-4 titlebar-no-drag">
+      <div className="flex flex-shrink-0 items-center gap-2 titlebar-no-drag sm:gap-4">
         {/* 实时时钟 */}
         <span
-          className="font-mono tabular-nums text-xs tracking-wider"
+          className="hidden font-mono tabular-nums text-xs tracking-wider md:inline"
           style={{ color: 'var(--text-tertiary)' }}
         >
           {clock}
@@ -103,7 +103,7 @@ export function Header({ currentPage }: HeaderProps) {
         <div className="flex items-center gap-1.5">
           <span className={isRunning ? 'status-dot-green' : 'status-dot-red'} />
           <span
-            className="font-mono text-[10px] uppercase tracking-wider"
+            className="hidden font-mono text-[10px] uppercase tracking-wider sm:inline"
             style={{ color: isRunning ? 'var(--accent-green)' : 'var(--accent-red)' }}
           >
             {isRunning ? t('header.connected') : t('header.offline')}
@@ -114,7 +114,7 @@ export function Header({ currentPage }: HeaderProps) {
         <button
           onClick={handleOpenDashboard}
           disabled={opening}
-          className="flex items-center gap-1.5 px-3 py-1 rounded-lg font-mono text-[11px] transition-all duration-200 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:outline-none"
+          className="flex h-8 w-8 items-center justify-center gap-1.5 rounded-lg p-0 font-mono text-[11px] transition-all duration-200 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:outline-none lg:h-auto lg:w-auto lg:px-3 lg:py-1"
           style={{
             background: 'rgba(255,255,255,0.04)',
             color: 'var(--text-secondary)',
@@ -131,7 +131,7 @@ export function Header({ currentPage }: HeaderProps) {
           title={t('header.openDashboard')}
         >
           {opening ? <Loader2 size={12} className="animate-spin" /> : <ExternalLink size={12} />}
-          <span>{t('header.controlPanel')}</span>
+          <span className="hidden lg:inline">{t('header.controlPanel')}</span>
         </button>
       </div>
     </header>

@@ -7,6 +7,7 @@ NPM Extensions 和 Bot Skills 目录，不执行安装或卸载动作。
 
 import json
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -16,9 +17,21 @@ from fastapi import APIRouter
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/store")
 
-# 从 src/api/routers/store.py 推导到 packages/clawbot，再到项目根目录。
+def _resolve_project_root(module_file: Path) -> Path:
+    """解析仓库根；容器单包布局无法找到仓库时回退到 ClawBot 根。"""
+    clawbot_root = module_file.resolve().parents[3]
+    configured_root = os.environ.get("OPENCLAW_PROJECT_ROOT", "").strip()
+    if configured_root:
+        return Path(configured_root).expanduser().resolve()
+
+    for candidate in (clawbot_root, *clawbot_root.parents):
+        if candidate / "packages" / "clawbot" == clawbot_root:
+            return candidate
+    return clawbot_root
+
+
 _CLAWBOT_ROOT = Path(__file__).resolve().parents[3]
-_PROJECT_ROOT = _CLAWBOT_ROOT.parents[1]
+_PROJECT_ROOT = _resolve_project_root(Path(__file__))
 
 _NPM_SKILLS_DIR = _PROJECT_ROOT / "packages" / "openclaw-npm" / "skills"
 _NPM_EXTENSIONS_DIR = _PROJECT_ROOT / "packages" / "openclaw-npm" / "extensions"

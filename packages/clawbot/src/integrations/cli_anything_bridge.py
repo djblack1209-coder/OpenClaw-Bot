@@ -3,7 +3,7 @@
 让用户通过 Telegram 命令控制桌面软件:
 - /cli list          — 列出已安装的 CLI 工具
 - /cli run <tool> <args>  — 执行 CLI 命令
-- /cli install <tool>     — 安装新的 CLI 工具
+- /cli install <tool>     — 明确拒绝远程安装，提示本机预装
 
 CLI-Anything 可以把任何桌面 GUI 软件变成命令行工具，
 OpenClaw 通过这个桥接层让用户在 Telegram 里远程控制桌面软件。
@@ -11,14 +11,16 @@ OpenClaw 通过这个桥接层让用户在 Telegram 里远程控制桌面软件�
 架构:
   Telegram /cli 命令 → CLIAnythingManager → asyncio.subprocess → cli-anything-*
 
-降级: CLI-Anything 未安装时所有操作返回友好提示。
+安全边界: 只发现和运行 PATH 中已预装工具，不允许 API 或 Telegram 修改 Python 环境。
 """
 
 import asyncio
 import logging
 import re
 import shutil
+import threading
 import time
+from types import MappingProxyType
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -26,10 +28,76 @@ logger = logging.getLogger(__name__)
 # ── 工具名称合法性校验（只允许字母数字和连字符，防注入） ──
 _TOOL_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9\-]*$")
 
+# 允许项只能写成 {工具名: "精确包名==精确版本"}；当前无可信条目，空表表示安装完全关闭。
+CLI_REMOTE_INSTALL_ALLOWLIST = MappingProxyType({})
+CLI_REMOTE_INSTALL_DISABLED_MESSAGE = (
+    "远程安装已禁用：仓库没有经过审核并固定精确版本的 CLI-Anything 包清单。"
+    "请由本机管理员在隔离环境预装工具，再使用 /cli list 发现并通过 /cli run 执行。"
+)
+
 # ── 已发现工具的缓存 ──
 _cli_cache: list[dict[str, str]] = []
 _cli_cache_ts: float = 0.0
 _CLI_CACHE_TTL: float = 60.0  # 缓存 60 秒
+_GATE_ACQUIRE_SLICE_SECONDS: float = 0.05
+
+
+class _LoopNeutralAsyncGate:
+    """跨线程和事件循环共享的可取消异步串行门。"""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+
+    async def _acquire_once(self) -> bool:
+        """在线程池短暂等待锁，并在取消竞争中保证锁被归还。"""
+        state_lock = threading.Lock()
+        state = ["waiting"]
+
+        def acquire_in_thread() -> bool:
+            acquired = self._lock.acquire(
+                blocking=True,
+                timeout=_GATE_ACQUIRE_SLICE_SECONDS,
+            )
+            if not acquired:
+                return False
+
+            with state_lock:
+                if state[0] == "cancelled":
+                    state[0] = "released"
+                    release_after_cancel = True
+                else:
+                    state[0] = "acquired"
+                    release_after_cancel = False
+
+            if release_after_cancel:
+                self._lock.release()
+                return False
+            return True
+
+        acquire_task = asyncio.create_task(asyncio.to_thread(acquire_in_thread))
+        try:
+            return await asyncio.shield(acquire_task)
+        except asyncio.CancelledError:
+            release_now = False
+            with state_lock:
+                if state[0] == "waiting":
+                    state[0] = "cancelled"
+                elif state[0] == "acquired":
+                    state[0] = "released"
+                    release_now = True
+            if release_now:
+                self._lock.release()
+            raise
+
+    async def __aenter__(self) -> "_LoopNeutralAsyncGate":
+        """异步等待进入串行区，等待期间不阻塞事件循环。"""
+        while not await self._acquire_once():
+            await asyncio.sleep(0)
+        return self
+
+    async def __aexit__(self, exc_type, exc_value, traceback) -> None:
+        """无论操作成功、异常或取消都释放串行门。"""
+        self._lock.release()
 
 
 def _is_valid_tool_name(name: str) -> bool:
@@ -72,7 +140,7 @@ def discover_installed_clis() -> list[dict[str, str]]:
                 if not entry.startswith("cli-anything-"):
                     continue
                 # 提取工具名（去掉 cli-anything- 前缀）
-                tool_name = entry[len("cli-anything-"):]
+                tool_name = entry[len("cli-anything-") :]
                 if tool_name in seen_names:
                     continue
                 seen_names.add(tool_name)
@@ -97,11 +165,13 @@ def discover_installed_clis() -> list[dict[str, str]]:
                     # 任何异常都不应阻止工具发现（可能是权限、超时等）
                     description = "（无法获取描述）"
 
-                tools.append({
-                    "name": tool_name,
-                    "path": full_path,
-                    "description": description,
-                })
+                tools.append(
+                    {
+                        "name": tool_name,
+                        "path": full_path,
+                        "description": description,
+                    }
+                )
         except PermissionError:
             continue
 
@@ -165,9 +235,7 @@ async def run_cli_command(
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await asyncio.wait_for(
-            proc.communicate(), timeout=timeout
-        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         duration_ms = int((time.monotonic() - start_ms) * 1000)
 
         output = (stdout or b"").decode("utf-8", errors="replace")
@@ -214,83 +282,24 @@ async def run_cli_command(
 
 
 async def install_cli_tool(tool_name: str) -> dict[str, Any]:
-    """通过 pip 安装一个 CLI-Anything 工具
-
-    安全措施:
-    1. 工具名只允许字母数字+连字符
-    2. 通过 pip install cli-anything-<name> 安装
-
-    参数:
-        tool_name: 要安装的工具名称
-
-    返回: {"success": bool, "message": str}
-    """
-    # 安全校验
-    if not _is_valid_tool_name(tool_name):
-        return {
-            "success": False,
-            "message": f"工具名 '{tool_name}' 格式不合法（只允许字母数字和连字符）",
-        }
-
-    package_name = f"cli-anything-{tool_name}"
-    logger.info("[CLIAnything] 开始安装 %s", package_name)
-
-    try:
-        # 找到当前 Python 对应的 pip
-        import sys
-        python_path = sys.executable
-
-        proc = await asyncio.create_subprocess_exec(
-            python_path, "-m", "pip", "install", package_name,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await asyncio.wait_for(
-            proc.communicate(), timeout=120  # pip 安装可能较慢
-        )
-
-        _output = (stdout or b"").decode("utf-8", errors="replace")
-        err_output = (stderr or b"").decode("utf-8", errors="replace")
-
-        if proc.returncode == 0:
-            # 清除缓存，下次 discover 时重新扫描
-            global _cli_cache_ts
-            _cli_cache_ts = 0.0
-            logger.info("[CLIAnything] 安装成功: %s", package_name)
-            return {
-                "success": True,
-                "message": f"✅ {package_name} 安装成功",
-            }
-        else:
-            logger.warning(
-                "[CLIAnything] 安装失败: %s, 退出码=%d",
-                package_name, proc.returncode,
-            )
-            # 提取关键错误信息（不暴露完整堆栈）
-            short_err = err_output.strip().split("\n")[-1] if err_output else "未知错误"
-            return {
-                "success": False,
-                "message": f"❌ 安装 {package_name} 失败: {short_err}",
-            }
-
-    except TimeoutError:
-        return {
-            "success": False,
-            "message": f"❌ 安装 {package_name} 超时（120 秒）",
-        }
-    except Exception as e:
-        logger.error("[CLIAnything] 安装异常: %s", e)
-        return {
-            "success": False,
-            "message": "❌ 安装过程出错",
-        }
+    """拒绝远程安装，只允许发现和运行本机已预装工具。"""
+    logger.warning(
+        "[CLIAnything] 已拒绝远程安装请求: input_valid=%s allowlist_size=%d",
+        _is_valid_tool_name(tool_name),
+        len(CLI_REMOTE_INSTALL_ALLOWLIST),
+    )
+    return {
+        "success": False,
+        "reason": "remote_install_disabled",
+        "message": CLI_REMOTE_INSTALL_DISABLED_MESSAGE,
+    }
 
 
 class CLIAnythingManager:
     """CLI-Anything 管理器 — 单例模式
 
-    统一管理所有 CLI-Anything 工具的发现、执行、安装。
-    线程安全，使用 asyncio 锁防止并发操作冲突。
+    统一管理 CLI-Anything 工具的发现和执行；安装兼容入口固定失败关闭。
+    线程安全，使用跨事件循环串行门防止并发操作冲突。
 
     用法::
 
@@ -300,24 +309,19 @@ class CLIAnythingManager:
     """
 
     _instance: Optional["CLIAnythingManager"] = None
-    _lock: asyncio.Lock | None = None
+    _instance_lock = threading.Lock()
 
     @classmethod
     def get_instance(cls) -> "CLIAnythingManager":
         """获取单例实例"""
         if cls._instance is None:
-            cls._instance = cls()
+            with cls._instance_lock:
+                if cls._instance is None:
+                    cls._instance = cls()
         return cls._instance
 
     def __init__(self):
-        # asyncio.Lock 延迟创建（可能还没有事件循环）
-        self._async_lock: asyncio.Lock | None = None
-
-    def _get_lock(self) -> asyncio.Lock:
-        """延迟获取 asyncio 锁（避免在事件循环外创建）"""
-        if self._async_lock is None:
-            self._async_lock = asyncio.Lock()
-        return self._async_lock
+        self._operation_gate = _LoopNeutralAsyncGate()
 
     def discover(self) -> list[dict[str, str]]:
         """发现已安装的 CLI 工具（同步方法，带缓存）"""
@@ -330,12 +334,12 @@ class CLIAnythingManager:
         timeout: int = 30,
     ) -> dict[str, Any]:
         """执行 CLI 命令（线程安全）"""
-        async with self._get_lock():
+        async with self._operation_gate:
             return await run_cli_command(tool_name, args, timeout)
 
     async def install(self, tool_name: str) -> dict[str, Any]:
-        """安装 CLI 工具（线程安全）"""
-        async with self._get_lock():
+        """返回远程安装禁用策略（线程安全兼容入口）。"""
+        async with self._operation_gate:
             return await install_cli_tool(tool_name)
 
     def get_status(self) -> dict[str, Any]:

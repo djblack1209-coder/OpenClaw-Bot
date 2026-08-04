@@ -10,20 +10,60 @@
 
 import asyncio
 import os
+import queue
+import threading
 import time
-from unittest.mock import patch, MagicMock, AsyncMock
+from collections.abc import Awaitable, Callable
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi.testclient import TestClient
 
+from src.api.server import APIServer
 from src.integrations.cli_anything_bridge import (
+    CLI_REMOTE_INSTALL_DISABLED_MESSAGE,
+    CLIAnythingManager,
     _is_valid_tool_name,
     discover_installed_clis,
-    run_cli_command,
     install_cli_tool,
-    CLIAnythingManager,
-    _cli_cache,
-    _CLI_CACHE_TTL,
+    run_cli_command,
 )
+
+
+def _run_async_in_thread(
+    coroutine_factory: Callable[[], Awaitable[Any]],
+    result_queue: queue.Queue[tuple[str, Any]],
+    loop_queue: queue.Queue[asyncio.AbstractEventLoop],
+) -> threading.Thread:
+    """在独立线程和事件循环中运行协程，并回传结果或异常。"""
+
+    def worker() -> None:
+        loop = asyncio.new_event_loop()
+        loop.set_debug(True)
+        loop_queue.put(loop)
+        try:
+            result = loop.run_until_complete(coroutine_factory())
+        except BaseException as exc:
+            result_queue.put(("error", exc))
+        else:
+            result_queue.put(("ok", result))
+        finally:
+            loop.close()
+
+    thread = threading.Thread(target=worker, daemon=True)
+    thread.start()
+    return thread
+
+
+def _stop_stuck_loop(
+    thread: threading.Thread,
+    loop: asyncio.AbstractEventLoop,
+) -> None:
+    """红测路径兜底停止被跨循环锁卡住的事件循环。"""
+    if thread.is_alive():
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join(timeout=1)
 
 
 # ── 工具名校验 ──────────────────────────────────────────
@@ -62,6 +102,7 @@ class TestDiscoverInstalledCLIs:
     def setup_method(self):
         """每个测试前清除缓存"""
         import src.integrations.cli_anything_bridge as mod
+
         mod._cli_cache = []
         mod._cli_cache_ts = 0.0
 
@@ -135,6 +176,7 @@ class TestRunCLICommand:
 
     def setup_method(self):
         import src.integrations.cli_anything_bridge as mod
+
         mod._cli_cache = []
         mod._cli_cache_ts = 0.0
 
@@ -166,12 +208,15 @@ class TestRunCLICommand:
         mock_proc.returncode = 0
         mock_proc.kill = MagicMock()
 
-        with patch(
-            "src.integrations.cli_anything_bridge.discover_installed_clis",
-            return_value=fake_tools,
-        ), patch(
-            "asyncio.create_subprocess_exec",
-            return_value=mock_proc,
+        with (
+            patch(
+                "src.integrations.cli_anything_bridge.discover_installed_clis",
+                return_value=fake_tools,
+            ),
+            patch(
+                "asyncio.create_subprocess_exec",
+                return_value=mock_proc,
+            ),
         ):
             result = await run_cli_command("gimp", ["project", "new"])
 
@@ -189,12 +234,15 @@ class TestRunCLICommand:
         mock_proc.communicate = AsyncMock(side_effect=asyncio.TimeoutError)
         mock_proc.kill = MagicMock()
 
-        with patch(
-            "src.integrations.cli_anything_bridge.discover_installed_clis",
-            return_value=fake_tools,
-        ), patch(
-            "asyncio.create_subprocess_exec",
-            return_value=mock_proc,
+        with (
+            patch(
+                "src.integrations.cli_anything_bridge.discover_installed_clis",
+                return_value=fake_tools,
+            ),
+            patch(
+                "asyncio.create_subprocess_exec",
+                return_value=mock_proc,
+            ),
         ):
             result = await run_cli_command("slow", [], timeout=1)
 
@@ -211,12 +259,15 @@ class TestRunCLICommand:
         mock_proc.returncode = 1
         mock_proc.kill = MagicMock()
 
-        with patch(
-            "src.integrations.cli_anything_bridge.discover_installed_clis",
-            return_value=fake_tools,
-        ), patch(
-            "asyncio.create_subprocess_exec",
-            return_value=mock_proc,
+        with (
+            patch(
+                "src.integrations.cli_anything_bridge.discover_installed_clis",
+                return_value=fake_tools,
+            ),
+            patch(
+                "asyncio.create_subprocess_exec",
+                return_value=mock_proc,
+            ),
         ):
             result = await run_cli_command("err", ["bad-arg"])
 
@@ -228,12 +279,15 @@ class TestRunCLICommand:
         """可执行文件不存在"""
         fake_tools = [{"name": "gone", "path": "/usr/bin/cli-anything-gone", "description": "gone"}]
 
-        with patch(
-            "src.integrations.cli_anything_bridge.discover_installed_clis",
-            return_value=fake_tools,
-        ), patch(
-            "asyncio.create_subprocess_exec",
-            side_effect=FileNotFoundError("No such file"),
+        with (
+            patch(
+                "src.integrations.cli_anything_bridge.discover_installed_clis",
+                return_value=fake_tools,
+            ),
+            patch(
+                "asyncio.create_subprocess_exec",
+                side_effect=FileNotFoundError("No such file"),
+            ),
         ):
             result = await run_cli_command("gone")
 
@@ -247,63 +301,44 @@ class TestRunCLICommand:
 class TestInstallCLITool:
     """安装 CLI-Anything 工具"""
 
+    @pytest.mark.parametrize(
+        "tool_name",
+        ["arbitrary-dependency", "test-tool", "nonexistent", "slow-pkg", "bad name!"],
+    )
     @pytest.mark.asyncio
-    async def test_invalid_name(self):
-        """非法名称拒绝安装"""
-        result = await install_cli_tool("bad name!")
-        assert result["success"] is False
-        assert "不合法" in result["message"]
-
-    @pytest.mark.asyncio
-    async def test_successful_install(self):
-        """正常安装成功"""
-        mock_proc = AsyncMock()
-        mock_proc.communicate = AsyncMock(
-            return_value=(b"Successfully installed cli-anything-test", b"")
-        )
-        mock_proc.returncode = 0
-
+    async def test_remote_install_is_disabled_without_pinned_allowlist(self, tool_name):
+        """没有可信精确版本清单时，任意输入都不得触发 pip。"""
         with patch(
             "asyncio.create_subprocess_exec",
-            return_value=mock_proc,
-        ):
-            result = await install_cli_tool("test-tool")
+            side_effect=AssertionError("远程安装不得启动子进程"),
+        ) as create_subprocess:
+            result = await install_cli_tool(tool_name)
 
-        assert result["success"] is True
-        assert "成功" in result["message"]
+        assert result == {
+            "success": False,
+            "reason": "remote_install_disabled",
+            "message": (
+                "远程安装已禁用：仓库没有经过审核并固定精确版本的 CLI-Anything 包清单。"
+                "请由本机管理员在隔离环境预装工具，再使用 /cli list 发现并通过 /cli run 执行。"
+            ),
+        }
+        create_subprocess.assert_not_awaited()
 
-    @pytest.mark.asyncio
-    async def test_install_failure(self):
-        """安装失败"""
-        mock_proc = AsyncMock()
-        mock_proc.communicate = AsyncMock(
-            return_value=(b"", b"ERROR: No matching distribution found")
-        )
-        mock_proc.returncode = 1
 
-        with patch(
-            "asyncio.create_subprocess_exec",
-            return_value=mock_proc,
-        ):
-            result = await install_cli_tool("nonexistent")
+def test_api_remote_install_fails_with_forbidden_policy(monkeypatch):
+    monkeypatch.delenv("OPENCLAW_API_TOKEN", raising=False)
+    monkeypatch.setenv("ENV", "development")
+    monkeypatch.setenv("API_HOST", "127.0.0.1")
+    monkeypatch.setattr("src.api.auth._API_TOKEN", "")
+    client = TestClient(APIServer().app)
 
-        assert result["success"] is False
-        assert "失败" in result["message"]
+    response = client.post(
+        "/api/v1/cli/install",
+        json={"tool": "arbitrary-dependency"},
+    )
 
-    @pytest.mark.asyncio
-    async def test_install_timeout(self):
-        """安装超时"""
-        mock_proc = AsyncMock()
-        mock_proc.communicate = AsyncMock(side_effect=asyncio.TimeoutError)
-
-        with patch(
-            "asyncio.create_subprocess_exec",
-            return_value=mock_proc,
-        ):
-            result = await install_cli_tool("slow-pkg")
-
-        assert result["success"] is False
-        assert "超时" in result["message"]
+    assert response.status_code == 403
+    assert response.json() == {"detail": CLI_REMOTE_INSTALL_DISABLED_MESSAGE}
 
 
 # ── CLIAnythingManager 单例 ──────────────────────────────
@@ -316,6 +351,7 @@ class TestCLIAnythingManager:
         # 重置单例
         CLIAnythingManager._instance = None
         import src.integrations.cli_anything_bridge as mod
+
         mod._cli_cache = []
         mod._cli_cache_ts = 0.0
 
@@ -325,11 +361,149 @@ class TestCLIAnythingManager:
         mgr2 = CLIAnythingManager.get_instance()
         assert mgr1 is mgr2
 
+    def test_serializes_calls_across_two_thread_event_loops(self):
+        """两个线程的事件循环共享单例时仍严格串行。"""
+        manager = CLIAnythingManager.get_instance()
+        start = threading.Barrier(3)
+        state_lock = threading.Lock()
+        active = 0
+        peak_active = 0
+
+        async def fake_run(tool_name, args, timeout):
+            nonlocal active, peak_active
+            with state_lock:
+                active += 1
+                peak_active = max(peak_active, active)
+            try:
+                await asyncio.sleep(0.05)
+                return {"success": True, "output": tool_name}
+            finally:
+                with state_lock:
+                    active -= 1
+
+        async def invoke(tool_name: str):
+            await asyncio.to_thread(start.wait)
+            return await manager.run(tool_name)
+
+        results: queue.Queue[tuple[str, Any]] = queue.Queue()
+        first_loop: queue.Queue[asyncio.AbstractEventLoop] = queue.Queue()
+        second_loop: queue.Queue[asyncio.AbstractEventLoop] = queue.Queue()
+        with patch(
+            "src.integrations.cli_anything_bridge.run_cli_command",
+            side_effect=fake_run,
+        ):
+            first = _run_async_in_thread(lambda: invoke("first"), results, first_loop)
+            second = _run_async_in_thread(lambda: invoke("second"), results, second_loop)
+            loops = [first_loop.get(timeout=1), second_loop.get(timeout=1)]
+            start.wait(timeout=1)
+            first.join(timeout=1)
+            second.join(timeout=1)
+            for thread, loop in zip((first, second), loops, strict=True):
+                _stop_stuck_loop(thread, loop)
+
+        outcomes = [results.get(timeout=1) for _ in range(2)]
+        assert not first.is_alive()
+        assert not second.is_alive()
+        assert [status for status, _ in outcomes] == ["ok", "ok"]
+        assert {result["output"] for _, result in outcomes} == {"first", "second"}
+        assert peak_active == 1
+
+    def test_cancelled_cross_loop_waiter_does_not_leak_gate(self):
+        """跨循环等待超时取消后，串行门仍可被后续调用获取。"""
+        manager = CLIAnythingManager.get_instance()
+        holder_started = threading.Event()
+        release_holder = threading.Event()
+        waiter_timed_out = threading.Event()
+        entered_tools: list[str] = []
+        entered_lock = threading.Lock()
+
+        async def fake_run(tool_name, args, timeout):
+            with entered_lock:
+                entered_tools.append(tool_name)
+            if tool_name == "holder":
+                holder_started.set()
+                await asyncio.to_thread(release_holder.wait, 1)
+            return {"success": True, "output": tool_name}
+
+        async def wait_then_cancel():
+            await asyncio.to_thread(holder_started.wait, 1)
+            with pytest.raises(TimeoutError):
+                await asyncio.wait_for(manager.run("cancelled"), timeout=0.05)
+            waiter_timed_out.set()
+            return "cancelled"
+
+        results: queue.Queue[tuple[str, Any]] = queue.Queue()
+        holder_loop: queue.Queue[asyncio.AbstractEventLoop] = queue.Queue()
+        waiter_loop: queue.Queue[asyncio.AbstractEventLoop] = queue.Queue()
+        with patch(
+            "src.integrations.cli_anything_bridge.run_cli_command",
+            side_effect=fake_run,
+        ):
+            holder = _run_async_in_thread(lambda: manager.run("holder"), results, holder_loop)
+            assert holder_started.wait(timeout=1)
+            waiter = _run_async_in_thread(wait_then_cancel, results, waiter_loop)
+            loops = [holder_loop.get(timeout=1), waiter_loop.get(timeout=1)]
+            assert waiter_timed_out.wait(timeout=1)
+            release_holder.set()
+            holder.join(timeout=1)
+            waiter.join(timeout=1)
+            recovery = asyncio.run(manager.run("recovery"))
+            for thread, loop in zip((holder, waiter), loops, strict=True):
+                _stop_stuck_loop(thread, loop)
+
+        outcomes = [results.get(timeout=1) for _ in range(2)]
+        assert [status for status, _ in outcomes] == ["ok", "ok"]
+        assert recovery["output"] == "recovery"
+        assert "cancelled" not in entered_tools
+        assert entered_tools == ["holder", "recovery"]
+
+    def test_cross_loop_exception_releases_gate(self):
+        """一个循环内操作抛错后，另一个循环仍可继续执行。"""
+        manager = CLIAnythingManager.get_instance()
+        failure_started = threading.Event()
+        release_failure = threading.Event()
+
+        async def fake_run(tool_name, args, timeout):
+            if tool_name == "failure":
+                failure_started.set()
+                await asyncio.to_thread(release_failure.wait, 1)
+                raise RuntimeError("expected failure")
+            return {"success": True, "output": tool_name}
+
+        results: queue.Queue[tuple[str, Any]] = queue.Queue()
+        failure_loop: queue.Queue[asyncio.AbstractEventLoop] = queue.Queue()
+        recovery_loop: queue.Queue[asyncio.AbstractEventLoop] = queue.Queue()
+        with patch(
+            "src.integrations.cli_anything_bridge.run_cli_command",
+            side_effect=fake_run,
+        ):
+            failure = _run_async_in_thread(lambda: manager.run("failure"), results, failure_loop)
+            assert failure_started.wait(timeout=1)
+            recovery = _run_async_in_thread(lambda: manager.run("recovery"), results, recovery_loop)
+            loops = [failure_loop.get(timeout=1), recovery_loop.get(timeout=1)]
+            time.sleep(0.05)
+            release_failure.set()
+            failure.join(timeout=1)
+            recovery.join(timeout=1)
+            for thread, loop in zip((failure, recovery), loops, strict=True):
+                _stop_stuck_loop(thread, loop)
+
+        outcomes = [results.get(timeout=1) for _ in range(2)]
+        errors = [value for status, value in outcomes if status == "error"]
+        successes = [value for status, value in outcomes if status == "ok"]
+        assert len(errors) == 1
+        assert isinstance(errors[0], RuntimeError)
+        assert str(errors[0]) == "expected failure"
+        assert successes == [{"success": True, "output": "recovery"}]
+
     def test_get_status_no_tools(self):
         """没有工具时的状态"""
-        with patch("shutil.which", return_value=None), patch(
-            "src.integrations.cli_anything_bridge.discover_installed_clis",
-            return_value=[],
+        with (
+            patch("shutil.which", return_value=None),
+            patch(
+                "src.integrations.cli_anything_bridge.discover_installed_clis",
+                return_value=[],
+            ),
         ):
             mgr = CLIAnythingManager.get_instance()
             status = mgr.get_status()
@@ -343,9 +517,12 @@ class TestCLIAnythingManager:
         fake_tools = [
             {"name": "gimp", "path": "/usr/bin/cli-anything-gimp", "description": "GIMP CLI"},
         ]
-        with patch("shutil.which", return_value="/usr/bin/cli-anything"), patch(
-            "src.integrations.cli_anything_bridge.discover_installed_clis",
-            return_value=fake_tools,
+        with (
+            patch("shutil.which", return_value="/usr/bin/cli-anything"),
+            patch(
+                "src.integrations.cli_anything_bridge.discover_installed_clis",
+                return_value=fake_tools,
+            ),
         ):
             mgr = CLIAnythingManager.get_instance()
             status = mgr.get_status()
@@ -361,6 +538,17 @@ class TestCLIAnythingManager:
 class TestTelegramCommandParsing:
     """测试命令 Mixin 的帮助文本和静态方法"""
 
+    @pytest.mark.asyncio
+    async def test_remote_install_command_returns_disabled_policy_directly(self):
+        from src.bot.cmd_cli_mixin import CLICommandsMixin
+
+        update = MagicMock()
+        update.message.reply_text = AsyncMock()
+
+        await CLICommandsMixin()._cli_install(update, None, "arbitrary-dependency")
+
+        update.message.reply_text.assert_awaited_once_with(CLI_REMOTE_INSTALL_DISABLED_MESSAGE)
+
     def test_help_text_content(self):
         """帮助文本包含所有子命令"""
         from src.bot.cmd_cli_mixin import CLICommandsMixin
@@ -371,6 +559,9 @@ class TestTelegramCommandParsing:
         assert "/cli install" in text
         assert "/cli help" in text
         assert "/cli status" in text
+        assert "远程安装已禁用" in text
+        assert "本机管理员" in text
+        assert "pip install" not in text
 
     def test_help_text_has_example(self):
         """帮助文本包含使用示例"""

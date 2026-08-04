@@ -12,14 +12,15 @@ OpenClawBrain 单元测试。
 所有外部依赖（LLM、EventBus、ContextCollector、TaskGraphExecutor）均用 mock 替代。
 pytest.ini 已配置 asyncio_mode = auto，async 测试不需要装饰器。
 """
+
 import time
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from src.core.intent_parser import ParsedIntent, TaskType
-from src.core.task_graph import NodeStatus, TaskNode
-
+from src.core.loop_owner import OwnerLoopNotReady
+from src.core.task_graph import NodeStatus
 
 # ── 辅助工具 ────────────────────────────────────────────────
 
@@ -136,33 +137,27 @@ def brain(mock_event_bus, mock_ctx_collector):
 
 
 class TestBrainSingleton:
-    """get_brain() 应该返回同一个实例（单例模式）。"""
+    """Brain 必须由主循环显式初始化，且全程复用同一个实例。"""
 
-    def test_brain_singleton_returns_same_instance(self):
-        """连续两次调用 get_brain() 应返回同一个对象。"""
-        with patch("src.core.brain.get_event_bus") as mock_bus_factory:
-            mock_bus_factory.return_value = MagicMock(publish=AsyncMock())
+    def test_get_brain_fails_closed_before_initialization(self):
+        """未初始化时拒绝懒创建，避免请求线程抢占所有者循环。"""
+        from src.core.brain import get_brain
 
-            from src.core.brain import get_brain
-            brain1 = get_brain()
-            brain2 = get_brain()
+        with pytest.raises(OwnerLoopNotReady):
+            get_brain()
 
-            assert brain1 is brain2, "get_brain() 应返回同一实例"
-
-    def test_init_brain_creates_new_instance(self):
-        """init_brain() 应该创建新实例，覆盖旧的。"""
+    async def test_init_brain_is_idempotent(self):
+        """重复初始化应复用主循环中的同一个 Brain。"""
         with patch("src.core.brain.get_event_bus") as mock_bus_factory:
             mock_bus_factory.return_value = MagicMock(publish=AsyncMock())
 
             from src.core.brain import get_brain, init_brain
-            brain_old = get_brain()
-            brain_new = init_brain()
 
-            assert brain_new is not brain_old, "init_brain() 应创建新实例"
+            brain_first = init_brain()
+            brain_second = init_brain()
 
-            # 之后 get_brain() 应返回新实例
-            brain_check = get_brain()
-            assert brain_check is brain_new
+            assert brain_second is brain_first
+            assert get_brain() is brain_first
 
 
 # ════════════════════════════════════════════════════════════
@@ -376,7 +371,7 @@ class TestPendingClarification:
             "src.core.brain.get_context_collector",
             return_value=mock_ctx_collector,
         ):
-            result = await brain.resume_with_answer(
+            await brain.resume_with_answer(
                 task_id=task_id,
                 answer="海底捞",
                 context={"chat_id": chat_id, "user_id": 1},

@@ -26,6 +26,18 @@ import type {
   OmegaProcessResponse,
 } from './tauri-core';
 
+export interface MCPPlugin {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  author: string;
+  type: string;
+  status: string;
+  icon: string;
+  tags: string[];
+}
+
 // ── 服务管理 ──
 
 export const getServiceStatus = () =>
@@ -304,9 +316,5 @@ export const omegaMediaModels = () =>
 
 // ── MCP 插件进程管理 ──
 
-export const startMcpPlugin = (id: string) =>
-  invokeWithLog<void>('start_mcp_plugin', { id });
-export const stopMcpPlugin = (id: string) =>
-  invokeWithLog<void>('stop_mcp_plugin', { id });
-export const getMcpPluginStatus = (id: string) =>
-  invokeWithLog<string>('get_mcp_plugin_status', { id });
+export const getMcpPlugins = () =>
+  invokeWithLog<MCPPlugin[]>('get_mcp_plugins');

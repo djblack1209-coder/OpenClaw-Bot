@@ -201,3 +201,78 @@ test('IBKR shell 字段和 WebView 文件写权限均已关闭', () => {
   assert.doesNotMatch(clawbot, /IBKR_(START|STOP)_CMD/);
   assert.doesNotMatch(capability, /fs:(default|allow-read|allow-write)/);
 });
+
+test('实盘卖出必须二次确认、阻止重复提交并验证业务成功', async () => {
+  const portfolio = read('apps/openclaw-manager-src/src/components/Portfolio/index.tsx');
+  const api = read('apps/openclaw-manager-src/src/lib/api.ts');
+
+  assert.match(portfolio, /<ConfirmDialog[\s\S]*destructive/);
+  assert.match(portfolio, /pendingSell/);
+  assert.match(portfolio, /sellSubmittingRef\.current/);
+  assert.doesNotMatch(portfolio, /onClick=\{[^}]*handleSell\(h\.symbol,\s*h\.quantity\)/);
+  assert.match(api, /assertTradingSellSucceeded/);
+
+  const { assertTradingSellSucceeded } = await import('./trading-sell.ts');
+  assert.throws(
+    () => assertTradingSellSucceeded({ success: false, message: 'IBKR 未连接' }),
+    /IBKR 未连接/,
+  );
+  assert.throws(() => assertTradingSellSucceeded({}), /后端未确认订单提交/);
+  assert.throws(() => assertTradingSellSucceeded(null), /后端未确认订单提交/);
+  assert.equal(
+    assertTradingSellSucceeded({ success: true, order_id: '42' }).order_id,
+    '42',
+  );
+});
+
+test('危险确认框默认聚焦取消并声明标准对话框语义', () => {
+  const dialog = read('apps/openclaw-manager-src/src/components/ui/confirm-dialog.tsx');
+
+  assert.match(dialog, /const cancelRef = useRef/);
+  assert.match(dialog, /destructive \? cancelRef\.current : confirmRef\.current/);
+  assert.match(dialog, /role="dialog"/);
+  assert.match(dialog, /aria-modal="true"/);
+  assert.match(dialog, /aria-labelledby=\{titleId\}/);
+});
+
+test('调度任务切换携带目标状态并采用后端确认结果', () => {
+  const scheduler = read('apps/openclaw-manager-src/src/components/Scheduler/index.tsx');
+
+  assert.match(scheduler, /const nextEnabled = !currentEnabled/);
+  assert.match(scheduler, /toggle\?enabled=\$\{nextEnabled\}/);
+  assert.match(scheduler, /enabled: result\.enabled/);
+  assert.match(scheduler, /toggleTask\(task\.id, task\.enabled\)/);
+  assert.match(scheduler, /String\(task\.cron \|\| '—'\)\.padEnd\(16\)/);
+});
+
+test('MCP 商店只展示受管目录且不暴露伪 stdio 启停入口', () => {
+  const store = read('apps/openclaw-manager-src/src/components/Store/index.tsx');
+  const api = read('apps/openclaw-manager-src/src/lib/api.ts');
+  const ipc = read('apps/openclaw-manager-src/src/lib/tauri-ipc.ts');
+  const mcp = read('apps/openclaw-manager-src/src-tauri/src/commands/mcp.rs');
+
+  assert.match(ipc, /getMcpPlugins[\s\S]*get_mcp_plugins/);
+  assert.match(api, /getMcpPlugins: ipc\.getMcpPlugins/);
+  assert.match(store, /api\.getMcpPlugins\(\)/);
+  assert.doesNotMatch(store, /api\.getSkillsStatus\(\)/);
+  assert.doesNotMatch(store, /handleMcpToggle/);
+  assert.doesNotMatch(ipc, /start_mcp_plugin|stop_mcp_plugin|get_mcp_plugin_status/);
+  assert.match(mcp, /MANAGED_MCP_PACKAGES/);
+  assert.doesNotMatch(mcp, /mcp_servers\.json|Command::new|Stdio::null/);
+  assert.doesNotMatch(ipc, /MCPPlugin[\s\S]{0,500}(command\?|args\?|env\?)/);
+});
+
+test('Assistant 流式请求可取消且不会把取消误报为故障', () => {
+  const assistant = read('apps/openclaw-manager-src/src/components/Assistant/index.tsx');
+  const zh = read('apps/openclaw-manager-src/src/i18n/zh-CN.ts');
+  const en = read('apps/openclaw-manager-src/src/i18n/en-US.ts');
+
+  assert.match(assistant, /requestControllerRef = useRef<AbortController/);
+  assert.match(assistant, /signal: controller\.signal/);
+  assert.match(assistant, /const handleCancel = useCallback/);
+  assert.match(assistant, /controller\.signal\.aborted/);
+  assert.match(assistant, /onClick=\{loading \? handleCancel : handleSend\}/);
+  assert.match(assistant, /loading \? <Square/);
+  assert.match(zh, /'assistant\.stopReply': '停止回复'/);
+  assert.match(en, /'assistant\.stopReply': 'Stop reply'/);
+});

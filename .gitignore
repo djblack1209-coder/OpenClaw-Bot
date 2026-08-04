@@ -41,6 +41,7 @@ Cargo.lock
 # IDEs
 .vscode/
 .idea/
+.claude/settings.local.json
 *.swp
 *.swo
 *~
@@ -125,6 +126,7 @@ credentials.json
 .openclaw/telegram/
 .openclaw/update-check.json
 .openclaw/cc-zhongzhuan-operator-state.json
+.openclaw/*.lock
 .openclaw/openclaw-weixin/
 .openclaw/env
 .openclaw/*.env

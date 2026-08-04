@@ -40,6 +40,43 @@ class SSRFError(Exception):
     """SSRF 安全检查未通过时抛出的异常"""
 
 
+def resolve_public_addresses(hostname: str, port: int | None = None) -> tuple[str, ...]:
+    """解析并返回可直接连接的公网 IP，任何内网或异常结果都失败关闭。"""
+    normalized_host = str(hostname or "").strip().lower().rstrip(".")
+    if not normalized_host or normalized_host in SSRF_BLOCKED_HOSTS:
+        raise SSRFError("目标主机属于本机、内网或云元数据地址")
+
+    try:
+        literal_ip = ipaddress.ip_address(normalized_host)
+    except ValueError:
+        literal_ip = None
+
+    try:
+        candidates = (
+            [(None, None, None, None, (str(literal_ip), port or 0))]
+            if literal_ip is not None
+            else socket.getaddrinfo(normalized_host, port, type=socket.SOCK_STREAM)
+        )
+    except (socket.gaierror, OSError, ValueError) as exc:
+        raise SSRFError("目标域名解析失败") from exc
+
+    addresses: list[str] = []
+    for _family, _type, _proto, _canonname, sockaddr in candidates:
+        try:
+            address = ipaddress.ip_address(sockaddr[0])
+        except (ValueError, TypeError, IndexError) as exc:
+            raise SSRFError("目标域名返回了无效地址") from exc
+        if not address.is_global:
+            raise SSRFError(f"目标域名解析到非公网地址 {address}")
+        text = str(address)
+        if text not in addresses:
+            addresses.append(text)
+
+    if not addresses:
+        raise SSRFError("目标域名没有可用的公网地址")
+    return tuple(addresses)
+
+
 def check_ssrf(url: str) -> bool:
     """检查 URL 是否安全（非内网/非元数据服务），防止 SSRF 攻击。
 
@@ -60,20 +97,11 @@ def check_ssrf(url: str) -> bool:
         hostname = parsed.hostname
         if not hostname:
             return False
-        # 黑名单检查：拦截已知的内网/元数据服务地址
-        if hostname in SSRF_BLOCKED_HOSTS:
-            return False
-        # DNS 解析后检查 IP（防止 DNS 重绑定攻击）
         try:
-            resolved_ips = socket.getaddrinfo(hostname, None)
-            for _family, _type, _proto, _canonname, sockaddr in resolved_ips:
-                ip = ipaddress.ip_address(sockaddr[0])
-                if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
-                    logger.warning("[SSRF] 拦截: %s 解析到内网地址 %s", url, ip)
-                    return False
-        except (socket.gaierror, ValueError):
-            # 安全修复: DNS 解析失败 → 拒绝（fail-close，防止利用 DNS 解析失败绕过检查）
-            logger.warning("[SSRF] 拦截: %s DNS 解析失败，拒绝访问", url)
+            default_port = 443 if parsed.scheme == "https" else 80
+            resolve_public_addresses(hostname, parsed.port or default_port)
+        except (SSRFError, ValueError):
+            logger.warning("[SSRF] 拦截非公网目标: %s", url)
             return False
         return True
     except Exception:

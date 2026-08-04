@@ -16,6 +16,11 @@ from src.utils import now_et
 logger = logging.getLogger(__name__)
 
 
+def _intel_brief_completed(result) -> bool:
+    """仅明确成功的调度结果可以封存当天，失败结果保留重试机会。"""
+    return isinstance(result, dict) and result.get("status") == "success"
+
+
 class ExecutionScheduler:
     """执行场景调度器"""
 
@@ -260,7 +265,12 @@ class ExecutionScheduler:
                 result = self.intel_brief_production_runner(**runner_kwargs)
             if asyncio.iscoroutine(result):
                 result = await result
-            self._last_intel_brief_date = today
+            if _intel_brief_completed(result):
+                self._last_intel_brief_date = today
+            else:
+                logger.warning(
+                    "[Scheduler] Intel Brief production delivery did not complete; retry remains open"
+                )
             return result
 
         evidence_path = evidence_dir / f"{stamp}-scheduled-sandbox.json"
@@ -279,7 +289,12 @@ class ExecutionScheduler:
             result = self.intel_brief_sandbox_runner(**runner_kwargs)
         if asyncio.iscoroutine(result):
             result = await result
-        self._last_intel_brief_date = today
+        if _intel_brief_completed(result):
+            self._last_intel_brief_date = today
+        else:
+            logger.warning(
+                "[Scheduler] Intel Brief sandbox run did not complete; retry remains open"
+            )
         return result
 
     async def _run_monitors(self, ts, interval):

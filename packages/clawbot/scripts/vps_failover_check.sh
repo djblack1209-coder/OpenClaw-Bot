@@ -32,7 +32,11 @@ if [ -f "$SHUTDOWN_FILE" ]; then
     log "检测到主节点主动关机标记，立即切换"
     rm -f "$SHUTDOWN_FILE"
     rm -f "$FAIL_COUNT_FILE"
-    sudo systemctl start "$CLAWBOT_SERVICE" 2>/dev/null && log "已启动 $CLAWBOT_SERVICE" || log "启动失败"
+    if sudo systemctl start "$CLAWBOT_SERVICE" 2>/dev/null; then
+        log "已启动 $CLAWBOT_SERVICE"
+    else
+        log "启动失败"
+    fi
     exit 0
 fi
 
@@ -80,7 +84,11 @@ if [ "$FAIL" -eq 1 ]; then
     if [ "$CURRENT_COUNT" -ge "$MAX_FAIL_COUNT" ]; then
         log "连续 $CURRENT_COUNT 次心跳失败，触发 failover 切换"
         rm -f "$FAIL_COUNT_FILE"
-        sudo systemctl start "$CLAWBOT_SERVICE" 2>/dev/null && log "已启动 $CLAWBOT_SERVICE" || log "启动失败"
+        if sudo systemctl start "$CLAWBOT_SERVICE" 2>/dev/null; then
+            log "已启动 $CLAWBOT_SERVICE"
+        else
+            log "启动失败"
+        fi
     else
         log "心跳失败 $CURRENT_COUNT/$MAX_FAIL_COUNT"
     fi

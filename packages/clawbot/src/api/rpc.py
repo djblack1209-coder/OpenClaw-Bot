@@ -18,6 +18,8 @@ import time
 from datetime import UTC
 from pathlib import Path
 
+from src.core.loop_owner import OwnerLoopError
+
 logger = logging.getLogger(__name__)
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[2]
@@ -4063,7 +4065,9 @@ class ClawBotRPC:
         try:
             from src.social_scheduler import SocialAutopilot
 
-            return SocialAutopilot().status()
+            return SocialAutopilot().call_on_owner_sync("status")
+        except OwnerLoopError:
+            raise
         except Exception as e:
             logger.warning("Autopilot status failed: %s", e)
             return {"running": False, "error": _safe_error(e)}
@@ -4074,7 +4078,9 @@ class ClawBotRPC:
         try:
             from src.social_scheduler import SocialAutopilot
 
-            return SocialAutopilot().start()
+            return SocialAutopilot().call_on_owner_sync("start")
+        except OwnerLoopError:
+            raise
         except Exception as e:
             logger.error("Autopilot start failed: %s", e)
             return {"status": "error", "error": _safe_error(e)}
@@ -4085,7 +4091,9 @@ class ClawBotRPC:
         try:
             from src.social_scheduler import SocialAutopilot
 
-            return SocialAutopilot().stop()
+            return SocialAutopilot().call_on_owner_sync("stop")
+        except OwnerLoopError:
+            raise
         except Exception as e:
             logger.error("Autopilot stop failed: %s", e)
             return {"status": "error", "error": _safe_error(e)}
@@ -4096,7 +4104,9 @@ class ClawBotRPC:
         try:
             from src.social_scheduler import SocialAutopilot
 
-            return SocialAutopilot().trigger_job(job_id)
+            return SocialAutopilot().call_on_owner_sync("trigger", job_id)
+        except OwnerLoopError:
+            raise
         except Exception as e:
             logger.error("Autopilot trigger failed: %s", e)
             return {"success": False, "error": _safe_error(e)}

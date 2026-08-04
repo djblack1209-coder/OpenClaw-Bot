@@ -631,18 +631,66 @@ _BULKHEAD_LIMITS: dict[str, int] = {
     "generic": 15,  # 通用默认 15 个并发
 }
 
-_bulkhead_semaphores: dict[str, asyncio.Semaphore] = {}
+
+class _LoopNeutralSemaphore:
+    """可被多个事件循环共享的轻量有界信号量。"""
+
+    def __init__(self, value: int):
+        if int(value) <= 0:
+            raise ValueError("bulkhead 并发上限必须大于 0")
+        self._limit = int(value)
+        self._in_use = 0
+        self._lock = threading.Lock()
+
+    @property
+    def _value(self) -> int:
+        """兼容旧统计代码，返回当前可用容量。"""
+        with self._lock:
+            return max(0, self._limit - self._in_use)
+
+    @property
+    def in_use(self) -> int:
+        """返回当前已占用容量。"""
+        with self._lock:
+            return self._in_use
+
+    async def acquire(self) -> bool:
+        """用可取消轮询获取容量，不把 asyncio Future 绑定到共享对象。"""
+        while True:
+            with self._lock:
+                if self._in_use < self._limit:
+                    self._in_use += 1
+                    return True
+            await asyncio.sleep(0.005)
+
+    def release(self) -> None:
+        """释放一个容量；重复释放时抛出 ValueError。"""
+        with self._lock:
+            if self._in_use <= 0:
+                raise ValueError("bulkhead semaphore released too many times")
+            self._in_use -= 1
+
+    def resize(self, value: int) -> None:
+        """原位调整容量，避免旧持有者与新信号量叠加突破上限。"""
+        safe_limit = int(value)
+        if safe_limit <= 0:
+            raise ValueError("bulkhead 并发上限必须大于 0")
+        with self._lock:
+            self._limit = safe_limit
+
+
+_bulkhead_semaphores: dict[str, _LoopNeutralSemaphore] = {}
 _bulkhead_lock = threading.Lock()
 _bulkhead_stats: dict[str, dict[str, int]] = {}  # 统计: {service: {acquired: N, rejected: N, peak: N}}
 
 
-def _get_bulkhead(service: str) -> asyncio.Semaphore:
+def _get_bulkhead(service: str) -> _LoopNeutralSemaphore:
     """获取或创建指定服务的 Bulkhead Semaphore"""
     if service not in _bulkhead_semaphores:
         with _bulkhead_lock:
             if service not in _bulkhead_semaphores:
                 limit = _BULKHEAD_LIMITS.get(service, _BULKHEAD_LIMITS["generic"])
-                _bulkhead_semaphores[service] = asyncio.Semaphore(limit)
+                _bulkhead_semaphores[service] = _LoopNeutralSemaphore(limit)
                 _bulkhead_stats[service] = {"acquired": 0, "rejected": 0, "peak": 0, "limit": limit}
                 logger.debug(f"[Bulkhead] 创建隔离舱: {service} (最大并发={limit})")
     return _bulkhead_semaphores[service]
@@ -666,32 +714,35 @@ async def bulkhead(service: str = "generic", timeout: float = 30.0):
         timeout: 等待进入隔离舱的超时秒数（默认30s，超时抛 asyncio.TimeoutError）
     """
     sem = _get_bulkhead(service)
-    stats = _bulkhead_stats.get(service, {})
+    acquired = False
 
     try:
         # 带超时的 acquire — 防止无限等待
         await asyncio.wait_for(sem.acquire(), timeout=timeout)
-        stats["acquired"] = stats.get("acquired", 0) + 1
+        acquired = True
 
-        # 更新峰值并发数
-        current = stats.get("limit", 15) - sem._value
-        if current > stats.get("peak", 0):
-            stats["peak"] = current
+        with _bulkhead_lock:
+            stats = _bulkhead_stats.get(service, {})
+            stats["acquired"] = stats.get("acquired", 0) + 1
+            # 更新峰值并发数
+            current = sem.in_use
+            if current > stats.get("peak", 0):
+                stats["peak"] = current
 
         yield
 
     except TimeoutError:
-        stats["rejected"] = stats.get("rejected", 0) + 1
+        with _bulkhead_lock:
+            stats = _bulkhead_stats.get(service, {})
+            stats["rejected"] = stats.get("rejected", 0) + 1
         logger.warning(
             f"[Bulkhead] {service} 隔离舱已满，等待{timeout}s后超时 (限制={_BULKHEAD_LIMITS.get(service, 15)})"
         )
         raise
     finally:
-        # 确保释放 semaphore（即使 yield 内部抛异常）
-        try:
+        if acquired:
+            # 仅释放本调用成功取得的容量。
             sem.release()
-        except ValueError as e:
-            logger.debug("[Bulkhead] %s semaphore 重复释放(已忽略): %s", service, e)
 
 
 def configure_bulkhead(service: str, max_concurrent: int):
@@ -700,23 +751,31 @@ def configure_bulkhead(service: str, max_concurrent: int):
     用法:
         configure_bulkhead("llm", 20)  # 将 LLM 并发限制提高到 20
     """
-    _BULKHEAD_LIMITS[service] = max_concurrent
-    # 清除缓存，下次使用时重新创建
+    safe_limit = int(max_concurrent)
+    if safe_limit <= 0:
+        raise ValueError("bulkhead 并发上限必须大于 0")
+    _BULKHEAD_LIMITS[service] = safe_limit
+    # 原位调整已存在的隔离舱；不能删除旧对象，否则旧持有者与新对象会并行放行。
     with _bulkhead_lock:
-        _bulkhead_semaphores.pop(service, None)
-        _bulkhead_stats.pop(service, None)
+        sem = _bulkhead_semaphores.get(service)
+        if sem is not None:
+            sem.resize(safe_limit)
+        stats = _bulkhead_stats.get(service)
+        if stats is not None:
+            stats["limit"] = safe_limit
     logger.info(f"[Bulkhead] 更新 {service} 并发限制: {max_concurrent}")
 
 
 def get_bulkhead_stats() -> dict[str, dict[str, int]]:
     """获取所有 Bulkhead 隔离舱的统计信息"""
     result = {}
-    for service, stats in _bulkhead_stats.items():
-        sem = _bulkhead_semaphores.get(service)
-        available = sem._value if sem else _BULKHEAD_LIMITS.get(service, 15)
-        result[service] = {
-            **stats,
-            "available": available,
-            "in_use": stats.get("limit", 15) - available,
-        }
+    with _bulkhead_lock:
+        for service, stats in _bulkhead_stats.items():
+            sem = _bulkhead_semaphores.get(service)
+            available = sem._value if sem else _BULKHEAD_LIMITS.get(service, 15)
+            result[service] = {
+                **stats,
+                "available": available,
+                "in_use": stats.get("limit", 15) - available,
+            }
     return result

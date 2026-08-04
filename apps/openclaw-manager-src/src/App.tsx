@@ -337,12 +337,12 @@ function App() {
         <Sidebar currentPage={currentPage} onNavigate={handleNavigate} serviceStatus={serviceStatus} />
         
         {/* 主内容区 */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="min-w-0 flex-1 flex flex-col overflow-hidden">
           {/* 标题栏（macOS 拖拽区域） */}
           <Header currentPage={currentPage} />
           
           {/* 页面内容 */}
-          <main className="flex-1 overflow-hidden px-5 py-4">
+          <main className="flex-1 overflow-hidden px-2 py-3 sm:px-5 sm:py-4">
             {renderPage()}
           </main>
         </div>

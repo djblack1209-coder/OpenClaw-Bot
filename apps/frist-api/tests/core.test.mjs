@@ -246,20 +246,20 @@ describe('CC中转 core flows', () => {
 
       if (target === 'Codex') {
         assert.match(config.configToml, /\[mcp_servers\.playwright\]/);
-        assert.match(config.configToml, /args = \["-y", "@playwright\/mcp@latest"\]/);
+        assert.match(config.configToml, /args = \["-y", "@playwright\/mcp@0\.0\.78"\]/);
         assert.match(config.configToml, /\[mcp_servers\.superpowers\]/);
-        assert.match(config.configToml, /args = \["-y", "superpowers-mcp@latest"\]/);
+        assert.match(config.configToml, /args = \["-y", "superpowers-mcp@6\.2\.0"\]/);
         assert.match(config.configToml, /\[mcp_servers\.open_computer_use\]/);
-        assert.match(config.configToml, /args = \["-y", "-p", "open-computer-use@latest", "open-codex-computer-use-mcp"\]/);
+        assert.match(config.configToml, /args = \["-y", "-p", "open-computer-use@0\.3\.1", "open-codex-computer-use-mcp"\]/);
         assert.equal(config.mcpServers.playwright.command, 'npx');
-        assert.deepEqual(config.mcpServers.playwright.args, ['-y', '@playwright/mcp@latest']);
+        assert.deepEqual(config.mcpServers.playwright.args, ['-y', '@playwright/mcp@0.0.78']);
         assert.equal(config.mcpServers.superpowers.command, 'npx');
-        assert.deepEqual(config.mcpServers.superpowers.args, ['-y', 'superpowers-mcp@latest']);
+        assert.deepEqual(config.mcpServers.superpowers.args, ['-y', 'superpowers-mcp@6.2.0']);
         assert.equal(config.mcpServers.open_computer_use.command, 'npx');
         assert.deepEqual(config.mcpServers.open_computer_use.args, [
           '-y',
           '-p',
-          'open-computer-use@latest',
+          'open-computer-use@0.3.1',
           'open-codex-computer-use-mcp',
         ]);
       } else {
@@ -528,12 +528,12 @@ describe('CC中转 core flows', () => {
     assert.equal(mcpUrl.searchParams.get('apps'), 'claude,codex,gemini,opencode,hermes');
     assert.equal(mcpUrl.searchParams.get('enabled'), 'true');
     assert.deepEqual(Object.keys(payload.mcpServers), ['playwright', 'superpowers', 'open_computer_use']);
-    assert.deepEqual(payload.mcpServers.playwright.args, ['-y', '@playwright/mcp@latest']);
-    assert.deepEqual(payload.mcpServers.superpowers.args, ['-y', 'superpowers-mcp@latest']);
+    assert.deepEqual(payload.mcpServers.playwright.args, ['-y', '@playwright/mcp@0.0.78']);
+    assert.deepEqual(payload.mcpServers.superpowers.args, ['-y', 'superpowers-mcp@6.2.0']);
     assert.deepEqual(payload.mcpServers.open_computer_use.args, [
       '-y',
       '-p',
-      'open-computer-use@latest',
+      'open-computer-use@0.3.1',
       'open-codex-computer-use-mcp',
     ]);
 

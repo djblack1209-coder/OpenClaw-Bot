@@ -135,17 +135,17 @@ const CODEX_DEFAULT_MCP_SERVERS = Object.freeze({
   playwright: Object.freeze({
     type: 'stdio',
     command: 'npx',
-    args: Object.freeze(['-y', '@playwright/mcp@latest']),
+    args: Object.freeze(['-y', '@playwright/mcp@0.0.78']),
   }),
   superpowers: Object.freeze({
     type: 'stdio',
     command: 'npx',
-    args: Object.freeze(['-y', 'superpowers-mcp@latest']),
+    args: Object.freeze(['-y', 'superpowers-mcp@6.2.0']),
   }),
   open_computer_use: Object.freeze({
     type: 'stdio',
     command: 'npx',
-    args: Object.freeze(['-y', '-p', 'open-computer-use@latest', 'open-codex-computer-use-mcp']),
+    args: Object.freeze(['-y', '-p', 'open-computer-use@0.3.1', 'open-codex-computer-use-mcp']),
   }),
 });
 const CC_SWITCH_MCP_APPS = Object.freeze(['claude', 'codex', 'gemini', 'opencode', 'hermes']);

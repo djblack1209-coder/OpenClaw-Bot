@@ -1,9 +1,16 @@
 import json
+import re
 import sys
 import types
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from src.api import auth as api_auth
+from src.api.routers import trading as trading_router
 from src.api.server import APIServer
 from src.xianyu import xianyu_admin
 
@@ -20,6 +27,17 @@ except TypeError:
 pytestmark = pytest.mark.skipif(_skip, reason="starlette/httpx 版本与 Python 3.9 不兼容")
 
 
+def _connected_xianyu_runtime_snapshot(timeout: float = 5.0) -> dict:
+    assert timeout == 5.0
+    return {
+        "ws_connected": True,
+        "cookie_ok": True,
+        "last_heartbeat": 0.0,
+        "token_ts": 0.0,
+        "manual_chats": 0,
+    }
+
+
 @pytest.fixture(autouse=True)
 def api_dev_auth_mode(monkeypatch, tmp_path):
     """固定 API 回归测试为无 Token 开发模式，避免本机 .env 污染鉴权状态。"""
@@ -27,6 +45,7 @@ def api_dev_auth_mode(monkeypatch, tmp_path):
     monkeypatch.setenv("ENV", "development")
     monkeypatch.setenv("API_HOST", "127.0.0.1")
     monkeypatch.setenv("CC_OPERATOR_STATE_FILE", str(tmp_path / "cc-operator-state.json"))
+    monkeypatch.setenv("CC_XIANYU_AUTO_SHIP_PAUSED", "0")
     monkeypatch.setattr("src.api.auth._API_TOKEN", "")
     monkeypatch.setattr("src.api.auth._warned_no_token", False)
     monkeypatch.setattr("src.xianyu.xianyu_admin._last_cc_strict_audit", {})
@@ -38,6 +57,142 @@ def api_dev_auth_mode(monkeypatch, tmp_path):
     monkeypatch.setattr("src.xianyu.xianyu_admin._last_ops_notify_at", 0.0)
     monkeypatch.setattr("src.xianyu.xianyu_admin._last_ops_notify_result", {})
 
+
+@pytest.mark.parametrize(
+    ("env_mode", "bind_host"),
+    [
+        ("production", "127.0.0.1"),
+        ("prod", "127.0.0.1"),
+        ("development", "0.0.0.0"),
+    ],
+)
+def test_websocket_without_token_fails_closed_outside_local_development(
+    monkeypatch,
+    env_mode,
+    bind_host,
+):
+    """生产环境或外网绑定时，WebSocket 未配置 Token 必须拒绝连接。"""
+    monkeypatch.setattr(api_auth, "_API_TOKEN", "")
+    monkeypatch.setenv("ENV", env_mode)
+    monkeypatch.setenv("API_HOST", bind_host)
+    websocket = types.SimpleNamespace(query_params={})
+
+    assert api_auth.verify_ws_token(websocket) is False
+
+
+def test_websocket_without_token_allows_local_development(monkeypatch):
+    """本机开发模式可保持无 Token 调试能力。"""
+    monkeypatch.setattr(api_auth, "_API_TOKEN", "")
+    monkeypatch.setenv("ENV", "development")
+    monkeypatch.setenv("API_HOST", "localhost")
+    websocket = types.SimpleNamespace(query_params={})
+
+    assert api_auth.verify_ws_token(websocket) is True
+
+
+@pytest.mark.parametrize(
+    ("env_mode", "actual_bind_host"),
+    [
+        ("production", "127.0.0.1"),
+        ("prod", "127.0.0.1"),
+        ("development", "0.0.0.0"),
+    ],
+)
+def test_xianyu_admin_without_token_fails_closed_from_actual_bind_host(
+    monkeypatch,
+    env_mode,
+    actual_bind_host,
+):
+    """闲鱼独立管理面必须使用真实监听地址，并识别 production/prod。"""
+    monkeypatch.delenv("OPENCLAW_API_TOKEN", raising=False)
+    monkeypatch.setenv("ENV", env_mode)
+    monkeypatch.setenv("API_HOST", "127.0.0.1")
+    monkeypatch.setattr(xianyu_admin.app.state, "bind_host", actual_bind_host, raising=False)
+    client = TestClient(xianyu_admin.app)
+
+    response = client.get("/api/auth-contract-probe")
+
+    assert response.status_code == 503
+    assert "拒绝所有请求" in response.json()["detail"]
+
+
+def test_websocket_configured_token_accepts_only_exact_match(monkeypatch):
+    """配置 Token 后，仅精确匹配的查询参数可通过。"""
+    monkeypatch.setattr(api_auth, "_API_TOKEN", "unit-secret")
+
+    assert api_auth.verify_ws_token(types.SimpleNamespace(query_params={"token": "wrong-secret"})) is False
+    assert api_auth.verify_ws_token(types.SimpleNamespace(query_params={"token": "unit-secret"})) is True
+
+
+@pytest.mark.asyncio
+async def test_http_and_websocket_share_no_token_fail_closed_policy(monkeypatch):
+    """HTTP 与 WebSocket 必须复用同一条无 Token 生产安全策略。"""
+    monkeypatch.setattr(api_auth, "_API_TOKEN", "")
+    monkeypatch.setenv("ENV", "prod")
+    monkeypatch.setenv("API_HOST", "127.0.0.1")
+    connection = types.SimpleNamespace(scope={"type": "http"}, headers={})
+    websocket = types.SimpleNamespace(query_params={})
+
+    with pytest.raises(HTTPException) as error:
+        await api_auth.verify_api_token(connection)
+
+    assert error.value.status_code == 503
+    assert api_auth.verify_ws_token(websocket) is False
+
+
+@pytest.mark.parametrize(
+    "broker_result",
+    [
+        {"status": "Cancelled", "filled_qty": 0, "avg_price": 0, "order_id": 1},
+        {"status": "Inactive", "filled_qty": 0, "avg_price": 0, "order_id": 2},
+        {"status": "Filled", "filled_qty": 0, "avg_price": 0, "order_id": 3},
+        {
+            "status": "Submitted",
+            "filled_qty": 0,
+            "avg_price": 0,
+            "order_id": 4,
+            "broker_result_ambiguous": True,
+        },
+    ],
+)
+async def test_manual_sell_fails_closed_for_rejected_or_ambiguous_broker_result(
+    monkeypatch,
+    broker_result,
+):
+    bridge = MagicMock()
+    bridge.is_connected.return_value = True
+    bridge.sell = AsyncMock(return_value=broker_result)
+    monkeypatch.setattr("src.broker_selector.ibkr", bridge)
+    monkeypatch.setattr(trading_router, "push_event", MagicMock())
+
+    result = await trading_router.sell_position(
+        trading_router.SellRequest(symbol="AAPL", quantity=1, order_type="MKT")
+    )
+
+    assert result["success"] is False
+
+
+async def test_manual_sell_reports_only_explicitly_accepted_order_as_success(monkeypatch):
+    bridge = MagicMock()
+    bridge.is_connected.return_value = True
+    bridge.sell = AsyncMock(
+        return_value={
+            "status": "Submitted",
+            "filled_qty": 0,
+            "avg_price": 0,
+            "order_id": 5,
+            "order_type": "MKT",
+        }
+    )
+    monkeypatch.setattr("src.broker_selector.ibkr", bridge)
+    monkeypatch.setattr(trading_router, "push_event", MagicMock())
+
+    result = await trading_router.sell_position(
+        trading_router.SellRequest(symbol="AAPL", quantity=1, order_type="MKT")
+    )
+
+    assert result["success"] is True
+    assert result["status"] == "Submitted"
 
 
 def test_api_cors_allows_chrome_extension_origin_for_social_status():
@@ -73,6 +228,7 @@ def test_api_cors_rejects_unlisted_web_origin_for_social_status():
     )
 
     assert response.status_code == 400
+
 
 def test_memory_search_accepts_q_alias(monkeypatch):
     server = APIServer()
@@ -176,66 +332,66 @@ def test_social_analytics_route_exists(monkeypatch):
     assert response.json()["top_posts"] == []
 
 
-
-
 def test_social_extension_trends_route_returns_candidates(monkeypatch):
     server = APIServer()
     client = TestClient(server.app)
 
     monkeypatch.setattr(
-        'src.api.routers.social.ClawBotRPC._rpc_social_extension_trends',
-        lambda platform='x', limit=8: {
-            'success': True,
-            'platform': platform,
-            'count': 1,
-            'trends': [{'title': 'GitHub 一周异常 Star 工具榜'}],
-            'auto_publish_enabled': False,
-            'external_actions_locked': True,
+        "src.api.routers.social.ClawBotRPC._rpc_social_extension_trends",
+        lambda platform="x", limit=8: {
+            "success": True,
+            "platform": platform,
+            "count": 1,
+            "trends": [{"title": "GitHub 一周异常 Star 工具榜"}],
+            "auto_publish_enabled": False,
+            "external_actions_locked": True,
         },
     )
 
-    response = client.get('/api/v1/social/extension/trends?platform=x&limit=3')
+    response = client.get("/api/v1/social/extension/trends?platform=x&limit=3")
 
     assert response.status_code == 200
     data = response.json()
-    assert data['success'] is True
-    assert data['platform'] == 'x'
-    assert data['trends'][0]['title'] == 'GitHub 一周异常 Star 工具榜'
-    assert data['auto_publish_enabled'] is False
+    assert data["success"] is True
+    assert data["platform"] == "x"
+    assert data["trends"][0]["title"] == "GitHub 一周异常 Star 工具榜"
+    assert data["auto_publish_enabled"] is False
+
 
 def test_social_extension_draft_patch_accepts_json_body(monkeypatch):
     server = APIServer()
     client = TestClient(server.app)
     captured = {}
 
-    def _fake_update(draft_id, text='', title=''):
-        captured['draft_id'] = draft_id
-        captured['text'] = text
-        captured['title'] = title
+    def _fake_update(draft_id, text="", title=""):
+        captured["draft_id"] = draft_id
+        captured["text"] = text
+        captured["title"] = title
         return {
-            'success': True,
-            'draft': {'id': draft_id, 'text': text, 'title': title},
-            'auto_publish_enabled': False,
-            'external_actions_locked': True,
+            "success": True,
+            "draft": {"id": draft_id, "text": text, "title": title},
+            "auto_publish_enabled": False,
+            "external_actions_locked": True,
         }
 
     monkeypatch.setattr(
-        'src.api.routers.social.ClawBotRPC._rpc_social_extension_draft_update',
+        "src.api.routers.social.ClawBotRPC._rpc_social_extension_draft_update",
         _fake_update,
     )
 
     response = client.patch(
-        '/api/v1/social/extension/drafts/ext-x-demo',
-        json={'title': '美股回调别慌', 'text': '这是从插件编辑器保存的长正文。'},
+        "/api/v1/social/extension/drafts/ext-x-demo",
+        json={"title": "美股回调别慌", "text": "这是从插件编辑器保存的长正文。"},
     )
 
     assert response.status_code == 200
-    assert response.json()['success'] is True
+    assert response.json()["success"] is True
     assert captured == {
-        'draft_id': 'ext-x-demo',
-        'title': '美股回调别慌',
-        'text': '这是从插件编辑器保存的长正文。',
+        "draft_id": "ext-x-demo",
+        "title": "美股回调别慌",
+        "text": "这是从插件编辑器保存的长正文。",
     }
+
 
 def test_store_catalog_route_exists_and_returns_summary():
     server = APIServer()
@@ -249,10 +405,15 @@ def test_store_catalog_route_exists_and_returns_summary():
     assert isinstance(data["extensions"], list)
     assert isinstance(data["bot_skills"], list)
     assert data["summary"]["total"] == (
-        data["summary"]["total_skills"]
-        + data["summary"]["total_extensions"]
-        + data["summary"]["total_bot_skills"]
+        data["summary"]["total_skills"] + data["summary"]["total_extensions"] + data["summary"]["total_bot_skills"]
     )
+
+
+def test_store_project_root_supports_flat_container_layout():
+    """容器把 ClawBot 放在 /app 时，商店路由必须可导入并安全降级。"""
+    from src.api.routers import store
+
+    assert store._resolve_project_root(Path("/app/src/api/routers/store.py")) == Path("/app")
 
 
 def test_trading_dashboard_returns_chart_data_when_assets_exist(monkeypatch):
@@ -293,6 +454,7 @@ def test_trading_dashboard_builds_chart_from_journal(monkeypatch):
 
     # 直接调用 RPC，验证它不再返回永久空图
     import asyncio
+
     result = asyncio.run(ClawBotRPC._rpc_trading_dashboard())
 
     assert result["chart_data"] == [
@@ -375,8 +537,8 @@ def test_xianyu_admin_page_escapes_dynamic_fields():
     page = response.text
 
     assert "CC中转操作台" in page
-    assert '/static/layui/css/layui.css' in page
-    assert '/static/layui/layui.js' in page
+    assert "/static/layui/css/layui.css" in page
+    assert "/static/layui/layui.js" in page
     assert "layui.use" in page
     assert "layui-card" in page
     assert "layui-table" in page
@@ -543,6 +705,99 @@ def test_xianyu_admin_page_opens_without_token_but_api_requires_token(monkeypatc
     assert with_token.status_code == 200
 
 
+def test_xianyu_admin_exchanges_global_token_for_scoped_http_only_session(monkeypatch):
+    monkeypatch.setattr("src.api.auth._API_TOKEN", "unit-secret")
+    client = TestClient(xianyu_admin.app)
+
+    session = client.post(
+        "/api/session",
+        headers={"X-API-Token": "unit-secret"},
+    )
+
+    assert session.status_code == 200
+    assert session.json() == {"ok": True, "expires_in": 900}
+    set_cookie = session.headers["set-cookie"]
+    assert "xianyu_admin_session=" in set_cookie
+    assert "HttpOnly" in set_cookie
+    assert "SameSite=strict" in set_cookie
+    assert "Path=/api" in set_cookie
+    assert "Max-Age=900" in set_cookie
+    assert "unit-secret" not in set_cookie
+
+    status = client.get("/api/status")
+    assert status.status_code == 200
+
+    page = client.get("/")
+    assert "localStorage" not in page.text
+    assert "sessionStorage" not in page.text
+    assert "/api/session" in page.text
+
+
+def test_xianyu_admin_session_rejects_cross_origin_write(monkeypatch):
+    monkeypatch.setattr("src.api.auth._API_TOKEN", "unit-secret")
+    client = TestClient(xianyu_admin.app)
+    session = client.post(
+        "/api/session",
+        headers={"X-API-Token": "unit-secret"},
+    )
+    assert session.status_code == 200
+
+    response = client.post(
+        "/api/cc-operator-mode",
+        headers={"Origin": "https://attacker.example"},
+        json={"auto_ship_paused": True, "reason": "cross-origin"},
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "管理会话只允许同源写请求"}
+
+
+def test_xianyu_admin_session_capacity_fails_closed(monkeypatch):
+    """短时会话达到硬上限后拒绝新会话，避免认证客户端撑大内存。"""
+    monkeypatch.setattr("src.api.auth._API_TOKEN", "unit-secret")
+    monkeypatch.setattr(xianyu_admin, "_ADMIN_SESSION_MAX_ACTIVE", 1)
+    client = TestClient(xianyu_admin.app)
+    with xianyu_admin._admin_sessions_lock:
+        xianyu_admin._admin_sessions.clear()
+
+    try:
+        assert client.post("/api/session", headers={"X-API-Token": "unit-secret"}).status_code == 200
+        response = client.post("/api/session", headers={"X-API-Token": "unit-secret"})
+
+        assert response.status_code == 429
+        assert response.json() == {"detail": "短时管理会话已达上限，请稍后重试"}
+    finally:
+        with xianyu_admin._admin_sessions_lock:
+            xianyu_admin._admin_sessions.clear()
+
+
+def test_xianyu_admin_pages_enforce_nonce_csp_and_safe_dom_updates(monkeypatch):
+    """管理页必须拒绝内联事件，并用一次性 nonce 约束页面脚本。"""
+    monkeypatch.setattr("src.api.auth._API_TOKEN", "unit-secret")
+    client = TestClient(xianyu_admin.app)
+
+    for path in ("/", "/dashboard", "/ops-links"):
+        response = client.get(path)
+
+        assert response.status_code == 200
+        csp = response.headers["content-security-policy"]
+        script_policy = next(part.strip() for part in csp.split(";") if part.strip().startswith("script-src"))
+        nonce_match = re.search(r"'nonce-([^']+)'", script_policy)
+        assert nonce_match is not None
+        assert "'self'" in script_policy
+        assert "'unsafe-inline'" not in script_policy
+        assert f'<script nonce="{nonce_match.group(1)}">' in response.text
+        assert "onclick=" not in response.text
+        assert "onerror=" not in response.text
+        assert ".innerHTML" not in response.text
+        assert "localStorage" not in response.text
+        assert "sessionStorage" not in response.text
+        assert 'autocomplete="current-password"' not in response.text
+        assert response.headers["cache-control"] == "no-store"
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert response.headers["referrer-policy"] == "no-referrer"
+
+
 def test_xianyu_admin_runs_readonly_cc_readiness_audit(monkeypatch, tmp_path):
     script = tmp_path / "scripts" / "cc_zhongzhuan_readiness_audit.mjs"
     script.parent.mkdir()
@@ -678,6 +933,11 @@ def test_xianyu_admin_resends_cc_shipment(monkeypatch):
             self.called.append(shipment_id)
             return {"ok": True, "id": shipment_id, "order_id": "order-admin-resend"}
 
+        async def call_on_owner(self, operation, **kwargs):
+            assert operation == "resend_cc_shipment"
+            assert kwargs.pop("timeout") == 45.0
+            return await self.resend_cc_shipment(**kwargs)
+
     live = _Live()
     monkeypatch.setattr("src.xianyu.xianyu_admin._live", live)
 
@@ -747,13 +1007,8 @@ def test_xianyu_admin_sale_readiness_and_product_template(monkeypatch):
     monkeypatch.setenv("CC_XIANYU_WEBHOOK_TOKEN", "secret-token")
     monkeypatch.setenv("CC_XIANYU_DEFAULT_PLAN_ID", "day|quotaUsd=30|source=xianyu")
 
-    class _Ws:
-        open = True
-
     class _Live:
-        ws = _Ws()
-        _cookie_ok = True
-        manual_chats = {}
+        runtime_snapshot_sync = staticmethod(_connected_xianyu_runtime_snapshot)
 
     class _Context:
         def cc_shipment_summary(self):
@@ -913,7 +1168,10 @@ def test_xianyu_admin_sale_readiness_and_product_template(monkeypatch):
     assert coverage_body["buyer_site_smoke"]["state"] == "complete"
     assert coverage_body["buyer_site_smoke_plan"]["executes_now"] is False
     assert any(item["key"] == "chrome_bookmark_folder" and item["ok"] is True for item in coverage_body["items"])
-    assert any(item["key"] == "real_order_strict_gate" and item["external"] is True and item["ok"] is False for item in coverage_body["items"])
+    assert any(
+        item["key"] == "real_order_strict_gate" and item["external"] is True and item["ok"] is False
+        for item in coverage_body["items"]
+    )
     assert "真实付款" in coverage_body["next_action"]
 
     precheck = client.get("/api/cc-manual-precheck-evidence")
@@ -959,7 +1217,6 @@ def test_xianyu_admin_sale_readiness_and_product_template(monkeypatch):
     assert "CC Switch" in text
     assert "/v1" not in text
     assert "官方合作" not in text
-
 
 
 def test_xianyu_resume_preflight_refreshes_inventory_when_cache_cold(monkeypatch):
@@ -1026,13 +1283,8 @@ def test_xianyu_operator_mode_can_pause_auto_ship(monkeypatch):
     monkeypatch.setenv("CC_XIANYU_WEBHOOK_TOKEN", "secret-token")
     monkeypatch.setenv("CC_XIANYU_DEFAULT_PLAN_ID", "day|quotaUsd=30|source=xianyu")
 
-    class _Ws:
-        open = True
-
     class _Live:
-        ws = _Ws()
-        _cookie_ok = True
-        manual_chats = {}
+        runtime_snapshot_sync = staticmethod(_connected_xianyu_runtime_snapshot)
 
     class _Context:
         def cc_shipment_summary(self):
@@ -1294,16 +1546,11 @@ def test_xianyu_admin_automation_coverage_runs_strict_audit_after_real_order(mon
     assert any(item["key"] == "real_order_strict_gate" and item["ok"] is False for item in body["items"])
 
 
-
 def test_xianyu_ops_snapshot_treats_pause_after_strict_gate_as_healthy(monkeypatch):
     """严格门已过但自动发货人为暂停时，总快照应显示系统健康待恢复，不应误报故障。"""
-    class _Ws:
-        open = True
 
     class _Live:
-        ws = _Ws()
-        _cookie_ok = True
-        manual_chats = {}
+        runtime_snapshot_sync = staticmethod(_connected_xianyu_runtime_snapshot)
 
     class _Context:
         def cc_shipment_summary(self):
@@ -1376,8 +1623,6 @@ def test_xianyu_ops_snapshot_treats_pause_after_strict_gate_as_healthy(monkeypat
     assert snapshot["status"]["cc_shipments"]["pending_rescue"] == 0
 
 
-
-
 def test_xianyu_ops_snapshot_uses_precheck_when_inventory_cache_cold(monkeypatch):
     """冷启动未刷新库存缓存时，严格门已过的暂停保护态也不能误报系统故障。"""
     monkeypatch.setattr("src.xianyu.xianyu_admin._last_cc_readiness_audit", {})
@@ -1393,13 +1638,8 @@ def test_xianyu_ops_snapshot_uses_precheck_when_inventory_cache_cold(monkeypatch
         },
     )
 
-    class _Ws:
-        open = True
-
     class _Live:
-        ws = _Ws()
-        _cookie_ok = True
-        manual_chats = {}
+        runtime_snapshot_sync = staticmethod(_connected_xianyu_runtime_snapshot)
 
     class _Context:
         def cc_shipment_summary(self):
@@ -1483,13 +1723,8 @@ def test_xianyu_operator_next_action_waits_for_inventory_evidence(monkeypatch):
     monkeypatch.setenv("CC_XIANYU_WEBHOOK_URL", "https://frist-api-oracle.245334.xyz/api/ops/xianyu/paid-order")
     monkeypatch.setenv("CC_XIANYU_WEBHOOK_TOKEN", "secret-token")
 
-    class _Ws:
-        open = True
-
     class _Live:
-        ws = _Ws()
-        _cookie_ok = True
-        manual_chats = {}
+        runtime_snapshot_sync = staticmethod(_connected_xianyu_runtime_snapshot)
 
     class _Context:
         def cc_shipment_summary(self):
@@ -1559,7 +1794,7 @@ def test_xianyu_admin_public_sale_lock_refreshes_readonly_audit(monkeypatch):
     monkeypatch.setattr("src.xianyu.xianyu_admin._last_cc_readiness_audit", {})
     monkeypatch.setattr(
         "src.xianyu.xianyu_admin._cc_sale_readiness_summary",
-        lambda: {
+        lambda *_args, **_kwargs: {
             "can_auto_ship_paid_orders": True,
             "ready_for_public_sale": True,
             "checks": {"pending_rescue": 0},
@@ -1568,36 +1803,38 @@ def test_xianyu_admin_public_sale_lock_refreshes_readonly_audit(monkeypatch):
     )
     monkeypatch.setattr(
         "src.xianyu.xianyu_admin._cc_loop_watch_summary",
-        lambda: {"stage": "closed_loop_verified"},
+        lambda *_args, **_kwargs: {"stage": "closed_loop_verified"},
     )
     calls = []
 
     def _fake_audit(mode):
         calls.append(mode)
-        xianyu_admin._remember_readiness_audit({
-            "ok": True,
-            "mode": mode,
-            "exit_code": 0,
-            "summary": {
-                "inventory_unused": 2,
-                "newapi_enabled_redemptions": 2,
-                "newapi_enabled_channels": 3,
-                "pending_rescue": 0,
-                "oracle": True,
-                "local_gui": True,
-                "chrome_bookmarks": True,
-                "buyer_self_service_ok": True,
-                "webhook_public_locked": True,
-                "public_main_http": 200,
-                "public_models_no_auth_http": 401,
-                "public_webhook_no_token_http": 401,
-                "ccswitch_entry_ok": True,
-                "ccswitch_entry_http": 200,
-                "ccswitch_has_cc_switch_text": True,
-                "ccswitch_has_ccswitch_marker": True,
-                "ccswitch_has_import_link_marker": True,
-            },
-        })
+        xianyu_admin._remember_readiness_audit(
+            {
+                "ok": True,
+                "mode": mode,
+                "exit_code": 0,
+                "summary": {
+                    "inventory_unused": 2,
+                    "newapi_enabled_redemptions": 2,
+                    "newapi_enabled_channels": 3,
+                    "pending_rescue": 0,
+                    "oracle": True,
+                    "local_gui": True,
+                    "chrome_bookmarks": True,
+                    "buyer_self_service_ok": True,
+                    "webhook_public_locked": True,
+                    "public_main_http": 200,
+                    "public_models_no_auth_http": 401,
+                    "public_webhook_no_token_http": 401,
+                    "ccswitch_entry_ok": True,
+                    "ccswitch_entry_http": 200,
+                    "ccswitch_has_cc_switch_text": True,
+                    "ccswitch_has_ccswitch_marker": True,
+                    "ccswitch_has_import_link_marker": True,
+                },
+            }
+        )
         return {"ok": True}
 
     monkeypatch.setattr("src.xianyu.xianyu_admin._run_cc_readiness_audit", _fake_audit)
@@ -1616,12 +1853,11 @@ def test_xianyu_admin_public_sale_lock_refreshes_readonly_audit(monkeypatch):
     assert lock["blockers"] == []
 
 
-
 def test_xianyu_admin_public_sale_lock_explains_manual_pause_after_strict_gate(monkeypatch):
     """严格门已过但老板手动暂停时，售卖锁要说人话，不能误报链路坏了。"""
     monkeypatch.setattr(
         "src.xianyu.xianyu_admin._cc_sale_readiness_summary",
-        lambda: {
+        lambda *_args, **_kwargs: {
             "can_auto_ship_paid_orders": False,
             "ready_for_public_sale": True,
             "checks": {
@@ -1636,7 +1872,7 @@ def test_xianyu_admin_public_sale_lock_explains_manual_pause_after_strict_gate(m
     )
     monkeypatch.setattr(
         "src.xianyu.xianyu_admin._cc_loop_watch_summary",
-        lambda: {"stage": "closed_loop_verified", "ready_for_public_sale": True},
+        lambda *_args, **_kwargs: {"stage": "closed_loop_verified", "ready_for_public_sale": True},
     )
     monkeypatch.setattr(
         "src.xianyu.xianyu_admin._last_cc_readiness_audit",
@@ -1676,7 +1912,7 @@ def test_xianyu_admin_public_sale_lock_explains_manual_pause_after_strict_gate(m
 def test_xianyu_admin_public_sale_lock_blocks_bad_buyer_entry(monkeypatch):
     monkeypatch.setattr(
         "src.xianyu.xianyu_admin._cc_sale_readiness_summary",
-        lambda: {
+        lambda *_args, **_kwargs: {
             "can_auto_ship_paid_orders": True,
             "ready_for_public_sale": True,
             "checks": {"pending_rescue": 0},
@@ -1685,7 +1921,7 @@ def test_xianyu_admin_public_sale_lock_blocks_bad_buyer_entry(monkeypatch):
     )
     monkeypatch.setattr(
         "src.xianyu.xianyu_admin._cc_loop_watch_summary",
-        lambda: {"stage": "closed_loop_verified"},
+        lambda *_args, **_kwargs: {"stage": "closed_loop_verified"},
     )
     monkeypatch.setattr(
         "src.xianyu.xianyu_admin._last_cc_readiness_audit",
@@ -1716,11 +1952,10 @@ def test_xianyu_admin_public_sale_lock_blocks_bad_buyer_entry(monkeypatch):
     assert "买家主站或 API 网关公网入口异常" in lock["blockers"]
 
 
-
 def test_xianyu_admin_public_sale_lock_blocks_bad_ccswitch_entry(monkeypatch):
     monkeypatch.setattr(
         "src.xianyu.xianyu_admin._cc_sale_readiness_summary",
-        lambda: {
+        lambda *_args, **_kwargs: {
             "can_auto_ship_paid_orders": True,
             "ready_for_public_sale": True,
             "checks": {"pending_rescue": 0},
@@ -1729,7 +1964,7 @@ def test_xianyu_admin_public_sale_lock_blocks_bad_ccswitch_entry(monkeypatch):
     )
     monkeypatch.setattr(
         "src.xianyu.xianyu_admin._cc_loop_watch_summary",
-        lambda: {"stage": "closed_loop_verified"},
+        lambda *_args, **_kwargs: {"stage": "closed_loop_verified"},
     )
     monkeypatch.setattr(
         "src.xianyu.xianyu_admin._last_cc_readiness_audit",
@@ -1764,6 +1999,7 @@ def test_xianyu_admin_public_sale_lock_blocks_bad_ccswitch_entry(monkeypatch):
     assert lock["gates"]["ccswitch_import_ready"] is False
     assert lock["inventory"]["ccswitch_entry_http"] == 200
     assert "CC Switch 导入入口异常" in lock["blockers"]
+
 
 def test_xianyu_admin_background_readiness_audit_gate(monkeypatch):
     monkeypatch.setenv("CC_XIANYU_AUTO_READINESS_AUDIT_ENABLED", "1")
@@ -1966,13 +2202,17 @@ def test_xianyu_admin_buyer_progress_marks_verified_chain_from_strict_summary(mo
     )
     monkeypatch.setattr(
         "src.xianyu.xianyu_admin._ctx",
-        type("Ctx", (), {
-            "cc_final_sale_gate_summary": lambda self: {
-                "sent_real_orders": 1,
-                "buyer_chain_verified_orders": 1,
-                "pending_rescue": 0,
-            }
-        })(),
+        type(
+            "Ctx",
+            (),
+            {
+                "cc_final_sale_gate_summary": lambda self: {
+                    "sent_real_orders": 1,
+                    "buyer_chain_verified_orders": 1,
+                    "pending_rescue": 0,
+                }
+            },
+        )(),
     )
 
     progress = xianyu_admin._cc_buyer_chain_progress_summary()
@@ -2027,27 +2267,27 @@ def test_social_extension_page_probe_route_accepts_json_body(monkeypatch):
     def _fake_probe(payload):
         captured.update(payload)
         return {
-            'success': True,
-            'platform': payload.get('platform'),
-            'ready': bool(payload.get('ready')),
-            'auto_publish_enabled': False,
-            'external_actions_locked': True,
+            "success": True,
+            "platform": payload.get("platform"),
+            "ready": bool(payload.get("ready")),
+            "auto_publish_enabled": False,
+            "external_actions_locked": True,
         }
 
     monkeypatch.setattr(
-        'src.api.routers.social.ClawBotRPC._rpc_social_extension_page_probe_update',
+        "src.api.routers.social.ClawBotRPC._rpc_social_extension_page_probe_update",
         _fake_probe,
     )
 
     response = client.post(
-        '/api/v1/social/extension/page-probe',
-        json={'platform': 'xhs', 'ready': True, 'availableFields': [{'name': 'title'}]},
+        "/api/v1/social/extension/page-probe",
+        json={"platform": "xhs", "ready": True, "availableFields": [{"name": "title"}]},
     )
 
     assert response.status_code == 200
-    assert response.json()['success'] is True
-    assert captured['platform'] == 'xhs'
-    assert captured['ready'] is True
+    assert response.json()["success"] is True
+    assert captured["platform"] == "xhs"
+    assert captured["ready"] is True
 
 
 def test_social_persona_review_route_accepts_json_body(monkeypatch):
@@ -2055,33 +2295,33 @@ def test_social_persona_review_route_accepts_json_body(monkeypatch):
     client = TestClient(server.app)
     captured = {}
 
-    def _fake_review(approved=True, reviewer='owner', notes=''):
-        captured['approved'] = approved
-        captured['reviewer'] = reviewer
-        captured['notes'] = notes
+    def _fake_review(approved=True, reviewer="owner", notes=""):
+        captured["approved"] = approved
+        captured["reviewer"] = reviewer
+        captured["notes"] = notes
         return {
-            'success': True,
-            'approved': approved,
-            'auto_publish_enabled': False,
-            'external_actions_locked': True,
+            "success": True,
+            "approved": approved,
+            "auto_publish_enabled": False,
+            "external_actions_locked": True,
         }
 
     monkeypatch.setattr(
-        'src.api.routers.social.ClawBotRPC._rpc_social_persona_review_update',
+        "src.api.routers.social.ClawBotRPC._rpc_social_persona_review_update",
         _fake_review,
     )
 
     response = client.post(
-        '/api/v1/social/persona-review',
-        json={'approved': False, 'reviewer': 'owner', 'notes': '方向太 AI，继续追热点抽象。'},
+        "/api/v1/social/persona-review",
+        json={"approved": False, "reviewer": "owner", "notes": "方向太 AI，继续追热点抽象。"},
     )
 
     assert response.status_code == 200
-    assert response.json()['success'] is True
+    assert response.json()["success"] is True
     assert captured == {
-        'approved': False,
-        'reviewer': 'owner',
-        'notes': '方向太 AI，继续追热点抽象。',
+        "approved": False,
+        "reviewer": "owner",
+        "notes": "方向太 AI，继续追热点抽象。",
     }
 
 
@@ -2090,33 +2330,33 @@ def test_social_extension_draft_schedule_route_accepts_json_body(monkeypatch):
     client = TestClient(server.app)
     captured = {}
 
-    def _fake_schedule(draft_id, scheduled_at='', reviewer='owner'):
-        captured['draft_id'] = draft_id
-        captured['scheduled_at'] = scheduled_at
-        captured['reviewer'] = reviewer
+    def _fake_schedule(draft_id, scheduled_at="", reviewer="owner"):
+        captured["draft_id"] = draft_id
+        captured["scheduled_at"] = scheduled_at
+        captured["reviewer"] = reviewer
         return {
-            'success': True,
-            'schedule_item': {'draft_id': draft_id, 'scheduled_at': scheduled_at},
-            'auto_publish_enabled': False,
-            'external_actions_locked': True,
+            "success": True,
+            "schedule_item": {"draft_id": draft_id, "scheduled_at": scheduled_at},
+            "auto_publish_enabled": False,
+            "external_actions_locked": True,
         }
 
     monkeypatch.setattr(
-        'src.api.routers.social.ClawBotRPC._rpc_social_extension_draft_schedule',
+        "src.api.routers.social.ClawBotRPC._rpc_social_extension_draft_schedule",
         _fake_schedule,
     )
 
     response = client.post(
-        '/api/v1/social/extension/drafts/ext-x-demo/schedule',
-        json={'scheduled_at': '2026-06-24T08:30:00-06:00', 'reviewer': 'owner'},
+        "/api/v1/social/extension/drafts/ext-x-demo/schedule",
+        json={"scheduled_at": "2026-06-24T08:30:00-06:00", "reviewer": "owner"},
     )
 
     assert response.status_code == 200
-    assert response.json()['success'] is True
+    assert response.json()["success"] is True
     assert captured == {
-        'draft_id': 'ext-x-demo',
-        'scheduled_at': '2026-06-24T08:30:00-06:00',
-        'reviewer': 'owner',
+        "draft_id": "ext-x-demo",
+        "scheduled_at": "2026-06-24T08:30:00-06:00",
+        "reviewer": "owner",
     }
 
 
@@ -2126,36 +2366,36 @@ def test_social_extension_schedule_route_returns_queue(monkeypatch):
     captured = {}
 
     def _fake_queue(limit=20):
-        captured['limit'] = limit
+        captured["limit"] = limit
         return {
-            'success': True,
-            'count': 1,
-            'due_count': 1,
-            'queue': [
+            "success": True,
+            "count": 1,
+            "due_count": 1,
+            "queue": [
                 {
-                    'draft_id': 'ext-x-due',
-                    'platform': 'x',
-                    'title': '到点提醒',
-                    'status': 'awaiting_final_confirmation',
-                    'draft': {'id': 'ext-x-due', 'title': '到点提醒'},
+                    "draft_id": "ext-x-due",
+                    "platform": "x",
+                    "title": "到点提醒",
+                    "status": "awaiting_final_confirmation",
+                    "draft": {"id": "ext-x-due", "title": "到点提醒"},
                 }
             ],
-            'auto_publish_enabled': False,
-            'external_actions_locked': True,
+            "auto_publish_enabled": False,
+            "external_actions_locked": True,
         }
 
     monkeypatch.setattr(
-        'src.api.routers.social.ClawBotRPC._rpc_social_extension_schedule_queue',
+        "src.api.routers.social.ClawBotRPC._rpc_social_extension_schedule_queue",
         _fake_queue,
     )
 
-    response = client.get('/api/v1/social/extension/schedule?limit=12')
+    response = client.get("/api/v1/social/extension/schedule?limit=12")
 
     assert response.status_code == 200
-    assert response.json()['success'] is True
-    assert response.json()['queue'][0]['draft']['id'] == 'ext-x-due'
-    assert response.json()['auto_publish_enabled'] is False
-    assert captured == {'limit': 12}
+    assert response.json()["success"] is True
+    assert response.json()["queue"][0]["draft"]["id"] == "ext-x-due"
+    assert response.json()["auto_publish_enabled"] is False
+    assert captured == {"limit": 12}
 
 
 def test_social_extension_schedule_final_confirm_route_exists(monkeypatch):
@@ -2163,26 +2403,26 @@ def test_social_extension_schedule_final_confirm_route_exists(monkeypatch):
     client = TestClient(server.app)
     captured = {}
 
-    def _fake_confirm(draft_id, reviewer='owner'):
-        captured['draft_id'] = draft_id
-        captured['reviewer'] = reviewer
+    def _fake_confirm(draft_id, reviewer="owner"):
+        captured["draft_id"] = draft_id
+        captured["reviewer"] = reviewer
         return {
-            'success': True,
-            'manual_publish_ready': True,
-            'auto_publish_enabled': False,
-            'external_actions_locked': True,
+            "success": True,
+            "manual_publish_ready": True,
+            "auto_publish_enabled": False,
+            "external_actions_locked": True,
         }
 
     monkeypatch.setattr(
-        'src.api.routers.social.ClawBotRPC._rpc_social_extension_schedule_final_confirm',
+        "src.api.routers.social.ClawBotRPC._rpc_social_extension_schedule_final_confirm",
         _fake_confirm,
     )
 
     response = client.post(
-        '/api/v1/social/extension/drafts/ext-x-final/final-confirm',
-        json={'reviewer': 'owner'},
+        "/api/v1/social/extension/drafts/ext-x-final/final-confirm",
+        json={"reviewer": "owner"},
     )
 
     assert response.status_code == 200
-    assert response.json()['success'] is True
-    assert captured == {'draft_id': 'ext-x-final', 'reviewer': 'owner'}
+    assert response.json()["success"] is True
+    assert captured == {"draft_id": "ext-x-final", "reviewer": "owner"}

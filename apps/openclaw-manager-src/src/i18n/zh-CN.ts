@@ -404,6 +404,9 @@ export const zhCN: Record<string, string> = {
   'assistant.currentMessages': '当前消息',
   'assistant.status': '状态',
   'assistant.replying': '回复中...',
+  'assistant.stopReply': '停止回复',
+  'assistant.cancelled': '已停止回复',
+  'assistant.sendMessage': '发送消息',
   'assistant.idle': '空闲',
   'assistant.today': '今天',
 
@@ -853,6 +856,7 @@ export const zhCN: Record<string, string> = {
   'plugins.colStatus': '状态',
   'plugins.colSwitch': '开关',
   'plugins.running': '运行中',
+  'plugins.managedRuntime': '受管运行包',
   'plugins.disabled': '已停用',
   'plugins.pluginStats': '插件统计',
   'plugins.installed': '已安装',

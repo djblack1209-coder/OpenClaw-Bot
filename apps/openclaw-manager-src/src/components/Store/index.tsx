@@ -14,7 +14,7 @@ import {
   CheckCircle2, XCircle, Clock, ThumbsUp,
   Power, Star,
 } from 'lucide-react';
-import { clawbotFetchJson, clawbotFetch } from '../../lib/tauri-core';
+import { clawbotFetchJson, clawbotFetch, isTauri } from '../../lib/tauri-core';
 import { api } from '../../lib/api';
 import type { EvolutionStatsRaw } from '../../lib/tauri-core';
 import { useLanguage } from '../../i18n';
@@ -97,7 +97,6 @@ export function Store() {
 
   /* MCP 插件数据 */
   const [mcpPlugins, setMcpPlugins] = useState<StoreItem[]>([]);
-  const [mcpToggling, setMcpToggling] = useState<string | null>(null);
 
   /* Evolution 数据 */
   const [evoItems, setEvoItems] = useState<StoreItem[]>([]);
@@ -121,27 +120,20 @@ export function Store() {
   /* ── 拉取 MCP 插件 ── */
   const fetchMcp = useCallback(async () => {
     try {
-      let plugins: any[] = [];
-      try {
-        const skillsData = await api.getSkillsStatus();
-        const sd = skillsData as any;
-        plugins = Array.isArray(sd) ? sd : sd?.skills ?? sd?.plugins ?? sd?.tools ?? [];
-      } catch {
-        /* Tauri IPC 失败，尝试 HTTP */
-        try {
-          const httpData = await clawbotFetchJson<any>('/api/v1/cli/tools');
-          plugins = Array.isArray(httpData) ? httpData : httpData?.tools ?? httpData?.skills ?? [];
-        } catch { /* 双失败 */ }
+      if (!isTauri()) {
+        setMcpPlugins([]);
+        return;
       }
-      setMcpPlugins(plugins.map((p: any) => ({
-        id: p.id ?? p.name ?? '',
-        name: p.name ?? p.id ?? '',
-        description: p.description ?? '',
+      const plugins = await api.getMcpPlugins();
+      setMcpPlugins(plugins.map((p) => ({
+        id: p.id,
+        name: p.name,
+        description: p.description,
         emoji: '⚡',
         type: 'mcp' as const,
-        category: p.protocol ?? 'stdio',
-        status: p.status === 'running' ? 'running' : 'stopped',
-        version: p.version ?? '',
+        category: p.type || 'stdio',
+        status: p.status,
+        version: p.version,
       })));
     } catch (e) {
       console.warn('[Store] MCP 插件拉取失败:', e);
@@ -194,26 +186,6 @@ export function Store() {
     timerRef.current = setInterval(fetchAll, 60_000);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [fetchAll]);
-
-  /* ── MCP 插件启停 ── */
-  const handleMcpToggle = useCallback(async (pluginId: string, currentStatus: string) => {
-    setMcpToggling(pluginId);
-    try {
-      if (currentStatus === 'running') {
-        await api.stopMcpPlugin(pluginId);
-        toast.success(`${pluginId} ${t('plugins.stopped')}`, { channel: 'log' });
-      } else {
-        await api.startMcpPlugin(pluginId);
-        toast.success(`${pluginId} ${t('plugins.started')}`, { channel: 'log' });
-      }
-      await new Promise(r => setTimeout(r, 800));
-      await fetchMcp();
-    } catch (e: unknown) {
-      toast.error(`${t('plugins.operationFailed')}: ${(e as Error)?.message ?? ''}`, { channel: 'notification' });
-    } finally {
-      setMcpToggling(null);
-    }
-  }, [fetchMcp, t]);
 
   /* ── Evolution 审批 ── */
   const handleEvoApprove = useCallback(async (id: string, action: 'approved' | 'rejected') => {
@@ -506,9 +478,7 @@ export function Store() {
                       <StoreItemAction
                         item={item}
                         t={t}
-                        mcpToggling={mcpToggling}
                         evoApproving={evoApproving}
-                        onMcpToggle={handleMcpToggle}
                         onEvoApprove={handleEvoApprove}
                       />
                     </div>
@@ -527,7 +497,7 @@ export function Store() {
                 {t('store.totalInstalled')}: <b style={{ color: 'var(--accent-green)' }}>{skills.length + extensions.length + botSkills.length}</b>
               </span>
               <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
-                MCP: <b style={{ color: 'var(--accent-cyan)' }}>{mcpPlugins.filter(p => p.status === 'running').length}/{mcpPlugins.length}</b>
+                MCP: <b style={{ color: 'var(--accent-cyan)' }}>{mcpPlugins.length}</b>
               </span>
               <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
                 {t('store.tabEvolution')}: <b style={{ color: 'var(--accent-amber)' }}>{evoItems.filter(e => e.status === 'pending').length}</b> {t('store.pending')}
@@ -560,13 +530,10 @@ function StoreItemStatus({ item, t }: { item: StoreItem; t: (k: string) => strin
   }
 
   if (item.type === 'mcp') {
-    const running = item.status === 'running';
     return (
-      <span className="flex items-center gap-1.5 text-[10px] font-mono font-bold" style={{
-        color: running ? 'var(--accent-green)' : 'var(--text-disabled)',
-      }}>
-        <span className="w-2 h-2 rounded-full" style={{ background: running ? 'var(--accent-green)' : 'var(--text-disabled)' }} />
-        {running ? t('plugins.running') : t('plugins.stopped')}
+      <span className="flex items-center gap-1.5 text-[10px] font-mono font-bold" style={{ color: 'var(--accent-cyan)' }}>
+        <CheckCircle2 size={10} />
+        {t('plugins.managedRuntime')}
       </span>
     );
   }
@@ -582,34 +549,15 @@ function StoreItemStatus({ item, t }: { item: StoreItem; t: (k: string) => strin
 
 /** 商店条目操作按钮 */
 function StoreItemAction({
-  item, t, mcpToggling, evoApproving, onMcpToggle, onEvoApprove,
+  item, t, evoApproving, onEvoApprove,
 }: {
   item: StoreItem;
   t: (k: string) => string;
-  mcpToggling: string | null;
   evoApproving: string | null;
-  onMcpToggle: (id: string, status: string) => void;
   onEvoApprove: (id: string, action: 'approved' | 'rejected') => void;
 }) {
   if (item.type === 'mcp') {
-    const isLoading = mcpToggling === item.id;
-    const running = item.status === 'running';
-    return (
-      <button
-        disabled={isLoading}
-        onClick={() => onMcpToggle(item.id, item.status)}
-        className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold transition-all"
-        style={{
-          background: running ? 'rgba(255,0,0,0.08)' : 'rgba(0,255,170,0.08)',
-          border: `1px solid ${running ? 'rgba(255,0,0,0.25)' : 'rgba(0,255,170,0.25)'}`,
-          color: running ? 'var(--accent-red)' : 'var(--accent-green)',
-          opacity: isLoading ? 0.5 : 1,
-        }}
-      >
-        {isLoading ? <Loader2 size={10} className="animate-spin" /> : <Power size={10} />}
-        {running ? t('bots.stop') : t('bots.start')}
-      </button>
-    );
+    return null;
   }
 
   if (item.type === 'evolution' && item.status === 'pending') {

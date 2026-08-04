@@ -1,12 +1,18 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import {
-  createId, hashId, hashAdminClaimCode, parseAdminClaimCodes, generateVerificationCode,
-  maskKey, headerValue, clientIp, parseCookies, publicError,
-  SESSION_COOKIE, PRIMARY_SOURCE_TYPE,
+  createId, hashId, headerValue, isEncryptedRuntimeSecret, parseCookies, publicError,
+  SESSION_COOKIE,
 } from './shared.js';
 
-export function createSecurityState() {
-  return { captchas: new Map(), rateLimits: new Map() };
+export { assertAuthRateLimit, createSecurityState } from './security.js';
+
+export const DEFAULT_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+const CSRF_COOKIE = 'frist_csrf';
+
+/** 将高熵会话令牌变成不可逆存储键，备份泄露时不能直接复用。 */
+export function runtimeTokenKey(value) {
+  return `sha256:${createHash('sha256').update(String(value || '')).digest('hex')}`;
 }
 
 export function createCaptchaChallenge(securityState, serverOptions) {
@@ -99,26 +105,43 @@ function randomInt(max) {
   return randomBytes(1)[0] % Math.max(1, Number(max) || 1);
 }
 
-export function assertAuthRateLimit(securityState, request, serverOptions) {
-  const max = Number(serverOptions.authRateLimitMax || 20);
-  const windowMs = Number(serverOptions.authRateLimitWindowMs || 60_000);
-  if (!Number.isFinite(max) || max <= 0 || !Number.isFinite(windowMs) || windowMs <= 0) return;
-  const key = `auth:${clientIp(request)}`;
-  const now = Date.now();
-  const bucket = securityState.rateLimits.get(key) || { count: 0, resetAt: now + windowMs };
-  if (bucket.resetAt <= now) { bucket.count = 0; bucket.resetAt = now + windowMs; }
-  bucket.count += 1;
-  securityState.rateLimits.set(key, bucket);
-  if (bucket.count > max) {
-    throw publicError(429, '请求过于频繁，请稍后再试');
+export function issueCustomerSession(data, user, serverOptions) {
+  const sessionToken = createId('sess');
+  const csrfToken = createId('csrf');
+  const storageKey = runtimeTokenKey(sessionToken);
+  const issuedAt = new Date();
+  const ttlMs = Number(serverOptions.sessionTtlMs || DEFAULT_SESSION_TTL_MS);
+  data.sessions[storageKey] = {
+    userId: user.id,
+    issuedAt: issuedAt.toISOString(),
+    expiresAt: new Date(issuedAt.getTime() + ttlMs).toISOString(),
+  };
+  data.sessionCsrfTokens[storageKey] = csrfToken;
+  return { sessionToken, csrfToken };
+}
+
+export function revokeCustomerSessions(data, userId) {
+  for (const [token, session] of Object.entries(data.sessions || {})) {
+    const sessionUserId = typeof session === 'string' ? session : session?.userId;
+    if (sessionUserId === userId) {
+      delete data.sessions[token];
+      delete data.sessionCsrfTokens[token];
+    }
   }
 }
 
 export function findSession(data, request) {
-  const token = parseCookies(request.headers.cookie || '')[SESSION_COOKIE];
-  const userId = token ? data.sessions[token] : '';
+  const rawToken = parseCookies(request.headers.cookie || '')[SESSION_COOKIE];
+  const token = rawToken ? runtimeTokenKey(rawToken) : '';
+  const session = token ? data.sessions[token] : null;
+  // 旧版明文 userId 会话没有生命周期信息，升级后安全退出并要求重新登录。
+  const userId = session && typeof session === 'object' ? String(session.userId || '') : '';
+  const expiresAt = Date.parse(session?.expiresAt || '');
+  if (!userId || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+    return { token, user: undefined, session: null };
+  }
   const user = data.users.find((item) => item.id === userId);
-  return { token, user };
+  return { token, user, session };
 }
 
 export function requireSession(data, request) {
@@ -127,21 +150,54 @@ export function requireSession(data, request) {
   return session;
 }
 
+export function requireCsrfIfEnabled(data, request, serverOptions, options = {}) {
+  if (!serverOptions.requireCsrf || request.method === 'GET' || request.method === 'HEAD' || request.method === 'OPTIONS') {
+    return;
+  }
+  if (options.allowAdminToken && request.headers['x-admin-token']) {
+    return;
+  }
+  const { token, user } = findSession(data, request);
+  if (!user || !token) {
+    throw publicError(401, '请先登录');
+  }
+  const expected = String(data.sessionCsrfTokens?.[token] || parseCookies(request.headers.cookie || '')[CSRF_COOKIE] || '');
+  const actual = String(request.headers['x-csrf-token'] || '').trim();
+  if (!expected || !actual || !safeEqual(expected, actual)) {
+    throw publicError(403, '页面安全校验失败，请刷新后重试');
+  }
+}
+
+export function sessionCookies(sessionToken, csrfToken, request, serverOptions) {
+  return [
+    sessionCookie(sessionToken, request, serverOptions),
+    csrfCookie(csrfToken, request, serverOptions),
+  ];
+}
+
+export function expiredSessionCookies(request, serverOptions) {
+  const secure = shouldUseSecureCookie(request, serverOptions) ? 'Secure' : '';
+  return [
+    [`${SESSION_COOKIE}=`, 'Path=/', 'HttpOnly', 'SameSite=Lax', 'Max-Age=0', secure].filter(Boolean).join('; '),
+    [`${CSRF_COOKIE}=`, 'Path=/', 'SameSite=Lax', 'Max-Age=0', secure].filter(Boolean).join('; '),
+  ];
+}
+
+export function shouldUseSecureCookie(request, serverOptions) {
+  const forwardedProto = String(request.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
+  return forwardedProto === 'https' || isPublicHttpsGateway(serverOptions.publicGatewayBaseUrl);
+}
+
+/** 校验调用方 API Key，并拒绝无法解密的运行时占位值。 */
 export function requireUserKey(data, request) {
   const authorization = request.headers.authorization || '';
   const xApiKey = request.headers['x-api-key'] || request.headers['anthropic-auth-token'] || '';
   const secret = authorization.match(/^Bearer\s+(.+)$/i)?.[1] || String(xApiKey || '').trim();
-  const key = data.userKeys.find((item) => item.secret === secret);
+  const key = secret
+    ? data.userKeys.find((item) => !isEncryptedRuntimeSecret(item.secret) && safeEqual(item.secret, secret))
+    : undefined;
   if (!key || !key.enabled) throw publicError(401, 'API Key 不可用');
   return key;
-}
-
-export function requireAdmin(data, request, serverOptions) {
-  const token = request.headers['x-admin-token'];
-  if (token && token === serverOptions.adminToken) return;
-  const { user } = findSession(data, request);
-  if (user?.isAdmin) return;
-  throw publicError(401, '管理员身份无效');
 }
 
 export function buildGatewayAffinityKey(request, body, userKey, model) {
@@ -172,23 +228,39 @@ export function clearRouteAffinity(data, sessionKey, credentialId) {
   if (affinity?.credentialId === credentialId) delete data.routeAffinities[sessionKey];
 }
 
-export function claimAdminIdentity(data, request, body, serverOptions) {
-  const { user } = requireSession(data, request);
-  const code = String(body.code || '').trim();
-  const codeHash = hashAdminClaimCode(code);
-  const allowedHashes = serverOptions.adminClaimCodeHashes || [];
-  if (!code || allowedHashes.length === 0 || !allowedHashes.includes(codeHash)) {
-    throw publicError(403, '身份码无效');
-  }
-  if (data.usedAdminClaimCodeHashes.includes(codeHash)) {
-    throw publicError(409, '身份码已失效');
-  }
-  const now = new Date().toISOString();
-  user.isAdmin = true;
-  user.updatedAt = now;
-  data.usedAdminClaimCodeHashes.push(codeHash);
-  data.events.push({ type: 'admin_claimed', userId: user.id, at: now });
-  return { user: sanitizeUser(user), adminUrl: '/admin.html', message: '管理员身份已激活' };
+function sessionCookie(sessionToken, request, serverOptions) {
+  const maxAge = Math.max(300, Math.floor(Number(serverOptions.sessionTtlMs || DEFAULT_SESSION_TTL_MS) / 1000));
+  return [
+    `${SESSION_COOKIE}=${sessionToken}`,
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Lax',
+    `Max-Age=${maxAge}`,
+    shouldUseSecureCookie(request, serverOptions) ? 'Secure' : '',
+  ].filter(Boolean).join('; ');
 }
 
-import { sanitizeUser } from './shared.js';
+function csrfCookie(csrfToken, request, serverOptions) {
+  const maxAge = Math.max(300, Math.floor(Number(serverOptions.sessionTtlMs || DEFAULT_SESSION_TTL_MS) / 1000));
+  return [
+    `${CSRF_COOKIE}=${csrfToken}`,
+    'Path=/',
+    'SameSite=Lax',
+    `Max-Age=${maxAge}`,
+    shouldUseSecureCookie(request, serverOptions) ? 'Secure' : '',
+  ].filter(Boolean).join('; ');
+}
+
+function safeEqual(left, right) {
+  const leftBuffer = Buffer.from(String(left || ''));
+  const rightBuffer = Buffer.from(String(right || ''));
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function isPublicHttpsGateway(value) {
+  const gateway = String(value || '').trim();
+  if (!/^https:\/\//i.test(gateway)) {
+    return false;
+  }
+  return !/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|example\.(com|org|net))/i.test(gateway);
+}

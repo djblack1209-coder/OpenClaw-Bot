@@ -38,6 +38,20 @@ class HealthChecker:
             self._bot_status[bot_id]["last_heartbeat"] = time.time()
             self._bot_status[bot_id]["healthy"] = True
 
+    @staticmethod
+    def is_polling(app: Any) -> bool:
+        """判断 Telegram Application 与轮询器是否都仍在运行。"""
+        updater = getattr(app, "updater", None)
+        return bool(getattr(app, "running", False) and getattr(updater, "running", False))
+
+    def heartbeat_if_polling(self, bot_id: str, app: Any) -> bool:
+        """仅在 Telegram Application 与轮询器都运行时刷新心跳。"""
+        if not self.is_polling(app):
+            return False
+
+        self.heartbeat(bot_id)
+        return True
+
     def record_error(self, bot_id: str, error: str):
         """记录错误"""
         if bot_id not in self._bot_status:

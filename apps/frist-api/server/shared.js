@@ -139,6 +139,17 @@ export function formatDate(date) {
   return date.toISOString().slice(0, 10);
 }
 
+export function normalizeRechargePlan(value) {
+  const plan = String(value || 'balance').trim().toLowerCase();
+  return ['balance', 'day', 'month'].includes(plan) ? plan : 'balance';
+}
+
+export function reconcileUserBalance(user) {
+  user.packageQuotaCents = Math.max(0, Number(user.packageQuotaCents || 0));
+  user.boosterQuotaCents = Math.max(0, Number(user.boosterQuotaCents || 0));
+  user.balanceCents = user.packageQuotaCents + user.boosterQuotaCents;
+}
+
 export function formatCny(cents) {
   return `¥${(Number(cents || 0) / 100).toFixed(2)}`;
 }
@@ -155,6 +166,14 @@ export function formatUsdPriceFromCny(value, rate = DISPLAY_USD_TO_CNY) {
 
 export function round2(value) {
   return Math.round(Number(value || 0) * 100) / 100;
+}
+
+export function compactTokenText(tokens) {
+  const value = Number(tokens || 0);
+  if (!Number.isFinite(value) || value <= 0) return '0';
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+  return String(Math.round(value));
 }
 
 export function escapeHtml(value) {
@@ -195,23 +214,12 @@ export function parseCookies(header) {
     }, {});
 }
 
-export function requestOrigin(request) {
-  const protocol = request.headers['x-forwarded-proto'] || 'http';
-  const host = request.headers['x-forwarded-host'] || request.headers.host || '127.0.0.1';
-  return `${protocol}://${host}`;
-}
-
 export function headerValue(request, name) {
   const value = request.headers[name.toLowerCase()];
   if (Array.isArray(value)) {
     return value[0] || '';
   }
   return value || '';
-}
-
-export function clientIp(request) {
-  const forwarded = headerValue(request, 'x-forwarded-for').split(',')[0]?.trim();
-  return forwarded || request.socket?.remoteAddress || 'unknown';
 }
 
 export function publicError(statusCode, message) {
@@ -332,7 +340,14 @@ export function isSourceRouteApproved({ sourceType, riskStatus, backupRiskAccept
   return BACKUP_SOURCE_TYPES.has(normalizedSourceType) && Boolean(backupRiskAccepted);
 }
 
+export function isEncryptedRuntimeSecret(value) {
+  return String(value || '').startsWith('enc:v1:');
+}
+
 export function isCredentialRouteApproved(credential) {
+  if (isEncryptedRuntimeSecret(credential.rawKey)) {
+    return false;
+  }
   return isSourceRouteApproved({
     sourceType: credential.sourceType || PRIMARY_SOURCE_TYPE,
     riskStatus: credential.riskStatus || 'approved',
@@ -437,12 +452,14 @@ export function priceUsageCents(price, promptTokens, completionTokens) {
 }
 
 export function sanitizeUserKey(key, options = {}) {
+  const encryptedSecret = isEncryptedRuntimeSecret(key.secret);
   return {
     id: key.id,
     name: key.name,
-    preview: key.preview || maskKey(key.secret),
-    ...(options.revealSecret ? { secret: key.secret } : {}),
-    enabled: Boolean(key.enabled),
+    preview: encryptedSecret ? '需重新生成' : maskKey(key.preview || key.secret),
+    ...(options.revealSecret && !encryptedSecret ? { secret: key.secret } : {}),
+    enabled: Boolean(key.enabled) && !encryptedSecret,
+    requiresRotation: encryptedSecret,
     modelGroup: key.modelGroup || 'All',
     cost: formatUsdFromCnyCents(key.costCents),
     costCny: formatCny(key.costCents),
@@ -452,23 +469,12 @@ export function sanitizeUserKey(key, options = {}) {
   };
 }
 
-export function sanitizeUser(user) {
-  return {
-    id: user.id,
-    email: user.email,
-    emailVerified: Boolean(user.emailVerified),
-    isAdmin: Boolean(user.isAdmin),
-    plan: user.plan,
-    renewalDate: user.renewalDate,
-    userInitials: initialsFromEmail(user.email),
-  };
-}
-
 export function sanitizeCredential(credential) {
+  const encryptedSecret = isEncryptedRuntimeSecret(credential.rawKey);
   return {
     id: credential.id,
     sourceId: credential.sourceId,
-    keyPreview: credential.keyPreview || maskKey(credential.rawKey),
+    keyPreview: encryptedSecret ? '需重新生成' : credential.keyPreview || maskKey(credential.rawKey),
     pool: credential.pool,
     modelGroup: credential.modelGroup || 'All',
     cardType: credential.cardType || credential.pool,
@@ -480,7 +486,8 @@ export function sanitizeCredential(credential) {
     connectionPath: credential.connectionPath || 'direct',
     models: credential.models,
     status: credential.status,
-    enabled: Boolean(credential.enabled),
+    enabled: Boolean(credential.enabled) && !encryptedSecret,
+    requiresRotation: encryptedSecret,
     quotaRemaining: credential.quotaRemaining,
     quotaTotal: credential.quotaTotal || credential.quotaRemaining,
     expiresAt: credential.expiresAt || '',
@@ -505,7 +512,13 @@ export function sanitizePaymentOrder(order) {
     planId: order.planId || '',
     plan: order.plan || 'balance',
     method: order.method,
+    provider: order.provider || '',
+    qrCode: order.qrCode || '',
+    notifyUrl: order.notifyUrl || '',
+    transactionId: order.transactionId || '',
     status: order.status,
+    failureReason: order.failureReason || '',
+    paidAt: order.paidAt || '',
     createdAt: order.createdAt,
     updatedAt: order.updatedAt,
   };
@@ -568,6 +581,14 @@ export function adminEventDetail(event) {
   if (event.type === 'registered') return '新用户注册';
   if (event.type === 'logged_in') return '用户登录';
   if (event.type === 'redeemed') return `兑换码 ${event.code || ''} 已生效`;
+  if (event.type === 'redemption_cards_created') return `生成兑换卡 ${event.count || 0} 张`;
+  if (event.type === 'redemption_cards_autoreplenished') return `自动补卡 ${event.created || 0} 张`;
+  if (event.type === 'upstream_channels_synced') return `同步上游渠道 ${event.count || 0} 条，倍率加价 ${event.rateMarkup || 0}`;
+  if (event.type === 'upstream_balance_synced') return `上游余额 ¥${Number(event.remainingCny || 0).toFixed(2)} · ${event.level || 'unknown'}`;
+  if (event.type === 'xianyu_card_delivered') return `闲鱼订单 ${event.orderId || ''} 已发卡 ${event.code || ''}`;
+  if (event.type === 'plus_account_upserted') return `Plus 账号台账已更新: ${event.status || 'warming'}`;
+  if (event.type === 'rt_accounts_imported') return `RT 账号导入 ${event.count || 0} 个，跳过 ${event.skipped || 0} 个`;
+  if (event.type === 'admin_auth_failed') return `管理认证失败: ${event.path || '/api/admin/*'} · ${event.ipHash || 'unknown'}`;
   if (event.type === 'plan_expired') return `${event.plan || '套餐'} 已到期，套餐额度已清零`;
   if (event.type === 'payment_order_created') return `用户发起充值 ${formatCny(event.amountCents)}`;
   if (event.type === 'manual_recharged') return `人工入账 ${formatCny(event.amountCents)}`;
@@ -622,49 +643,13 @@ export function normalizeModels(models, options = {}) {
   return [DEFAULT_MODEL];
 }
 
-export function pipeReadableStreamToResponse(bodyStream, response) {
-  if (typeof bodyStream.getReader === 'function') {
-    const reader = bodyStream.getReader();
-    try {
-      const pump = async () => {
-        while (true) {
-          const chunk = await reader.read();
-          if (chunk.done) break;
-          response.write(normalizeStreamChunk(chunk.value));
-        }
-      };
-      return pump().then(() => {
-        reader.releaseLock?.();
-        response.end();
-      });
-    } catch {
-      reader.releaseLock?.();
-      response.end();
-    }
-    return Promise.resolve();
-  }
-
-  if (typeof bodyStream[Symbol.asyncIterator] === 'function') {
-    const pump = async () => {
-      for await (const chunk of bodyStream) {
-        response.write(normalizeStreamChunk(chunk));
-      }
-      response.end();
-    };
-    return pump();
-  }
-
-  response.end();
-  return Promise.resolve();
-}
-
 export function normalizeStreamChunk(chunk) {
   if (Buffer.isBuffer(chunk)) return chunk;
   if (chunk instanceof Uint8Array) return Buffer.from(chunk);
   return Buffer.from(String(chunk || ''), 'utf8');
 }
 
-export async function readJsonBody(request) {
+export async function readRequestText(request) {
   const chunks = [];
   let size = 0;
   for await (const chunk of request) {
@@ -675,10 +660,18 @@ export async function readJsonBody(request) {
     chunks.push(chunk);
   }
   if (chunks.length === 0) {
+    return '';
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+export async function readJsonBody(request) {
+  const bodyText = await readRequestText(request);
+  if (!bodyText) {
     return {};
   }
   try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    return JSON.parse(bodyText);
   } catch {
     throw publicError(400, 'JSON 格式不正确');
   }
@@ -688,7 +681,7 @@ export function writeJson(response, status, payload, headers = {}) {
   response.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
     'access-control-allow-origin': '*',
-    'access-control-allow-headers': 'content-type, authorization, x-api-key, anthropic-auth-token, x-admin-token, x-csrf-token, x-frist-session-id, x-conversation-id',
+    'access-control-allow-headers': 'content-type, authorization, x-api-key, anthropic-auth-token, x-admin-token, x-csrf-token, x-frist-session-id, x-conversation-id, x-cc-xianyu-token',
     'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
     ...headers,
   });
@@ -698,7 +691,7 @@ export function writeJson(response, status, payload, headers = {}) {
 export function writeNoContent(response) {
   response.writeHead(204, {
     'access-control-allow-origin': '*',
-    'access-control-allow-headers': 'content-type, authorization, x-api-key, anthropic-auth-token, x-admin-token, x-csrf-token, x-frist-session-id, x-conversation-id',
+    'access-control-allow-headers': 'content-type, authorization, x-api-key, anthropic-auth-token, x-admin-token, x-csrf-token, x-frist-session-id, x-conversation-id, x-cc-xianyu-token',
     'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
   });
   response.end();
@@ -816,30 +809,6 @@ export function isQuotaExhaustedResponse(upstream) {
     return true;
   }
   return /insufficient|quota|balance|余额|额度/i.test(upstream.bodyText || '');
-}
-
-export function exhaustCredential(data, credential, reason) {
-  credential.status = 'exhausted';
-  credential.enabled = false;
-  credential.updatedAt = new Date().toISOString();
-  data.events.push({
-    type: 'credential_exhausted',
-    credentialId: credential.id,
-    reason,
-    at: credential.updatedAt,
-  });
-}
-
-export function failCredential(data, credential, reason) {
-  credential.status = 'failed';
-  credential.enabled = false;
-  credential.updatedAt = new Date().toISOString();
-  data.events.push({
-    type: 'credential_failed',
-    credentialId: credential.id,
-    reason,
-    at: credential.updatedAt,
-  });
 }
 
 export function gatewayUnavailableResponse() {

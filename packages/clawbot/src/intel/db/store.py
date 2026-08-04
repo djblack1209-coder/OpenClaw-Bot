@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 _SCHEMA_PATH = Path(__file__).with_name("intel_brief_schema.sql")
-_SCHEMA_VERSION = 3
+_SCHEMA_VERSION = 4
 _INITIALIZED_DATABASES: dict[str, int] = {}
 _INITIALIZE_LOCK = threading.Lock()
 
@@ -26,6 +26,91 @@ def _normalize_name(name: str) -> str:
 def _display_name(name: str) -> str:
     """保留用户输入的可读姓名，同时去掉多余空白。"""
     return re.sub(r"\s+", " ", str(name or "").strip())
+
+
+def _migrate_content_delivery_attempts(conn: sqlite3.Connection) -> None:
+    """把旧逐内容投递记录升级为基于稳定事件键的结构。"""
+    columns = {str(row[1]): row for row in conn.execute("PRAGMA table_info(content_delivery_attempts)")}
+    content_item = columns.get("content_item_id")
+    if "event_key" in columns and content_item is not None and int(content_item[3]) == 0:
+        return
+
+    legacy_table = "content_delivery_attempts_legacy_v3"
+    conn.execute("DROP INDEX IF EXISTS idx_delivery_attempts_state")
+    conn.execute(f"ALTER TABLE content_delivery_attempts RENAME TO {legacy_table}")
+    conn.execute(
+        """
+        CREATE TABLE content_delivery_attempts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subscriber_id INTEGER NOT NULL,
+            content_item_id INTEGER,
+            event_key TEXT NOT NULL,
+            brief_id INTEGER,
+            state TEXT NOT NULL CHECK (state IN ('pending', 'sent', 'failed', 'unknown')),
+            attempt_count INTEGER NOT NULL DEFAULT 1,
+            last_error TEXT,
+            attempted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (subscriber_id, event_key),
+            FOREIGN KEY (subscriber_id) REFERENCES subscribers(id),
+            FOREIGN KEY (content_item_id) REFERENCES content_items(id),
+            FOREIGN KEY (brief_id) REFERENCES intel_briefs(id)
+        )
+        """
+    )
+    event_key_expr = "NULLIF(legacy.event_key, '')" if "event_key" in columns else "NULL"
+    rows = conn.execute(
+        f"""
+        SELECT
+            legacy.subscriber_id,
+            legacy.content_item_id,
+            COALESCE(
+                {event_key_expr},
+                NULLIF(items.event_key, ''),
+                'legacy-content-item:' || legacy.content_item_id,
+                'legacy-attempt:' || legacy.id
+            ),
+            legacy.brief_id,
+            legacy.state,
+            legacy.attempt_count,
+            legacy.last_error,
+            legacy.attempted_at,
+            legacy.updated_at
+        FROM {legacy_table} AS legacy
+        LEFT JOIN content_items AS items ON items.id=legacy.content_item_id
+        ORDER BY legacy.id
+        """
+    ).fetchall()
+    for row in rows:
+        conn.execute(
+            """
+            INSERT INTO content_delivery_attempts (
+                subscriber_id, content_item_id, event_key, brief_id, state,
+                attempt_count, last_error, attempted_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(subscriber_id, event_key) DO UPDATE SET
+                content_item_id=COALESCE(content_delivery_attempts.content_item_id, excluded.content_item_id),
+                brief_id=COALESCE(excluded.brief_id, content_delivery_attempts.brief_id),
+                state=CASE
+                    WHEN excluded.state='sent' THEN 'sent'
+                    WHEN excluded.state='unknown' AND content_delivery_attempts.state!='sent' THEN 'unknown'
+                    WHEN content_delivery_attempts.state NOT IN ('sent', 'unknown') THEN excluded.state
+                    ELSE content_delivery_attempts.state
+                END,
+                attempt_count=MAX(content_delivery_attempts.attempt_count, excluded.attempt_count),
+                last_error=COALESCE(excluded.last_error, content_delivery_attempts.last_error),
+                attempted_at=MIN(content_delivery_attempts.attempted_at, excluded.attempted_at),
+                updated_at=MAX(content_delivery_attempts.updated_at, excluded.updated_at)
+            """,
+            row,
+        )
+    conn.execute(f"DROP TABLE {legacy_table}")
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_delivery_attempts_state
+        ON content_delivery_attempts (subscriber_id, state, updated_at DESC)
+        """
+    )
 
 
 def initialize_intel_db(db_path: str | Path) -> None:
@@ -48,6 +133,7 @@ def initialize_intel_db(db_path: str | Path) -> None:
             previous_schema_version = int(conn.execute("PRAGMA user_version").fetchone()[0])
             conn.executescript(schema)
             conn.execute("BEGIN IMMEDIATE")
+            _migrate_content_delivery_attempts(conn)
             delivery_columns = {
                 str(row[1]) for row in conn.execute("PRAGMA table_info(delivery_preferences)").fetchall()
             }
@@ -79,6 +165,7 @@ def initialize_intel_db(db_path: str | Path) -> None:
             conn.execute("INSERT OR IGNORE INTO schema_migrations (version, name) VALUES (1, 'legacy_schema')")
             conn.execute("INSERT OR IGNORE INTO schema_migrations (version, name) VALUES (2, 'intel_brief_v2')")
             conn.execute("INSERT OR IGNORE INTO schema_migrations (version, name) VALUES (3, 'delivery_claim_lease')")
+            conn.execute("INSERT OR IGNORE INTO schema_migrations (version, name) VALUES (4, 'delivery_event_key')")
             conn.execute(f"PRAGMA user_version={_SCHEMA_VERSION}")
             conn.commit()
         _INITIALIZED_DATABASES[resolved] = path.stat().st_ino

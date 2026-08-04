@@ -175,10 +175,7 @@ class XianyuContextManager:
     @staticmethod
     def _ensure_columns(conn, table: str, columns: dict[str, str]) -> None:
         """给已存在的 SQLite 表补列，保证老库平滑升级。"""
-        existing = {
-            str(row[1])
-            for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
-        }
+        existing = {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
         for name, ddl in columns.items():
             if name not in existing:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
@@ -438,9 +435,42 @@ class XianyuContextManager:
                     delivery_message=excluded.delivery_message,
                     error=excluded.error,
                     updated_at=datetime('now')
+                WHERE cc_shipments.status NOT IN (
+                    'message_sent', 'message_send_inflight', 'message_send_uncertain'
+                )
                 """,
                 (order_id, buyer_id, item_id, chat_id, status, safe_message, safe_error),
             )
+
+    def claim_cc_auto_ship_order(
+        self,
+        order_id: str,
+        buyer_id: str = "",
+        item_id: str = "",
+    ) -> dict[str, Any] | None:
+        """原子领取真实订单的 webhook 分配权；同一订单只允许一个执行者。"""
+        normalized_order_id = str(order_id or "").strip()
+        if not normalized_order_id:
+            return None
+        with self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            cur = c.execute(
+                """
+                INSERT INTO cc_shipments(order_id,buyer_id,item_id,status,error)
+                VALUES(?,?,?,'webhook_inflight','卡密分配处理中；异常退出时必须人工核对，禁止自动重试')
+                ON CONFLICT(order_id) DO UPDATE SET
+                    buyer_id=excluded.buyer_id,
+                    item_id=excluded.item_id,
+                    status='webhook_inflight',
+                    error=excluded.error,
+                    updated_at=datetime('now')
+                WHERE cc_shipments.status='operator_paused'
+                """,
+                (normalized_order_id, str(buyer_id or ""), str(item_id or "")),
+            )
+            if cur.rowcount <= 0:
+                return None
+        return self.get_cc_shipment_by_order_id(normalized_order_id, include_message=True)
 
     @staticmethod
     def _mask_delivery_preview(message: str) -> str:
@@ -602,6 +632,70 @@ class XianyuContextManager:
         if include_message:
             item["delivery_message"] = message
         return item
+
+    def claim_cc_shipment_send(
+        self,
+        shipment_id: int,
+        expected_statuses: tuple[str, ...],
+    ) -> dict[str, Any] | None:
+        """原子领取指定发货记录；未命中预期状态时失败关闭。"""
+        statuses = tuple(str(status or "").strip() for status in expected_statuses if str(status or "").strip())
+        if not statuses:
+            return None
+        placeholders = ",".join("?" for _ in statuses)
+        with self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            cur = c.execute(
+                f"""
+                UPDATE cc_shipments
+                SET status='message_send_inflight',
+                    error='消息发送处理中；异常退出时必须人工核对，禁止自动重试',
+                    updated_at=datetime('now')
+                WHERE id=? AND status IN ({placeholders})
+                """,
+                (int(shipment_id), *statuses),
+            )
+            if cur.rowcount <= 0:
+                return None
+        return self.get_cc_shipment(int(shipment_id), include_message=True)
+
+    def complete_cc_shipment_send(
+        self,
+        shipment_id: int,
+        order_id: str,
+        buyer_id: str,
+        item_id: str,
+        chat_id: str,
+        status: str,
+        error: str = "",
+    ) -> bool:
+        """仅允许发送执行态落为成功或结果不确定，避免并发覆盖。"""
+        safe_status = str(status or "").strip()
+        if safe_status not in {"message_sent", "message_send_uncertain"}:
+            raise ValueError("发送完成状态只能是 message_sent 或 message_send_uncertain")
+        with self._conn() as c:
+            try:
+                cur = c.execute(
+                    """
+                    UPDATE cc_shipments
+                    SET order_id=?, buyer_id=?, item_id=?, chat_id=?, status=?,
+                        error=?, updated_at=datetime('now')
+                    WHERE id=? AND status='message_send_inflight'
+                    """,
+                    (
+                        str(order_id or "").strip(),
+                        str(buyer_id or ""),
+                        str(item_id or ""),
+                        str(chat_id or ""),
+                        safe_status,
+                        str(error or "")[:500],
+                        int(shipment_id),
+                    ),
+                )
+                return cur.rowcount > 0
+            except Exception as e:
+                logger.warning("完成 CC中转消息发送状态失败: %s", e)
+                return False
 
     def claim_next_cc_browser_delivery(
         self,
@@ -860,6 +954,9 @@ class XianyuContextManager:
         """汇总 CC中转自动发货状态，用于老板首页看板。"""
         failure_statuses = {
             "browser_delivery_claimed",
+            "webhook_inflight",
+            "message_send_inflight",
+            "message_send_uncertain",
             "message_send_failed",
             "webhook_failed",
             "missing_delivery_message",
@@ -868,9 +965,7 @@ class XianyuContextManager:
         }
         with self._conn() as c:
             rows = c.execute("SELECT status, COUNT(*) FROM cc_shipments GROUP BY status").fetchall()
-            verified = c.execute(
-                "SELECT COUNT(*) FROM cc_shipments WHERE buyer_chain_status='verified'"
-            ).fetchone()[0]
+            verified = c.execute("SELECT COUNT(*) FROM cc_shipments WHERE buyer_chain_status='verified'").fetchone()[0]
             xianyu_confirmed = c.execute(
                 "SELECT COUNT(*) FROM cc_shipments WHERE xianyu_confirm_status='confirmed'"
             ).fetchone()[0]
@@ -898,6 +993,9 @@ class XianyuContextManager:
             "total": sum(by_status.values()),
             "sent": by_status.get("message_sent", 0),
             "browser_delivery_claimed": by_status.get("browser_delivery_claimed", 0),
+            "message_send_inflight": by_status.get("message_send_inflight", 0),
+            "message_send_uncertain": by_status.get("message_send_uncertain", 0),
+            "message_send_failed": by_status.get("message_send_failed", 0),
             "pending_rescue": pending_rescue,
             "resolved": by_status.get("manually_resolved", 0),
             "buyer_chain_verified": int(verified or 0),
@@ -913,6 +1011,9 @@ class XianyuContextManager:
         """汇总正式售卖前真实闲鱼实单验收门，不泄露卡密和买家完整信息。"""
         failure_statuses = (
             "browser_delivery_claimed",
+            "webhook_inflight",
+            "message_send_inflight",
+            "message_send_uncertain",
             "message_send_failed",
             "webhook_failed",
             "missing_delivery_message",
@@ -975,13 +1076,9 @@ class XianyuContextManager:
             return 0
 
         with self._conn() as c:
-            rows = c.execute(
-                "SELECT id, order_id FROM cc_shipments WHERE order_id LIKE 'xy_oid_%'"
-            ).fetchall()
+            rows = c.execute("SELECT id, order_id FROM cc_shipments WHERE order_id LIKE 'xy_oid_%'").fetchall()
             matched_ids = [
-                int(row[0])
-                for row in rows
-                if hashlib.sha256(str(row[1] or "").encode()).hexdigest() in wanted_hashes
+                int(row[0]) for row in rows if hashlib.sha256(str(row[1] or "").encode()).hexdigest() in wanted_hashes
             ]
             if not matched_ids:
                 return 0
@@ -1033,9 +1130,7 @@ class XianyuContextManager:
                 ),
             )
             audit_id = cur.lastrowid
-        verified_count = self.mark_cc_shipments_buyer_chain_verified(
-            safe_summary.get("same_order_latest") or []
-        )
+        verified_count = self.mark_cc_shipments_buyer_chain_verified(safe_summary.get("same_order_latest") or [])
         latest = self.latest_cc_strict_audit() or {}
         latest["id"] = audit_id
         latest["marked_buyer_chain_verified"] = verified_count

@@ -16,9 +16,11 @@ import warnings
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
+from src.http_client import create_ssrf_safe_async_client, request_with_ssrf_protection
 from src.utils import now_et, scrub_secrets
 
 logger = logging.getLogger(__name__)
@@ -60,6 +62,22 @@ PLATFORM_REGISTRY: dict[str, dict] = {
     "xianyu": {"browser_url": "https://www.goofish.com"},
     "composio": {"composio": True},  # 250+ 外部服务 (Gmail/Calendar/Slack/GitHub 等)
 }
+
+
+def is_allowed_browser_target(url: str) -> bool:
+    """仅允许浏览器访问注册表中由项目明确管理的平台主机。"""
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme != "https" or not parsed.hostname:
+            return False
+        allowed_hosts = {
+            urlparse(str(config.get("browser_url", ""))).hostname
+            for config in PLATFORM_REGISTRY.values()
+            if config.get("browser_url")
+        }
+        return parsed.hostname.lower().rstrip(".") in allowed_hosts
+    except (TypeError, ValueError):
+        return False
 
 
 # ── 熔断器 ──────────────────────────────────────────
@@ -142,9 +160,7 @@ class MultiPathExecutor:
         if self._closed:
             raise RuntimeError("MultiPathExecutor 已关闭，不能再发送请求")
         if self._http_client is None or self._http_client.is_closed:
-            self._http_client = httpx.AsyncClient(
-                timeout=30.0, follow_redirects=True
-            )
+            self._http_client = create_ssrf_safe_async_client(timeout=30.0)
         return self._http_client
 
     async def close(self):
@@ -285,12 +301,18 @@ class MultiPathExecutor:
         params = params or {}
         client = self._get_http_client()
 
+        request_kwargs = {"headers": headers}
         if method.upper() == "GET":
-            resp = await client.get(endpoint, params=params, headers=headers)
-        elif method.upper() == "POST":
-            resp = await client.post(endpoint, json=params, headers=headers)
+            request_kwargs["params"] = params
         else:
-            resp = await client.request(method, endpoint, json=params, headers=headers)
+            request_kwargs["json"] = params
+        resp = await request_with_ssrf_protection(
+            client,
+            method,
+            endpoint,
+            follow_redirects=True,
+            **request_kwargs,
+        )
 
         resp.raise_for_status()
 
@@ -306,6 +328,9 @@ class MultiPathExecutor:
         if not url:
             raise ValueError("URL 为空")
 
+        if not is_allowed_browser_target(url):
+            raise ValueError("浏览器目标不在已注册平台允许列表中")
+
         # SSRF 防护：阻止浏览器访问内网地址
         from src.core.security import check_ssrf
         if not check_ssrf(url):
@@ -315,15 +340,32 @@ class MultiPathExecutor:
         try:
             from playwright.async_api import async_playwright
         except ImportError:
-            # 降级到 DrissionPage
-            try:
-                return await self._execute_via_drission(url, actions)
-            except ImportError:
-                raise RuntimeError("Playwright 和 DrissionPage 均未安装") from None
+            raise RuntimeError("安全浏览器路径要求安装 Playwright") from None
 
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
+            context = await browser.new_context(service_workers="block")
+            page = await context.new_page()
+
+            async def guard_route(route):
+                """逐个拦截页面、重定向和子资源，仅放行注册平台公网主机。"""
+                request_url = route.request.url
+                is_public = await asyncio.to_thread(check_ssrf, request_url)
+                if is_allowed_browser_target(request_url) and is_public:
+                    await route.continue_()
+                    return
+                await route.abort("blockedbyclient")
+
+            async def guard_websocket(websocket_route):
+                """WebSocket 只允许连接同一批注册平台公网主机。"""
+                is_public = await asyncio.to_thread(check_ssrf, websocket_route.url)
+                if is_allowed_browser_target(websocket_route.url) and is_public:
+                    websocket_route.connect_to_server()
+                    return
+                await websocket_route.close(code=1008, reason="blocked target")
+
+            await context.route("**/*", guard_route)
+            await context.route_web_socket("**/*", guard_websocket)
 
             try:
                 await page.goto(url, wait_until="domcontentloaded", timeout=30000)
@@ -349,29 +391,13 @@ class MultiPathExecutor:
 
                 content = await page.content()
                 return {
-                    "url": url,
+                    "url": page.url,
                     "title": await page.title(),
                     "content_length": len(content),
                     "action_results": results,
                 }
             finally:
                 await browser.close()
-
-    async def _execute_via_drission(self, url: str, actions: list[dict]) -> Any:
-        """DrissionPage 备选浏览器（反检测更好）"""
-        from DrissionPage import ChromiumPage
-
-        def _run():
-            page = ChromiumPage()
-            try:
-                page.get(url)
-                title = page.title
-                text = page.html[:5000]
-                return {"url": url, "title": title, "content_preview": text[:500]}
-            finally:
-                page.quit()
-
-        return await asyncio.to_thread(_run)
 
     async def execute_via_voice_call(
         self,

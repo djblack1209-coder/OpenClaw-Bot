@@ -17,6 +17,8 @@ Social Autopilot Scheduler
 """
 
 import asyncio
+import concurrent.futures
+import inspect
 import json
 import logging
 import os
@@ -29,6 +31,12 @@ from typing import Any, Optional
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from src.core.loop_owner import (
+    AsyncLoopOwner,
+    OwnerLoopError,
+    OwnerLoopNotReady,
+    OwnerLoopTimeout,
+)
 from src.utils import now_et
 
 logger = logging.getLogger(__name__)
@@ -65,11 +73,7 @@ def _alert_admin(message: str) -> None:
         if main_loop is not None and main_loop.is_running():
             asyncio.run_coroutine_threadsafe(_do_alert(), main_loop)
         else:
-            # 主循环不可用时尝试 asyncio.run（临时循环）
-            try:
-                asyncio.run(_do_alert())
-            except RuntimeError as e:
-                logger.warning("[SocialScheduler] 事件循环创建失败: %s", e)
+            logger.warning("[SocialScheduler] 主事件循环不可用，已跳过管理员告警")
     except Exception:
         # 通知发送失败不影响主流程
         logger.debug("[Autopilot] 管理员告警发送失败", exc_info=True)
@@ -199,7 +203,7 @@ def _run_async(coro) -> Any:
     无法跨循环传播。本函数优先使用 run_coroutine_threadsafe 将协程
     调度回主事件循环，保证事件传播的一致性。
 
-    降级策略：如果主事件循环不可用，回退到 asyncio.run()。
+    主事件循环不可用时失败关闭，禁止为共享异步对象创建临时循环。
     """
     import concurrent.futures
 
@@ -214,10 +218,9 @@ def _run_async(coro) -> Any:
             future.cancel()
             logger.error("[Autopilot] 任务执行超时(5分钟)，已取消协程")
             raise
-    else:
-        # 降级：主事件循环不可用时使用临时循环
-        logger.warning("[Autopilot] 主事件循环不可用，降级使用 asyncio.run()")
-        return asyncio.run(coro)
+    if inspect.iscoroutine(coro):
+        coro.close()
+    raise OwnerLoopNotReady("social-autopilot 所有者事件循环尚未就绪")
 
 
 def job_morning_scan() -> None:
@@ -694,33 +697,85 @@ class SocialAutopilot:
         if self._initialized:
             return
         self._initialized = True
+        self._loop_owner = AsyncLoopOwner("social-autopilot")
         self._scheduler: BackgroundScheduler | None = None
-        # 保存主事件循环引用，用于线程安全地调度异步操作
-        try:
-            self._main_loop = asyncio.get_running_loop()
-        except RuntimeError:
-            # Python 3.12 中 get_event_loop() 在无线程默认循环时会产生废弃警告；
-            # 非异步上下文保持 None，让 _run_async 使用 asyncio.run() 创建短生命周期循环。
-            self._main_loop = None
+        self._main_loop = None
+        SocialAutopilot._main_loop = None
+        logger.info("[Autopilot] SocialAutopilot 初始化，等待主事件循环绑定")
+
+    def bind_current_loop(self) -> None:
+        """把自动驾驶控制面和异步 job 固定到当前主事件循环。"""
+        self._loop_owner.bind_current()
+        self._main_loop = asyncio.get_running_loop()
         SocialAutopilot._main_loop = self._main_loop
-        logger.info("[Autopilot] SocialAutopilot 初始化 (主事件循环: %s)", self._main_loop is not None)
+        logger.info("[Autopilot] 已绑定主事件循环")
+
+    async def call_on_owner(self, operation: str, *args, **kwargs) -> dict[str, Any]:
+        """异步转发控制操作，调用方取消时不截断已经开始的副作用。"""
+        return await self._loop_owner.run(
+            lambda: self._invoke_on_owner(operation, *args, **kwargs),
+            timeout=None,
+            cancel_on_timeout=False,
+        )
+
+    def call_on_owner_sync(
+        self,
+        operation: str,
+        *args,
+        timeout: float | None = 120.0,
+        **kwargs,
+    ) -> dict[str, Any]:
+        """从 FastAPI 工作线程同步提交控制操作，不取消已提交的副作用。"""
+        if self._loop_owner.is_current():
+            if operation == "trigger":
+                raise OwnerLoopError("手动任务不能同步阻塞 SocialAutopilot 主事件循环")
+            return self._invoke_sync_on_owner(operation, *args, **kwargs)
+
+        future = self._loop_owner.submit(
+            lambda: self._invoke_on_owner(operation, *args, **kwargs)
+        )
+        try:
+            return future.result(timeout=timeout)
+        except concurrent.futures.TimeoutError as exc:
+            timeout_label = "无限" if timeout is None else f"{timeout:g}"
+            raise OwnerLoopTimeout(
+                f"social-autopilot 操作等待超过 {timeout_label} 秒，后台任务继续执行"
+            ) from exc
+
+    async def _invoke_on_owner(self, operation: str, *args, **kwargs) -> dict[str, Any]:
+        """在主循环执行控制操作；job 本体转到工作线程避免循环自等待。"""
+        if operation == "trigger":
+            return await asyncio.to_thread(
+                self._trigger_job_on_worker,
+                *args,
+                **kwargs,
+            )
+        return self._invoke_sync_on_owner(operation, *args, **kwargs)
+
+    def _invoke_sync_on_owner(self, operation: str, *args, **kwargs) -> dict[str, Any]:
+        """执行不会等待主循环协程的同步控制操作。"""
+        handlers = {
+            "status": self._status_on_owner,
+            "start": self._start_on_owner,
+            "stop": self._stop_on_owner,
+        }
+        handler = handlers.get(operation)
+        if handler is None:
+            raise ValueError(f"未知 SocialAutopilot 控制操作: {operation}")
+        return handler(*args, **kwargs)
 
     # ── Public API ────────────────────────────────────────────
 
     def start(self) -> dict[str, Any]:
+        """启动调度器；绑定后从非所有者线程调用会自动转发。"""
+        if self._loop_owner.is_bound and not self._loop_owner.is_current():
+            return self.call_on_owner_sync("start")
+        return self._start_on_owner()
+
+    def _start_on_owner(self) -> dict[str, Any]:
         """Start the scheduler with all 5 daily cron jobs."""
         if self._scheduler and self._scheduler.running:
             return {"status": "already_running"}
-
-        # 在启动时捕获/更新主事件循环引用，确保 job 线程能把协程调度回来
-        try:
-            loop = asyncio.get_running_loop()
-            SocialAutopilot._main_loop = loop
-            logger.info("[Autopilot] start() 捕获到运行中的主事件循环")
-        except RuntimeError:
-            # 非异步上下文调用 start()，保留 __init__ 中已捕获的循环
-            if SocialAutopilot._main_loop is None:
-                logger.warning("[Autopilot] start() 未找到主事件循环，job 将降级使用 asyncio.run()")
 
         self._scheduler = BackgroundScheduler(timezone=_TIMEZONE)
 
@@ -798,6 +853,12 @@ class SocialAutopilot:
         return {"status": "started", "jobs": len(self._scheduler.get_jobs())}
 
     def stop(self) -> dict[str, Any]:
+        """停止调度器；绑定后从非所有者线程调用会自动转发。"""
+        if self._loop_owner.is_bound and not self._loop_owner.is_current():
+            return self.call_on_owner_sync("stop")
+        return self._stop_on_owner()
+
+    def _stop_on_owner(self) -> dict[str, Any]:
         """Graceful shutdown."""
         if not self._scheduler or not self._scheduler.running:
             return {"status": "not_running"}
@@ -811,7 +872,27 @@ class SocialAutopilot:
         logger.info("[Autopilot] APScheduler 已停止")
         return {"status": "stopped"}
 
+    async def close(self) -> dict[str, Any]:
+        """关闭进程资源并解除循环引用，但不改变持久化的 enabled 意图。"""
+        if not self._loop_owner.is_current():
+            raise OwnerLoopError("SocialAutopilot 必须由所有者事件循环关闭")
+        was_running = bool(self._scheduler and self._scheduler.running)
+        if self._scheduler is not None:
+            self._scheduler.shutdown(wait=False)
+            self._scheduler = None
+        self._main_loop = None
+        SocialAutopilot._main_loop = None
+        self._loop_owner.clear_current()
+        logger.info("[Autopilot] APScheduler 与所有者事件循环已关闭（保留 enabled 意图）")
+        return {"status": "closed", "was_running": was_running}
+
     def status(self) -> dict[str, Any]:
+        """读取状态；绑定后从非所有者线程调用会自动转发。"""
+        if self._loop_owner.is_bound and not self._loop_owner.is_current():
+            return self.call_on_owner_sync("status")
+        return self._status_on_owner()
+
+    def _status_on_owner(self) -> dict[str, Any]:
         """Return current autopilot state + next job schedule."""
         running = bool(self._scheduler and self._scheduler.running)
         state = _load_state()
@@ -852,6 +933,14 @@ class SocialAutopilot:
         }
 
     def trigger_job(self, job_id: str) -> dict[str, Any]:
+        """触发任务；绑定后由主循环安排到工作线程执行。"""
+        if self._loop_owner.is_bound:
+            if self._loop_owner.is_current():
+                raise OwnerLoopError("请使用异步 call_on_owner 触发 SocialAutopilot 任务")
+            return self.call_on_owner_sync("trigger", job_id)
+        return self._trigger_job_on_worker(job_id)
+
+    def _trigger_job_on_worker(self, job_id: str) -> dict[str, Any]:
         """Manually trigger a specific job (for testing / 严总 override)."""
         job_map = {
             "morning_scan": job_morning_scan,

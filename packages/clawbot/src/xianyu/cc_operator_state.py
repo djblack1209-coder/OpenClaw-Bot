@@ -8,9 +8,12 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from src.cross_process_lock import cross_process_file_lock
 
 
 def _project_root() -> Path:
@@ -29,7 +32,13 @@ def operator_state_file() -> Path:
 def _env_pause_default() -> bool:
     """读取环境变量中的兜底暂停状态。"""
     raw = os.getenv("CC_XIANYU_AUTO_SHIP_PAUSED", "").strip().lower()
-    return raw in {"1", "true", "yes", "on"}
+    return raw not in {"0", "false", "no", "off"}
+
+
+def _operator_state_lock():
+    """返回运营状态专用的跨线程、跨进程可重入锁。"""
+    path = operator_state_file()
+    return cross_process_file_lock(path.with_name(f".{path.name}.lock"))
 
 
 def _now_iso() -> str:
@@ -49,10 +58,30 @@ def _parse_iso(value: str) -> datetime | None:
 
 
 def _write_operator_state(state: dict[str, Any]) -> dict[str, Any]:
-    """把运营状态写回本机文件；调用方负责先规整字段。"""
+    """在独占锁内原子替换运营状态文件。"""
     path = operator_state_file()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    with _operator_state_lock():
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        descriptor, temp_name = tempfile.mkstemp(
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+        )
+        temp_path = Path(temp_name)
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                json.dump(state, handle, ensure_ascii=False, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp_path, path)
+            if os.name != "nt":
+                directory_fd = os.open(path.parent, os.O_RDONLY)
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
+        finally:
+            temp_path.unlink(missing_ok=True)
     return state
 
 
@@ -101,14 +130,15 @@ def get_operator_state() -> dict[str, Any]:
         "auto_resume_canary": _normalize_auto_resume_canary({}),
     }
     path = operator_state_file()
-    try:
-        if not path.exists():
+    with _operator_state_lock():
+        try:
+            if not path.exists():
+                return default
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(payload, dict):
+                return default
+        except (OSError, json.JSONDecodeError):
             return default
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(payload, dict):
-            return default
-    except (OSError, json.JSONDecodeError):
-        return default
     return {
         **default,
         "auto_ship_paused": bool(payload.get("auto_ship_paused", default["auto_ship_paused"])),
@@ -127,79 +157,82 @@ def is_auto_ship_paused() -> bool:
 
 def set_auto_ship_paused(paused: bool, reason: str = "", resume_canary: bool = False) -> dict[str, Any]:
     """保存自动发货暂停/恢复状态；恢复时可开启首单观察票。"""
-    existing = get_operator_state()
-    one_shot = existing.get("one_shot_delivery") if paused else {}
-    canary = {}
-    if not paused and resume_canary:
-        canary = {
-            "active": True,
-            "remaining": 1,
-            "armed_at": _now_iso(),
-            "consumed_at": None,
-            "last_order_id": "",
-            "reason": (reason or "恢复自动发货后首单自动暂停观察")[:200],
+    with _operator_state_lock():
+        existing = get_operator_state()
+        one_shot = existing.get("one_shot_delivery") if paused else {}
+        canary = {}
+        if not paused and resume_canary:
+            canary = {
+                "active": True,
+                "remaining": 1,
+                "armed_at": _now_iso(),
+                "consumed_at": None,
+                "last_order_id": "",
+                "reason": (reason or "恢复自动发货后首单自动暂停观察")[:200],
+                "updated_by": "local-operator",
+            }
+        state = {
+            "auto_ship_paused": bool(paused),
+            "pause_reason": (reason or ("手动暂停" if paused else "手动恢复"))[:200],
+            "updated_at": _now_iso(),
             "updated_by": "local-operator",
+            "one_shot_delivery": _normalize_one_shot(one_shot),
+            "auto_resume_canary": _normalize_auto_resume_canary(canary),
         }
-    state = {
-        "auto_ship_paused": bool(paused),
-        "pause_reason": (reason or ("手动暂停" if paused else "手动恢复"))[:200],
-        "updated_at": _now_iso(),
-        "updated_by": "local-operator",
-        "one_shot_delivery": _normalize_one_shot(one_shot),
-        "auto_resume_canary": _normalize_auto_resume_canary(canary),
-    }
-    return _write_operator_state(state)
+        return _write_operator_state(state)
 
 
 def consume_auto_resume_canary_after_sent(order_id: str = "") -> dict[str, Any]:
     """首单观察票被真正发卡成功消耗后，自动重新暂停常驻自动发货。"""
-    state = get_operator_state()
-    canary = _normalize_auto_resume_canary(state.get("auto_resume_canary"))
-    if not canary.get("active"):
-        return {"paused": False, "reason": "auto_resume_canary_not_active", "auto_resume_canary": canary}
-    canary["remaining"] = max(0, int(canary.get("remaining") or 0) - 1)
-    canary["active"] = canary["remaining"] > 0
-    canary["consumed_at"] = _now_iso()
-    canary["last_order_id"] = str(order_id or "")[:120]
-    state["auto_ship_paused"] = True
-    state["pause_reason"] = "恢复后首单已发送，系统自动暂停观察，防止连续发卡"
-    state["updated_at"] = _now_iso()
-    state["updated_by"] = "local-operator"
-    state["one_shot_delivery"] = _normalize_one_shot({})
-    state["auto_resume_canary"] = canary
-    _write_operator_state(state)
-    return {"paused": True, "reason": "auto_resume_canary_consumed", "auto_resume_canary": canary}
+    with _operator_state_lock():
+        state = get_operator_state()
+        canary = _normalize_auto_resume_canary(state.get("auto_resume_canary"))
+        if not canary.get("active"):
+            return {"paused": False, "reason": "auto_resume_canary_not_active", "auto_resume_canary": canary}
+        canary["remaining"] = max(0, int(canary.get("remaining") or 0) - 1)
+        canary["active"] = canary["remaining"] > 0
+        canary["consumed_at"] = _now_iso()
+        canary["last_order_id"] = str(order_id or "")[:120]
+        state["auto_ship_paused"] = True
+        state["pause_reason"] = "恢复后首单已发送，系统自动暂停观察，防止连续发卡"
+        state["updated_at"] = _now_iso()
+        state["updated_by"] = "local-operator"
+        state["one_shot_delivery"] = _normalize_one_shot({})
+        state["auto_resume_canary"] = canary
+        _write_operator_state(state)
+        return {"paused": True, "reason": "auto_resume_canary_consumed", "auto_resume_canary": canary}
 
 
 def authorize_one_shot_delivery(reason: str = "", ttl_seconds: int = 180) -> dict[str, Any]:
     """在暂停状态下放行一次浏览器发卡；过期后自动失效。"""
     ttl = max(30, min(int(ttl_seconds or 180), 600))
     now = datetime.now(UTC)
-    state = get_operator_state()
-    state.update(
-        {
-            "auto_ship_paused": True,
-            "pause_reason": (state.get("pause_reason") or "保持暂停，仅单次放行")[:200],
-            "updated_at": _now_iso(),
-            "updated_by": "local-operator",
-            "one_shot_delivery": {
-                "active": True,
-                "remaining": 1,
-                "expires_at": (now.replace(microsecond=0).timestamp() + ttl),
-                "created_at": _now_iso(),
-                "consumed_at": None,
-                "reason": (reason or "老板确认当前真实已付款页，单次发卡")[:200],
+    with _operator_state_lock():
+        state = get_operator_state()
+        state.update(
+            {
+                "auto_ship_paused": True,
+                "pause_reason": (state.get("pause_reason") or "保持暂停，仅单次放行")[:200],
+                "updated_at": _now_iso(),
                 "updated_by": "local-operator",
-            },
-        }
-    )
-    # 先用时间戳计算，再转成 ISO，避免引入额外依赖。
-    expires_at = datetime.fromtimestamp(
-        float(state["one_shot_delivery"]["expires_at"]),
-        UTC,
-    ).isoformat(timespec="seconds")
-    state["one_shot_delivery"]["expires_at"] = expires_at
-    return _write_operator_state(state)
+                "one_shot_delivery": {
+                    "active": True,
+                    "remaining": 1,
+                    "expires_at": (now.replace(microsecond=0).timestamp() + ttl),
+                    "created_at": _now_iso(),
+                    "consumed_at": None,
+                    "reason": (reason or "老板确认当前真实已付款页，单次发卡")[:200],
+                    "updated_by": "local-operator",
+                },
+            }
+        )
+        # 先用时间戳计算，再转成 ISO，避免引入额外依赖。
+        expires_at = datetime.fromtimestamp(
+            float(state["one_shot_delivery"]["expires_at"]),
+            UTC,
+        ).isoformat(timespec="seconds")
+        state["one_shot_delivery"]["expires_at"] = expires_at
+        return _write_operator_state(state)
 
 
 def peek_one_shot_delivery() -> dict[str, Any]:
@@ -209,25 +242,26 @@ def peek_one_shot_delivery() -> dict[str, Any]:
 
 def consume_one_shot_delivery(reason: str = "") -> dict[str, Any]:
     """消费一次单次放行票；没有有效票时返回 allowed=False。"""
-    state = get_operator_state()
-    one_shot = _normalize_one_shot(state.get("one_shot_delivery"))
-    if not one_shot.get("active"):
+    with _operator_state_lock():
+        state = get_operator_state()
+        one_shot = _normalize_one_shot(state.get("one_shot_delivery"))
+        if not one_shot.get("active"):
+            return {
+                "allowed": False,
+                "reason": "one_shot_delivery_not_active",
+                "one_shot_delivery": one_shot,
+            }
+        one_shot["remaining"] = max(0, int(one_shot.get("remaining") or 0) - 1)
+        one_shot["active"] = one_shot["remaining"] > 0
+        one_shot["consumed_at"] = _now_iso()
+        if reason:
+            one_shot["reason"] = str(reason)[:200]
+        state["one_shot_delivery"] = one_shot
+        state["updated_at"] = _now_iso()
+        state["updated_by"] = "local-operator"
+        _write_operator_state(state)
         return {
-            "allowed": False,
-            "reason": "one_shot_delivery_not_active",
+            "allowed": True,
+            "reason": "one_shot_delivery_consumed",
             "one_shot_delivery": one_shot,
         }
-    one_shot["remaining"] = max(0, int(one_shot.get("remaining") or 0) - 1)
-    one_shot["active"] = one_shot["remaining"] > 0
-    one_shot["consumed_at"] = _now_iso()
-    if reason:
-        one_shot["reason"] = str(reason)[:200]
-    state["one_shot_delivery"] = one_shot
-    state["updated_at"] = _now_iso()
-    state["updated_by"] = "local-operator"
-    _write_operator_state(state)
-    return {
-        "allowed": True,
-        "reason": "one_shot_delivery_consumed",
-        "one_shot_delivery": one_shot,
-    }

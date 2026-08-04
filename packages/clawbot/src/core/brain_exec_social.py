@@ -5,7 +5,6 @@ Core — 社媒运营领域执行器 Mixin
 从 brain_executors.py 拆分以降低扇出复杂度。
 """
 
-import asyncio
 import logging
 
 from src.utils import scrub_secrets
@@ -40,18 +39,14 @@ class SocialExecutorMixin:
 
             results = {}
             try:
-                trending = (
-                    await asyncio.to_thread(crawler.get_trending, platform)
-                    if callable(crawler.get_trending)
-                    else crawler.get_trending(platform)
-                )
+                trending = await crawler.get_trending(platform)
                 results["trending"] = trending[:10] if trending else []
             except Exception:
                 results["trending"] = []
 
             if topic:
                 try:
-                    related = crawler.search_platform(platform, [topic], limit=5)
+                    related = await crawler.search_platform(platform, [topic], limit=5)
                     results["related_posts"] = related
                 except Exception:
                     results["related_posts"] = []

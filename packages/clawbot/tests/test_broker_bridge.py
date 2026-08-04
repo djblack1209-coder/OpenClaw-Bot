@@ -39,6 +39,7 @@ def _reserve_budget_in_process(state_file, barrier, result_queue) -> None:
     except Exception as exc:
         result_queue.put({"error": str(exc)})
 
+
 # ============ IBKRBridge.__init__ ============
 
 
@@ -222,6 +223,7 @@ async def test_connect_returns_false_without_ib():
 
 async def test_buy_rejects_when_budget_exhausted():
     bridge = IBKRBridge(budget=1000.0)
+    bridge.bind_current_loop()
     bridge.total_spent = 1000.0
     bridge.ib = MagicMock()
     bridge.ib.isConnected.return_value = True
@@ -255,10 +257,14 @@ def _configure_filled_buy(bridge: IBKRBridge, price: float = 60.0) -> None:
 async def test_single_buy_above_remaining_budget_is_rejected_before_order(tmp_path):
     with patch("src.broker_bridge.BUDGET_STATE_FILE", tmp_path / "budget.json"):
         bridge = IBKRBridge(budget=100.0)
+        bridge.bind_current_loop()
         _configure_filled_buy(bridge, price=60.0)
-        with patch("src.broker_bridge.LimitOrder", MagicMock()), patch(
-            "asyncio.sleep",
-            new_callable=AsyncMock,
+        with (
+            patch("src.broker_bridge.LimitOrder", MagicMock()),
+            patch(
+                "asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
         ):
             result = await bridge.buy("AAPL", 2)
 
@@ -270,15 +276,20 @@ async def test_single_buy_above_remaining_budget_is_rejected_before_order(tmp_pa
 async def test_concurrent_buys_share_atomic_budget_reservation(tmp_path):
     with patch("src.broker_bridge.BUDGET_STATE_FILE", tmp_path / "budget.json"):
         bridge = IBKRBridge(budget=100.0)
+        bridge.bind_current_loop()
         _configure_filled_buy(bridge, price=60.0)
         market_order = MagicMock()
         limit_order = MagicMock()
-        with patch("src.broker_bridge.MarketOrder", market_order), patch(
-            "src.broker_bridge.LimitOrder",
-            limit_order,
-        ), patch(
-            "asyncio.sleep",
-            new_callable=AsyncMock,
+        with (
+            patch("src.broker_bridge.MarketOrder", market_order),
+            patch(
+                "src.broker_bridge.LimitOrder",
+                limit_order,
+            ),
+            patch(
+                "asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
         ):
             first, second = await asyncio.gather(
                 bridge.buy("AAPL", 1),
@@ -337,15 +348,20 @@ def test_budget_state_is_bound_to_one_account_scope(tmp_path):
 async def test_market_buy_near_budget_is_converted_to_capped_limit_order(tmp_path):
     with patch("src.broker_bridge.BUDGET_STATE_FILE", tmp_path / "budget.json"):
         bridge = IBKRBridge(budget=100.0)
+        bridge.bind_current_loop()
         _configure_filled_buy(bridge, price=98.0)
         market_order = MagicMock()
         limit_order = MagicMock()
-        with patch("src.broker_bridge.MarketOrder", market_order), patch(
-            "src.broker_bridge.LimitOrder",
-            limit_order,
-        ), patch(
-            "asyncio.sleep",
-            new_callable=AsyncMock,
+        with (
+            patch("src.broker_bridge.MarketOrder", market_order),
+            patch(
+                "src.broker_bridge.LimitOrder",
+                limit_order,
+            ),
+            patch(
+                "asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
         ):
             result = await bridge.buy("AAPL", 1)
 
@@ -360,18 +376,24 @@ async def test_market_buy_near_budget_is_converted_to_capped_limit_order(tmp_pat
 async def test_auto_buy_rounds_limit_up_then_rechecks_actual_notional(tmp_path):
     with patch("src.broker_bridge.BUDGET_STATE_FILE", tmp_path / "budget.json"):
         bridge = IBKRBridge(budget=900.0)
+        bridge.bind_current_loop()
         _configure_filled_buy(bridge, price=0.016)
         market_order = MagicMock()
         limit_order = MagicMock()
-        with patch.dict(os.environ, {"IBKR_BUY_RESERVE_BUFFER_PCT": "0"}), patch(
-            "src.broker_bridge.MarketOrder",
-            market_order,
-        ), patch(
-            "src.broker_bridge.LimitOrder",
-            limit_order,
-        ), patch(
-            "asyncio.sleep",
-            new_callable=AsyncMock,
+        with (
+            patch.dict(os.environ, {"IBKR_BUY_RESERVE_BUFFER_PCT": "0"}),
+            patch(
+                "src.broker_bridge.MarketOrder",
+                market_order,
+            ),
+            patch(
+                "src.broker_bridge.LimitOrder",
+                limit_order,
+            ),
+            patch(
+                "asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
         ):
             result = await bridge.buy("CHEAP", 50_000)
 
@@ -385,18 +407,24 @@ async def test_auto_buy_rounds_limit_up_then_rechecks_actual_notional(tmp_path):
 async def test_sub_cent_auto_buy_uses_positive_capped_limit_never_market(tmp_path):
     with patch("src.broker_bridge.BUDGET_STATE_FILE", tmp_path / "budget.json"):
         bridge = IBKRBridge(budget=1.0)
+        bridge.bind_current_loop()
         _configure_filled_buy(bridge, price=0.004)
         market_order = MagicMock()
         limit_order = MagicMock()
-        with patch.dict(os.environ, {"IBKR_BUY_RESERVE_BUFFER_PCT": "0"}), patch(
-            "src.broker_bridge.MarketOrder",
-            market_order,
-        ), patch(
-            "src.broker_bridge.LimitOrder",
-            limit_order,
-        ), patch(
-            "asyncio.sleep",
-            new_callable=AsyncMock,
+        with (
+            patch.dict(os.environ, {"IBKR_BUY_RESERVE_BUFFER_PCT": "0"}),
+            patch(
+                "src.broker_bridge.MarketOrder",
+                market_order,
+            ),
+            patch(
+                "src.broker_bridge.LimitOrder",
+                limit_order,
+            ),
+            patch(
+                "asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
         ):
             result = await bridge.buy("CHEAP", 1)
 
@@ -409,6 +437,7 @@ async def test_sub_cent_auto_buy_uses_positive_capped_limit_never_market(tmp_pat
 async def test_zero_price_limit_buy_is_rejected_instead_of_falling_back_to_market(tmp_path):
     with patch("src.broker_bridge.BUDGET_STATE_FILE", tmp_path / "budget.json"):
         bridge = IBKRBridge(budget=100.0)
+        bridge.bind_current_loop()
         _configure_filled_buy(bridge, price=10.0)
         market_order = MagicMock()
         with patch("src.broker_bridge.MarketOrder", market_order):
@@ -422,12 +451,16 @@ async def test_zero_price_limit_buy_is_rejected_instead_of_falling_back_to_marke
 async def test_budget_reservation_persistence_failure_blocks_broker_order(tmp_path):
     with patch("src.broker_bridge.BUDGET_STATE_FILE", tmp_path / "budget.json"):
         bridge = IBKRBridge(budget=100.0)
+        bridge.bind_current_loop()
         _configure_filled_buy(bridge, price=40.0)
         bridge._save_budget_state = MagicMock(side_effect=OSError("disk full"))
         limit_order = MagicMock()
-        with patch("src.broker_bridge.LimitOrder", limit_order), patch(
-            "asyncio.sleep",
-            new_callable=AsyncMock,
+        with (
+            patch("src.broker_bridge.LimitOrder", limit_order),
+            patch(
+                "asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
         ):
             result = await bridge.buy("AAPL", 1)
 
@@ -452,9 +485,7 @@ async def test_budget_reservation_persistence_failure_blocks_broker_order(tmp_pa
             {
                 "date": "2026-08-03",
                 "total_spent": 0,
-                "pending_buy_reservations": {
-                    "1": {"requested_qty": 1, "reserved_notional": -10}
-                },
+                "pending_buy_reservations": {"1": {"requested_qty": 1, "reserved_notional": -10}},
             }
         ),
     ],
@@ -462,11 +493,10 @@ async def test_budget_reservation_persistence_failure_blocks_broker_order(tmp_pa
 async def test_corrupt_current_budget_state_blocks_all_buys(tmp_path, payload):
     state_file = tmp_path / "budget.json"
     state_file.write_text(payload, encoding="utf-8")
-    with patch("src.broker_bridge.BUDGET_STATE_FILE", state_file), patch(
-        "src.broker_bridge.now_et"
-    ) as clock:
+    with patch("src.broker_bridge.BUDGET_STATE_FILE", state_file), patch("src.broker_bridge.now_et") as clock:
         clock.return_value = datetime(2026, 8, 3)
         bridge = IBKRBridge(budget=100.0)
+        bridge.bind_current_loop()
     bridge.ib = MagicMock()
 
     result = await bridge.buy("AAPL", 1)
@@ -482,9 +512,7 @@ def test_previous_day_budget_state_resets_normally(tmp_path):
         json.dumps({"date": "2026-08-02", "total_spent": 99_999}),
         encoding="utf-8",
     )
-    with patch("src.broker_bridge.BUDGET_STATE_FILE", state_file), patch(
-        "src.broker_bridge.now_et"
-    ) as clock:
+    with patch("src.broker_bridge.BUDGET_STATE_FILE", state_file), patch("src.broker_bridge.now_et") as clock:
         clock.return_value = datetime(2026, 8, 3)
         bridge = IBKRBridge(budget=100.0)
 
@@ -513,9 +541,7 @@ def test_previous_day_unresolved_buy_reservation_is_preserved_and_blocks_reset(t
         ),
         encoding="utf-8",
     )
-    with patch("src.broker_bridge.BUDGET_STATE_FILE", state_file), patch(
-        "src.broker_bridge.now_et"
-    ) as clock:
+    with patch("src.broker_bridge.BUDGET_STATE_FILE", state_file), patch("src.broker_bridge.now_et") as clock:
         clock.return_value = datetime(2026, 8, 3)
         bridge = IBKRBridge(budget=100.0)
         with pytest.raises(RuntimeError, match="未决 BUY"):
@@ -534,6 +560,7 @@ def test_non_finite_budget_is_rejected_at_initialization():
 
 async def test_non_finite_buy_quantity_is_rejected_before_connection():
     bridge = IBKRBridge(budget=100.0)
+    bridge.bind_current_loop()
     bridge.ensure_connected = AsyncMock()
 
     result = await bridge.buy("AAPL", float("nan"))
@@ -545,11 +572,81 @@ async def test_non_finite_buy_quantity_is_rejected_before_connection():
 # ============ sell budget recovery ============
 
 
+async def test_sell_limit_order_without_price_fails_before_connection():
+    bridge = IBKRBridge()
+    bridge.bind_current_loop()
+    bridge.ensure_connected = AsyncMock()
+
+    result = await bridge.sell("AAPL", 1, order_type="LMT", limit_price=0)
+
+    assert "限价卖单价格必须大于零" in result["error"]
+    bridge.ensure_connected.assert_not_called()
+
+
+async def test_sell_rejects_quantity_above_long_position_without_submitting():
+    bridge = IBKRBridge()
+    bridge.bind_current_loop()
+    bridge.ib = MagicMock()
+    bridge.ib.isConnected.return_value = True
+    position = MagicMock()
+    position.contract.symbol = "AAPL"
+    position.position = 5
+    bridge.ib.positions.return_value = [position]
+    bridge.ib.openTrades.return_value = []
+
+    result = await bridge.sell("AAPL", 6)
+
+    assert "可卖持仓不足" in result["error"]
+    bridge.ib.placeOrder.assert_not_called()
+
+
+async def test_concurrent_sells_cannot_reserve_more_than_long_position():
+    bridge = IBKRBridge()
+    bridge.bind_current_loop()
+    bridge.ib = MagicMock()
+    bridge.ib.isConnected.return_value = True
+    position = MagicMock()
+    position.contract.symbol = "AAPL"
+    position.position = 10
+    bridge.ib.positions.return_value = [position]
+    bridge.ib.openTrades.return_value = []
+    contract = MagicMock()
+    bridge._make_contract = MagicMock(return_value=contract)
+    bridge.ib.qualifyContractsAsync = AsyncMock(return_value=[contract])
+    trade = MagicMock()
+    trade.orderStatus.status = "Submitted"
+    trade.orderStatus.filled = 0
+    trade.orderStatus.avgFillPrice = 0
+    trade.order.orderId = 901
+    bridge.ib.placeOrder.return_value = trade
+
+    with patch("src.broker_bridge.MarketOrder", MagicMock()), patch(
+        "asyncio.sleep",
+        new_callable=AsyncMock,
+    ):
+        first, second = await asyncio.gather(
+            bridge.sell("AAPL", 10),
+            bridge.sell("AAPL", 10),
+        )
+
+    assert sum("error" not in result for result in (first, second)) == 1
+    assert any("可卖持仓不足" in result.get("error", "") for result in (first, second))
+    bridge.ib.placeOrder.assert_called_once()
+
+
 async def test_sell_recovers_budget():
     bridge = IBKRBridge(budget=2000.0)
+    bridge.bind_current_loop()
     bridge.total_spent = 1500.0
     bridge.ib = MagicMock()
     bridge.ib.isConnected.return_value = True
+
+    position = MagicMock()
+    position.contract.symbol = "AAPL"
+    position.position = 10
+    position.avgCost = 150.0
+    bridge.ib.positions.return_value = [position]
+    bridge.ib.openTrades.return_value = []
 
     mock_contract = MagicMock()
     bridge._make_contract = MagicMock(return_value=mock_contract)
@@ -576,6 +673,7 @@ async def test_sell_recovers_budget():
 
 async def test_get_positions_returns_formatted():
     bridge = IBKRBridge()
+    bridge.bind_current_loop()
     bridge.ib = MagicMock()
     bridge.ib.isConnected.return_value = True
 
@@ -608,6 +706,7 @@ async def test_get_positions_returns_formatted():
 
 async def test_trade_snapshots_include_cross_session_completed_orders():
     bridge = IBKRBridge()
+    bridge.bind_current_loop()
     bridge.ib = MagicMock()
     bridge.ib.isConnected.return_value = True
     bridge.ib.trades.return_value = []
