@@ -5,23 +5,20 @@ Covers: FreeAPISource, _scrub_secrets, get_model_score, LiteLLMPool core methods
 """
 
 import asyncio
-import time
+import threading
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock, PropertyMock
 
 from src.litellm_router import (
+    TIER_A,
+    TIER_B,
+    TIER_S,
     FreeAPISource,
     LiteLLMPool,
     _scrub_secrets,
     get_model_score,
-    MODEL_RANKING,
-    TIER_S,
-    TIER_A,
-    TIER_B,
-    TIER_C,
 )
-
 
 # ============ Fixtures ============
 
@@ -193,10 +190,10 @@ class TestAcompletion:
     async def test_handles_timeout_gracefully(self, pool_with_sources):
         """acompletion increments error count on timeout."""
         mock_router = AsyncMock()
-        mock_router.acompletion.side_effect = asyncio.TimeoutError()
+        mock_router.acompletion.side_effect = TimeoutError()
         pool_with_sources._router = mock_router
 
-        with pytest.raises(asyncio.TimeoutError):
+        with pytest.raises(TimeoutError):
             await pool_with_sources.acompletion("qwen", [{"role": "user", "content": "hi"}])
 
         assert pool_with_sources._error_count == 1
@@ -231,6 +228,30 @@ class TestAcompletion:
         assert pool_with_sources._total_input_tokens == 100
         assert pool_with_sources._total_output_tokens == 50
         assert pool_with_sources._total_cost == pytest.approx(0.001)
+
+
+class TestEventLoopIsolation:
+    def test_stats_lock_does_not_belong_to_an_event_loop(self, pool):
+        """全局统计对象会跨 Uvicorn 与 Telegram 线程复用，锁必须与事件循环无关。"""
+        assert isinstance(pool._stats_lock, type(threading.Lock()))
+
+    def test_each_event_loop_gets_its_own_router(self, pool, monkeypatch):
+        """连续创建的事件循环不得复用同一个 LiteLLM Router。"""
+        bootstrap_router = MagicMock(name="bootstrap_router")
+        second_router = MagicMock(name="second_router")
+        pool._router = bootstrap_router
+        pool._router_is_template = True
+        monkeypatch.setattr(pool, "_create_router", MagicMock(return_value=second_router))
+
+        async def current_router():
+            return pool.router_for_current_loop()
+
+        first = asyncio.run(current_router())
+        second = asyncio.run(current_router())
+
+        assert first is bootstrap_router
+        assert second is second_router
+        assert first is not second
 
 
 # ============ LiteLLMPool.get_stats ============

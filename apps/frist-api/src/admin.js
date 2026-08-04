@@ -1,7 +1,5 @@
-const STORAGE_KEY = 'frist_api_admin_token';
-
 const state = {
-  adminToken: window.localStorage.getItem(STORAGE_KEY) || '',
+  adminToken: '',
   rechargePlans: [],
   lastCardExport: '',
   plusAccounts: [],
@@ -10,6 +8,10 @@ const state = {
   upstreamChannels: [],
   xianyuFulfillments: [],
 };
+
+function captureAdminToken() {
+  state.adminToken = document.querySelector('[data-admin-token]').value.trim();
+}
 
 function init() {
   document.querySelector('[data-admin-token]').value = state.adminToken;
@@ -39,17 +41,15 @@ function init() {
 }
 
 function saveToken() {
-  state.adminToken = document.querySelector('[data-admin-token]').value.trim();
-  window.localStorage.setItem(STORAGE_KEY, state.adminToken);
-  setMessage('令牌已保存');
+  captureAdminToken();
+  setMessage('令牌仅在本次页面会话中启用');
   loadInventory().catch((error) => setMessage(error.message));
   loadPricing().catch((error) => setMessage(error.message));
   loadProductionReadiness().catch((error) => setMessage(error.message));
 }
 
 async function replenish() {
-  state.adminToken = document.querySelector('[data-admin-token]').value.trim();
-  window.localStorage.setItem(STORAGE_KEY, state.adminToken);
+  captureAdminToken();
 
   try {
     const payload = {
@@ -81,8 +81,7 @@ async function replenish() {
 }
 
 async function parseOrder() {
-  state.adminToken = document.querySelector('[data-admin-token]').value.trim();
-  window.localStorage.setItem(STORAGE_KEY, state.adminToken);
+  captureAdminToken();
 
   try {
     const result = await adminRequest('/api/admin/replenishments/parse-order', {
@@ -103,8 +102,7 @@ async function parseOrder() {
 }
 
 async function creditCustomer() {
-  state.adminToken = document.querySelector('[data-admin-token]').value.trim();
-  window.localStorage.setItem(STORAGE_KEY, state.adminToken);
+  captureAdminToken();
 
   const payload = {
     email: document.querySelector('[data-admin-credit-email]').value,
@@ -126,8 +124,7 @@ async function creditCustomer() {
 }
 
 async function resetCustomerPassword() {
-  state.adminToken = document.querySelector('[data-admin-token]').value.trim();
-  window.localStorage.setItem(STORAGE_KEY, state.adminToken);
+  captureAdminToken();
 
   const payload = {
     email: document.querySelector('[data-admin-reset-email]').value,
@@ -168,8 +165,7 @@ async function loadPricing() {
 }
 
 async function savePricing() {
-  state.adminToken = document.querySelector('[data-admin-token]').value.trim();
-  window.localStorage.setItem(STORAGE_KEY, state.adminToken);
+  captureAdminToken();
 
   try {
     const payload = {
@@ -201,8 +197,7 @@ function renderPricing(pricing) {
 }
 
 async function syncUpstreamChannels() {
-  state.adminToken = document.querySelector('[data-admin-token]').value.trim();
-  window.localStorage.setItem(STORAGE_KEY, state.adminToken);
+  captureAdminToken();
   try {
     const raw = document.querySelector('[data-admin-upstream-json]')?.value || '[]';
     const parsed = JSON.parse(raw);
@@ -220,8 +215,7 @@ async function syncUpstreamChannels() {
 }
 
 async function createXianyuFulfillment() {
-  state.adminToken = document.querySelector('[data-admin-token]').value.trim();
-  window.localStorage.setItem(STORAGE_KEY, state.adminToken);
+  captureAdminToken();
   try {
     const result = await adminRequest('/api/admin/xianyu/fulfillments', {
       method: 'POST',
@@ -256,8 +250,7 @@ function renderCardPlanOptions() {
 }
 
 async function createRedemptionCards() {
-  state.adminToken = document.querySelector('[data-admin-token]').value.trim();
-  window.localStorage.setItem(STORAGE_KEY, state.adminToken);
+  captureAdminToken();
 
   const payload = {
     planId: document.querySelector('[data-admin-card-plan]').value,
@@ -314,8 +307,7 @@ async function copyXianyuDeliveryMessage() {
 }
 
 async function savePlusAccount() {
-  state.adminToken = document.querySelector('[data-admin-token]').value.trim();
-  window.localStorage.setItem(STORAGE_KEY, state.adminToken);
+  captureAdminToken();
 
   const payload = {
     id: state.editingPlusAccountId,
@@ -401,8 +393,7 @@ function handlePlusAccountListClick(event) {
 }
 
 async function importRtAccounts() {
-  state.adminToken = document.querySelector('[data-admin-token]').value.trim();
-  window.localStorage.setItem(STORAGE_KEY, state.adminToken);
+  captureAdminToken();
 
   const payload = {
     platform: document.querySelector('[data-admin-rt-platform]').value,
@@ -427,8 +418,7 @@ async function importRtAccounts() {
 }
 
 async function verifyAdmin2fa() {
-  state.adminToken = document.querySelector('[data-admin-token]').value.trim();
-  window.localStorage.setItem(STORAGE_KEY, state.adminToken);
+  captureAdminToken();
   try {
     const result = await adminRequest('/api/admin/2fa/verify', {
       method: 'POST',

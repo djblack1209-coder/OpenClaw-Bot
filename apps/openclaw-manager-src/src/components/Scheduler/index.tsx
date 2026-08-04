@@ -79,17 +79,23 @@ export function Scheduler() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   /* —— 切换任务启用/禁用 —— */
-  const toggleTask = async (taskId: string) => {
+  const toggleTask = async (taskId: string, currentEnabled: boolean) => {
+    const nextEnabled = !currentEnabled;
     setTogglingId(taskId);
     try {
-      await clawbotFetchJson(`/api/v1/controls/scheduler/task/${taskId}/toggle`, { method: 'POST' });
-      /* 乐观更新 */
+      const result = await clawbotFetchJson<{ ok: boolean; enabled: boolean }>(
+        `/api/v1/controls/scheduler/task/${taskId}/toggle?enabled=${nextEnabled}`,
+        { method: 'POST' },
+      );
+      if (!result.ok || result.enabled !== nextEnabled) {
+        throw new Error('后端未确认调度任务状态');
+      }
       setData((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
           tasks: prev.tasks.map((t) =>
-            t.id === taskId ? { ...t, enabled: !t.enabled } : t,
+            t.id === taskId ? { ...t, enabled: result.enabled } : t,
           ),
         };
       });
@@ -140,14 +146,14 @@ export function Scheduler() {
   return (
     <div className="h-full overflow-y-auto scroll-container">
       <motion.div
-        className="grid grid-cols-12 gap-4 p-6 max-w-[1440px] mx-auto auto-rows-min"
+        className="grid grid-cols-12 gap-3 p-2 max-w-[1440px] mx-auto auto-rows-min sm:gap-4 sm:p-6"
         variants={containerVariants}
         initial="hidden"
         animate="visible"
       >
         {/* ====== 调度总览 (col-8, row-span-2) ====== */}
         <motion.div className="col-span-12 lg:col-span-8 lg:row-span-2" variants={cardVariants}>
-          <div className="abyss-card p-6 h-full flex flex-col">
+          <div className="abyss-card p-4 h-full flex flex-col sm:p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-xl flex items-center justify-center"
                 style={{ background: 'rgba(6,182,212,0.15)' }}>
@@ -164,7 +170,7 @@ export function Scheduler() {
             </div>
 
             {/* 统计栏 */}
-            <div className="grid grid-cols-4 gap-3 mb-4">
+            <div className="grid grid-cols-2 gap-2 mb-4 sm:grid-cols-4 sm:gap-3">
               {metrics.map((s) => (
                 <div key={s.label} className="rounded-lg px-3 py-2" style={{ background: 'var(--bg-secondary)' }}>
                   <span className="text-label">{s.label}</span>
@@ -196,9 +202,9 @@ export function Scheduler() {
                         style={{ color: 'var(--text-primary)' }}>
                         {task.name}
                       </span>
-                      <span className="font-mono text-[10px] flex-shrink-0"
+                      <span className="hidden font-mono text-[10px] flex-shrink-0 sm:inline"
                         style={{ color: 'var(--text-disabled)' }}>
-                        {task.cron}
+                        {task.cron || '—'}
                       </span>
                     </div>
                     <div className="flex items-center gap-4 flex-shrink-0">
@@ -219,7 +225,7 @@ export function Scheduler() {
                         </div>
                       )}
                       <button
-                        onClick={() => toggleTask(task.id)}
+                        onClick={() => toggleTask(task.id, task.enabled)}
                         disabled={togglingId === task.id}
                         className="relative w-9 h-5 rounded-full transition-colors flex-shrink-0"
                         style={{
@@ -242,7 +248,7 @@ export function Scheduler() {
 
         {/* ====== 执行队列 (col-4) ====== */}
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
-          <div className="abyss-card p-6 h-full flex flex-col">
+          <div className="abyss-card p-4 h-full flex flex-col sm:p-6">
             <span className="text-label" style={{ color: 'var(--accent-amber)' }}>QUEUE</span>
             <h3 className="font-display text-lg font-bold mt-1 mb-4" style={{ color: 'var(--text-primary)' }}>
               {t('scheduler.executionQueue')}
@@ -255,7 +261,7 @@ export function Scheduler() {
               )}
               {queue.map((q, i) => (
                 <div key={q.id}
-                  className="flex items-center justify-between py-2 px-3 rounded-lg"
+                  className="flex flex-col gap-1 py-2 px-3 rounded-lg sm:flex-row sm:items-center sm:justify-between"
                   style={{ background: 'var(--bg-secondary)' }}>
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-[10px]" style={{ color: 'var(--text-disabled)' }}>
@@ -265,7 +271,7 @@ export function Scheduler() {
                       {q.name}
                     </span>
                   </div>
-                  <span className="font-mono text-[11px]" style={{ color: 'var(--accent-cyan)' }}>
+                  <span className="break-all font-mono text-[11px]" style={{ color: 'var(--accent-cyan)' }}>
                     {q.next_run}
                   </span>
                 </div>
@@ -276,7 +282,7 @@ export function Scheduler() {
 
         {/* ====== 调度器状态 (col-4) ====== */}
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
-          <div className="abyss-card p-6 h-full flex flex-col">
+          <div className="abyss-card p-4 h-full flex flex-col sm:p-6">
             <span className="text-label" style={{ color: 'var(--accent-purple)' }}>SCHEDULER STATUS</span>
             <h3 className="font-display text-lg font-bold mt-1 mb-4" style={{ color: 'var(--text-primary)' }}>
               {t('scheduler.schedulerStatus')}
@@ -302,7 +308,7 @@ export function Scheduler() {
 
         {/* ====== Cron 表达式说明 (col-8) ====== */}
         <motion.div className="col-span-12 lg:col-span-8" variants={cardVariants}>
-          <div className="abyss-card p-6 h-full flex flex-col">
+          <div className="abyss-card p-4 h-full flex flex-col sm:p-6">
             <div className="flex items-center gap-2 mb-4">
               <Terminal size={14} style={{ color: 'var(--accent-green)' }} />
               <span className="text-label" style={{ color: 'var(--accent-green)' }}>CRON REFERENCE</span>
@@ -310,9 +316,9 @@ export function Scheduler() {
             <div className="flex-1 rounded-lg p-3 font-mono text-[11px] leading-relaxed space-y-1"
               style={{ background: 'var(--bg-primary)' }}>
               {tasks.slice(0, 6).map((task) => (
-                <div key={task.id} className="flex gap-2">
-                  <span style={{ color: 'var(--accent-cyan)' }}>{task.cron.padEnd(16)}</span>
-                  <span style={{ color: task.enabled ? 'var(--accent-green)' : 'var(--text-disabled)' }}>
+                <div key={task.id} className="grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-2">
+                  <span className="whitespace-pre" style={{ color: 'var(--accent-cyan)' }}>{String(task.cron || '—').padEnd(16)}</span>
+                  <span className="min-w-0 break-words" style={{ color: task.enabled ? 'var(--accent-green)' : 'var(--text-disabled)' }}>
                     {task.name} — {task.enabled ? t('scheduler.enabled') : t('scheduler.disabled')}
                   </span>
                 </div>

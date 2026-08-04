@@ -22,7 +22,6 @@ for arg in "$@"; do
       ;;
   esac
 done
-APP_BUNDLE_ID="com.tencent.xinWeChat"
 APP_PATH="/Applications/WeChat.app"
 CODEX_BUNDLE_ID="com.openai.codex"
 CUA_BUNDLE_ID="com.openai.sky.CUAService"

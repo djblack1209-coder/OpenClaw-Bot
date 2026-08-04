@@ -22,6 +22,8 @@ from typing import Any
 from fastapi import APIRouter, Body, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 
+from src.core.loop_owner import OwnerLoopNotReady
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/conversation")
 
@@ -223,6 +225,13 @@ async def send_message(
     if not session:
         raise HTTPException(status_code=404, detail="会话不存在")
 
+    try:
+        from src.core.brain import get_brain
+
+        brain = get_brain()
+    except OwnerLoopNotReady as e:
+        raise HTTPException(status_code=503, detail="Brain 尚未就绪") from e
+
     # 记录用户消息
     _store.add_message(session_id, "user", message)
 
@@ -235,11 +244,7 @@ async def send_message(
             yield _sse_event("status", {"text": "AI 正在思考..."})
             await asyncio.sleep(0.1)
 
-            # 调用 Brain 处理
-            from src.core.brain import get_brain
-
-            brain = get_brain()
-
+            # 调用已固定到主循环的 Brain 处理
             yield _sse_event("status", {"text": "正在理解你的意思..."})
 
             result = await brain.process_message(

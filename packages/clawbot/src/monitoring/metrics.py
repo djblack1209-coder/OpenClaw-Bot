@@ -9,12 +9,15 @@ import logging
 import os
 import threading
 import time
+from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 logger = logging.getLogger(__name__)
 
 # 模块启动时间（用于 /health 端点计算 uptime）
 _start_time = time.time()
+
+HealthProvider = Callable[[], dict[str, str]]
 
 
 class PrometheusMetrics:
@@ -150,16 +153,21 @@ class _MetricsHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
         elif self.path == "/health":
+            provider = getattr(self.server, "health_provider", None)
+            try:
+                components = dict(provider()) if provider else {"bot": "unknown", "api": "unknown"}
+            except Exception as exc:
+                logger.exception("[Prometheus] 获取运行状态失败: %s", exc)
+                components = {"monitoring": "error"}
+
+            is_healthy = bool(components) and all(state == "running" for state in components.values())
             health = {
-                "status": "ok",
+                "status": "ok" if is_healthy else "degraded",
                 "uptime_seconds": int(time.time() - _start_time),
-                "components": {
-                    "bot": "running",
-                    "api": "running",
-                },
+                "components": components,
             }
             body = json.dumps(health).encode()
-            self.send_response(200)
+            self.send_response(200 if is_healthy else 503)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(body)
@@ -172,9 +180,10 @@ class _MetricsHandler(BaseHTTPRequestHandler):
         logger.debug("[Metrics HTTP] %s", format % args if args else format)
 
 
-def start_metrics_server(port: int = 9090):
+def start_metrics_server(port: int = 9090, health_provider: HealthProvider | None = None):
     """启动 Prometheus 指标 HTTP 服务器（后台线程）"""
     server = HTTPServer(("127.0.0.1", port), _MetricsHandler)
+    server.health_provider = health_provider
     t = threading.Thread(target=server.serve_forever, daemon=True)
     t.start()
     logger.info(f"[Prometheus] 指标服务器已启动: http://127.0.0.1:{port}/metrics")

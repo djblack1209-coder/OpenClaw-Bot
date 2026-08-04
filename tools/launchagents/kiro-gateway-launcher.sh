@@ -5,7 +5,7 @@ if [[ ! -x "$PYTHON" ]]; then
     echo "Kiro Gateway disabled: reproducible runtime is not installed"
     exit 0
 fi
-cd "/Users/blackdj/Desktop/OpenEverything/packages/clawbot/kiro-gateway"
+cd "/Users/blackdj/Desktop/OpenEverything/packages/clawbot/kiro-gateway" || exit 1
 exec "$PYTHON" \
     "/Users/blackdj/Desktop/OpenEverything/packages/clawbot/kiro-gateway/main.py" \
     --host 127.0.0.1 --port 18793

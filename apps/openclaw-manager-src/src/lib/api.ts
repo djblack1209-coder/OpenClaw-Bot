@@ -1,5 +1,6 @@
 import { clawbotFetch, clawbotFetchJson, isTauri } from './tauri-core';
 import * as ipc from './tauri-ipc';
+import { assertTradingSellSucceeded, type TradingSellResponse } from './trading-sell';
 
 // API 封装（带日志）
 export const api = {
@@ -195,9 +196,7 @@ export const api = {
   omegaMediaModels: ipc.omegaMediaModels,
 
   // ── MCP 插件进程管理 ──
-  startMcpPlugin: ipc.startMcpPlugin,
-  stopMcpPlugin: ipc.stopMcpPlugin,
-  getMcpPluginStatus: ipc.getMcpPluginStatus,
+  getMcpPlugins: ipc.getMcpPlugins,
 
   // ══════════════════════════════════════════════
   //  New-API 网关管理 (HTTP)
@@ -400,7 +399,7 @@ export const api = {
   // ══════════════════════════════════════════════
 
   /** 卖出持仓 */
-  tradingSell: async (symbol: string, quantity: number, orderType: string = 'MKT') => {
+  tradingSell: async (symbol: string, quantity: number, orderType: string = 'MKT'): Promise<TradingSellResponse> => {
     const resp = await clawbotFetch('/api/v1/trading/sell', {
       method: 'POST',
       body: JSON.stringify({ symbol, quantity, order_type: orderType }),
@@ -409,7 +408,13 @@ export const api = {
       const text = await resp.text().catch(() => '');
       throw new Error(`卖出请求失败 (HTTP ${resp.status}): ${text || '未知错误'}`);
     }
-    return resp.json();
+    let payload: unknown;
+    try {
+      payload = await resp.json();
+    } catch {
+      throw new Error('卖出请求失败：后端返回了无效响应');
+    }
+    return assertTradingSellSucceeded(payload);
   },
 
   // ══════════════════════════════════════════════

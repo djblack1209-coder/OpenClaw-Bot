@@ -2,7 +2,7 @@
 # ClawBot 启动脚本
 # 用法: ./scripts/start.sh
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 
 # 检查 Python
 if ! command -v python3 &> /dev/null; then

@@ -59,6 +59,9 @@ def test_v0_database_migrates_without_losing_rows(tmp_path):
         language = conn.execute("SELECT content_language FROM delivery_preferences").fetchone()[0]
         timezone_name = conn.execute("SELECT timezone FROM delivery_preferences").fetchone()[0]
         delivery_count = conn.execute("SELECT COUNT(*) FROM delivery_log").fetchone()[0]
+        attempt_columns = {
+            str(row[1]): row for row in conn.execute("PRAGMA table_info(content_delivery_attempts)")
+        }
         versions = conn.execute("SELECT version FROM schema_migrations ORDER BY version").fetchall()
         user_version = conn.execute("PRAGMA user_version").fetchone()[0]
         quick_check = conn.execute("PRAGMA quick_check").fetchone()[0]
@@ -68,12 +71,14 @@ def test_v0_database_migrates_without_losing_rows(tmp_path):
     assert timezone_name == "Asia/Singapore"
     assert delivery_count == 1
     assert {"intel_briefs", "delivery_artifacts", "content_items", "telegram_media_assets", "delivery_claims"} <= tables
-    assert versions == [(1,), (2,), (3,)]
-    assert user_version == 3
+    assert "event_key" in attempt_columns
+    assert attempt_columns["content_item_id"][3] == 0
+    assert versions == [(1,), (2,), (3,), (4,)]
+    assert user_version == 4
     assert quick_check == "ok"
 
 
-def test_v2_database_applies_v3_timezone_and_claim_migration(tmp_path):
+def test_v2_database_applies_timezone_claim_and_event_key_migrations(tmp_path):
     from src.intel.db.store import initialize_intel_db
 
     db_path = tmp_path / "v2.db"
@@ -97,7 +102,7 @@ def test_v2_database_applies_v3_timezone_and_claim_migration(tmp_path):
     assert timezone_name == "Asia/Singapore"
     assert (frequency, delivery_time) == ("weekly", "08:30")
     assert claim_table == (1,)
-    assert user_version == 3
+    assert user_version == 4
 
 
 def test_structured_brief_and_delivery_artifact_round_trip(tmp_path):

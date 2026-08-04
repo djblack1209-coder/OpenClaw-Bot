@@ -1,5 +1,5 @@
 # Monorepo CI — Python 后端 + Frist-API + Tauri 桌面端 + 安全门禁
-# 触发: push/PR 到 main 分支
+# 触发: push 到 main；PR 覆盖所有目标分支
 # 优化: uv 缓存 / npm 缓存 / 同分支并发取消
 
 name: OpenClaw CI
@@ -9,17 +9,18 @@ on:
     branches: [main]
     paths-ignore:
       - 'scripts/nightly-audit/**'
-      - 'apps/openclaw/**'
   pull_request:
-    branches: [main]
     paths-ignore:
       - 'scripts/nightly-audit/**'
-      - 'apps/openclaw/**'
 
 # 同一分支的新推送取消正在跑的旧 CI，节省 Actions 分钟数
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
 
 jobs:
   # ─── 密钥扫描 + 依赖高危漏洞门禁 ───
@@ -28,41 +29,42 @@ jobs:
 
     steps:
       # 参考 GitHub Actions 官方 marketplace/release（2026-07-02 复核）：v6/v8 动作使用新版 Node 运行时，避免旧 Node 20 预警继续漂移。
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
 
       - name: Secret scan with Gitleaks
-        uses: gitleaks/gitleaks-action@v3
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Node.js 24
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
 
-      - name: Audit desktop dependencies
-        working-directory: apps/openclaw-manager-src
-        run: npm audit --audit-level=high --omit=dev
-
-      - name: Audit Frist-API dependencies
-        working-directory: apps/frist-api
-        run: npm audit --audit-level=high --omit=dev
-
       - name: Set up Python 3.12
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v8.2.0
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
 
-      - name: Audit backend Python dependencies
-        working-directory: packages/clawbot
+      - name: Install security linters
         run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
           uv pip install --system pip-audit
-          pip-audit -r requirements.txt -r requirements-dev.txt --vulnerability-service pypi --progress-spinner off --cache-dir /tmp/openclaw-pip-audit-cache --timeout 10
+
+      - name: Lint repository shell scripts
+        run: make shellcheck
+
+      - name: Audit locked dependencies
+        run: make dependency-audit
+
+      - name: Verify immutable workflow and npm runtime locks
+        run: make supply-chain-check
 
       - name: Validate documentation governance
         run: bash scripts/check_docs_layout.sh
@@ -76,30 +78,33 @@ jobs:
 
     steps:
       # 参考 GitHub Actions 官方 marketplace/release（2026-07-02 复核）：checkout/setup-python/cache 均固定到已发布新版主版本。
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v8.2.0
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
 
       - name: Cache uv dependencies
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.cache/uv
-          key: ${{ runner.os }}-uv-${{ hashFiles('packages/clawbot/requirements-dev.txt') }}
+          key: ${{ runner.os }}-uv-${{ hashFiles('packages/clawbot/requirements-lock.txt') }}
           restore-keys: ${{ runner.os }}-uv-
 
       - name: Install dependencies
         run: |
-          uv pip install --system -r requirements-dev.txt
+          uv pip install --system --require-hashes -r requirements-lock.txt
+
+      - name: Verify Python dependency lock
+        working-directory: .
+        run: make python-lock-check
 
       - name: Ruff lint check
         run: |
-          uv pip install --system ruff
           ruff check src/ --config ruff.toml \
             --select E,W,F,B \
             --ignore E501,E402,E701,E702,E741,B008,B905,B904,B004,B005,B007
@@ -109,7 +114,7 @@ jobs:
           set -o pipefail
           python -m pytest tests/ \
             --tb=short -q \
-            --cov=src --cov-report=term-missing \
+            --cov=src --cov-report=term-missing --cov-fail-under=40 \
             --timeout=120 \
             -o "addopts=" \
             2>&1 | tee pytest-output.txt
@@ -117,6 +122,10 @@ jobs:
           # 测试环境变量，避免依赖外部服务
           TESTING: "true"
           LITELLM_LOG: "ERROR"
+
+      - name: Enforce critical-path coverage
+        working-directory: .
+        run: make critical-coverage-check
 
       - name: Syntax check source files
         run: |
@@ -135,10 +144,10 @@ jobs:
         working-directory: apps/frist-api
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Set up Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: ${{ matrix.node-version }}
           cache: "npm"
@@ -158,10 +167,10 @@ jobs:
         working-directory: apps/openclaw-manager-src
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Set up Node.js 24
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
           cache: "npm"
@@ -173,6 +182,12 @@ jobs:
       - name: TypeScript type check
         run: npx tsc --noEmit
 
+      - name: Frontend lint
+        run: npm run lint
+
+      - name: Frontend production build
+        run: npm run build
+
       - name: Desktop security boundary tests
         working-directory: .
         run: >-
@@ -182,7 +197,10 @@ jobs:
           scripts/auto_ops_scripts.test.mjs
 
       - name: Set up Rust stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+
+      - name: Install RustSec audit
+        run: cargo install cargo-audit --locked
 
       - name: Install Tauri Linux prerequisites
         run: |
@@ -201,5 +219,6 @@ jobs:
       - name: Rust tests and compile check
         working-directory: apps/openclaw-manager-src/src-tauri
         run: |
+          cargo audit --file Cargo.lock
           cargo test --locked
           cargo check --locked

@@ -13,6 +13,7 @@
 - 复用现有 XianyuReplyBot (prompt reload)
 - 不引入新数据库，零额外依赖 (FastAPI 已在 kiro-gateway 中使用)
 """
+
 import contextlib
 import hashlib
 import hmac
@@ -20,9 +21,11 @@ import json
 import logging
 import os
 import re
+import secrets
 import subprocess
 import threading
 import time
+from collections.abc import Mapping
 from datetime import timedelta
 from pathlib import Path
 from urllib.parse import parse_qsl, unquote, urlsplit
@@ -35,6 +38,7 @@ from pydantic import BaseModel
 
 from src.api.auth import log_token_status
 from src.api.error_utils import safe_error as _safe_error
+from src.core.loop_owner import OwnerLoopNotReady, OwnerLoopTimeout
 from src.utils import now_et, scrub_secrets
 from src.xianyu.cc_operator_state import (
     authorize_one_shot_delivery,
@@ -45,9 +49,22 @@ from src.xianyu.cc_operator_state import (
     set_auto_ship_paused,
 )
 
+from .operations_projection import project_operations
 from .xianyu_apis import XianyuApis
 
 logger = logging.getLogger(__name__)
+_EMPTY_LIVE_RUNTIME_SNAPSHOT = {
+    "ws_connected": False,
+    "cookie_ok": False,
+    "last_heartbeat": 0.0,
+    "token_ts": 0.0,
+    "manual_chats": 0,
+}
+_ADMIN_SESSION_COOKIE = "xianyu_admin_session"
+_ADMIN_SESSION_TTL_SECONDS = 900
+_ADMIN_SESSION_MAX_ACTIVE = 128
+_admin_sessions: dict[str, float] = {}
+_admin_sessions_lock = threading.Lock()
 _last_cc_strict_audit: dict = {}
 _last_cc_readiness_audit: dict = {}
 _strict_audit_loop_started = False
@@ -78,6 +95,7 @@ app = FastAPI(
     title="闲鱼管理面板",
     version="1.0",
 )
+app.state.bind_host = None
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://localhost:1420", "tauri://localhost"],
@@ -99,6 +117,74 @@ def _expected_api_token() -> str:
         return getattr(auth, "_API_TOKEN", "") or os.getenv("OPENCLAW_API_TOKEN", "")
     except Exception:
         return os.getenv("OPENCLAW_API_TOKEN", "")
+
+
+def _issue_admin_session() -> tuple[str, int]:
+    """签发仅供闲鱼管理面使用的短时随机会话。"""
+    now = time.monotonic()
+    session_token = secrets.token_urlsafe(32)
+    with _admin_sessions_lock:
+        expired = [token for token, expires_at in _admin_sessions.items() if expires_at <= now]
+        for token in expired:
+            _admin_sessions.pop(token, None)
+        if len(_admin_sessions) >= _ADMIN_SESSION_MAX_ACTIVE:
+            raise HTTPException(status_code=429, detail="短时管理会话已达上限，请稍后重试")
+        _admin_sessions[session_token] = now + _ADMIN_SESSION_TTL_SECONDS
+    return session_token, _ADMIN_SESSION_TTL_SECONDS
+
+
+def _admin_session_is_valid(session_token: str) -> bool:
+    """校验短时管理会话并清理过期记录，不做滑动续期。"""
+    if not session_token:
+        return False
+    now = time.monotonic()
+    with _admin_sessions_lock:
+        expires_at = _admin_sessions.get(session_token, 0.0)
+        if expires_at <= now:
+            _admin_sessions.pop(session_token, None)
+            return False
+        return True
+
+
+def _admin_session_write_is_same_origin(request: Request) -> bool:
+    """Cookie 会话的写请求必须携带与当前管理面完全一致的 Origin。"""
+    if request.method in {"GET", "HEAD", "OPTIONS"}:
+        return True
+    origin = request.headers.get("origin", "").strip().rstrip("/").lower()
+    expected = f"{request.url.scheme}://{request.url.netloc}".rstrip("/").lower()
+    return bool(origin and hmac.compare_digest(origin, expected))
+
+
+def _live_runtime_snapshot() -> dict[str, bool | float | int]:
+    """只通过 owner 边界读取闲鱼实时状态；失败时按离线状态关闭售卖门。"""
+    live = _live
+    if live is None:
+        return dict(_EMPTY_LIVE_RUNTIME_SNAPSHOT)
+    snapshot_reader = getattr(live, "runtime_snapshot_sync", None)
+    if not callable(snapshot_reader):
+        logger.warning("[XianyuAdmin] 闲鱼实时服务未提供 owner 运行快照，按离线处理")
+        return dict(_EMPTY_LIVE_RUNTIME_SNAPSHOT)
+    try:
+        snapshot = snapshot_reader(timeout=5.0)
+    except (OwnerLoopNotReady, OwnerLoopTimeout) as e:
+        logger.warning("[XianyuAdmin] 闲鱼 owner 运行快照暂不可用，按离线处理: %s", e)
+        return dict(_EMPTY_LIVE_RUNTIME_SNAPSHOT)
+    except Exception as e:
+        logger.warning(
+            "[XianyuAdmin] 读取闲鱼 owner 运行快照失败，按离线处理: %s",
+            scrub_secrets(str(e)),
+        )
+        return dict(_EMPTY_LIVE_RUNTIME_SNAPSHOT)
+    if not isinstance(snapshot, Mapping):
+        logger.warning("[XianyuAdmin] 闲鱼 owner 运行快照格式无效，按离线处理")
+        return dict(_EMPTY_LIVE_RUNTIME_SNAPSHOT)
+    return {
+        "ws_connected": bool(snapshot.get("ws_connected")),
+        "cookie_ok": bool(snapshot.get("cookie_ok")),
+        "last_heartbeat": float(snapshot.get("last_heartbeat") or 0.0),
+        "token_ts": float(snapshot.get("token_ts") or 0.0),
+        "manual_chats": max(0, int(snapshot.get("manual_chats") or 0)),
+    }
 
 
 def _normalize_cc_item_mapping_item_id(value: str) -> str:
@@ -190,14 +276,8 @@ def _normalize_cc_item_mapping_item_id(value: str) -> str:
 def _cc_auto_ship_status() -> dict:
     """返回 CC中转自动发货运行配置摘要，不回显 token。"""
     enabled_raw = os.getenv("CC_XIANYU_AUTO_SHIP_ENABLED", "").strip().lower()
-    endpoint = (
-        os.getenv("CC_XIANYU_WEBHOOK_URL", "").strip()
-        or os.getenv("FRIST_API_XIANYU_WEBHOOK_URL", "").strip()
-    )
-    token = (
-        os.getenv("CC_XIANYU_WEBHOOK_TOKEN", "").strip()
-        or os.getenv("FRIST_API_XIANYU_WEBHOOK_TOKEN", "").strip()
-    )
+    endpoint = os.getenv("CC_XIANYU_WEBHOOK_URL", "").strip() or os.getenv("FRIST_API_XIANYU_WEBHOOK_URL", "").strip()
+    token = os.getenv("CC_XIANYU_WEBHOOK_TOKEN", "").strip() or os.getenv("FRIST_API_XIANYU_WEBHOOK_TOKEN", "").strip()
     disabled = enabled_raw in {"0", "false", "no", "off"}
     operator_state = get_operator_state()
     paused = bool(operator_state.get("auto_ship_paused"))
@@ -315,7 +395,7 @@ def _cc_social_pilot_install_summary() -> dict:
                 prefs = json.loads(pref_file.read_text(encoding="utf-8"))
             except Exception:
                 continue
-            settings = ((prefs.get("extensions") or {}).get("settings") or {})
+            settings = (prefs.get("extensions") or {}).get("settings") or {}
             if not isinstance(settings, dict):
                 continue
             for extension_id, info in settings.items():
@@ -364,7 +444,9 @@ def _cc_chrome_extension_summary() -> dict:
     """读取 Chrome 插件上报的 CC 发货助手能力；不依赖浏览器在线控制。"""
     max_status_age_seconds = 900
     install_summary = _cc_social_pilot_install_summary()
-    expected_extension_path = str(install_summary.get("expected_path") or "~/.openclaw/cc-social-pilot-runtime-extension")
+    expected_extension_path = str(
+        install_summary.get("expected_path") or "~/.openclaw/cc-social-pilot-runtime-extension"
+    )
     load_extension_action = (
         "未检测到 OpenEverything Social Pilot 扩展；请先运行 make cc-seller-chrome，"
         f"再在 chrome://extensions 加载运行版插件目录：{expected_extension_path}。"
@@ -424,7 +506,9 @@ def _cc_chrome_extension_summary() -> dict:
     manifest_version = str(extension.get("manifest_version") or "")[:32]
     bridge_active = manifest_version == "bridge"
     capabilities = extension.get("capabilities") if isinstance(extension.get("capabilities"), dict) else {}
-    supports_global = bool(capabilities.get("all_open_xianyu_tabs_watch") and capabilities.get("single_pending_global_gate"))
+    supports_global = bool(
+        capabilities.get("all_open_xianyu_tabs_watch") and capabilities.get("single_pending_global_gate")
+    )
     supports_preflight = bool(capabilities.get("target_tab_preflight"))
     supports_paid_page_dispatch = bool(capabilities.get("paid_page_dispatch"))
     supports_relist_queue = bool(capabilities.get("relist_queue_watch") and capabilities.get("xianyu_relist_item"))
@@ -434,7 +518,9 @@ def _cc_chrome_extension_summary() -> dict:
         status_age_seconds = None
     heartbeat_fresh = status_age_seconds is not None and status_age_seconds <= max_status_age_seconds
     online = bool(data.get("online")) and heartbeat_fresh
-    needs_refresh = not (supports_global and supports_preflight and supports_paid_page_dispatch and supports_relist_queue and online)
+    needs_refresh = not (
+        supports_global and supports_preflight and supports_paid_page_dispatch and supports_relist_queue and online
+    )
     return {
         "status_file_exists": True,
         "online": online,
@@ -451,7 +537,11 @@ def _cc_chrome_extension_summary() -> dict:
         **install_fields,
         "next_action": (
             "Chrome 插件心跳已过期，请刷新扩展；新版会自动后台上报，无需反复打开弹窗。"
-            if not online and supports_global and supports_preflight and supports_paid_page_dispatch and supports_relist_queue
+            if not online
+            and supports_global
+            and supports_preflight
+            and supports_paid_page_dispatch
+            and supports_relist_queue
             else load_extension_action
             if needs_refresh and not install_fields["social_pilot_installed"]
             else "已启动 Social Pilot，但尚未上报新版发货能力；打开插件弹窗，在高级设置粘贴本机 Token 后保存。"
@@ -663,11 +753,13 @@ def _sanitize_strict_audit_summary(summary: dict) -> dict:
         if not isinstance(item, dict):
             continue
         safe_latest.append({key: item.get(key) for key in allowed_keys if key in item})
-    trusted_real_orders = len([
-        item
-        for item in safe_latest
-        if item.get("ready") and str(item.get("orderIdPrefix") or "").startswith("xy_oid_")
-    ])
+    trusted_real_orders = len(
+        [
+            item
+            for item in safe_latest
+            if item.get("ready") and str(item.get("orderIdPrefix") or "").startswith("xy_oid_")
+        ]
+    )
     raw_real_orders = int(summary.get("real_orders") or 0)
     sanitized = {
         "same_order_ready": int(summary.get("same_order_ready") or 0) if trusted_real_orders > 0 else 0,
@@ -701,15 +793,17 @@ def _remember_strict_audit(audit: dict) -> None:
             saved = _ctx.record_cc_strict_audit(audit)
             if isinstance(saved, dict):
                 saved_summary = _sanitize_strict_audit_summary(saved.get("summary") or summary)
-                _last_cc_strict_audit.update({
-                    "persisted": True,
-                    "audit_id": saved.get("id"),
-                    "source": "sqlite",
-                    "real_orders": int(saved_summary.get("real_orders") or 0),
-                    "same_order_ready": int(saved_summary.get("same_order_ready") or 0),
-                    "same_order_matched": int(saved_summary.get("same_order_matched") or 0),
-                    "summary": saved_summary,
-                })
+                _last_cc_strict_audit.update(
+                    {
+                        "persisted": True,
+                        "audit_id": saved.get("id"),
+                        "source": "sqlite",
+                        "real_orders": int(saved_summary.get("real_orders") or 0),
+                        "same_order_ready": int(saved_summary.get("same_order_ready") or 0),
+                        "same_order_matched": int(saved_summary.get("same_order_matched") or 0),
+                        "summary": saved_summary,
+                    }
+                )
         except Exception as e:
             logger.warning(f"[XianyuAdmin] 严格门审计摘要持久化失败: {scrub_secrets(str(e))}")
 
@@ -725,7 +819,9 @@ def _latest_strict_audit() -> dict:
             logger.warning(f"[XianyuAdmin] 读取严格门审计摘要失败: {scrub_secrets(str(e))}")
             latest = None
         if isinstance(latest, dict) and latest:
-            summary = _sanitize_strict_audit_summary(latest.get("summary") if isinstance(latest.get("summary"), dict) else {})
+            summary = _sanitize_strict_audit_summary(
+                latest.get("summary") if isinstance(latest.get("summary"), dict) else {}
+            )
             restored = {
                 "ok": bool(latest.get("ok")),
                 "exit_code": latest.get("exit_code"),
@@ -764,9 +860,7 @@ def _strict_audit_ready() -> bool:
     """只有真实自动订单严格审计通过且同单闭环完成，才允许显示正式可售。"""
     latest = _latest_strict_audit()
     if not (
-        latest.get("ok")
-        and int(latest.get("same_order_ready") or 0) > 0
-        and _strict_audit_has_real_ready_match(latest)
+        latest.get("ok") and int(latest.get("same_order_ready") or 0) > 0 and _strict_audit_has_real_ready_match(latest)
     ):
         return False
     if _ctx and hasattr(_ctx, "cc_final_sale_gate_summary"):
@@ -779,6 +873,41 @@ def _strict_audit_ready() -> bool:
     return False
 
 
+def _cc_operations_projection_snapshot(
+    runtime_snapshot: Mapping[str, object] | None = None,
+    *,
+    include_readiness: bool,
+) -> dict[str, object]:
+    """把有状态运行对象收口为纯投影模块可消费的普通快照。"""
+    live_snapshot = dict(runtime_snapshot) if runtime_snapshot is not None else _live_runtime_snapshot()
+    shipments: Mapping[str, object] = {}
+    gate: Mapping[str, object] = {}
+    mappings: list[Mapping[str, object]] = []
+    if _ctx and hasattr(_ctx, "cc_shipment_summary"):
+        shipments = _ctx.cc_shipment_summary() or {}
+    if _ctx and hasattr(_ctx, "cc_final_sale_gate_summary"):
+        gate = _ctx.cc_final_sale_gate_summary() or {}
+    if _ctx and hasattr(_ctx, "list_cc_item_mappings"):
+        mappings = _ctx.list_cc_item_mappings(include_disabled=True) or []
+    enabled_mappings = len([mapping for mapping in mappings if mapping.get("enabled")])
+    latest_strict_audit = _latest_strict_audit()
+    return {
+        "auto_ship": _cc_auto_ship_status(),
+        "runtime": live_snapshot,
+        "shipments": shipments,
+        "sale_gate": gate,
+        "enabled_item_mappings": enabled_mappings,
+        "plan_routing": _cc_auto_plan_routing_summary(enabled_mappings) if include_readiness else {},
+        "readiness_audit": dict(_last_cc_readiness_audit or {}) if include_readiness else {},
+        "chrome_extension": _cc_chrome_extension_summary() if include_readiness else {},
+        "strict_ready": _strict_audit_ready(),
+        "latest_strict_audit": latest_strict_audit,
+        "auto_strict_audit": _auto_strict_audit_config(),
+        "last_background_strict_audit_at": _last_background_strict_audit_at,
+        "last_background_strict_audit": dict(_last_background_strict_audit_result),
+    }
+
+
 def _cc_public_sale_lock_summary(refresh: bool = False) -> dict:
     """给老板看的上架锁；默认只读缓存，refresh=True 时跑一次只读巡检刷新库存/渠道。"""
     audit_error = ""
@@ -789,8 +918,9 @@ def _cc_public_sale_lock_summary(refresh: bool = False) -> dict:
             audit_error = _safe_error(e)
             logger.warning(f"[XianyuAdmin] 上架锁刷新只读巡检失败: {scrub_secrets(str(e))}")
 
-    sale = _cc_sale_readiness_summary()
-    loop_watch = _cc_loop_watch_summary()
+    runtime_snapshot = _live_runtime_snapshot()
+    sale = _cc_sale_readiness_summary(runtime_snapshot)
+    loop_watch = _cc_loop_watch_summary(runtime_snapshot)
     checks = sale.get("checks") if isinstance(sale.get("checks"), dict) else {}
     audit = _last_cc_readiness_audit or {}
     readiness_auto = _auto_readiness_audit_config()
@@ -826,9 +956,8 @@ def _cc_public_sale_lock_summary(refresh: bool = False) -> dict:
         "ccswitch_import_ready": ccswitch_import_ready,
         "strict_real_order_ready": bool(sale.get("ready_for_public_sale")),
     }
-    inventory_display_ready = (
-        not inventory_known
-        or (gates["inventory_ready"] and gates["redemptions_ready"] and gates["channels_ready"])
+    inventory_display_ready = not inventory_known or (
+        gates["inventory_ready"] and gates["redemptions_ready"] and gates["channels_ready"]
     )
     strict_pause_display_ready = bool(
         auto_ship_paused
@@ -899,7 +1028,9 @@ def _cc_public_sale_lock_summary(refresh: bool = False) -> dict:
     elif auto_ship_paused and display_internal_ready:
         state = "paused_internal_test_ready"
         label = "生产内测条件已齐，自动发货暂停保护"
-        next_action = "系统基础条件正常，但自动发货被手动暂停。建议先用“只放行一次发卡”跑当前测试单，确认不会重复发卡后再恢复。"
+        next_action = (
+            "系统基础条件正常，但自动发货被手动暂停。建议先用“只放行一次发卡”跑当前测试单，确认不会重复发卡后再恢复。"
+        )
     elif can_internal_test:
         state = "internal_test_ready"
         label = "生产内测可发货，正式售卖仍锁定"
@@ -926,12 +1057,18 @@ def _cc_public_sale_lock_summary(refresh: bool = False) -> dict:
             "webhook_public_locked": audit.get("webhook_public_locked") if buyer_self_service_known else None,
             "public_main_http": audit.get("public_main_http") if buyer_self_service_known else None,
             "public_models_no_auth_http": audit.get("public_models_no_auth_http") if buyer_self_service_known else None,
-            "public_webhook_no_token_http": audit.get("public_webhook_no_token_http") if buyer_self_service_known else None,
+            "public_webhook_no_token_http": audit.get("public_webhook_no_token_http")
+            if buyer_self_service_known
+            else None,
             "ccswitch_entry_ok": audit.get("ccswitch_entry_ok") if ccswitch_import_known else None,
             "ccswitch_entry_http": audit.get("ccswitch_entry_http") if ccswitch_import_known else None,
             "ccswitch_has_cc_switch_text": audit.get("ccswitch_has_cc_switch_text") if ccswitch_import_known else None,
-            "ccswitch_has_ccswitch_marker": audit.get("ccswitch_has_ccswitch_marker") if ccswitch_import_known else None,
-            "ccswitch_has_import_link_marker": audit.get("ccswitch_has_import_link_marker") if ccswitch_import_known else None,
+            "ccswitch_has_ccswitch_marker": audit.get("ccswitch_has_ccswitch_marker")
+            if ccswitch_import_known
+            else None,
+            "ccswitch_has_import_link_marker": audit.get("ccswitch_has_import_link_marker")
+            if ccswitch_import_known
+            else None,
             "updated_at": audit.get("updated_at"),
         },
         "auto_readiness_audit": {
@@ -939,9 +1076,7 @@ def _cc_public_sale_lock_summary(refresh: bool = False) -> dict:
             "interval_ms": readiness_auto["interval_ms"],
             "scan_seconds": readiness_auto["scan_seconds"],
             "last_background_at": (
-                _last_background_readiness_audit_at
-                if _last_background_readiness_audit_at > 0
-                else None
+                _last_background_readiness_audit_at if _last_background_readiness_audit_at > 0 else None
             ),
         },
         "loop_stage": loop_watch.get("stage"),
@@ -1014,12 +1149,14 @@ def _build_cc_product_template(title: str = "", plan_id: str = "", price: str = 
     ]
     if safe_price:
         lines.append(f"价格：{safe_price}")
-    lines.extend([
-        "发货方式：付款后系统自动发送兑换入口和一次性兑换码。",
-        "使用步骤：1. 打开兑换入口；2. 注册或登录；3. 输入兑换码到账；4. 创建 API Key；5. 进入 CC Switch 导入并选择模型测试。",
-        "售后规则：未使用兑换码可联系客服处理；已使用兑换码不支持退换。",
-        "提醒：请勿公开分享自己的 API Key。",
-    ])
+    lines.extend(
+        [
+            "发货方式：付款后系统自动发送兑换入口和一次性兑换码。",
+            "使用步骤：1. 打开兑换入口；2. 注册或登录；3. 输入兑换码到账；4. 创建 API Key；5. 进入 CC Switch 导入并选择模型测试。",
+            "售后规则：未使用兑换码可联系客服处理；已使用兑换码不支持退换。",
+            "提醒：请勿公开分享自己的 API Key。",
+        ]
+    )
     return {
         "title": safe_title,
         "plan_id": safe_plan,
@@ -1028,286 +1165,26 @@ def _build_cc_product_template(title: str = "", plan_id: str = "", price: str = 
     }
 
 
-def _cc_sale_readiness_summary() -> dict:
+def _cc_sale_readiness_summary(runtime_snapshot: Mapping[str, object] | None = None) -> dict:
     """汇总当前自动化运营水位，告诉操作者还能自动化到哪一步。"""
-    auto = _cc_auto_ship_status()
-    ws_connected = False
-    cookie_ok = False
-    manual_chats = 0
-    if _live:
-        ws = getattr(_live, "ws", None)
-        ws_connected = bool(ws is not None and (getattr(ws, "open", True)))
-        cookie_ok = bool(getattr(_live, "_cookie_ok", False))
-        manual_chats = len(getattr(_live, "manual_chats", {}) or {})
-
-    shipments = {}
-    gate = {}
-    mappings = []
-    if _ctx and hasattr(_ctx, "cc_shipment_summary"):
-        shipments = _ctx.cc_shipment_summary()
-    if _ctx and hasattr(_ctx, "cc_final_sale_gate_summary"):
-        gate = _ctx.cc_final_sale_gate_summary()
-    if _ctx and hasattr(_ctx, "list_cc_item_mappings"):
-        mappings = _ctx.list_cc_item_mappings(include_disabled=True)
-
-    pending_rescue = int((shipments or {}).get("pending_rescue") or 0)
-    buyer_chain_verified = int((shipments or {}).get("buyer_chain_verified") or 0)
-    enabled_mappings = len([m for m in mappings if m.get("enabled")])
-    routing = _cc_auto_plan_routing_summary(enabled_mappings)
-    readiness_audit = _last_cc_readiness_audit or {}
-    buyer_self_service_known = bool(
-        readiness_audit.get("public_main_http") or readiness_audit.get("public_models_no_auth_http")
-    )
-    buyer_self_service = {
-        "known": buyer_self_service_known,
-        "ok": bool(readiness_audit.get("buyer_self_service_ok")) if buyer_self_service_known else None,
-        "main_http": readiness_audit.get("public_main_http") if buyer_self_service_known else None,
-        "models_no_auth_http": readiness_audit.get("public_models_no_auth_http") if buyer_self_service_known else None,
-        "webhook_no_token_http": readiness_audit.get("public_webhook_no_token_http") if buyer_self_service_known else None,
-        "webhook_public_locked": readiness_audit.get("webhook_public_locked") if buyer_self_service_known else None,
-    }
-    ccswitch_import_known = ("ccswitch_entry_ok" in readiness_audit) or bool(readiness_audit.get("ccswitch_entry_http"))
-    ccswitch_import = {
-        "known": ccswitch_import_known,
-        "ok": bool(readiness_audit.get("ccswitch_entry_ok")) if ccswitch_import_known else None,
-        "page_http": readiness_audit.get("ccswitch_entry_http") if ccswitch_import_known else None,
-        "has_cc_switch_text": readiness_audit.get("ccswitch_has_cc_switch_text") if ccswitch_import_known else None,
-        "has_ccswitch_marker": readiness_audit.get("ccswitch_has_ccswitch_marker") if ccswitch_import_known else None,
-        "has_import_link_marker": readiness_audit.get("ccswitch_has_import_link_marker") if ccswitch_import_known else None,
-    }
-    auto_operational = bool(auto.get("operational", auto.get("configured")) and not auto.get("paused"))
-    can_auto_ship = bool(auto_operational and ws_connected and cookie_ok and pending_rescue == 0)
-    strict_ready = _strict_audit_ready() and pending_rescue == 0
-
-    human_required = []
-    if not auto.get("configured"):
-        human_required.append("配置 CC中转自动发货 webhook")
-    if auto.get("paused"):
-        human_required.append("在操作台恢复自动发货")
-    if not ws_connected:
-        human_required.append("保持闲鱼助手 WebSocket 在线")
-    if not cookie_ok:
-        human_required.append("闲鱼 Cookie 失效时扫码恢复")
-    if pending_rescue > 0:
-        human_required.append("处理发货补救队列")
-    if enabled_mappings == 0 and not routing.get("default_plan_id_present"):
-        human_required.append("配置默认套餐或商品套餐映射，避免无映射订单靠兜底发货")
-    if buyer_self_service_known and not buyer_self_service.get("ok"):
-        human_required.append("修复买家主站或 API 网关公网入口")
-    if buyer_self_service_known and buyer_self_service.get("webhook_public_locked") is False:
-        human_required.append("修复闲鱼发货 webhook 未授权拦截")
-    if ccswitch_import_known and not ccswitch_import.get("ok"):
-        human_required.append("修复 CC Switch 导入入口")
-    chrome_extension = _cc_chrome_extension_summary()
-    if pending_rescue > 0 and chrome_extension.get("needs_refresh_for_global_watch"):
-        human_required.append("刷新 Chrome 插件并打开一次弹窗，同步新版发货看守能力")
-    if not strict_ready:
-        human_required.append("发布商品后跑 1 单小额真实付款，并完成兑换/API/调模型严格验收")
-    human_required.append("持续处理上游续费和库存补货")
-
-    return {
-        "automation_level": "生产内测自动发货可用" if can_auto_ship else "需要先处理红色项",
-        "can_auto_ship_paid_orders": can_auto_ship,
-        "ready_for_public_sale": strict_ready,
-        "checks": {
-            "webhook_configured": bool(auto.get("configured")),
-            "auto_ship_paused": bool(auto.get("paused")),
-            "ws_connected": ws_connected,
-            "cookie_ok": cookie_ok,
-            "pending_rescue": pending_rescue,
-            "enabled_item_mappings": enabled_mappings,
-            "real_order_seen": bool((gate or {}).get("local_ready")),
-            "buyer_chain_verified_orders": buyer_chain_verified,
-            "ccswitch_import_ok": ccswitch_import.get("ok"),
-        },
-        "plan_routing": routing,
-        "chrome_extension": chrome_extension,
-        "buyer_self_service": buyer_self_service,
-        "ccswitch_import": ccswitch_import,
-        "human_required": human_required,
-        "operator_addresses": {
-            "user_site": "https://jiyu.245334.xyz/",
-            "newapi_console": "https://jiyu.245334.xyz/console",
-            "frist_health": "https://frist-api-oracle.245334.xyz/",
-            "xianyu_gui": "http://127.0.0.1:18800/",
-        },
-        "manual_chats": manual_chats,
-        "last_strict_audit": _latest_strict_audit(),
-    }
+    snapshot = _cc_operations_projection_snapshot(runtime_snapshot, include_readiness=True)
+    return project_operations(snapshot)["sale_readiness"]
 
 
-def _cc_loop_watch_summary() -> dict:
+def _cc_loop_watch_summary(runtime_snapshot: Mapping[str, object] | None = None) -> dict:
     """轻量观察真实订单闭环进度；不跑远程审计、不泄露卡密。"""
-    auto = _cc_auto_ship_status()
-    ws_connected = False
-    cookie_ok = False
-    if _live:
-        ws = getattr(_live, "ws", None)
-        ws_connected = bool(ws is not None and (getattr(ws, "open", True)))
-        cookie_ok = bool(getattr(_live, "_cookie_ok", False))
-
-    shipments = {}
-    gate = {}
-    mappings = []
-    if _ctx and hasattr(_ctx, "cc_shipment_summary"):
-        shipments = _ctx.cc_shipment_summary()
-    if _ctx and hasattr(_ctx, "cc_final_sale_gate_summary"):
-        gate = _ctx.cc_final_sale_gate_summary()
-    if _ctx and hasattr(_ctx, "list_cc_item_mappings"):
-        mappings = _ctx.list_cc_item_mappings(include_disabled=True)
-
-    pending_rescue = int((shipments or {}).get("pending_rescue") or 0)
-    by_status = (shipments or {}).get("by_status") or {}
-    manual_ready = int(by_status.get("manual_delivery_ready") or 0) if isinstance(by_status, dict) else 0
-    buyer_chain_verified = int((shipments or {}).get("buyer_chain_verified") or 0)
-    sent_real_orders = int((gate or {}).get("sent_real_orders") or 0)
-    enabled_mappings = len([m for m in mappings if m.get("enabled")])
-    auto_operational = bool(auto.get("operational", auto.get("configured")) and not auto.get("paused"))
-    auto_ready = bool(auto_operational and ws_connected and cookie_ok)
-    local_order_seen = sent_real_orders > 0
-    latest_strict_audit = _latest_strict_audit()
-    strict_ready = _strict_audit_ready() and pending_rescue == 0
-    auto_strict = _auto_strict_audit_config()
-
-    if auto.get("paused"):
-        stage = "operator_paused"
-        label = "自动发货已暂停"
-        next_action = "需要继续售卖时，在本机操作台点“恢复自动发货”。"
-    elif not auto.get("configured"):
-        stage = "webhook_not_configured"
-        label = "自动发货 webhook 未配置"
-        next_action = "检查本机 .env 的 CC_XIANYU_WEBHOOK_URL / TOKEN 后重启闲鱼助手"
-    elif not ws_connected:
-        stage = "xianyu_ws_offline"
-        label = "闲鱼 WebSocket 未在线"
-        next_action = "保持闲鱼助手运行；如断线请重启或重新登录闲鱼"
-    elif not cookie_ok:
-        stage = "xianyu_cookie_invalid"
-        label = "闲鱼 Cookie 需要恢复"
-        next_action = "打开闲鱼登录页扫码/刷新 Cookie 后再观察"
-    elif pending_rescue > 0:
-        stage = "rescue_required"
-        label = "有发货补救待处理"
-        if manual_ready > 0:
-            next_action = "刷新 Chrome 插件，打开买家聊天页；可点“看守当前聊天页”或“看守所有闲鱼页”发送已分配话术。"
-        else:
-            next_action = "等待后台自动补发，或在补救队列点击重试发送/标记已处理"
-    elif not local_order_seen:
-        stage = "waiting_paid_order"
-        label = "等待真实已付款订单"
-        next_action = "发布闲鱼商品并跑 1 单小额真实付款；系统会自动发卡"
-    elif strict_ready:
-        stage = "closed_loop_verified"
-        label = "实单闭环已通过"
-        next_action = "可以小批量继续内测，仍需观察库存、上游余额和补救队列"
-    else:
-        stage = "waiting_buyer_chain"
-        label = "已自动发货，等待买家完成兑换/API/调模型严格闭环"
-        next_action = "让买家按发货话术完成注册兑换、创建 API Key、CC Switch 导入和模型测试，然后运行正式售卖严格门"
-
-    return {
-        "stage": stage,
-        "stage_label": label,
-        "next_action": next_action,
-        "auto_ready": auto_ready,
-        "can_auto_ship_paid_orders": bool(auto_ready and pending_rescue == 0),
-        "ready_for_public_sale": strict_ready,
-        "checks": {
-            "webhook_configured": bool(auto.get("configured")),
-            "auto_ship_paused": bool(auto.get("paused")),
-            "ws_connected": ws_connected,
-            "cookie_ok": cookie_ok,
-            "pending_rescue": pending_rescue,
-            "manual_delivery_ready": manual_ready,
-            "sent_real_orders": sent_real_orders,
-            "enabled_item_mappings": enabled_mappings,
-            "buyer_chain_verified_orders": buyer_chain_verified,
-            "strict_buyer_chain_verified": strict_ready,
-        },
-        "latest_shipments": (shipments or {}).get("latest", []),
-        "latest_gate": (gate or {}).get("latest", []),
-        "strict_audit_command": (gate or {}).get(
-            "strict_audit_command",
-            "node scripts/cc_zhongzhuan_readiness_audit.mjs --require-real-order",
-        ),
-        "buyer_chain_required": (gate or {}).get("buyer_chain_required", {}),
-        "last_strict_audit": latest_strict_audit,
-        "auto_strict_audit_enabled": auto_strict["enabled"],
-        "auto_strict_audit_interval_ms": auto_strict["interval_ms"],
-        "background_strict_audit_enabled": auto_strict["enabled"],
-        "background_strict_audit_scan_seconds": auto_strict["scan_seconds"],
-        "last_background_strict_audit_at": (
-            _last_background_strict_audit_at if _last_background_strict_audit_at > 0 else None
-        ),
-        "last_background_strict_audit": _last_background_strict_audit_result,
-    }
+    snapshot = _cc_operations_projection_snapshot(runtime_snapshot, include_readiness=False)
+    return project_operations(snapshot)["loop_watch"]
 
 
 def _cc_buyer_chain_progress_summary() -> dict:
     """汇总买家从已发货到兑换/API/调模型的进度；只读、不触发审计。"""
-    loop_watch = _cc_loop_watch_summary()
-    latest_audit = _latest_strict_audit()
-    audit_summary = latest_audit.get("summary") if isinstance(latest_audit, dict) else {}
-    if not isinstance(audit_summary, dict):
-        audit_summary = {}
-    matches = audit_summary.get("same_order_latest") or []
-    if not isinstance(matches, list):
-        matches = []
-
-    steps = {
-        "paid_order_shipped": int((loop_watch.get("checks") or {}).get("sent_real_orders") or 0) > 0,
-        "card_redeemed": any(bool(item.get("newApiRedeemed")) for item in matches if isinstance(item, dict)),
-        "api_key_created": any(int((item or {}).get("activeTokens") or 0) > 0 for item in matches if isinstance(item, dict)),
-        "model_called": any(
-            int((item or {}).get("modelLogsAfterRedeem") or 0) > 0
-            for item in matches
-            if isinstance(item, dict)
-        ),
-        "same_order_verified": bool(_strict_audit_ready()),
+    snapshot = {
+        "loop_watch": _cc_loop_watch_summary(),
+        "latest_strict_audit": _latest_strict_audit(),
+        "strict_ready": _strict_audit_ready(),
     }
-    if steps["same_order_verified"]:
-        # 严格门 ready 本身已经证明同一真实订单完成了兑换、API Key 和模型调用；
-        # 即使旧缓存缺少 same_order_latest 明细，也不能把老板误导为“买家未兑换”。
-        steps["card_redeemed"] = True
-        steps["api_key_created"] = True
-        steps["model_called"] = True
-    if not steps["paid_order_shipped"]:
-        stage = "waiting_paid_order"
-        next_action = "发布闲鱼商品并跑 1 单小额真实付款。"
-    elif not latest_audit:
-        stage = "waiting_strict_audit"
-        next_action = "系统会自动运行严格门；也可在 GUI 点“运行正式售卖严格门”。"
-    elif not steps["card_redeemed"]:
-        stage = "waiting_redeem"
-        next_action = "提醒买家打开兑换入口注册/登录并输入兑换码。"
-    elif not steps["api_key_created"]:
-        stage = "waiting_api_key"
-        next_action = "提醒买家在用户主站创建 API Key。"
-    elif not steps["model_called"]:
-        stage = "waiting_model_call"
-        next_action = "提醒买家导入 CC Switch 后选择模型测试一次。"
-    elif steps["same_order_verified"]:
-        stage = "verified"
-        next_action = "同一真实订单已完成发货、兑换、API Key 和模型调用。"
-    else:
-        stage = "waiting_same_order_match"
-        next_action = "已有部分买家行为，但严格门尚未确认属于同一真实订单；继续观察或重新运行严格门。"
-
-    same_order_verified = bool(_strict_audit_ready())
-    return {
-        "stage": stage,
-        "next_action": next_action,
-        "steps": steps,
-        "counts": {
-            "sent_real_orders": int((loop_watch.get("checks") or {}).get("sent_real_orders") or 0),
-            "buyer_chain_verified_orders": int((loop_watch.get("checks") or {}).get("buyer_chain_verified_orders") or 0),
-            "same_order_ready": int(latest_audit.get("same_order_ready") or 0) if same_order_verified else 0,
-            "same_order_matched": int(latest_audit.get("same_order_matched") or 0) if same_order_verified else 0,
-        },
-        "latest_orders": matches[:5],
-        "last_strict_audit": latest_audit,
-        "loop_stage": loop_watch.get("stage"),
-    }
+    return project_operations(snapshot)["buyer_progress"]
 
 
 def _cc_operator_next_action_summary() -> dict:
@@ -1330,14 +1207,21 @@ def _cc_operator_next_action_summary() -> dict:
         severity = "danger"
         title = "先处理发货补救队列"
         if int(checks.get("manual_delivery_ready") or 0) > 0:
-            primary_action = "刷新 Chrome 插件，打开对应买家聊天页；点“看守当前聊天页”，或在只有 1 条待发货时点“看守所有闲鱼页”。"
+            primary_action = (
+                "刷新 Chrome 插件，打开对应买家聊天页；点“看守当前聊天页”，或在只有 1 条待发货时点“看守所有闲鱼页”。"
+            )
         else:
             primary_action = "打开本机闲鱼 GUI 的“CC中转发货补救队列”，等待自动补发或手动重试/标记已处理。"
-    elif lock.get("can_internal_test") and lock.get("state") in {"paused_after_strict_gate", "paused_internal_test_ready"}:
+    elif lock.get("can_internal_test") and lock.get("state") in {
+        "paused_after_strict_gate",
+        "paused_internal_test_ready",
+    }:
         state = lock.get("state")
         severity = "warning"
         title = lock.get("state_label") or "自动发货暂停保护"
-        primary_action = lock.get("next_action") or loop_watch.get("next_action") or "确认准备继续售卖后，在操作台点“恢复自动发货”。"
+        primary_action = (
+            lock.get("next_action") or loop_watch.get("next_action") or "确认准备继续售卖后，在操作台点“恢复自动发货”。"
+        )
     elif not loop_watch.get("can_auto_ship_paid_orders"):
         state = "auto_ship_not_ready"
         severity = "danger"
@@ -1378,7 +1262,11 @@ def _cc_operator_next_action_summary() -> dict:
         {"key": "inventory_ready", "label": "库存/兑换码/渠道可用", "ok": bool(lock.get("can_internal_test"))},
         {"key": "buyer_site_smoke", "label": "站内兑换/Key/调模型烟测", "ok": bool(buyer_smoke.get("ok"))},
         {"key": "real_paid_order", "label": "真实闲鱼小额付款单", "ok": int(checks.get("sent_real_orders") or 0) > 0},
-        {"key": "buyer_chain_verified", "label": "买家兑换/API/调模型闭环", "ok": bool(progress.get("steps", {}).get("same_order_verified"))},
+        {
+            "key": "buyer_chain_verified",
+            "label": "买家兑换/API/调模型闭环",
+            "ok": bool(progress.get("steps", {}).get("same_order_verified")),
+        },
     ]
     return {
         "state": state,
@@ -1505,7 +1393,6 @@ def _cc_operator_mode_summary() -> dict:
             {"label": "补救队列清零", "ok": int((shipments or {}).get("pending_rescue") or 0) == 0},
         ],
     }
-
 
 
 def _cc_real_order_test_pack_summary() -> dict:
@@ -1675,11 +1562,7 @@ def _cc_auto_strict_audit_status(lock: dict, loop_watch: dict, auto_strict_resul
         "label": auto_strict_label,
         "reason": auto_strict_reason,
         "interval_ms": auto_strict_config["interval_ms"],
-        "last_background_at": (
-            _last_background_strict_audit_at
-            if _last_background_strict_audit_at > 0
-            else None
-        ),
+        "last_background_at": (_last_background_strict_audit_at if _last_background_strict_audit_at > 0 else None),
     }
 
 
@@ -1738,7 +1621,9 @@ def _cc_buyer_site_smoke_plan_summary() -> dict:
     elif can_prepare:
         state = "ready_requires_confirmation"
         title = "可准备站内买家烟测，但需要老板确认"
-        primary_action = "自动站内烟测会写入生产用户、兑换码、API Key 和可能的模型调用日志；未获明确确认前只展示计划，不执行。"
+        primary_action = (
+            "自动站内烟测会写入生产用户、兑换码、API Key 和可能的模型调用日志；未获明确确认前只展示计划，不执行。"
+        )
     else:
         state = "not_ready"
         title = "站内买家烟测前置条件不足"
@@ -1798,10 +1683,13 @@ def _cc_automation_coverage_summary() -> dict:
     checks = loop_watch.get("checks") if isinstance(loop_watch.get("checks"), dict) else {}
     progress_steps = buyer_progress.get("steps") if isinstance(buyer_progress.get("steps"), dict) else {}
     plan_routing = readiness.get("plan_routing") if isinstance(readiness.get("plan_routing"), dict) else {}
-    buyer_self_service = readiness.get("buyer_self_service") if isinstance(readiness.get("buyer_self_service"), dict) else {}
+    buyer_self_service = (
+        readiness.get("buyer_self_service") if isinstance(readiness.get("buyer_self_service"), dict) else {}
+    )
     ccswitch_import = readiness.get("ccswitch_import") if isinstance(readiness.get("ccswitch_import"), dict) else {}
     buyer_site_smoke = _cc_buyer_site_smoke_summary()
     buyer_site_smoke_plan = _cc_buyer_site_smoke_plan_summary()
+
     def make_item(
         key: str,
         label: str,
@@ -1919,9 +1807,7 @@ def _cc_automation_coverage_summary() -> dict:
         "buyer_site_smoke": buyer_site_smoke,
         "buyer_site_smoke_plan": buyer_site_smoke_plan,
         "next_action": (
-            missing[0]["next_action"]
-            if missing
-            else "可以小批量正式售卖并持续观察库存、上游余额和补救队列。"
+            missing[0]["next_action"] if missing else "可以小批量正式售卖并持续观察库存、上游余额和补救队列。"
         ),
         "plan_routing": plan_routing,
     }
@@ -2014,6 +1900,8 @@ def _cc_manual_precheck_evidence_summary() -> dict:
         token in (xianyu_admin_py + xianyu_live_py)
         for token in [
             "browser_delivery_claimed",
+            "message_send_inflight",
+            "message_send_uncertain",
             "consume_one_shot_delivery",
             "alreadyHandled",
             "consume_auto_resume_canary_after_sent",
@@ -2143,11 +2031,10 @@ def _cc_ops_snapshot_summary() -> dict:
             "total": len(mappings),
             "enabled": len([m for m in mappings if m.get("enabled")]),
         }
-    if _live:
-        ws = getattr(_live, "ws", None)
-        status["ws_connected"] = bool(ws is not None and (getattr(ws, "open", True)))
-        status["cookie_ok"] = bool(getattr(_live, "_cookie_ok", False))
-        status["manual_chats"] = len(getattr(_live, "manual_chats", {}) or {})
+    live_snapshot = _live_runtime_snapshot()
+    status["ws_connected"] = bool(live_snapshot.get("ws_connected"))
+    status["cookie_ok"] = bool(live_snapshot.get("cookie_ok"))
+    status["manual_chats"] = max(0, int(live_snapshot.get("manual_chats") or 0))
 
     next_action = _cc_operator_next_action_summary()
     lock = _cc_public_sale_lock_summary(refresh=False)
@@ -2164,10 +2051,7 @@ def _cc_ops_snapshot_summary() -> dict:
         "ok": bool(
             status.get("ws_connected")
             and status.get("cookie_ok")
-            and (
-                (status.get("cc_auto_ship") or {}).get("operational")
-                or protected_pause_ready
-            )
+            and ((status.get("cc_auto_ship") or {}).get("operational") or protected_pause_ready)
             and int((status.get("cc_shipments") or {}).get("pending_rescue") or 0) == 0
         ),
         "generated_at": now_et().isoformat(),
@@ -2271,10 +2155,7 @@ def _build_ops_notification(snapshot: dict) -> dict:
     pending_rescue = int(cc_shipments.get("pending_rescue") or 0)
     unused_cards_raw = inventory.get("unused_cards")
     unused_cards = int(unused_cards_raw) if unused_cards_raw is not None else None
-    low_inventory = (
-        unused_cards is not None
-        and unused_cards <= int(config["low_inventory_threshold"])
-    )
+    low_inventory = unused_cards is not None and unused_cards <= int(config["low_inventory_threshold"])
 
     severity = next_action.get("severity") or "warning"
     title = next_action.get("title") or "CC中转状态变化"
@@ -2606,27 +2487,65 @@ def _start_background_ops_notify_loop() -> None:
         logger.info("[XianyuAdmin] 本机运营提醒已启动")
 
 
+@app.post("/api/session")
+def create_admin_session(request: Request):
+    """用一次全局 Token 换取仅限本管理面的短时 HttpOnly 会话。"""
+    expected = _expected_api_token()
+    provided = request.headers.get("x-api-token", "")
+    if not expected:
+        raise HTTPException(status_code=503, detail="管理面未配置 OPENCLAW_API_TOKEN")
+    if not provided or not hmac.compare_digest(provided, expected):
+        raise HTTPException(status_code=401, detail="Invalid or missing API token")
+    session_token, ttl_seconds = _issue_admin_session()
+    response = JSONResponse({"ok": True, "expires_in": ttl_seconds})
+    response.set_cookie(
+        key=_ADMIN_SESSION_COOKIE,
+        value=session_token,
+        max_age=ttl_seconds,
+        httponly=True,
+        secure=request.url.scheme == "https",
+        samesite="strict",
+        path="/api",
+    )
+    return response
+
+
 @app.middleware("http")
 async def xianyu_admin_auth_middleware(request: Request, call_next):
     """保护 API，同时允许浏览器先打开首页再在页面里输入本机 Token。"""
     public_paths = {"/", "/dashboard", "/ops-links"}
-    if request.method == "OPTIONS" or request.url.path in public_paths or request.url.path.startswith("/static/"):
+    session_exchange = request.method == "POST" and request.url.path == "/api/session"
+    if (
+        request.method == "OPTIONS"
+        or request.url.path in public_paths
+        or request.url.path.startswith("/static/")
+        or session_exchange
+    ):
         return await call_next(request)
 
     expected = _expected_api_token()
     if not expected:
-        env_mode = os.getenv("ENV", "development").lower()
-        bind_host = os.getenv("API_HOST", "127.0.0.1")
-        if env_mode == "production":
+        env_mode = os.getenv("ENV", "development").strip().lower()
+        bind_host = str(
+            getattr(request.app.state, "bind_host", None)
+            or os.getenv("API_HOST", "127.0.0.1")
+        ).strip().lower()
+        if env_mode in {"production", "prod"}:
             return JSONResponse({"detail": "生产环境未配置 OPENCLAW_API_TOKEN，拒绝所有请求。"}, status_code=503)
         if bind_host not in ("127.0.0.1", "localhost"):
             return JSONResponse({"detail": "API 认证未配置且绑定到外网地址，拒绝所有请求。"}, status_code=503)
         return await call_next(request)
 
     provided = request.headers.get("x-api-token", "")
-    if not provided or not hmac.compare_digest(provided, expected):
-        return JSONResponse({"detail": "Invalid or missing API token"}, status_code=401)
-    return await call_next(request)
+    if provided and hmac.compare_digest(provided, expected):
+        return await call_next(request)
+    session_token = request.cookies.get(_ADMIN_SESSION_COOKIE, "")
+    if _admin_session_is_valid(session_token):
+        if not _admin_session_write_is_same_origin(request):
+            return JSONResponse({"detail": "管理会话只允许同源写请求"}, status_code=403)
+        return await call_next(request)
+    return JSONResponse({"detail": "Invalid or missing API token"}, status_code=401)
+
 
 # 延迟初始化 (由 start_admin_server 注入)
 _ctx = None  # XianyuContextManager
@@ -2643,6 +2562,7 @@ def _get_ctx():
 # ============================================================
 # Dashboard
 # ============================================================
+
 
 @app.get("/api/dashboard")
 def dashboard(date: str = ""):
@@ -2670,23 +2590,26 @@ def dashboard(date: str = ""):
 # 对话管理
 # ============================================================
 
+
 @app.get("/api/chats")
 def list_chats(limit: int = Query(50, le=200)):
     """列出最近活跃的对话"""
     try:
         ctx = _get_ctx()
         with ctx._conn() as c:
-            rows = c.execute("""
+            rows = c.execute(
+                """
                 SELECT chat_id, MAX(ts) as last_ts, COUNT(*) as msg_count,
                        (SELECT content FROM messages m2 WHERE m2.chat_id=m.chat_id ORDER BY id DESC LIMIT 1) as last_msg
                 FROM messages m
                 GROUP BY chat_id
                 ORDER BY last_ts DESC
                 LIMIT ?
-            """, (limit,)).fetchall()
+            """,
+                (limit,),
+            ).fetchall()
         return [
-            {"chat_id": r[0], "last_ts": r[1], "msg_count": r[2], "last_msg": r[3][:100] if r[3] else ""}
-            for r in rows
+            {"chat_id": r[0], "last_ts": r[1], "msg_count": r[2], "last_msg": r[3][:100] if r[3] else ""} for r in rows
         ]
     except HTTPException:
         raise
@@ -2723,6 +2646,7 @@ def get_chat(chat_id: str, limit: int = Query(100, le=500)):
 # 商品管理
 # ============================================================
 
+
 @app.get("/api/items")
 def list_items():
     try:
@@ -2735,7 +2659,9 @@ def list_items():
                 data = json.loads(r[1])
             except Exception as e:  # noqa: F841
                 data = {}
-            items.append({"item_id": r[0], "title": data.get("title", ""), "price": data.get("price", ""), "updated": r[2]})
+            items.append(
+                {"item_id": r[0], "title": data.get("title", ""), "price": data.get("price", ""), "updated": r[2]}
+            )
         return items
     except HTTPException:
         raise
@@ -2747,6 +2673,7 @@ def list_items():
 # ============================================================
 # 订单管理
 # ============================================================
+
 
 @app.get("/api/orders")
 def list_orders(date: str = "", limit: int = Query(50, le=200)):
@@ -2764,8 +2691,15 @@ def list_orders(date: str = "", limit: int = Query(50, le=200)):
                     (limit,),
                 ).fetchall()
         return [
-            {"id": r[0], "chat_id": r[1], "user_id": r[2], "item_id": r[3],
-             "status": r[4], "ts": r[5], "notified": bool(r[6])}
+            {
+                "id": r[0],
+                "chat_id": r[1],
+                "user_id": r[2],
+                "item_id": r[3],
+                "status": r[4],
+                "ts": r[5],
+                "notified": bool(r[6]),
+            }
             for r in rows
         ]
     except HTTPException:
@@ -2822,8 +2756,8 @@ async def cc_paid_order_probe(batch_size: int = Query(5, ge=1, le=20)):
     """只读扫描闲鱼真实待发货订单；不发卡、不分配库存、不点击发货。"""
     try:
         operator_state = get_operator_state()
-        scanner = getattr(_live, "scan_cc_paid_orders_readonly", None)
-        if not callable(scanner):
+        owner_call = getattr(_live, "call_on_owner", None)
+        if not callable(owner_call):
             return {
                 "ok": False,
                 "readOnly": True,
@@ -2832,7 +2766,11 @@ async def cc_paid_order_probe(batch_size: int = Query(5, ge=1, le=20)):
                 "candidates": [],
                 "nextAction": "闲鱼实时服务未接入本机操作台，请先确认 ai.openclaw.xianyu 正在运行。",
             }
-        result = await scanner(batch_size=int(batch_size))
+        result = await owner_call(
+            "scan_cc_paid_orders_readonly",
+            batch_size=int(batch_size),
+            timeout=30.0,
+        )
         candidates = [
             _scrub_paid_order_probe_candidate(item)
             for item in (result.get("candidates") or [])
@@ -2861,6 +2799,10 @@ async def cc_paid_order_probe(batch_size: int = Query(5, ge=1, le=20)):
         )
     except HTTPException:
         raise
+    except OwnerLoopNotReady as e:
+        raise HTTPException(503, "闲鱼实时连接尚未就绪，请稍后再试") from e
+    except OwnerLoopTimeout as e:
+        raise HTTPException(504, "只读扫单仍在后台核对，请稍后查看状态；本次没有执行发货") from e
     except Exception as e:
         logger.error(f"[XianyuAdmin] /api/cc-paid-order-probe 出错: {scrub_secrets(str(e))}", exc_info=True)
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
@@ -3087,10 +3029,7 @@ def _next_cc_xianyu_relist(ctx, mode: str = "production") -> dict:
         confirm_status = str(row.get("xianyu_confirm_status") or "").strip()
         queue_type = "production_relist"
         if confirm_status != "confirmed":
-            if not (
-                simulation_mode
-                and order_id.startswith(("xy_manual_", "xy_browser_", "xy_sim_"))
-            ):
+            if not (simulation_mode and order_id.startswith(("xy_manual_", "xy_browser_", "xy_sim_"))):
                 continue
             queue_type = "simulation_relist"
         item_id = str(row.get("item_id") or "").strip()
@@ -3254,7 +3193,7 @@ def _manual_paid_order_id(req: CCManualPaidOrderRequest, item_id: str) -> str:
         trusted_prefixes = ("xianyu-real:", "real:")
         for trusted_prefix in trusted_prefixes:
             if explicit.startswith(trusted_prefix):
-                raw_order_id = explicit[len(trusted_prefix):].strip()
+                raw_order_id = explicit[len(trusted_prefix) :].strip()
                 if re.fullmatch(r"[A-Za-z0-9_-]{6,80}", raw_order_id):
                     return f"xy_oid_{hashlib.sha256(raw_order_id.encode()).hexdigest()[:16]}"
         prefix = "xy_browser_" if explicit.startswith("browser:") else "xy_manual_"
@@ -3287,14 +3226,8 @@ def _resolve_manual_paid_order_plan(ctx, item_id: str, requested_plan: str) -> s
 
 async def _call_cc_manual_paid_order_webhook(payload: dict) -> dict:
     """调用 CC中转低权限发货接口；只在老板人工确认已付款后使用。"""
-    endpoint = (
-        os.getenv("CC_XIANYU_WEBHOOK_URL", "").strip()
-        or os.getenv("FRIST_API_XIANYU_WEBHOOK_URL", "").strip()
-    )
-    token = (
-        os.getenv("CC_XIANYU_WEBHOOK_TOKEN", "").strip()
-        or os.getenv("FRIST_API_XIANYU_WEBHOOK_TOKEN", "").strip()
-    )
+    endpoint = os.getenv("CC_XIANYU_WEBHOOK_URL", "").strip() or os.getenv("FRIST_API_XIANYU_WEBHOOK_URL", "").strip()
+    token = os.getenv("CC_XIANYU_WEBHOOK_TOKEN", "").strip() or os.getenv("FRIST_API_XIANYU_WEBHOOK_TOKEN", "").strip()
     if not endpoint or not token:
         raise HTTPException(503, "CC中转发货接口未配置")
     try:
@@ -3320,13 +3253,9 @@ def _cc_xianyu_remap_endpoint() -> tuple[str, str]:
         or os.getenv("FRIST_API_XIANYU_REMAP_WEBHOOK_URL", "").strip()
     )
     source_endpoint = (
-        os.getenv("CC_XIANYU_WEBHOOK_URL", "").strip()
-        or os.getenv("FRIST_API_XIANYU_WEBHOOK_URL", "").strip()
+        os.getenv("CC_XIANYU_WEBHOOK_URL", "").strip() or os.getenv("FRIST_API_XIANYU_WEBHOOK_URL", "").strip()
     )
-    token = (
-        os.getenv("CC_XIANYU_WEBHOOK_TOKEN", "").strip()
-        or os.getenv("FRIST_API_XIANYU_WEBHOOK_TOKEN", "").strip()
-    )
+    token = os.getenv("CC_XIANYU_WEBHOOK_TOKEN", "").strip() or os.getenv("FRIST_API_XIANYU_WEBHOOK_TOKEN", "").strip()
     if not endpoint and source_endpoint:
         endpoint = re.sub(r"/paid-order/?$", "/remap-order", source_endpoint.rstrip("/"))
     return endpoint, token
@@ -3423,7 +3352,9 @@ async def dispatch_manual_paid_order(req: CCManualPaidOrderRequest):
         if order_id.startswith("xy_oid_") and hasattr(ctx, "adopt_cc_shipment_real_order"):
             adoptable, adopt_reason = _find_adoptable_browser_shipment(ctx, item_id)
             if adopt_reason == "multiple_browser_shipments_for_item":
-                raise HTTPException(409, "同一商品找到多条已发浏览器临时单，为避免错绑真实订单，本次不发新卡。请联系技术支持处理。")
+                raise HTTPException(
+                    409, "同一商品找到多条已发浏览器临时单，为避免错绑真实订单，本次不发新卡。请联系技术支持处理。"
+                )
             if adoptable:
                 old_order_id = str(adoptable.get("order_id") or "").strip()
                 await _call_cc_xianyu_remap_order(old_order_id, order_id)
@@ -3513,7 +3444,9 @@ def resolve_cc_shipment(shipment_id: int, req: ShipmentResolveRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[XianyuAdmin] /api/cc-shipments/{shipment_id}/resolve 出错: {scrub_secrets(str(e))}", exc_info=True)
+        logger.error(
+            f"[XianyuAdmin] /api/cc-shipments/{shipment_id}/resolve 出错: {scrub_secrets(str(e))}", exc_info=True
+        )
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
@@ -3521,11 +3454,20 @@ def resolve_cc_shipment(shipment_id: int, req: ShipmentResolveRequest):
 async def resend_cc_shipment(shipment_id: int):
     """通过当前闲鱼 WebSocket 补发一条已分配但发送失败的发货话术。"""
     try:
-        if not _live or not hasattr(_live, "resend_cc_shipment"):
+        owner_call = getattr(_live, "call_on_owner", None)
+        if not callable(owner_call):
             raise HTTPException(503, "闲鱼实时助手未连接，暂时不能补发")
-        return await _live.resend_cc_shipment(shipment_id)
+        return await owner_call(
+            "resend_cc_shipment",
+            shipment_id=int(shipment_id),
+            timeout=45.0,
+        )
     except HTTPException:
         raise
+    except OwnerLoopNotReady as e:
+        raise HTTPException(503, "闲鱼实时连接尚未就绪，请稍后再试") from e
+    except OwnerLoopTimeout as e:
+        raise HTTPException(504, "补发仍在后台核对结果，请勿重试；请先查看闲鱼聊天和本机履约状态") from e
     except LookupError as e:
         raise HTTPException(404, str(e)) from e
     except ValueError as e:
@@ -3533,7 +3475,9 @@ async def resend_cc_shipment(shipment_id: int):
     except RuntimeError as e:
         raise HTTPException(409, str(e)) from e
     except Exception as e:
-        logger.error(f"[XianyuAdmin] /api/cc-shipments/{shipment_id}/resend 出错: {scrub_secrets(str(e))}", exc_info=True)
+        logger.error(
+            f"[XianyuAdmin] /api/cc-shipments/{shipment_id}/resend 出错: {scrub_secrets(str(e))}", exc_info=True
+        )
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
@@ -3541,20 +3485,27 @@ async def resend_cc_shipment(shipment_id: int):
 async def browser_send_cc_shipment(shipment_id: int, req: ShipmentBrowserSendRequest):
     """浏览器助手识别到买家后，把已分配待发送的话术直接发给该买家。"""
     try:
-        if not _live or not hasattr(_live, "send_manual_ready_cc_shipment"):
+        owner_call = getattr(_live, "call_on_owner", None)
+        if not callable(owner_call):
             raise HTTPException(503, "闲鱼实时助手未连接，暂时不能发送")
         buyer_id = str(req.buyer_id or "").strip()
         if not buyer_id:
             raise HTTPException(400, "缺少买家信息，不能自动发送")
-        return await _live.send_manual_ready_cc_shipment(
+        return await owner_call(
+            "send_manual_ready_cc_shipment",
             shipment_id=int(shipment_id),
             buyer_id=buyer_id,
             item_id=str(req.item_id or "").strip(),
             order_id=str(req.order_id or "").strip(),
             chat_id=str(req.chat_id or "").strip(),
+            timeout=45.0,
         )
     except HTTPException:
         raise
+    except OwnerLoopNotReady as e:
+        raise HTTPException(503, "闲鱼实时连接尚未就绪，请稍后再试") from e
+    except OwnerLoopTimeout as e:
+        raise HTTPException(504, "发送仍在后台核对结果，请勿重试；请先查看闲鱼聊天和本机履约状态") from e
     except LookupError as e:
         raise HTTPException(404, str(e)) from e
     except ValueError as e:
@@ -3562,7 +3513,9 @@ async def browser_send_cc_shipment(shipment_id: int, req: ShipmentBrowserSendReq
     except RuntimeError as e:
         raise HTTPException(409, str(e)) from e
     except Exception as e:
-        logger.error(f"[XianyuAdmin] /api/cc-shipments/{shipment_id}/browser-send 出错: {scrub_secrets(str(e))}", exc_info=True)
+        logger.error(
+            f"[XianyuAdmin] /api/cc-shipments/{shipment_id}/browser-send 出错: {scrub_secrets(str(e))}", exc_info=True
+        )
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
@@ -3600,7 +3553,9 @@ def mark_cc_shipment_sent(shipment_id: int):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[XianyuAdmin] /api/cc-shipments/{shipment_id}/mark-sent 出错: {scrub_secrets(str(e))}", exc_info=True)
+        logger.error(
+            f"[XianyuAdmin] /api/cc-shipments/{shipment_id}/mark-sent 出错: {scrub_secrets(str(e))}", exc_info=True
+        )
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
@@ -3749,8 +3704,16 @@ async def confirm_cc_shipment_xianyu_backend(shipment_id: int):
         async with XianyuApis(cookies_str) as api:
             result = await api.confirm_dummy_shipment(order_id)
         if result.get("cookies_str") and _live is not None:
-            with contextlib.suppress(Exception):
-                _live.cookies_str = str(result["cookies_str"])
+            owner_call = getattr(_live, "call_on_owner", None)
+            if callable(owner_call):
+                try:
+                    await owner_call(
+                        "reload_cookies",
+                        cookies_str=str(result["cookies_str"]),
+                        timeout=15.0,
+                    )
+                except Exception as e:
+                    logger.warning("[XianyuAdmin] 闲鱼 Cookie 已刷新但实时连接同步失败: %s", scrub_secrets(str(e)))
         if result.get("success"):
             ctx.mark_cc_shipment_xianyu_confirm(order_id, "confirmed", "")
             return {"ok": True, "id": shipment_id, "status": "confirmed", "backend": "mtop_dummy"}
@@ -3880,6 +3843,7 @@ def delete_cc_item_mapping(item_id: str):
 # 咨询追踪
 # ============================================================
 
+
 @app.get("/api/consultations")
 def list_consultations(date: str = "", limit: int = Query(50, le=200)):
     try:
@@ -3898,9 +3862,17 @@ def list_consultations(date: str = "", limit: int = Query(50, le=200)):
                     (limit,),
                 ).fetchall()
         return [
-            {"chat_id": r[0], "user_id": r[1], "user_name": r[2], "item_id": r[3],
-             "first_msg": r[4], "first_ts": r[5], "last_ts": r[6],
-             "msg_count": r[7], "converted": bool(r[8])}
+            {
+                "chat_id": r[0],
+                "user_id": r[1],
+                "user_name": r[2],
+                "item_id": r[3],
+                "first_msg": r[4],
+                "first_ts": r[5],
+                "last_ts": r[6],
+                "msg_count": r[7],
+                "converted": bool(r[8]),
+            }
             for r in rows
         ]
     except HTTPException:
@@ -3913,6 +3885,7 @@ def list_consultations(date: str = "", limit: int = Query(50, le=200)):
 # ============================================================
 # 系统状态
 # ============================================================
+
 
 @app.get("/api/status")
 def system_status():
@@ -3928,9 +3901,7 @@ def system_status():
             "auto_interval_ms": readiness_auto["interval_ms"],
             "auto_scan_seconds": readiness_auto["scan_seconds"],
             "last_background_at": (
-                _last_background_readiness_audit_at
-                if _last_background_readiness_audit_at > 0
-                else None
+                _last_background_readiness_audit_at if _last_background_readiness_audit_at > 0 else None
             ),
         }
         if _ctx and hasattr(_ctx, "cc_shipment_summary"):
@@ -3957,14 +3928,13 @@ def system_status():
                 "total": len(mappings),
                 "enabled": len([m for m in mappings if m.get("enabled")]),
             }
-        if _live:
-            status["ws_connected"] = _live.ws is not None and _live.ws.open if hasattr(_live, 'ws') and _live.ws else False
-            status["cookie_ok"] = getattr(_live, '_cookie_ok', False)
-            status["last_heartbeat"] = getattr(_live, 'last_hb_resp', 0)
-            status["token_age_s"] = int(
-                now_et().timestamp() - getattr(_live, 'token_ts', 0)
-            ) if getattr(_live, 'token_ts', 0) > 0 else -1
-            status["manual_chats"] = len(getattr(_live, 'manual_chats', {}))
+        live_snapshot = _live_runtime_snapshot()
+        status["ws_connected"] = bool(live_snapshot.get("ws_connected"))
+        status["cookie_ok"] = bool(live_snapshot.get("cookie_ok"))
+        status["last_heartbeat"] = float(live_snapshot.get("last_heartbeat") or 0.0)
+        token_ts = float(live_snapshot.get("token_ts") or 0.0)
+        status["token_age_s"] = int(now_et().timestamp() - token_ts) if token_ts > 0 else -1
+        status["manual_chats"] = max(0, int(live_snapshot.get("manual_chats") or 0))
         return status
     except Exception as e:
         logger.error(f"[XianyuAdmin] /api/status 出错: {scrub_secrets(str(e))}", exc_info=True)
@@ -4037,7 +4007,9 @@ def cc_operator_resume_preflight():
     try:
         return _cc_auto_ship_resume_preflight()
     except Exception as e:
-        logger.error(f"[XianyuAdmin] /api/cc-operator-mode/resume-preflight 出错: {scrub_secrets(str(e))}", exc_info=True)
+        logger.error(
+            f"[XianyuAdmin] /api/cc-operator-mode/resume-preflight 出错: {scrub_secrets(str(e))}", exc_info=True
+        )
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
@@ -4095,7 +4067,9 @@ def _humanize_cc_seller_page_scan(payload: dict) -> dict:
     first = scans[0] if scans and isinstance(scans[0], dict) else {}
     xianyu_tabs = int(payload.get("xianyuTabs") or 0)
     if xianyu_tabs != 1:
-        payload["nextAction"] = f"现在打开了 {xianyu_tabs} 个闲鱼页。请只保留 1 个真实已付款买家的聊天页或订单详情页，再点只读检查。"
+        payload["nextAction"] = (
+            f"现在打开了 {xianyu_tabs} 个闲鱼页。请只保留 1 个真实已付款买家的聊天页或订单详情页，再点只读检查。"
+        )
         return payload
     if not first:
         payload["nextAction"] = "没有读取到闲鱼页面内容。请确认卖家 Chromium 已打开闲鱼，并登录卖家号。"
@@ -4111,7 +4085,9 @@ def _humanize_cc_seller_page_scan(payload: dict) -> dict:
                 "看到“订单号/交易号”后再点只读检查。"
             )
             return payload
-        payload["nextAction"] = "当前页看到付款信号和输入框，但没有识别到真实订单号。请打开订单详情页，或聊天页里带“订单号/交易号”的页面。"
+        payload["nextAction"] = (
+            "当前页看到付款信号和输入框，但没有识别到真实订单号。请打开订单详情页，或聊天页里带“订单号/交易号”的页面。"
+        )
         return payload
 
     raw_url = str(first.get("url") or "")
@@ -4124,10 +4100,14 @@ def _humanize_cc_seller_page_scan(payload: dict) -> dict:
     is_goofish_im = host == "goofish.com" and path.startswith("/im")
     is_seller_workbench = host == "seller.goofish.com"
     if is_goofish_home:
-        payload["nextAction"] = "现在打开的是闲鱼首页，不是买家的已付款聊天/订单页。请从闲鱼消息或订单列表打开这笔已付款订单，页面看到“订单号/交易号”后再点只读检查。"
+        payload["nextAction"] = (
+            "现在打开的是闲鱼首页，不是买家的已付款聊天/订单页。请从闲鱼消息或订单列表打开这笔已付款订单，页面看到“订单号/交易号”后再点只读检查。"
+        )
         return payload
     if is_seller_workbench:
-        payload["nextAction"] = "现在已经打开卖家工作台。请在订单/待发货里打开这笔已付款订单，或点联系买家进入聊天页；看到订单号/交易号后再点只读检查。"
+        payload["nextAction"] = (
+            "现在已经打开卖家工作台。请在订单/待发货里打开这笔已付款订单，或点联系买家进入聊天页；看到订单号/交易号后再点只读检查。"
+        )
         return payload
 
     if first.get("paidSignal") and not first.get("inputReady"):
@@ -4137,15 +4117,23 @@ def _humanize_cc_seller_page_scan(payload: dict) -> dict:
                 "请点进买家的聊天输入区域；如果只看到订单卡，就点订单卡片或“去发货”旁边进入订单详情，看到订单号后再检查。"
             )
             return payload
-        payload["nextAction"] = "页面看到了付款信号，但没有找到聊天输入框。请切到买家聊天页，或在订单详情里打开联系买家窗口。"
+        payload["nextAction"] = (
+            "页面看到了付款信号，但没有找到聊天输入框。请切到买家聊天页，或在订单详情里打开联系买家窗口。"
+        )
         return payload
     if is_goofish_im and not first.get("inputReady"):
-        payload["nextAction"] = "现在已经打开闲鱼消息页，但还没有点进具体买家的聊天。请在左侧会话列表点进已付款买家，看到聊天输入框和订单号/交易号后再点只读检查。"
+        payload["nextAction"] = (
+            "现在已经打开闲鱼消息页，但还没有点进具体买家的聊天。请在左侧会话列表点进已付款买家，看到聊天输入框和订单号/交易号后再点只读检查。"
+        )
         return payload
     if first.get("inputReady") and not first.get("paidSignal"):
-        payload["nextAction"] = "页面有聊天输入框，但没看到“已付款/待发货”。请确认这是已付款订单，不要在普通聊天页发卡。"
+        payload["nextAction"] = (
+            "页面有聊天输入框，但没看到“已付款/待发货”。请确认这是已付款订单，不要在普通聊天页发卡。"
+        )
         return payload
-    payload["nextAction"] = "当前闲鱼页还不是已付款聊天/订单页，或没有聊天输入框。请打开真实已付款买家的聊天页/订单详情页。"
+    payload["nextAction"] = (
+        "当前闲鱼页还不是已付款聊天/订单页，或没有聊天输入框。请打开真实已付款买家的聊天页/订单详情页。"
+    )
     return payload
 
 
@@ -4177,9 +4165,13 @@ def scan_cc_seller_bridge_pages():
             payload = json.loads(stdout) if stdout else {}
         except json.JSONDecodeError:
             payload = {"ok": False, "error": "bridge_output_not_json", "stdout": stdout[-1000:]}
-        scan_completed = payload.get("mode") == "scan_only" and payload.get("readOnly") is True and isinstance(
-            payload.get("scans"),
-            list,
+        scan_completed = (
+            payload.get("mode") == "scan_only"
+            and payload.get("readOnly") is True
+            and isinstance(
+                payload.get("scans"),
+                list,
+            )
         )
         if scan_completed:
             payload["ok"] = True
@@ -4523,9 +4515,7 @@ def _cc_simulation_gate_summary() -> dict:
         int((item or {}).get("activeTokens") or 0) > 0 for item in matches if isinstance(item, dict)
     )
     model_called = bool(int(audit_summary.get("model_log_delta") or 0) > 0) or any(
-        int((item or {}).get("modelLogsAfterRedeem") or 0) > 0
-        for item in matches
-        if isinstance(item, dict)
+        int((item or {}).get("modelLogsAfterRedeem") or 0) > 0 for item in matches if isinstance(item, dict)
     )
 
     readiness = _last_cc_readiness_audit or {}
@@ -4539,9 +4529,10 @@ def _cc_simulation_gate_summary() -> dict:
     relist_status = str(shipment.get("xianyu_relist_status") or "")
     relisted = relist_status in {"relisted", "online_verified"}
     ccswitch_ok = bool(readiness.get("ccswitch_entry_ok"))
-    channel_server_ok = bool(readiness.get("overall_ok") or readiness.get("oracle")) and int(
-        readiness.get("newapi_enabled_channels") or 0
-    ) > 0
+    channel_server_ok = (
+        bool(readiness.get("overall_ok") or readiness.get("oracle"))
+        and int(readiness.get("newapi_enabled_channels") or 0) > 0
+    )
 
     steps = [
         _cc_simulation_step(
@@ -4653,6 +4644,8 @@ def _cc_export_status_report() -> dict:
     queues = {
         "pending_rescue": int(shipments.get("pending_rescue") or 0),
         "browser_delivery_claimed": int(shipments.get("browser_delivery_claimed") or 0),
+        "message_send_inflight": int(shipments.get("message_send_inflight") or 0),
+        "message_send_uncertain": int(shipments.get("message_send_uncertain") or 0),
         "message_send_failed": int(shipments.get("message_send_failed") or 0),
         "xianyu_confirm_page_pending": int(shipments.get("xianyu_confirm_page_pending") or 0),
         "xianyu_confirm_failed": int(shipments.get("xianyu_confirm_failed") or 0),
@@ -4799,10 +4792,39 @@ def cc_readiness_audit(mode: str = Query("read_only")):
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
 
 
+def _secure_admin_html_response(html: str) -> HTMLResponse:
+    """为本机管理页签发一次性脚本 nonce，并禁止页面被缓存或嵌入。"""
+    nonce = secrets.token_urlsafe(24)
+    content = html.replace("<script>", f'<script nonce="{nonce}">')
+    csp = "; ".join(
+        (
+            "default-src 'none'",
+            f"script-src 'self' 'nonce-{nonce}'",
+            "style-src 'self' 'unsafe-inline'",
+            "img-src 'self' data:",
+            "font-src 'self'",
+            "connect-src 'self'",
+            "object-src 'none'",
+            "base-uri 'none'",
+            "form-action 'self'",
+            "frame-ancestors 'none'",
+        )
+    )
+    return HTMLResponse(
+        content,
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Security-Policy": csp,
+            "Referrer-Policy": "no-referrer",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 @app.get("/ops-links", response_class=HTMLResponse)
-def ops_links():
+def ops_links() -> HTMLResponse:
     """本机老板日常运营状态中心；只展示决策信息，工程细节默认折叠。"""
-    return """<!doctype html>
+    html = """<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
@@ -4825,15 +4847,15 @@ def ops_links():
     <div class="actions">
       <a class="btn primary" href="http://127.0.0.1:18800/" target="_blank" rel="noreferrer">打开操作台</a>
       <a class="btn" href="https://jiyu.245334.xyz/" target="_blank" rel="noreferrer">打开主站</a>
-      <button type="button" onclick="loadSnapshot(true)">刷新</button>
+      <button id="refresh-button" type="button">刷新</button>
     </div>
   </section>
 
   <section class="card token" id="token-box">
     <div class="kicker">本机授权</div>
-    <div class="desc">需要本机 API Token 才能读取状态。Token 只保存在当前浏览器。</div>
-    <input id="token-input" type="password" autocomplete="current-password" placeholder="OPENCLAW_API_TOKEN">
-    <button class="primary" type="button" onclick="saveToken()">保存并刷新</button>
+    <div class="desc">需要本机 API Token 换取 15 分钟管理会话。Token 不会保存在浏览器存储中。</div>
+    <input id="token-input" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="OPENCLAW_API_TOKEN">
+    <button class="primary" id="save-token-button" type="button">保存并刷新</button>
   </section>
 
   <section class="grid" id="dashboard" aria-label="CC中转状态中心">
@@ -4860,7 +4882,7 @@ def ops_links():
 
   <section class="card next">
     <div><h2>下一步</h2><div class="next-text" id="next-action">读取中</div></div>
-    <button type="button" onclick="copyTemplate()">复制商品模板</button>
+    <button id="copy-template-button" type="button">复制商品模板</button>
   </section>
 
   <details class="card">
@@ -4876,11 +4898,11 @@ if(window.layui){layui.use(['layer','element'],function(){layuiLayer=layui.layer
 function notice(message,icon=1){if(layuiLayer)layuiLayer.msg(message,{icon,time:1800});else alert(message)}
 function askConfirm(message,onYes){if(layuiLayer)layuiLayer.confirm(message,{title:'请确认'},function(index){layuiLayer.close(index);onYes();});else if(confirm(message))onYes();}
 let manualShipmentId=0;
-function escapeHtml(value){return String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;')}
-function getToken(){return localStorage.getItem('openclawApiToken')||''}
-function saveToken(){const v=$('token-input').value.trim(); if(v)localStorage.setItem('openclawApiToken',v); loadSnapshot(true)}
-async function api(url){const t=getToken(); const res=await fetch(url,{headers:t?{'X-API-Token':t}:{}}); if(res.status===401)throw new Error('missing-token'); if(!res.ok)throw new Error('HTTP '+res.status); return res.json()}
-function pill(label,kind='warn'){return `<span class="pill"><i class="dot ${kind}"></i>${escapeHtml(label)}</span>`}
+function element(tag,className='',text=''){const item=document.createElement(tag);if(className)item.className=className;if(text!==undefined&&text!==null)item.textContent=String(text);return item}
+async function saveToken(){const input=$('token-input'),token=input.value.trim(); if(!token)return; input.value=''; const res=await fetch('/api/session',{method:'POST',credentials:'same-origin',headers:{'X-API-Token':token}}); if(!res.ok)throw new Error(res.status===401?'missing-token':'HTTP '+res.status); await loadSnapshot(true)}
+async function api(url){const res=await fetch(url,{credentials:'same-origin'}); if(res.status===401)throw new Error('missing-token'); if(!res.ok)throw new Error('HTTP '+res.status); return res.json()}
+function pill(label,kind='warn'){const item=element('span','pill');item.append(element('i',`dot ${kind}`),document.createTextNode(String(label??'')));return item}
+function debugItem(label,value){const item=element('div');item.append(element('b','',label),document.createElement('br'),document.createTextNode(String(value??'')));return item}
 function setMetric(id,value,desc){$('m-'+id).textContent=value; $('d-'+id).textContent=desc}
 function boolKind(v){return v?'ok':'bad'}
 function pct(done,total){return total?Math.max(0,Math.min(100,Math.round(done*100/total))):0}
@@ -4900,11 +4922,11 @@ function renderSnapshot(data,mode){
   $('hero-kicker').textContent=paused?'人工暂停中':(publicReady?'正式售卖':(internalReady?'生产内测':'需要处理'));
   $('main-title').textContent=paused?'自动发货已暂停':(action.title||lock.state_label||'状态未知');
   $('main-subtitle').textContent=paused?'你已经手动暂停发货。想继续卖时，先确认库存，再到操作台恢复。':(action.primary_action||lock.next_action||'按下一步执行。');
-  $('hero-pills').innerHTML=[
+  $('hero-pills').replaceChildren(
     pill(publicReady?'正式可售':(internalReady?'内测可发货':'暂不建议上架'),publicReady||internalReady?'ok':'bad'),
     pill(paused?'发货暂停':(autoReady?'自动发货正常':'自动发货待处理'),paused?'warn':boolKind(autoReady)),
     pill((watch.stage_label||'实单闭环未知'),watch.ready_for_public_sale?'ok':'warn')
-  ].join('');
+  );
   const completed=[autoReady, Number(inv.unused_cards||0)>0, Number(inv.enabled_redemptions||0)>0, Number(inv.enabled_channels||0)>0, gates.ccswitch_import_ready===true, (progress.steps||{}).same_order_verified===true].filter(Boolean).length;
   const percent=pct(completed,6); $('ring').style.setProperty('--pct',percent); $('ring-num').textContent=percent+'%'; $('ring-label').textContent=publicReady?'已放行':'内测闭环';
   $('ring-desc').textContent=`关键步骤 ${completed}/6；正式售卖前仍以真实小额单为准。`;
@@ -4912,31 +4934,34 @@ function renderSnapshot(data,mode){
   setMetric('stock',`${inv.unused_cards??'--'} 张`,`${inv.enabled_redemptions??'--'} 个兑换码；${inv.enabled_channels??'--'} 个渠道`);
   const steps=progress.steps||{}; setMetric('buyer',steps.same_order_verified?'完成':'待跑',progress.next_action||watch.next_action||'等待真实小额单');
   $('next-action').textContent=paused?'如需继续售卖：先确认库存，再打开操作台恢复自动发货。':(action.primary_action||lock.next_action||watch.next_action||'继续观察。');
-  $('debug-list').innerHTML=[
+  $('debug-list').replaceChildren(...[
     ['售卖锁',lock.state_label||lock.state||'未知'],['自动发货',paused?'暂停':(autoReady?'正常':'待处理')],['商品映射',`${mode.enabled_item_mappings??0}/${mode.total_item_mappings??0}`],['补救队列',String(ship.pending_rescue??0)],['库存更新时间',inv.updated_at||'未刷新'],['接口说明','/v1 是程序接口，不是人工页面']
-  ].map(([k,v])=>`<div><b>${escapeHtml(k)}</b><br>${escapeHtml(v)}</div>`).join('');
+  ].map(([k,v])=>debugItem(k,v)));
 }
 async function loadSnapshot(refresh=false){
   try{
-    if(!getToken()){renderMissingToken();return}
     const [snap,mode]=await Promise.all([api('/api/cc-ops-snapshot'+(refresh?'?refresh=true':'')),api('/api/cc-operator-mode')]);
     renderSnapshot(snap,mode||{});
-  }catch(err){ if(String(err.message||err)==='missing-token'){renderMissingToken();return} $('dashboard').classList.remove('hidden'); $('main-title').textContent='读取失败'; $('main-subtitle').textContent=String(err.message||err); $('hero-pills').innerHTML=pill('错误','bad'); }
+  }catch(err){ if(String(err.message||err)==='missing-token'){renderMissingToken();return} $('dashboard').classList.remove('hidden'); $('main-title').textContent='读取失败'; $('main-subtitle').textContent=String(err.message||err); $('hero-pills').replaceChildren(pill('错误','bad')); }
 }
 async function copyTemplate(){
   try{const data=await api('/api/cc-product-template?title=CC中转内测卡&price=小额测试价'); await navigator.clipboard.writeText(data.template||''); notice('已复制商品模板');}
   catch(err){alert('复制失败：'+(err.message||err))}
 }
-window.addEventListener('load',()=>{const t=getToken(); if(t)$('token-input').value=t; loadSnapshot(false); setInterval(()=>loadSnapshot(false),60000);});
+$('refresh-button').addEventListener('click',()=>loadSnapshot(true));
+$('save-token-button').addEventListener('click',()=>saveToken());
+$('copy-template-button').addEventListener('click',()=>copyTemplate());
+window.addEventListener('load',()=>{loadSnapshot(false); setInterval(()=>loadSnapshot(false),60000);});
 </script>
 </body>
 </html>"""
+    return _secure_admin_html_response(html)
 
 
 @app.get("/", response_class=HTMLResponse)
-def index():
+def index() -> HTMLResponse:
     """本机 CC中转操作台；老板首屏只看关键运营结论，操作与排障默认折叠。"""
-    return """<!doctype html>
+    html = """<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
@@ -4961,16 +4986,16 @@ def index():
       <a class="layui-btn layui-btn-primary primary" href="https://jiyu.245334.xyz/" target="_blank" rel="noreferrer">打开主站</a>
       <a class="layui-btn layui-btn-primary" href="https://www.goofish.com/" target="_blank" rel="noreferrer">打开闲鱼</a>
       <a class="layui-btn layui-btn-primary ghost" href="http://127.0.0.1:18800/ops-links" target="_blank" rel="noreferrer">状态中心</a>
-      <button class="layui-btn layui-btn-primary ghost" type="button" onclick="exportStatusReport()">导出状态报告</button>
-      <button class="layui-btn layui-btn-normal" type="button" onclick="load(true)">刷新</button>
+      <button class="layui-btn layui-btn-primary ghost" data-action="export-status" type="button">导出状态报告</button>
+      <button class="layui-btn layui-btn-normal" data-action="refresh" type="button">刷新</button>
     </div>
   </section>
 
   <section class="card layui-card" id="auth-box" style="max-width:520px;margin-left:auto;padding:22px;margin-bottom:16px">
     <div class="kicker">本机授权</div>
-    <p class="hint">需要本机 API Token 才能操作。Token 只保存在当前浏览器，不会上传。</p>
-    <input id="token-input" type="password" autocomplete="current-password" placeholder="OPENCLAW_API_TOKEN" style="margin:12px 0">
-    <button class="primary" type="button" onclick="saveToken()">保存并刷新</button>
+    <p class="hint">需要本机 API Token；Token 只用于换取 15 分钟 HttpOnly 管理会话，不会写入浏览器存储。</p>
+    <input id="token-input" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="OPENCLAW_API_TOKEN" style="margin:12px 0">
+    <button class="primary" data-action="save-token" type="button">保存并刷新</button>
   </section>
 
   <section id="app-shell" class="hidden">
@@ -5008,18 +5033,18 @@ def index():
           <p id="intervention-desc">正在判断。</p>
         </div>
         <div class="intervention-actions">
-          <button class="danger" type="button" onclick="setPause(true)">暂停自动发货</button>
-          <button class="layui-btn layui-btn-warm" type="button" onclick="authorizeOneShotDelivery()">只放行一次发卡</button>
-          <button class="layui-btn" type="button" onclick="scanSellerPage()">只读检查当前页</button>
-          <button class="layui-btn layui-btn-normal" type="button" onclick="runOneShotBridge()">一键跑当前页</button>
-          <button class="layui-btn layui-btn-primary ghost" type="button" onclick="checkResumePreflight()">恢复前安全检查</button>
-          <button class="okbtn" type="button" onclick="setPause(false)">恢复自动发货</button>
+          <button class="danger" data-action="set-pause" data-paused="true" type="button">暂停自动发货</button>
+          <button class="layui-btn layui-btn-warm" data-action="authorize-one-shot" type="button">只放行一次发卡</button>
+          <button class="layui-btn" data-action="scan-seller" type="button">只读检查当前页</button>
+          <button class="layui-btn layui-btn-normal" data-action="run-one-shot" type="button">一键跑当前页</button>
+          <button class="layui-btn layui-btn-primary ghost" data-action="resume-preflight" type="button">恢复前安全检查</button>
+          <button class="okbtn" data-action="set-pause" data-paused="false" type="button">恢复自动发货</button>
         </div>
         <p class="hint" id="one-shot-hint">单次放行只给当前已付款页用：发送 1 条卡密后自动失效。</p>
         <p class="hint" id="one-shot-bridge-result">一键跑当前页：请只保留 1 个真实已付款闲鱼页；页面还必须能识别订单号/交易号，才会发送 1 条卡密。</p>
         <div class="row">
-          <button class="layui-btn layui-btn-primary" type="button" onclick="openSellerPage('im')">打开卖家 Chromium 的闲鱼消息</button>
-          <button class="layui-btn layui-btn-primary" type="button" onclick="openSellerPage('seller')">打开卖家 Chromium 的工作台</button>
+          <button class="layui-btn layui-btn-primary" data-action="open-seller" data-destination="im" type="button">打开卖家 Chromium 的闲鱼消息</button>
+          <button class="layui-btn layui-btn-primary" data-action="open-seller" data-destination="seller" type="button">打开卖家 Chromium 的工作台</button>
           <a class="layui-btn layui-btn-primary ghost" href="https://www.goofish.com/im?spm=a21ybx.seo.sitemap.3" target="_blank" rel="noreferrer">普通浏览器兜底</a>
           <a class="layui-btn layui-btn-primary ghost" href="https://seller.goofish.com/" target="_blank" rel="noreferrer">工作台兜底</a>
         </div>
@@ -5055,7 +5080,7 @@ def index():
             <div class="field"><label for="item-input">闲鱼商品链接或商品 ID</label><input id="item-input" placeholder="可粘贴完整闲鱼分享文本、短链接或 itemId=123456"></div>
             <div class="field"><label for="plan-input">套餐 / planId</label><input id="plan-input" placeholder="例如 xianyu-test-1"></div>
             <div class="field"><label for="title-input">老板备注</label><input id="title-input" placeholder="例如 1 元测试商品"></div>
-            <div class="row"><button class="primary" type="button" onclick="saveMapping()">保存绑定</button><button type="button" onclick="generateProductTemplate()">生成商品模板</button></div>
+            <div class="row"><button class="primary" data-action="save-mapping" type="button">保存绑定</button><button data-action="generate-template" type="button">生成商品模板</button></div>
           </div>
           <div class="list" id="mappings"></div>
         </div>
@@ -5068,7 +5093,7 @@ def index():
             <p class="hint">这不是砍价、刷单或群发。它只给当前已付款测试单生成一次发货话术。</p>
             <div class="field"><label for="manual-buyer-input">买家/截图备注</label><input id="manual-buyer-input" placeholder="例如 手机截图已付款"></div>
             <div class="field"><label for="manual-proof-input">订单号或付款备注</label><input id="manual-proof-input" placeholder="有订单号填订单号；没有就填时间，例如 05:55 已付款截图"></div>
-            <div class="row"><button class="danger" type="button" onclick="manualDispatch()">确认已付款，生成话术</button><button type="button" onclick="copyManualDelivery()">复制话术</button><button type="button" onclick="markManualSent()">已手动发送</button></div>
+            <div class="row"><button class="danger" data-action="manual-dispatch" type="button">确认已付款，生成话术</button><button data-action="copy-manual-delivery" type="button">复制话术</button><button data-action="mark-manual-sent" type="button">已手动发送</button></div>
           </div>
           <div>
             <textarea id="manual-delivery-output" readonly placeholder="生成后这里会出现发货话术。复制到闲鱼聊天发出，再点“已手动发送”。"></textarea>
@@ -5082,7 +5107,7 @@ def index():
         <div class="body grid-2">
           <div>
             <p class="hint">如果你已经重新下单，但严格门还没看到真实单，先点这里。它只读取闲鱼卖家“待发货”列表，不会给买家发消息。</p>
-            <div class="row"><button class="layui-btn layui-btn-normal" type="button" onclick="probePaidOrders()">只读扫真实待发货订单</button></div>
+            <div class="row"><button class="layui-btn layui-btn-normal" data-action="probe-paid-orders" type="button">只读扫真实待发货订单</button></div>
           </div>
           <div class="item"><div class="kicker">扫单结果</div><div class="hint" id="paid-probe-result">等待操作。看到 1 条目标订单后，再单次放行发货。</div></div>
         </div>
@@ -5098,7 +5123,7 @@ def index():
         <div class="body grid-2">
           <div>
             <textarea id="product-template" readonly placeholder="点击生成商品模板"></textarea>
-            <div class="row" style="margin-top:12px"><button type="button" onclick="copyProductTemplate()">复制模板</button><button type="button" onclick="runReadinessAudit('read_only')">运行内测巡检</button><button type="button" onclick="runReadinessAudit('strict')">运行正式售卖严格门</button></div>
+            <div class="row" style="margin-top:12px"><button data-action="copy-template" type="button">复制模板</button><button data-action="run-readiness" data-mode="read_only" type="button">运行内测巡检</button><button data-action="run-readiness" data-mode="strict" type="button">运行正式售卖严格门</button></div>
           </div>
           <div class="item"><div class="kicker">巡检结果</div><p class="hint" id="audit-result">等待操作。正式售卖严格门必须等新的真实闲鱼自动订单。</p></div>
         </div>
@@ -5109,7 +5134,7 @@ def index():
         <div class="body grid-2">
           <div>
             <p class="hint">这套清单对应：模拟下单 → 发卡 → 确认发货 → 发布商品 → 公网注册 → 兑换 → 创建 API → 导入 CC Switch → 终端调用。它不会替代真实 xy_oid_* 小额订单。</p>
-            <div class="row"><button type="button" onclick="loadReplacementPack()">查看替换模式清单</button></div>
+            <div class="row"><button data-action="load-replacement" type="button">查看替换模式清单</button></div>
           </div>
           <div class="item"><div class="kicker">模拟验收结果</div><div class="hint" id="replacement-result">等待操作。</div></div>
         </div>
@@ -5146,12 +5171,13 @@ function askConfirm(message,onYes){if(layuiLayer)layuiLayer.confirm(message,{tit
 function askPrompt(message,defaultValue,onYes){if(layuiLayer)layuiLayer.prompt({title:message,value:defaultValue||'',formType:2},function(value,index){layuiLayer.close(index);onYes(value||'');});else onYes(prompt(message,defaultValue||'')||'');}
 let manualShipmentId=0;
 function escapeHtml(value){return String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;')}
-function xianyuPageShortcutHtml(){return `<div class="row" style="margin-top:10px"><button class="layui-btn layui-btn-xs layui-btn-normal" type="button" onclick="openSellerPage('im')">打开卖家 Chromium 的闲鱼消息</button><button class="layui-btn layui-btn-xs layui-btn-primary" type="button" onclick="openSellerPage('seller')">打开卖家 Chromium 的工作台</button><a class="layui-btn layui-btn-xs layui-btn-primary" href="https://www.goofish.com/im?spm=a21ybx.seo.sitemap.3" target="_blank" rel="noreferrer">普通浏览器兜底</a><a class="layui-btn layui-btn-xs layui-btn-primary" href="https://seller.goofish.com/" target="_blank" rel="noreferrer">工作台兜底</a></div>`}
-function renderSellerScanMessage(message,showShortcuts=false){$('one-shot-bridge-result').innerHTML=escapeHtml(message)+(showShortcuts?xianyuPageShortcutHtml():'')}
-function getToken(){return localStorage.getItem('openclawApiToken')||''}
-function authHeaders(extra){const token=getToken(); return Object.assign(token?{'X-API-Token':token}:{},extra||{})}
-function saveToken(){const v=$('token-input').value.trim(); if(v)localStorage.setItem('openclawApiToken',v); load(true)}
-async function apiFetch(path,options={}){const response=await fetch(path,Object.assign({},options,{headers:authHeaders(options.headers||{})})); if(response.status===401)throw new Error('missing-token'); if(!response.ok)throw new Error(await response.text()||('HTTP '+response.status)); return response.json()}
+function element(tag,className='',text=null){const item=document.createElement(tag);if(className)item.className=className;if(text!==null)item.textContent=String(text);return item}
+function actionButton(label,onClick,className=''){const item=element('button',className,label);item.type='button';item.addEventListener('click',onClick);return item}
+function externalLink(label,href){const item=element('a','layui-btn layui-btn-xs layui-btn-primary',label);item.href=href;item.target='_blank';item.rel='noreferrer';return item}
+function xianyuPageShortcutHtml(){const row=element('div','row');row.style.marginTop='10px';row.append(actionButton('打开卖家 Chromium 的闲鱼消息',()=>openSellerPage('im'),'layui-btn layui-btn-xs layui-btn-normal'),actionButton('打开卖家 Chromium 的工作台',()=>openSellerPage('seller'),'layui-btn layui-btn-xs layui-btn-primary'),externalLink('普通浏览器兜底','https://www.goofish.com/im?spm=a21ybx.seo.sitemap.3'),externalLink('工作台兜底','https://seller.goofish.com/'));return row}
+function renderSellerScanMessage(message,showShortcuts=false){const target=$('one-shot-bridge-result');target.replaceChildren(document.createTextNode(String(message??'')));if(showShortcuts)target.append(xianyuPageShortcutHtml())}
+async function saveToken(){const input=$('token-input'),token=input.value.trim(); if(!token)return; input.value=''; const response=await fetch('/api/session',{method:'POST',credentials:'same-origin',headers:{'X-API-Token':token}}); if(!response.ok)throw new Error(response.status===401?'missing-token':(await response.text()||('HTTP '+response.status))); await load(true)}
+async function apiFetch(path,options={}){const request=Object.assign({},options,{credentials:'same-origin',headers:Object.assign({},options.headers||{})}); const response=await fetch(path,request); if(response.status===401)throw new Error('missing-token'); if(!response.ok)throw new Error(await response.text()||('HTTP '+response.status)); return response.json()}
 async function exportStatusReport(){
   try{
     const data=await apiFetch('/api/export-status');
@@ -5168,31 +5194,31 @@ async function exportStatusReport(){
 function kindClass(kind){return kind==='ok'?'ok':kind==='bad'?'bad':kind==='info'?'info':'warn'}
 function setDot(id,kind){const el=$(id); el.className='dot '+kindClass(kind)}
 function setCard(key,value,desc,kind){$('v-'+key).textContent=value; $('t-'+key).textContent=desc; setDot('d-'+key,kind)}
-function pill(label,kind='warn'){return `<span class="pill"><i class="dot ${kindClass(kind)}"></i>${escapeHtml(label)}</span>`}
+function pill(label,kind='warn'){const item=element('span','pill');item.append(element('i',`dot ${kindClass(kind)}`),document.createTextNode(String(label??'')));return item}
 function extractItemId(value){const raw=String(value||'').trim(); const itemMatch=raw.match(/(?:itemId|item_id|id)=([A-Za-z0-9_-]+)/i); if(itemMatch)return itemMatch[1]; const nums=raw.match(/[0-9]{6,}/g); return nums?nums[nums.length-1]:raw}
 function renderMissingToken(){ $('auth-box').classList.remove('hidden'); $('app-shell').classList.add('hidden'); }
 function statusKind(ok, warn=false){return ok?'ok':(warn?'warn':'bad')}
 function scrollToSection(id){const el=$(id); if(!el)return; if(el.tagName==='DETAILS')el.open=true; el.scrollIntoView({behavior:'smooth',block:'start'});}
-function topAlert(kind,title,desc,actions){return `<article class="top-alert ${kind}" role="alert"><div><div class="alert-title">${escapeHtml(title)}</div><div class="alert-desc">${escapeHtml(desc)}</div></div><div class="alert-actions">${actions||''}</div></article>`}
+function topAlert(kind,title,desc,...actions){const article=element('article',`top-alert ${kind}`);article.setAttribute('role','alert');const copy=element('div');copy.append(element('div','alert-title',title),element('div','alert-desc',desc));const actionBox=element('div','alert-actions');actionBox.append(...actions);article.append(copy,actionBox);return article}
 function renderTopAlerts(ctx){
   const alerts=[];
-  if(ctx.pendingRescue>0){alerts.push(topAlert('bad','有卡密没成功发给买家',`补救队列里还有 ${ctx.pendingRescue} 条待处理。先处理它，避免买家付款后收不到卡密。`,`<button class="layui-btn layui-btn-xs layui-btn-danger" type="button" onclick="scrollToSection('queue-drawer')">怎么办</button>`));}
-  if(ctx.confirmFailed>0){alerts.push(topAlert('bad','闲鱼确认发货失败',`有 ${ctx.confirmFailed} 条订单确认发货失败。先不要扩大售卖，查看补救队列里的失败原因。`,`<button class="layui-btn layui-btn-xs layui-btn-danger" type="button" onclick="scrollToSection('queue-drawer')">查看失败</button>`));}
-  if(ctx.pageConfirm>0){alerts.push(topAlert('warn','卡密已发，闲鱼还待确认发货',`有 ${ctx.pageConfirm} 条已发卡密记录还需要完成闲鱼发货状态。只在真实已付款页面处理。`,`<button class="layui-btn layui-btn-xs layui-btn-warm" type="button" onclick="scrollToSection('queue-drawer')">去处理</button>`));}
+  if(ctx.pendingRescue>0){alerts.push(topAlert('bad','有卡密没成功发给买家',`补救队列里还有 ${ctx.pendingRescue} 条待处理。先处理它，避免买家付款后收不到卡密。`,actionButton('怎么办',()=>scrollToSection('queue-drawer'),'layui-btn layui-btn-xs layui-btn-danger')));}
+  if(ctx.confirmFailed>0){alerts.push(topAlert('bad','闲鱼确认发货失败',`有 ${ctx.confirmFailed} 条订单确认发货失败。先不要扩大售卖，查看补救队列里的失败原因。`,actionButton('查看失败',()=>scrollToSection('queue-drawer'),'layui-btn layui-btn-xs layui-btn-danger')));}
+  if(ctx.pageConfirm>0){alerts.push(topAlert('warn','卡密已发，闲鱼还待确认发货',`有 ${ctx.pageConfirm} 条已发卡密记录还需要完成闲鱼发货状态。只在真实已付款页面处理。`,actionButton('去处理',()=>scrollToSection('queue-drawer'),'layui-btn layui-btn-xs layui-btn-warm')));}
   if(ctx.paused){
     const strictPaused=ctx.lockState==='paused_after_strict_gate';
     const pauseTitle=strictPaused?'严格门已通过，自动发货暂停保护':'自动发货仍处于暂停保护';
     const pauseDesc=ctx.oneShotActive?'现在只放行这一单，发完 1 条卡密会自动失效，不会连续刷屏。':(strictPaused?'现在不是系统故障，只是防重复发卡保护。你可以先点“恢复前安全检查”，通过后再恢复；恢复后第 1 单会自动暂停观察。':'为了避免重复发卡，新订单不会自动发卡。建议先用“只放行一次发卡”验证。');
-    const pauseActions=strictPaused?`<button class="layui-btn layui-btn-xs layui-btn-normal" type="button" onclick="checkResumePreflight()">恢复前安全检查</button><button class="layui-btn layui-btn-xs layui-btn-warm" type="button" onclick="setPause(false)">恢复自动发货</button>`:`<button class="layui-btn layui-btn-xs layui-btn-warm" type="button" onclick="authorizeOneShotDelivery()">只放行一次</button><button class="layui-btn layui-btn-xs" type="button" onclick="scanSellerPage()">只读检查</button>`;
-    alerts.push(topAlert('warn',pauseTitle,pauseDesc,pauseActions));
+    const pauseActions=strictPaused?[actionButton('恢复前安全检查',()=>checkResumePreflight(),'layui-btn layui-btn-xs layui-btn-normal'),actionButton('恢复自动发货',()=>setPause(false),'layui-btn layui-btn-xs layui-btn-warm')]:[actionButton('只放行一次',()=>authorizeOneShotDelivery(),'layui-btn layui-btn-xs layui-btn-warm'),actionButton('只读检查',()=>scanSellerPage(),'layui-btn layui-btn-xs')];
+    alerts.push(topAlert('warn',pauseTitle,pauseDesc,...pauseActions));
   }
-  if(!ctx.wsOk||!ctx.cookieOk){alerts.push(topAlert('bad','闲鱼登录或连接需要检查',`闲鱼连接：${ctx.wsOk?'在线':'离线'}；Cookie：${ctx.cookieOk?'正常':'异常'}。先打开卖家 Chromium，确认已登录闲鱼。`,`<button class="layui-btn layui-btn-xs layui-btn-danger" type="button" onclick="openSellerPage('im')">打开闲鱼消息</button>`));}
-  if(ctx.stockKnown&&ctx.stock<=0){alerts.push(topAlert('bad','可售卡密库存不足','库存为 0 时不要继续上架，否则买家付款后可能无法自动发卡。',`<button class="layui-btn layui-btn-xs layui-btn-danger" type="button" onclick="scrollToSection('audit-drawer')">运行巡检</button>`));}
-  if(!ctx.publicReady&&ctx.internalReady&&!ctx.paused&&alerts.length===0){alerts.push(topAlert('warn','还没到正式放量状态','当前可以生产内测，但正式售卖还需要真实小额单严格门证据。',`<button class="layui-btn layui-btn-xs layui-btn-warm" type="button" onclick="runReadinessAudit('strict')">跑严格门</button>`));}
+  if(!ctx.wsOk||!ctx.cookieOk){alerts.push(topAlert('bad','闲鱼登录或连接需要检查',`闲鱼连接：${ctx.wsOk?'在线':'离线'}；Cookie：${ctx.cookieOk?'正常':'异常'}。先打开卖家 Chromium，确认已登录闲鱼。`,actionButton('打开闲鱼消息',()=>openSellerPage('im'),'layui-btn layui-btn-xs layui-btn-danger')));}
+  if(ctx.stockKnown&&ctx.stock<=0){alerts.push(topAlert('bad','可售卡密库存不足','库存为 0 时不要继续上架，否则买家付款后可能无法自动发卡。',actionButton('运行巡检',()=>scrollToSection('audit-drawer'),'layui-btn layui-btn-xs layui-btn-danger')));}
+  if(!ctx.publicReady&&ctx.internalReady&&!ctx.paused&&alerts.length===0){alerts.push(topAlert('warn','还没到正式放量状态','当前可以生产内测，但正式售卖还需要真实小额单严格门证据。',actionButton('跑严格门',()=>runReadinessAudit('strict'),'layui-btn layui-btn-xs layui-btn-warm')));}
   const box=$('top-alerts');
-  if(!alerts.length){box.classList.add('hidden');box.innerHTML='';return}
+  if(!alerts.length){box.classList.add('hidden');box.replaceChildren();return}
   box.classList.remove('hidden');
-  box.innerHTML=alerts.join('');
+  box.replaceChildren(...alerts);
 }
 function mergeLockWithPrecheck(lock,precheck){
   const merged=Object.assign({},lock||{});
@@ -5211,13 +5237,18 @@ function renderPrecheck(precheck){
   const ready=precheck?.precheck_ready===true;
   const label=precheck?.state_label||precheck?.state||'读取完成';
   $('precheck-summary').textContent=`${passed}/${total} 通过 · ${label}`;
-  $('precheck-state').innerHTML=`<b>${ready?'人工预检已通过':'还有预检项待处理'}</b><br>${escapeHtml(label)}；这个区域只读，不发卡、不点击闲鱼发货、不恢复自动发货。`;
+  $('precheck-state').replaceChildren(element('b','',ready?'人工预检已通过':'还有预检项待处理'),document.createElement('br'),document.createTextNode(`${label}；这个区域只读，不发卡、不点击闲鱼发货、不恢复自动发货。`));
   if(!ready)$('precheck-drawer').open=true;
-  if(!list.length){box.innerHTML='<div class="empty">还没有人工预检证据。</div>';return}
-  box.innerHTML=list.map(item=>{
+  if(!list.length){box.replaceChildren(element('div','empty','还没有人工预检证据。'));return}
+  box.replaceChildren(...list.map(item=>{
     const ok=item&&item.ok===true;
-    return `<div class="item"><div class="item-top"><b>${ok?'✅':'⚠️'} ${escapeHtml(item?.label||item?.key||'预检项')}</b><span class="${ok?'ok':'warn'}">${ok?'已通过':'待处理'}</span></div><div class="hint">${escapeHtml(item?.evidence||'')}</div>${ok?'':`<div class="hint">下一步：${escapeHtml(item?.next_action||'按提示处理')}</div>`}</div>`;
-  }).join('');
+    const card=element('div','item');
+    const top=element('div','item-top');
+    top.append(element('b','',`${ok?'✅':'⚠️'} ${item?.label||item?.key||'预检项'}`),element('span',ok?'ok':'warn',ok?'已通过':'待处理'));
+    card.append(top,element('div','hint',item?.evidence||''));
+    if(!ok)card.append(element('div','hint',`下一步：${item?.next_action||'按提示处理'}`));
+    return card;
+  }));
 }
 function renderMode(mode,status,lock,snap){
   $('auth-box').classList.add('hidden'); $('app-shell').classList.remove('hidden');
@@ -5248,14 +5279,14 @@ function renderMode(mode,status,lock,snap){
   $('mode-kicker').textContent=publicReady?'正式售卖已放行':(strictPaused?'严格门已通过':(internalReady?'生产内测可继续':'需要先处理'));
   $('mode-word').textContent=paused?(oneShotActive?'已单次放行':(strictPaused?'待你恢复自动发货':'自动发货已暂停')):(publicReady?'可以正式小量卖':(internalReady?'可以生产内测':'先别上架'));
   $('mode-desc').textContent=paused?(oneShotActive?'只允许当前已付款页发送 1 条卡密，发完自动失效；常驻自动发货仍是暂停。':(strictPaused?'严格门、库存和渠道已经满足；当前只是暂停保护。点“恢复前安全检查”，确认通过后再恢复，首单发出后会自动暂停观察。':'系统不会自动发卡。恢复前先确认库存和闲鱼商品状态。')):(action.primary_action || lock.next_action || mode.next_action || '继续观察。');
-  $('mode-pills').innerHTML=[
+  $('mode-pills').replaceChildren(
     pill(autoReady&&!paused?'自动发货开着':paused?'自动发货暂停':'自动发货待处理',autoReady&&!paused?'ok':'warn'),
     pill(oneShotActive?'单次放行有效':'单次放行关闭',oneShotActive?'warn':'ok'),
     pill(stockKnown?`库存 ${stock||0} 张`:'库存待刷新',stockKnown?(stock>0?'ok':'bad'):'warn'),
     pill(`补救 ${pendingRescue}`,pendingRescue===0?'ok':'bad'),
     pill(pageConfirm>0?`待点发货 ${pageConfirm}`:'发货按钮无待处理',pageConfirm>0?'warn':'ok'),
     pill(publicReady?'正式门通过':'正式门锁定',publicReady?'ok':'warn')
-  ].join('');
+  );
   $('orb-text').textContent=needsHuman?'介入':'看守';
   $('status-orb').style.setProperty('--orb', needsHuman?'38%':'82%');
   if(pageConfirm>0){
@@ -5288,26 +5319,52 @@ function renderMode(mode,status,lock,snap){
   if(pageConfirm>0) $('rescue-drawer').open=true;
 }
 function renderMappings(list){
-  if(!Array.isArray(list)||!list.length){$('mappings').innerHTML='<div class="empty">还没有商品绑定。单商品可用默认套餐，多商品必须绑定。</div>';return}
-  $('mappings').innerHTML=list.map(m=>`<div class="item"><div class="item-top"><div><b>${escapeHtml(m.title||'未命名商品')}</b><div class="hint">商品 <span class="mono">${escapeHtml(m.item_id)}</span></div><div class="hint">套餐 <span class="mono">${escapeHtml(m.plan_id)}</span></div></div><span class="pill">${m.enabled?'启用':'停用'}</span></div><div class="row" style="margin-top:12px"><button type="button" onclick="fillMapping('${escapeHtml(m.item_id)}','${escapeHtml(m.plan_id)}','${escapeHtml(m.title||'')}')">填入编辑</button><button type="button" onclick="deleteMapping('${escapeHtml(m.item_id)}')">删除</button></div></div>`).join('');
+  const target=$('mappings');
+  if(!Array.isArray(list)||!list.length){target.replaceChildren(element('div','empty','还没有商品绑定。单商品可用默认套餐，多商品必须绑定。'));return}
+  target.replaceChildren(...list.map(m=>{
+    const card=element('div','item');
+    const top=element('div','item-top');
+    const details=element('div');
+    const itemHint=element('div','hint');
+    itemHint.append(document.createTextNode('商品 '),element('span','mono',m.item_id||''));
+    const planHint=element('div','hint');
+    planHint.append(document.createTextNode('套餐 '),element('span','mono',m.plan_id||''));
+    details.append(element('b','',m.title||'未命名商品'),itemHint,planHint);
+    top.append(details,element('span','pill',m.enabled?'启用':'停用'));
+    const actions=element('div','row');
+    actions.style.marginTop='12px';
+    actions.append(actionButton('填入编辑',()=>fillMapping(m.item_id||'',m.plan_id||'',m.title||'')),actionButton('删除',()=>deleteMapping(m.item_id||'')));
+    card.append(top,actions);
+    return card;
+  }));
 }
 function renderShipments(list){
-  const failed=(Array.isArray(list)?list:[]).filter(s=>['browser_delivery_claimed','manual_delivery_ready','message_send_failed','webhook_failed','missing_delivery_message','exception','operator_paused'].includes(String(s.status||'')));
+  const failed=(Array.isArray(list)?list:[]).filter(s=>['browser_delivery_claimed','message_send_inflight','message_send_uncertain','manual_delivery_ready','message_send_failed','webhook_failed','missing_delivery_message','exception','operator_paused'].includes(String(s.status||'')));
   const pagePending=(Array.isArray(list)?list:[]).filter(s=>String(s.status||'')==='message_sent' && ['xy_manual_','xy_browser_'].some(p=>String(s.order_id||'').startsWith(p)) && !['confirmed','skipped'].includes(String(s.xianyu_confirm_status||'')));
   const rows=[...failed,...pagePending];
-  if(!rows.length){$('shipments').innerHTML='<div class="empty">补救队列为空。正常运营时就应该这样。</div>';return}
+  const target=$('shipments');
+  if(!rows.length){target.replaceChildren(element('div','empty','补救队列为空。正常运营时就应该这样。'));return}
   const body=rows.map(s=>{
     const id=Number(s.id)||0;
-    const msg=JSON.stringify(String(s.delivery_message||''));
     const isPage=String(s.status||'')==='message_sent';
-    const title=isPage?'已发卡密，待页面点击发货':escapeHtml(s.status);
+    const title=isPage?'已发卡密，待页面点击发货':String(s.status||'');
     const actionHint=isPage?'打开对应闲鱼已付款页面，桥接器会安全点击发货。':'复制或重试发送这条话术。';
     const canBackendConfirm=/^[0-9]{10,}$/.test(String(s.order_id||'')) && isPage;
-    const backendConfirmButton=canBackendConfirm?`<button class="layui-btn layui-btn-xs layui-btn-warm" type="button" onclick="confirmShipmentBackend(${id})">后端确认发货</button>`:'';
-    const actions=(isPage?'':`<button class="layui-btn layui-btn-xs" type="button" onclick="loadShipmentMessage(${id},${msg})">填入话术</button><button class="layui-btn layui-btn-xs layui-btn-normal" type="button" onclick="markShipmentSent(${id})">已手动发送</button><button class="layui-btn layui-btn-xs" type="button" onclick="resendShipment(${id})">重试发送</button>`)+backendConfirmButton+`<button class="layui-btn layui-btn-xs layui-btn-primary" type="button" onclick="resolveShipment(${id})">标记已处理</button>`;
-    return `<tr><td><b>${title}</b><div class="hint">${actionHint}</div></td><td><span class="mono">${escapeHtml(s.order_id||'')}</span></td><td>${escapeHtml(s.item_id||'')}</td><td><div class="row">${actions}</div></td></tr>`;
-  }).join('');
-  $('shipments').innerHTML=`<div class="layui-table-view"><table class="layui-table"><thead><tr><th>状态</th><th>订单</th><th>商品</th><th>怎么办</th></tr></thead><tbody>${body}</tbody></table></div>`;
+    const row=element('tr');
+    const statusCell=element('td');
+    statusCell.append(element('b','',title),element('div','hint',actionHint));
+    const orderCell=element('td');orderCell.append(element('span','mono',s.order_id||''));
+    const actions=element('div','row');
+    if(!isPage)actions.append(actionButton('填入话术',()=>loadShipmentMessage(id,String(s.delivery_message||'')),'layui-btn layui-btn-xs'),actionButton('已手动发送',()=>markShipmentSent(id),'layui-btn layui-btn-xs layui-btn-normal'),actionButton('重试发送',()=>resendShipment(id),'layui-btn layui-btn-xs'));
+    if(canBackendConfirm)actions.append(actionButton('后端确认发货',()=>confirmShipmentBackend(id),'layui-btn layui-btn-xs layui-btn-warm'));
+    actions.append(actionButton('标记已处理',()=>resolveShipment(id),'layui-btn layui-btn-xs layui-btn-primary'));
+    const actionCell=element('td');actionCell.append(actions);
+    row.append(statusCell,orderCell,element('td','',s.item_id||''),actionCell);
+    return row;
+  });
+  const header=element('tr');['状态','订单','商品','怎么办'].forEach(label=>header.append(element('th','',label)));
+  const table=element('table','layui-table');const head=element('thead');head.append(header);const tbody=element('tbody');tbody.append(...body);table.append(head,tbody);
+  const view=element('div','layui-table-view');view.append(table);target.replaceChildren(view);
 }
 function fillMapping(item,plan,title){$('item-input').value=item;$('plan-input').value=plan;$('title-input').value=title}
 async function saveMapping(){const payload={item_id:extractItemId($('item-input').value),plan_id:$('plan-input').value.trim(),title:$('title-input').value.trim(),enabled:true}; if(!payload.item_id||!payload.plan_id){notice('请填写商品 ID 和套餐 planId',2);return} await apiFetch('/api/cc-item-mappings',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)}); await load(true)}
@@ -5354,7 +5411,9 @@ async function checkResumePreflight(){
       $('one-shot-bridge-result').textContent=data.nextAction||'恢复前安全检查通过，可以点“恢复自动发货”；恢复后请先小流量观察。';
       notice('恢复前安全检查通过',1);
     }else{
-      $('one-shot-bridge-result').innerHTML='恢复前安全检查未通过：'+escapeHtml(data.nextAction||blockers[0]||'还有红色项未处理')+(blockers.length?'<div class="list" style="margin-top:10px">'+blockers.map(b=>`<div class="item">${escapeHtml(b)}</div>`).join('')+'</div>':'');
+      const target=$('one-shot-bridge-result');
+      target.replaceChildren(document.createTextNode('恢复前安全检查未通过：'+String(data.nextAction||blockers[0]||'还有红色项未处理')));
+      if(blockers.length){const list=element('div','list');list.style.marginTop='10px';list.append(...blockers.map(blocker=>element('div','item',blocker)));target.append(list)}
       notice('恢复前安全检查未通过',2);
     }
   }catch(err){
@@ -5414,33 +5473,52 @@ async function probePaidOrders(){
   $('paid-probe-result').textContent='正在只读扫描闲鱼待发货订单...';
   try{
     const data=await apiFetch('/api/cc-paid-order-probe');
-    const rows=(data.candidates||[]).map((c,idx)=>`<div class="item"><b>${idx+1}. ${escapeHtml(c.statusText||'待发货订单')}</b><div class="hint">订单：${escapeHtml(c.order?.prefix||'未知')} / ${escapeHtml(c.order?.hash||'')}</div><div class="hint">商品：${c.item?.present?'已识别':'未识别'}；买家：${c.buyer?.present?'已识别':'未识别'}；本机记录：${escapeHtml(c.localShipmentStatus||'none')}</div></div>`).join('');
-    $('paid-probe-result').innerHTML=`<b>${data.candidates?.length?`看到 ${data.candidates.length} 条真实待发货候选`:'暂未看到真实待发货订单'}</b><br>${escapeHtml(data.nextAction||'只读扫描完成')}<div class="list" style="margin-top:12px">${rows||'<div class="empty">没有候选订单。请确认闲鱼订单仍显示待发货。</div>'}</div>`;
+    const candidates=Array.isArray(data.candidates)?data.candidates:[];
+    const rows=candidates.map((c,idx)=>{const card=element('div','item');card.append(element('b','',`${idx+1}. ${c.statusText||'待发货订单'}`),element('div','hint',`订单：${c.order?.prefix||'未知'} / ${c.order?.hash||''}`),element('div','hint',`商品：${c.item?.present?'已识别':'未识别'}；买家：${c.buyer?.present?'已识别':'未识别'}；本机记录：${c.localShipmentStatus||'none'}`));return card});
+    const list=element('div','list');list.style.marginTop='12px';list.append(...(rows.length?rows:[element('div','empty','没有候选订单。请确认闲鱼订单仍显示待发货。')]));
+    $('paid-probe-result').replaceChildren(element('b','',candidates.length?`看到 ${candidates.length} 条真实待发货候选`:'暂未看到真实待发货订单'),document.createElement('br'),document.createTextNode(String(data.nextAction||'只读扫描完成')),list);
   }catch(err){$('paid-probe-result').textContent='只读扫单失败：'+(err.message||err)}
 }
 async function loadReplacementPack(){
   try{
     const data=await apiFetch('/api/cc-replacement-mode-test-pack');
     const gate=data.simulation_gate||{};
-    const steps=(gate.steps||[]).map(step=>`<div class="item"><b>${step.ok?'✅':'⚠️'} ${escapeHtml(step.label||step.key)}</b><div class="hint">${escapeHtml(step.evidence||'')}</div><div class="hint">下一步：${escapeHtml(step.next_action||'继续观察')}</div></div>`).join('');
-    const excluded=(gate.excluded_steps||[]).map(step=>`<div class="item"><b>🔒 ${escapeHtml(step.label||step.key)}</b><div class="hint">${escapeHtml(step.evidence||'')}</div></div>`).join('');
-    $('replacement-result').innerHTML=`<b>${gate.simulation_gate_ok?'严格模拟门已跑通':'严格模拟门未跑通'}</b><br>${escapeHtml(gate.owner_warning||data.owner_warning||'替换模式不解锁正式售卖。')}<br>当前队列：补救 ${escapeHtml(data.current_queue?.pending_rescue??0)}，已发 ${escapeHtml(data.current_queue?.message_sent??0)}。<div class="list" style="margin-top:12px">${steps}${excluded}</div>`;
+    const steps=(gate.steps||[]).map(step=>{const card=element('div','item');card.append(element('b','',`${step.ok?'✅':'⚠️'} ${step.label||step.key||''}`),element('div','hint',step.evidence||''),element('div','hint',`下一步：${step.next_action||'继续观察'}`));return card});
+    const excluded=(gate.excluded_steps||[]).map(step=>{const card=element('div','item');card.append(element('b','',`🔒 ${step.label||step.key||''}`),element('div','hint',step.evidence||''));return card});
+    const list=element('div','list');list.style.marginTop='12px';list.append(...steps,...excluded);
+    $('replacement-result').replaceChildren(element('b','',gate.simulation_gate_ok?'严格模拟门已跑通':'严格模拟门未跑通'),document.createElement('br'),document.createTextNode(String(gate.owner_warning||data.owner_warning||'替换模式不解锁正式售卖。')),document.createElement('br'),document.createTextNode(`当前队列：补救 ${data.current_queue?.pending_rescue??0}，已发 ${data.current_queue?.message_sent??0}。`),list);
   }catch(err){$('replacement-result').textContent='读取失败：'+(err.message||err)}
 }
-function renderDebug(status,lock,items,mode){const auto=status.cc_auto_ship||{}, ship=status.cc_shipments||{}, map=status.cc_item_mappings||{}, inv=lock.inventory||{}, ext=status.cc_chrome_extension||{}; $('debug-grid').innerHTML=[['闲鱼连接',status.ws_connected?'在线':'离线'],['Cookie',status.cookie_ok?'正常':'异常'],['自动发货',auto.paused?'暂停':(auto.operational?'运行':'待处理')],['补救队列',ship.pending_rescue??0],['待点发货',ship.xianyu_confirm_page_pending??0],['商品映射',`${map.enabled??mode.enabled_item_mappings??0}/${map.total??mode.total_item_mappings??0}`],['库存',`${inv.unused_cards??'未知'} 张`],['桥接器',ext.needs_refresh_for_global_watch?'需刷新/打开弹窗':(ext.manifest_version||'未知')]].map(([k,v])=>`<div><b>${escapeHtml(k)}</b><br>${escapeHtml(v)}</div>`).join(''); if(Array.isArray(items)&&items.length){$('raw-tables').innerHTML='<table><tr><th>最近商品</th><th>价格</th><th>更新时间</th></tr>'+items.slice(0,8).map(i=>`<tr><td>${escapeHtml(i.title||i.item_id||'')}</td><td>${escapeHtml(i.price||'')}</td><td>${escapeHtml(i.updated||'')}</td></tr>`).join('')+'</table>'}else{$('raw-tables').innerHTML=''}}
+function renderDebug(status,lock,items,mode){
+  const auto=status.cc_auto_ship||{}, ship=status.cc_shipments||{}, map=status.cc_item_mappings||{}, inv=lock.inventory||{}, ext=status.cc_chrome_extension||{};
+  const metrics=[['闲鱼连接',status.ws_connected?'在线':'离线'],['Cookie',status.cookie_ok?'正常':'异常'],['自动发货',auto.paused?'暂停':(auto.operational?'运行':'待处理')],['补救队列',ship.pending_rescue??0],['待点发货',ship.xianyu_confirm_page_pending??0],['商品映射',`${map.enabled??mode.enabled_item_mappings??0}/${map.total??mode.total_item_mappings??0}`],['库存',`${inv.unused_cards??'未知'} 张`],['桥接器',ext.needs_refresh_for_global_watch?'需刷新/打开弹窗':(ext.manifest_version||'未知')]];
+  $('debug-grid').replaceChildren(...metrics.map(([label,value])=>{const card=element('div');card.append(element('b','',label),document.createElement('br'),document.createTextNode(String(value??'')));return card}));
+  const target=$('raw-tables');
+  if(!Array.isArray(items)||!items.length){target.replaceChildren();return}
+  const table=element('table');const header=element('tr');['最近商品','价格','更新时间'].forEach(label=>header.append(element('th','',label)));table.append(header);
+  items.slice(0,8).forEach(item=>{const row=element('tr');row.append(element('td','',item.title||item.item_id||''),element('td','',item.price||''),element('td','',item.updated||''));table.append(row)});
+  target.replaceChildren(table);
+}
 async function load(refresh=false){
   try{
-    if(!getToken()){renderMissingToken();return}
     const snapshotPath='/api/cc-ops-snapshot'+(refresh?'?refresh=true':'');
     const [snap,mode,status,mappings,shipments,lock,items,precheck]=await Promise.all([apiFetch(snapshotPath),apiFetch('/api/cc-operator-mode'),apiFetch('/api/status'),apiFetch('/api/cc-item-mappings'),apiFetch('/api/cc-shipments?limit=30&include_message=true'),apiFetch('/api/cc-public-sale-lock'),apiFetch('/api/items'),apiFetch('/api/cc-manual-precheck-evidence')]);
     const displayLock=mergeLockWithPrecheck(lock,precheck);
     renderMode(mode,status,displayLock,snap); renderMappings(mappings); renderShipments(shipments); renderDebug(status,displayLock,items,mode); renderPrecheck(precheck);
   }catch(err){ if(String(err.message||err)==='missing-token'){renderMissingToken();return} $('auth-box').classList.add('hidden'); $('app-shell').classList.remove('hidden'); $('mode-word').textContent='读取失败'; $('mode-desc').textContent=String(err.message||err); }
 }
-window.addEventListener('load',()=>{const token=getToken(); if(token)$('token-input').value=token; load(false); setInterval(()=>load(false),60000)});
+document.addEventListener('click',event=>{
+  const control=event.target.closest('[data-action]');if(!control)return;
+  const actions={
+    'export-status':()=>exportStatusReport(),'refresh':()=>load(true),'save-token':()=>saveToken(),'set-pause':()=>setPause(control.dataset.paused==='true'),'authorize-one-shot':()=>authorizeOneShotDelivery(),'scan-seller':()=>scanSellerPage(),'run-one-shot':()=>runOneShotBridge(),'resume-preflight':()=>checkResumePreflight(),'open-seller':()=>openSellerPage(control.dataset.destination||'im'),'save-mapping':()=>saveMapping(),'generate-template':()=>generateProductTemplate(),'manual-dispatch':()=>manualDispatch(),'copy-manual-delivery':()=>copyManualDelivery(),'mark-manual-sent':()=>markManualSent(),'probe-paid-orders':()=>probePaidOrders(),'copy-template':()=>copyProductTemplate(),'run-readiness':()=>runReadinessAudit(control.dataset.mode||'read_only'),'load-replacement':()=>loadReplacementPack()
+  };
+  const action=actions[control.dataset.action];if(action)action();
+});
+window.addEventListener('load',()=>{load(false); setInterval(()=>load(false),60000)});
 </script>
 </body>
 </html>"""
+    return _secure_admin_html_response(html)
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
@@ -5461,6 +5539,7 @@ def start_admin_server(
     _ctx = ctx_manager
     _bot = reply_bot
     _live = live_instance
+    app.state.bind_host = str(host or "").strip()
 
     log_token_status()
 

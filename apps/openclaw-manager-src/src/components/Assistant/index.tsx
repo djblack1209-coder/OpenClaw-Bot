@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Send, Bot, User, Mic, Paperclip, MessageSquare, Clock, Cpu, Zap, Brain,
   TrendingUp, Shield, BarChart3, Target, ScanSearch, PenTool, Sparkles,
-  BookOpen, Palette, History, Plus, Trash2, Loader2,
+  BookOpen, Palette, History, Plus, Trash2, Loader2, Square,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
@@ -155,6 +155,7 @@ export function Assistant() {
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [streamId, setStreamId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const requestControllerRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);       // 附件文件选择器
   const mediaRecorderRef = useRef<MediaRecorder | null>(null); // 语音录制器
   const audioChunksRef = useRef<Blob[]>([]);                 // 录音数据块缓冲
@@ -174,6 +175,8 @@ export function Assistant() {
   }, [t]);
 
   useEffect(() => { loadSessions(); }, [loadSessions]);
+
+  useEffect(() => () => requestControllerRef.current?.abort(), []);
 
   // 选中会话 → 加载消息
   const selectSession = useCallback(async (sid: string) => {
@@ -225,25 +228,64 @@ export function Assistant() {
     setMessages(p => [...p, { id: aiId, role: 'ai', content: '', timestamp: ts }]);
     setStreamId(aiId);
 
-    const finish = () => { setLoading(false); setStreamId(null); };
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
+
+    const finish = () => {
+      if (requestControllerRef.current !== controller) return;
+      requestControllerRef.current = null;
+      setLoading(false);
+      setStreamId(null);
+    };
+    const markCancelled = () => {
+      setMessages(p => p.map(m => m.id === aiId && (!m.content || m.content.startsWith('💭'))
+        ? { ...m, content: t('assistant.cancelled') }
+        : m));
+    };
     try {
       const resp = await clawbotFetch(
         `/api/v1/conversation/sessions/${sid}/send`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text }) },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text }),
+          signal: controller.signal,
+        },
         0, // 不限超时
       );
       if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text().catch(() => 'Request failed')}`);
       await readSSE(resp,
         (chunk) => setMessages(p => p.map(m => m.id === aiId ? { ...m, content: (m.content.startsWith('💭') ? '' : m.content) + chunk } : m)),
-        () => { finish(); if (sid) selectSession(sid); loadSessions(); },
-        (err) => { setMessages(p => p.map(m => m.id === aiId ? { ...m, content: m.content || `⚠️ ${err}` } : m)); finish(); },
+        () => {
+          finish();
+          if (!controller.signal.aborted && sid) selectSession(sid);
+          if (!controller.signal.aborted) loadSessions();
+        },
+        (err) => {
+          if (controller.signal.aborted) markCancelled();
+          else setMessages(p => p.map(m => m.id === aiId ? { ...m, content: m.content || `⚠️ ${err}` } : m));
+          finish();
+        },
         (status) => setMessages(p => p.map(m => m.id === aiId && (!m.content || m.content.startsWith('💭')) ? { ...m, content: `💭 ${status}` } : m)),
       );
     } catch (e) {
-      setMessages(p => p.map(m => m.id === aiId ? { ...m, content: `⚠️ ${e instanceof Error ? e.message : e}` } : m));
+      if (controller.signal.aborted) markCancelled();
+      else setMessages(p => p.map(m => m.id === aiId ? { ...m, content: `⚠️ ${e instanceof Error ? e.message : e}` } : m));
       finish();
     }
-  }, [input, loading, activeId, loadSessions, selectSession]);
+  }, [input, loading, activeId, loadSessions, selectSession, t]);
+
+  const handleCancel = useCallback(() => {
+    const controller = requestControllerRef.current;
+    if (!controller) return;
+    requestControllerRef.current = null;
+    controller.abort();
+    setMessages(p => p.map(m => m.id === streamId && (!m.content || m.content.startsWith('💭'))
+      ? { ...m, content: t('assistant.cancelled') }
+      : m));
+    setLoading(false);
+    setStreamId(null);
+  }, [streamId, t]);
 
   // 附件上传处理：选择文件 → 上传到后端 → 提取文本 → 追加到输入框
   const handleFileUpload = useCallback(async (ev: React.ChangeEvent<HTMLInputElement>) => {
@@ -450,10 +492,12 @@ export function Assistant() {
             >
               <Mic size={16} />
             </button>
-            <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={handleSend} disabled={loading || !input.trim()}
+            <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
+              onClick={loading ? handleCancel : handleSend} disabled={!loading && !input.trim()}
+              title={loading ? t('assistant.stopReply') : t('assistant.sendMessage')}
               className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors disabled:opacity-40"
-              style={{ background: input.trim() && !loading ? cfg.colorHex : 'rgba(255,255,255,0.06)', color: input.trim() && !loading ? 'var(--bg-base)' : 'var(--text-tertiary)' }}>
-              {loading ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+              style={{ background: loading || input.trim() ? cfg.colorHex : 'rgba(255,255,255,0.06)', color: loading || input.trim() ? 'var(--bg-base)' : 'var(--text-tertiary)' }}>
+              {loading ? <Square size={13} fill="currentColor" /> : <Send size={14} />}
             </motion.button>
           </div>
         </div>

@@ -1,20 +1,29 @@
 """CC中转闲鱼自动发货单元测试。"""
 
+import asyncio
 import base64
 import hashlib
 import json
 import os
 import sqlite3
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
 
-from src.xianyu import xianyu_admin
-from src.xianyu.cc_operator_state import get_operator_state, set_auto_ship_paused
+from src.core.loop_owner import OwnerLoopNotReady, OwnerLoopTimeout
+from src.xianyu import cc_operator_state, xianyu_admin
+from src.xianyu.cc_operator_state import (
+    authorize_one_shot_delivery,
+    consume_one_shot_delivery,
+    get_operator_state,
+    set_auto_ship_paused,
+)
 from src.xianyu.xianyu_apis import XianyuApis
 from src.xianyu.xianyu_context import XianyuContextManager
 from src.xianyu.xianyu_live import XianyuLive
@@ -71,6 +80,7 @@ def clean_cc_xianyu_env(monkeypatch, tmp_path):
     ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("CC_OPERATOR_STATE_FILE", str(tmp_path / "cc-operator-state.json"))
+    monkeypatch.setenv("CC_XIANYU_AUTO_SHIP_PAUSED", "0")
     monkeypatch.setattr(xianyu_admin, "_last_ops_notify_signature", "", raising=False)
     monkeypatch.setattr(xianyu_admin, "_last_ops_notify_at", 0.0, raising=False)
     monkeypatch.setattr(xianyu_admin, "_last_ops_notify_result", {}, raising=False)
@@ -89,6 +99,24 @@ def live():
         notify_order=MagicMock(),
     )
     instance.ctx.record_cc_shipment = MagicMock()
+    instance.ctx.get_cc_shipment_by_order_id = MagicMock(return_value=None)
+    instance.ctx.claim_cc_auto_ship_order = MagicMock(
+        side_effect=lambda order_id, buyer_id, item_id: {
+            "id": 1,
+            "order_id": order_id,
+            "buyer_id": buyer_id,
+            "item_id": item_id,
+            "status": "webhook_inflight",
+        }
+    )
+    instance.ctx.claim_cc_shipment_send = MagicMock(
+        side_effect=lambda shipment_id, expected_statuses: (
+            instance.ctx.get_cc_shipment(shipment_id, include_message=True)
+            if instance.ctx.get_cc_shipment(shipment_id, include_message=True).get("status") in expected_statuses
+            else None
+        )
+    )
+    instance.ctx.complete_cc_shipment_send = MagicMock(return_value=True)
     instance.send_msg = AsyncMock()
     instance.myid = "seller-001"
     return instance
@@ -110,6 +138,104 @@ def configure_cc_webhook(monkeypatch):
     monkeypatch.setenv("CC_XIANYU_DEFAULT_PLAN_ID", "starter")
 
 
+def test_operator_state_missing_or_corrupt_fails_closed(tmp_path, monkeypatch):
+    """运营状态不可读时必须保持暂停，不能静默恢复自动发货。"""
+    state_path = tmp_path / "cc-operator-state.json"
+    monkeypatch.setenv("CC_OPERATOR_STATE_FILE", str(state_path))
+    monkeypatch.delenv("CC_XIANYU_AUTO_SHIP_PAUSED", raising=False)
+
+    assert get_operator_state()["auto_ship_paused"] is True
+
+    state_path.write_text("{broken", encoding="utf-8")
+    assert get_operator_state()["auto_ship_paused"] is True
+
+
+def test_one_shot_delivery_ticket_is_consumed_once_under_concurrency(tmp_path, monkeypatch):
+    """多个浏览器助手同时领取时，单次放行票只能成功消费一次。"""
+    state_path = tmp_path / "cc-operator-state.json"
+    monkeypatch.setenv("CC_OPERATOR_STATE_FILE", str(state_path))
+    authorize_one_shot_delivery("concurrency test", ttl_seconds=180)
+
+    # 放大旧版无锁读写窗口，让并发回归可以稳定复现。
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["race_padding"] = "x" * 2_000_000
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    workers = 12
+    barrier = threading.Barrier(workers)
+
+    def consume() -> dict:
+        barrier.wait(timeout=5)
+        return consume_one_shot_delivery("concurrent claim")
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        results = list(pool.map(lambda _index: consume(), range(workers)))
+
+    assert sum(result["allowed"] is True for result in results) == 1
+    assert cc_operator_state.peek_one_shot_delivery()["active"] is False
+
+
+def test_cc_shipment_send_claim_is_atomic_across_threads(tmp_path):
+    """同一条待补发记录并发领取时只能有一个发送者进入执行态。"""
+    ctx = XianyuContextManager(db_path=str(tmp_path / "xianyu-chat.db"))
+    ctx.record_cc_shipment(
+        order_id="xy_oid_atomic_send",
+        buyer_id="buyer-atomic",
+        item_id="item-atomic",
+        status="message_send_failed",
+        delivery_message="兑换码：CC-ATOMIC-SEND",
+    )
+    shipment_id = ctx.list_cc_shipments(include_message=True)[0]["id"]
+    workers = 8
+    barrier = threading.Barrier(workers)
+
+    def claim() -> dict | None:
+        barrier.wait(timeout=5)
+        return ctx.claim_cc_shipment_send(
+            shipment_id,
+            expected_statuses=("message_send_failed",),
+        )
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        results = list(pool.map(lambda _index: claim(), range(workers)))
+
+    assert sum(result is not None for result in results) == 1
+    assert ctx.get_cc_shipment(shipment_id)["status"] == "message_send_inflight"
+
+
+def test_cc_auto_ship_order_claim_is_atomic_across_threads(tmp_path):
+    """同一真实订单的并发付款事件只能有一个 webhook 分配执行者。"""
+    ctx = XianyuContextManager(db_path=str(tmp_path / "xianyu-chat.db"))
+    workers = 8
+    barrier = threading.Barrier(workers)
+
+    def claim() -> dict | None:
+        barrier.wait(timeout=5)
+        return ctx.claim_cc_auto_ship_order(
+            "xy_oid_atomic_webhook",
+            buyer_id="buyer-atomic",
+            item_id="item-atomic",
+        )
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        results = list(pool.map(lambda _index: claim(), range(workers)))
+
+    assert sum(result is not None for result in results) == 1
+    shipment = ctx.get_cc_shipment_by_order_id("xy_oid_atomic_webhook")
+    assert shipment["status"] == "webhook_inflight"
+
+
+def test_pause_record_cannot_downgrade_sent_or_uncertain_shipment(tmp_path):
+    """暂停分支不能覆盖已发送或结果不确定的终态。"""
+    ctx = XianyuContextManager(db_path=str(tmp_path / "xianyu-chat.db"))
+    for order_id, terminal_status in (
+        ("xy_oid_sent_terminal", "message_sent"),
+        ("xy_oid_uncertain_terminal", "message_send_uncertain"),
+    ):
+        ctx.record_cc_shipment(order_id=order_id, status=terminal_status, delivery_message="兑换码：CC-TERMINAL")
+        ctx.record_cc_shipment(order_id=order_id, status="operator_paused", error="暂停")
+        shipment = ctx.get_cc_shipment_by_order_id(order_id, include_message=True)
+        assert shipment["status"] == terminal_status
+        assert shipment["delivery_message"] == "兑换码：CC-TERMINAL"
 
 
 def test_xianyu_live_message_sent_consumes_auto_resume_canary(live, monkeypatch):
@@ -130,6 +256,7 @@ def test_xianyu_live_message_sent_consumes_auto_resume_canary(live, monkeypatch)
     assert state["auto_resume_canary"]["remaining"] == 0
     assert state["auto_resume_canary"]["last_order_id"] == "xy_oid_live_canary"
     live.ctx.record_cc_shipment.assert_called_once()
+
 
 @pytest.mark.asyncio
 async def test_unconfigured_cc_webhook_returns_none_and_allows_legacy_fallback(live):
@@ -475,29 +602,39 @@ async def test_plain_json_paid_system_card_starts_auto_ship(monkeypatch):
     assert created_tasks == [delayed_marker]
 
 
-def test_stable_xianyu_order_id_falls_back_to_message_fingerprint():
-    """抽不到真实订单号时，也不能再生成随机 UUID。"""
-    message = {"1": "buyer-001@goofish", "3": {"redReminder": "等待卖家发货"}}
+def test_stable_xianyu_order_id_fails_closed_without_business_identifier():
+    """只有易变消息字段而没有真实订单号时，必须拒绝生成履约键。"""
+    first_message = {
+        "1": "buyer-001@goofish",
+        "3": {"redReminder": "等待卖家发货"},
+        "volatile": {"timestamp": "1783389000000", "seq": 1},
+    }
+    second_message = {
+        **first_message,
+        "volatile": {"timestamp": "1783389000999", "seq": 2},
+    }
 
-    first = XianyuLive._stable_xianyu_order_id(message, "buyer-001", "item-001", "paid")
-    second = XianyuLive._stable_xianyu_order_id(message, "buyer-001", "item-001", "paid")
+    first = XianyuLive._stable_xianyu_order_id(first_message, "buyer-001", "item-001", "paid")
+    second = XianyuLive._stable_xianyu_order_id(second_message, "buyer-001", "item-001", "paid")
 
-    assert first == second
-    assert first.startswith("xy_msg_")
+    assert first is None
+    assert second is None
 
 
 def test_parse_seller_sold_order_item_hashes_real_order_id():
     """订单轮询拿到真实订单号时，本机只保存脱敏订单号。"""
-    parsed = XianyuLive._parse_seller_sold_order_item({
-        "commonData": {
-            "orderId": "XYREALORDERPOLL123456",
-            "itemId": "item-poll",
-            "orderStatus": "待发货",
-            "itemTitle": "CC中转测试卡",
-        },
-        "buyerInfoVO": {"buyerId": "buyer-poll"},
-        "priceVO": {"totalPrice": "1.00"},
-    })
+    parsed = XianyuLive._parse_seller_sold_order_item(
+        {
+            "commonData": {
+                "orderId": "XYREALORDERPOLL123456",
+                "itemId": "item-poll",
+                "orderStatus": "待发货",
+                "itemTitle": "CC中转测试卡",
+            },
+            "buyerInfoVO": {"buyerId": "buyer-poll"},
+            "priceVO": {"totalPrice": "1.00"},
+        }
+    )
 
     assert parsed["order_id"].startswith("xy_oid_")
     assert "XYREALORDERPOLL" not in parsed["order_id"]
@@ -509,15 +646,24 @@ def test_parse_seller_sold_order_item_hashes_real_order_id():
 
 def test_extract_cid_from_create_chat_response_variants():
     """创建单聊会话响应结构变化时仍能提取 chat_id。"""
-    assert XianyuLive._extract_cid_from_create_chat_response({
-        "body": [{"singleChatConversation": {"cid": "chat-001@goofish"}}]
-    }) == "chat-001"
-    assert XianyuLive._extract_cid_from_create_chat_response({
-        "body": [{"singleChatUserConversation": {"singleChatConversation": {"cid": "chat-002@goofish"}}}]
-    }) == "chat-002"
-    assert XianyuLive._extract_cid_from_create_chat_response({
-        "body": [{"data": {"singleChatConversation": {"cid": "chat-003@goofish"}}}]
-    }) == "chat-003"
+    assert (
+        XianyuLive._extract_cid_from_create_chat_response(
+            {"body": [{"singleChatConversation": {"cid": "chat-001@goofish"}}]}
+        )
+        == "chat-001"
+    )
+    assert (
+        XianyuLive._extract_cid_from_create_chat_response(
+            {"body": [{"singleChatUserConversation": {"singleChatConversation": {"cid": "chat-002@goofish"}}}]}
+        )
+        == "chat-002"
+    )
+    assert (
+        XianyuLive._extract_cid_from_create_chat_response(
+            {"body": [{"data": {"singleChatConversation": {"cid": "chat-003@goofish"}}}]}
+        )
+        == "chat-003"
+    )
 
 
 @pytest.mark.asyncio
@@ -533,10 +679,12 @@ async def test_create_chat_conversation_sends_lwp_and_waits_response():
         async def send(self, payload: str):
             sent = json.loads(payload)
             mid = sent["headers"]["mid"]
-            instance._dispatch_mid_response({
-                "headers": {"mid": mid},
-                "body": [{"singleChatConversation": {"cid": "chat-created@goofish"}}],
-            })
+            instance._dispatch_mid_response(
+                {
+                    "headers": {"mid": mid},
+                    "body": [{"singleChatConversation": {"cid": "chat-created@goofish"}}],
+                }
+            )
 
     instance.ws = FakeWs()
 
@@ -637,22 +785,26 @@ async def test_paid_order_poll_reuses_manual_ready_shipment_without_new_card(mon
     live.myid = "seller-001"
     live.ctx.record_order = MagicMock()
     live.ctx.mark_converted = MagicMock()
-    live.ctx.cc_shipment_summary = MagicMock(return_value={
-        "pending_rescue": 1,
-        "by_status": {"manual_delivery_ready": 1},
-    })
-    live.ctx.list_cc_shipments = MagicMock(return_value=[
-        {
-            "id": 31,
-            "order_id": "xy_manual_ready_order",
-            "buyer_id": "手机截图已付款",
-            "item_id": "item-poll",
-            "chat_id": "",
-            "status": "manual_delivery_ready",
-            "delivery_message": "兑换网址：https://jiyu.245334.xyz，卡密：CC-OLD-CARD",
+    live.ctx.cc_shipment_summary = MagicMock(
+        return_value={
+            "pending_rescue": 1,
+            "by_status": {"manual_delivery_ready": 1},
         }
-    ])
-    live.ctx.update_cc_shipment_delivery_state = MagicMock(return_value=True)
+    )
+    live.ctx.list_cc_shipments = MagicMock(
+        return_value=[
+            {
+                "id": 31,
+                "order_id": "xy_manual_ready_order",
+                "buyer_id": "手机截图已付款",
+                "item_id": "item-poll",
+                "chat_id": "",
+                "status": "manual_delivery_ready",
+                "delivery_message": "兑换网址：https://jiyu.245334.xyz，卡密：CC-OLD-CARD",
+            }
+        ]
+    )
+    live.ctx.get_cc_shipment = MagicMock(return_value=live.ctx.list_cc_shipments.return_value[0])
     live._try_cc_zhongzhuan_auto_ship = AsyncMock()
 
     class FakeOrderApi:
@@ -696,35 +848,39 @@ async def test_paid_order_poll_reuses_manual_ready_shipment_without_new_card(mon
         "buyer-poll",
         "兑换网址：https://jiyu.245334.xyz，卡密：CC-OLD-CARD",
     )
-    update_args = live.ctx.update_cc_shipment_delivery_state.call_args.args
-    assert update_args[0] == 31
-    assert update_args[1].startswith("xy_oid_")
-    assert "XYREALORDERPOLL" not in update_args[1]
-    assert update_args[2:] == (
+    complete_args = live.ctx.complete_cc_shipment_send.call_args.args
+    assert complete_args[0] == 31
+    assert complete_args[1].startswith("xy_oid_")
+    assert "XYREALORDERPOLL" not in complete_args[1]
+    assert complete_args[2:] == (
         "buyer-poll",
         "item-poll",
-        "chat-buyer-001",
-        "message_sent",
-        "",
     )
+    assert live.ctx.complete_cc_shipment_send.call_args.kwargs == {
+        "chat_id": "chat-buyer-001",
+        "status": "message_sent",
+        "error": "",
+    }
 
 
 @pytest.mark.asyncio
 async def test_manual_ready_shipment_send_failure_keeps_rescue_state(live):
     """复用已分配卡密时如果闲鱼发送失败，要保留补救状态，不丢话术。"""
     live.ws = SimpleNamespace(open=True)
-    live.ctx.list_cc_shipments = MagicMock(return_value=[
-        {
-            "id": 32,
-            "order_id": "xy_manual_ready_order",
-            "buyer_id": "手机截图已付款",
-            "item_id": "item-poll",
-            "chat_id": "",
-            "status": "manual_delivery_ready",
-            "delivery_message": "兑换网址：https://jiyu.245334.xyz，卡密：CC-OLD-CARD",
-        }
-    ])
-    live.ctx.update_cc_shipment_delivery_state = MagicMock(return_value=True)
+    live.ctx.list_cc_shipments = MagicMock(
+        return_value=[
+            {
+                "id": 32,
+                "order_id": "xy_manual_ready_order",
+                "buyer_id": "手机截图已付款",
+                "item_id": "item-poll",
+                "chat_id": "",
+                "status": "manual_delivery_ready",
+                "delivery_message": "兑换网址：https://jiyu.245334.xyz，卡密：CC-OLD-CARD",
+            }
+        ]
+    )
+    live.ctx.get_cc_shipment = MagicMock(return_value=live.ctx.list_cc_shipments.return_value[0])
     live.send_msg = AsyncMock(side_effect=RuntimeError("websocket closed"))
 
     result = await live._try_send_existing_manual_ready_shipment(
@@ -734,14 +890,14 @@ async def test_manual_ready_shipment_send_failure_keeps_rescue_state(live):
     )
 
     assert result is False
-    live.ctx.update_cc_shipment_delivery_state.assert_called_once_with(
+    live.ctx.complete_cc_shipment_send.assert_called_once_with(
         32,
         "xy_oid_real_order",
         "buyer-poll",
         "item-poll",
-        "chat-buyer-001",
-        "message_send_failed",
-        "websocket closed",
+        chat_id="chat-buyer-001",
+        status="message_send_uncertain",
+        error="websocket closed",
     )
     live.notifier.notify_health.assert_called_once()
 
@@ -769,17 +925,51 @@ async def test_configured_cc_webhook_sends_paid_order_and_delivery_message(monke
         "planId": "starter",
         "note": "openclaw-xianyu-live",
     }
-    live.send_msg.assert_awaited_once_with(ws, "chat-buyer-001", "buyer-002", "兑换网址：https://jiyu.245334.xyz，卡密：CC-TEST")
+    live.send_msg.assert_awaited_once_with(
+        ws, "chat-buyer-001", "buyer-002", "兑换网址：https://jiyu.245334.xyz，卡密：CC-TEST"
+    )
     live.ctx.record_cc_shipment.assert_called_once_with(
         order_id="order-002",
         buyer_id="buyer-002",
         item_id="item-002",
         chat_id="chat-buyer-001",
-        status="message_sent",
+        status="message_send_inflight",
         delivery_message="兑换网址：https://jiyu.245334.xyz，卡密：CC-TEST",
+        error="消息发送处理中；异常退出时必须人工核对，禁止自动重试",
+    )
+    live.ctx.complete_cc_shipment_send.assert_called_once_with(
+        1,
+        "order-002",
+        "buyer-002",
+        "item-002",
+        chat_id="chat-buyer-001",
+        status="message_sent",
         error="",
     )
     live.notifier.notify_order.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_paid_events_call_webhook_and_send_only_once(monkeypatch, tmp_path, fake_httpx):
+    """同一订单的并发已付款事件只能分配一次卡密并发送一次消息。"""
+    configure_cc_webhook(monkeypatch)
+    fake_httpx.response = FakeResponse(200, {"deliveryMessage": "兑换码：CC-CONCURRENT"})
+    instance = object.__new__(XianyuLive)
+    instance.ctx = XianyuContextManager(db_path=str(tmp_path / "xianyu-chat.db"))
+    instance.notifier = SimpleNamespace(notify_health=MagicMock(), notify_order=MagicMock())
+    instance.send_msg = AsyncMock()
+    instance.myid = "seller-001"
+
+    results = await asyncio.gather(
+        instance._try_cc_zhongzhuan_auto_ship(object(), "xy_oid_concurrent_paid", "item-002", "buyer-002"),
+        instance._try_cc_zhongzhuan_auto_ship(object(), "xy_oid_concurrent_paid", "item-002", "buyer-002"),
+    )
+
+    assert all(result in {True, False} for result in results)
+    assert len(fake_httpx.calls) == 1
+    instance.send_msg.assert_awaited_once()
+    shipment = instance.ctx.get_cc_shipment_by_order_id("xy_oid_concurrent_paid")
+    assert shipment["status"] == "message_sent"
 
 
 @pytest.mark.asyncio
@@ -818,7 +1008,9 @@ async def test_poll_auto_ship_confirms_with_raw_order_id_but_marks_hashed_order(
     """订单轮询发卡后，确认发货用真实订单号，本机状态仍按脱敏订单号回写。"""
     configure_cc_webhook(monkeypatch)
     monkeypatch.setenv("CC_XIANYU_AUTO_CONFIRM_SHIPMENT_ENABLED", "1")
-    fake_httpx.response = FakeResponse(200, {"deliveryMessage": "兑换网址：https://jiyu.245334.xyz，卡密：CC-RAW-CONFIRM"})
+    fake_httpx.response = FakeResponse(
+        200, {"deliveryMessage": "兑换网址：https://jiyu.245334.xyz，卡密：CC-RAW-CONFIRM"}
+    )
     live.ctx.mark_cc_shipment_xianyu_confirm = MagicMock(return_value=True)
 
     class FakeConfirmApis:
@@ -881,15 +1073,17 @@ async def test_xianyu_api_confirm_dummy_rejects_non_numeric_order_id():
 async def test_configured_cc_webhook_skips_duplicate_already_sent_order(monkeypatch, live, fake_httpx):
     """同一订单已发货时，重复事件不再调用 webhook，避免二次分配卡密。"""
     configure_cc_webhook(monkeypatch)
-    live.ctx.get_cc_shipment_by_order_id = MagicMock(return_value={
-        "id": 77,
-        "order_id": "xy_oid_duplicate",
-        "buyer_id": "buyer-dup",
-        "item_id": "item-dup",
-        "chat_id": "chat-dup",
-        "status": "message_sent",
-        "delivery_message": "兑换网址：https://jiyu.245334.xyz，卡密：CC-DUP",
-    })
+    live.ctx.get_cc_shipment_by_order_id = MagicMock(
+        return_value={
+            "id": 77,
+            "order_id": "xy_oid_duplicate",
+            "buyer_id": "buyer-dup",
+            "item_id": "item-dup",
+            "chat_id": "chat-dup",
+            "status": "message_sent",
+            "delivery_message": "兑换网址：https://jiyu.245334.xyz，卡密：CC-DUP",
+        }
+    )
 
     result = await live._try_cc_zhongzhuan_auto_ship(object(), "xy_oid_duplicate", "item-dup", "buyer-dup")
 
@@ -899,28 +1093,34 @@ async def test_configured_cc_webhook_skips_duplicate_already_sent_order(monkeypa
 
 
 @pytest.mark.asyncio
-async def test_configured_cc_webhook_resends_duplicate_failed_message_without_reallocating(monkeypatch, live, fake_httpx):
+async def test_configured_cc_webhook_resends_duplicate_failed_message_without_reallocating(
+    monkeypatch, live, fake_httpx
+):
     """同一订单已有已分配话术但发送失败时，只补发旧话术，不重新请求发卡。"""
     configure_cc_webhook(monkeypatch)
     live.ws = SimpleNamespace(open=True)
-    live.ctx.get_cc_shipment_by_order_id = MagicMock(return_value={
-        "id": 78,
-        "order_id": "xy_oid_failed_once",
-        "buyer_id": "buyer-dup",
-        "item_id": "item-dup",
-        "chat_id": "chat-dup",
-        "status": "message_send_failed",
-        "delivery_message": "兑换网址：https://jiyu.245334.xyz，卡密：CC-OLD",
-    })
-    live.ctx.get_cc_shipment = MagicMock(return_value={
-        "id": 78,
-        "order_id": "xy_oid_failed_once",
-        "buyer_id": "buyer-dup",
-        "item_id": "item-dup",
-        "chat_id": "chat-dup",
-        "status": "message_send_failed",
-        "delivery_message": "兑换网址：https://jiyu.245334.xyz，卡密：CC-OLD",
-    })
+    live.ctx.get_cc_shipment_by_order_id = MagicMock(
+        return_value={
+            "id": 78,
+            "order_id": "xy_oid_failed_once",
+            "buyer_id": "buyer-dup",
+            "item_id": "item-dup",
+            "chat_id": "chat-dup",
+            "status": "message_send_failed",
+            "delivery_message": "兑换网址：https://jiyu.245334.xyz，卡密：CC-OLD",
+        }
+    )
+    live.ctx.get_cc_shipment = MagicMock(
+        return_value={
+            "id": 78,
+            "order_id": "xy_oid_failed_once",
+            "buyer_id": "buyer-dup",
+            "item_id": "item-dup",
+            "chat_id": "chat-dup",
+            "status": "message_send_failed",
+            "delivery_message": "兑换网址：https://jiyu.245334.xyz，卡密：CC-OLD",
+        }
+    )
 
     result = await live._try_cc_zhongzhuan_auto_ship(live.ws, "xy_oid_failed_once", "item-dup", "buyer-dup")
 
@@ -1011,7 +1211,7 @@ async def test_cc_webhook_without_delivery_message_stops_without_sending(monkeyp
 
 
 @pytest.mark.asyncio
-async def test_cc_webhook_records_message_send_failure_for_manual_reship(monkeypatch, live, fake_httpx):
+async def test_cc_webhook_marks_send_result_uncertain_and_blocks_automatic_reship(monkeypatch, live, fake_httpx):
     configure_cc_webhook(monkeypatch)
     fake_httpx.response = FakeResponse(200, {"deliveryMessage": "兑换网址：https://jiyu.245334.xyz，卡密：CC-RESEND"})
     live.send_msg = AsyncMock(side_effect=RuntimeError("websocket closed"))
@@ -1024,8 +1224,17 @@ async def test_cc_webhook_records_message_send_failure_for_manual_reship(monkeyp
         buyer_id="buyer-004",
         item_id="item-004",
         chat_id="chat-buyer-001",
-        status="message_send_failed",
+        status="message_send_inflight",
         delivery_message="兑换网址：https://jiyu.245334.xyz，卡密：CC-RESEND",
+        error="消息发送处理中；异常退出时必须人工核对，禁止自动重试",
+    )
+    live.ctx.complete_cc_shipment_send.assert_called_once_with(
+        1,
+        "order-send-failed",
+        "buyer-004",
+        "item-004",
+        chat_id="chat-buyer-001",
+        status="message_send_uncertain",
         error="websocket closed",
     )
     live.notifier.notify_health.assert_called_once()
@@ -1034,15 +1243,17 @@ async def test_cc_webhook_records_message_send_failure_for_manual_reship(monkeyp
 @pytest.mark.asyncio
 async def test_resend_cc_shipment_sends_existing_delivery_message(live):
     live.ws = SimpleNamespace(open=True)
-    live.ctx.get_cc_shipment = MagicMock(return_value={
-        "id": 12,
-        "order_id": "order-resend-001",
-        "buyer_id": "buyer-resend",
-        "item_id": "item-resend",
-        "chat_id": "chat-resend",
-        "status": "message_send_failed",
-        "delivery_message": "兑换网址：https://jiyu.245334.xyz，卡密：CC-RESEND-OK",
-    })
+    live.ctx.get_cc_shipment = MagicMock(
+        return_value={
+            "id": 12,
+            "order_id": "order-resend-001",
+            "buyer_id": "buyer-resend",
+            "item_id": "item-resend",
+            "chat_id": "chat-resend",
+            "status": "message_send_failed",
+            "delivery_message": "兑换网址：https://jiyu.245334.xyz，卡密：CC-RESEND-OK",
+        }
+    )
 
     result = await live.resend_cc_shipment(12)
 
@@ -1054,13 +1265,13 @@ async def test_resend_cc_shipment_sends_existing_delivery_message(live):
         "buyer-resend",
         "兑换网址：https://jiyu.245334.xyz，卡密：CC-RESEND-OK",
     )
-    live.ctx.record_cc_shipment.assert_called_once_with(
-        order_id="order-resend-001",
-        buyer_id="buyer-resend",
-        item_id="item-resend",
+    live.ctx.complete_cc_shipment_send.assert_called_once_with(
+        12,
+        "order-resend-001",
+        "buyer-resend",
+        "item-resend",
         chat_id="chat-resend",
         status="message_sent",
-        delivery_message="兑换网址：https://jiyu.245334.xyz，卡密：CC-RESEND-OK",
         error="",
     )
 
@@ -1068,15 +1279,17 @@ async def test_resend_cc_shipment_sends_existing_delivery_message(live):
 @pytest.mark.asyncio
 async def test_resend_cc_shipment_rejects_records_without_delivery_message(live):
     live.ws = SimpleNamespace(open=True)
-    live.ctx.get_cc_shipment = MagicMock(return_value={
-        "id": 13,
-        "order_id": "order-resend-missing-message",
-        "buyer_id": "buyer-resend",
-        "item_id": "item-resend",
-        "chat_id": "chat-resend",
-        "status": "message_send_failed",
-        "delivery_message": "",
-    })
+    live.ctx.get_cc_shipment = MagicMock(
+        return_value={
+            "id": 13,
+            "order_id": "order-resend-missing-message",
+            "buyer_id": "buyer-resend",
+            "item_id": "item-resend",
+            "chat_id": "chat-resend",
+            "status": "message_send_failed",
+            "delivery_message": "",
+        }
+    )
 
     with pytest.raises(ValueError, match="没有可补发的话术"):
         await live.resend_cc_shipment(13)
@@ -1088,15 +1301,17 @@ async def test_resend_cc_shipment_rejects_records_without_delivery_message(live)
 async def test_browser_send_manual_ready_shipment_sends_existing_message(live):
     """浏览器助手拿到买家信息后，可发送已分配待发送的话术，不重新分配卡密。"""
     live.ws = SimpleNamespace(open=True)
-    live.ctx.get_cc_shipment = MagicMock(return_value={
-        "id": 14,
-        "order_id": "xy_manual_browser_ready",
-        "buyer_id": "手机截图已付款",
-        "item_id": "item-browser",
-        "chat_id": "",
-        "status": "manual_delivery_ready",
-        "delivery_message": "兑换网址：https://jiyu.245334.xyz，卡密：CC-BROWSER-OK",
-    })
+    live.ctx.get_cc_shipment = MagicMock(
+        return_value={
+            "id": 14,
+            "order_id": "xy_manual_browser_ready",
+            "buyer_id": "手机截图已付款",
+            "item_id": "item-browser",
+            "chat_id": "",
+            "status": "manual_delivery_ready",
+            "delivery_message": "兑换网址：https://jiyu.245334.xyz，卡密：CC-BROWSER-OK",
+        }
+    )
     live.ctx.update_cc_shipment_delivery_state = MagicMock(return_value=True)
 
     result = await live.send_manual_ready_cc_shipment(
@@ -1114,14 +1329,50 @@ async def test_browser_send_manual_ready_shipment_sends_existing_message(live):
         "buyer-browser",
         "兑换网址：https://jiyu.245334.xyz，卡密：CC-BROWSER-OK",
     )
-    live.ctx.update_cc_shipment_delivery_state.assert_called_once_with(
+    live.ctx.complete_cc_shipment_send.assert_called_once_with(
         14,
         "xy_oid_browser_real_order",
         "buyer-browser",
         "item-browser",
-        "chat-buyer-001",
-        "message_sent",
-        "",
+        chat_id="chat-buyer-001",
+        status="message_sent",
+        error="",
+    )
+
+
+@pytest.mark.asyncio
+async def test_browser_send_manual_ready_shipment_marks_uncertain_on_send_failure(live):
+    """浏览器助手发送异常后必须停在不确定态，不能留下可自动重试的记录。"""
+    live.ws = SimpleNamespace(open=True)
+    live.ctx.get_cc_shipment = MagicMock(
+        return_value={
+            "id": 15,
+            "order_id": "xy_manual_browser_ready",
+            "buyer_id": "手机截图已付款",
+            "item_id": "item-browser",
+            "chat_id": "chat-browser",
+            "status": "manual_delivery_ready",
+            "delivery_message": "兑换网址：https://jiyu.245334.xyz，卡密：CC-BROWSER-UNCERTAIN",
+        }
+    )
+    live.send_msg = AsyncMock(side_effect=ConnectionError("连接在确认帧前断开"))
+
+    with pytest.raises(RuntimeError, match="结果不确定"):
+        await live.send_manual_ready_cc_shipment(
+            shipment_id=15,
+            buyer_id="buyer-browser",
+            item_id="item-browser",
+            order_id="xy_oid_browser_real_order",
+        )
+
+    live.ctx.complete_cc_shipment_send.assert_called_once_with(
+        15,
+        "xy_oid_browser_real_order",
+        "buyer-browser",
+        "item-browser",
+        chat_id="chat-browser",
+        status="message_send_uncertain",
+        error="连接在确认帧前断开",
     )
 
 
@@ -1207,23 +1458,25 @@ def test_xianyu_context_tracks_cc_shipments_for_manual_reship(tmp_path):
     assert gate_after_real_order["pending_rescue"] == 0
     assert gate_after_real_order["strict_audit_command"].endswith("--require-real-order")
 
-    order_hash = hashlib.sha256("xy_oid_001_real_order".encode()).hexdigest()
-    saved = ctx.record_cc_strict_audit({
-        "mode": "strict",
-        "ok": True,
-        "exit_code": 0,
-        "summary": {
-            "same_order_ready": 1,
-            "same_order_matched": 1,
-            "real_orders": 1,
-            "redeemed_delta": 1,
-            "active_token_delta": 1,
-            "model_log_delta": 1,
-            "same_order_latest": [{"orderIdPrefix": "xy_oid_0", "orderIdHash": order_hash, "ready": True}],
-        },
-        "stdout": "不要保存完整输出",
-        "stderr": "不要保存错误输出",
-    })
+    order_hash = hashlib.sha256(b"xy_oid_001_real_order").hexdigest()
+    saved = ctx.record_cc_strict_audit(
+        {
+            "mode": "strict",
+            "ok": True,
+            "exit_code": 0,
+            "summary": {
+                "same_order_ready": 1,
+                "same_order_matched": 1,
+                "real_orders": 1,
+                "redeemed_delta": 1,
+                "active_token_delta": 1,
+                "model_log_delta": 1,
+                "same_order_latest": [{"orderIdPrefix": "xy_oid_0", "orderIdHash": order_hash, "ready": True}],
+            },
+            "stdout": "不要保存完整输出",
+            "stderr": "不要保存错误输出",
+        }
+    )
     latest_audit = ctx.latest_cc_strict_audit()
     assert saved["ok"] is True
     assert latest_audit["same_order_ready"] == 1
@@ -1255,23 +1508,23 @@ def test_strict_audit_ready_requires_xy_oid_real_order(tmp_path):
             delivery_message="兑换网址：https://jiyu.245334.xyz，卡密：CC-MANUAL",
             error="",
         )
-        manual_hash = hashlib.sha256("xy_manual_internal_test_order".encode()).hexdigest()
-        ctx.record_cc_strict_audit({
-            "mode": "strict",
-            "ok": True,
-            "exit_code": 0,
-            "summary": {
-                "same_order_ready": 1,
-                "same_order_matched": 1,
-                "real_orders": 1,
-                "redeemed_delta": 1,
-                "active_token_delta": 1,
-                "model_log_delta": 1,
-                "same_order_latest": [
-                    {"orderIdPrefix": "xy_manual_", "orderIdHash": manual_hash, "ready": True}
-                ],
-            },
-        })
+        manual_hash = hashlib.sha256(b"xy_manual_internal_test_order").hexdigest()
+        ctx.record_cc_strict_audit(
+            {
+                "mode": "strict",
+                "ok": True,
+                "exit_code": 0,
+                "summary": {
+                    "same_order_ready": 1,
+                    "same_order_matched": 1,
+                    "real_orders": 1,
+                    "redeemed_delta": 1,
+                    "active_token_delta": 1,
+                    "model_log_delta": 1,
+                    "same_order_latest": [{"orderIdPrefix": "xy_manual_", "orderIdHash": manual_hash, "ready": True}],
+                },
+            }
+        )
 
         latest_manual = xianyu_admin._latest_strict_audit()
         assert latest_manual["real_orders"] == 0
@@ -1291,23 +1544,23 @@ def test_strict_audit_ready_requires_xy_oid_real_order(tmp_path):
             delivery_message="兑换网址：https://jiyu.245334.xyz，卡密：CC-REAL",
             error="",
         )
-        real_hash = hashlib.sha256("xy_oid_real_unlock_order".encode()).hexdigest()
-        saved = ctx.record_cc_strict_audit({
-            "mode": "strict",
-            "ok": True,
-            "exit_code": 0,
-            "summary": {
-                "same_order_ready": 1,
-                "same_order_matched": 1,
-                "real_orders": 1,
-                "redeemed_delta": 1,
-                "active_token_delta": 1,
-                "model_log_delta": 1,
-                "same_order_latest": [
-                    {"orderIdPrefix": "xy_oid_", "orderIdHash": real_hash, "ready": True}
-                ],
-            },
-        })
+        real_hash = hashlib.sha256(b"xy_oid_real_unlock_order").hexdigest()
+        saved = ctx.record_cc_strict_audit(
+            {
+                "mode": "strict",
+                "ok": True,
+                "exit_code": 0,
+                "summary": {
+                    "same_order_ready": 1,
+                    "same_order_matched": 1,
+                    "real_orders": 1,
+                    "redeemed_delta": 1,
+                    "active_token_delta": 1,
+                    "model_log_delta": 1,
+                    "same_order_latest": [{"orderIdPrefix": "xy_oid_", "orderIdHash": real_hash, "ready": True}],
+                },
+            }
+        )
         xianyu_admin._last_cc_strict_audit.clear()
 
         assert saved["marked_buyer_chain_verified"] == 1
@@ -1575,7 +1828,9 @@ def test_xianyu_admin_manual_paid_order_dispatch_does_not_resend_sent_shipment(t
     monkeypatch.setenv("CC_XIANYU_WEBHOOK_URL", "https://cc.example.test/api/ops/xianyu/paid-order")
     monkeypatch.setenv("CC_XIANYU_WEBHOOK_TOKEN", "unit-test-token")
     monkeypatch.setattr("src.api.auth._API_TOKEN", "", raising=False)
-    fake_httpx.response = FakeResponse(200, {"deliveryMessage": "兑换入口：https://jiyu.245334.xyz\n兑换码：CC-SHOULD-NOT-CREATE"})
+    fake_httpx.response = FakeResponse(
+        200, {"deliveryMessage": "兑换入口：https://jiyu.245334.xyz\n兑换码：CC-SHOULD-NOT-CREATE"}
+    )
     ctx = XianyuContextManager(db_path=str(tmp_path / "xianyu-chat.db"))
     item_id = "https://m.tb.cn/h.RC4QcXM?tk=DxWwgNjrfdQ"
     req = xianyu_admin.CCManualPaidOrderRequest(order_id=f"browser:{item_id}")
@@ -1719,8 +1974,6 @@ def test_xianyu_admin_manual_paid_order_mark_sent_clears_rescue_but_not_real_ord
         xianyu_admin._live = old_live
 
 
-
-
 def test_xianyu_admin_resume_auto_ship_canary_pauses_after_first_sent(tmp_path, monkeypatch):
     """恢复常驻自动发货后，第 1 条真正发出的卡密会自动重新暂停，防止连续发卡。"""
     monkeypatch.delenv("OPENCLAW_API_TOKEN", raising=False)
@@ -1773,6 +2026,7 @@ def test_xianyu_admin_resume_auto_ship_canary_pauses_after_first_sent(tmp_path, 
         xianyu_admin._ctx = old_ctx
         xianyu_admin._live = old_live
 
+
 def test_xianyu_admin_browser_send_manual_ready_route(tmp_path, monkeypatch):
     """本机管理台应提供浏览器助手发货入口，且必须带买家信息。"""
     monkeypatch.delenv("OPENCLAW_API_TOKEN", raising=False)
@@ -1780,14 +2034,24 @@ def test_xianyu_admin_browser_send_manual_ready_route(tmp_path, monkeypatch):
     monkeypatch.setenv("API_HOST", "127.0.0.1")
     monkeypatch.setattr("src.api.auth._API_TOKEN", "", raising=False)
     ctx = XianyuContextManager(db_path=str(tmp_path / "xianyu-chat.db"))
-    fake_live = SimpleNamespace(
-        send_manual_ready_cc_shipment=AsyncMock(return_value={
+    send_manual = AsyncMock(
+        return_value={
             "ok": True,
             "id": 21,
             "order_id": "xy_oid_browser_real_order",
             "buyer_id": "buyer-browser",
             "status": "message_sent",
-        })
+        }
+    )
+
+    async def call_on_owner(operation: str, **kwargs):
+        assert operation == "send_manual_ready_cc_shipment"
+        assert kwargs.pop("timeout") == 45.0
+        return await send_manual(**kwargs)
+
+    fake_live = SimpleNamespace(
+        send_manual_ready_cc_shipment=send_manual,
+        call_on_owner=AsyncMock(side_effect=call_on_owner),
     )
     old_ctx, old_live = xianyu_admin._ctx, xianyu_admin._live
     xianyu_admin._ctx = ctx
@@ -1999,7 +2263,9 @@ def test_xianyu_admin_one_shot_dispatch_consumes_gate_for_paid_page_fallback(
     monkeypatch.setenv("CC_XIANYU_WEBHOOK_URL", "https://cc.example.test/api/ops/xianyu/paid-order")
     monkeypatch.setenv("CC_XIANYU_WEBHOOK_TOKEN", "unit-test-token")
     monkeypatch.setattr("src.api.auth._API_TOKEN", "", raising=False)
-    fake_httpx.response = FakeResponse(200, {"deliveryMessage": "兑换入口：https://jiyu.245334.xyz\n兑换码：CC-DISPATCH-ONE"})
+    fake_httpx.response = FakeResponse(
+        200, {"deliveryMessage": "兑换入口：https://jiyu.245334.xyz\n兑换码：CC-DISPATCH-ONE"}
+    )
     set_auto_ship_paused(True, "unit test pause")
     ctx = XianyuContextManager(db_path=str(tmp_path / "xianyu-chat.db"))
     ctx.upsert_cc_item_mapping("item-real", "xianyu-test-1", "1元测试")
@@ -2130,12 +2396,14 @@ def test_xianyu_admin_seller_bridge_page_scan_is_read_only(monkeypatch):
                 "readOnly": True,
                 "xianyuTabs": 1,
                 "readyPages": 0,
-                "scans": [{
-                    "title": "闲鱼 - 闲不住？上闲鱼！",
-                    "url": "https://www.goofish.com/",
-                    "readyToSend": False,
-                    "reason": "no_paid_order_signal",
-                }],
+                "scans": [
+                    {
+                        "title": "闲鱼 - 闲不住？上闲鱼！",
+                        "url": "https://www.goofish.com/",
+                        "readyToSend": False,
+                        "reason": "no_paid_order_signal",
+                    }
+                ],
             }
         )
         stderr = ""
@@ -2186,16 +2454,18 @@ def test_xianyu_admin_seller_bridge_page_scan_guides_im_list(monkeypatch):
                 "xianyuTabs": 1,
                 "readyPages": 0,
                 "strictReadyPages": 0,
-                "scans": [{
-                    "title": "聊天_闲鱼",
-                    "url": "https://www.goofish.com/im?spm=a21ybx.seo.sitemap.3",
-                    "paidSignal": False,
-                    "inputReady": False,
-                    "orderIdHintPresent": False,
-                    "readyToSend": False,
-                    "strictReadyToSend": False,
-                    "reason": "no_paid_order_signal",
-                }],
+                "scans": [
+                    {
+                        "title": "聊天_闲鱼",
+                        "url": "https://www.goofish.com/im?spm=a21ybx.seo.sitemap.3",
+                        "paidSignal": False,
+                        "inputReady": False,
+                        "orderIdHintPresent": False,
+                        "readyToSend": False,
+                        "strictReadyToSend": False,
+                        "reason": "no_paid_order_signal",
+                    }
+                ],
             }
         )
         stderr = ""
@@ -2216,7 +2486,6 @@ def test_xianyu_admin_seller_bridge_page_scan_guides_im_list(monkeypatch):
     assert "已付款买家" in payload["nextAction"]
 
 
-
 def test_xianyu_admin_seller_bridge_page_scan_guides_paid_order_card(monkeypatch):
     """看到待发货订单卡但缺订单号时，要告诉老板点订单卡/去发货入口。"""
     monkeypatch.delenv("OPENCLAW_API_TOKEN", raising=False)
@@ -2234,18 +2503,20 @@ def test_xianyu_admin_seller_bridge_page_scan_guides_paid_order_card(monkeypatch
                 "xianyuTabs": 1,
                 "readyPages": 0,
                 "strictReadyPages": 0,
-                "scans": [{
-                    "title": "聊天_闲鱼",
-                    "url": "https://www.goofish.com/im?spm=a21ybx.seo.sitemap.3",
-                    "paidSignal": True,
-                    "inputReady": False,
-                    "orderIdHintPresent": False,
-                    "orderCardPresent": True,
-                    "shipActionPresent": False,
-                    "readyToSend": False,
-                    "strictReadyToSend": False,
-                    "reason": "no_chat_input_found",
-                }],
+                "scans": [
+                    {
+                        "title": "聊天_闲鱼",
+                        "url": "https://www.goofish.com/im?spm=a21ybx.seo.sitemap.3",
+                        "paidSignal": True,
+                        "inputReady": False,
+                        "orderIdHintPresent": False,
+                        "orderCardPresent": True,
+                        "shipActionPresent": False,
+                        "readyToSend": False,
+                        "strictReadyToSend": False,
+                        "reason": "no_chat_input_found",
+                    }
+                ],
             }
         )
         stderr = ""
@@ -2528,7 +2799,6 @@ def test_cc_shipment_summary_excludes_skipped_manual_confirm_from_page_pending(t
     assert summary["xianyu_confirm_pending"] == 0
 
 
-
 def test_xianyu_admin_confirm_shipment_mark_routes_update_status(tmp_path, monkeypatch):
     """浏览器助手点击闲鱼发货后，应能回写确认结果，失败也要可追踪。"""
     monkeypatch.delenv("OPENCLAW_API_TOKEN", raising=False)
@@ -2656,9 +2926,7 @@ def test_xianyu_admin_backend_confirm_only_confirms_numeric_order(tmp_path, monk
         manual_response = client.post(
             f"/api/cc-shipments/{rows['xy_manual_backend_confirm']['id']}/confirm-xianyu-backend"
         )
-        numeric_response = client.post(
-            f"/api/cc-shipments/{rows['123456789012398']['id']}/confirm-xianyu-backend"
-        )
+        numeric_response = client.post(f"/api/cc-shipments/{rows['123456789012398']['id']}/confirm-xianyu-backend")
 
         assert manual_response.status_code == 200
         assert manual_response.json()["reason"] == "non_numeric_order_id"
@@ -2712,8 +2980,6 @@ def test_xianyu_admin_relist_next_queue_only_after_confirmed(tmp_path, monkeypat
         xianyu_admin._live = old_live
 
 
-
-
 def test_xianyu_admin_relist_simulation_mode_allows_manual_sent_without_confirm(tmp_path, monkeypatch):
     """模拟门恢复上架可以领取已发卡的替换单，但默认生产队列仍要求确认发货。"""
     monkeypatch.delenv("OPENCLAW_API_TOKEN", raising=False)
@@ -2753,7 +3019,6 @@ def test_xianyu_admin_relist_simulation_mode_allows_manual_sent_without_confirm(
         xianyu_admin._live = old_live
 
 
-
 def test_xianyu_admin_relist_online_verified_counts_for_simulation_gate(tmp_path, monkeypatch):
     """商品页已经在线时，可回写 online_verified 并满足模拟门的发布/上架核验。"""
     monkeypatch.delenv("OPENCLAW_API_TOKEN", raising=False)
@@ -2769,42 +3034,46 @@ def test_xianyu_admin_relist_online_verified_counts_for_simulation_gate(tmp_path
         status="message_sent",
         delivery_message="兑换码：CC-ONLINE",
     )
-    ctx.record_cc_strict_audit({
-        "mode": "strict",
-        "ok": True,
-        "exit_code": 0,
-        "summary": {
-            "same_order_ready": 1,
-            "same_order_matched": 1,
-            "real_orders": 1,
-            "redeemed_delta": 1,
-            "active_token_delta": 1,
-            "model_log_delta": 1,
-            "same_order_latest": [
-                {
-                    "orderIdPrefix": "xy_manual_",
-                    "orderIdHash": hashlib.sha256(order_id.encode()).hexdigest(),
-                    "newApiRedeemed": True,
-                    "activeTokens": 1,
-                    "modelLogsAfterRedeem": 1,
-                    "ready": True,
-                }
-            ],
-        },
-    })
+    ctx.record_cc_strict_audit(
+        {
+            "mode": "strict",
+            "ok": True,
+            "exit_code": 0,
+            "summary": {
+                "same_order_ready": 1,
+                "same_order_matched": 1,
+                "real_orders": 1,
+                "redeemed_delta": 1,
+                "active_token_delta": 1,
+                "model_log_delta": 1,
+                "same_order_latest": [
+                    {
+                        "orderIdPrefix": "xy_manual_",
+                        "orderIdHash": hashlib.sha256(order_id.encode()).hexdigest(),
+                        "newApiRedeemed": True,
+                        "activeTokens": 1,
+                        "modelLogsAfterRedeem": 1,
+                        "ready": True,
+                    }
+                ],
+            },
+        }
+    )
     old_ctx, old_live = xianyu_admin._ctx, xianyu_admin._live
     old_readiness = dict(xianyu_admin._last_cc_readiness_audit)
     old_strict = dict(xianyu_admin._last_cc_strict_audit)
     xianyu_admin._ctx = ctx
     xianyu_admin._live = None
     xianyu_admin._last_cc_readiness_audit.clear()
-    xianyu_admin._last_cc_readiness_audit.update({
-        "overall_ok": True,
-        "oracle": True,
-        "buyer_self_service_ok": True,
-        "ccswitch_entry_ok": True,
-        "newapi_enabled_channels": 3,
-    })
+    xianyu_admin._last_cc_readiness_audit.update(
+        {
+            "overall_ok": True,
+            "oracle": True,
+            "buyer_self_service_ok": True,
+            "ccswitch_entry_ok": True,
+            "newapi_enabled_channels": 3,
+        }
+    )
     xianyu_admin._last_cc_strict_audit.clear()
     try:
         client = TestClient(xianyu_admin.app)
@@ -2827,6 +3096,7 @@ def test_xianyu_admin_relist_online_verified_counts_for_simulation_gate(tmp_path
         xianyu_admin._last_cc_readiness_audit.update(old_readiness)
         xianyu_admin._last_cc_strict_audit.clear()
         xianyu_admin._last_cc_strict_audit.update(old_strict)
+
 
 def test_xianyu_admin_relist_mark_routes_update_status(tmp_path, monkeypatch):
     """买家确认收货后，如商品页已下架，浏览器助手恢复上架后应回写记录。"""
@@ -2887,7 +3157,15 @@ def test_operator_next_action_points_manual_ready_to_chrome_watch(tmp_path, monk
     )
     old_ctx, old_live = xianyu_admin._ctx, xianyu_admin._live
     xianyu_admin._ctx = ctx
-    xianyu_admin._live = SimpleNamespace(ws=SimpleNamespace(open=True), _cookie_ok=True)
+    xianyu_admin._live = SimpleNamespace(
+        runtime_snapshot_sync=lambda timeout=5.0: {
+            "ws_connected": True,
+            "cookie_ok": True,
+            "last_heartbeat": 0.0,
+            "token_ts": 0.0,
+            "manual_chats": 0,
+        }
+    )
     try:
         client = TestClient(xianyu_admin.app)
 
@@ -3326,7 +3604,6 @@ def test_xianyu_admin_export_status_returns_redacted_support_report(tmp_path, mo
         xianyu_admin._live = old_live
 
 
-
 def test_xianyu_admin_simulation_gate_tracks_strict_like_steps_without_unlocking(tmp_path, monkeypatch):
     """严格模拟门应追踪除真实下单/最终点发货外的闭环证据，但永远不解锁正式售卖。"""
     monkeypatch.delenv("OPENCLAW_API_TOKEN", raising=False)
@@ -3346,45 +3623,49 @@ def test_xianyu_admin_simulation_gate_tracks_strict_like_steps_without_unlocking
     )
     ctx.mark_cc_shipment_xianyu_relist(order_id, "relisted", "")
     manual_hash = hashlib.sha256(order_id.encode()).hexdigest()
-    ctx.record_cc_strict_audit({
-        "mode": "strict",
-        "ok": True,
-        "exit_code": 0,
-        "summary": {
-            "same_order_ready": 1,
-            "same_order_matched": 1,
-            "real_orders": 1,
-            "redeemed_delta": 1,
-            "active_token_delta": 1,
-            "model_log_delta": 2,
-            "same_order_latest": [
-                {
-                    "orderIdPrefix": "xy_manual_",
-                    "orderIdHash": manual_hash,
-                    "newApiRedeemed": True,
-                    "activeTokens": 1,
-                    "modelLogsAfterRedeem": 2,
-                    "ready": True,
-                }
-            ],
-        },
-    })
+    ctx.record_cc_strict_audit(
+        {
+            "mode": "strict",
+            "ok": True,
+            "exit_code": 0,
+            "summary": {
+                "same_order_ready": 1,
+                "same_order_matched": 1,
+                "real_orders": 1,
+                "redeemed_delta": 1,
+                "active_token_delta": 1,
+                "model_log_delta": 2,
+                "same_order_latest": [
+                    {
+                        "orderIdPrefix": "xy_manual_",
+                        "orderIdHash": manual_hash,
+                        "newApiRedeemed": True,
+                        "activeTokens": 1,
+                        "modelLogsAfterRedeem": 2,
+                        "ready": True,
+                    }
+                ],
+            },
+        }
+    )
     old_ctx, old_live = xianyu_admin._ctx, xianyu_admin._live
     old_readiness = dict(xianyu_admin._last_cc_readiness_audit)
     old_strict = dict(xianyu_admin._last_cc_strict_audit)
     xianyu_admin._ctx = ctx
     xianyu_admin._live = SimpleNamespace(ws=SimpleNamespace(open=True), _cookie_ok=True)
     xianyu_admin._last_cc_readiness_audit.clear()
-    xianyu_admin._last_cc_readiness_audit.update({
-        "overall_ok": True,
-        "oracle": True,
-        "buyer_self_service_ok": True,
-        "ccswitch_entry_ok": True,
-        "newapi_enabled_channels": 3,
-        "public_main_http": 200,
-        "public_models_no_auth_http": 401,
-        "public_webhook_no_token_http": 401,
-    })
+    xianyu_admin._last_cc_readiness_audit.update(
+        {
+            "overall_ok": True,
+            "oracle": True,
+            "buyer_self_service_ok": True,
+            "ccswitch_entry_ok": True,
+            "newapi_enabled_channels": 3,
+            "public_main_http": 200,
+            "public_models_no_auth_http": 401,
+            "public_webhook_no_token_http": 401,
+        }
+    )
     xianyu_admin._last_cc_strict_audit.clear()
     try:
         client = TestClient(xianyu_admin.app)
@@ -3468,8 +3749,8 @@ def test_xianyu_admin_paid_order_probe_failure_gives_plain_next_action(tmp_path,
     monkeypatch.setenv("API_HOST", "127.0.0.1")
     monkeypatch.setattr("src.api.auth._API_TOKEN", "", raising=False)
     ctx = XianyuContextManager(db_path=str(tmp_path / "xianyu-chat.db"))
-    fake_live = SimpleNamespace(
-        scan_cc_paid_orders_readonly=AsyncMock(return_value={
+    scan_paid_orders = AsyncMock(
+        return_value={
             "ok": False,
             "read_only": True,
             "reason": "xianyu_order_api_failed",
@@ -3477,7 +3758,17 @@ def test_xianyu_admin_paid_order_probe_failure_gives_plain_next_action(tmp_path,
             "processed": 0,
             "candidates": [],
             "next_action": "闲鱼卖家订单读取失败，请确认登录态和卖家页面是否正常。",
-        })
+        }
+    )
+
+    async def call_on_owner(operation: str, **kwargs):
+        assert operation == "scan_cc_paid_orders_readonly"
+        assert kwargs.pop("timeout") == 30.0
+        return await scan_paid_orders(**kwargs)
+
+    fake_live = SimpleNamespace(
+        scan_cc_paid_orders_readonly=scan_paid_orders,
+        call_on_owner=AsyncMock(side_effect=call_on_owner),
     )
     old_ctx, old_live = xianyu_admin._ctx, xianyu_admin._live
     xianyu_admin._ctx = ctx
@@ -3500,6 +3791,35 @@ def test_xianyu_admin_paid_order_probe_failure_gives_plain_next_action(tmp_path,
         xianyu_admin._live = old_live
 
 
+@pytest.mark.parametrize(
+    ("failure", "expected_status", "expected_text"),
+    [
+        (OwnerLoopNotReady("owner not ready"), 503, "尚未就绪"),
+        (OwnerLoopTimeout("owner timeout"), 504, "后台核对"),
+    ],
+)
+def test_xianyu_admin_paid_order_probe_maps_owner_boundary_failures(
+    tmp_path, monkeypatch, failure, expected_status, expected_text
+):
+    """所有者循环异常必须保留 503/504 语义，不能被通用 500 吞掉。"""
+    monkeypatch.delenv("OPENCLAW_API_TOKEN", raising=False)
+    monkeypatch.setenv("ENV", "development")
+    monkeypatch.setenv("API_HOST", "127.0.0.1")
+    monkeypatch.setattr("src.api.auth._API_TOKEN", "", raising=False)
+    ctx = XianyuContextManager(db_path=str(tmp_path / "xianyu-owner-boundary.db"))
+    fake_live = SimpleNamespace(call_on_owner=AsyncMock(side_effect=failure))
+    old_ctx, old_live = xianyu_admin._ctx, xianyu_admin._live
+    xianyu_admin._ctx = ctx
+    xianyu_admin._live = fake_live
+    try:
+        response = TestClient(xianyu_admin.app).get("/api/cc-paid-order-probe")
+        assert response.status_code == expected_status
+        assert expected_text in response.json()["detail"]
+    finally:
+        xianyu_admin._ctx = old_ctx
+        xianyu_admin._live = old_live
+
+
 def test_xianyu_admin_paid_order_probe_is_read_only_and_scrubbed(tmp_path, monkeypatch):
     """只读扫真实待发货订单：能看见候选单，但不能发卡或泄露原始订单号。"""
     monkeypatch.delenv("OPENCLAW_API_TOKEN", raising=False)
@@ -3508,8 +3828,8 @@ def test_xianyu_admin_paid_order_probe_is_read_only_and_scrubbed(tmp_path, monke
     monkeypatch.setattr("src.api.auth._API_TOKEN", "", raising=False)
     ctx = XianyuContextManager(db_path=str(tmp_path / "xianyu-chat.db"))
 
-    fake_live = SimpleNamespace(
-        scan_cc_paid_orders_readonly=AsyncMock(return_value={
+    scan_paid_orders = AsyncMock(
+        return_value={
             "ok": True,
             "processed": 1,
             "candidates": [
@@ -3526,7 +3846,17 @@ def test_xianyu_admin_paid_order_probe_is_read_only_and_scrubbed(tmp_path, monke
                 }
             ],
             "next_action": "只读扫描完成",
-        })
+        }
+    )
+
+    async def call_on_owner(operation: str, **kwargs):
+        assert operation == "scan_cc_paid_orders_readonly"
+        assert kwargs.pop("timeout") == 30.0
+        return await scan_paid_orders(**kwargs)
+
+    fake_live = SimpleNamespace(
+        scan_cc_paid_orders_readonly=scan_paid_orders,
+        call_on_owner=AsyncMock(side_effect=call_on_owner),
     )
     old_ctx, old_live = xianyu_admin._ctx, xianyu_admin._live
     xianyu_admin._ctx = ctx

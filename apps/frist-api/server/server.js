@@ -1,13 +1,54 @@
 import { spawnSync } from 'node:child_process';
-import { createCipheriv, createDecipheriv, createHash, createHmac, pbkdf2Sync, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, pbkdf2Sync, randomBytes, timingSafeEqual } from 'node:crypto';
 import { lookup as lookupDns } from 'node:dns/promises';
 import { createServer } from 'node:http';
-import { mkdir, open, readFile, rename, rm, stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { isIP } from 'node:net';
-import { basename, dirname, extname, join, normalize, relative, resolve } from 'node:path';
+import { dirname, extname, join, normalize, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export { resolveSmtpSocketTargets } from './email.js';
+import {
+  DEFAULT_SESSION_TTL_MS,
+  buildGatewayAffinityKey,
+  clearRouteAffinity,
+  createCaptchaChallenge,
+  expiredSessionCookies,
+  findSession,
+  issueCustomerSession,
+  orderGatewayCandidates,
+  requireCaptchaIfEnabled,
+  requireCsrfIfEnabled,
+  requireSession,
+  requireUserKey,
+  rememberRouteAffinity,
+  revokeCustomerSessions,
+  runtimeTokenKey,
+  sessionCookies,
+  shouldUseSecureCookie,
+} from './auth.js';
+import {
+  accountFromUser,
+  allowedPoolsForUser,
+  availableQuotaCents,
+  buildGatewayModels,
+  buildInventorySummary,
+  buildModelCatalog,
+  buildModelUsage,
+  currentDate,
+  deductUserQuota,
+  estimateQuotaCostCents,
+  expireUserPlanIfNeeded,
+  mergeModelPrices,
+  normalizeCredentialRecord,
+  normalizeModelPrices,
+  normalizePricingConfig,
+  normalizeRechargePlans,
+  normalizeSupplierProfileRecord,
+  poolForUser,
+  pricingPayload,
+  resolveQuotaCostCents,
+} from './catalog.js';
 import { createNewApiBridge } from './newApiBridge.js';
 import {
   buildBalanceAlertEmail,
@@ -25,12 +66,102 @@ import {
   scheduleEmailDelivery,
 } from './email.js';
 import {
+  buildPaymentClosureStatus,
   createProviderPayment,
-  parseAlipayNotification,
+  handleAlipayPaymentNotification,
+  handleWechatPaymentNotification,
+  normalizePaymentMethod,
   paymentConfigFromOptions,
+  paymentProviderForMethod,
   providerReady,
-  verifyWechatNotification,
+  sanitizeProviderPayment,
 } from './payments.js';
+import { createRuntimeStore, decryptSecretField, encryptSecretField } from './runtime-store.js';
+import {
+  DEFAULT_RATE_LIMIT_MAX_ENTRIES,
+  assertAdminSecondFactorRateLimit,
+  assertAuthRateLimit,
+  assertEmailVerificationRateLimit,
+  assertPasswordResetConfirmRateLimit,
+  assertPasswordResetRequestRateLimit,
+  assertRedeemRateLimit,
+  assertRedeemUserRateLimit,
+  clientIp,
+  createSecurityState,
+  parseTrustedProxyIps,
+} from './security.js';
+import {
+  addDays,
+  authHeadersForKey,
+  chatMessageContentToText,
+  compactObject,
+  compactTokenText,
+  compareGatewayCredentials,
+  contextForModel,
+  createId,
+  credentialMatchesModelGroup,
+  effectiveCredentialGroup,
+  estimateCredentialWaste,
+  estimatePromptTokens,
+  expiryMs,
+  findModelPrice,
+  formatDate,
+  formatCny,
+  formatUsdFromCnyCents,
+  formatUsdPriceFromCny,
+  generateVerificationCode,
+  hashAdminClaimCode,
+  hashId,
+  headerValue,
+  initialsFromEmail,
+  inputText,
+  isCredentialRejectedResponse,
+  isCredentialRouteApproved,
+  isGatewayAdapterUnsupported,
+  isImageGenerationModel,
+  isModelUnsupportedResponse,
+  isOpenAiChatCompletionPayload,
+  isOpenAiImageGenerationPayload,
+  isOpenAiResponsesPayload,
+  isQuotaExhaustedResponse,
+  isSourceRouteApproved,
+  maskKey,
+  normalizePool,
+  normalizeModels,
+  normalizeRechargePlan,
+  normalizeRiskStatus,
+  normalizeSourceType,
+  normalizeStreamChunk,
+  parseAdminClaimCodes,
+  parseCookies,
+  parseJsonPayload,
+  parseModelIds,
+  parseUpstreamUsage,
+  priceLabel,
+  priceUsageCents,
+  providerFromModel,
+  publicError,
+  readJsonBody,
+  readRequestText,
+  reconcileUserBalance,
+  round2,
+  sanitizeAdminEvents,
+  sanitizeExtraHeaders,
+  sanitizeCredential,
+  sanitizeParsedOrder,
+  sanitizePaymentOrder,
+  sanitizeRiskNote,
+  sanitizeUserKey,
+  shouldFailoverUpstream,
+  shouldTryResponsesProbe,
+  sortModelsByStrength,
+  strongestModel,
+  taglineForModel,
+  uniqueStrings,
+  writeJson,
+  writeNoContent,
+  gatewayUnavailableResponse,
+} from './shared.js';
 import {
   buildClientConfig,
   buildClientSetupCommands,
@@ -125,10 +256,7 @@ const DEFAULT_MODEL_CATALOG = [
   { model: 'gemini-2.5-flash', family: 'Gemini', tagline: '多模态和轻量任务', context: '1M 上下文', price: '参考标价 ≤200K 输入 $0.30 / 缓存 $0.03 / 输出 $2.50 每 1M', available: true },
   { model: DEFAULT_MODEL, family: 'Claude', tagline: '复杂开发和长链路推理', context: '长上下文', price: '参考标价 输入 $5.00 / 缓存写 $6.25 / 缓存读 $0.50 / 输出 $25.00 每 1M', available: true },
 ];
-const SESSION_COOKIE = 'frist_session';
-const CSRF_COOKIE = 'frist_csrf';
 const ADMIN_2FA_COOKIE = 'frist_admin_2fa';
-const DEFAULT_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const TOTP_STEP_SECONDS = 30;
 const TOTP_DIGITS = 6;
 const DEFAULT_SLA_RETENTION_DAYS = 30;
@@ -169,6 +297,7 @@ export function createFristApiServer(options = {}) {
     serverOptions.dataFile,
     serverOptions.dataEncryptionKey,
     serverOptions.runtimeBeforeSave,
+    normalizeRuntimeData,
   );
   const securityState = createSecurityState();
   let stopChannelMonitor = null;
@@ -192,7 +321,7 @@ export function createFristApiServer(options = {}) {
         return;
       }
       if (url.pathname.startsWith('/api/admin/')) {
-        await handleAdminApi({ request, response, url, store, serverOptions, newApiBridge });
+        await handleAdminApi({ request, response, url, store, serverOptions, securityState, newApiBridge });
         return;
       }
       if (url.pathname.startsWith('/api/ops/')) {
@@ -208,7 +337,7 @@ export function createFristApiServer(options = {}) {
     } catch (error) {
       const url = new URL(request.url || '/', requestOrigin(request));
       if (url.pathname.startsWith('/api/admin/') && error?.statusCode === 401) {
-        await recordAdminAuthFailure(store, request, url);
+        await recordAdminAuthFailure(store, request, url, serverOptions);
       }
       const message = error.expose ? error.message : '服务暂时不可用';
       writeJson(response, error.statusCode || 500, { error: message });
@@ -288,7 +417,9 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
     assertAuthRateLimit(securityState, request, serverOptions);
     await verifyTurnstileToken({ request, body, serverOptions, action: 'register' });
     requireCaptchaIfEnabled(securityState, body, serverOptions);
-    const result = await store.mutate((data) => registerCustomer(data, body, serverOptions));
+    const prepared = await store.mutate((data) => registerCustomer(data, body, serverOptions));
+    await deliverAndRecordEmail(store, prepared.emailDelivery, serverOptions);
+    const result = prepared.result;
     writeJson(response, 200, result.body, {
       'set-cookie': sessionCookies(result.sessionToken, result.csrfToken, request, serverOptions),
     });
@@ -336,14 +467,17 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
   if (request.method === 'POST' && url.pathname === '/api/frist/password-reset/request') {
     const body = await readJsonBody(request);
     assertAuthRateLimit(securityState, request, serverOptions);
-    const result = await store.mutate((data) => requestCustomerPasswordReset(data, body, serverOptions));
-    writeJson(response, 200, result);
+    assertPasswordResetRequestRateLimit(securityState, body.email, serverOptions);
+    const prepared = await store.mutate((data) => requestCustomerPasswordReset(data, body, serverOptions));
+    await deliverAndRecordEmail(store, prepared.emailDelivery, serverOptions);
+    writeJson(response, 200, prepared.result);
     return;
   }
 
   if (request.method === 'POST' && url.pathname === '/api/frist/password-reset/confirm') {
     const body = await readJsonBody(request);
     assertAuthRateLimit(securityState, request, serverOptions);
+    assertPasswordResetConfirmRateLimit(securityState, body.email, serverOptions);
     const result = await store.mutate((data) => confirmCustomerPasswordReset(data, body, serverOptions));
     writeJson(response, 200, result);
     return;
@@ -353,6 +487,8 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
     const body = await readJsonBody(request);
     const result = await store.mutate((data) => {
       requireCsrfIfEnabled(data, request, serverOptions);
+      const { user } = requireSession(data, request);
+      assertEmailVerificationRateLimit(securityState, request, serverOptions, user.id);
       return verifyCustomer(data, request, body);
     });
     writeJson(response, 200, result);
@@ -381,20 +517,56 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
 
   if (request.method === 'POST' && url.pathname === '/api/frist/balance-alert/test') {
     const body = await readJsonBody(request);
-    const result = await store.mutate((data) => {
+    const prepared = await store.mutate((data) => {
       requireCsrfIfEnabled(data, request, serverOptions);
-      return sendCustomerBalanceAlertTest(data, request, body, serverOptions);
+      return prepareCustomerBalanceAlertTest(data, request, body, serverOptions);
     });
-    writeJson(response, 200, result);
+    await prepared.sender(prepared.message);
+    await store.mutate((data) => {
+      data.events.push(prepared.event);
+    });
+    writeJson(response, 200, prepared.result);
     return;
   }
 
   if (request.method === 'POST' && url.pathname === '/api/frist/recharge') {
     const body = await readJsonBody(request);
-    const result = await store.mutate((data) => {
+    const prepared = await store.mutate((data) => {
       requireCsrfIfEnabled(data, request, serverOptions);
-      return rechargeCustomer(data, request, body, serverOptions);
+      return prepareRechargeCustomer(data, request, body, serverOptions);
     });
+    if (!prepared.providerRequest) {
+      const result = prepared.result;
+      writeJson(response, result.status || 200, result.body || result);
+      return;
+    }
+
+    let providerPayment;
+    try {
+      providerPayment = await createProviderPayment({
+        ...prepared.providerRequest,
+        fetchImpl: serverOptions.fetchImpl || globalThis.fetch,
+        paymentConfig: serverOptions.paymentConfig,
+      });
+    } catch (error) {
+      try {
+        await store.mutate((data) => markProviderPaymentCreationFailed(
+          data,
+          prepared.providerRequest.order.id,
+          error,
+        ));
+      } catch (persistError) {
+        process.emitWarning(`支付渠道失败状态写入失败: ${persistError.message}`, {
+          code: 'FRIST_API_PAYMENT_FAILURE_STATE_WRITE_FAILED',
+        });
+      }
+      throw error;
+    }
+    const result = await store.mutate((data) => finalizeProviderPaymentCreation(
+      data,
+      prepared.providerRequest.order.id,
+      providerPayment,
+    ));
     writeJson(response, result.status || 200, result.body || result);
     return;
   }
@@ -470,11 +642,25 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
   if (request.method === 'PATCH' && tokenMatch) {
     const body = await readJsonBody(request);
     if (newApiBridge) {
-      const result = await store.mutate(async (data) => {
+      const ownership = await store.mutate((data) => {
         requireCsrfIfEnabled(data, request, serverOptions);
         const { user } = requireSession(data, request);
         requireNewApiTokenOwner(data, user, tokenMatch[1]);
-        return newApiBridge.updateToken(tokenMatch[1], body);
+        return { userId: user.id };
+      });
+      const result = await newApiBridge.updateToken(tokenMatch[1], body);
+      await store.mutate((data) => {
+        const owner = data.newApiTokenOwners?.[String(tokenMatch[1])];
+        const ownerId = typeof owner === 'string' ? owner : owner?.userId;
+        if (ownerId !== ownership.userId) {
+          throw publicError(409, 'API Key 归属在更新期间发生变化，请人工对账');
+        }
+        data.events.push({
+          type: 'newapi_token_updated',
+          userId: ownership.userId,
+          keyId: String(tokenMatch[1]),
+          at: currentDate(serverOptions).toISOString(),
+        });
       });
       writeJson(response, 200, result);
       return;
@@ -489,19 +675,32 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
 
   if (request.method === 'DELETE' && tokenMatch) {
     if (newApiBridge) {
-      const result = await store.mutate(async (data) => {
+      const ownership = await store.mutate((data) => {
         requireCsrfIfEnabled(data, request, serverOptions);
         const { user } = requireSession(data, request);
         requireNewApiTokenOwner(data, user, tokenMatch[1]);
-        const deleted = await newApiBridge.deleteToken(tokenMatch[1]);
+        return { userId: user.id };
+      });
+      const result = await newApiBridge.deleteToken(tokenMatch[1]);
+      await store.mutate((data) => {
+        const owner = data.newApiTokenOwners?.[String(tokenMatch[1])];
+        const ownerId = typeof owner === 'string' ? owner : owner?.userId;
+        if (ownerId !== ownership.userId) {
+          data.events.push({
+            type: 'newapi_token_delete_reconciliation_required',
+            userId: ownership.userId,
+            keyId: String(tokenMatch[1]),
+            at: currentDate(serverOptions).toISOString(),
+          });
+          return;
+        }
         delete data.newApiTokenOwners[String(tokenMatch[1])];
         data.events.push({
           type: 'newapi_token_deleted',
-          userId: user.id,
+          userId: ownership.userId,
           keyId: String(tokenMatch[1]),
           at: currentDate(serverOptions).toISOString(),
         });
-        return deleted;
       });
       writeJson(response, 200, result);
       return;
@@ -599,9 +798,10 @@ async function handleCustomerApi({ request, response, url, store, serverOptions,
   writeJson(response, 404, { error: '接口不存在' });
 }
 
-async function handleAdminApi({ request, response, url, store, serverOptions, newApiBridge }) {
+async function handleAdminApi({ request, response, url, store, serverOptions, securityState, newApiBridge }) {
   if (request.method === 'POST' && url.pathname === '/api/admin/2fa/verify') {
     const body = await readJsonBody(request);
+    assertAdminSecondFactorRateLimit(securityState, request, serverOptions);
     const result = await store.mutate((data) => verifyAdminSecondFactor(data, request, body, serverOptions));
     writeJson(response, 200, result.body, {
       'set-cookie': adminSecondFactorCookie(result.sessionToken, request, serverOptions),
@@ -779,12 +979,14 @@ async function handleAdminApi({ request, response, url, store, serverOptions, ne
     if (!newApiBridge?.syncUpstreamBalance) {
       throw publicError(409, 'New-API 未启用，无法同步上游余额');
     }
-    const result = await store.mutate(async (data) => {
+    await store.mutate((data) => {
       requireAdmin(data, request, serverOptions);
       requireCsrfIfEnabled(data, request, serverOptions, { allowAdminToken: true });
-      return syncUpstreamBalance(data, serverOptions, newApiBridge);
     });
-    writeJson(response, 200, result);
+    const rawBalance = await newApiBridge.syncUpstreamBalance();
+    const applied = await store.mutate((data) => applyUpstreamBalance(data, rawBalance, serverOptions));
+    await notifyUpstreamBalanceIfNeeded(applied.balance, serverOptions);
+    writeJson(response, 200, applied.result);
     return;
   }
 
@@ -868,10 +1070,14 @@ async function handleAdminApi({ request, response, url, store, serverOptions, ne
 
   if (request.method === 'POST' && url.pathname === '/api/admin/replenishments') {
     const body = await readJsonBody(request);
+    const authorizationData = await store.load();
+    requireAdmin(authorizationData, request, serverOptions);
+    requireCsrfIfEnabled(authorizationData, request, serverOptions, { allowAdminToken: true });
+    const prepared = await prepareCredentialReplenishment(body, serverOptions);
     const result = await store.mutate((data) => {
       requireAdmin(data, request, serverOptions);
       requireCsrfIfEnabled(data, request, serverOptions, { allowAdminToken: true });
-      return replenishCredentials(data, body, serverOptions);
+      return applyCredentialReplenishment(data, prepared, serverOptions);
     });
     writeJson(response, 200, result);
     return;
@@ -880,13 +1086,25 @@ async function handleAdminApi({ request, response, url, store, serverOptions, ne
   writeJson(response, 404, { error: '接口不存在' });
 }
 
-async function recordAdminAuthFailure(store, request, url) {
+async function recordAdminAuthFailure(store, request, url, serverOptions) {
   try {
     await store.mutate((data) => {
+      // 只保留最近 50 条管理认证失败，避免攻击流量持续放大 runtime 文件。
+      let failuresToRemove = Math.max(
+        0,
+        data.events.filter((event) => event.type === 'admin_auth_failed').length - 49,
+      );
+      for (let index = 0; index < data.events.length && failuresToRemove > 0; index += 1) {
+        if (data.events[index].type === 'admin_auth_failed') {
+          data.events.splice(index, 1);
+          index -= 1;
+          failuresToRemove -= 1;
+        }
+      }
       data.events.push({
         type: 'admin_auth_failed',
         path: url.pathname,
-        ipHash: hashId(clientIp(request)),
+        ipHash: hashId(clientIp(request, serverOptions)),
         at: new Date().toISOString(),
       });
     });
@@ -1019,7 +1237,10 @@ async function handleGatewayApi({ request, response, url, store, serverOptions, 
   }
 
   const body = await readJsonBody(request);
-  const result = await store.mutate((data) =>
+  if (serverOptions.enforceProductionReadiness) {
+    throw publicError(503, '生产环境仅允许通过 New-API 网关处理模型请求');
+  }
+  const result = await store.mutateBlocking((data) =>
     routeChatCompletion(data, request, body, serverOptions, { ...routeOptions, request }),
   );
   response.writeHead(result.status, {
@@ -1035,31 +1256,23 @@ async function handleGatewayApi({ request, response, url, store, serverOptions, 
   response.end(result.bodyText);
 }
 
-function issueCustomerSession(data, user, serverOptions) {
-  const sessionToken = createId('sess');
-  const csrfToken = createId('csrf');
-  const issuedAt = new Date();
-  const ttlMs = Number(serverOptions.sessionTtlMs || DEFAULT_SESSION_TTL_MS);
-  data.sessions[sessionToken] = {
-    userId: user.id,
-    issuedAt: issuedAt.toISOString(),
-    expiresAt: new Date(issuedAt.getTime() + ttlMs).toISOString(),
-  };
-  data.sessionCsrfTokens[sessionToken] = csrfToken;
-  return { sessionToken, csrfToken };
-}
-
-function revokeCustomerSessions(data, userId) {
-  for (const [token, session] of Object.entries(data.sessions || {})) {
-    const sessionUserId = typeof session === 'string' ? session : session?.userId;
-    if (sessionUserId === userId) {
-      delete data.sessions[token];
-      delete data.sessionCsrfTokens[token];
-    }
+async function deliverAndRecordEmail(store, delivery, serverOptions) {
+  if (!delivery) {
+    return;
+  }
+  const event = await scheduleEmailDelivery({ serverOptions, ...delivery });
+  try {
+    await store.mutate((data) => {
+      data.events.push(event);
+    });
+  } catch (error) {
+    process.emitWarning(`邮件投递事件写入失败: ${error.message}`, {
+      code: 'FRIST_API_EMAIL_EVENT_WRITE_FAILED',
+    });
   }
 }
 
-async function registerCustomer(data, body, serverOptions) {
+function registerCustomer(data, body, serverOptions) {
   const email = String(body.email || '').trim().toLowerCase();
   const password = String(body.password || '');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -1108,9 +1321,9 @@ async function registerCustomer(data, body, serverOptions) {
       ...(serverOptions.exposeVerificationCode && verificationCode ? { verificationCode } : {}),
     },
   };
+  let emailDelivery = null;
   if (verificationCode) {
-    await scheduleEmailDelivery({
-      serverOptions,
+    emailDelivery = {
       to: email,
       message: buildVerificationEmail({
         user,
@@ -1122,9 +1335,9 @@ async function registerCustomer(data, body, serverOptions) {
       successType: 'email_verification_sent',
       failureType: 'email_verification_failed',
       eventBase: { userId: user.id, email: maskEmail(email) },
-    });
+    };
   }
-  return result;
+  return { result, emailDelivery };
 }
 
 function loginCustomer(data, body, serverOptions) {
@@ -1179,7 +1392,7 @@ function changeCustomerPassword(data, request, body, serverOptions) {
   };
 }
 
-async function requestCustomerPasswordReset(data, body, serverOptions) {
+function requestCustomerPasswordReset(data, body, serverOptions) {
   const email = String(body.email || '').trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     throw publicError(400, '邮箱格式不正确');
@@ -1196,8 +1409,7 @@ async function requestCustomerPasswordReset(data, body, serverOptions) {
     };
     user.updatedAt = now;
     data.events.push({ type: 'password_reset_requested', userId: user.id, email: maskEmail(email), at: now });
-    await scheduleEmailDelivery({
-      serverOptions,
+    const emailDelivery = {
       to: email,
       message: buildPasswordResetEmail({
         user,
@@ -1210,15 +1422,21 @@ async function requestCustomerPasswordReset(data, body, serverOptions) {
       successType: 'password_reset_email_sent',
       failureType: 'password_reset_email_failed',
       eventBase: { userId: user.id, email: maskEmail(email) },
-    });
+    };
     return {
+      emailDelivery,
+      result: {
       ok: true,
       message: '如果邮箱存在，我们会发送重置验证码。',
       ...(serverOptions.exposeVerificationCode ? { resetCode: code } : {}),
+      },
     };
   }
   data.events.push({ type: 'password_reset_requested_unknown', email: maskEmail(email), at: now });
-  return { ok: true, message: '如果邮箱存在，我们会发送重置验证码。' };
+  return {
+    emailDelivery: null,
+    result: { ok: true, message: '如果邮箱存在，我们会发送重置验证码。' },
+  };
 }
 
 function confirmCustomerPasswordReset(data, body, serverOptions) {
@@ -1350,7 +1568,7 @@ function updateCustomerBalanceAlert(data, request, body) {
   return { balanceAlert: sanitizeBalanceAlert(user.balanceAlert, user.email) };
 }
 
-async function sendCustomerBalanceAlertTest(data, request, body, serverOptions) {
+function prepareCustomerBalanceAlertTest(data, request, body, serverOptions) {
   const { user } = requireSession(data, request);
   const current = normalizeBalanceAlertRecord(user.balanceAlert, user.email);
   const email = normalizeAlertEmail(body.email || current.email || user.email);
@@ -1379,15 +1597,19 @@ async function sendCustomerBalanceAlertTest(data, request, body, serverOptions) 
     at: now,
     isTest: true,
   });
-  await sender(message);
-  data.events.push({
+  const event = {
     type: 'balance_alert_test_sent',
     userId: user.id,
     alertEmail: maskEmail(email),
     thresholdCents,
     at: now,
-  });
-  return { ok: true, balanceAlert: sanitizeBalanceAlert({ ...current, email, thresholdCents }, user.email) };
+  };
+  return {
+    sender,
+    message,
+    event,
+    result: { ok: true, balanceAlert: sanitizeBalanceAlert({ ...current, email, thresholdCents }, user.email) },
+  };
 }
 
 function claimAdminIdentity(data, request, body, serverOptions) {
@@ -1428,24 +1650,19 @@ function verifyAdminSecondFactor(data, request, body, serverOptions) {
   }
   const code = String(body.code || body.totp || '').replace(/\s+/g, '');
   if (!verifyTotpCode(serverOptions.adminTotpSecrets, code, serverOptions.nowFactory())) {
-    data.events.push({
-      type: 'admin_2fa_failed',
-      ipHash: hashId(clientIp(request)),
-      at: currentDate(serverOptions).toISOString(),
-    });
     throw publicError(401, '管理员 2FA 验证码无效');
   }
   const now = currentDate(serverOptions).toISOString();
   const sessionToken = createId('mfa');
-  data.adminSecondFactorSessions[sessionToken] = {
+  data.adminSecondFactorSessions[runtimeTokenKey(sessionToken)] = {
     createdAt: now,
     expiresAt: new Date(currentDate(serverOptions).getTime() + Number(serverOptions.admin2faSessionTtlMs || 3_600_000)).toISOString(),
-    ipHash: hashId(clientIp(request)),
+    ipHash: hashId(clientIp(request, serverOptions)),
   };
   pruneAdminSecondFactorSessions(data, serverOptions);
   data.events.push({
     type: 'admin_2fa_verified',
-    ipHash: hashId(clientIp(request)),
+    ipHash: hashId(clientIp(request, serverOptions)),
     at: now,
   });
   return {
@@ -1458,7 +1675,7 @@ function verifyAdminSecondFactor(data, request, body, serverOptions) {
   };
 }
 
-async function rechargeCustomer(data, request, body, serverOptions) {
+function prepareRechargeCustomer(data, request, body, serverOptions) {
   const { user } = requireSession(data, request);
   const selectedPlan = findRechargePlan(data, body);
   const amountCents = selectedPlan ? planPriceCents(selectedPlan) : Math.round(Number(body.amountCny || 0) * 100);
@@ -1486,22 +1703,11 @@ async function rechargeCustomer(data, request, body, serverOptions) {
       createdAt: now,
       updatedAt: now,
     };
-    if (paymentProviderForMethod(method)) {
-      const provider = paymentProviderForMethod(method);
+    const provider = paymentProviderForMethod(method);
+    if (provider) {
       if (!providerReady(serverOptions.paymentConfig, provider)) {
         throw publicError(503, provider === 'wechat' ? '微信支付接口未配置完成' : '支付宝接口未配置完成');
       }
-      const providerPayment = await createProviderPayment({
-        provider,
-        order: paymentOrder,
-        plan: selectedPlan,
-        fetchImpl: serverOptions.fetchImpl || globalThis.fetch,
-        paymentConfig: serverOptions.paymentConfig,
-      });
-      paymentOrder.providerOrder = sanitizeProviderPayment(providerPayment);
-      paymentOrder.notifyUrl = providerPayment.notifyUrl;
-      paymentOrder.qrCode = providerPayment.qrCode;
-      paymentOrder.status = 'pending_provider_payment';
     }
     data.paymentOrders.unshift(paymentOrder);
     data.events.push({
@@ -1514,16 +1720,16 @@ async function rechargeCustomer(data, request, body, serverOptions) {
       provider: paymentOrder.provider || '',
       at: now,
     });
-    return {
-      status: 202,
-      body: {
-        paymentOrder: sanitizePaymentOrder(paymentOrder),
-        provider: paymentOrder.provider || '',
-        qrCode: paymentOrder.qrCode || '',
-        account: accountFromUser(data, user),
-        user: sanitizeUser(user),
-      },
-    };
+    if (provider) {
+      return {
+        providerRequest: {
+          provider,
+          order: { ...paymentOrder },
+          plan: selectedPlan ? { label: selectedPlan.label } : null,
+        },
+      };
+    }
+    return { result: buildRechargeResponse(data, user, paymentOrder) };
   }
 
   if (planType === 'day') {
@@ -1546,8 +1752,65 @@ async function rechargeCustomer(data, request, body, serverOptions) {
     at: user.updatedAt,
   });
   return {
-    status: 200,
-    body: { account: accountFromUser(data, user), user: sanitizeUser(user) },
+    result: {
+      status: 200,
+      body: { account: accountFromUser(data, user), user: sanitizeUser(user) },
+    },
+  };
+}
+
+// 渠道请求成功后只写回二维码等展示字段，不覆盖可能已经由异步通知确认的已支付状态。
+function finalizeProviderPaymentCreation(data, orderId, providerPayment) {
+  const order = data.paymentOrders.find((item) => item.id === orderId);
+  if (!order) {
+    throw publicError(404, '支付订单不存在');
+  }
+  if (!order.provider || order.provider !== providerPayment.provider) {
+    throw publicError(409, '支付订单渠道不匹配');
+  }
+  if (!['pending_provider_payment', 'paid', 'confirmed'].includes(order.status)) {
+    throw publicError(409, '支付订单状态不允许写入渠道结果');
+  }
+  order.providerOrder = sanitizeProviderPayment(providerPayment);
+  order.notifyUrl = providerPayment.notifyUrl;
+  order.qrCode = providerPayment.qrCode;
+  order.updatedAt = new Date().toISOString();
+  const user = data.users.find((item) => item.id === order.userId);
+  if (!user) {
+    throw publicError(404, '支付订单用户不存在');
+  }
+  return buildRechargeResponse(data, user, order);
+}
+
+// 渠道创建失败时把订单收口到不可自动入账状态，保留人工核对证据。
+function markProviderPaymentCreationFailed(data, orderId, error) {
+  const order = data.paymentOrders.find((item) => item.id === orderId);
+  if (!order || order.status !== 'pending_provider_payment' || order.qrCode) {
+    return;
+  }
+  const now = new Date().toISOString();
+  order.status = 'provider_creation_failed';
+  order.updatedAt = now;
+  order.failureReason = Number(error?.statusCode) === 504 ? 'timeout' : 'provider_error';
+  data.events.push({
+    type: 'payment_provider_creation_failed',
+    orderId: order.id,
+    provider: order.provider || '',
+    reason: order.failureReason,
+    at: now,
+  });
+}
+
+function buildRechargeResponse(data, user, paymentOrder) {
+  return {
+    status: 202,
+    body: {
+      paymentOrder: sanitizePaymentOrder(paymentOrder),
+      provider: paymentOrder.provider || '',
+      qrCode: paymentOrder.qrCode || '',
+      account: accountFromUser(data, user),
+      user: sanitizeUser(user),
+    },
   };
 }
 
@@ -1646,261 +1909,12 @@ function manualRechargeCustomer(data, body) {
   };
 }
 
-function handleWechatPaymentNotification(data, request, rawBody, serverOptions) {
-  const transaction = verifyWechatNotification({
-    headers: request.headers,
-    rawBody,
-    paymentConfig: serverOptions.paymentConfig,
-  });
-  const orderId = String(transaction.out_trade_no || '').trim();
-  if (!orderId) {
-    throw publicError(400, '微信支付回调缺少订单号');
-  }
-  if (String(transaction.trade_state || '').toUpperCase() !== 'SUCCESS') {
-    recordPaymentCallback(data, orderId, {
-      provider: 'wechat',
-      status: 'ignored',
-      reason: transaction.trade_state || 'not_success',
-      payload: sanitizePaymentCallbackPayload(transaction),
-    });
-    return { code: 'SUCCESS', message: '成功' };
-  }
-  confirmProviderPayment(data, orderId, {
-    provider: 'wechat',
-    transactionId: transaction.transaction_id || '',
-    payload: sanitizePaymentCallbackPayload(transaction),
-    rawPayload: transaction,
-  });
-  return { code: 'SUCCESS', message: '成功' };
-}
-
-function handleAlipayPaymentNotification(data, rawBody, serverOptions) {
-  const notification = parseAlipayNotification(rawBody, serverOptions.paymentConfig.alipay.publicKey);
-  const orderId = String(notification.out_trade_no || '').trim();
-  if (!orderId) {
-    throw publicError(400, '支付宝回调缺少订单号');
-  }
-  const tradeStatus = String(notification.trade_status || '').toUpperCase();
-  if (!['TRADE_SUCCESS', 'TRADE_FINISHED'].includes(tradeStatus)) {
-    recordPaymentCallback(data, orderId, {
-      provider: 'alipay',
-      status: 'ignored',
-      reason: tradeStatus || 'not_success',
-      payload: sanitizePaymentCallbackPayload(notification),
-    });
-    return { ok: true };
-  }
-  confirmProviderPayment(data, orderId, {
-    provider: 'alipay',
-    transactionId: notification.trade_no || '',
-    payload: sanitizePaymentCallbackPayload(notification),
-    rawPayload: notification,
-  });
-  return { ok: true };
-}
-
-function confirmProviderPayment(data, orderId, details = {}) {
-  const order = data.paymentOrders.find((item) => item.id === orderId);
-  if (!order) {
-    throw publicError(404, '支付订单不存在');
-  }
-  const user = data.users.find((item) => item.id === order.userId);
-  if (!user) {
-    throw publicError(404, '支付订单用户不存在');
-  }
-  const now = new Date().toISOString();
-  if (order.status === 'paid' || order.status === 'confirmed') {
-    recordPaymentCallback(data, orderId, {
-      provider: details.provider || order.provider || '',
-      status: 'duplicate',
-      transactionId: details.transactionId || order.transactionId || '',
-      payload: details.payload || {},
-    });
-    return { order, user, duplicate: true };
-  }
-  assertPaymentAmountMatchesOrder(order, details.provider || order.provider || '', details.rawPayload || details.payload || {});
-
-  creditUserForOrder(user, order, now);
-  order.status = 'paid';
-  order.provider = details.provider || order.provider || '';
-  order.transactionId = details.transactionId || '';
-  order.paidAt = now;
-  order.updatedAt = now;
-  order.callbackPayload = details.payload || {};
-  data.events.push({
-    type: 'provider_payment_confirmed',
-    userId: user.id,
-    orderId: order.id,
-    provider: order.provider,
-    amountCents: order.amountCents,
-    creditCents: order.creditCents,
-    transactionId: order.transactionId,
-    at: now,
-  });
-  recordPaymentCallback(data, orderId, {
-    provider: order.provider,
-    status: 'confirmed',
-    transactionId: order.transactionId,
-    payload: details.payload || {},
-  });
-  return { order, user, duplicate: false };
-}
-
-function assertPaymentAmountMatchesOrder(order, provider, payload) {
-  const expected = Number(order.amountCents || 0);
-  const actual = providerPaymentAmountCents(provider, payload);
-  if (!Number.isFinite(actual) || actual !== expected) {
-    throw publicError(400, '支付金额与订单金额不一致');
-  }
-}
-
-function providerPaymentAmountCents(provider, payload = {}) {
-  if (provider === 'wechat') {
-    return Number(payload?.amount?.payer_total ?? payload?.amount?.total);
-  }
-  if (provider === 'alipay') {
-    return yuanToCents(payload.receipt_amount || payload.buyer_pay_amount || payload.total_amount);
-  }
-  return Number.NaN;
-}
-
-function yuanToCents(value) {
-  const text = String(value ?? '').trim();
-  if (!/^\d+(\.\d{1,2})?$/.test(text)) {
-    return Number.NaN;
-  }
-  const [yuan, cents = ''] = text.split('.');
-  return Number(yuan) * 100 + Number(cents.padEnd(2, '0'));
-}
-
-function creditUserForOrder(user, order, now) {
-  if (normalizeRechargePlan(order.plan) === 'day') {
-    user.plan = '日卡';
-    const expiresAt = addDays(new Date(now), 1);
-    user.renewalDate = formatDate(expiresAt);
-    user.planExpiresAt = expiresAt.toISOString();
-    user.packageQuotaCents += Number(order.creditCents || 0);
-  } else if (normalizeRechargePlan(order.plan) === 'month') {
-    user.plan = '月卡';
-    const expiresAt = addDays(new Date(now), 30);
-    user.renewalDate = formatDate(expiresAt);
-    user.planExpiresAt = expiresAt.toISOString();
-    user.packageQuotaCents += Number(order.creditCents || 0);
-  } else {
-    user.boosterQuotaCents += Number(order.creditCents || 0);
-  }
-  reconcileUserBalance(user);
-  user.updatedAt = now;
-}
-
-function recordPaymentCallback(data, orderId, details = {}) {
-  data.events.push({
-    type: 'payment_callback',
-    orderId,
-    provider: details.provider || '',
-    status: details.status || '',
-    reason: details.reason || '',
-    transactionId: details.transactionId || '',
-    at: new Date().toISOString(),
-  });
-}
-
-function buildPaymentClosureStatus(serverOptions) {
-  const paymentConfig = serverOptions.paymentConfig || {};
-  const wechatReady = providerReady(paymentConfig, 'wechat');
-  const alipayReady = providerReady(paymentConfig, 'alipay');
-  const wechatNotifyUrl = paymentConfig.wechat?.notifyUrl || (
-    paymentConfig.publicBaseUrl ? `${paymentConfig.publicBaseUrl}/api/frist/payments/wechat/notify` : ''
-  );
-  const alipayNotifyUrl = paymentConfig.alipay?.notifyUrl || (
-    paymentConfig.publicBaseUrl ? `${paymentConfig.publicBaseUrl}/api/frist/payments/alipay/notify` : ''
-  );
-  const providers = [
-    {
-      id: 'wechat',
-      name: '微信支付',
-      ready: wechatReady,
-      notifyUrl: wechatNotifyUrl,
-      missing: paymentMissingFields(paymentConfig.wechat || {}, [
-        ['enabled', 'FRIST_API_WECHAT_PAY_ENABLED'],
-        ['appid', 'FRIST_API_WECHAT_PAY_APPID'],
-        ['mchid', 'FRIST_API_WECHAT_PAY_MCH_ID'],
-        ['serialNo', 'FRIST_API_WECHAT_PAY_SERIAL_NO'],
-        ['privateKey', 'FRIST_API_WECHAT_PAY_PRIVATE_KEY'],
-        ['publicKey', 'FRIST_API_WECHAT_PAY_PUBLIC_KEY'],
-        ['apiV3Key', 'FRIST_API_WECHAT_PAY_API_V3_KEY'],
-      ]),
-    },
-    {
-      id: 'alipay',
-      name: '支付宝',
-      ready: alipayReady,
-      notifyUrl: alipayNotifyUrl,
-      missing: paymentMissingFields(paymentConfig.alipay || {}, [
-        ['enabled', 'FRIST_API_ALIPAY_ENABLED'],
-        ['appId', 'FRIST_API_ALIPAY_APP_ID'],
-        ['privateKey', 'FRIST_API_ALIPAY_PRIVATE_KEY'],
-        ['publicKey', 'FRIST_API_ALIPAY_PUBLIC_KEY'],
-      ]),
-    },
-  ];
-  return {
-    enabled: Boolean(paymentConfig.enabled),
-    ready: Boolean(paymentConfig.enabled && providers.some((provider) => provider.ready)),
-    providers,
-  };
-}
-
 function buildRedemptionBillingStatus() {
   return {
     ready: true,
     mode: 'redemption_code',
     detail: '当前处于生产环境内测，暂未正式售卖；兑换码仅用于内测验证和人工发放，CC中转站内核销到账；自动支付商户仅作为未来备用。',
   };
-}
-
-function paymentMissingFields(config, fields) {
-  return fields
-    .filter(([key]) => {
-      if (key === 'enabled') return !config.enabled;
-      return !String(config[key] || '').trim();
-    })
-    .map(([, envName]) => envName);
-}
-
-function normalizePaymentMethod(value) {
-  const method = String(value || 'manual_pending').trim().toLowerCase();
-  if (['wechat_native', 'wechat', 'wechat_pay', 'wxpay'].includes(method)) return 'wechat_native';
-  if (['alipay_precreate', 'alipay', 'alipay_qr'].includes(method)) return 'alipay_precreate';
-  return method || 'manual_pending';
-}
-
-function paymentProviderForMethod(method) {
-  if (method === 'wechat_native') return 'wechat';
-  if (method === 'alipay_precreate') return 'alipay';
-  return '';
-}
-
-function sanitizeProviderPayment(payment) {
-  return {
-    provider: payment.provider,
-    notifyUrl: payment.notifyUrl,
-    qrCode: payment.qrCode,
-  };
-}
-
-function sanitizePaymentCallbackPayload(payload = {}) {
-  const blocked = new Set(['openid', 'payer', 'buyer_logon_id', 'buyer_user_id', 'fund_bill_list']);
-  return Object.fromEntries(
-    Object.entries(payload)
-      .filter(([key]) => !blocked.has(key))
-      .map(([key, value]) => [key, typeof value === 'object' ? JSON.stringify(value).slice(0, 300) : String(value).slice(0, 300)]),
-  );
-}
-
-function normalizeRechargePlan(value) {
-  const plan = String(value || 'balance').trim().toLowerCase();
-  return ['balance', 'day', 'month'].includes(plan) ? plan : 'balance';
 }
 
 function findRechargePlan(data, body = {}) {
@@ -1947,7 +1961,7 @@ function buildRechargeOptions(data) {
   }));
 }
 
-async function createRedemptionCards(data, body, serverOptions = {}) {
+function createRedemptionCards(data, body, serverOptions = {}) {
   const selectedPlan = findRechargePlan(data, body);
   const planType = selectedPlan ? normalizeRechargePlan(selectedPlan.plan) : normalizeRechargePlan(body.plan);
   const quantity = clampInteger(body.quantity, 1, 200);
@@ -2078,7 +2092,7 @@ function buildCardAutoreplenishPlanRows(data, serverOptions = {}) {
     .filter((row) => row.safetyStock > 0);
 }
 
-async function autoReplenishRedemptionCards(data, body = {}, serverOptions = {}) {
+function autoReplenishRedemptionCards(data, body = {}, serverOptions = {}) {
   const now = currentDate(serverOptions).toISOString();
   const dryRun = body.dryRun === true;
   const enabled = body.enabled === true || serverOptions.cardAutoreplenishEnabled || !dryRun;
@@ -2097,7 +2111,7 @@ async function autoReplenishRedemptionCards(data, body = {}, serverOptions = {})
     if (!enabled || dryRun || row.toCreate <= 0) {
       continue;
     }
-    const created = await createRedemptionCards(data, {
+    const created = createRedemptionCards(data, {
       planId: row.planId,
       quantity: row.toCreate,
       prefix: DEFAULT_CARD_BATCH_PREFIX,
@@ -2345,9 +2359,8 @@ function syncUpstreamChannels(data, body, serverOptions) {
   };
 }
 
-async function syncUpstreamBalance(data, serverOptions, newApiBridge) {
+function applyUpstreamBalance(data, raw, serverOptions) {
   const now = currentDate(serverOptions).toISOString();
-  const raw = await newApiBridge.syncUpstreamBalance();
   const warningCny = Number(serverOptions.upstreamBalanceWarningCny || 50);
   const criticalCny = Number(serverOptions.upstreamBalanceCriticalCny || 20);
   const remainingCny = round2(Number(raw.remainingCny || 0));
@@ -2370,15 +2383,21 @@ async function syncUpstreamBalance(data, serverOptions, newApiBridge) {
     level: balance.level,
     at: now,
   });
+  return {
+    balance,
+    result: {
+      ok: true,
+      balance: sanitizeUpstreamBalance(balance, serverOptions),
+      events: sanitizeAdminEvents(data.events),
+    },
+  };
+}
+
+async function notifyUpstreamBalanceIfNeeded(balance, serverOptions) {
   const notifier = serverOptions.notifyUpstreamBalance;
   if (typeof notifier === 'function' && (balance.level === 'warning' || balance.level === 'critical')) {
     await notifier(balance);
   }
-  return {
-    ok: true,
-    balance: sanitizeUpstreamBalance(balance, serverOptions),
-    events: sanitizeAdminEvents(data.events),
-  };
 }
 
 function createXianyuFulfillment(data, body, serverOptions) {
@@ -3335,7 +3354,7 @@ function buildPublicSecurityConfig(serverOptions = {}) {
   };
 }
 
-async function replenishCredentials(data, body, serverOptions) {
+async function prepareCredentialReplenishment(body, serverOptions) {
   const parsedOrder = body.orderText ? parseSupplierOrderText(body.orderText, body.pricing || {}) : null;
   const normalizedBaseUrl = normalizeBaseUrl(body.baseUrl || parsedOrder?.baseUrl);
   const normalizedProxyBaseUrl = String(body.proxyBaseUrl || '').trim() ? normalizeBaseUrl(body.proxyBaseUrl) : '';
@@ -3355,7 +3374,6 @@ async function replenishCredentials(data, body, serverOptions) {
   const riskNote = sanitizeRiskNote(body.riskNote || '');
   const routeApproved = isSourceRouteApproved({ sourceType, riskStatus, backupRiskAccepted });
   const gatedStatus = routeApproved ? 'healthy' : riskStatus === 'blocked' ? 'blocked' : 'quarantined';
-  const now = new Date().toISOString();
   const keyInputs = normalizeReplenishmentKeys(body.keys ?? parsedOrder?.keys ?? []);
   if (keyInputs.length === 0) {
     throw publicError(400, 'Key 列表不能为空');
@@ -3372,6 +3390,48 @@ async function replenishCredentials(data, body, serverOptions) {
     probeMode,
     serverOptions,
   });
+  return {
+    body,
+    normalizedBaseUrl,
+    normalizedProxyBaseUrl,
+    pool,
+    modelGroup,
+    cardType,
+    expiresAt,
+    sourceType,
+    riskStatus,
+    backupRiskAccepted,
+    riskNote,
+    routeApproved,
+    gatedStatus,
+    keyInputs,
+    providedModels,
+    probeMode,
+    probeReport,
+  };
+}
+
+function applyCredentialReplenishment(data, prepared, serverOptions) {
+  const {
+    body,
+    normalizedBaseUrl,
+    normalizedProxyBaseUrl,
+    pool,
+    modelGroup,
+    cardType,
+    expiresAt,
+    sourceType,
+    riskStatus,
+    backupRiskAccepted,
+    riskNote,
+    routeApproved,
+    gatedStatus,
+    keyInputs,
+    providedModels,
+    probeMode,
+    probeReport,
+  } = prepared;
+  const now = currentDate(serverOptions).toISOString();
   const models = providedModels.length > 0 ? providedModels : probeReport.models;
   const sourceGroup = modelGroup || inferProviderGroup(models.join('\n'));
   const sourceFingerprint =
@@ -4101,55 +4161,18 @@ async function probeCredentialResponses(baseUrl, rawKey, model, serverOptions, s
   }
 }
 
-function shouldTryResponsesProbe(status, bodyText) {
-  return status === 404 || status === 405 || isModelUnsupportedResponse(status, bodyText);
-}
 
-function isOpenAiChatCompletionPayload(bodyText) {
-  const payload = parseJsonPayload(bodyText);
-  return Array.isArray(payload.choices);
-}
 
-function isOpenAiResponsesPayload(bodyText) {
-  const payload = parseJsonPayload(bodyText);
-  return payload.object === 'response' || Array.isArray(payload.output) || typeof payload.output_text === 'string';
-}
 
-function isOpenAiImageGenerationPayload(bodyText) {
-  const payload = parseJsonPayload(bodyText);
-  return Array.isArray(payload.data);
-}
 
 function isAnthropicMessagePayload(bodyText) {
   const payload = parseJsonPayload(bodyText);
   return payload.type === 'message' && Array.isArray(payload.content);
 }
 
-function isModelUnsupportedResponse(status, bodyText) {
-  return (status === 400 || status === 404) && /model|not found|unsupported|not supported|不存在|不支持/i.test(bodyText || '');
-}
 
-function isImageGenerationModel(model) {
-  return /image|dall/i.test(String(model || ''));
-}
 
-function parseModelIds(bodyText) {
-  try {
-    const payload = JSON.parse(bodyText || '{}');
-    if (!Array.isArray(payload.data)) return [];
-    return normalizeOfficialModelList(
-      payload.data
-        .map((item) => String(item.id || item.name || '').trim())
-        .filter(Boolean),
-    );
-  } catch {
-    return [];
-  }
-}
 
-function uniqueStrings(values) {
-  return [...new Set(values.map((value) => normalizeOfficialModelName(value)).filter(Boolean))];
-}
 
 async function routeChatCompletion(data, request, body, serverOptions, options = {}) {
   const userKey = requireUserKey(data, request);
@@ -4326,31 +4349,9 @@ async function callGatewayAttempts(credential, body, serverOptions, options = {}
   return lastUpstream;
 }
 
-function gatewayUnavailableResponse() {
-  return {
-    status: 503,
-    contentType: 'application/json; charset=utf-8',
-    bodyText: JSON.stringify({ error: '当前模型暂不可用' }),
-  };
-}
 
-function shouldFailoverUpstream(upstream) {
-  return upstream.status === 408 || upstream.status >= 500 || isCredentialRejectedResponse(upstream) || isGatewayAdapterUnsupported(upstream);
-}
 
-function isGatewayAdapterUnsupported(upstream) {
-  if (!upstream || ![400, 404, 405, 415].includes(upstream.status)) {
-    return false;
-  }
-  return /not found|unsupported|not supported|unknown endpoint|cannot\s+post|不存在|不支持/i.test(upstream.bodyText || '');
-}
 
-function isCredentialRejectedResponse(upstream) {
-  if (!upstream || ![401, 403].includes(upstream.status)) {
-    return false;
-  }
-  return /invalid api key|missing api key|unauthorized|forbidden|token|api key|认证|鉴权|密钥/i.test(upstream.bodyText || '');
-}
 
 function anthropicMessagesToChatCompletion(body) {
   const messages = [];
@@ -4600,30 +4601,8 @@ function chatCompletionToResponsesResponse(upstream, originalBody) {
   };
 }
 
-function chatMessageContentToText(content) {
-  if (typeof content === 'string') return content;
-  if (Array.isArray(content)) {
-    return content
-      .map((part) => (typeof part === 'string' ? part : part?.text || JSON.stringify(part || {})))
-      .filter(Boolean)
-      .join('\n');
-  }
-  return content ? JSON.stringify(content) : '';
-}
 
-function parseJsonPayload(bodyText) {
-  try {
-    return JSON.parse(bodyText || '{}');
-  } catch {
-    return {};
-  }
-}
 
-function compactObject(value) {
-  return Object.fromEntries(
-    Object.entries(value).filter(([, item]) => item !== undefined && item !== null && item !== ''),
-  );
-}
 
 async function callUpstreamChatCompletion(credential, body, serverOptions, options = {}) {
   const fetchImpl = serverOptions.fetchImpl || globalThis.fetch;
@@ -4671,46 +4650,8 @@ async function callUpstreamChatCompletion(credential, body, serverOptions, optio
   };
 }
 
-function authHeadersForKey(rawKey, authConfig = {}) {
-  const headerName = String(authConfig.authHeaderName || 'authorization').trim().toLowerCase() || 'authorization';
-  const valuePrefix =
-    authConfig.authHeaderValuePrefix === ''
-      ? ''
-      : String(authConfig.authHeaderValuePrefix || 'Bearer').trim();
-  return {
-    ...sanitizeExtraHeaders(authConfig.extraHeaders),
-    [headerName]: valuePrefix ? `${valuePrefix} ${rawKey}` : String(rawKey || ''),
-  };
-}
 
-function sanitizeExtraHeaders(headers) {
-  if (!headers || typeof headers !== 'object' || Array.isArray(headers)) {
-    return {};
-  }
-  const result = {};
-  for (const [rawName, rawValue] of Object.entries(headers)) {
-    const name = String(rawName || '').trim().toLowerCase();
-    const value = String(rawValue || '').trim();
-    if (!name || !value || name === 'authorization' || name === 'x-api-key' || /[\r\n]/.test(`${name}${value}`)) {
-      continue;
-    }
-    if (/(?:sk-|sk_|cr_)[A-Za-z0-9_-]{12,}/.test(value)) {
-      continue;
-    }
-    result[name] = value;
-  }
-  return result;
-}
 
-function isQuotaExhaustedResponse(upstream) {
-  if (upstream.status >= 200 && upstream.status < 300) {
-    return false;
-  }
-  if (upstream.status === 402 || upstream.status === 429) {
-    return true;
-  }
-  return /insufficient|quota|balance|余额|额度/i.test(upstream.bodyText || '');
-}
 
 function exhaustCredential(data, credential, reason) {
   credential.status = 'exhausted';
@@ -5008,6 +4949,67 @@ export async function runChannelMonitorSweep(data, serverOptions) {
   }
 }
 
+function channelMonitorCredentialFingerprint(credential) {
+  return createHash('sha256')
+    .update(JSON.stringify({
+      id: credential?.id || '',
+      rawKey: credential?.rawKey || '',
+      baseUrl: credential?.baseUrl || '',
+      proxyBaseUrl: credential?.proxyBaseUrl || '',
+      models: credential?.models || [],
+      enabled: Boolean(credential?.enabled),
+      status: credential?.status || '',
+      updatedAt: credential?.updatedAt || '',
+      lastAutoProbeAt: credential?.lastAutoProbeAt || '',
+    }))
+    .digest('hex');
+}
+
+async function runChannelMonitorOutsideWriteQueue(store, serverOptions) {
+  const snapshot = await store.load();
+  const candidates = monitorCandidateCredentials(snapshot, serverOptions).map((credential) => ({
+    id: credential.id,
+    fingerprint: channelMonitorCredentialFingerprint(credential),
+  }));
+  if (candidates.length === 0) {
+    return;
+  }
+  const initialEventCount = snapshot.events.length;
+  const initialAlertKeys = new Set(Object.keys(snapshot.upstreamKeyAlerts || {}));
+  await runChannelMonitorSweep(snapshot, serverOptions);
+
+  await store.mutate((data) => {
+    const appliedIds = new Set();
+    for (const candidate of candidates) {
+      const current = data.credentials.find((credential) => credential.id === candidate.id);
+      const probed = snapshot.credentials.find((credential) => credential.id === candidate.id);
+      if (!current || !probed || channelMonitorCredentialFingerprint(current) !== candidate.fingerprint) {
+        data.events.push({
+          type: 'channel_monitor_result_skipped_after_concurrent_change',
+          credentialId: candidate.id,
+          at: currentDate(serverOptions).toISOString(),
+        });
+        continue;
+      }
+      Object.assign(current, probed);
+      appliedIds.add(candidate.id);
+    }
+
+    for (const event of snapshot.events.slice(initialEventCount)) {
+      if (!event.credentialId || appliedIds.has(event.credentialId)) {
+        data.events.push(event);
+      }
+    }
+    for (const [key, alert] of Object.entries(snapshot.upstreamKeyAlerts || {})) {
+      if (initialAlertKeys.has(key)) continue;
+      const credentialId = String(key).split(':', 1)[0];
+      if (appliedIds.has(credentialId)) {
+        data.upstreamKeyAlerts[key] = alert;
+      }
+    }
+  });
+}
+
 function startChannelMonitor({ store, serverOptions }) {
   const intervalMs = Math.max(100, Number(serverOptions.channelMonitorIntervalMs || DEFAULT_CHANNEL_MONITOR_INTERVAL_MS));
   let stopped = false;
@@ -5018,9 +5020,7 @@ function startChannelMonitor({ store, serverOptions }) {
     }
     running = true;
     try {
-      await store.mutate(async (data) => {
-        await runChannelMonitorSweep(data, serverOptions);
-      });
+      await runChannelMonitorOutsideWriteQueue(store, serverOptions);
     } catch {
       // 巡检失败不会阻断用户请求，下一轮继续执行。
     } finally {
@@ -5083,7 +5083,9 @@ function startUpstreamBalanceSync({ store, serverOptions, newApiBridge }) {
     }
     running = true;
     try {
-      await store.mutate((data) => syncUpstreamBalance(data, serverOptions, newApiBridge));
+      const rawBalance = await newApiBridge.syncUpstreamBalance();
+      const applied = await store.mutate((data) => applyUpstreamBalance(data, rawBalance, serverOptions));
+      await notifyUpstreamBalanceIfNeeded(applied.balance, serverOptions);
     } catch (error) {
       await store.mutate((data) => {
         data.upstreamBalance = normalizeUpstreamBalanceRecord({
@@ -5205,101 +5207,6 @@ async function maybeNotifyCustomerLowBalance(data, user, serverOptions, context 
 }
 
 
-function buildGatewayAffinityKey(request, body, userKey, model) {
-  const explicitSessionId = [
-    headerValue(request, 'x-frist-session-id'),
-    headerValue(request, 'x-conversation-id'),
-    body?.metadata?.frist_session_id,
-    body?.metadata?.conversation_id,
-    body?.metadata?.session_id,
-    body?.conversation_id,
-    body?.session_id,
-    body?.user,
-  ]
-    .map((value) => String(value || '').trim())
-    .find(Boolean);
-  const sessionId = explicitSessionId || 'default';
-  return `${userKey.id}:${model}:${hashId(sessionId)}`;
-}
-
-function orderGatewayCandidates(data, candidates, sessionKey) {
-  const affinity = data.routeAffinities?.[sessionKey];
-  if (!affinity?.credentialId) {
-    return candidates;
-  }
-  const stickyCredential = candidates.find((credential) => credential.id === affinity.credentialId);
-  if (!stickyCredential) {
-    delete data.routeAffinities[sessionKey];
-    return candidates;
-  }
-  return [stickyCredential, ...candidates.filter((credential) => credential.id !== stickyCredential.id)];
-}
-
-function rememberRouteAffinity(data, sessionKey, affinity) {
-  if (!sessionKey) return;
-  data.routeAffinities[sessionKey] = affinity;
-}
-
-function clearRouteAffinity(data, sessionKey, credentialId) {
-  const affinity = data.routeAffinities?.[sessionKey];
-  if (affinity?.credentialId === credentialId) {
-    delete data.routeAffinities[sessionKey];
-  }
-}
-
-function createSecurityState() {
-  return {
-    captchas: new Map(),
-    rateLimits: new Map(),
-  };
-}
-
-function createCaptchaChallenge(securityState, serverOptions) {
-  if (!serverOptions.requireCaptcha) {
-    return {
-      required: false,
-      id: '',
-      question: '',
-    };
-  }
-  cleanupCaptchas(securityState);
-  const challenge = buildRegistrationCaptcha();
-  const id = createId('cap');
-  securityState.captchas.set(id, {
-    answer: challenge.answer,
-    attemptsLeft: Number(serverOptions.captchaMaxAttempts || 3),
-    expiresAt: Date.now() + Number(serverOptions.captchaTtlMs || 600_000),
-  });
-  return {
-    required: true,
-    id,
-    question: challenge.question,
-  };
-}
-
-function requireCaptchaIfEnabled(securityState, body, serverOptions) {
-  if (!serverOptions.requireCaptcha) {
-    return;
-  }
-  cleanupCaptchas(securityState);
-  const id = String(body.captchaId || '').trim();
-  const answer = String(body.captchaAnswer || '').trim();
-  const challenge = securityState.captchas.get(id);
-  if (!challenge || challenge.expiresAt < Date.now()) {
-    throw publicError(400, '验证码已过期，请刷新后重试');
-  }
-  const normalizedAnswer = normalizeCaptchaAnswer(answer);
-  const expected = normalizeCaptchaAnswer(challenge.answer);
-  if (normalizedAnswer !== expected) {
-    challenge.attemptsLeft = Math.max(0, Number(challenge.attemptsLeft || 1) - 1);
-    if (challenge.attemptsLeft <= 0) {
-      securityState.captchas.delete(id);
-      throw publicError(400, '验证码不正确，请刷新后重试');
-    }
-    throw publicError(400, '验证码不正确');
-  }
-  securityState.captchas.delete(id);
-}
 
 async function verifyTurnstileToken({ request, body, serverOptions, action }) {
   if (!serverOptions.requireTurnstile) {
@@ -5321,7 +5228,7 @@ async function verifyTurnstileToken({ request, body, serverOptions, action }) {
     secret: serverOptions.turnstileSecret,
     response: token,
   });
-  const remoteIp = clientIp(request);
+  const remoteIp = clientIp(request, serverOptions);
   if (remoteIp && remoteIp !== 'unknown') {
     payload.set('remoteip', remoteIp);
   }
@@ -5350,128 +5257,10 @@ async function verifyTurnstileToken({ request, body, serverOptions, action }) {
   }
 }
 
-function cleanupCaptchas(securityState) {
-  const now = Date.now();
-  for (const [id, challenge] of securityState.captchas) {
-    if (challenge.expiresAt < now) {
-      securityState.captchas.delete(id);
-    }
-  }
-}
-
-function buildRegistrationCaptcha() {
-  const type = randomInt(4);
-  if (type === 0) {
-    const left = 18 + randomInt(73);
-    const right = 11 + randomInt(58);
-    const subtract = 3 + randomInt(17);
-    return {
-      question: `${left} + ${right} - ${subtract} = ?`,
-      answer: String(left + right - subtract),
-    };
-  }
-  if (type === 1) {
-    const code = randomCaptchaCode(5);
-    const firstIndex = randomInt(code.length);
-    let secondIndex = randomInt(code.length);
-    while (secondIndex === firstIndex) {
-      secondIndex = randomInt(code.length);
-    }
-    const indexes = [firstIndex, secondIndex].sort((a, b) => a - b);
-    return {
-      question: `验证码 ${code}，输入第 ${indexes[0] + 1} 和第 ${indexes[1] + 1} 位字符`,
-      answer: `${code[indexes[0]]}${code[indexes[1]]}`,
-    };
-  }
-  if (type === 2) {
-    const code = randomCaptchaCode(4);
-    return {
-      question: `把 ${code} 倒序输入`,
-      answer: code.split('').reverse().join(''),
-    };
-  }
-  const code = randomCaptchaCode(6);
-  const digits = code.replace(/\D/g, '');
-  if (digits.length >= 2) {
-    return {
-      question: `验证码 ${code}，只输入其中的数字`,
-      answer: digits,
-    };
-  }
-  return {
-    question: `验证码 ${code}，输入最后 3 位`,
-    answer: code.slice(-3),
-  };
-}
-
-function normalizeCaptchaAnswer(value) {
-  return String(value || '').trim().replace(/\s+/g, '').toUpperCase();
-}
-
-function randomCaptchaCode(length) {
-  const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-  let code = '';
-  for (let index = 0; index < length; index += 1) {
-    code += alphabet[randomInt(alphabet.length)];
-  }
-  return code;
-}
-
 function randomInt(max) {
   return randomBytes(1)[0] % Math.max(1, Number(max) || 1);
 }
 
-function assertAuthRateLimit(securityState, request, serverOptions) {
-  const max = Number(serverOptions.authRateLimitMax || 20);
-  const windowMs = Number(serverOptions.authRateLimitWindowMs || 60_000);
-  assertRateLimit(securityState, `auth:${clientIp(request)}`, max, windowMs);
-}
-
-function assertRedeemRateLimit(securityState, request, serverOptions, userId = '') {
-  const max = Number(serverOptions.redemptionRateLimitMax || 12);
-  const windowMs = Number(serverOptions.redemptionRateLimitWindowMs || 60_000);
-  assertRateLimit(securityState, `redeem:ip:${clientIp(request)}`, max, windowMs);
-  if (userId) {
-    assertRedeemUserRateLimit(securityState, serverOptions, userId);
-  }
-}
-
-function assertRedeemUserRateLimit(securityState, serverOptions, userId = '') {
-  if (!userId) return;
-  const max = Number(serverOptions.redemptionRateLimitMax || 12);
-  const windowMs = Number(serverOptions.redemptionRateLimitWindowMs || 60_000);
-  assertRateLimit(securityState, `redeem:user:${userId}`, max, windowMs);
-}
-
-function assertRateLimit(securityState, key, max, windowMs) {
-  if (!Number.isFinite(max) || max <= 0 || !Number.isFinite(windowMs) || windowMs <= 0) {
-    return;
-  }
-  const now = Date.now();
-  const bucket = securityState.rateLimits.get(key) || { count: 0, resetAt: now + windowMs };
-  if (bucket.resetAt <= now) {
-    bucket.count = 0;
-    bucket.resetAt = now + windowMs;
-  }
-  bucket.count += 1;
-  securityState.rateLimits.set(key, bucket);
-  if (bucket.count > max) {
-    throw publicError(429, '请求过于频繁，请稍后再试');
-  }
-}
-
-function clientIp(request) {
-  const forwarded = headerValue(request, 'x-forwarded-for').split(',')[0]?.trim();
-  return forwarded || request.socket?.remoteAddress || 'unknown';
-}
-
-function headerValue(request, name) {
-  const value = request.headers[name.toLowerCase()];
-  if (Array.isArray(value)) {
-    return value[0] || '';
-  }
-  return value || '';
-}
 
 async function pipeReadableStreamToResponse(bodyStream, response, options = {}) {
   const abort = typeof options.abort === 'function' ? options.abort : null;
@@ -5517,73 +5306,6 @@ async function pipeReadableStreamToResponse(bodyStream, response, options = {}) 
   if (!response.destroyed) response.end();
 }
 
-function normalizeStreamChunk(chunk) {
-  if (Buffer.isBuffer(chunk)) return chunk;
-  if (chunk instanceof Uint8Array) return Buffer.from(chunk);
-  return Buffer.from(String(chunk || ''), 'utf8');
-}
-
-async function writeFileAtomic(filePath, text) {
-  await mkdir(dirname(filePath), { recursive: true });
-  const tempPath = join(dirname(filePath), `.${basename(filePath)}.${process.pid}.${Date.now()}.${randomBytes(4).toString('hex')}.tmp`);
-  const handle = await open(tempPath, 'w', 0o600);
-  try {
-    await handle.writeFile(text, 'utf8');
-    await handle.sync();
-  } catch (error) {
-    await rm(tempPath, { force: true }).catch(() => {});
-    throw error;
-  } finally {
-    await handle.close();
-  }
-  await rename(tempPath, filePath);
-}
-
-function createRuntimeStore(dataFile, encryptionKey = '', beforeSave = null) {
-  let writeQueue = Promise.resolve();
-  const encryption = createRuntimeEncryption(encryptionKey);
-
-  async function load() {
-    try {
-      const raw = await readFile(dataFile, 'utf8');
-      return normalizeRuntimeData(decryptRuntimeData(JSON.parse(raw), encryption));
-    } catch (error) {
-      if (error.code !== 'ENOENT') {
-        throw error;
-      }
-      return normalizeRuntimeData({});
-    }
-  }
-
-  async function save(data) {
-    await mkdir(dirname(dataFile), { recursive: true });
-    const normalized = normalizeRuntimeData(data);
-    if (typeof beforeSave === 'function') {
-      await beforeSave(normalized);
-    }
-    await writeFileAtomic(dataFile, `${JSON.stringify(encryptRuntimeData(normalized, encryption), null, 2)}\n`);
-  }
-
-  async function mutate(mutator) {
-    const run = writeQueue.then(async () => {
-      const data = await load();
-      const result = await mutator(data);
-      try {
-        await save(data);
-      } catch (error) {
-        process.emitWarning(`CC中转 runtime 写入失败: ${error.message}`, {
-          code: 'FRIST_API_RUNTIME_WRITE_FAILED',
-        });
-        throw error;
-      }
-      return result;
-    });
-    writeQueue = run.catch(() => {});
-    return run;
-  }
-
-  return { load, mutate };
-}
 
 function normalizeRuntimeData(data) {
   const pricing = normalizePricingConfig(data.pricing || {});
@@ -5624,113 +5346,6 @@ function normalizeRuntimeData(data) {
   };
 }
 
-function createRuntimeEncryption(secret) {
-  const value = String(secret || '').trim();
-  if (!value) {
-    return null;
-  }
-  return createHash('sha256').update(value).digest();
-}
-
-function encryptRuntimeData(data, encryption) {
-  if (!encryption) {
-    return data;
-  }
-  const copy = structuredCloneJson(data);
-  copy.__encryption = { version: 1, algorithm: 'aes-256-gcm', fields: ['userKeys.secret', 'credentials.rawKey', 'plusAccounts.secrets', 'rtAccounts.refreshToken'] };
-  copy.userKeys = copy.userKeys.map((key) => ({
-    ...key,
-    secret: encryptSecretField(key.secret, encryption),
-  }));
-  copy.credentials = copy.credentials.map((credential) => ({
-    ...credential,
-    rawKey: encryptSecretField(credential.rawKey, encryption),
-  }));
-  copy.plusAccounts = copy.plusAccounts.map((account) => ({
-    ...account,
-    secrets: encryptSecretField(account.secrets, encryption),
-  }));
-  copy.rtAccounts = copy.rtAccounts.map((account) => ({
-    ...account,
-    refreshToken: encryptSecretField(account.refreshToken, encryption),
-  }));
-  return copy;
-}
-
-function decryptRuntimeData(data, encryption) {
-  const copy = structuredCloneJson(data || {});
-  if (!encryption) {
-    return copy;
-  }
-  const hasEncryptionMarker = Boolean(copy.__encryption);
-  const decryptRuntimeSecret = (value) =>
-    decryptRuntimeSecretField(value, encryption, { allowUnreadableEncrypted: true, allowLegacyOrphan: !hasEncryptionMarker });
-  try {
-    copy.userKeys = Array.isArray(copy.userKeys)
-      ? copy.userKeys.map((key) => ({ ...key, secret: decryptRuntimeSecret(key.secret) }))
-      : [];
-    copy.credentials = Array.isArray(copy.credentials)
-      ? copy.credentials.map((credential) => ({ ...credential, rawKey: decryptRuntimeSecret(credential.rawKey) }))
-      : [];
-    copy.plusAccounts = Array.isArray(copy.plusAccounts)
-      ? copy.plusAccounts.map((account) => ({ ...account, secrets: decryptRuntimeSecret(account.secrets) }))
-      : [];
-    copy.rtAccounts = Array.isArray(copy.rtAccounts)
-      ? copy.rtAccounts.map((account) => ({ ...account, refreshToken: decryptRuntimeSecret(account.refreshToken) }))
-      : [];
-    delete copy.__encryption;
-    return copy;
-  } catch (error) {
-    throw normalizePublicError(error);
-  }
-}
-
-function decryptRuntimeSecretField(value, encryption, options = {}) {
-  try {
-    return decryptSecretField(value, encryption);
-  } catch (error) {
-    // 历史生产数据可能已经带 __encryption 标记，但旧加密密钥不可恢复。
-    // 这类字段不能解明文时保留密文，让后续脱敏逻辑标记为“需重新生成”，避免整站 500。
-    if ((options.allowUnreadableEncrypted || options.allowLegacyOrphan) && isEncryptedRuntimeSecret(value)) {
-      return String(value || '');
-    }
-    throw error;
-  }
-}
-
-function encryptSecretField(value, encryption) {
-  const text = String(value || '');
-  if (!text || text.startsWith('enc:v1:')) {
-    return text;
-  }
-  const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', encryption, iv);
-  const encrypted = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
-  return `enc:v1:${iv.toString('base64url')}:${cipher.getAuthTag().toString('base64url')}:${encrypted.toString('base64url')}`;
-}
-
-function decryptSecretField(value, encryption) {
-  const text = String(value || '');
-  if (!text.startsWith('enc:v1:')) {
-    return text;
-  }
-  const [, version, ivText, authTagText, encryptedText] = text.split(':');
-  if (version !== 'v1' || !ivText || !authTagText || !encryptedText) {
-    throw publicError(500, '运行数据加密字段格式不正确');
-  }
-  try {
-    const decipher = createDecipheriv('aes-256-gcm', encryption, Buffer.from(ivText, 'base64url'));
-    decipher.setAuthTag(Buffer.from(authTagText, 'base64url'));
-    return `${decipher.update(Buffer.from(encryptedText, 'base64url'), undefined, 'utf8')}${decipher.final('utf8')}`;
-  } catch {
-    throw publicError(500, '运行数据加密密钥不匹配');
-  }
-}
-
-function structuredCloneJson(value) {
-  return JSON.parse(JSON.stringify(value || {}));
-}
-
 function normalizeUserRecord(user) {
   const email = normalizeAlertEmail(user?.email || '');
   return {
@@ -5752,31 +5367,7 @@ function normalizePasswordResetRecord(record) {
   };
 }
 
-function normalizeCredentialRecord(credential) {
-  const sourceType = normalizeSourceType(credential.sourceType || PRIMARY_SOURCE_TYPE);
-  return {
-    ...credential,
-    models: normalizeOfficialModelList(credential.models || []),
-    modelGroup: normalizeModelGroup(credential.modelGroup || inferProviderGroup((credential.models || []).join('\n'))),
-    sourceType,
-    riskStatus: normalizeRiskStatus(credential.riskStatus || 'approved'),
-    backupRiskAccepted: Boolean(credential.backupRiskAccepted),
-    riskNote: sanitizeRiskNote(credential.riskNote || ''),
-  };
-}
 
-function normalizeSupplierProfileRecord(profile) {
-  const sourceType = normalizeSourceType(profile.sourceType || PRIMARY_SOURCE_TYPE);
-  return {
-    ...profile,
-    models: normalizeOfficialModelList(profile.models || []),
-    modelGroup: normalizeModelGroup(profile.modelGroup || inferProviderGroup((profile.models || []).join('\n'))),
-    sourceType,
-    riskStatus: normalizeRiskStatus(profile.riskStatus || 'approved'),
-    backupRiskAccepted: Boolean(profile.backupRiskAccepted),
-    riskNote: sanitizeRiskNote(profile.riskNote || ''),
-  };
-}
 
 function normalizeRedemptionCardRecord(card) {
   const plan = normalizeRechargePlan(card?.plan || 'balance');
@@ -5980,66 +5571,9 @@ function normalizeSlaStatus(value) {
   return '';
 }
 
-function pricingPayload(data) {
-  const pricing = normalizePricingConfig(data.pricing || {});
-  return {
-    rechargePlans: pricing.rechargePlans,
-    modelPrices: pricing.modelPrices,
-  };
-}
 
-function normalizePricingConfig(input = {}) {
-  const rechargePlans = normalizeRechargePlans(input.rechargePlans);
-  const modelPrices = normalizeModelPrices(input.modelPrices);
-  return { rechargePlans, modelPrices };
-}
 
-function normalizeRechargePlans(plans) {
-  const rows = Array.isArray(plans) && plans.length ? plans : DEFAULT_RECHARGE_PLANS;
-  return rows
-    .map((plan, index) => {
-      const quotaUsd = Math.max(0, Number(plan.quotaUsd || 0));
-      const priceCny = Math.max(0, Number(plan.priceCny ?? plan.amountCny ?? 0));
-      const durationDays = Math.max(0, Number(plan.durationDays || 0));
-      const inferredPlan = durationDays === 1 ? 'day' : 'balance';
-      return {
-        id: String(plan.id || `plan-${index + 1}`).trim(),
-        label: String(plan.label || `Codex API ${quotaUsd}刀额度/${durationDays === 1 ? '日卡' : '不限时'}`).trim(),
-        quotaUsd,
-        priceCny: round2(priceCny),
-        durationDays,
-        plan: normalizeRechargePlan(plan.plan || inferredPlan),
-        active: index === 0,
-      };
-    })
-    .filter((plan) => plan.id && plan.quotaUsd > 0 && plan.priceCny > 0);
-}
 
-function normalizeModelPrices(prices) {
-  const rows = Array.isArray(prices) && prices.length ? prices : DEFAULT_MODEL_PRICES;
-  const merged = new Map();
-  for (const price of rows) {
-    const model = normalizeOfficialModelName(price.model);
-    if (!model) continue;
-    const source = String(price.source || 'official').trim() || 'official';
-    const officialDefault = source.toLowerCase() === 'official' && !String(price.displayPrice || '').trim()
-      ? DEFAULT_MODEL_PRICE_BY_MODEL.get(model)
-      : null;
-    const normalizedPrice = officialDefault || price;
-    merged.set(model, {
-      model,
-      currency: String(normalizedPrice.currency || 'CNY').toUpperCase(),
-      inputCostCnyPerMillion: round2(Number(normalizedPrice.inputCostCnyPerMillion || 0)),
-      outputCostCnyPerMillion: round2(Number(normalizedPrice.outputCostCnyPerMillion || 0)),
-      inputSaleCnyPerMillion: round2(Number(normalizedPrice.inputSaleCnyPerMillion ?? normalizedPrice.inputCostCnyPerMillion ?? 0)),
-      outputSaleCnyPerMillion: round2(Number(normalizedPrice.outputSaleCnyPerMillion ?? normalizedPrice.outputCostCnyPerMillion ?? 0)),
-      source: String(normalizedPrice.source || source),
-      displayPrice: String(normalizedPrice.displayPrice || '').trim(),
-      status: String(price.status || normalizedPrice.status || 'confirmed'),
-    });
-  }
-  return [...merged.values()];
-}
 
 function normalizeCardAutoreplenishSafetyStock(value) {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
@@ -6064,25 +5598,24 @@ function normalizeCardAutoreplenishSafetyStock(value) {
   }
 }
 
-function mergeModelPrices(existing, configured) {
-  const merged = new Map();
-  for (const price of normalizeModelPrices(configured)) {
-    merged.set(price.model, price);
-  }
-  for (const price of Array.isArray(existing) ? existing : []) {
-    const model = normalizeOfficialModelName(price.model);
-    if (!model || merged.has(model)) continue;
-    merged.set(model, {
-      ...price,
-      model,
-    });
-  }
-  return [...merged.values()];
-}
 
 function normalizeServerOptions(options) {
   const root = dirname(fileURLToPath(import.meta.url));
   const envPublicMode = parseOptionalEnvFlag(process.env.FRIST_API_PUBLIC_MODE);
+  const publicMode =
+    typeof options.publicMode === 'boolean'
+      ? options.publicMode
+      : envPublicMode ?? process.env.NODE_ENV === 'production';
+  const rawAdminClaimCodes =
+    options.adminClaimCodes ?? process.env.FRIST_API_ADMIN_CLAIM_CODES ?? process.env.FRIST_API_ADMIN_CLAIM_CODE ?? '';
+  const adminClaimCodes = parseAdminClaimCodes(rawAdminClaimCodes);
+  const rawAdminTotpSecrets =
+    options.adminTotpSecrets ?? process.env.FRIST_API_ADMIN_TOTP_SECRETS ?? process.env.FRIST_API_ADMIN_TOTP_SECRET ?? '';
+  const adminTotpSecretValues = (Array.isArray(rawAdminTotpSecrets)
+    ? rawAdminTotpSecrets
+    : String(rawAdminTotpSecrets || '').split(/[,\s]+/))
+    .map((item) => String(item || '').trim())
+    .filter(Boolean);
   const exposeVerificationCode =
     typeof options.exposeVerificationCode === 'boolean'
       ? options.exposeVerificationCode
@@ -6094,7 +5627,7 @@ function normalizeServerOptions(options) {
   const requireEmailVerification =
     typeof options.requireEmailVerification === 'boolean'
       ? options.requireEmailVerification
-      : process.env.FRIST_API_REQUIRE_EMAIL_VERIFICATION === '1';
+      : parseOptionalEnvFlag(process.env.FRIST_API_REQUIRE_EMAIL_VERIFICATION) ?? publicMode;
   const requireCaptcha =
     typeof options.requireCaptcha === 'boolean'
       ? options.requireCaptcha
@@ -6106,9 +5639,8 @@ function normalizeServerOptions(options) {
   const normalized = {
     adminToken: options.adminToken || process.env.FRIST_API_ADMIN_TOKEN || 'frist-api-dev-admin-token',
     adminPageCode: options.adminPageCode || process.env.FRIST_API_ADMIN_PAGE_CODE || '',
-    adminClaimCodeHashes: parseAdminClaimCodes(
-      options.adminClaimCodes ?? process.env.FRIST_API_ADMIN_CLAIM_CODES ?? process.env.FRIST_API_ADMIN_CLAIM_CODE ?? '',
-    ).map(hashAdminClaimCode),
+    adminClaimCodes,
+    adminClaimCodeHashes: adminClaimCodes.map(hashAdminClaimCode),
     dataFile: options.dataFile || process.env.FRIST_API_DATA_FILE || join(root, '../data/runtime.json'),
     runtimeBeforeSave: options.runtimeBeforeSave,
     exposeVerificationCode,
@@ -6116,6 +5648,36 @@ function normalizeServerOptions(options) {
     authRateLimitMax: Number(options.authRateLimitMax ?? process.env.FRIST_API_AUTH_RATE_LIMIT_MAX ?? 20),
     authRateLimitWindowMs: Number(
       options.authRateLimitWindowMs ?? process.env.FRIST_API_AUTH_RATE_LIMIT_WINDOW_MS ?? 60_000,
+    ),
+    passwordResetConfirmRateLimitMax: Number(
+      options.passwordResetConfirmRateLimitMax ?? process.env.FRIST_API_PASSWORD_RESET_CONFIRM_RATE_LIMIT_MAX ?? 5,
+    ),
+    passwordResetConfirmRateLimitWindowMs: Number(
+      options.passwordResetConfirmRateLimitWindowMs ??
+        process.env.FRIST_API_PASSWORD_RESET_CONFIRM_RATE_LIMIT_WINDOW_MS ??
+        900_000,
+    ),
+    passwordResetRequestRateLimitMax: Number(
+      options.passwordResetRequestRateLimitMax ?? process.env.FRIST_API_PASSWORD_RESET_REQUEST_RATE_LIMIT_MAX ?? 3,
+    ),
+    passwordResetRequestRateLimitWindowMs: Number(
+      options.passwordResetRequestRateLimitWindowMs ??
+        process.env.FRIST_API_PASSWORD_RESET_REQUEST_RATE_LIMIT_WINDOW_MS ??
+        900_000,
+    ),
+    emailVerificationRateLimitMax: Number(
+      options.emailVerificationRateLimitMax ?? process.env.FRIST_API_EMAIL_VERIFICATION_RATE_LIMIT_MAX ?? 5,
+    ),
+    emailVerificationRateLimitWindowMs: Number(
+      options.emailVerificationRateLimitWindowMs ??
+        process.env.FRIST_API_EMAIL_VERIFICATION_RATE_LIMIT_WINDOW_MS ??
+        900_000,
+    ),
+    rateLimitMaxEntries: Number(
+      options.rateLimitMaxEntries ?? process.env.FRIST_API_RATE_LIMIT_MAX_ENTRIES ?? DEFAULT_RATE_LIMIT_MAX_ENTRIES,
+    ),
+    trustedProxyIps: parseTrustedProxyIps(
+      options.trustedProxyIps ?? process.env.FRIST_API_TRUSTED_PROXY_IPS ?? '',
     ),
     redemptionRateLimitMax: Number(options.redemptionRateLimitMax ?? process.env.FRIST_API_REDEEM_RATE_LIMIT_MAX ?? 12),
     redemptionRateLimitWindowMs: Number(
@@ -6213,8 +5775,15 @@ function normalizeServerOptions(options) {
       typeof options.requireAdmin2fa === 'boolean'
         ? options.requireAdmin2fa
         : process.env.FRIST_API_REQUIRE_ADMIN_2FA === '1',
-    adminTotpSecrets: normalizeTotpSecrets(options.adminTotpSecrets ?? process.env.FRIST_API_ADMIN_TOTP_SECRETS ?? process.env.FRIST_API_ADMIN_TOTP_SECRET ?? ''),
+    adminTotpSecretValues,
+    adminTotpSecrets: normalizeTotpSecrets(adminTotpSecretValues),
     admin2faSessionTtlMs: Number(options.admin2faSessionTtlMs ?? process.env.FRIST_API_ADMIN_2FA_SESSION_TTL_MS ?? 3_600_000),
+    admin2faRateLimitMax: Number(
+      options.admin2faRateLimitMax ?? process.env.FRIST_API_ADMIN_2FA_RATE_LIMIT_MAX ?? 5,
+    ),
+    admin2faRateLimitWindowMs: Number(
+      options.admin2faRateLimitWindowMs ?? process.env.FRIST_API_ADMIN_2FA_RATE_LIMIT_WINDOW_MS ?? 900_000,
+    ),
     backupStatusMaxAgeHours: Number(options.backupStatusMaxAgeHours ?? process.env.FRIST_API_BACKUP_STATUS_MAX_AGE_HOURS ?? 26),
     slaRetentionDays: Number(options.slaRetentionDays ?? process.env.FRIST_API_SLA_RETENTION_DAYS ?? DEFAULT_SLA_RETENTION_DAYS),
     allowInsecurePublicHttp:
@@ -6230,10 +5799,7 @@ function normalizeServerOptions(options) {
         ? options.allowPrivateUpstreamUrls
         : process.env.FRIST_API_ALLOW_PRIVATE_UPSTREAM_URLS === '1',
     resolveUpstreamAddresses: options.resolveUpstreamAddresses,
-    publicMode:
-      typeof options.publicMode === 'boolean'
-        ? options.publicMode
-        : envPublicMode ?? process.env.NODE_ENV === 'production',
+    publicMode,
     nowFactory: typeof options.nowFactory === 'function' ? options.nowFactory : () => new Date(),
     lowInventoryThresholdRatio: Number(
       options.lowInventoryThresholdRatio ?? process.env.FRIST_API_LOW_INVENTORY_THRESHOLD_RATIO ?? 0.05,
@@ -6352,17 +5918,29 @@ function validatePublicModeOptions(serverOptions) {
   if (isUnsafeSecret(serverOptions.sessionSecret, 32)) {
     problems.push('会话密钥必须替换成长随机值');
   }
+  if (isUnsafeSecret(serverOptions.passwordHashSecret, 32)) {
+    problems.push('密码哈希密钥必须替换成长随机值');
+  }
   if (serverOptions.exposeVerificationCode) {
     problems.push('公开模式禁止回显验证码');
   }
   if (serverOptions.allowDemoRecharge) {
     problems.push('公开模式禁止演示充值');
   }
-  if (!serverOptions.dataEncryptionKey) {
-    problems.push('运行数据加密密钥必须配置');
+  if (isUnsafeSecret(serverOptions.dataEncryptionKey, 32)) {
+    problems.push('运行数据加密密钥必须替换成长随机值');
   }
-  if (!serverOptions.adminPageCode) {
-    problems.push('管理页隐藏入口码必须配置');
+  if (isUnsafeSecret(serverOptions.adminPageCode, 16)) {
+    problems.push('管理页隐藏入口码必须替换成长随机值');
+  }
+  if (serverOptions.adminClaimCodes.some((code) => isUnsafeSecret(code, 24))) {
+    problems.push('管理员身份码必须替换成长随机值');
+  }
+  if (serverOptions.adminTotpSecretValues.some((secret) => isUnsafeSecret(secret, 16))) {
+    problems.push('管理员 TOTP 密钥必须替换为有效 Base32 随机值');
+  }
+  if (!serverOptions.requireEmailVerification) {
+    problems.push('公开模式必须开启邮箱验证');
   }
   if (!serverOptions.requireCsrf) {
     problems.push('公开模式必须开启 CSRF 防护');
@@ -6370,7 +5948,10 @@ function validatePublicModeOptions(serverOptions) {
   if (serverOptions.newApiEnabled && (!Number.isFinite(serverOptions.newApiDefaultTokenQuota) || serverOptions.newApiDefaultTokenQuota <= 0)) {
     problems.push('New-API 默认 Key 额度必须显式配置为正数，禁止无限额度 Key');
   }
-  if (serverOptions.requireTurnstile && (!serverOptions.turnstileSiteKey || !serverOptions.turnstileSecret)) {
+  if (
+    serverOptions.requireTurnstile &&
+    (!serverOptions.turnstileSiteKey || isUnsafeSecret(serverOptions.turnstileSecret, 20))
+  ) {
     problems.push('人机验证必须同时配置站点 Key 和服务端密钥');
   }
   if (
@@ -6386,8 +5967,8 @@ function validatePublicModeOptions(serverOptions) {
     if (!serverOptions.canonicalHost || isTemporaryHost(serverOptions.canonicalHost)) {
       problems.push('生产强制模式必须配置固定品牌域名 FRIST_API_CANONICAL_HOST');
     }
-    if (!serverOptions.newApiEnabled || !serverOptions.requireNewApiDatabase) {
-      problems.push('生产强制模式必须启用 New-API 数据库替代 JSON runtime');
+    if (!serverOptions.newApiEnabled || !serverOptions.requireNewApiDatabase || !serverOptions.newApiGatewayEnabled) {
+      problems.push('生产强制模式必须启用 New-API 数据库和网关替代本地兼容链路');
     }
     if (!serverOptions.requireAdmin2fa || serverOptions.adminTotpSecrets.length === 0) {
       problems.push('生产强制模式必须启用管理员 2FA');
@@ -6664,56 +6245,6 @@ function isTemporaryHost(value) {
   return !host || /\.nip\.io$/i.test(host) || /\.sslip\.io$/i.test(host) || /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
 }
 
-function requireSession(data, request) {
-  const session = findSession(data, request);
-  if (!session.user) {
-    throw publicError(401, '请先登录');
-  }
-  return session;
-}
-
-function findSession(data, request) {
-  const token = parseCookies(request.headers.cookie || '')[SESSION_COOKIE];
-  const session = token ? data.sessions[token] : null;
-  // 旧版明文 userId 会话没有生命周期信息，升级后安全退出并要求重新登录。
-  const userId = session && typeof session === 'object' ? String(session.userId || '') : '';
-  const expiresAt = Date.parse(session?.expiresAt || '');
-  if (!userId || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
-    return { token, user: undefined, session: null };
-  }
-  const user = data.users.find((item) => item.id === userId);
-  return { token, user, session };
-}
-
-function requireCsrfIfEnabled(data, request, serverOptions, options = {}) {
-  if (!serverOptions.requireCsrf || request.method === 'GET' || request.method === 'HEAD' || request.method === 'OPTIONS') {
-    return;
-  }
-  if (options.allowAdminToken && request.headers['x-admin-token']) {
-    return;
-  }
-  const { token, user } = findSession(data, request);
-  if (!user || !token) {
-    throw publicError(401, '请先登录');
-  }
-  const expected = String(data.sessionCsrfTokens?.[token] || parseCookies(request.headers.cookie || '')[CSRF_COOKIE] || '');
-  const actual = String(request.headers['x-csrf-token'] || '').trim();
-  if (!expected || !actual || !safeEqual(expected, actual)) {
-    throw publicError(403, '页面安全校验失败，请刷新后重试');
-  }
-}
-
-function requireUserKey(data, request) {
-  const authorization = request.headers.authorization || '';
-  const xApiKey = request.headers['x-api-key'] || request.headers['anthropic-auth-token'] || '';
-  const secret = authorization.match(/^Bearer\s+(.+)$/i)?.[1] || String(xApiKey || '').trim();
-  const key = data.userKeys.find((item) => !isEncryptedRuntimeSecret(item.secret) && safeEqual(item.secret, secret));
-  if (!key || !key.enabled) {
-    throw publicError(401, 'API Key 不可用');
-  }
-  return key;
-}
-
 function requireAdmin(data, request, serverOptions, options = {}) {
   const token = request.headers['x-admin-token'];
   if (token && token === serverOptions.adminToken) {
@@ -6746,7 +6277,7 @@ function requireAdminSecondFactorIfEnabled(data, request, serverOptions, options
   }
   pruneAdminSecondFactorSessions(data, serverOptions);
   const token = parseCookies(request.headers.cookie || '')[ADMIN_2FA_COOKIE] || headerValue(request, 'x-admin-2fa-session');
-  const session = token ? data.adminSecondFactorSessions?.[token] : null;
+  const session = token ? data.adminSecondFactorSessions?.[runtimeTokenKey(token)] : null;
   const expiresAt = Date.parse(session?.expiresAt || '');
   if (!session || !Number.isFinite(expiresAt) || expiresAt <= currentDate(serverOptions).getTime()) {
     throw publicError(401, '需要管理员 2FA 验证');
@@ -6819,25 +6350,8 @@ function resolveProbeLatencyMs(key, probe = {}) {
   return Number.isFinite(latency) && latency > 0 ? latency : 0;
 }
 
-function normalizeSourceType(value) {
-  const sourceType = String(value || '').trim().toLowerCase();
-  if (sourceType === PRIMARY_SOURCE_TYPE || sourceType === 'official' || sourceType === 'primary') return PRIMARY_SOURCE_TYPE;
-  if (sourceType === 'cpa' || sourceType === 'cpa_json' || sourceType === 'cpa_json_backup') return 'cpa_json_backup';
-  if (sourceType === 'chong' || sourceType === 'chong_backup') return 'chong_backup';
-  if (sourceType === 'manual_backup' || sourceType === 'other_backup' || sourceType === 'backup') return 'manual_backup';
-  return PRIMARY_SOURCE_TYPE;
-}
 
-function normalizeRiskStatus(value) {
-  const status = String(value || '').trim().toLowerCase();
-  if (status === 'approved' || status === 'pass' || status === 'allowed') return 'approved';
-  if (status === 'blocked' || status === 'rejected' || status === 'disabled') return 'blocked';
-  return 'quarantined';
-}
 
-function sanitizeRiskNote(value) {
-  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 500);
-}
 
 function normalizePlusAccountStatus(value) {
   const status = String(value || '').trim().toLowerCase();
@@ -6873,45 +6387,6 @@ function normalizeRtPlatform(value) {
   return 'codex';
 }
 
-function isSourceRouteApproved({ sourceType, riskStatus, backupRiskAccepted }) {
-  const normalizedSourceType = normalizeSourceType(sourceType);
-  const normalizedRiskStatus = normalizeRiskStatus(riskStatus);
-  if (normalizedRiskStatus !== 'approved') {
-    return false;
-  }
-  if (normalizedSourceType === PRIMARY_SOURCE_TYPE) {
-    return true;
-  }
-  return BACKUP_SOURCE_TYPES.has(normalizedSourceType) && Boolean(backupRiskAccepted);
-}
-
-function isCredentialRouteApproved(credential) {
-  if (isEncryptedRuntimeSecret(credential.rawKey)) {
-    return false;
-  }
-  return isSourceRouteApproved({
-    sourceType: credential.sourceType || PRIMARY_SOURCE_TYPE,
-    riskStatus: credential.riskStatus || 'approved',
-    backupRiskAccepted: credential.backupRiskAccepted,
-  });
-}
-
-function normalizeModels(models, options = {}) {
-  if (typeof models === 'string') {
-    const parsed = models
-      .split(/[,\n]/)
-      .map((item) => item.trim())
-      .filter(Boolean);
-    return parsed.length > 0 || options.allowEmpty ? normalizeOfficialModelList(parsed) : [DEFAULT_MODEL];
-  }
-  if (Array.isArray(models) && models.length > 0) {
-    return normalizeOfficialModelList(models.map((item) => String(item).trim()).filter(Boolean));
-  }
-  if (options.allowEmpty) {
-    return [];
-  }
-  return [DEFAULT_MODEL];
-}
 
 function upsertSupplierProfile(data, profile) {
   let source = data.supplierProfiles.find((item) => item.id === profile.id);
@@ -7059,13 +6534,6 @@ function adminGateCookie(serverOptions) {
   };
 }
 
-function sessionCookies(sessionToken, csrfToken, request, serverOptions) {
-  return [
-    sessionCookie(sessionToken, request, serverOptions),
-    csrfCookie(csrfToken, request, serverOptions),
-  ];
-}
-
 function adminSecondFactorCookie(sessionToken, request, serverOptions) {
   if (!sessionToken) {
     return '';
@@ -7079,96 +6547,9 @@ function adminSecondFactorCookie(sessionToken, request, serverOptions) {
   ].filter(Boolean).join('; ');
 }
 
-function sessionCookie(sessionToken, request, serverOptions) {
-  const maxAge = Math.max(300, Math.floor(Number(serverOptions.sessionTtlMs || DEFAULT_SESSION_TTL_MS) / 1000));
-  return [
-    `${SESSION_COOKIE}=${sessionToken}`,
-    'Path=/',
-    'HttpOnly',
-    'SameSite=Lax',
-    `Max-Age=${maxAge}`,
-    shouldUseSecureCookie(request, serverOptions) ? 'Secure' : '',
-  ].filter(Boolean).join('; ');
-}
 
-function csrfCookie(csrfToken, request, serverOptions) {
-  const maxAge = Math.max(300, Math.floor(Number(serverOptions.sessionTtlMs || DEFAULT_SESSION_TTL_MS) / 1000));
-  return [
-    `${CSRF_COOKIE}=${csrfToken}`,
-    'Path=/',
-    'SameSite=Lax',
-    `Max-Age=${maxAge}`,
-    shouldUseSecureCookie(request, serverOptions) ? 'Secure' : '',
-  ].filter(Boolean).join('; ');
-}
 
-function expiredSessionCookies(request, serverOptions) {
-  const secure = shouldUseSecureCookie(request, serverOptions) ? 'Secure' : '';
-  return [
-    [`${SESSION_COOKIE}=`, 'Path=/', 'HttpOnly', 'SameSite=Lax', 'Max-Age=0', secure].filter(Boolean).join('; '),
-    [`${CSRF_COOKIE}=`, 'Path=/', 'SameSite=Lax', 'Max-Age=0', secure].filter(Boolean).join('; '),
-  ];
-}
 
-function shouldUseSecureCookie(request, serverOptions) {
-  const forwardedProto = String(request.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
-  return forwardedProto === 'https' || isPublicHttpsGateway(serverOptions.publicGatewayBaseUrl);
-}
-
-async function readJsonBody(request) {
-  const bodyText = await readRequestText(request);
-  if (!bodyText) {
-    return {};
-  }
-  try {
-    return JSON.parse(bodyText);
-  } catch {
-    throw publicError(400, 'JSON 格式不正确');
-  }
-}
-
-async function readRequestText(request) {
-  const chunks = [];
-  let size = 0;
-  for await (const chunk of request) {
-    size += chunk.length;
-    if (size > 1024 * 1024) {
-      throw publicError(413, '请求体过大');
-    }
-    chunks.push(chunk);
-  }
-  if (chunks.length === 0) {
-    return '';
-  }
-  return Buffer.concat(chunks).toString('utf8');
-}
-
-function writeJson(response, status, payload, headers = {}) {
-  response.writeHead(status, {
-    'content-type': 'application/json; charset=utf-8',
-    'access-control-allow-origin': '*',
-    'access-control-allow-headers': 'content-type, authorization, x-api-key, anthropic-auth-token, x-admin-token, x-csrf-token, x-frist-session-id, x-conversation-id, x-cc-xianyu-token',
-    'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
-    ...headers,
-  });
-  response.end(JSON.stringify(payload));
-}
-
-function writeNoContent(response) {
-  response.writeHead(204, {
-    'access-control-allow-origin': '*',
-    'access-control-allow-headers': 'content-type, authorization, x-api-key, anthropic-auth-token, x-admin-token, x-csrf-token, x-frist-session-id, x-conversation-id, x-cc-xianyu-token',
-    'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
-  });
-  response.end();
-}
-
-function publicError(statusCode, message) {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  error.expose = true;
-  return error;
-}
 
 function normalizePublicError(error) {
   if (error?.expose) {
@@ -7205,108 +6586,12 @@ function normalizeOriginHost(value) {
   return raw.replace(/^https?:\/\//i, '').split('/')[0].trim();
 }
 
-function parseCookies(header) {
-  return String(header || '')
-    .split(';')
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .reduce((cookies, part) => {
-      const index = part.indexOf('=');
-      if (index === -1) return cookies;
-      cookies[part.slice(0, index)] = decodeURIComponent(part.slice(index + 1));
-      return cookies;
-    }, {});
-}
 
-function poolForUser(user) {
-  if (String(user.plan || '').includes('日卡')) return 'day';
-  if (String(user.plan || '').includes('月卡')) return 'month';
-  return 'default';
-}
 
-function allowedPoolsForUser(user) {
-  const pool = poolForUser(user);
-  if (pool === 'day') return ['hour', 'day', 'unlimited', 'default'];
-  if (pool === 'month') return ['hour', 'day', 'month', 'unlimited', 'default'];
-  return ['unlimited', 'default'];
-}
 
-function normalizePool(value) {
-  const pool = String(value || '').trim().toLowerCase();
-  if (['hour', 'day', 'month', 'unlimited', 'default'].includes(pool)) return pool;
-  if (/小时|hour/.test(pool)) return 'hour';
-  if (/日|天|day/.test(pool)) return 'day';
-  if (/月|month/.test(pool)) return 'month';
-  if (/不限|永久|unlimited/.test(pool)) return 'unlimited';
-  return '';
-}
 
-function compareGatewayCredentials(left, right) {
-  const poolDelta = poolPriority(left.pool) - poolPriority(right.pool);
-  if (poolDelta !== 0) return poolDelta;
-  const expiryDelta = expiryMs(left.expiresAt) - expiryMs(right.expiresAt);
-  if (expiryDelta !== 0) return expiryDelta;
-  return Number(left.latencyMs || 999999) - Number(right.latencyMs || 999999);
-}
 
-function credentialMatchesModelGroup(credential, model, keyGroup) {
-  const normalizedKeyGroup = normalizeModelGroup(keyGroup || 'All');
-  if (normalizedKeyGroup === 'All') return true;
-  const credentialGroup = normalizeModelGroup(credential.modelGroup || 'All');
-  if (credentialGroup !== 'All' && credentialGroup !== normalizedKeyGroup) {
-    return false;
-  }
-  if (model) {
-    return modelMatchesGroup(model, normalizedKeyGroup);
-  }
-  return (credential.models || []).some((item) => modelMatchesGroup(item, normalizedKeyGroup));
-}
 
-function expiryMs(value) {
-  if (!value) return Number.MAX_SAFE_INTEGER;
-  const time = Date.parse(value);
-  return Number.isFinite(time) ? time : Number.MAX_SAFE_INTEGER;
-}
-
-function accountFromUser(data, user) {
-  reconcileUserBalance(user);
-  const now = currentDate();
-  const today = now.toISOString().slice(0, 10);
-  const month = now.toISOString().slice(0, 7);
-  const routedEvents = data.events.filter((item) => item.type === 'gateway_routed' && item.userId === user.id);
-  const todayEvents = routedEvents.filter((item) => String(item.at || '').startsWith(today));
-  const monthEvents = routedEvents.filter((item) => String(item.at || '').startsWith(month));
-  const todayCost = todayEvents.reduce((sum, item) => sum + Number(item.quotaCost || 0), 0);
-  const monthCost = monthEvents.reduce((sum, item) => sum + Number(item.quotaCost || 0), 0);
-  const todayTokens = todayEvents.reduce((sum, item) => sum + Number(item.totalTokens || 0), 0);
-  const totalTokens = routedEvents.reduce((sum, item) => sum + Number(item.totalTokens || 0), 0);
-  const responseEvents = routedEvents.filter((item) => Number(item.latencyMs || 0) > 0);
-  const averageLatency = responseEvents.length
-    ? Math.round(responseEvents.reduce((sum, item) => sum + Number(item.latencyMs || 0), 0) / responseEvents.length)
-    : 0;
-  const successRate = routedEvents.length
-    ? `${Math.round((routedEvents.filter((item) => item.status !== 'failed').length / routedEvents.length) * 1000) / 10}%`
-    : '0%';
-  return {
-    plan: user.plan,
-    renewalDate: user.renewalDate,
-    balance: formatUsdFromCnyCents(user.balanceCents),
-    balanceCny: formatCny(user.balanceCents),
-    packageQuota: formatUsdFromCnyCents(user.packageQuotaCents),
-    packageQuotaCny: formatCny(user.packageQuotaCents),
-    boosterQuota: formatUsdFromCnyCents(user.boosterQuotaCents),
-    boosterQuotaCny: formatCny(user.boosterQuotaCents),
-    quotaLeft: formatUsdFromCnyCents(user.balanceCents),
-    todayCost: formatUsdFromCnyCents(todayCost),
-    monthCost: formatUsdFromCnyCents(monthCost),
-    usageTotal: formatUsdFromCnyCents(monthCost),
-    todayCalls: `${todayEvents.length} 次`,
-    todayTokens: compactTokenText(todayTokens),
-    totalTokens: compactTokenText(totalTokens),
-    averageLatency: averageLatency ? `${averageLatency}ms` : '-',
-    successRate,
-  };
-}
 
 function sumUserGatewayCost(data, userId, periodPrefix = '') {
   return data.events
@@ -7315,78 +6600,10 @@ function sumUserGatewayCost(data, userId, periodPrefix = '') {
     .reduce((sum, item) => sum + Number(item.quotaCost || 0), 0);
 }
 
-function availableQuotaCents(user) {
-  reconcileUserBalance(user);
-  return Number(user.packageQuotaCents || 0) + Number(user.boosterQuotaCents || 0);
-}
 
-function deductUserQuota(user, quotaCost) {
-  let remaining = Number(quotaCost || 0);
-  const packageDeduction = Math.min(Number(user.packageQuotaCents || 0), remaining);
-  user.packageQuotaCents = Math.max(0, Number(user.packageQuotaCents || 0) - packageDeduction);
-  remaining -= packageDeduction;
-  const boosterDeduction = Math.min(Number(user.boosterQuotaCents || 0), Math.max(0, remaining));
-  if (remaining > 0) {
-    user.boosterQuotaCents = Math.max(0, Number(user.boosterQuotaCents || 0) - boosterDeduction);
-  }
-  reconcileUserBalance(user);
-  return { packageCents: packageDeduction, boosterCents: boosterDeduction };
-}
 
-function resolveQuotaCostCents(data, model, body, upstream, serverOptions) {
-  const usage = parseUpstreamUsage(upstream.bodyText);
-  const price = findModelPrice(data, model);
-  if (price && usage.totalTokens > 0) {
-    return priceUsageCents(price, usage.promptTokens, usage.completionTokens);
-  }
-  return estimateQuotaCostCents(data, model, body, serverOptions);
-}
 
-function estimateQuotaCostCents(data, model, body, serverOptions) {
-  const price = findModelPrice(data, model);
-  if (!price) {
-    return Number(serverOptions.quotaCost || DEFAULT_QUOTA_COST);
-  }
 
-  const promptTokens = estimatePromptTokens(body.messages ?? body.input ?? body.prompt);
-  const completionTokens = Number(body.max_tokens || body.max_completion_tokens || body.max_output_tokens || 256);
-  return Math.max(Number(serverOptions.quotaCost || DEFAULT_QUOTA_COST), priceUsageCents(price, promptTokens, completionTokens));
-}
-
-function buildGatewayModels(data, request) {
-  const userKey = requireUserKey(data, request);
-  const user = data.users.find((item) => item.id === userKey.userId);
-  if (!user) {
-    throw publicError(401, '用户不存在');
-  }
-  expireUserPlanIfNeeded(data, user, {});
-  const allowedPools = allowedPoolsForUser(user);
-  const models = uniqueStrings(
-    data.credentials
-      .filter((credential) => allowedPools.includes(credential.pool))
-      .filter((credential) => credential.enabled)
-      .filter((credential) => credential.status === 'healthy')
-      .filter(isCredentialRouteApproved)
-      .filter((credential) => Number(credential.quotaRemaining || 0) > 0)
-      .filter((credential) => credentialMatchesModelGroup(credential, '', userKey.modelGroup))
-      .flatMap((credential) => credential.models || []),
-  )
-    .filter((model) => modelMatchesGroup(model, userKey.modelGroup || 'All'));
-  const sortedModels = sortModelsByStrength(models);
-
-  return {
-    object: 'list',
-    data: sortedModels.map((model) => ({
-      id: model,
-      object: 'model',
-      owned_by: 'frist-api',
-    })),
-  };
-}
-
-function availableModelsForCustomer(data, user, key, requestedModel = '') {
-  return customerImportModelSelection(data, user, key, requestedModel).availableModels;
-}
 
 function customerImportModelSelection(data, user, key, requestedModel = '') {
   expireUserPlanIfNeeded(data, user, {});
@@ -7418,185 +6635,8 @@ function customerImportModelSelection(data, user, key, requestedModel = '') {
   throw publicError(409, '暂无健康上游模型，请先补充或修复可用渠道后再导入客户端');
 }
 
-function strongestModel(models = []) {
-  return sortModelsByStrength(models)[0] || '';
-}
 
 
-function sortModelsByStrength(models = []) {
-  return normalizeOfficialModelList(models).sort(compareModelsByAuditableRules);
-}
-
-function compareModelsByAuditableRules(left, right) {
-  const leftScore = modelSortScore(left);
-  const rightScore = modelSortScore(right);
-  for (let index = 0; index < Math.max(leftScore.length, rightScore.length); index += 1) {
-    const delta = (leftScore[index] ?? 0) - (rightScore[index] ?? 0);
-    if (delta !== 0) return delta;
-  }
-  return left.localeCompare(right);
-}
-
-function modelSortScore(model) {
-  const value = String(model || '').toLowerCase();
-  const family = value.includes('gpt') || value.includes('image') || value.includes('dall')
-    ? 0
-    : value.includes('claude')
-      ? 1
-      : value.includes('deepseek')
-        ? 2
-        : value.includes('gemini')
-          ? 3
-          : 9;
-  const numbers = [...value.matchAll(/\d+(?:\.\d+)?/g)].map((match) => Number(match[0]));
-  const primary = numbers[0] || 0;
-  const secondary = numbers[1] || 0;
-  return [
-    family,
-    -primary,
-    -secondary,
-    modelCapabilityRank(value),
-    value.includes('image') || value.includes('dall') ? 2 : 0,
-    value.includes('codex') ? 3 : 0,
-  ];
-}
-
-function modelCapabilityRank(value) {
-  if (value.includes('pro') && !value.includes('deepseek')) return 0;
-  if (value.includes('opus')) return 0;
-  if (value.includes('thinking')) return 1;
-  if (value.includes('sonnet')) return 2;
-  if (value.includes('flash')) return 3;
-  if (value.includes('mini')) return 4;
-  if (value.includes('nano')) return 5;
-  if (value.includes('chat')) return 6;
-  if (value.includes('reasoner')) return 7;
-  if (value.includes('pro')) return 8;
-  return 2;
-}
-
-function findModelPrice(data, model) {
-  const normalizedModel = normalizeOfficialModelName(model);
-  return [...(data.priceDrafts || [])]
-    .reverse()
-    .find((draft) => normalizeOfficialModelName(draft.model) === normalizedModel || draft.model === '*');
-}
-
-function parseUpstreamUsage(bodyText) {
-  try {
-    const payload = JSON.parse(bodyText || '{}');
-    const usage = payload.usage || {};
-    const promptTokens = Number(usage.prompt_tokens || usage.input_tokens || 0);
-    const completionTokens = Number(usage.completion_tokens || usage.output_tokens || 0);
-    return {
-      promptTokens: Number.isFinite(promptTokens) ? promptTokens : 0,
-      completionTokens: Number.isFinite(completionTokens) ? completionTokens : 0,
-      totalTokens: Number(usage.total_tokens || 0) || promptTokens + completionTokens,
-    };
-  } catch {
-    return { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
-  }
-}
-
-function estimatePromptTokens(input) {
-  if (!Array.isArray(input)) {
-    return Math.max(1, Math.ceil(String(input || '').length / 4));
-  }
-  const text = input.map(inputText).join('\n');
-  return Math.max(1, Math.ceil(text.length / 4));
-}
-
-function inputText(item) {
-  if (typeof item === 'string') return item;
-  if (typeof item?.content === 'string') return item.content;
-  return JSON.stringify(item?.content || item || '');
-}
-
-function priceUsageCents(price, promptTokens, completionTokens) {
-  const inputCny = (Number(promptTokens || 0) / 1_000_000) * Number(price.inputSaleCnyPerMillion || 0);
-  const outputCny = (Number(completionTokens || 0) / 1_000_000) * Number(price.outputSaleCnyPerMillion || 0);
-  return Math.max(1, Math.ceil((inputCny + outputCny) * 100));
-}
-
-function reconcileUserBalance(user) {
-  user.packageQuotaCents = Math.max(0, Number(user.packageQuotaCents || 0));
-  user.boosterQuotaCents = Math.max(0, Number(user.boosterQuotaCents || 0));
-  user.balanceCents = user.packageQuotaCents + user.boosterQuotaCents;
-}
-
-function expireUserPlanIfNeeded(data, user, serverOptions, options = {}) {
-  const plan = String(user.plan || '');
-  const planCanExpire = plan.includes('日卡') || plan.includes('月卡');
-  if (!planCanExpire) {
-    reconcileUserBalance(user);
-    return false;
-  }
-
-  const expiresAtMs = planExpiryMs(user);
-  if (!Number.isFinite(expiresAtMs) || currentDate(serverOptions).getTime() < expiresAtMs) {
-    reconcileUserBalance(user);
-    return false;
-  }
-
-  const now = currentDate(serverOptions).toISOString();
-  const expiredPlan = user.plan;
-  user.packageQuotaCents = 0;
-  user.plan = '默认套餐';
-  user.renewalDate = '-';
-  user.planExpiresAt = '';
-  user.updatedAt = now;
-  reconcileUserBalance(user);
-
-  if (options.recordEvent !== false && data?.events) {
-    data.events.push({
-      type: 'plan_expired',
-      userId: user.id,
-      plan: expiredPlan,
-      at: now,
-    });
-  }
-  return true;
-}
-
-function planExpiryMs(user) {
-  if (user.planExpiresAt) {
-    return Date.parse(user.planExpiresAt);
-  }
-  if (user.renewalDate && user.renewalDate !== '-') {
-    return Date.parse(`${user.renewalDate}T00:00:00.000Z`);
-  }
-  return Number.NaN;
-}
-
-function currentDate(serverOptions = {}) {
-  const value = typeof serverOptions.nowFactory === 'function' ? serverOptions.nowFactory() : new Date();
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return new Date();
-  }
-  return date;
-}
-
-function buildModelUsage(data, user) {
-  const events = data.events.filter((item) => item.type === 'gateway_routed' && item.userId === user.id);
-  const totals = new Map();
-  for (const event of events) {
-    const current = totals.get(event.model) || { cost: 0, calls: 0, tokens: 0 };
-    current.cost += Number(event.quotaCost || 0);
-    current.calls += 1;
-    current.tokens += Number(event.totalTokens || 0);
-    totals.set(event.model, current);
-  }
-  const totalCost = [...totals.values()].reduce((sum, item) => sum + item.cost, 0) || 1;
-  return [...totals.entries()].map(([model, usage]) => ({
-    model,
-    amount: formatUsdFromCnyCents(usage.cost),
-    amountCny: formatCny(usage.cost),
-    calls: `${usage.calls} 次`,
-    tokens: compactTokenText(usage.tokens),
-    percent: Math.max(4, Math.round((usage.cost / totalCost) * 100)),
-  }));
-}
 
 function buildUsageRecords(data, user) {
   const keyById = new Map(
@@ -7981,127 +7021,6 @@ function summarizeSlaWindow(events, cutoffMs) {
   };
 }
 
-function buildModelCatalog(data) {
-  const liveByModel = buildLiveModelMap(data);
-  const rowsByModel = new Map();
-  const auditCatalogByModel = new Map(
-    DEFAULT_MODEL_CATALOG.map((item) => [normalizeOfficialModelName(item.model), item]),
-  );
-
-  for (const model of uniqueStrings(data.credentials.flatMap((credential) => credential.models || []))) {
-    const live = liveByModel.get(model);
-    const price = findModelPrice(data, model);
-    rowsByModel.set(model, {
-      model,
-      family: live?.provider || auditCatalogByModel.get(model)?.family || providerFromModel(model),
-      tagline: auditCatalogByModel.get(model)?.tagline || taglineForModel(model),
-      context: auditCatalogByModel.get(model)?.context || contextForModel(model),
-      price: price ? priceLabel(price) : auditCatalogByModel.get(model)?.price || '参考标价待同步',
-      available: Boolean(live?.ok),
-    });
-  }
-
-  return [...rowsByModel.values()].sort((left, right) => {
-    const liveDelta = Number(right.available) - Number(left.available);
-    if (liveDelta !== 0) return liveDelta;
-    return `${left.family}:${left.model}`.localeCompare(`${right.family}:${right.model}`);
-  });
-}
-
-function buildLiveModelMap(data) {
-  const rows = new Map();
-  for (const credential of data.credentials || []) {
-    const provider = effectiveCredentialGroup(credential);
-    const isLive =
-      credential.enabled &&
-      credential.status === 'healthy' &&
-      isCredentialRouteApproved(credential) &&
-      Number(credential.quotaRemaining || 0) > 0;
-    for (const model of normalizeOfficialModelList(credential.models || [])) {
-      const current = rows.get(model);
-      rows.set(model, {
-        provider: current?.provider || provider || providerFromModel(model),
-        ok: Boolean(current?.ok || isLive),
-      });
-    }
-  }
-  return rows;
-}
-
-function providerFromModel(model = '') {
-  const value = String(model || '').toLowerCase();
-  if (value.includes('gpt') || value.includes('openai')) return 'OpenAI';
-  if (value.includes('deepseek')) return 'DeepSeek';
-  if (value.includes('gemini')) return 'Gemini';
-  return 'Claude';
-}
-
-function taglineForModel(model = '') {
-  if (/image|dall/i.test(model)) return '图片生成';
-  if (/gpt/i.test(model)) return '推理和代码';
-  if (/claude/i.test(model)) return '长文和工具调用';
-  if (/gemini/i.test(model)) return '多模态和轻量任务';
-  return '通用模型';
-}
-
-function contextForModel(model = '') {
-  if (/image|dall/i.test(model)) return '按图计费';
-  if (/gpt-5|claude/i.test(model)) return '长上下文';
-  return '按模型能力';
-}
-
-function priceLabel(price) {
-  if (price.displayPrice) {
-    return price.displayPrice;
-  }
-  const input = Number(price.inputSaleCnyPerMillion || 0);
-  const output = Number(price.outputSaleCnyPerMillion || 0);
-  if (input <= 0 && output <= 0) {
-    return '参考标价待同步';
-  }
-  return `${formatUsdPriceFromCny(input)}/${formatUsdPriceFromCny(output)} 每 1M`;
-}
-
-function buildInventorySummary(data) {
-  const buckets = new Map();
-  for (const credential of data.credentials) {
-    const group = effectiveCredentialGroup(credential);
-    const key = `${credential.pool || 'default'}:${group}`;
-    const current = buckets.get(key) || {
-      pool: credential.pool || 'default',
-      providerGroup: group,
-      totalKeys: 0,
-      healthyKeys: 0,
-      quotaRemaining: 0,
-      quotaTotal: 0,
-      wasteEstimate: 0,
-      nearestExpiresAt: '',
-    };
-    current.totalKeys += 1;
-    if (credential.enabled && credential.status === 'healthy' && isCredentialRouteApproved(credential)) {
-      current.healthyKeys += 1;
-      current.quotaRemaining += Number(credential.quotaRemaining || 0);
-    }
-    current.quotaTotal += Number(credential.quotaTotal || credential.quotaRemaining || 0);
-    current.wasteEstimate += estimateCredentialWaste(credential).quotaRemaining;
-    if (credential.expiresAt && (!current.nearestExpiresAt || Date.parse(credential.expiresAt) < Date.parse(current.nearestExpiresAt))) {
-      current.nearestExpiresAt = credential.expiresAt;
-    }
-    buckets.set(key, current);
-  }
-
-  return [...buckets.values()]
-    .sort((left, right) => poolPriority(left.pool) - poolPriority(right.pool) || left.providerGroup.localeCompare(right.providerGroup))
-    .map((item) => ({
-      ...item,
-      totalCount: item.totalKeys,
-      healthyCount: item.healthyKeys,
-      remainingRatio: item.quotaTotal > 0 ? Number((item.quotaRemaining / item.quotaTotal).toFixed(4)) : 0,
-      quotaRemainingText: formatCny(item.quotaRemaining),
-      quotaTotalText: formatCny(item.quotaTotal),
-      wasteText: formatCny(item.wasteEstimate),
-    }));
-}
 
 async function buildProductionReadiness(data, serverOptions) {
   const backup = buildBackupReadiness(data, serverOptions);
@@ -8355,32 +7274,7 @@ function buildRtAccountSummary(accounts) {
   };
 }
 
-function effectiveCredentialGroup(credential) {
-  const explicit = normalizeModelGroup(credential.modelGroup || '');
-  if (explicit !== 'All') {
-    return explicit;
-  }
-  return inferProviderGroup((credential.models || []).join('\n'));
-}
 
-function estimateCredentialWaste(credential) {
-  const quotaRemaining = Number(credential.quotaRemaining || 0);
-  if (!credential.expiresAt || quotaRemaining <= 0) {
-    return { quotaRemaining: 0, reason: '' };
-  }
-  const expiresAt = Date.parse(credential.expiresAt);
-  if (!Number.isFinite(expiresAt)) {
-    return { quotaRemaining: 0, reason: '' };
-  }
-  const hoursLeft = (expiresAt - Date.now()) / 3_600_000;
-  if (hoursLeft <= 0) {
-    return { quotaRemaining, reason: '已过期未用完' };
-  }
-  if (hoursLeft <= 24) {
-    return { quotaRemaining, reason: '24小时内到期' };
-  }
-  return { quotaRemaining: 0, reason: '' };
-}
 
 function sanitizeUser(user) {
   const displayName = String(user.displayName || user.nickname || '').trim();
@@ -8410,85 +7304,9 @@ function sanitizeAvatarUrl(value) {
   }
 }
 
-function sanitizeUserKey(key, options = {}) {
-  const encryptedSecret = isEncryptedRuntimeSecret(key.secret);
-  return {
-    id: key.id,
-    name: key.name,
-    preview: encryptedSecret ? '需重新生成' : publicUserKeyPreview(key.preview || key.secret),
-    ...(options.revealSecret && !encryptedSecret ? { secret: key.secret } : {}),
-    enabled: Boolean(key.enabled) && !encryptedSecret,
-    requiresRotation: encryptedSecret,
-    modelGroup: key.modelGroup || 'All',
-    cost: formatUsdFromCnyCents(key.costCents),
-    costCny: formatCny(key.costCents),
-    tokens: key.tokens || '0.00M',
-    lastUsed: key.lastUsed || '-',
-    expiresAt: key.expiresAt || '-',
-  };
-}
 
-function isEncryptedRuntimeSecret(value) {
-  return String(value || '').startsWith('enc:v1:');
-}
 
-function publicUserKeyPreview(value) {
-  return maskKey(String(value || ''));
-}
 
-function sanitizeCredential(credential) {
-  const encryptedSecret = isEncryptedRuntimeSecret(credential.rawKey);
-  return {
-    id: credential.id,
-    sourceId: credential.sourceId,
-    keyPreview: encryptedSecret ? '需重新生成' : credential.keyPreview || maskKey(credential.rawKey),
-    pool: credential.pool,
-    modelGroup: credential.modelGroup || 'All',
-    cardType: credential.cardType || credential.pool,
-    sourceType: credential.sourceType || PRIMARY_SOURCE_TYPE,
-    riskStatus: credential.riskStatus || 'approved',
-    backupRiskAccepted: Boolean(credential.backupRiskAccepted),
-    riskNote: credential.riskNote || '',
-    baseUrl: credential.baseUrl,
-    connectionPath: credential.connectionPath || 'direct',
-    models: credential.models,
-    status: credential.status,
-    enabled: Boolean(credential.enabled) && !encryptedSecret,
-    requiresRotation: encryptedSecret,
-    quotaRemaining: credential.quotaRemaining,
-    quotaTotal: credential.quotaTotal || credential.quotaRemaining,
-    expiresAt: credential.expiresAt || '',
-    wasteEstimate: estimateCredentialWaste(credential),
-    latencyMs: credential.latencyMs,
-    lastProbeStatus: credential.lastProbeStatus || '',
-    lastProbeReason: credential.lastProbeReason || '',
-    updatedAt: credential.updatedAt,
-  };
-}
-
-function sanitizePaymentOrder(order) {
-  return {
-    id: order.id,
-    email: order.email || '',
-    amount: formatCny(order.amountCents),
-    amountCents: Number(order.amountCents || 0),
-    credit: formatUsdFromCnyCents(order.creditCents),
-    creditCny: formatCny(order.creditCents),
-    creditCents: Number(order.creditCents || order.amountCents || 0),
-    quotaUsd: Number(order.quotaUsd || 0),
-    planId: order.planId || '',
-    plan: order.plan || 'balance',
-    method: order.method,
-    provider: order.provider || '',
-    qrCode: order.qrCode || '',
-    notifyUrl: order.notifyUrl || '',
-    transactionId: order.transactionId || '',
-    status: order.status,
-    paidAt: order.paidAt || '',
-    createdAt: order.createdAt,
-    updatedAt: order.updatedAt,
-  };
-}
 
 function sanitizeRedemptionCard(card) {
   return {
@@ -8808,82 +7626,7 @@ function parseRtImportItem(item) {
   ];
 }
 
-function sanitizeParsedOrder(parsed) {
-  return {
-    baseUrl: parsed.baseUrl,
-    supplierDomain: parsed.supplierDomain,
-    supplierFingerprint: parsed.supplierFingerprint,
-    pool: parsed.pool,
-    cardType: parsed.cardType,
-    durationDays: parsed.durationDays,
-    quantity: parsed.quantity,
-    quotaUsd: parsed.quotaUsd,
-    amountCny: parsed.amountCny,
-    providerGroup: parsed.providerGroup,
-    models: parsed.models,
-    interfaceFormat: parsed.interfaceFormat,
-    authHeaderName: parsed.authHeaderName,
-    keyPreviews: parsed.keys.map((key) => maskKey(key.value)),
-    quotaTotal: parsed.keys.reduce((sum, key) => sum + Number(key.quotaTotal || 0), 0),
-    expiresAt: parsed.expiresAt,
-    inventorySummary: [
-      {
-        pool: parsed.pool,
-        providerGroup: parsed.providerGroup,
-        totalCount: parsed.keys.length,
-        healthyCount: parsed.keys.length,
-        quotaRemaining: parsed.keys.reduce((sum, key) => sum + Number(key.quotaRemaining || 0), 0),
-        quotaTotal: parsed.keys.reduce((sum, key) => sum + Number(key.quotaTotal || 0), 0),
-        wasteText: parsed.expiresAt ? '待写入后计算' : '无到期浪费',
-      },
-    ],
-  };
-}
 
-function sanitizeAdminEvents(events) {
-  return [...events]
-    .slice(-50)
-    .reverse()
-    .map((event) => ({
-      type: event.type,
-      at: event.at || '',
-      detail: adminEventDetail(event),
-    }));
-}
-
-function adminEventDetail(event) {
-  if (event.type === 'replenished') {
-    return `${event.pool || 'default'} 池写入 ${event.credentialCount || 0} 枚，失败 ${event.failedCount || 0} 枚`;
-  }
-  if (event.type === 'credential_exhausted') {
-    return `上游 Key 已摘除: ${event.reason || '额度或连通性异常'}`;
-  }
-  if (event.type === 'credential_failed') {
-    return `上游 Key 已切出: ${event.reason || '连通性异常'}`;
-  }
-  if (event.type === 'gateway_routed') {
-    return `${event.model || 'unknown'} 已路由，计费 ${formatUsdFromCnyCents(event.quotaCost)}`;
-  }
-  if (event.type === 'registered') return '新用户注册';
-  if (event.type === 'logged_in') return '用户登录';
-  if (event.type === 'redeemed') return `兑换码 ${event.code || ''} 已生效`;
-  if (event.type === 'redemption_cards_created') return `生成兑换卡 ${event.count || 0} 张`;
-  if (event.type === 'redemption_cards_autoreplenished') return `自动补卡 ${event.created || 0} 张`;
-  if (event.type === 'upstream_channels_synced') return `同步上游渠道 ${event.count || 0} 条，倍率加价 ${event.rateMarkup || 0}`;
-  if (event.type === 'upstream_balance_synced') return `上游余额 ¥${Number(event.remainingCny || 0).toFixed(2)} · ${event.level || 'unknown'}`;
-  if (event.type === 'xianyu_card_delivered') return `闲鱼订单 ${event.orderId || ''} 已发卡 ${event.code || ''}`;
-  if (event.type === 'plus_account_upserted') return `Plus 账号台账已更新: ${event.status || 'warming'}`;
-  if (event.type === 'rt_accounts_imported') return `RT 账号导入 ${event.count || 0} 个，跳过 ${event.skipped || 0} 个`;
-  if (event.type === 'admin_auth_failed') return `管理认证失败: ${event.path || '/api/admin/*'} · ${event.ipHash || 'unknown'}`;
-  if (event.type === 'plan_expired') return `${event.plan || '套餐'} 已到期，套餐额度已清零`;
-  if (event.type === 'payment_order_created') return `用户发起充值 ${formatCny(event.amountCents)}`;
-  if (event.type === 'manual_recharged') return `人工入账 ${formatCny(event.amountCents)}`;
-  return '系统事件';
-}
-
-function createId(prefix) {
-  return `${prefix}-${randomBytes(12).toString('base64url')}`;
-}
 
 function normalizeCardCode(value) {
   return String(value || '').trim().toUpperCase();
@@ -9107,42 +7850,14 @@ function decodeBase32Secret(value) {
   return Buffer.from(bytes);
 }
 
-function hashId(value) {
-  return createHash('sha1').update(String(value)).digest('hex').slice(0, 12);
-}
 
-function hashAdminClaimCode(value) {
-  return createHash('sha256').update(String(value || '').trim()).digest('hex');
-}
 
-function parseAdminClaimCodes(value) {
-  if (Array.isArray(value)) {
-    return value.map((item) => String(item).trim()).filter(Boolean);
-  }
-  return String(value || '')
-    .split(/[,\s]+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
 
-function generateVerificationCode() {
-  return String(randomBytes(4).readUInt32BE(0) % 1000000).padStart(6, '0');
-}
 
 function generateCustomerApiKey() {
   return `fk-live-${randomBytes(32).toString('base64url')}`;
 }
 
-function maskKey(value) {
-  const key = String(value || '');
-  if (!key) return 'sk-******';
-  const prefix = /^sk-/i.test(key)
-    ? 'sk'
-    : /^fk-live-/i.test(key)
-      ? 'fk-live'
-      : key.slice(0, Math.min(6, key.length)).replace(/-$/, '');
-  return `${prefix}-••••••${key.slice(-4)}`;
-}
 
 function maskRefreshToken(value) {
   const token = String(value || '');
@@ -9167,10 +7882,6 @@ function tokenFingerprint(value) {
   return text ? createHash('sha256').update(text).digest('hex').slice(0, 16) : '';
 }
 
-function initialsFromEmail(email) {
-  const name = String(email || 'fa').split('@')[0];
-  return name.slice(0, 2).toUpperCase();
-}
 
 function initialsFromDisplayName(value) {
   const cleaned = String(value || 'fa').replace(/@.*$/, '').replace(/[_-]+/g, ' ').trim();
@@ -9179,24 +7890,7 @@ function initialsFromDisplayName(value) {
   return String(parts[0] || 'fa').slice(0, 2).toUpperCase();
 }
 
-function addDays(date, days) {
-  const next = new Date(date);
-  next.setUTCDate(next.getUTCDate() + Number(days || 0));
-  return next;
-}
 
-function formatDate(date) {
-  return date.toISOString().slice(0, 10);
-}
-
-function formatCny(cents) {
-  return `¥${(Number(cents || 0) / 100).toFixed(2)}`;
-}
-
-function formatUsdFromCnyCents(cents, rate = DISPLAY_USD_TO_CNY) {
-  const safeRate = Number(rate || DISPLAY_USD_TO_CNY) || DISPLAY_USD_TO_CNY;
-  return `$${(Number(cents || 0) / 100 / safeRate).toFixed(2)}`;
-}
 
 function usdNumberFromCnyCents(cents, rate = DISPLAY_USD_TO_CNY) {
   const safeRate = Number(rate || DISPLAY_USD_TO_CNY) || DISPLAY_USD_TO_CNY;
@@ -9207,22 +7901,8 @@ function cnyNumberFromCents(cents) {
   return round2Finite(Number(cents || 0) / 100);
 }
 
-function formatUsdPriceFromCny(value, rate = DISPLAY_USD_TO_CNY) {
-  const safeRate = Number(rate || DISPLAY_USD_TO_CNY) || DISPLAY_USD_TO_CNY;
-  return `$${(Number(value || 0) / safeRate).toFixed(3)}`;
-}
 
-function compactTokenText(tokens) {
-  const value = Number(tokens || 0);
-  if (!Number.isFinite(value) || value <= 0) return '0';
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
-  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
-  return String(Math.round(value));
-}
 
-function round2(value) {
-  return Math.round(Number(value || 0) * 100) / 100;
-}
 
 function round2Finite(value) {
   const number = Number(value || 0);

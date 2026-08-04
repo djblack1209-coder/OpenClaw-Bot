@@ -5,6 +5,8 @@ from typing import Any
 
 from fastapi import APIRouter, Body, HTTPException, Path, Query
 
+from src.core.loop_owner import OwnerLoopNotReady, OwnerLoopTimeout
+
 from ..error_utils import safe_error as _safe_error
 from ..rpc import ClawBotRPC
 from ..schemas import SocialPublishRequest, SocialStatus, WSMessageType
@@ -426,6 +428,10 @@ def autopilot_status():
     """获取自动驾驶调度状态 — 运行中、任务列表、下次动作"""
     try:
         return ClawBotRPC._rpc_autopilot_status()
+    except OwnerLoopNotReady as e:
+        raise HTTPException(status_code=503, detail="社交自动驾驶尚未就绪") from e
+    except OwnerLoopTimeout as e:
+        raise HTTPException(status_code=504, detail="社交自动驾驶响应超时，操作仍在后台执行") from e
     except Exception as e:
         logger.exception("获取自动驾驶状态失败")
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
@@ -447,6 +453,10 @@ def autopilot_start():
             logger.warning("[Social] Autopilot启动事件推送失败: %s", e)
 
         return result
+    except OwnerLoopNotReady as e:
+        raise HTTPException(status_code=503, detail="社交自动驾驶尚未就绪") from e
+    except OwnerLoopTimeout as e:
+        raise HTTPException(status_code=504, detail="启动请求超时，操作仍在后台执行") from e
     except Exception as e:
         logger.exception("启动自动驾驶失败")
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
@@ -468,6 +478,10 @@ def autopilot_stop():
             logger.warning("[Social] Autopilot停止事件推送失败: %s", e)
 
         return result
+    except OwnerLoopNotReady as e:
+        raise HTTPException(status_code=503, detail="社交自动驾驶尚未就绪") from e
+    except OwnerLoopTimeout as e:
+        raise HTTPException(status_code=504, detail="停止请求超时，操作仍在后台执行") from e
     except Exception as e:
         logger.exception("停止自动驾驶失败")
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
@@ -494,6 +508,10 @@ def autopilot_trigger(job_id: str):
             logger.warning("[Social] Autopilot触发事件推送失败: %s", e)
 
         return result
+    except OwnerLoopNotReady as e:
+        raise HTTPException(status_code=503, detail="社交自动驾驶尚未就绪") from e
+    except OwnerLoopTimeout as e:
+        raise HTTPException(status_code=504, detail="触发请求超时，任务仍在后台执行") from e
     except Exception as e:
         logger.exception("手动触发自动驾驶任务失败 (job_id=%s)", job_id)
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e

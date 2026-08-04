@@ -5,6 +5,13 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DOCS_DIR="$ROOT_DIR/docs"
 INDEX_FILE="$DOCS_DIR/003-docs-index.md"
 FAILED=0
+AUTHORITATIVE_DOCS=(
+  "$DOCS_DIR/001-project-map.md"
+  "$DOCS_DIR/006-registries.md"
+  "$DOCS_DIR/007-operations.md"
+  "$DOCS_DIR/009-health.md"
+)
+PROJECT_MAP="$DOCS_DIR/001-project-map.md"
 
 report_failure() {
   printf '❌ %s\n' "$1" >&2
@@ -62,10 +69,96 @@ if [[ -f "$INDEX_FILE" ]]; then
     if [[ ! -f "$DOCS_DIR/$base" ]]; then
       STALE_INDEX="${STALE_INDEX}${STALE_INDEX:+$'\n'}$base"
     fi
-  done < <(grep -oE '\`[0-9]{3}-[a-z0-9][a-z0-9-]*\.md\`' "$INDEX_FILE" | tr -d '\`' | sort -u)
+  done < <(grep -oE "\`[0-9]{3}-[a-z0-9][a-z0-9-]*\.md\`" "$INDEX_FILE" | tr -d "\`" | sort -u)
 fi
 if [[ -n "$STALE_INDEX" ]]; then
   report_failure "docs/003-docs-index.md 引用了不存在的文档：\n$STALE_INDEX"
+fi
+
+MISSING_REFS=""
+while IFS= read -r ref; do
+  [[ -z "$ref" ]] && continue
+  ref="${ref#\`}"
+  ref="${ref%\`}"
+  ref="$(printf '%s' "$ref" | sed -E 's/:[0-9]+$//')"
+  case "$ref" in
+    packages/clawbot/config/.env|packages/clawbot/data/intel_brief.db|packages/clawbot/data/intel_evidence/*)
+      # 私有配置与运行证据由本机生成且受 Git 忽略，干净检出不要求存在。
+      continue
+      ;;
+    *'*'*|*'{'*|*'}'*|*'<'*|*'>'*|*'|'*|*','*|*'('*|*')'*|*'…'*|*/|*/runtime.json)
+      continue
+      ;;
+  esac
+  if [[ ! -e "$ROOT_DIR/$ref" ]]; then
+    MISSING_REFS="${MISSING_REFS}${MISSING_REFS:+$'\n'}$ref"
+  fi
+done < <(
+  rg -o --no-filename '\`(?:packages|apps|scripts|docs|\.github)/[^\`[:space:]]+\`' "${AUTHORITATIVE_DOCS[@]}" \
+    | sort -u
+)
+if [[ -n "$MISSING_REFS" ]]; then
+  report_failure "权威文档引用了不存在的仓库路径：\n$MISSING_REFS"
+fi
+
+MUTABLE_INSTALL_SPECS=(
+  'openclaw@latest'
+  '@playwright/mcp@latest'
+  'superpowers-mcp@latest'
+  'open-computer-use@latest'
+)
+for spec in "${MUTABLE_INSTALL_SPECS[@]}"; do
+  if rg -Fq "$spec" "${AUTHORITATIVE_DOCS[@]:0:3}"; then
+    report_failure "当前架构/注册表/运维文档仍包含可变安装规格：$spec"
+  fi
+done
+
+for required_fact in \
+  'packages/clawbot/requirements-lock.txt' \
+  'packages/clawbot/requirements-lock-macos.txt' \
+  '--cov-fail-under=40' \
+  '--fail-under=80' \
+  'src/core/loop_owner.py' \
+  'MANAGED_MCP_PACKAGES' \
+  'FRIST_API_PAYMENT_REQUEST_TIMEOUT_MS' \
+  'tag@sha256' \
+  'make clean-install-check' \
+  'docs/086-release-evidence.md'; do
+  if ! rg -Fq -- "$required_fact" "${AUTHORITATIVE_DOCS[@]:0:3}"; then
+    report_failure "权威文档缺少当前发布门事实：$required_fact"
+  fi
+done
+
+# 对新增核心模块的登记行数做真实文件比对，避免注册表随重构静默漂移。
+check_registered_line_count() {
+  local source_path="$1"
+  local registry_path="$2"
+  local module_name="$3"
+  local actual_lines
+  local expected_row
+  actual_lines="$(wc -l < "$ROOT_DIR/$source_path" | tr -d ' ')"
+  printf -v expected_row "| %s | \`%s\` | %s |" "$module_name" "$registry_path" "$actual_lines"
+  if ! rg -Fq -- "$expected_row" "$DOCS_DIR/006-registries.md"; then
+    report_failure "模块注册行数与源码不一致：$source_path 实际 $actual_lines 行"
+  fi
+}
+
+check_registered_line_count \
+  'packages/clawbot/src/core/proactive_periodic.py' \
+  'src/core/proactive_periodic.py' \
+  'proactive_periodic.py'
+check_registered_line_count \
+  'packages/clawbot/src/core/loop_owner.py' \
+  'src/core/loop_owner.py' \
+  'loop_owner.py'
+
+PROJECT_STRUCTURE="$(awk '
+  /^## 项目结构$/ { in_section = 1; next }
+  in_section && /^---$/ { exit }
+  in_section { print }
+' "$PROJECT_MAP")"
+if printf '%s\n' "$PROJECT_STRUCTURE" | rg -q '\([0-9][0-9,]*[[:space:]]*(行|文件)'; then
+  report_failure "项目结构图包含易漂移的手写行数或文件数；请只记录稳定职责，由命令实时生成规模数据"
 fi
 
 if [[ "$FAILED" -ne 0 ]]; then
@@ -73,4 +166,4 @@ if [[ "$FAILED" -ne 0 ]]; then
 fi
 
 DOC_COUNT="$(find "$DOCS_DIR" -maxdepth 1 -type f -name '*.md' | wc -l | tr -d ' ')"
-printf '✅ docs-check 通过：%s 个文档，目录扁平、命名合规、索引完整。\n' "$DOC_COUNT"
+printf '✅ docs-check 通过：%s 个文档，目录扁平、命名合规、索引完整、关键事实可验证。\n' "$DOC_COUNT"

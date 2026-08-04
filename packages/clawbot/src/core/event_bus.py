@@ -11,6 +11,7 @@ OpenClaw OMEGA — 事件总线 (Event Bus)
 """
 import asyncio
 import logging
+import threading
 import time
 from collections import defaultdict
 from collections.abc import Callable, Coroutine
@@ -19,6 +20,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from src.core.loop_owner import AsyncLoopOwner, OwnerLoopError
+
 logger = logging.getLogger(__name__)
 
 # 审计日志路径
@@ -26,8 +29,8 @@ _BASE_DIR = Path(__file__).resolve().parent.parent.parent
 AUDIT_DIR = _BASE_DIR / "data" / "audit"
 AUDIT_DIR.mkdir(parents=True, exist_ok=True)
 
-
 # ── 标准事件类型 ──────────────────────────────────────────
+
 
 class EventType:
     """所有标准事件类型常量"""
@@ -88,6 +91,7 @@ class EventType:
 
 # ── 事件数据结构 ──────────────────────────────────────────
 
+
 @dataclass
 class Event:
     """一个事件实例"""
@@ -115,6 +119,7 @@ class Subscription:
 
 # ── 事件总线 ──────────────────────────────────────────────
 
+
 class EventBus:
     """
     轻量级进程内事件总线，异步发布-订阅。
@@ -135,6 +140,8 @@ class EventBus:
     """
 
     def __init__(self, audit_enabled: bool = True):
+        self._loop_owner = AsyncLoopOwner("event-bus")
+        self._state_lock = threading.RLock()
         self._subscriptions: dict[str, list[Subscription]] = defaultdict(list)
         self._wildcard_subs: list[Subscription] = []
         self._event_history: list[Event] = []
@@ -143,6 +150,15 @@ class EventBus:
         self._stats: dict[str, int] = defaultdict(int)
         self._error_count: dict[str, int] = defaultdict(int)
         logger.info("EventBus 初始化完成")
+
+    def bind_current_loop(self) -> None:
+        """把事件分发和订阅者执行固定到当前主事件循环。"""
+        self._loop_owner.bind_current()
+
+    def _require_owner_for_subscription_change(self) -> None:
+        """绑定后只允许所有者循环修改订阅关系。"""
+        if self._loop_owner.is_bound and not self._loop_owner.is_current():
+            raise OwnerLoopError("EventBus 订阅关系只能在所有者事件循环修改")
 
     def subscribe(
         self,
@@ -162,6 +178,7 @@ class EventBus:
             priority: 优先级（1=最高），同类型的handler按优先级排序执行
             filter_fn: 可选的过滤函数，返回False则跳过该handler
         """
+        self._require_owner_for_subscription_change()
         sub = Subscription(
             event_type=event_type,
             handler=handler,
@@ -170,22 +187,24 @@ class EventBus:
             filter_fn=filter_fn,
         )
 
-        if "*" in event_type:
-            self._wildcard_subs.append(sub)
-            self._wildcard_subs.sort(key=lambda s: s.priority)
-            logger.debug(f"通配符订阅: {subscriber_name} → {event_type}")
-        else:
-            self._subscriptions[event_type].append(sub)
-            self._subscriptions[event_type].sort(key=lambda s: s.priority)
-            logger.debug(f"订阅: {subscriber_name} → {event_type}")
+        with self._state_lock:
+            if "*" in event_type:
+                self._wildcard_subs.append(sub)
+                self._wildcard_subs.sort(key=lambda s: s.priority)
+                logger.debug(f"通配符订阅: {subscriber_name} → {event_type}")
+            else:
+                self._subscriptions[event_type].append(sub)
+                self._subscriptions[event_type].sort(key=lambda s: s.priority)
+                logger.debug(f"订阅: {subscriber_name} → {event_type}")
 
     def unsubscribe(self, event_type: str, handler: Callable) -> bool:
         """取消订阅，返回是否成功"""
-        if "*" in event_type:
-            before = len(self._wildcard_subs)
-            self._wildcard_subs = [s for s in self._wildcard_subs if s.handler != handler]
-            return len(self._wildcard_subs) < before
-        else:
+        self._require_owner_for_subscription_change()
+        with self._state_lock:
+            if "*" in event_type:
+                before = len(self._wildcard_subs)
+                self._wildcard_subs = [s for s in self._wildcard_subs if s.handler != handler]
+                return len(self._wildcard_subs) < before
             if event_type in self._subscriptions:
                 before = len(self._subscriptions[event_type])
                 self._subscriptions[event_type] = [
@@ -213,6 +232,22 @@ class EventBus:
         Returns:
             成功通知的订阅者数量
         """
+        if not self._loop_owner.is_bound:
+            self.bind_current_loop()
+        return await self._loop_owner.run(
+            lambda: self._publish_on_owner(event_type, data, source, priority),
+            timeout=None,
+            cancel_on_timeout=False,
+        )
+
+    async def _publish_on_owner(
+        self,
+        event_type: str,
+        data: dict[str, Any],
+        source: str,
+        priority: int,
+    ) -> int:
+        """在所有者循环记录事件并执行匹配的订阅者。"""
         event = Event(
             event_type=event_type,
             data=data,
@@ -220,12 +255,13 @@ class EventBus:
             priority=priority,
         )
 
-        # 记录历史
-        self._event_history.append(event)
-        if len(self._event_history) > self._max_history:
-            self._event_history = self._event_history[-500:]
+        with self._state_lock:
+            # 记录历史
+            self._event_history.append(event)
+            if len(self._event_history) > self._max_history:
+                self._event_history = self._event_history[-500:]
 
-        self._stats[event_type] += 1
+            self._stats[event_type] += 1
 
         # 审计日志
         if self._audit_enabled:
@@ -233,16 +269,16 @@ class EventBus:
 
         # 收集匹配的订阅者
         handlers: list[Subscription] = []
+        with self._state_lock:
+            # 精确匹配 — 取快照，防止 subscribe() 并发修改列表
+            if event_type in self._subscriptions:
+                handlers.extend(list(self._subscriptions[event_type]))
 
-        # 精确匹配 — 取快照，防止 subscribe() 并发修改列表
-        if event_type in self._subscriptions:
-            handlers.extend(list(self._subscriptions[event_type]))
-
-        # 通配符匹配 (trade.* 匹配 trade.signal, trade.executed 等) — 取快照
-        for sub in list(self._wildcard_subs):
-            pattern = sub.event_type.replace("*", "")
-            if event_type.startswith(pattern):
-                handlers.append(sub)
+            # 通配符匹配 (trade.* 匹配 trade.signal, trade.executed 等) — 取快照
+            for sub in list(self._wildcard_subs):
+                pattern = sub.event_type.replace("*", "")
+                if event_type.startswith(pattern):
+                    handlers.append(sub)
 
         # 按优先级排序
         handlers.sort(key=lambda s: s.priority)
@@ -269,7 +305,8 @@ class EventBus:
             return True
         except Exception as e:
             error_key = f"{sub.subscriber_name}:{event.event_type}"
-            self._error_count[error_key] += 1
+            with self._state_lock:
+                self._error_count[error_key] += 1
             logger.error(
                 f"EventBus handler 错误: {sub.subscriber_name} "
                 f"处理 {event.event_type} 失败: {e}",
@@ -299,30 +336,32 @@ class EventBus:
 
     def get_stats(self) -> dict[str, Any]:
         """获取事件统计"""
-        return {
-            "total_events": sum(self._stats.values()),
-            "event_counts": dict(self._stats),
-            "error_counts": dict(self._error_count),
-            "subscription_count": sum(len(v) for v in self._subscriptions.values())
-                                  + len(self._wildcard_subs),
-            "history_size": len(self._event_history),
-        }
+        with self._state_lock:
+            return {
+                "total_events": sum(self._stats.values()),
+                "event_counts": dict(self._stats),
+                "error_counts": dict(self._error_count),
+                "subscription_count": sum(len(v) for v in self._subscriptions.values())
+                                      + len(self._wildcard_subs),
+                "history_size": len(self._event_history),
+            }
 
     def get_recent_events(self, event_type: str = "", limit: int = 20) -> list[dict]:
         """获取最近的事件"""
-        events = self._event_history
-        if event_type:
-            events = [e for e in events if e.event_type == event_type]
-        return [
-            {
-                "event_id": e.event_id,
-                "type": e.event_type,
-                "source": e.source,
-                "timestamp": e.timestamp,
-                "data": e.data,
-            }
-            for e in events[-limit:]
-        ]
+        with self._state_lock:
+            events = list(self._event_history)
+            if event_type:
+                events = [e for e in events if e.event_type == event_type]
+            return [
+                {
+                    "event_id": e.event_id,
+                    "type": e.event_type,
+                    "source": e.source,
+                    "timestamp": e.timestamp,
+                    "data": e.data,
+                }
+                for e in events[-limit:]
+            ]
 
     async def shutdown(self) -> None:
         """优雅关闭 — 清理订阅并记录统计
@@ -337,14 +376,15 @@ class EventBus:
             stats.get("history_size", 0),
         )
         # 清理订阅，防止关闭后仍有 handler 被调用
-        self._subscriptions.clear()
-        self._wildcard_subs.clear()
+        with self._state_lock:
+            self._subscriptions.clear()
+            self._wildcard_subs.clear()
 
 
 # ── 全局单例 ──────────────────────────────────────────────
 
 _event_bus: EventBus | None = None
-_bus_lock = __import__("threading").Lock()
+_bus_lock = threading.Lock()
 
 
 def get_event_bus() -> EventBus:
@@ -357,7 +397,15 @@ def get_event_bus() -> EventBus:
     return _event_bus
 
 
+def init_event_bus() -> EventBus:
+    """初始化全局 EventBus，并把它固定到当前主事件循环。"""
+    bus = get_event_bus()
+    bus.bind_current_loop()
+    return bus
+
+
 def reset_event_bus() -> None:
     """重置事件总线（仅用于测试）"""
     global _event_bus
-    _event_bus = None
+    with _bus_lock:
+        _event_bus = None

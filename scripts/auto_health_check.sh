@@ -4,7 +4,23 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 JSON_MODE=0
-[[ "${1:-}" == "--json" ]] && JSON_MODE=1
+STRICT_MODE=0
+
+while (( $# > 0 )); do
+  case "$1" in
+    --json) JSON_MODE=1 ;;
+    --strict) STRICT_MODE=1 ;;
+    -h|--help)
+      echo "用法：scripts/auto_health_check.sh [--json] [--strict]"
+      exit 0
+      ;;
+    *)
+      echo "❌ 不认识的参数：$1" >&2
+      exit 64
+      ;;
+  esac
+  shift
+done
 
 load_env() {
   local env_file="$ROOT_DIR/packages/clawbot/config/.env"
@@ -16,8 +32,8 @@ load_env() {
     value="${line#*=}"
     value="${value%\"}"
     value="${value#\"}"
-    value="${value%'}"
-    value="${value#'}"
+    value="${value%\'}"
+    value="${value#\'}"
     case "$key" in
       OPENCLAW_API_TOKEN|G4F_ENABLED|KIRO_GATEWAY_ENABLED|OLLAMA_ENABLED|IBKR_ENABLED|IBKR_PORT|HEARTBEAT_SENDER_ENABLED)
         export "$key=$value"
@@ -78,8 +94,45 @@ check_scheduled_launchagent() {
   last_exit="$(printf '%s\n' "$report" | sed -n 's/^[[:space:]]*last exit code = //p' | head -1)"
   if [[ "$state" == "running" || "$last_exit" == "0" ]]; then
     add_check "launchagent:$label" "ok" "$label 已加载且最近退出正常" "无需处理"
+  elif [[ "$last_exit" == "(never exited)" ]]; then
+    add_check "launchagent:$label" "warn" "$label 已加载，等待首次自然调度验证" "到点后重新运行严格健康检查"
   else
     add_check "launchagent:$label" "bad" "$label 最近执行异常 (state=${state:-unknown}, exit=${last_exit:-unknown})" "检查定时任务日志和最近触发时间"
+  fi
+}
+
+check_backup_freshness() {
+  local backup_dir="${OPENCLAW_BACKUP_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/openclaw/backups}"
+  local report status detail
+  report="$(python3 - "$backup_dir" <<'PY' 2>/dev/null || true
+import pathlib
+import sys
+import time
+
+backup_dir = pathlib.Path(sys.argv[1])
+archives = sorted(backup_dir.glob("openeverything-*.tgz"), key=lambda path: path.stat().st_mtime, reverse=True)
+if not archives:
+    print("bad|没有可用的本机备份")
+    raise SystemExit
+archive = archives[0]
+ready = pathlib.Path(f"{archive}.ready")
+checksum = pathlib.Path(f"{archive}.sha256")
+if not ready.is_file() or not checksum.is_file() or archive.is_symlink() or ready.is_symlink() or checksum.is_symlink():
+    print(f"bad|最新备份缺少完整就绪标记: {archive.name}")
+    raise SystemExit
+age_hours = max(0, int((time.time() - archive.stat().st_mtime) // 3600))
+if age_hours > 36:
+    print(f"bad|最新备份已过期 {age_hours} 小时: {archive.name}")
+else:
+    print(f"ok|最新备份 {age_hours} 小时前完成: {archive.name}")
+PY
+)"
+  status="${report%%|*}"
+  detail="${report#*|}"
+  if [[ "$status" == "ok" ]]; then
+    add_check "backup_freshness" "ok" "$detail" "无需处理"
+  else
+    add_check "backup_freshness" "bad" "${detail:-备份状态无法读取}" "运行 scripts/manage_backup_launchagent.sh run 并检查错误日志"
   fi
 }
 
@@ -106,6 +159,8 @@ check_required_launchagent "ai.openclaw.xianyu"
 check_required_launchagent "ai.openclaw.intel-brief.telegram-listener"
 check_required_launchagent "ai.openclaw.cc-seller-bridge"
 check_scheduled_launchagent "ai.openclaw.intel-brief.scheduler"
+check_scheduled_launchagent "ai.openclaw.daily-backup"
+check_backup_freshness
 
 # 每日资讯不能只看 launchd 退出码，还要检查中央来源、offset 证据和磁盘增长。
 intel_python="$ROOT_DIR/packages/clawbot/.venv312/bin/python"
@@ -132,7 +187,7 @@ fi
 if [[ "$code" == "200" ]]; then
   add_check "local_console" "ok" "本机控制台 HTTP $code" "无需处理"
 else
-  add_check "local_console" "bad" "本机控制台不可用 HTTP $code" "运行 scripts/auto_recovery.sh --dry-run，确认后再去掉 --dry-run"
+  add_check "local_console" "bad" "本机控制台不可用 HTTP $code" "先运行 scripts/auto_recovery.sh 预览，再用 --scope services --confirm 执行"
 fi
 
 if [[ -n "${OPENCLAW_API_TOKEN:-}" ]]; then
@@ -231,14 +286,22 @@ available_gb=$((available_kb / 1024 / 1024))
 if (( available_gb >= 10 )); then
   add_check "disk" "ok" "剩余 ${available_gb}GB" "无需处理"
 else
-  add_check "disk" "bad" "剩余 ${available_gb}GB" "运行 scripts/auto_recovery.sh 清理旧日志"
+  add_check "disk" "bad" "剩余 ${available_gb}GB" "先运行 scripts/auto_recovery.sh --scope maintenance 预览，再增加 --confirm"
 fi
+
+has_bad=0
+has_warn=0
+for item in "${CHECKS[@]}"; do
+  IFS='|' read -r _ status _ _ <<<"$item"
+  [[ "$status" == "bad" ]] && has_bad=1
+  [[ "$status" == "warn" ]] && has_warn=1
+done
 
 if (( JSON_MODE == 1 )); then
   printf '{"ok":'
-  if printf '%s\n' "${CHECKS[@]}" | grep -q '|bad|'; then printf 'false'; else printf 'true'; fi
+  if (( has_bad == 1 )); then printf 'false'; else printf 'true'; fi
   printf ',"release_ready":'
-  if printf '%s\n' "${CHECKS[@]}" | grep -Eq '\|(bad|warn)\|'; then printf 'false'; else printf 'true'; fi
+  if (( has_bad == 1 || has_warn == 1 )); then printf 'false'; else printf 'true'; fi
   printf ',"generated_at":'; date -u +%Y-%m-%dT%H:%M:%SZ | json_escape
   printf ',"checks":['
   first=1
@@ -261,4 +324,9 @@ else
     icon="🟢"; [[ "$status" == "warn" ]] && icon="🟡"; [[ "$status" == "bad" ]] && icon="🔴"
     printf '%s %s — %s\n   怎么办：%s\n' "$icon" "$name" "$detail" "$fix"
   done
+fi
+
+if (( STRICT_MODE == 1 )); then
+  (( has_bad == 0 )) || exit 1
+  (( has_warn == 0 )) || exit 2
 fi

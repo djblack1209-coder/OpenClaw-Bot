@@ -404,6 +404,9 @@ export const enUS: Record<string, string> = {
   'assistant.currentMessages': 'Messages',
   'assistant.status': 'Status',
   'assistant.replying': 'Replying...',
+  'assistant.stopReply': 'Stop reply',
+  'assistant.cancelled': 'Reply stopped',
+  'assistant.sendMessage': 'Send message',
   'assistant.idle': 'Idle',
   'assistant.today': 'Today',
 
@@ -853,6 +856,7 @@ export const enUS: Record<string, string> = {
   'plugins.colStatus': 'Status',
   'plugins.colSwitch': 'Toggle',
   'plugins.running': 'Running',
+  'plugins.managedRuntime': 'Managed runtime',
   'plugins.disabled': 'Stopped',
   'plugins.pluginStats': 'Plugin Stats',
   'plugins.installed': 'Installed',

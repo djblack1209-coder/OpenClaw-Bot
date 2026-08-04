@@ -41,7 +41,7 @@ fi
 
 # 3. 启动闲鱼AI客服
 echo "[3/4] 启动闲鱼AI客服..."
-if [ -f /tmp/xianyu.pid ] && kill -0 $(cat /tmp/xianyu.pid) 2>/dev/null; then
+if [ -f /tmp/xianyu.pid ] && kill -0 "$(cat /tmp/xianyu.pid)" 2>/dev/null; then
     echo "  ✅ 闲鱼客服已在运行 (PID: $(cat /tmp/xianyu.pid))"
 else
     bash scripts/start_xianyu.sh
@@ -49,7 +49,7 @@ fi
 
 # 4. 启动 6 个 Telegram Bot
 echo "[4/4] 启动 6 个 Telegram Bot..."
-if [ -f /tmp/clawbot.pid ] && kill -0 $(cat /tmp/clawbot.pid) 2>/dev/null; then
+if [ -f /tmp/clawbot.pid ] && kill -0 "$(cat /tmp/clawbot.pid)" 2>/dev/null; then
     echo "  ✅ ClawBot 已在运行 (PID: $(cat /tmp/clawbot.pid))"
 else
     nohup "$PY" multi_main.py > logs/multi_bot.log 2>&1 &

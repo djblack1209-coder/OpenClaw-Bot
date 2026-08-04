@@ -10,9 +10,115 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+import httpcore
 import httpx
 
+from src.core import security as security_core
+from src.core.security import SSRFError, resolve_public_addresses
+
 logger = logging.getLogger(__name__)
+
+_SSRF_REDIRECT_STATUS_CODES = frozenset({301, 302, 303, 307, 308})
+_MAX_SSRF_REDIRECTS = 5
+
+
+class PinnedPublicNetworkBackend(httpcore.AsyncNetworkBackend):
+    """把域名解析为已验证公网 IP，并让真实 TCP 直接连接该 IP。"""
+
+    def __init__(self, network_backend=None, resolver=resolve_public_addresses):
+        if network_backend is None:
+            from httpcore._backends.auto import AutoBackend
+
+            network_backend = AutoBackend()
+        self._network_backend = network_backend
+        self._resolver = resolver
+
+    async def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options=None,
+    ):
+        """在线程中解析一次，并仅连接这次校验得到的 IP。"""
+        addresses = await asyncio.to_thread(self._resolver, host, port)
+        last_error: Exception | None = None
+        for address in addresses:
+            try:
+                return await self._network_backend.connect_tcp(
+                    address,
+                    port,
+                    timeout=timeout,
+                    local_address=local_address,
+                    socket_options=socket_options,
+                )
+            except Exception as exc:
+                last_error = exc
+        if last_error is not None:
+            raise last_error
+        raise SSRFError("目标域名没有可连接的公网地址")
+
+    async def connect_unix_socket(self, path, timeout=None, socket_options=None):
+        """面向公网的安全传输层不允许 Unix Socket。"""
+        raise SSRFError("公网请求不允许 Unix Socket")
+
+    async def sleep(self, seconds: float) -> None:
+        """复用底层后端的异步休眠实现。"""
+        await self._network_backend.sleep(seconds)
+
+
+def create_ssrf_safe_async_client(timeout: float) -> httpx.AsyncClient:
+    """创建禁用环境代理、连接时固定已校验 IP 的 HTTPX 客户端。"""
+    transport = httpx.AsyncHTTPTransport(
+        verify=True,
+        trust_env=False,
+        limits=httpx.Limits(max_connections=10, max_keepalive_connections=0),
+    )
+    transport._pool._network_backend = PinnedPublicNetworkBackend()
+    return httpx.AsyncClient(
+        timeout=timeout,
+        follow_redirects=False,
+        transport=transport,
+        trust_env=False,
+    )
+
+
+async def request_with_ssrf_protection(
+    client,
+    method: str,
+    url: str,
+    *,
+    follow_redirects: bool = False,
+    max_redirects: int = _MAX_SSRF_REDIRECTS,
+    **kwargs,
+) -> httpx.Response:
+    """逐跳校验重定向目标；客户端本身负责在连接层固定公网 IP。"""
+    if not security_core.check_ssrf(url):
+        raise SSRFError(f"SSRF 安全检查未通过: {url}")
+
+    normalized_method = method.upper()
+    response = await client.request(normalized_method, url, **kwargs)
+
+    redirect_count = 0
+    while follow_redirects and response.status_code in _SSRF_REDIRECT_STATUS_CODES:
+        next_request = response.next_request
+        if next_request is None:
+            return response
+        if redirect_count >= max_redirects:
+            await response.aclose()
+            raise httpx.TooManyRedirects(
+                f"重定向超过安全上限 {max_redirects}",
+                request=next_request,
+            )
+        next_url = str(next_request.url)
+        if not security_core.check_ssrf(next_url):
+            await response.aclose()
+            raise SSRFError(f"重定向目标 SSRF 安全检查未通过: {next_url}")
+        await response.aclose()
+        response = await client.send(next_request, follow_redirects=False)
+        redirect_count += 1
+    return response
 
 
 class CircuitState(Enum):
@@ -143,7 +249,12 @@ class ResilientHTTPClient:
         self.name = name
         self.verify_ssl = verify_ssl  # SSL 证书验证开关
 
-    def _new_client(self, follow_redirects: bool = False, verify: bool = True) -> httpx.AsyncClient:
+    def _new_client(
+        self,
+        follow_redirects: bool = False,
+        verify: bool = True,
+        ssrf_check: bool = False,
+    ) -> httpx.AsyncClient:
         """每次请求创建全新的 AsyncClient（模拟 curl 行为）
 
         核弹方案：g4f/Kiro 网关会主动关闭空闲连接，httpx 连接池
@@ -154,14 +265,23 @@ class ResilientHTTPClient:
         Args:
             follow_redirects: 是否自动跟随重定向
             verify: 是否验证 SSL 证书（默认 True）
+            ssrf_check: 是否启用连接层公网 IP 固定
         """
+        transport = None
+        if ssrf_check:
+            transport = httpx.AsyncHTTPTransport(
+                verify=verify,
+                trust_env=False,
+                limits=httpx.Limits(max_connections=1, max_keepalive_connections=0),
+            )
+            transport._pool._network_backend = PinnedPublicNetworkBackend()
         return httpx.AsyncClient(
             timeout=self.timeout,
             limits=httpx.Limits(max_connections=1, max_keepalive_connections=0),
-            follow_redirects=follow_redirects,
+            follow_redirects=follow_redirects and not ssrf_check,
             verify=verify,
-            # 显式禁用代理：防止本机临时代理干扰服务端直连请求
-            proxy=None,
+            transport=transport,
+            trust_env=False,
         )
 
     async def close(self):
@@ -201,12 +321,9 @@ class ResilientHTTPClient:
                 默认 False（内部已知安全的 API 调用无需检查）。
                 接受用户输入 URL 的场景应设为 True。
         """
-        # SSRF 防护: 当调用方明确要求检查时，拦截指向内网/元数据服务的请求
-        if ssrf_check:
-            from src.core.security import SSRFError, check_ssrf
-
-            if not check_ssrf(url):
-                raise SSRFError(f"[{self.name}] SSRF 安全检查未通过: {url} (禁止访问内网/元数据服务地址)")
+        # SSRF 防护: 初始目标、每次重定向和真实 TCP 连接均执行独立校验。
+        if ssrf_check and not security_core.check_ssrf(url):
+            raise SSRFError(f"[{self.name}] SSRF 安全检查未通过: {url} (禁止访问内网/元数据服务地址)")
 
         if not self.breaker.can_execute():
             raise CircuitOpenError(
@@ -218,18 +335,30 @@ class ResilientHTTPClient:
         start_time = time.time()
 
         for attempt in range(self.retry.max_retries + 1):
-            client = self._new_client(follow_redirects=follow_redirects, verify=self.verify_ssl)
+            client = self._new_client(
+                follow_redirects=follow_redirects,
+                verify=self.verify_ssl,
+                ssrf_check=ssrf_check,
+            )
             try:
-                response = await client.request(
-                    method,
-                    url,
-                    headers=headers,
-                    json=json,
-                    params=params,
-                    content=content,
-                    data=data,
-                    files=files,
-                )
+                request_kwargs = {
+                    "headers": headers,
+                    "json": json,
+                    "params": params,
+                    "content": content,
+                    "data": data,
+                    "files": files,
+                }
+                if ssrf_check:
+                    response = await request_with_ssrf_protection(
+                        client,
+                        method,
+                        url,
+                        follow_redirects=follow_redirects,
+                        **request_kwargs,
+                    )
+                else:
+                    response = await client.request(method, url, **request_kwargs)
 
                 # 检查是否需要重试
                 if response.status_code in self.retry.retryable_status_codes:

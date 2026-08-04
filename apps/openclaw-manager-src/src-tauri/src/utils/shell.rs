@@ -506,6 +506,22 @@ pub fn run_script_output(script: &str) -> Result<String, String> {
 /// 获取 openclaw 可执行文件路径
 /// 检测多个可能的安装路径，因为 GUI 应用不继承用户 shell 的 PATH
 pub fn get_openclaw_path() -> Option<String> {
+    let managed_path = if platform::is_windows() {
+        format!(
+            "{}\\manager-npm-runtime\\node_modules\\.bin\\openclaw.cmd",
+            platform::get_config_dir()
+        )
+    } else {
+        format!(
+            "{}/manager-npm-runtime/node_modules/.bin/openclaw",
+            platform::get_config_dir()
+        )
+    };
+    if std::path::Path::new(&managed_path).is_file() {
+        info!("[Shell] 使用应用完整性锁管理的 OpenClaw: {}", managed_path);
+        return Some(managed_path);
+    }
+
     // Windows: 检查常见的 npm 全局安装路径
     if platform::is_windows() {
         let possible_paths = get_windows_openclaw_paths();

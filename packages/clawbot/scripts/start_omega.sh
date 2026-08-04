@@ -26,6 +26,7 @@ if [ ! -f "config/.env" ]; then
 fi
 
 # 加载 .env 中的 key（用于检查）
+# shellcheck disable=SC1091
 source config/.env 2>/dev/null || true
 
 # 检查关键配置
@@ -46,4 +47,4 @@ fi
 
 echo ""
 echo "启动中..."
-exec $PYTHON multi_main.py "$@"
+exec "$PYTHON" multi_main.py "$@"

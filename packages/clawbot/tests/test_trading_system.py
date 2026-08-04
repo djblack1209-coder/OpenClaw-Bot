@@ -1,8 +1,9 @@
 """Tests for src.trading_system module."""
 
+from datetime import timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from datetime import datetime, timezone, timedelta
-from unittest.mock import patch, MagicMock, AsyncMock
 
 import src.trading_system as ts
 
@@ -18,6 +19,7 @@ def reset_globals():
     ts._quote_cache = None
     ts._rebalancer = None
     ts._ai_team_api_callers = {}
+    ts._pending_reentry_queue = []
     yield
     ts._initialized = False
     ts._risk_manager = None
@@ -28,6 +30,7 @@ def reset_globals():
     ts._quote_cache = None
     ts._rebalancer = None
     ts._ai_team_api_callers = {}
+    ts._pending_reentry_queue = []
 
 
 # ============ _parse_datetime ============
@@ -325,6 +328,48 @@ class TestSchedulerFeatureGates:
             "pending_reentry_submit",
             "ibkr_health_check",
         }.issubset(task_names)
+
+    @pytest.mark.asyncio
+    async def test_pending_reentry_is_disabled_by_default(self, monkeypatch):
+        """隔夜买单不得在没有显式开关时自动重新提交。"""
+        from src.trading._scheduler_tasks import _submit_pending_reentry_queue
+
+        monkeypatch.delenv("AUTO_RESUBMIT_PENDING_NEXT_SESSION", raising=False)
+        ts._pending_reentry_queue = [{"symbol": "AAPL", "quantity": 1}]
+        ts._auto_trader = MagicMock(auto_mode=True, notify=False)
+        ts._trading_pipeline = MagicMock()
+        ts._trading_pipeline.execute_proposal = AsyncMock(return_value={"status": "submitted"})
+
+        with (
+            patch("src.trading._scheduler_tasks._is_us_market_open_now", return_value=True),
+            patch("src.invest_tools.get_stock_quote", return_value={"price": 100}),
+            patch("src.trading._helpers._save_pending_reentry_queue"),
+        ):
+            await _submit_pending_reentry_queue()
+
+        ts._trading_pipeline.execute_proposal.assert_not_awaited()
+        assert ts._pending_reentry_queue == [{"symbol": "AAPL", "quantity": 1}]
+
+    @pytest.mark.asyncio
+    async def test_pending_reentry_requires_auto_mode(self, monkeypatch):
+        """即使显式开启重挂，人工确认模式也不得继承旧订单授权。"""
+        from src.trading._scheduler_tasks import _submit_pending_reentry_queue
+
+        monkeypatch.setenv("AUTO_RESUBMIT_PENDING_NEXT_SESSION", "true")
+        ts._pending_reentry_queue = [{"symbol": "AAPL", "quantity": 1}]
+        ts._auto_trader = MagicMock(auto_mode=False, notify=False)
+        ts._trading_pipeline = MagicMock()
+        ts._trading_pipeline.execute_proposal = AsyncMock(return_value={"status": "submitted"})
+
+        with (
+            patch("src.trading._scheduler_tasks._is_us_market_open_now", return_value=True),
+            patch("src.invest_tools.get_stock_quote", return_value={"price": 100}),
+            patch("src.trading._helpers._save_pending_reentry_queue"),
+        ):
+            await _submit_pending_reentry_queue()
+
+        ts._trading_pipeline.execute_proposal.assert_not_awaited()
+        assert ts._pending_reentry_queue == [{"symbol": "AAPL", "quantity": 1}]
 
 
 # ============ start_trading_system ============

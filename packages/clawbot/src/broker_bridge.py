@@ -22,16 +22,42 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
 from decimal import ROUND_CEILING, Decimal, InvalidOperation
+from functools import wraps
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from src.broker_scanner import BrokerScannerMixin
 from src.broker_slippage import BrokerSlippageMixin, SlippageEstimate  # noqa: F401 — 向后兼容重导出
+from src.core.loop_owner import AsyncLoopOwner, OwnerLoopError
 from src.cross_process_lock import CrossProcessFileRLock, cross_process_file_lock
 from src.notify_style import format_ibkr_connectivity
 from src.utils import now_et, scrub_secrets
 
 BUDGET_STATE_FILE = Path(__file__).parent.parent / "data" / "broker_budget_state.json"
+
+
+def _owner_operation(
+    *,
+    timeout: float | None = 120.0,
+    bind_if_needed: bool = False,
+    cancel_on_timeout: bool = True,
+):
+    """把公开异步操作统一转发到 IBKR 所有者循环。"""
+
+    def decorate(method):
+        @wraps(method)
+        async def routed(self, *args, **kwargs):
+            if bind_if_needed and not self._loop_owner.is_bound:
+                self._loop_owner.bind_current()
+            return await self._loop_owner.run(
+                lambda: method(self, *args, **kwargs),
+                timeout=timeout,
+                cancel_on_timeout=cancel_on_timeout,
+            )
+
+        return routed
+
+    return decorate
 
 
 def _ceil_buy_limit_price(price: float) -> float:
@@ -92,8 +118,12 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         self.total_spent = 0.0  # 已花费
         self.ib: IB | None = None
         self._connected = False
+        self._loop_owner = AsyncLoopOwner("ibkr")
         self._reconnect_lock = asyncio.Lock()
         self._budget_lock = asyncio.Lock()  # 预算读写原子锁，防止并发下单时预算追踪失准
+        self._sell_submission_lock = asyncio.Lock()
+        self._sell_reserved_quantities: dict[str, float] = {}
+        self._sell_observed_positions: dict[str, float] = {}
         self._reserved_buy_notional = 0.0
         self._pending_buy_reservations: dict[str, dict[str, float]] = {}
         self._budget_state_valid = True
@@ -160,8 +190,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
     def _budget_state_payload(self) -> dict:
         """生成可原子落盘的账户级预算状态。"""
         pending_total = sum(
-            float(item.get("reserved_notional", 0) or 0)
-            for item in self._pending_buy_reservations.values()
+            float(item.get("reserved_notional", 0) or 0) for item in self._pending_buy_reservations.values()
         )
         return {
             "date": now_et().strftime("%Y-%m-%d"),
@@ -252,9 +281,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
 
         self.total_spent = total_spent if state_date == today else 0.0
         self._pending_buy_reservations = validated
-        self._reserved_buy_notional = unbound + sum(
-            item["reserved_notional"] for item in validated.values()
-        )
+        self._reserved_buy_notional = unbound + sum(item["reserved_notional"] for item in validated.values())
         self._budget_state_valid = True
         self._budget_state_error = ""
         if state_date == today:
@@ -319,6 +346,10 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         """注入 Telegram 通知回调"""
         self._notify_func = func
 
+    def bind_current_loop(self) -> None:
+        """在启动阶段把 IBKR 单例固定到当前主事件循环。"""
+        self._loop_owner.bind_current()
+
     async def _notify_connectivity(self, state: str, title: str, detail: str):
         """连接状态通知 — 相同状态不重复推送"""
         if not self._notify_func:
@@ -352,6 +383,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             # 没有运行中的事件循环（IBKR 回调在独立线程中），静默跳过
             logger.debug("[IBKR] 无运行中的事件循环，断连通知跳过")
 
+    @_owner_operation(timeout=None, bind_if_needed=True, cancel_on_timeout=False)
     async def connect(self) -> bool:
         """连接到 IB Gateway（带指数退避重连）"""
         if not HAS_IB:
@@ -499,8 +531,11 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                                     self.ib = IB()
                                     self.ib.disconnectedEvent += self._on_disconnect
                                     await self.ib.connectAsync(
-                                        self.host, self.port, clientId=self.client_id,
-                                        readonly=False, timeout=IBKR_CONNECT_TIMEOUT,
+                                        self.host,
+                                        self.port,
+                                        clientId=self.client_id,
+                                        readonly=False,
+                                        timeout=IBKR_CONNECT_TIMEOUT,
                                     )
                                     self._connected = True
                                     self._disconnect_count = 0
@@ -547,6 +582,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             self._connected = False
             return False
 
+    @_owner_operation(timeout=None, cancel_on_timeout=False)
     async def ensure_connected(self) -> bool:
         """确保连接，断开则自动重连"""
         if self.ib and self.ib.isConnected():
@@ -602,9 +638,8 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
 
         try:
             from src.core.async_utils import create_monitored_task
-            self._keepalive_task = create_monitored_task(
-                _keepalive_loop(), name="ibkr_keepalive"
-            )
+
+            self._keepalive_task = create_monitored_task(_keepalive_loop(), name="ibkr_keepalive")
         except RuntimeError:
             logger.debug("[IBKR] 无事件循环，跳过心跳保活")
 
@@ -638,9 +673,8 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
 
         try:
             from src.core.async_utils import create_monitored_task
-            self._auto_reconnect_task = create_monitored_task(
-                _auto_reconnect(), name="ibkr_auto_reconnect"
-            )
+
+            self._auto_reconnect_task = create_monitored_task(_auto_reconnect(), name="ibkr_auto_reconnect")
         except RuntimeError:
             logger.debug("[IBKR] 无事件循环，跳过自动重连调度")
 
@@ -662,6 +696,8 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
 
     def disconnect(self):
         """断开连接"""
+        if self._loop_owner.is_bound and not self._loop_owner.is_current():
+            raise OwnerLoopError("IBKR 只能在所有者事件循环中断开")
         # 停止心跳保活
         if self._keepalive_task and not self._keepalive_task.done():
             self._keepalive_task.cancel()
@@ -675,8 +711,15 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                 logger.debug("[IBKR] 断开连接异常(可忽略): %s", e)
             self._connected = False
 
+    @_owner_operation(timeout=None, cancel_on_timeout=False)
+    async def close(self) -> None:
+        """在所有者循环关闭连接并解除循环绑定。"""
+        self.disconnect()
+        self._loop_owner.clear_current()
+
     # ============ 账户信息 ============
 
+    @_owner_operation()
     async def get_account_summary(self) -> dict:
         """获取账户摘要"""
         if not await self.ensure_connected():
@@ -701,6 +744,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             logger.exception("获取账户摘要失败")
             return {"error": f"获取账户摘要失败: {e}"}
 
+    @_owner_operation()
     async def get_account_value(self) -> str:
         """获取账户资金概览（格式化文本）"""
         summary = await self.get_account_summary()
@@ -729,6 +773,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
 
     # ============ 持仓查询 ============
 
+    @_owner_operation()
     async def get_positions(self) -> list[dict]:
         """获取所有持仓（含实时市场价格）"""
         if not await self.ensure_connected():
@@ -752,7 +797,9 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                 await asyncio.sleep(1)  # 等待价格数据到达
                 for t in ticker_list:
                     if t.contract:
-                        tickers[t.contract.symbol] = t.marketPrice() if t.marketPrice() == t.marketPrice() else 0.0  # NaN 检查
+                        tickers[t.contract.symbol] = (
+                            t.marketPrice() if t.marketPrice() == t.marketPrice() else 0.0
+                        )  # NaN 检查
             except Exception as e:
                 logger.warning("[IBKR] 批量获取实时价格失败: %s", e)
 
@@ -782,6 +829,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             logger.error(f"[IBKR] 获取持仓失败: {scrub_secrets(str(e))}")
             return []
 
+    @_owner_operation()
     async def get_positions_text(self) -> str:
         """获取持仓（格式化文本）"""
         positions = await self.get_positions()
@@ -793,6 +841,53 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             sign = "+" if pos["quantity"] > 0 else ""
             lines.append(f"{pos['symbol']}: {sign}{pos['quantity']:.0f}股 @ {pos['avg_cost']:.2f} {pos['currency']}")
         return "\n".join(lines)
+
+    @_owner_operation()
+    async def get_market_scanner_symbols(
+        self,
+        max_symbols: int = 800,
+        include_us: bool = True,
+        include_hk: bool = True,
+    ) -> list[str]:
+        """在 IBKR 所有者循环执行动态标的扫描。"""
+        return await BrokerScannerMixin.get_market_scanner_symbols(
+            self,
+            max_symbols=max_symbols,
+            include_us=include_us,
+            include_hk=include_hk,
+        )
+
+    @_owner_operation()
+    async def search_matching_contracts(
+        self,
+        query: str,
+        limit: int = 20,
+    ) -> list[dict]:
+        """在 IBKR 所有者循环搜索可交易合约。"""
+        return await BrokerScannerMixin.search_matching_contracts(
+            self,
+            query=query,
+            limit=limit,
+        )
+
+    @_owner_operation()
+    async def get_realtime_snapshot(
+        self,
+        symbol: str,
+        sec_type: str = "STK",
+        exchange: str = "SMART",
+        currency: str = "USD",
+        timeout_seconds: float = 6.0,
+    ) -> dict:
+        """在 IBKR 所有者循环读取实时行情快照。"""
+        return await BrokerScannerMixin.get_realtime_snapshot(
+            self,
+            symbol=symbol,
+            sec_type=sec_type,
+            exchange=exchange,
+            currency=currency,
+            timeout_seconds=timeout_seconds,
+        )
 
     # ============ 下单 ============
 
@@ -850,11 +945,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         terminal_statuses = {"filled", "cancelled", "apicancelled", "inactive"}
         actual_notional = max(0.0, float(filled_qty)) * max(0.0, float(avg_price))
         remaining_qty = max(0.0, float(quantity) - max(0.0, float(filled_qty)))
-        keep_pending = (
-            str(order_id or "")
-            and remaining_qty > 0
-            and normalized_status not in terminal_statuses
-        )
+        keep_pending = str(order_id or "") and remaining_qty > 0 and normalized_status not in terminal_statuses
         remaining_reservation = remaining_qty * estimated_unit_price if keep_pending else 0.0
         async with self._budget_lock:
             with self._budget_state_transaction():
@@ -904,9 +995,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                         continue
                     status = str(snapshot.get("status") or "").strip().lower()
                     try:
-                        cumulative_filled = float(
-                            snapshot.get("filled_qty", snapshot.get("filled", 0)) or 0
-                        )
+                        cumulative_filled = float(snapshot.get("filled_qty", snapshot.get("filled", 0)) or 0)
                         cumulative_avg = float(snapshot.get("avg_price", 0) or 0)
                         if (
                             not math.isfinite(cumulative_filled)
@@ -935,9 +1024,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                     is_terminal = status in terminal_statuses or remaining_qty <= 0
                     new_reserved = 0.0
                     if not is_terminal:
-                        new_reserved = remaining_qty * float(
-                            reservation.get("estimated_unit_price", 0) or 0
-                        )
+                        new_reserved = remaining_qty * float(reservation.get("estimated_unit_price", 0) or 0)
                     self._reserved_buy_notional = max(
                         0.0,
                         self._reserved_buy_notional - old_reserved + new_reserved,
@@ -952,6 +1039,74 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                                 "applied_notional": cumulative_notional,
                             }
                         )
+
+    def _available_sell_quantity(self, symbol: str) -> tuple[float, str]:
+        """按真实持仓和未对账卖单计算当前可卖数量，任何异常都失败关闭。"""
+        normalized_symbol = str(symbol or "").strip().upper()
+        try:
+            live_quantity = 0.0
+            for position in self.ib.positions(account=self.account):
+                if str(position.contract.symbol or "").strip().upper() != normalized_symbol:
+                    continue
+                quantity = float(position.position)
+                if not math.isfinite(quantity):
+                    raise ValueError("券商返回了非有限持仓数量")
+                live_quantity += max(0.0, quantity)
+
+            previous_quantity = self._sell_observed_positions.get(normalized_symbol)
+            local_reserved = self._sell_reserved_quantities.get(normalized_symbol, 0.0)
+            if previous_quantity is not None and live_quantity < previous_quantity:
+                local_reserved = max(0.0, local_reserved - (previous_quantity - live_quantity))
+            self._sell_observed_positions[normalized_symbol] = live_quantity
+            self._sell_reserved_quantities[normalized_symbol] = local_reserved
+
+            open_reserved = 0.0
+            terminal_statuses = {"filled", "cancelled", "apicancelled", "inactive"}
+            for trade in self.ib.openTrades():
+                trade_symbol = str(getattr(trade.contract, "symbol", "") or "").strip().upper()
+                action = str(getattr(trade.order, "action", "") or "").strip().upper()
+                status = str(getattr(trade.orderStatus, "status", "") or "").strip().casefold()
+                if trade_symbol != normalized_symbol or action != "SELL" or status in terminal_statuses:
+                    continue
+                total = float(getattr(trade.order, "totalQuantity", 0) or 0)
+                filled = float(getattr(trade.orderStatus, "filled", 0) or 0)
+                if not math.isfinite(total) or not math.isfinite(filled) or total < 0 or filled < 0:
+                    raise ValueError("券商返回了无效的未完成卖单数量")
+                open_reserved += max(0.0, total - filled)
+
+            reserved = max(local_reserved, open_reserved)
+            return max(0.0, live_quantity - reserved), ""
+        except Exception as exc:
+            logger.error("[IBKR] 获取 %s 可卖持仓失败: %s", normalized_symbol, scrub_secrets(str(exc)))
+            return 0.0, f"无法确认 {normalized_symbol} 可卖持仓，已拒绝下单"
+
+    def _record_sell_submission(
+        self,
+        symbol: str,
+        requested_quantity: float,
+        status: object,
+        filled_quantity: float,
+        *,
+        ambiguous: bool = False,
+    ) -> None:
+        """保留已提交卖单额度，直到券商持仓下降后再自动释放。"""
+        normalized_symbol = str(symbol or "").strip().upper()
+        normalized_status = str(status or "").strip().casefold()
+        requested = max(0.0, float(requested_quantity))
+        filled = max(0.0, min(requested, float(filled_quantity or 0)))
+        if ambiguous:
+            reserved = requested
+        elif normalized_status in {"cancelled", "apicancelled", "inactive"}:
+            reserved = filled
+        elif normalized_status == "filled":
+            reserved = filled if filled > 0 else requested
+        else:
+            reserved = requested
+        if reserved <= 0:
+            return
+        self._sell_reserved_quantities[normalized_symbol] = (
+            self._sell_reserved_quantities.get(normalized_symbol, 0.0) + reserved
+        )
 
     async def _place_order(
         self,
@@ -981,6 +1136,11 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             return {"error": f"数量必须大于零 (got {quantity})"}
         if not math.isfinite(limit_price) or limit_price < 0:
             return {"error": f"限价必须是有限非负数 (got {limit_price})"}
+        if effective_order_type not in {"MKT", "LMT"}:
+            return {"error": f"不支持的订单类型: {effective_order_type}"}
+        if effective_order_type == "LMT" and limit_price <= 0:
+            action_cn = "买" if side == "BUY" else "卖"
+            return {"error": f"限价{action_cn}单价格必须大于零，已拒绝退化为市价单"}
         if side == "BUY" and not self._budget_state_valid:
             return {
                 "error": (
@@ -990,6 +1150,18 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             }
         if not await self.ensure_connected():
             return {"error": "未连接到IBKR"}
+
+        if side == "SELL":
+            available, position_error = self._available_sell_quantity(symbol)
+            if position_error:
+                return {"error": position_error}
+            if quantity > available:
+                return {
+                    "error": (
+                        f"可卖持仓不足: {symbol.upper()} 请求 {quantity:g} 股，"
+                        f"当前可卖 {available:g} 股"
+                    )
+                }
 
         # 买入时检查预算（加锁保证原子读取）
         if side == "BUY":
@@ -1002,8 +1174,6 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             order_type = str(order_type or "MKT").strip().upper()
             effective_order_type = order_type
             effective_limit_price = limit_price
-            if side == "BUY" and order_type == "LMT" and limit_price <= 0:
-                return {"error": "限价买单价格必须大于零，已拒绝退化为市价单"}
             contract = self._make_contract(symbol)
             qualified = await self.ib.qualifyContractsAsync(contract)
             if not qualified:
@@ -1031,16 +1201,11 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                     accepted, remaining = self._reserve_buy_budget(buy_reservation)
                     if not accepted:
                         return {
-                            "error": (
-                                f"订单预估成本 ${buy_reservation:.2f} 超过剩余预算 "
-                                f"${max(0.0, remaining):.2f}"
-                            )
+                            "error": (f"订单预估成本 ${buy_reservation:.2f} 超过剩余预算 ${max(0.0, remaining):.2f}")
                         }
                     reservation_active = True
 
-            if side == "BUY" or (
-                effective_order_type == "LMT" and effective_limit_price > 0
-            ):
+            if side == "BUY" or (effective_order_type == "LMT" and effective_limit_price > 0):
                 order = LimitOrder(side, quantity, effective_limit_price)
             else:
                 order = MarketOrder(side, quantity)
@@ -1076,12 +1241,13 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                     or filled_qty > quantity
                     or not math.isfinite(avg_price)
                     or avg_price < 0
+                    or (str(status or "").strip() == "Filled" and filled_qty <= 0)
                 ):
                     raise ValueError("券商返回了非有限或越界的成交数值")
             except (TypeError, ValueError) as exc:
-                self._budget_state_valid = False
-                self._budget_state_error = str(exc)
                 if side == "BUY":
+                    self._budget_state_valid = False
+                    self._budget_state_error = str(exc)
                     async with self._budget_lock:
                         try:
                             with self._budget_state_transaction():
@@ -1097,6 +1263,8 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                     self._budget_state_valid = False
                     self._budget_state_error = str(exc)
                     reservation_active = False
+                else:
+                    self._record_sell_submission(symbol, quantity, status, 0.0, ambiguous=True)
                 return {
                     "action": side,
                     "symbol": symbol.upper(),
@@ -1177,6 +1345,9 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             if side == "BUY" and filled_qty <= 0 and effective_order_type != "LMT":
                 logger.warning("[IBKR] BUY %s 市价单未成交 (status=%s)，预算未扣除", symbol, status)
 
+            if side == "SELL":
+                self._record_sell_submission(symbol, quantity, status, filled_qty)
+
             result = {
                 "action": side,
                 "symbol": symbol.upper(),
@@ -1202,6 +1373,8 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                     "[IBKR] 订单已提交但结果读取异常，保留未决状态防止重复下单: %s",
                     e,
                 )
+                if side == "SELL":
+                    self._record_sell_submission(symbol, quantity, "unknown", 0.0, ambiguous=True)
                 return {
                     "action": side,
                     "symbol": symbol.upper(),
@@ -1223,6 +1396,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             logger.error("[IBKR] %s失败: %s", action_cn, e)
             return {"error": f"{action_cn}失败: {e}"}
 
+    @_owner_operation(timeout=None, cancel_on_timeout=False)
     async def buy(
         self,
         symbol: str,
@@ -1235,6 +1409,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         """买入下单（带预算控制）"""
         return await self._place_order("BUY", symbol, quantity, order_type, limit_price, decided_by, reason)
 
+    @_owner_operation(timeout=None, cancel_on_timeout=False)
     async def sell(
         self,
         symbol: str,
@@ -1245,10 +1420,12 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         reason: str = "",
     ) -> dict:
         """卖出下单"""
-        return await self._place_order("SELL", symbol, quantity, order_type, limit_price, decided_by, reason)
+        async with self._sell_submission_lock:
+            return await self._place_order("SELL", symbol, quantity, order_type, limit_price, decided_by, reason)
 
     # ============ 订单管理 ============
 
+    @_owner_operation()
     async def get_open_orders(self) -> list[dict]:
         """获取未完成订单"""
         if not await self.ensure_connected():
@@ -1276,6 +1453,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             logger.error(f"[IBKR] 获取订单失败: {scrub_secrets(str(e))}")
             return []
 
+    @_owner_operation()
     async def get_trade_snapshots(self) -> list[dict]:
         """获取当前与已完成订单快照，供进程重启后的订单对账。"""
         if not await self.ensure_connected():
@@ -1315,6 +1493,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             logger.error("[IBKR] 获取订单快照失败: %s", e)
             return []
 
+    @_owner_operation()
     async def get_recent_fills(self, lookback_hours: int = 48) -> list[dict]:
         """获取近期成交回报（用于与 journal 对账）"""
         if not await self.ensure_connected():
@@ -1366,6 +1545,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             logger.error("[IBKR] 获取成交回报失败: %s", e)
             return []
 
+    @_owner_operation()
     async def get_orders_text(self) -> str:
         """获取订单（格式化文本）"""
         orders = await self.get_open_orders()
@@ -1380,6 +1560,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             )
         return "\n".join(lines)
 
+    @_owner_operation(timeout=None, cancel_on_timeout=False)
     async def cancel_order(self, order_id: int) -> dict:
         """取消订单"""
         if not await self.ensure_connected():
@@ -1397,6 +1578,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             logger.exception("取消订单失败: order_id=%s", order_id)
             return {"error": f"取消订单失败: {e}"}
 
+    @_owner_operation(timeout=None, cancel_on_timeout=False)
     async def cancel_all_orders(self) -> dict:
         """取消所有未完成订单"""
         if not await self.ensure_connected():
@@ -1443,6 +1625,7 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             self._reserved_buy_notional = 0.0
             self._pending_buy_reservations = {}
 
+    @_owner_operation()
     async def sync_capital(self) -> float:
         """同步可用资金，但绝不突破用户配置的预算硬上限。"""
         summary = await self.get_account_summary()
@@ -1474,6 +1657,8 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
 
     def is_connected(self) -> bool:
         """检查IBKR是否已连接"""
+        if self._loop_owner.is_bound and not self._loop_owner.is_current():
+            return bool(self._connected)
         return bool(self.ib and self.ib.isConnected())
 
     @property

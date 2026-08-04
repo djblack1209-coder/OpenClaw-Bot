@@ -1,6 +1,6 @@
 {
   "name": "openclaw-manager",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "OpenClaw 跨平台管理工具 - 高性能 AI 多智能体配置与服务管理",
   "author": "OpenClaw Team",
   "license": "MIT",
@@ -73,10 +73,10 @@
   },
   "overrides": {
     "@babel/core": "7.29.7",
-    "brace-expansion": "5.0.8",
-    "fast-uri": "3.1.4",
-    "hono": "4.12.27",
-    "ip-address": "10.2.0",
+    "brace-expansion": "5.0.9",
+    "fast-uri": "4.1.2",
+    "hono": "4.13.0",
+    "ip-address": "10.4.0",
     "js-yaml": "4.3.0",
     "lodash": "4.18.1",
     "minimatch": "10.2.6",

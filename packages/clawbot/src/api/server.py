@@ -10,6 +10,7 @@ import os
 import threading
 import time
 from collections import defaultdict
+from ipaddress import ip_address
 from typing import Optional
 
 import uvicorn
@@ -66,11 +67,30 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     # 前端多个组件并行轮询（5s/10s/15s/30s）轻松超过 60 req/min。
     MAX_REQUESTS: int = 300
     WINDOW_SECONDS: int = 60
+    MAX_CLIENTS: int = 10_000
 
-    def __init__(self, app, max_requests: int = 300, window_seconds: int = 60):
+    def __init__(
+        self,
+        app,
+        max_requests: int = 300,
+        window_seconds: int = 60,
+        max_clients: int = 10_000,
+        trusted_proxy_ips: set[str] | None = None,
+    ):
         super().__init__(app)
         self.MAX_REQUESTS = max_requests
         self.WINDOW_SECONDS = window_seconds
+        self.MAX_CLIENTS = max(1, max_clients)
+        configured_proxies = (
+            trusted_proxy_ips
+            if trusted_proxy_ips is not None
+            else set(filter(None, os.environ.get("OPENCLAW_TRUSTED_PROXY_IPS", "").split(",")))
+        )
+        self._trusted_proxy_ips = {
+            normalized
+            for value in configured_proxies
+            if (normalized := self._normalize_ip(value))
+        }
         # 每个 IP 对应一个请求时间戳列表
         self._request_log: dict[str, list[float]] = defaultdict(list)
         # 线程锁，防止并发写入时数据竞争
@@ -84,23 +104,49 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         await super().__call__(scope, receive, send)
 
     def _get_client_ip(self, request) -> str:
-        """提取客户端真实 IP，优先取反代转发头"""
-        # X-Forwarded-For 可能包含多个 IP，取第一个（最接近客户端的）
+        """仅在 socket 对端可信时解析反代头，并从右向左剥离可信代理。"""
+        direct_ip = self._normalize_ip(request.client.host if request.client else "")
+        if not direct_ip or direct_ip not in self._trusted_proxy_ips:
+            return direct_ip or "unknown"
+
         forwarded = request.headers.get("x-forwarded-for")
         if forwarded:
-            return forwarded.split(",")[0].strip()
-        # X-Real-IP 是 Nginx 常用的单 IP 头
-        real_ip = request.headers.get("x-real-ip")
-        if real_ip:
-            return real_ip.strip()
-        # 兜底：直连客户端 IP
-        return request.client.host if request.client else "unknown"
+            chain = [self._normalize_ip(value) for value in forwarded.split(",")]
+            chain = [value for value in chain if value]
+            for candidate in reversed(chain):
+                if candidate not in self._trusted_proxy_ips:
+                    return candidate
+            if chain:
+                return chain[0]
+        real_ip = self._normalize_ip(request.headers.get("x-real-ip", ""))
+        return real_ip or direct_ip
+
+    @staticmethod
+    def _normalize_ip(value: str) -> str:
+        """归一化 IPv4、IPv6、映射地址和 zone 后缀。"""
+        address = str(value or "").strip().strip("[]")
+        if address.startswith("::ffff:"):
+            address = address[7:]
+        address = address.split("%", 1)[0]
+        try:
+            return str(ip_address(address))
+        except ValueError:
+            return ""
 
     async def dispatch(self, request, call_next):
         client_ip = self._get_client_ip(request)
         now = time.monotonic()
 
         with self._lock:
+            if client_ip not in self._request_log and len(self._request_log) >= self.MAX_CLIENTS:
+                self._cleanup_stale_locked(now)
+                if len(self._request_log) >= self.MAX_CLIENTS:
+                    logger.warning("速率限制表已满，拒绝新来源: capacity=%d", self.MAX_CLIENTS)
+                    return StarletteJSONResponse(
+                        status_code=429,
+                        content={"error": "请求来源过多，请稍后再试"},
+                        headers={"Retry-After": str(self.WINDOW_SECONDS)},
+                    )
             # 取出该 IP 的请求时间戳列表
             timestamps = self._request_log[client_ip]
             # 滑动窗口：只保留窗口内的时间戳
@@ -137,17 +183,20 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     def _maybe_cleanup(self, now: float):
         """清理长时间无请求的 IP 记录，防止字典无限增长"""
-        # 简单策略：总 IP 数超过 10000 时清理
-        if len(self._request_log) > 10000:
+        if len(self._request_log) >= self.MAX_CLIENTS:
             with self._lock:
-                window_start = now - self.WINDOW_SECONDS
-                stale_ips = [
-                    ip for ip, ts_list in self._request_log.items() if not ts_list or ts_list[-1] <= window_start
-                ]
-                for ip in stale_ips:
-                    del self._request_log[ip]
-                if stale_ips:
-                    logger.info("速率限制清理: 移除 %d 个不活跃 IP 记录", len(stale_ips))
+                self._cleanup_stale_locked(now)
+
+    def _cleanup_stale_locked(self, now: float) -> None:
+        """在持锁状态删除窗口外来源，确保容量检查和写入原子化。"""
+        window_start = now - self.WINDOW_SECONDS
+        stale_ips = [
+            ip for ip, ts_list in self._request_log.items() if not ts_list or ts_list[-1] <= window_start
+        ]
+        for ip in stale_ips:
+            del self._request_log[ip]
+        if stale_ips:
+            logger.info("速率限制清理: 移除 %d 个不活跃 IP 记录", len(stale_ips))
 
 
 class RequestSizeLimitMiddleware(BaseHTTPMiddleware):

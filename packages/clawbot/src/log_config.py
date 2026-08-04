@@ -18,9 +18,14 @@ Usage:
 
 from __future__ import annotations
 
+import gzip
 import logging
+import os
+import shutil
 import sys
 from pathlib import Path
+
+from src.utils import scrub_secrets
 
 # ── Graceful degradation: 没装 loguru 时回退到 stdlib ──────────
 try:
@@ -51,6 +56,48 @@ _NOISY_LIBS: dict[str, str] = {
     "watchfiles": "WARNING",
 }
 
+
+def _scrub_exception(exception):
+    """保留异常类型与脱敏消息，并移除可能回显源码敏感值的 traceback。"""
+    if not exception:
+        return None
+    exception_type = getattr(exception, "type", exception[0])
+    value = getattr(exception, "value", exception[1])
+    sanitized = RuntimeError(f"{exception_type.__name__}: {scrub_secrets(str(value))}")
+    try:
+        return type(exception)(RuntimeError, sanitized, None)
+    except TypeError:
+        return (RuntimeError, sanitized, None)
+
+
+def _scrub_loguru_record(record) -> None:
+    """在所有 sink 最终渲染前清洗正文与 traceback 异常末行。"""
+    record["message"] = scrub_secrets(str(record.get("message", "")))
+    if record.get("exception"):
+        record["exception"] = _scrub_exception(record["exception"])
+
+
+def _private_file_opener(path: str, flags: int) -> int:
+    """让新建和轮转日志从第一刻起只有当前用户可读写。"""
+    return os.open(path, flags, 0o600)
+
+
+def _compress_private_gzip(path: str) -> None:
+    """以 0600 权限压缩轮转日志，并在成功后删除原文件。"""
+    target = f"{path}.gz"
+    descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with (
+            os.fdopen(descriptor, "wb") as raw_target,
+            open(path, "rb") as source,
+            gzip.GzipFile(filename=Path(path).name, mode="wb", fileobj=raw_target) as compressed,
+        ):
+            shutil.copyfileobj(source, compressed)
+    except Exception:
+        Path(target).unlink(missing_ok=True)
+        raise
+    Path(path).unlink()
+
 # ── stdlib logging → loguru 桥接 ──────────────────────────────
 
 
@@ -79,7 +126,10 @@ class InterceptHandler(logging.Handler):
             else:
                 break
 
-        _loguru_logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
+        _loguru_logger.opt(depth=depth, exception=_scrub_exception(record.exc_info)).log(
+            level,
+            scrub_secrets(record.getMessage()),
+        )
 
 
 def _make_module_filter(min_levels: dict[str, str]):
@@ -137,6 +187,7 @@ def setup_logging(
 
     # ── 1. 清理 loguru 默认 sink (stderr) ──────────────────────
     _loguru_logger.remove()
+    _loguru_logger.configure(patcher=_scrub_loguru_record)
 
     # ── 2. 构建模块过滤器 ──────────────────────────────────────
     module_filter = _make_module_filter(_NOISY_LIBS)
@@ -160,7 +211,11 @@ def setup_logging(
 
     # ── 4. File sinks ──────────────────────────────────────────
     log_dir = Path(json_log_dir)
-    log_dir.mkdir(parents=True, exist_ok=True)
+    log_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    log_dir.chmod(0o700)
+    for existing_log in log_dir.iterdir():
+        if existing_log.is_file() and not existing_log.is_symlink():
+            existing_log.chmod(0o600)
 
     # 4a. JSON 结构化日志 — 方便 Phoenix/Langfuse 关联分析
     _loguru_logger.add(
@@ -170,11 +225,12 @@ def setup_logging(
         serialize=True,  # JSON 格式
         rotation="10 MB",
         retention="7 days",
-        compression="gz",
+        compression=_compress_private_gzip,
         filter=module_filter,
         backtrace=True,
         diagnose=False,  # 安全: 防止变量值泄露到日志文件
         encoding="utf-8",
+        opener=_private_file_opener,
     )
 
     # 4b. 纯文本错误日志 — 快速 grep 排障
@@ -184,10 +240,11 @@ def setup_logging(
         format=("{time:YYYY-MM-DD HH:mm:ss.SSS} | {level:<7} | {name}:{function}:{line} | {message}"),
         rotation="10 MB",
         retention="7 days",
-        compression="gz",
+        compression=_compress_private_gzip,
         backtrace=True,
         diagnose=False,  # 安全: 防止变量值泄露到日志文件
         encoding="utf-8",
+        opener=_private_file_opener,
     )
 
     # ── 5. 拦截 stdlib logging → loguru ────────────────────────

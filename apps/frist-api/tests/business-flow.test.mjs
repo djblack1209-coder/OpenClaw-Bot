@@ -681,9 +681,9 @@ describe('CC中转 page business wiring', () => {
       'state.modelGroup = family.dataset.importFamilyOption',
       'cross-import-guide',
       'Codex 最强开发配置',
-      '@playwright/mcp@latest',
-      'superpowers-mcp@latest',
-      'open-computer-use@latest',
+      '@playwright/mcp@0.0.78',
+      'superpowers-mcp@6.2.0',
+      'open-computer-use@0.3.1',
       'Claude/Codex/Gemini/OpenCode/Hermes',
       'CC Switch 当前会忽略 OpenClaw MCP',
       'data-copy-flow-codex-toml',
@@ -958,6 +958,14 @@ describe('CC中转 page business wiring', () => {
     ]) {
       assert.equal(page.includes(forbidden), false, `${forbidden} 不应该出现在用户端`);
     }
+  });
+
+  it('keeps the administrator root token in page memory instead of persistent browser storage', () => {
+    const adminScript = readFileSync(new URL('../src/admin.js', import.meta.url), 'utf8');
+
+    assert.equal(adminScript.includes('localStorage'), false);
+    assert.match(adminScript, /adminToken:\s*''/);
+    assert.match(adminScript, /function captureAdminToken\(\)/);
   });
 
   it('escapes dynamic admin and customer HTML fields before writing innerHTML', () => {

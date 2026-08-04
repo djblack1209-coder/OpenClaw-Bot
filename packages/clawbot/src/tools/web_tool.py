@@ -8,8 +8,6 @@ from typing import Any
 import httpx
 from bs4 import BeautifulSoup
 
-# 从统一的安全模块导入 SSRF 检查函数
-from src.core.security import check_ssrf
 from src.http_client import ResilientHTTPClient
 
 logger = logging.getLogger(__name__)
@@ -28,28 +26,38 @@ class WebTool:
 
     async def fetch(self, url: str, format: str = "text") -> dict[str, Any]:
         """抓取网页内容（含 SSRF 防护）"""
-        # SSRF 防护: 检查 URL 是否指向内网/敏感地址
-        if not check_ssrf(url):
-            return {"success": False, "error": "URL 安全检查未通过（禁止访问内网地址）"}
         try:
-            async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-                response = await client.get(url, headers=self.headers)
-                response.raise_for_status()
+            response = await _http.get(
+                url,
+                headers=self.headers,
+                follow_redirects=True,
+                ssrf_check=True,
+            )
+            response.raise_for_status()
 
-                html = response.text
-                soup = BeautifulSoup(html, 'html.parser')
+            html = response.text
+            soup = BeautifulSoup(html, 'html.parser')
 
-                for tag in soup(['script', 'style', 'nav', 'footer', 'header', 'aside']):
-                    tag.decompose()
+            for tag in soup(['script', 'style', 'nav', 'footer', 'header', 'aside']):
+                tag.decompose()
 
-                title = soup.title.string if soup.title else ""
+            title = soup.title.string if soup.title else ""
 
-                if format == "html":
-                    return {"success": True, "url": url, "title": title, "content": str(soup)[:10000]}
-                else:
-                    text = soup.get_text(separator='\n', strip=True)
-                    text = re.sub(r'\n{3,}', '\n\n', text)
-                    return {"success": True, "url": url, "title": title, "content": text[:10000]}
+            if format == "html":
+                return {
+                    "success": True,
+                    "url": str(response.url),
+                    "title": title,
+                    "content": str(soup)[:10000],
+                }
+            text = soup.get_text(separator='\n', strip=True)
+            text = re.sub(r'\n{3,}', '\n\n', text)
+            return {
+                "success": True,
+                "url": str(response.url),
+                "title": title,
+                "content": text[:10000],
+            }
 
         except httpx.TimeoutException as e:  # noqa: F841
             return {"success": False, "error": "请求超时"}

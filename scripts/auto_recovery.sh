@@ -1,10 +1,61 @@
 #!/usr/bin/env bash
-# OpenEverything 自动恢复：默认按 dry-run 展示动作，去掉 --dry-run 才真正执行。
+# OpenEverything 自动恢复：默认只展示动作，必须显式确认后才会修改本机状态。
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DRY_RUN=0
-[[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
+DRY_RUN=1
+CONFIRMED=0
+SCOPE="services"
+
+usage() {
+  cat <<'USAGE'
+用法：scripts/auto_recovery.sh [--dry-run] [--confirm] [--scope services|maintenance|fulfillment]
+
+默认只预览服务恢复动作，不会修改系统。真正执行必须带 --confirm：
+  --scope services      只恢复本机服务（默认）
+  --scope maintenance   只清理旧日志和测试缓存
+  --scope fulfillment   只检查卖家 Chrome 与桥接器，可能处理真实订单
+USAGE
+}
+
+while (( $# > 0 )); do
+  case "$1" in
+    --dry-run)
+      DRY_RUN=1
+      CONFIRMED=0
+      ;;
+    --confirm)
+      DRY_RUN=0
+      CONFIRMED=1
+      ;;
+    --scope)
+      shift
+      [[ $# -gt 0 ]] || { echo "❌ --scope 缺少取值" >&2; usage >&2; exit 64; }
+      SCOPE="$1"
+      ;;
+    --scope=*)
+      SCOPE="${1#*=}"
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "❌ 不认识的参数：$1" >&2
+      usage >&2
+      exit 64
+      ;;
+  esac
+  shift
+done
+
+case "$SCOPE" in
+  services|maintenance|fulfillment) ;;
+  *)
+    echo "❌ --scope 只能是 services、maintenance 或 fulfillment" >&2
+    exit 64
+    ;;
+esac
 
 run_action() {
   local label="$1"; shift
@@ -16,39 +67,64 @@ run_action() {
 
 notify_mac() {
   local title="$1" body="$2"
-  if command -v osascript >/dev/null 2>&1; then
+  if [[ "${OPENCLAW_NOTIFICATIONS_ENABLED:-1}" == "1" ]] && command -v osascript >/dev/null 2>&1; then
     run_action "macOS 通知" osascript -e "display notification \"$body\" with title \"$title\""
   fi
 }
 
 cd "$ROOT_DIR"
-echo "OpenEverything 自动恢复 $( ((DRY_RUN==1)) && echo '(dry-run)' || echo '(执行模式)' )"
-
-# 1. 本机控制台不通时，优先 kickstart LaunchAgent；没有安装则提示老板打开卖家桥接。
-dashboard_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:18800/dashboard 2>/dev/null || echo 000)
-root_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:18800/ 2>/dev/null || echo 000)
-api_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:18800/api/status 2>/dev/null || echo 000)
-api_alive=0
-case "$api_code" in
-  200|401) api_alive=1 ;;
-esac
-if [[ "${dashboard_code}" != "200" && "${root_code}" != "200" && "${api_alive}" != "1" ]]; then
-  if launchctl print "gui/$UID/ai.openclaw.xianyu" >/dev/null 2>&1; then
-    run_action "重启闲鱼本机服务" launchctl kickstart -k "gui/$UID/ai.openclaw.xianyu"
-  else
-    echo "⚠️ 未找到 ai.openclaw.xianyu LaunchAgent；请先按运维文档安装。"
-  fi
+if (( DRY_RUN == 1 )); then
+  echo "OpenEverything 自动恢复（dry-run，范围：${SCOPE}）"
+  echo "ℹ️ 本次不会修改系统；确认动作后请增加 --confirm。"
 else
-  echo "✅ 本机控制台可访问（dashboard=${dashboard_code} / root=${root_code} / api=${api_code}）"
+  (( CONFIRMED == 1 )) || { echo "❌ 执行模式必须显式提供 --confirm" >&2; exit 64; }
+  echo "OpenEverything 自动恢复（执行模式，范围：${SCOPE}）"
 fi
 
-# 2. 卖家 Chrome/桥接器一键兜底；dry-run 下只展示命令。
-run_action "检查卖家 Chrome 与桥接器" make cc-seller-auto
+if [[ "$SCOPE" == "services" ]]; then
+  # 本机控制台不通时，只恢复对应 LaunchAgent，不触碰卖家履约。
+  dashboard_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:18800/dashboard 2>/dev/null || echo 000)
+  root_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:18800/ 2>/dev/null || echo 000)
+  api_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:18800/api/status 2>/dev/null || echo 000)
+  api_alive=0
+  case "$api_code" in
+    200|401) api_alive=1 ;;
+  esac
+  if [[ "$dashboard_code" != "200" && "$root_code" != "200" && "$api_alive" != "1" ]]; then
+    if launchctl print "gui/$UID/ai.openclaw.xianyu" >/dev/null 2>&1; then
+      run_action "重启闲鱼本机服务" launchctl kickstart -k "gui/$UID/ai.openclaw.xianyu"
+    else
+      echo "⚠️ 未找到 ai.openclaw.xianyu LaunchAgent；请先按运维文档安装。"
+    fi
+  else
+    echo "✅ 本机控制台可访问（dashboard=${dashboard_code} / root=${root_code} / api=${api_code}）"
+  fi
+fi
 
-# 3. 清理旧日志，避免磁盘被历史日志撑满。
-run_action "清理 30 天前日志" find "$ROOT_DIR" -path '*/logs/*' -type f -mtime +30 -delete
-run_action "清理 pytest 缓存" find "$ROOT_DIR" -type d -name '.pytest_cache' -prune -exec rm -rf {} +
+if [[ "$SCOPE" == "maintenance" ]]; then
+  # 维护范围只处理可再生成的历史文件。
+  run_action "清理 30 天前日志" find "$ROOT_DIR" -path '*/logs/*' -type f -mtime +30 -delete
+  run_action "清理 pytest 缓存" find "$ROOT_DIR" -type d -name '.pytest_cache' -prune -exec rm -rf {} +
+fi
 
-# 4. 重新跑健康检查，给老板一个结果。
-run_action "重新健康检查" bash "$ROOT_DIR/scripts/auto_health_check.sh" --json
-notify_mac "OpenEverything 恢复完成" "如果仍是红灯，请导出状态报告给技术支持。"
+if [[ "$SCOPE" == "fulfillment" ]]; then
+  # 履约范围必须同时提供专用 scope 和 --confirm，避免服务恢复误处理真实订单。
+  run_action "检查卖家 Chrome 与桥接器（可能处理真实订单）" make cc-seller-auto
+fi
+
+if (( DRY_RUN == 1 )); then
+  echo "▶ 重新健康检查: bash $ROOT_DIR/scripts/auto_health_check.sh --json --strict"
+  exit 0
+fi
+
+health_status=0
+if health_output="$(bash "$ROOT_DIR/scripts/auto_health_check.sh" --json --strict)"; then
+  printf '%s\n' "$health_output"
+  notify_mac "OpenEverything 恢复完成" "健康检查已通过。"
+else
+  health_status=$?
+  printf '%s\n' "$health_output"
+  echo "❌ 恢复动作已执行，但严格健康检查仍未通过（退出码 $health_status）。" >&2
+  notify_mac "OpenEverything 恢复未通过" "仍有红灯或黄灯，请查看健康报告。" || true
+  exit "$health_status"
+fi

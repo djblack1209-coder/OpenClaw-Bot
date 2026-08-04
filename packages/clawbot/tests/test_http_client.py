@@ -2,18 +2,19 @@
 http_client 单元测试 — 覆盖熔断器状态机、请求指标、退避计算、重试逻辑
 """
 import time
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import httpx
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
 
 from src.http_client import (
     CircuitBreaker,
-    CircuitState,
     CircuitOpenError,
+    CircuitState,
     RequestMetrics,
-    RetryConfig,
     ResilientHTTPClient,
+    RetryConfig,
 )
-
 
 # ============ CircuitBreaker 状态机 ============
 
@@ -495,3 +496,75 @@ class TestResilientHTTPClientSsrfCheck:
                 json={"data": "test"},
                 ssrf_check=True,
             )
+
+    @pytest.mark.asyncio
+    async def test_ssrf_check_revalidates_every_redirect_target(self):
+        """公网入口跳到本机地址时，必须在第二跳发出前拒绝。"""
+        from src.core.security import SSRFError
+
+        client = ResilientHTTPClient(name="test-ssrf-redirect")
+        first_response = MagicMock()
+        first_response.status_code = 302
+        first_response.next_request = httpx.Request("GET", "http://127.0.0.1/admin")
+        first_response.aclose = AsyncMock()
+        mock_httpx_client = AsyncMock()
+        mock_httpx_client.request = AsyncMock(return_value=first_response)
+        mock_httpx_client.aclose = AsyncMock()
+
+        with (
+            patch.object(client, "_new_client", return_value=mock_httpx_client),
+            patch(
+                "src.core.security.check_ssrf",
+                side_effect=lambda value: "127.0.0.1" not in str(value),
+            ),
+            pytest.raises(SSRFError, match="重定向"),
+        ):
+            await client.get(
+                "https://public.example/redirect",
+                follow_redirects=True,
+                ssrf_check=True,
+            )
+
+        mock_httpx_client.request.assert_awaited_once()
+        mock_httpx_client.send.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_pinned_backend_connects_to_validated_ip_without_second_dns_lookup(self):
+        """传输层必须连接已校验 IP，同时保留上层域名用于 TLS。"""
+        from src.http_client import PinnedPublicNetworkBackend
+
+        network_backend = AsyncMock()
+        expected_stream = object()
+        network_backend.connect_tcp = AsyncMock(return_value=expected_stream)
+        backend = PinnedPublicNetworkBackend(
+            network_backend=network_backend,
+            resolver=lambda host, port: ("93.184.216.34",),
+        )
+
+        stream = await backend.connect_tcp("public.example", 443, timeout=5.0)
+
+        assert stream is expected_stream
+        network_backend.connect_tcp.assert_awaited_once_with(
+            "93.184.216.34",
+            443,
+            timeout=5.0,
+            local_address=None,
+            socket_options=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_pinned_backend_fails_closed_when_connection_resolution_rebinds_private(self):
+        """连接时解析成内网地址时，不得调用底层 TCP。"""
+        from src.core.security import SSRFError
+        from src.http_client import PinnedPublicNetworkBackend
+
+        network_backend = AsyncMock()
+        backend = PinnedPublicNetworkBackend(
+            network_backend=network_backend,
+            resolver=lambda host, port: (_ for _ in ()).throw(SSRFError("private")),
+        )
+
+        with pytest.raises(SSRFError, match="private"):
+            await backend.connect_tcp("rebind.example", 443)
+
+        network_backend.connect_tcp.assert_not_awaited()

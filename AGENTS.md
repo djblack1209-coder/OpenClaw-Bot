@@ -94,7 +94,7 @@
 
 **阶段概要：**
 
-1. **需求理解** — 读 `docs/001-project-map.md` + `docs/009-health.md` → 复述需求 → 拆解用户故事
+1. **需求理解** — 读 `docs/001-project-map.md` + `docs/009-health.md` 顶部“当前目标/当前风险”区；历史闭环只在任务相关时检索，不默认整篇加载 → 复述需求 → 拆解用户故事
 2. **技术侦察** — 读注册表 → 读源码 → 搜索开源方案 → 评估方案 → **触发 DOCS-FIRST 则先拉文档**（见 `docs/008-sop.md` 一、官方文档优先协议）
 3. **计划制定** — TodoWrite 列步骤 → 标注验证标准
 4. **执行开发** — 逐步实现 → 每步过质量门 → 定期汇报
@@ -109,18 +109,18 @@
 
 | 用户意图 | 推荐 Skill 链 | 说明 |
 |----------|---------------|------|
-| "加个功能 / 做个 XX" | `brainstorming` → `writing-plans` → `metagpt-sop` | 先想清楚再动手 |
-| "出 Bug 了 / 报错了" | `investigate` | 根因调试，假设→验证循环 |
-| "审查代码 / 检查一下" | `review` | 四维度审查 + LGTM/LBTM 迭代 |
-| "发版 / 提 PR / 推代码" | `ship` | 全自动：测试→安全→文档→提交→PR |
-| "系统怎么样 / 健康检查" | `health-check` | 一键状态汇报 |
-| "继续 / 接着上次" | `handoff`(读取模式) | 恢复上下文 + 拍新基线 |
-| "先这样 / 今天到这" | `handoff`(写入模式) | 自动交接 + 裁剪旧记录 |
-| "测试 / 跑测试" | `test-driven-development` | 红绿重构循环 |
-| "调试 / Debug" | `systematic-debugging` | 系统化调试流程 |
-| "重构 / 整理代码" | `requesting-code-review` → `review` | 先审查再重构 |
-| "写设计文档 / 规格" | `metagpt-prd` | 产品需求文档生成 |
-| "看架构 / 架构设计" | `metagpt-architect` | 系统架构分析 |
+| "加个功能 / 做个 XX" | `think` → `wayfinder` → `to-tickets` | 先把目标、边界和验收标准写清楚，再拆成可验证任务 |
+| "出 Bug 了 / 报错了" | `diagnosing-bugs` | 根因调试，假设→验证循环 |
+| "审查代码 / 检查一下" | `check` 或 `code-review` | 先列风险与证据，再决定是否修改 |
+| "发版 / 提 PR / 推代码" | `check` → `github:yeet` | 测试、安全、文档、提交和 PR 串成一条发布链 |
+| "系统怎么样 / 健康检查" | `health` | 预算感知的多维健康审计 |
+| "继续 / 接着上次" | 会话交接协议（读取模式） | 读取交接、健康和最近变更后拍新基线 |
+| "先这样 / 今天到这" | 会话交接协议（写入模式） | 写入交接并只保留最近 5 条 |
+| "测试 / 跑测试" | `tdd` | 红绿重构循环 |
+| "调试 / Debug" | `diagnosing-bugs` | 系统化调试并保留失败证据 |
+| "重构 / 整理代码" | `improve-codebase-architecture` → `codebase-design` → `check` | 先做架构取证，再按兼容边界渐进迁移 |
+| "写设计文档 / 规格" | `think` → `wayfinder` | 形成决策完备的目标与验收标准 |
+| "看架构 / 架构设计" | `improve-codebase-architecture` → `codebase-design` | 输出基于源码证据的结构评估与方案 |
 
 **没有匹配的意图 → 走标准 SOP 8 阶段。**
 
@@ -146,6 +146,28 @@ make test  # 自动使用 packages/clawbot/.venv312/bin/python，避免系统 py
 
 ### 安全门
 - 无硬编码密钥，外部输入有验证，日志不泄露敏感信息
+
+### 热点修改门
+
+下列文件是当前高冲突热点。修改前先确认职责边界，修改后至少运行对应聚焦验证；不以全量测试代替聚焦失败定位。
+
+| 热点 | 稳定职责边界 | 聚焦验证 |
+|------|--------------|----------|
+| `apps/frist-api/server/server.js` | 只保留 HTTP 分派和组合；认证、会话、支付、安全策略优先下沉到 `server/` 领域模块 | `make frist-api-test` |
+| `apps/frist-api/src/app.js` / `styles.css` | 保持现有 DOM 协议；页面状态、渲染器、事件和对应样式按同一功能域成组迁移 | `cd apps/frist-api && npm test` |
+| `packages/clawbot/src/xianyu/xianyu_admin.py` / `xianyu_live.py` | 管理 API 不直接跨事件循环操作 WebSocket、API 客户端或健康任务；统一走 Xianyu 所有者循环 | `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_xianyu_loop_boundary.py -q` |
+| `packages/clawbot/src/api/rpc.py` | 保持兼容门面；新增领域实现优先放入独立模块，避免继续扩大聚合类 | `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py tests/test_async_call_contracts.py -q` |
+| `packages/clawbot/src/core/brain.py` / `event_bus.py` / `multi_main.py` | Brain、EventBus 和有状态异步客户端只归主事件循环所有；API 线程只能通过所有者边界调用 | `cd packages/clawbot && PYTHONASYNCIODEBUG=1 .venv312/bin/python -m pytest tests/test_brain.py tests/test_brain_event_loop_boundary.py -q` |
+| `apps/openclaw-manager-src/src-tauri/src/commands/config.rs` / `installer.rs` / `mcp.rs` | WebView 只允许调用显式白名单命令；本机进程、路径和安装器参数必须失败关闭 | `cd apps/openclaw-manager-src/src-tauri && cargo test --locked && cargo check --locked` |
+
+### 长时间自动任务停止条件
+
+自动巡检、循环修复或长时间子 Agent 命中任一条件时必须停止并汇报，禁止无上限重试：
+
+1. 连续两个检查点没有新增测试、产物或可验证进展。
+2. 同一错误、堆栈或失败断言连续出现三次。
+3. 达到任务声明的时间、Token 或外部 API 成本预算。
+4. 遇到无法自行解除的外部阻塞，例如缺少凭据、网络不可达、目标分支冲突或依赖锁无法解析。
 
 ---
 
@@ -184,7 +206,7 @@ OpenClaw Bot/
 │   ├── 008-sop.md               ← 开发规范
 │   ├── 009-health.md            ← 系统健康 + Bug + 技术债
 │   └── 010-feature-specs.md     ← 功能规格总集
-├── packages/clawbot/            ← Python 后端 (236 .py 文件)
+├── packages/clawbot/            ← Python 后端
 │   ├── multi_main.py            ← 入口
 │   └── src/                     ← 源码
 └── apps/
@@ -268,7 +290,7 @@ OpenClaw Bot/
 
 1. 确认文档类型 → 查表确定编号段
 2. 查 `docs/003-docs-index.md` 确认编号未被占用
-3. 创建文件，文件名格式: `docs/XXX-english-name.md`
+3. 在 `docs/` 根目录创建文件，文件名格式: `XXX-english-name.md`
 4. **立即更新** `docs/003-docs-index.md` 注册新文档
 
 ---

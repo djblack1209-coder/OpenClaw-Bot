@@ -5,11 +5,12 @@ v2 修复:
   - HI-NEW-02: 共享 deque + popleft 导致多客户端丢消息 → 每客户端独立 asyncio.Queue
   - HI-NEW-03: 初始状态获取无异常保护 → 加 try/except 降级发送空状态
 """
+
 import asyncio
 import contextlib
-import json
 import logging
 import threading
+from dataclasses import dataclass
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -21,10 +22,56 @@ from ..schemas import WSMessageType
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# 每个客户端拥有独立的事件队列，避免 popleft 互抢
-# key = WebSocket 对象, value = asyncio.Queue
-_client_queues: dict[WebSocket, asyncio.Queue] = {}
+# 每个客户端拥有独立的事件队列，避免 popleft 互抢。
+# asyncio.Queue 只能在创建它的事件循环操作，因此同时记录所属循环。
+
+
+@dataclass(frozen=True)
+class _ClientQueue:
+    """WebSocket 客户端的队列及其唯一归属事件循环。"""
+
+    loop: asyncio.AbstractEventLoop
+    queue: asyncio.Queue[dict[str, object]]
+
+
+_client_queues: dict[WebSocket, _ClientQueue] = {}
 _lock = threading.Lock()
+
+
+def _register_client(websocket: WebSocket, client: _ClientQueue) -> None:
+    """登记已接受连接的队列；调用方必须位于该客户端的 API 事件循环。"""
+    with _lock:
+        _client_queues[websocket] = client
+
+
+def _unregister_client(websocket: WebSocket, client: _ClientQueue | None = None) -> None:
+    """移除连接；仅移除同一代客户端，防止旧回调删掉重连后的队列。"""
+    with _lock:
+        current = _client_queues.get(websocket)
+        if client is None or current is client:
+            _client_queues.pop(websocket, None)
+
+
+def _enqueue_event(websocket: WebSocket, client: _ClientQueue, event: dict[str, object]) -> None:
+    """仅由客户端所属事件循环执行的入队回调。"""
+    if asyncio.get_running_loop() is not client.loop:
+        logger.error("[WS] 拒绝在非归属事件循环操作客户端队列")
+        return
+
+    with _lock:
+        if _client_queues.get(websocket) is not client:
+            return
+
+    try:
+        client.queue.put_nowait(event)
+    except asyncio.QueueFull:
+        # 慢客户端保留最新状态：先淘汰最旧事件，再写入当前事件。
+        with contextlib.suppress(asyncio.QueueEmpty):
+            client.queue.get_nowait()
+        try:
+            client.queue.put_nowait(event)
+        except asyncio.QueueFull:
+            logger.warning("[WS] 客户端事件队列持续满载，放弃最新事件")
 
 
 def push_event(event_type: WSMessageType, data: dict | None = None):
@@ -39,45 +86,24 @@ def push_event(event_type: WSMessageType, data: dict | None = None):
         "timestamp": now_et().isoformat(),
     }
     with _lock:
-        for queue in _client_queues.values():
-            try:
-                queue.put_nowait(event)
-            except asyncio.QueueFull:
-                # 慢客户端：丢弃队头最旧事件，腾出空间
-                try:
-                    queue.get_nowait()
-                    queue.put_nowait(event)
-                except Exception as e:
-                    logger.debug("[WS] 慢客户端事件队列溢出: %s", e)
+        clients = list(_client_queues.items())
+
+    for websocket, client in clients:
+        try:
+            # 即便调用者恰好位于 API 线程，也统一通过线程安全投递路径，
+            # 这样队列操作始终由其唯一归属循环串行执行。
+            client.loop.call_soon_threadsafe(_enqueue_event, websocket, client, event)
+        except RuntimeError:
+            # 事件循环已关闭，连接不再可用；移除过期登记，后续事件不重试。
+            _unregister_client(websocket, client)
 
 
 async def broadcast_event(event_type: WSMessageType, data: dict | None = None):
     """异步广播事件到所有已连接客户端。
     由其他模块在发生重要事件时调用。
     """
-    if not _client_queues:
-        return
-
-    message = json.dumps({
-        "type": event_type.value,
-        "data": data or {},
-        "timestamp": now_et().isoformat(),
-    })
-
-    disconnected = []
-    with _lock:
-        clients = list(_client_queues.keys())
-
-    for client in clients:
-        try:
-            await client.send_text(message)
-        except Exception:
-            disconnected.append(client)
-
-    if disconnected:
-        with _lock:
-            for client in disconnected:
-                _client_queues.pop(client, None)
+    # 复用 push_event，避免异步调用者跨 WebSocket 所属事件循环直接 send_text。
+    push_event(event_type, data)
 
 
 @router.websocket("/events")
@@ -97,25 +123,28 @@ async def websocket_events(websocket: WebSocket):
     await websocket.accept()
 
     # 为此客户端创建独立队列
-    queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
-    with _lock:
-        _client_queues[websocket] = queue
+    queue: asyncio.Queue[dict[str, object]] = asyncio.Queue(maxsize=1000)
+    client = _ClientQueue(loop=asyncio.get_running_loop(), queue=queue)
+    _register_client(websocket, client)
     logger.info("WebSocket client connected (total: %d)", len(_client_queues))
 
     try:
         # 发送初始系统状态（HI-NEW-03 修复：加异常保护）
         try:
             from ..rpc import ClawBotRPC
+
             status = ClawBotRPC._rpc_system_status()
         except Exception as e:
             logger.warning("获取初始系统状态失败，降级发送空状态: %s", e)
             status = {"error": "系统状态暂不可用"}
 
-        await websocket.send_json({
-            "type": WSMessageType.STATUS.value,
-            "data": status,
-            "timestamp": now_et().isoformat(),
-        })
+        await websocket.send_json(
+            {
+                "type": WSMessageType.STATUS.value,
+                "data": status,
+                "timestamp": now_et().isoformat(),
+            }
+        )
 
         # 保活循环 — 从独立队列 drain 事件 + 处理客户端消息
         while True:
@@ -140,10 +169,12 @@ async def websocket_events(websocket: WebSocket):
                 if not done:
                     # 超时 — 发送心跳
                     try:
-                        await websocket.send_json({
-                            "type": "heartbeat",
-                            "timestamp": now_et().isoformat(),
-                        })
+                        await websocket.send_json(
+                            {
+                                "type": "heartbeat",
+                                "timestamp": now_et().isoformat(),
+                            }
+                        )
                     except Exception:
                         break
                     continue
@@ -170,10 +201,12 @@ async def websocket_events(websocket: WebSocket):
             except TimeoutError:
                 # 发送心跳
                 try:
-                    await websocket.send_json({
-                        "type": "heartbeat",
-                        "timestamp": now_et().isoformat(),
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "heartbeat",
+                            "timestamp": now_et().isoformat(),
+                        }
+                    )
                 except Exception:
                     break
     except WebSocketDisconnect:
@@ -181,6 +214,5 @@ async def websocket_events(websocket: WebSocket):
     except Exception as e:
         logger.debug("WebSocket error: %s", e)
     finally:
-        with _lock:
-            _client_queues.pop(websocket, None)
+        _unregister_client(websocket, client)
         logger.info("WebSocket client disconnected (total: %d)", len(_client_queues))

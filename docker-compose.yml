@@ -4,7 +4,7 @@ services:
   # 推荐: docker compose --env-file packages/clawbot/config/.env up -d
   # ── Redis（可选，用于任务队列持久化）──────────────
   redis:
-    image: redis:7.2-alpine
+    image: redis:7.2-alpine@sha256:05a97a479bc73de66f087dc05b569010772880f778cc8671fa6b8aadee32e5c6
     expose:
       - "6379"
     volumes:
@@ -37,6 +37,8 @@ services:
   # NOTE: 需要先创建 packages/clawbot/Dockerfile 才能使用 docker compose build
   # 当前仅支持 docker compose up redis (Redis 独立运行)
   openclaw:
+    # Python 生产哈希锁面向 Oracle/Linux x86_64；Mac 本机构建时由 Docker 透明模拟同一目标。
+    platform: linux/amd64
     build:
       context: ./packages/clawbot
       dockerfile: Dockerfile
@@ -72,7 +74,7 @@ services:
         reservations:
           memory: 512M
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:18790/api/v1/ping')"]
+      test: ["CMD", "python", "-c", "import os, urllib.request; request = urllib.request.Request('http://localhost:18790/api/v1/ping', headers={'X-API-Token': os.environ.get('OPENCLAW_API_TOKEN', '')}); urllib.request.urlopen(request, timeout=8)"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -4,12 +4,16 @@ import {
 } from '../src/core.js';
 import {
   DEFAULT_MODEL, DEFAULT_PUBLIC_MODEL, DEFAULT_RECHARGE_PLANS, DEFAULT_MODEL_PRICES, DEFAULT_MODEL_CATALOG,
-  round2, formatCny, poolPriority, findModelPrice, priceLabel, uniqueStrings,
+  round2, formatCny, formatUsdFromCnyCents, compactTokenText,
+  poolPriority, findModelPrice, priceLabel, uniqueStrings,
   sortModelsByStrength, strongestModel, sanitizeRiskNote, PRIMARY_SOURCE_TYPE,
   providerFromModel, taglineForModel, contextForModel,
   isSourceRouteApproved, isCredentialRouteApproved,
   effectiveCredentialGroup, estimateCredentialWaste, normalizePool,
+  normalizeRechargePlan, reconcileUserBalance,
 } from './shared.js';
+
+export { normalizeRechargePlan, reconcileUserBalance };
 
 const DEFAULT_MODEL_PRICE_BY_MODEL = new Map(
   DEFAULT_MODEL_PRICES.map((price) => [normalizeOfficialModelName(price.model), price]),
@@ -29,7 +33,6 @@ export function normalizePricingConfig(input = {}) {
 export function normalizeRechargePlans(plans) {
   const rows = Array.isArray(plans) && plans.length ? plans : DEFAULT_RECHARGE_PLANS;
   return rows
-    .filter((plan) => plan.id && Number(plan.quotaUsd || 0) > 0 && Number(plan.priceCny || 0) > 0)
     .map((plan, index) => {
       const quotaUsd = Math.max(0, Number(plan.quotaUsd || 0));
       const priceCny = Math.max(0, Number(plan.priceCny ?? plan.amountCny ?? 0));
@@ -38,11 +41,14 @@ export function normalizeRechargePlans(plans) {
       return {
         id: String(plan.id || `plan-${index + 1}`).trim(),
         label: String(plan.label || `Codex API ${quotaUsd}刀额度/${durationDays === 1 ? '日卡' : '不限时'}`).trim(),
-        quotaUsd, priceCny: round2(priceCny), durationDays,
+        quotaUsd,
+        priceCny: round2(priceCny),
+        durationDays,
         plan: normalizeRechargePlan(plan.plan || inferredPlan),
         active: index === 0,
       };
-    });
+    })
+    .filter((plan) => plan.id && plan.quotaUsd > 0 && plan.priceCny > 0);
 }
 
 export function normalizeModelPrices(prices) {
@@ -82,11 +88,6 @@ export function mergeModelPrices(existing, configured) {
     merged.set(model, { ...price, model });
   }
   return [...merged.values()];
-}
-
-export function normalizeUserRecord(user) {
-  const email = normalizeAlertEmailLocal(user?.email || '');
-  return { ...user, balanceAlert: normalizeBalanceAlertRecordLocal(user?.balanceAlert, email) };
 }
 
 export function normalizeCredentialRecord(credential) {
@@ -129,42 +130,6 @@ function normalizeRiskStatusLocal(value) {
   if (status === 'approved' || status === 'pass' || status === 'allowed') return 'approved';
   if (status === 'blocked' || status === 'rejected' || status === 'disabled') return 'blocked';
   return 'quarantined';
-}
-
-function normalizeRechargePlan(value) {
-  const plan = String(value || 'balance').trim().toLowerCase();
-  return ['balance', 'day', 'month'].includes(plan) ? plan : 'balance';
-}
-
-function normalizeAlertEmailLocal(value) {
-  const email = String(value || '').trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return '';
-  return email.slice(0, 254);
-}
-
-function normalizeBalanceAlertRecordLocal(record, fallbackEmail = '') {
-  const current = record && typeof record === 'object' ? record : {};
-  const thresholdCents = normalizeMoneyCentsLocal(current.thresholdCents ?? Number(current.thresholdCny ?? 5) * 100);
-  return {
-    enabled: Object.prototype.hasOwnProperty.call(current, 'enabled') ? Boolean(current.enabled) : true,
-    thresholdCents: Number.isFinite(thresholdCents) && thresholdCents > 0 && thresholdCents <= 1_000_000_00 ? thresholdCents : 500,
-    email: normalizeAlertEmailLocal(current.email) || fallbackEmail || '',
-    lastAlertAt: String(current.lastAlertAt || ''),
-    lastAlertBalanceCents: Math.max(0, normalizeMoneyCentsLocal(current.lastAlertBalanceCents || 0)),
-    lastTriggeredThresholdCents: Math.max(0, normalizeMoneyCentsLocal(current.lastTriggeredThresholdCents || 0)),
-    updatedAt: String(current.updatedAt || ''),
-  };
-}
-
-function normalizeMoneyCentsLocal(value) {
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed) return Number.NaN;
-    const numeric = Number(trimmed.replace(/[^\d.-]/g, ''));
-    return Number.isFinite(numeric) ? Math.round(numeric) : Number.NaN;
-  }
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? Math.round(numeric) : Number.NaN;
 }
 
 export function availableModelsForCustomer(data, user, key, requestedModel = '') {
@@ -240,106 +205,6 @@ export function buildModelCatalog(data) {
   });
 }
 
-export function buildChannelChecks(data) {
-  const grouped = new Map();
-  for (const credential of data.credentials) {
-    const models = normalizeOfficialModelList(credential.models?.length ? credential.models : [DEFAULT_MODEL]);
-    const source = data.supplierProfiles.find((item) => item.id === credential.sourceId) || {};
-    const pool = normalizePool(credential.pool || source.pool || 'default') || 'default';
-    const provider = effectiveCredentialGroup(credential);
-    const key = `${pool}:${credential.sourceId || provider}`;
-    const current = grouped.get(key) || {
-      model: models[0] || DEFAULT_MODEL,
-      provider,
-      channel: '',
-      pool,
-      poolLabel: poolTypeLabel(pool),
-      total: 0,
-      healthy: 0,
-      down: 0,
-      slow: 0,
-      latencyMs: 0,
-      latencyTotal: 0,
-      latencySamples: 0,
-      checkedAt: '',
-      status: credential.status,
-      endpoint: '/v1',
-      history: [],
-      models: new Set(),
-    };
-    for (const model of models) {
-      current.models.add(normalizeOfficialModelName(model));
-    }
-    const isHealthy = credential.enabled && credential.status === 'healthy' && isCredentialRouteApproved(credential);
-    const latency = Number(credential.latencyMs || 0);
-    const hasRealLatency = isHealthy && Number.isFinite(latency) && latency > 0 && latency < 999999;
-    const bucket = isHealthy ? (hasRealLatency && latency > 1600 ? 'slow' : 'ok') : 'down';
-    current.total += 1;
-    current.healthy += isHealthy ? 1 : 0;
-    current.down += isHealthy ? 0 : 1;
-    current.slow += bucket === 'slow' ? 1 : 0;
-    if (isHealthy) {
-      if (hasRealLatency) {
-        current.latencyMs = current.latencyMs ? Math.min(current.latencyMs, latency) : latency;
-        current.latencyTotal += latency;
-        current.latencySamples += 1;
-      }
-      current.status = 'healthy';
-    } else if (!current.healthy) {
-      current.status = credential.status || current.status || 'failed';
-    }
-    current.checkedAt = [current.checkedAt, credential.updatedAt].filter(Boolean).sort().at(-1) || '';
-    current.history.push(bucket);
-    grouped.set(key, current);
-  }
-  return [...grouped.values()]
-    .sort((left, right) => poolPriority(left.pool) - poolPriority(right.pool) || left.channel.localeCompare(right.channel))
-    .map((item, index) => {
-      const channel = publicPoolChannelLabel(index + 1);
-      const availabilityPercent = item.total ? Math.round((item.healthy / item.total) * 1000) / 10 : 0;
-      const averageLatencyMs = item.latencySamples ? Math.round(item.latencyTotal / item.latencySamples) : 0;
-      const monitorStatus =
-        item.healthy === 0
-          ? '异常'
-          : item.down > 0 || item.slow > 0
-            ? '降级'
-            : '正常';
-      const status = item.healthy > 0 ? (item.slow > 0 ? 'slow' : 'healthy') : item.status;
-      const primaryModel = normalizeOfficialModelName([...item.models][0] || item.model);
-      return {
-        model: primaryModel,
-        provider: item.provider,
-        channel,
-        pool: item.pool,
-        poolLabel: item.poolLabel,
-        endpoint: item.endpoint || '/v1',
-        ok: item.healthy > 0,
-        status,
-        latencyMs: item.latencySamples ? item.latencyMs : 0,
-        averageLatencyMs,
-        checkedAt: item.checkedAt,
-        availability: `${availabilityPercent}%`,
-        availability7d: availabilityPercent,
-        availability_7d: availabilityPercent,
-        availability15d: availabilityPercent,
-        availability30d: availabilityPercent,
-        availability_15d: availabilityPercent,
-        availability_30d: availabilityPercent,
-        availabilityWindow: '当前库存快照',
-        healthyCount: item.healthy,
-        totalCount: item.total,
-        downCount: item.down,
-        slowCount: item.slow,
-        successLabel: `${item.healthy}/${item.total} 可用`,
-        latencyLabel: item.latencySamples ? `最低 ${item.latencyMs}ms / 平均 ${averageLatencyMs}ms` : '等待真实请求更新',
-        monitorIntervalSeconds: 60,
-        monitorStatus,
-        officialStatus: monitorStatus,
-        history: item.history.slice(-60),
-      };
-    });
-}
-
 function buildLiveModelMap(data) {
   const rows = new Map();
   for (const credential of data.credentials || []) {
@@ -360,32 +225,24 @@ function buildLiveModelMap(data) {
   return rows;
 }
 
-function publicPoolChannelLabel(index) {
-  const safeIndex = Math.max(1, Number(index || 1));
-  return `卡商${safeIndex}`;
-}
-
-function poolTypeLabel(pool) {
-  const normalized = normalizePool(pool || 'default') || 'default';
-  const labels = {
-    hour: '小时卡号池',
-    day: '日卡号池',
-    month: '月卡号池',
-    unlimited: '不限时号池',
-    default: '默认号池',
-  };
-  return labels[normalized] || '号池渠道';
-}
-
 export function buildModelUsage(data, user) {
   const events = data.events.filter((item) => item.type === 'gateway_routed' && item.userId === user.id);
   const totals = new Map();
   for (const event of events) {
-    totals.set(event.model, (totals.get(event.model) || 0) + Number(event.quotaCost || 0));
+    const current = totals.get(event.model) || { cost: 0, calls: 0, tokens: 0 };
+    current.cost += Number(event.quotaCost || 0);
+    current.calls += 1;
+    current.tokens += Number(event.totalTokens || 0);
+    totals.set(event.model, current);
   }
-  return [...totals.entries()].map(([model, cost]) => ({
-    model, amount: formatCny(cost),
-    calls: `${events.filter((event) => event.model === model).length} 次`,
+  const totalCost = [...totals.values()].reduce((sum, item) => sum + item.cost, 0) || 1;
+  return [...totals.entries()].map(([model, usage]) => ({
+    model,
+    amount: formatUsdFromCnyCents(usage.cost),
+    amountCny: formatCny(usage.cost),
+    calls: `${usage.calls} 次`,
+    tokens: compactTokenText(usage.tokens),
+    percent: Math.max(4, Math.round((usage.cost / totalCost) * 100)),
   }));
 }
 
@@ -420,12 +277,6 @@ export function buildInventorySummary(data) {
     }));
 }
 
-export function reconcileUserBalance(user) {
-  user.packageQuotaCents = Math.max(0, Number(user.packageQuotaCents || 0));
-  user.boosterQuotaCents = Math.max(0, Number(user.boosterQuotaCents || 0));
-  user.balanceCents = user.packageQuotaCents + user.boosterQuotaCents;
-}
-
 export function availableQuotaCents(user) {
   reconcileUserBalance(user);
   return Number(user.packageQuotaCents || 0) + Number(user.boosterQuotaCents || 0);
@@ -436,10 +287,12 @@ export function deductUserQuota(user, quotaCost) {
   const packageDeduction = Math.min(Number(user.packageQuotaCents || 0), remaining);
   user.packageQuotaCents = Math.max(0, Number(user.packageQuotaCents || 0) - packageDeduction);
   remaining -= packageDeduction;
+  const boosterDeduction = Math.min(Number(user.boosterQuotaCents || 0), Math.max(0, remaining));
   if (remaining > 0) {
-    user.boosterQuotaCents = Math.max(0, Number(user.boosterQuotaCents || 0) - remaining);
+    user.boosterQuotaCents = Math.max(0, Number(user.boosterQuotaCents || 0) - boosterDeduction);
   }
   reconcileUserBalance(user);
+  return { packageCents: packageDeduction, boosterCents: boosterDeduction };
 }
 
 export function expireUserPlanIfNeeded(data, user, serverOptions, options = {}) {
@@ -495,7 +348,7 @@ export function allowedPoolsForUser(user) {
 
 export function accountFromUser(data, user) {
   reconcileUserBalance(user);
-  const now = new Date();
+  const now = currentDate();
   const today = now.toISOString().slice(0, 10);
   const month = now.toISOString().slice(0, 7);
   const routedEvents = data.events.filter((item) => item.type === 'gateway_routed' && item.userId === user.id);
@@ -503,11 +356,33 @@ export function accountFromUser(data, user) {
   const monthEvents = routedEvents.filter((item) => String(item.at || '').startsWith(month));
   const todayCost = todayEvents.reduce((sum, item) => sum + Number(item.quotaCost || 0), 0);
   const monthCost = monthEvents.reduce((sum, item) => sum + Number(item.quotaCost || 0), 0);
+  const todayTokens = todayEvents.reduce((sum, item) => sum + Number(item.totalTokens || 0), 0);
+  const totalTokens = routedEvents.reduce((sum, item) => sum + Number(item.totalTokens || 0), 0);
+  const responseEvents = routedEvents.filter((item) => Number(item.latencyMs || 0) > 0);
+  const averageLatency = responseEvents.length
+    ? Math.round(responseEvents.reduce((sum, item) => sum + Number(item.latencyMs || 0), 0) / responseEvents.length)
+    : 0;
+  const successRate = routedEvents.length
+    ? `${Math.round((routedEvents.filter((item) => item.status !== 'failed').length / routedEvents.length) * 1000) / 10}%`
+    : '0%';
   return {
-    plan: user.plan, renewalDate: user.renewalDate, balance: formatCny(user.balanceCents),
-    packageQuota: formatCny(user.packageQuotaCents), boosterQuota: formatCny(user.boosterQuotaCents),
-    quotaLeft: formatCny(user.balanceCents), todayCost: formatCny(todayCost),
-    monthCost: formatCny(monthCost), usageTotal: formatCny(monthCost), todayCalls: `${todayEvents.length} 次`,
+    plan: user.plan,
+    renewalDate: user.renewalDate,
+    balance: formatUsdFromCnyCents(user.balanceCents),
+    balanceCny: formatCny(user.balanceCents),
+    packageQuota: formatUsdFromCnyCents(user.packageQuotaCents),
+    packageQuotaCny: formatCny(user.packageQuotaCents),
+    boosterQuota: formatUsdFromCnyCents(user.boosterQuotaCents),
+    boosterQuotaCny: formatCny(user.boosterQuotaCents),
+    quotaLeft: formatUsdFromCnyCents(user.balanceCents),
+    todayCost: formatUsdFromCnyCents(todayCost),
+    monthCost: formatUsdFromCnyCents(monthCost),
+    usageTotal: formatUsdFromCnyCents(monthCost),
+    todayCalls: `${todayEvents.length} 次`,
+    todayTokens: compactTokenText(todayTokens),
+    totalTokens: compactTokenText(totalTokens),
+    averageLatency: averageLatency ? `${averageLatency}ms` : '-',
+    successRate,
   };
 }
 

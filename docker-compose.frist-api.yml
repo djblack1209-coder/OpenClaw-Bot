@@ -4,7 +4,7 @@
 
 services:
   frist-api-server:
-    image: node:22-alpine
+    image: node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32
     container_name: frist-api-server
     restart: unless-stopped
     working_dir: /app
@@ -78,6 +78,7 @@ services:
       - FRIST_API_SMTP_FROM=${FRIST_API_SMTP_FROM:-}
       - FRIST_API_BALANCE_ALERT_FROM_NAME=${FRIST_API_BALANCE_ALERT_FROM_NAME:-Frist-API Billing}
       - FRIST_API_PAYMENT_ENABLED=${FRIST_API_PAYMENT_ENABLED:-0}
+      - FRIST_API_PAYMENT_REQUEST_TIMEOUT_MS=${FRIST_API_PAYMENT_REQUEST_TIMEOUT_MS:-15000}
       - FRIST_API_WECHAT_PAY_ENABLED=${FRIST_API_WECHAT_PAY_ENABLED:-0}
       - FRIST_API_WECHAT_PAY_APPID=${FRIST_API_WECHAT_PAY_APPID:-}
       - FRIST_API_WECHAT_PAY_MCH_ID=${FRIST_API_WECHAT_PAY_MCH_ID:-}

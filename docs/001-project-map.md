@@ -1,6 +1,6 @@
 # OpenClaw Bot — 项目全景地图
 
-> 最后更新: 2026-08-04 (Release Gate 2.0 + 每日资讯 V2 基线) | AI 开发助手请先读完本文再开始工作 | 当前健康状态以 `docs/009-health.md` 和 `docs/002-changelog.md` 最近条目为准
+> 最后更新: 2026-08-05 (全维度审计、软件闭环与自动灾备) | AI 开发助手请先读完本文再开始工作 | 当前健康状态以 `docs/009-health.md` 和 `docs/002-changelog.md` 最近条目为准
 
 ## 一句话概述
 
@@ -64,193 +64,46 @@
 
 ## 项目结构
 
+本节只记录稳定职责和入口，不记录文件数、代码行数或测试数量；这些易漂移数字必须由验证命令实时生成，不能作为架构事实写入地图。
+
 ```
-OpenClaw Bot/
+OpenEverything/
+├── AGENTS.md                       # AI 开发入口、质量门与热点边界
+├── Makefile                        # 本地 CI、锁检查、构建和回滚统一入口
+├── docs/                           # 扁平编号文档；项目地图、注册表、运维、健康和变更记录
 ├── packages/
-│   └── clawbot/                    # 🧠 核心 Python 后端 (297 文件, 100,363 行)
-│       ├── multi_main.py           # 入口: 多Bot启动 + 信号处理 (875行)
-│       ├── config/
-│       │   ├── bot_profiles.py     # 7个Bot人设/能力/投资角色 (323行)
-│       │   └── .env                # 环境变量 (API keys)
-│       ├── src/
-│       │   ├── core/               # OMEGA 核心引擎 (5,082行)
-│       │   │   ├── brain.py        #   编排器: 意图→任务图→执行→推送 (1,475行)
-│       │   │   ├── intent_parser.py#   自然语言→结构化意图 (571行)
-│       │   │   ├── task_graph.py   #   DAG 任务引擎 (372行)
-│       │   │   ├── executor.py     #   多路径执行: API→浏览器→电话→Composio→Skyvern→人工 (476行)
-
-│       │   │   ├── event_bus.py    #   异步发布-订阅总线 (329行)
-│       │   │   ├── self_heal.py    #   6步异常自愈 + 熔断器 (627行)
-│       │   │   ├── response_cards.py#  Telegram 响应卡片生成 (809行)
-│       │   │   ├── synergy_pipelines.py# 跨模块协同管道 (356行)
-│       │   │   ├── cost_control.py #   每日预算/成本控制 (227行)
-│       │   │   └── security.py     #   输入消毒/权限控制 (245行)
-│       │   ├── bot/                # Telegram Bot 层 (7,198行)
-│       │   │   ├── multi_bot.py    #   MultiBot 启动/Handler注册 (307行)
-│       │   │   ├── message_mixin.py#   消息处理+中文NL触发 (1,284行)
-│       │   │   ├── cmd_basic_mixin.py#  基础命令 (1,199行)
-│       │   │   ├── cmd_execution_mixin.py# 执行场景命令 (1,524行)
-│       │   │   ├── cmd_collab_mixin.py#  协作命令 (824行)
-│       │   │   ├── cmd_invest_mixin.py#  投资命令 (576行)
-│       │   │   ├── cmd_trading_mixin.py# 交易命令 (399行)
-│       │   │   ├── cmd_analysis_mixin.py# 分析命令 (242行)
-│       │   │   ├── cmd_ibkr_mixin.py#   IBKR实盘命令 (165行)
-│       │   │   ├── api_mixin.py    #   内控API mixin (371行)
-│       │   │   ├── globals.py      #   全局DI容器 (300行)
-│       │   │   └── rate_limiter.py #   请求限流 (243行)
-│       │   ├── tools/              # 工具服务层 (3,442行, 18文件)
-│       │   │   ├── export_service.py#  Excel/CSV导出 (540行)
-│       │   │   ├── comfyui_client.py#  ComfyUI 图片生成 (486行)
-│       │   │   ├── code_tool.py    #   代码执行沙箱 (307行)
-│       │   │   ├── free_apis.py    #   免费API聚合 (225行)
-│       │   │   ├── docling_service.py# 文档理解 (215行)
-│       │   │   ├── tavily_search.py#   AI搜索 (206行)
-│       │   │   ├── fal_client.py   #   fal.ai 图片API (190行)
-│       │   │   ├── file_tool.py    #   文件读写 (189行)
-│       │   │   ├── bash_tool.py    #   安全Shell执行 (174行)
-│       │   │   ├── qr_service.py   #   二维码生成 (121行)
-│       │   │   ├── image_tool.py   #   图片处理 (117行)
-│       │   │   ├── jina_reader.py  #   网页摘要 (112行)
-│       │   │   ├── tts_tool.py     #   文字转语音 (112行)
-│       │   │   ├── web_tool.py     #   网页抓取 (113行)
-│       │   │   ├── deepgram_stt.py #   语音转文字 (101行)
-│       │   │   ├── memory_tool.py  #   记忆工具 (98行)
-│       │   │   ├── vision.py       #   视觉处理 (65行)
-│       │   │   └── __init__.py     #   工具注册 (71行)
-│       │   ├── xianyu/             # 闲鱼自动客服 (2,379行)
-│       │   │   ├── xianyu_live.py  #   WebSocket实时聊天 (597行)
-│       │   │   ├── xianyu_agent.py #   AI客服Agent (436行)
-│       │   │   ├── goofish_monitor.py# 闲鱼监控 (332行)
-│       │   │   ├── xianyu_admin.py #   管理面板 (317行)
-│       │   │   └── ...             #   APIs/Context/Cookie/Utils
-│       │   ├── execution/          # 10类执行场景 (1,693行)
-│       │   │   ├── bounty.py       #   赏金猎人 (226行)
-│       │   │   ├── scheduler.py    #   定时调度 (162行)
-│       │   │   ├── monitoring.py   #   信息监控 (161行)
-│       │   │   ├── task_mgmt.py    #   任务管理 (110行)
-│       │   │   ├── social/         #   社媒执行子模块 (1,070行)
-│       │   │   │   ├── media_crawler_bridge.py# MediaCrawler桥接 (297行)
-│       │   │   │   ├── real_trending.py#  真实热搜数据 (229行)
-│       │   │   │   ├── x_platform.py#    X/Twitter平台 (161行)
-│       │   │   │   ├── content_strategy.py# 内容策略 (157行)
-│       │   │   │   └── xhs_platform.py#  小红书平台 (76行)
-│       │   │   └── ...             #   email/brief/docs/meeting/life/dev/project
-│       │   ├── trading/            # 高级交易子系统 (1,026行)
-│       │   │   ├── protections.py  #   交易保护/熔断 (276行)
-│       │   │   ├── weight_optimizer.py# Optuna权重优化 (239行)
-│       │   │   ├── strategy_pipeline.py# 策略管道 (225行)
-│       │   │   └── ...             #   reentry/position_sync/market_hours
-│       │   ├── modules/            # 领域模块 (1,483行)
-│       │   │   ├── investment/
-│       │   │   │   ├── team.py     #   AI投资团队编排 (777行)
-│       │   │   │   ├── pydantic_agents.py# Pydantic智能体 (445行)
-│       │   │   │   └── backtester_vbt.py# VBT回测 (257行)
-│       │   │   ├── commerce/       #   (已废弃, 电商功能在 src/xianyu/ + src/shopping/)
-│       │   │   └── life/           #   (已废弃, 生活功能在 src/execution/life_automation.py)
-│       │   ├── shopping/           # 购物比价引擎 (1,119行)
-│       │   │   ├── crawl4ai_engine.py# 三级降级爬虫 (650行)
-│       │   │   └── price_engine.py #   价格对比引擎 (469行)
-│       │   ├── api/                # FastAPI 内控API (2,124行)
-│       │   │   ├── rpc.py          #   RPC 远程调用 (925行)
-│       │   │   ├── server.py       #   FastAPI 启动 (118行)
-│       │   │   └── routers/        #   路由: omega/trading/social/evolution/ws
-
-│       │   ├── gateway/            # 网关层 (520行)
-│       │   │   └── telegram_gateway.py# Telegram 统一网关 (519行)
-│       │   ├── integrations/       # 外部服务集成 (可选依赖)
-│       │   │   └── composio_bridge.py# Composio 250+服务桥接 (~220行)
-│       │   ├── evolution/          # 自进化引擎 (1,064行)
-│       │   │   ├── engine.py       #   进化核心: GitHub扫描→提案→集成 (762行)
-│       │   │   └── github_trending.py# GitHub Trending 抓取 (302行)
-│       │   ├── deployer/           # 部署系统 (1,365行)
-│       │   │   ├── web_installer.py#   Web安装器 (484行)
-│       │   │   ├── deploy_client.py#   部署客户端 (435行)
-│       │   │   ├── license_manager.py# 许可证管理 (232行)
-│       │   │   └── deploy_server.py#   部署服务端 (157行)
-│       │   ├── routing/             # 群聊智能路由包 (1,563行, 8文件)
-│       │   │   ├── orchestrator.py #   路由编排器 (核心)
-│       │   │   ├── router.py       #   路由引擎
-│       │   │   ├── priority_queue.py#  优先级队列
-│       │   │   ├── sessions.py     #   会话管理
-│       │   │   ├── streaming.py    #   流式输出
-│       │   │   ├── models.py       #   数据模型
-│       │   │   └── constants.py    #   常量定义
-│       │   ├── ~~execution_hub.py~~  # ⚠️ DEPRECATED — 已迁移到 src/execution/ 模块化包
-│       │   ├── chat_router.py      # 群聊路由入口 — 实际逻辑已重构到 src/routing/ 包 (1,415行)
-│       │   ├── auto_trader.py      # 自动交易引擎 (1,530行)
-│       │   ├── trading_system.py   # 交易系统统一入口 (1,431行)
-│       │   ├── shared_memory.py    # 共享记忆层 (1,070行)
-│       │   ├── monitoring/          # 系统监控包 (1,393行, 7文件)
-│       │   │   ├── logger.py       #   结构化日志 (433行)
-│       │   │   ├── cost_analyzer.py#   成本分析 (225行)
-│       │   │   ├── health.py       #   健康检查 (224行)
-│       │   │   ├── anomaly_detector.py# 异常检测 (200行)
-│       │   │   ├── metrics.py      #   指标采集 (182行)
-│       │   │   └── alerts.py       #   告警通知 (60行)
-│       │   ├── risk_manager.py     # 风控引擎 (1,183行)
-│       │   ├── trading_journal.py  # 交易日志 (1,170行)
-│       │   ├── backtester.py       # 回测引擎 (1,124行)
-│       │   ├── broker_bridge.py    # 券商桥接(IBKR) (1,061行)
-│       │   ├── ai_team_voter.py    # AI团队投票 (922行)
-│       │   ├── context_manager.py  # 上下文管理 (751行)
-│       │   ├── decision_validator.py# 决策验证 (734行)
-│       │   ├── tool_executor.py    # 工具执行器 (720行)
-│       │   ├── ta_engine.py        # 技术分析引擎 (716行)
-│       │   ├── backtest_reporter.py# 回测报告 (688行)
-
-│       │   ├── freqtrade_bridge.py # Freqtrade桥接 (672行)
-│       │   ├── telegram_ux.py      # Telegram UX 组件 (668行)
-│       │   ├── telegram_markdown.py# Markdown→TG格式 (662行)
-│       │   ├── litellm_router.py   # LiteLLM统一路由 (653行)
-│       │   ├── strategy_engine.py  # 策略引擎 (623行)
-│       │   ├── resilience.py       # 韧性层(限流/重试) (615行)
-│       │   ├── charts.py           # Plotly图表引擎 (625行)
-│       │   ├── invest_tools.py     # 投资工具函数 (625行)
-│       │   ├── notifications.py    # Apprise多渠道通知 (588行)
-│       │   ├── position_monitor.py # 持仓监控 (570行)
-│       │   ├── social_scheduler.py # 社媒定时发布 (542行)
-│       │   ├── message_format.py   # 消息格式化 (528行)
-│       │   ├── data_providers.py   # 多市场数据源 (509行)
-│       │   ├── social_tools.py     # 社媒工具 (418行)
-│       │   ├── smart_memory.py     # 智能记忆 (423行)
-│       │   ├── notify_style.py     # 通知样式 (398行)
-│       │   ├── models.py           # 数据模型 (Pydantic)
-│       │   ├── http_client.py      # HTTP客户端
-│       │   ├── ocr_service.py      # OCR服务
-│       │   ├── ocr_router.py       # OCR路由
-│       │   ├── tts_engine.py       # TTS引擎
-│       │   ├── structured_llm.py   # 结构化LLM调用
-│       │   └── ...                 # 更多模块
-│       ├── tests/                  # 测试套件 (31文件, 6,410行)
-│       ├── data/                   # 运行时数据 (SQLite/JSON)
-│       └── logs/                   # 日志输出
+│   ├── clawbot/                    # Python 3.12 后端
+│   │   ├── multi_main.py           # 主事件循环、Bot 和有状态服务生命周期入口
+│   │   ├── requirements-lock.txt   # Linux x86_64 哈希锁
+│   │   ├── requirements-lock-macos.txt # macOS arm64 哈希锁
+│   │   ├── src/
+│   │   │   ├── core/               # Brain、EventBus、所有者循环、主动引擎和成本/安全控制
+│   │   │   ├── api/                # FastAPI 服务器、认证、RPC 兼容门面和领域路由
+│   │   │   ├── bot/                # Telegram Bot 与命令 mixin
+│   │   │   ├── trading/            # 交易生命周期、状态机、保护和调度任务
+│   │   │   ├── xianyu/             # 闲鱼实时客服、履约状态、管理 API 与 Cookie 生命周期
+│   │   │   ├── execution/          # 定时任务及社媒、生活、文档等执行域
+│   │   │   ├── routing/            # 群聊路由、会话、优先队列和流式输出
+│   │   │   ├── integrations/       # CLIAnything、Composio、Skyvern 等可选集成
+│   │   │   └── modules/            # 投资等领域模块
+│   │   └── tests/                  # Python 回归、跨线程/事件循环和安全合同
+│   ├── openclaw-npm/               # 上游 OpenClaw 源码快照；不是桌面安装版本事实源
+│   └── new-api-upstream/            # New-API 上游子模块；遵循其子树专属约束
 ├── apps/
-│   ├── openclaw-manager-src/       # 🖥️ Tauri 2 桌面管理端 (React+TS)
-│   │   ├── src/                    #   React UI 源码
-│   │   └── src-tauri/              #   Rust 后端
-│   ├── frist-api/                  # 💳 Frist-API 公开 API 中转收费站原型 (用户站 + 管理端 + 轻量中转后端)
-│   ├── openclaw/                   # 📋 Bot 配置/Skills/Memory 定义
-│   │   ├── AGENTS.md               #   Bot 行为指令
-│   │   ├── SOUL.md                 #   Bot 灵魂/人格
-│   │   ├── IDENTITY.md             #   Bot 身份
-│   │   ├── MEMORY.md               #   记忆策略
-│   │   ├── TOOLS.md                #   可用工具
-│   │   ├── skills/                 #   技能包
-│   │   └── tools/                  #   工具脚本 (GLM-OCR CLI)
-│   ├── OpenClaw.app/               # macOS .app 打包
-│   ├── openclaw-cli                # CLI 入口
-│   └── openclaw-ui                 # Web UI 入口 (占位)
-├── tools/
-│   ├── installers/                 # 安装脚本
-│   └── launchagents/               # macOS 服务管理
-├── docker-compose.yml              # Docker 编排
-└── docs/
-    ├── project-map.md              # ← 你在这里
-    ├── index.md
-    ├── CHANGELOG.md
-    ├── guides/QUICKSTART.md
-    └── business/xianyu-business-plan.md
+│   ├── openclaw-manager-src/       # React/TypeScript UI + Tauri 2 Rust 本机控制面
+│   │   └── src-tauri/npm-runtime-lock/ # OpenClaw/MCP 直接与传递依赖完整性锁
+│   ├── frist-api/                  # CC中转用户站、管理端和 Node.js 服务
+│   │   ├── server/                 # HTTP 组合入口与认证、安全、支付、runtime store 等领域模块
+│   │   └── tests/                  # Node 18/24 业务与安全合同
+│   └── openclaw/                   # Bot 人设、Skills 和 Memory 运行资产，路径不可移动
+├── scripts/                        # 健康检查、发布、回滚、迁移与运营脚本
+├── tools/launchagents/             # macOS 服务定义
+└── .github/workflows/              # Linux、Node 和桌面静态发布门
 ```
+
+`packages/clawbot/src/core/loop_owner.py` 是跨线程调用 Brain、EventBus、IBKR、闲鱼实时客户端和社媒调度器时复用的事件循环所有权边界；调用线程不得直接操作这些对象持有的异步资源。
+
+`packages/clawbot/src/xianyu/operations_projection.py` 只接受普通不可变快照，一次生成售卖就绪、循环观察和买家进度；HTTP/background adapter 不得把 WebSocket、owner-loop 或文件句柄传入投影层。`apps/frist-api/server/runtime-store.js` 统一承担 Frist 原子文件写、串行 mutation 和敏感字段加密，`server.js` 只保留 HTTP 分派与数据规范化边界。
 
 ---
 
@@ -297,22 +150,29 @@ OpenClaw Bot/
 - **交易状态**：真实持仓只接受券商确认的正数成交量；未决订单等待券商对账，失败/取消/零成交不删持仓，模拟回退不写真实日志。自动交易与空闲强制交易默认关闭。
 - **社媒发布**：自动化只生成草稿；发布必须依次通过内容审核快照、短时一次性最终确认和原子消费。发布中/已发布草稿不可变；外部成功但本地状态冲突时追加对账审计并明确禁止重发。
 - **客户隔离**：Frist 在共享 New-API 管理账号之上维护客户 Token 归属；看板、日志、更新、删除和导入均按归属过滤。额度从客户已购余额划转，禁止无限 Key。
-- **桌面控制面**：管理器新建本地 `gateway.auth.token` 时只生成强随机字符串；实际选用的 OpenClaw 2026.7.1 支持的 Token/密码/远程 SecretRef 会原样保留并交给官方校验。配置跨实例原子写入，WebView 只接收脱敏配置，服务停止只针对管理器登记且核验通过的 PID，WebView 不直接拥有文件系统权限。
+- **桌面控制面**：管理器新建本地 `gateway.auth.token` 时只生成强随机字符串；当前受管运行时精确锁定 `OpenClaw 2026.7.2-beta.7`，Token/密码/远程 SecretRef 原样保留并交给官方校验。354 个直接/传递 npm 包由内嵌 SHA-512 锁安装。MCP Store 只展示受管运行包目录，不返回 command/args/env，也不伪装成已建立的 stdio 会话；真实 MCP 配置仍由 CC Switch/OpenClaw 官方配置链负责。配置跨实例原子写入，WebView 只接收脱敏配置，服务停止只针对管理器登记且核验通过的 PID，WebView 不直接拥有文件系统权限。
 - **运行时真值**：G4F、Kiro、Ollama、IBKR 和 VPS 心跳全部改为显式开关；未启用能力不进入 LiteLLM 路由、fallback 或交易定时器。健康检查同时验证必需 LaunchAgent 的 `running + PID` 和真实 HTTP/TCP 端点，不再用“服务已加载”代替“服务可用”。
 
-### Release Gate 2.0 评分基线
+### 2026-08-05 全维度审计收口
 
-评分口径中的 8 分表示“当前 macOS 单机 + Oracle 内测拓扑可重复构建、验证、回滚和审计”，不表示已经完成 Apple Developer ID 签名/公证、Windows 实机验证或 CC 中转正式公开售卖。
+- **安全**：SSRF 逐跳固定、可信代理限流、最终日志脱敏、闲鱼短时 HttpOnly 管理会话、CLI 远程安装关闭和依赖/容器供应链门均失败关闭。
+- **可靠性**：Intel Brief 真实旧库已从 schema v3 备份并迁移到 v4；每日备份以 SQLite 在线快照、双层校验、恢复演练和 macOS LaunchAgent 自动执行。
+- **架构**：Frist runtime store 与闲鱼运营投影成为独立 deep module；RPC 兼容门面冻结，新功能继续进入领域 router。
+- **发布**：PR 覆盖所有目标分支，ShellCheck、Gitleaks、npm/pip/RustSec、固定 Action SHA、Docker 哈希锁和非 root 冒烟进入本地/远端门禁。
+- **边界**：离机 GPG 公钥、第三方凭据回执、Developer ID/公证和真实平台付费仍由资产所有者掌握；代码不伪造这些证据。
+
+### 五维 8 分目标历史评分（2026-08-04）
+
+评分按 `docs/086-release-evidence.md` 定义的每维 10 个二元门计算，1 项通过计 1 分，不使用主观小数加权。8 分表示“当前 macOS 单机 + Oracle 内测拓扑的关键链路可重复构建、验证、回滚和审计”，不表示已经完成 Apple Developer ID 签名/公证、Windows 实机验证或 CC 中转正式公开售卖。
 
 | 维度 | 分数 | 达标证据 | 保留边界 |
 |---|---:|---|---|
-| 架构与边界 | 8.3 | Telegram、工具、交易、社媒、Frist、Tauri 均有单一入口或显式状态机；跨进程锁统一复用 | 双文件配置不具备强制终止级原子提交（HI-922） |
-| 代码质量 | 8.2 | Ruff、Python 语法、TypeScript、`cargo fmt --check` 全绿；删除全仓零引用旧 Gateway 启动脚本 | 历史大文件仍需按风险渐进拆分 |
-| 测试与工程化 | 8.8 | Python 2,182 项、Frist 200 项、桌面合同 20 项、Rust 34 项；Tauri `Cargo.lock` 入库，跨语言版本/签名合同和 CI `--locked` 门均生效；GitHub PR #11 干净环境全绿 | macOS 完整 App 打包只能在本机门禁执行，Linux CI 负责静态/Rust 合同 |
-| 安全 | 8.6 | 白名单/Token/归属/额度均 fail-closed；三类依赖审计 0 漏洞，gitleaks 0 泄漏 | RestrictedPython 不是内核沙箱，FileTool 保留理论竞态（HI-919/920） |
-| 可靠性与性能 | 8.3 | 交易预算/订单/成交对账和社媒发布均具备幂等、claim/tombstone 与跨进程互斥；禁用服务不再重启风暴；Node 18 测试由约 10 分钟降到约 10 秒 | Weixin 上游首次连接可让 Gateway ready 延迟约 230 秒（HI-926）；强制终止后的券商/社媒结果仍需人工对账 |
-| 运维与发布 | 8.4 | Bot/Gateway 运行健康全绿；macOS App 经事务构建、ad-hoc sealed 签名、唯一安装和真实截图验收；Oracle 经 staging 200 项测试、SQLite 在线备份、自动回滚门和双向公网冒烟部署 | ad-hoc 只覆盖本机内测，未完成 Developer ID/公证；Oracle 既有 3 个非本项目 failed unit 按增量门监控 |
-| **综合** | **8.4** | 六维均达到内部发布 8 分线 | 不扩大到尚未验收的公开发行边界 |
+| 功能完整度 | 9.0 | 10 门通过 9 门；支付、实盘 SELL、闲鱼履约、认证、Scheduler、MCP、Assistant、桌面安装与恢复均有合同 | 未完成真实商户小额支付，F10=0 |
+| 测试与发布 | 9.0 | 10 门通过 9 门；本地 CI、覆盖率、前端/Rust、干净安装、供应链、签名、DMG、异版本回滚和截图可复核 | 当前工作树无远端 Linux runner 新产物，T10=0 |
+| 系统架构 | 8.0 | 10 门通过 8 门；所有者循环、事务外 I/O、原子履约、单一注册表、Bulkhead 与生命周期边界有回归 | 巨型入口和 JSON runtime 兼容层各计 0 |
+| 安全边界 | 8.0 | 10 门通过 8 门；资金、支付、履约、身份、本机执行、限流、供应链和密钥扫描失败关闭 | 平台凭据轮换证明与 Developer ID/公证各计 0 |
+| 可维护性 | 8.0 | 10 门通过 8 门；依赖锁、lint/build、覆盖率、文档门、注册表、热点命令、版本源和回滚清单可复现 | 巨型热点未清零、当前工作树远端 CI 产物缺失，各计 0 |
+| **综合** | **8.4** | `(9+9+8+8+8)/5`；逐门定义和命令证据见 `docs/086-release-evidence.md` | 不扩大到尚未验收的公开发行边界 |
 
 ### 每日资讯 V2 子系统（2026-08-04）
 

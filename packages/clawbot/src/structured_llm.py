@@ -22,6 +22,7 @@ Usage:
     )
     # result is a validated MyOutput instance — guaranteed
 """
+
 import json
 import logging
 import re
@@ -124,29 +125,23 @@ async def structured_completion[T: BaseModel](
         raise RuntimeError("LLM router 未初始化，无法调用 structured_completion")
 
     # 合并 system prompt 到 messages
-    all_msgs = (
-        [{"role": "system", "content": system_prompt}, *messages]
-        if system_prompt
-        else list(messages)
-    )
+    all_msgs = [{"role": "system", "content": system_prompt}, *messages] if system_prompt else list(messages)
 
     # ── 路径 1: instructor（优先） ──────────────────────────
-    if HAS_INSTRUCTOR and free_pool._router is not None:
+    if HAS_INSTRUCTOR:
         try:
+            router = free_pool.router_for_current_loop()
             return await _instructor_path(
                 response_model=response_model,
                 messages=all_msgs,
                 model_family=model_family,
-                router=free_pool._router,
+                router=router,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 max_retries=max_retries,
             )
         except Exception as e:
-            logger.warning(
-                f"[structured_llm] instructor 路径失败 ({type(e).__name__}: {e})，"
-                f"降级到 json_repair"
-            )
+            logger.warning(f"[structured_llm] instructor 路径失败 ({type(e).__name__}: {e})，降级到 json_repair")
             # Fall through 到降级路径
 
     # ── 路径 2: json_repair 降级 ───────────────────────────
@@ -192,10 +187,7 @@ async def _instructor_path[T: BaseModel](
         max_tokens=max_tokens,
     )
 
-    logger.debug(
-        f"[structured_llm] instructor 成功: {response_model.__name__} "
-        f"(model={model_family})"
-    )
+    logger.debug(f"[structured_llm] instructor 成功: {response_model.__name__} (model={model_family})")
     return result
 
 
@@ -237,10 +229,7 @@ async def _fallback_path[T: BaseModel](
         data = json_repair.loads(raw_text)
         if isinstance(data, dict):
             result = response_model.model_validate(data)
-            logger.debug(
-                f"[structured_llm] fallback 成功 (json_repair): "
-                f"{response_model.__name__}"
-            )
+            logger.debug(f"[structured_llm] fallback 成功 (json_repair): {response_model.__name__}")
             return result
     except Exception as e:
         logger.debug(f"[structured_llm] json_repair 失败: {e}")
@@ -250,32 +239,21 @@ async def _fallback_path[T: BaseModel](
         json_match = re.search(r"\{.*\}", raw_text, re.DOTALL)
         if json_match:
             result = response_model.model_validate_json(json_match.group())
-            logger.debug(
-                f"[structured_llm] fallback 成功 (regex+pydantic): "
-                f"{response_model.__name__}"
-            )
+            logger.debug(f"[structured_llm] fallback 成功 (regex+pydantic): {response_model.__name__}")
             return result
     except Exception as e:
         logger.debug(f"[structured_llm] regex+pydantic 失败: {e}")
 
     # 尝试 3: 从 markdown code block 中提取
     try:
-        code_match = re.search(
-            r"```(?:json)?\s*(\{.*?\})\s*```", raw_text, re.DOTALL
-        )
+        code_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw_text, re.DOTALL)
         if code_match:
             data = json.loads(code_match.group(1))
             result = response_model.model_validate(data)
-            logger.debug(
-                f"[structured_llm] fallback 成功 (code block): "
-                f"{response_model.__name__}"
-            )
+            logger.debug(f"[structured_llm] fallback 成功 (code block): {response_model.__name__}")
             return result
     except Exception as e:
         logger.debug(f"[structured_llm] code block 提取失败: {e}")
 
     # 所有尝试都失败
-    raise ValueError(
-        f"无法将 LLM 输出解析为 {response_model.__name__}。"
-        f"原始输出 (前 300 字符): {raw_text[:300]}"
-    )
+    raise ValueError(f"无法将 LLM 输出解析为 {response_model.__name__}。原始输出 (前 300 字符): {raw_text[:300]}")

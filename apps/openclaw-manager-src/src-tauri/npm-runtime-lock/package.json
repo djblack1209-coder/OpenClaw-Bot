@@ -1,0 +1,31 @@
+{
+  "name": "openclaw-manager-runtime-lock",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server-brave-search": "0.6.2",
+    "@modelcontextprotocol/server-github": "2025.4.8",
+    "@modelcontextprotocol/server-google-maps": "0.6.2",
+    "@modelcontextprotocol/server-memory": "2026.7.4",
+    "@modelcontextprotocol/server-sequential-thinking": "2026.7.4",
+    "@playwright/mcp": "0.0.78",
+    "open-computer-use": "0.3.1",
+    "openclaw": "2026.7.2-beta.7",
+    "superpowers-mcp": "6.2.0"
+  },
+  "overrides": {
+    "@hono/node-server": "2.0.12",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@openclaw/fs-safe": "0.5.2",
+    "brace-expansion": "5.0.9",
+    "fast-uri": "3.1.5",
+    "hono": "4.13.0",
+    "ip-address": "10.4.0",
+    "protobufjs": "7.6.5",
+    "tar": "7.5.22",
+    "undici": "8.9.0"
+  }
+}

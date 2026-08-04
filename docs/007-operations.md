@@ -12,15 +12,44 @@
 - 当前买家号不可用时，访问 `/api/cc-simulation-gate`、`/api/cc-replacement-mode-test-pack` 或在 Dashboard 展开“替换模式模拟验收”；严格模拟门会逐步显示真实发卡、商品模板/重新上架、注册兑换、创建 API、导入 CC Switch、终端调用、渠道/服务器状态。它只用于闭环演练，`can_unlock_public_sale` 固定为 `false`，不替代 `xy_oid_*` 真实小额订单严格门。
 - 本机健康检查：`scripts/auto_health_check.sh --json`，默认只读，最多等待 20 秒生产内测审计，避免健康检查卡死。
 - 本机恢复预演：`scripts/auto_recovery.sh --dry-run`；确认后再去掉 `--dry-run`。恢复脚本会检查 LaunchAgent、卖家 Chrome/桥接器、旧日志和健康检查。
-- 本机备份：`scripts/local_backup.sh`，默认备份到 iCloud 或桌面 `OpenEverything-backups`，排除 `.env`、虚拟环境、node_modules、日志和输出目录，保留 30 天。
-- 灾备恢复：先 `scripts/disaster_recovery.sh --dry-run`，真正恢复必须加 `--confirm`。
+- 本机备份：`make backup-run`，默认写入 `~/.local/share/openclaw/backups`，包含恢复所需私有配置和 SQLite 在线快照，目录/文件固定 0700/0600；构建缓存、虚拟环境、node_modules、日志和旧备份不重复打包。
+- 灾备恢复：`make backup-restore-drill` 会完整校验但不覆盖文件；真正恢复必须对 `scripts/disaster_recovery.sh` 显式加 `--confirm`。
+
+### 每日自动备份与离机加密
+
+```bash
+make backup-schedule-status
+make backup-run
+make backup-restore-drill
+```
+
+- `ai.openclaw.daily-backup` 已安装并加载，默认每天 03:30 执行；每次只有在本机备份完成后才运行完整 restore drill，任一步失败都会让 LaunchAgent 退出非 0。
+- `scripts/auto_health_check.sh --json` 同时检查任务最近退出码和 36 小时备份新鲜度。本轮实机生成 `openeverything-20260805-034824.tgz` 并通过 checksum、路径、内部 manifest 与 SQLite drill；文件名用于本次证据，日常以健康检查返回的最新文件为准。
+- 本机备份防止误删、升级失败和软件损坏，但不能抵御整台硬盘损坏。离机目录必须和本机目录不同，并且只允许 GPG 密文：
+
+```bash
+export OPENCLAW_BACKUP_OFFSITE_DIR="/绝对路径/到独立同步盘/OpenClaw-encrypted"
+export OPENCLAW_BACKUP_GPG_RECIPIENT="你的-GPG-公钥指纹"
+make backup-schedule-install
+make backup-run
+```
+
+- 只配置目录或只配置公钥都会失败关闭；离机目录只出现 `.tgz.gpg`、`.sha256`、`.ready`，不会出现明文 `.tgz`。恢复设备必须另行持有对应私钥，这是资产所有者凭据，不能写入仓库或由程序自动伪造。
+- 卸载任务使用 `make backup-schedule-uninstall`，不会删除已有备份。修改时间、目录或公钥后重新运行 `make backup-schedule-install`，安装器会原子替换 plist 并验证加载状态。
+
+### Intel Brief schema v4 实装记录（2026-08-05）
+
+- 2026-08-04 08:30 的生产调度在投递阶段报 `sqlite3.OperationalError: no such column: event_key`；来源采集正常，根因是旧生产库已标记 schema v3，但旧 `content_delivery_attempts` 表没有随新建表定义增量迁移。
+- 修复会在初始化时检查真实列结构，不相信版本号；旧表原子重建，按 `content_items.event_key` 保留历史投递身份，并把 `content_item_id` 改为可空以支持只有稳定事件键的记录。
+- 真实库迁移前备份到 `~/.local/share/openclaw/migrations/intel_brief-before-v4-20260805-034441.db`，SHA-256 为 `db845bc5ce4e380086090eeef38bd5e27f54dbf89af3cb2d59e88cc496f036cf`；备份与迁移后数据库均 `PRAGMA quick_check=ok`，`user_version=4`、`event_key` 列存在。
+- 正式 LaunchAgent 已重新加载，未手工 kickstart，避免在非计划时间提前发送真实 Telegram 简报。首次 08:30 自然运行前健康检查显示黄色“等待首次自然调度验证”；运行成功后会自动转绿。
 
 ### Release Gate 2.0 本机发布步骤
 
 1. 在 `packages/clawbot/config/.env` 显式设置 `G4F_ENABLED`、`KIRO_GATEWAY_ENABLED`、`OLLAMA_ENABLED`、`IBKR_ENABLED`、`HEARTBEAT_SENDER_ENABLED`。未验收的能力保持 `false`；禁止用 LaunchAgent 已加载冒充服务可用。
-2. 执行 `make ci-local`；必须同时通过 Python、Frist、桌面合同、TypeScript、Rust 和文档治理。
+2. 执行 `make ci-local`；必须同时通过 Python 双哈希锁、固定 Action SHA、ShellCheck、Gitleaks、npm/pip/RustSec、npm 完整性锁、Ruff、全量测试、总体覆盖率 `--cov-fail-under=40`、高风险模块聚合覆盖率 `--fail-under=80`、Frist、桌面合同、TypeScript、前端 lint/生产构建、Rust 和文档真实性治理。Linux CI 使用 `packages/clawbot/requirements-lock.txt`，macOS 本机使用 `packages/clawbot/requirements-lock-macos.txt`，两者都由 `make python-lock-check` 复算。
 3. 执行 `scripts/auto_health_check.sh --json`；只有 `ok=true` 且 `release_ready=true` 才能继续。本机已安装但关闭的旧可选 LaunchAgent 应 `launchctl bootout` 后删除用户目录中的旧 plist，仓库模板保留供未来显式启用。
-4. 桌面端只能执行 `make tauri-build`。该入口会先备份并清理 `/Applications/OpenEverything.app`、`OpenClaw.app`、`OpenClaw-Gateway.app`，失败恢复旧版；macOS 内测包按 Tauri 官方方式使用 `signingIdentity="-"`，构建产物与覆盖前临时安装副本都必须通过严格 `codesign`，成功后只保留 `/Applications/OpenClaw.app`。这不是 Developer ID 签名或 Apple 公证，不能作为公开分发口径。
+4. 桌面端只能执行 `make tauri-build`。该入口会先备份并清理 `/Applications/OpenEverything.app`、`OpenClaw.app`、`OpenClaw-Gateway.app`，失败恢复旧版；macOS 内测包按 Tauri 官方方式使用 `signingIdentity="-"`，构建产物与覆盖前临时安装副本都必须通过严格 `codesign`，成功后只保留 `/Applications/OpenClaw.app`。构建后执行 `make tauri-rollback-check`，确认上一版的 manifest、CDHash 和严格签名可用。这不是 Developer ID 签名或 Apple 公证，不能作为公开分发口径。
 5. 重启 Bot/Gateway 后，以新日志窗口确认没有新增 G4F/Kiro 重启风暴、IBKR 拒绝连接或未关闭 HTTP session；再复跑健康检查。
 
 ### Frist-API Release Gate 2.0 部署边界
@@ -466,7 +495,7 @@ Frist-API 管理端现在可以登记自用 ChatGPT Plus 账号资产，但它�
 
 我接入时会做三件事: 创建支付订单并返回二维码，校验支付宝异步通知签名，按订单号幂等入账，避免重复通知重复加钱。
 
-当前代码已接入: `alipay.trade.precreate` 下单、`RSA2` 异步通知验签、`TRADE_SUCCESS` / `TRADE_FINISHED` 幂等入账。商户未开户注册前，页面会提示接口未配置，不会伪造自动支付成功。
+当前代码已接入: `alipay.trade.precreate` 下单、下单响应 `sign` 验签、`RSA2` 异步通知验签、`TRADE_SUCCESS` / `TRADE_FINISHED` 幂等入账。下单响应缺签名或验签失败固定返回 502；商户未开户注册前，页面会提示接口未配置，不会伪造自动支付成功。
 
 官方入口:
 
@@ -483,14 +512,14 @@ Frist-API 管理端现在可以登记自用 ChatGPT Plus 账号资产，但它�
 2. 准备一个公众号、小程序或 AppID，并在商户平台完成绑定。没有 AppID 时先不要写代码，先确认后台允许哪种产品形态。
 3. 在产品中心开通 `Native 支付`。
 4. 进入账户中心，记录 `商户号`、`AppID`、`商户 API 证书序列号`。
-5. 设置 `APIv3 密钥`，下载商户证书和商户私钥。
+5. 设置 `APIv3 密钥`，下载商户证书、商户私钥和微信支付平台公钥，并记录平台证书序列号或支付公钥 ID。
 6. 配置异步通知地址，建议预留为 `https://你的域名/api/frist/payments/wechat/notify`。
 7. 确认微信回调是加密资源，需要用 APIv3 密钥解密；订单金额单位是分，不是元。
 8. 把证书、私钥和 APIv3 密钥放到服务器安全路径，例如 `/opt/frist-api/secrets/wechat/`，权限设为只有 root 可读。
-9. 在 `/opt/frist-api/.env.production` 写入商户号、AppID、证书序列号、证书路径、私钥路径、APIv3 密钥和回调地址。
+9. 在 `/opt/frist-api/.env.production` 写入商户号、AppID、商户证书序列号、平台序列号、平台公钥、商户私钥、APIv3 密钥和回调地址。
 10. 重启 Frist-API 后，用 0.01 元订单测试: 下单生成 Native 二维码、微信扫码付款、收到回调、用户自动入账、重复回调不会重复加钱。
 
-当前代码已接入: 微信支付 Native 下单、APIv3 回调验签、AES-256-GCM 资源解密、`SUCCESS` 幂等入账。商户未开户注册前，页面会提示接口未配置，不会伪造自动支付成功。
+当前代码已接入: 微信支付 Native 下单、下单原始响应的时间戳/nonce/平台序列号/RSA-SHA256 验签、APIv3 回调验签、AES-256-GCM 资源解密、`SUCCESS` 幂等入账。下单响应缺签名、超过 5 分钟、序列号不符或验签失败固定返回 502；商户未开户注册前，页面会提示接口未配置，不会伪造自动支付成功。
 
 官方入口:
 
@@ -613,9 +642,9 @@ Turnstile 已复用 Frist 旧配置接入 New-API：前端只保存 Site Key，S
 
 Codex 的 CC Switch 导出会在 `config.toml` 里直接写入推荐 MCP:
 
-- `playwright`: 通过 `@playwright/mcp@latest` 给 Codex 增加浏览器自动化能力。
-- `superpowers`: 通过 `superpowers-mcp@latest` 增加 TDD、调试、协作类工作流提示。
-- `open_computer_use`: 通过 `open-computer-use@latest` 启动 `open-codex-computer-use-mcp`，给支持的 Codex 环境准备电脑操作入口。
+- `playwright`: 通过固定版本 `@playwright/mcp@0.0.78` 给 Codex 增加浏览器自动化能力。
+- `superpowers`: 通过固定版本 `superpowers-mcp@6.2.0` 增加 TDD、调试、协作类工作流提示。
+- `open_computer_use`: 通过固定版本 `open-computer-use@0.3.1` 启动 `open-codex-computer-use-mcp`，给支持的 Codex 环境准备电脑操作入口。
 
 这三项属于 Codex 配置增强，不影响 Claude/OpenCode/Hermes 的供应商导入。需要注意: Computer Use 涉及本机系统权限，CC Switch 可以写入配置，但第一次真实使用时仍需要用户按 Codex 或系统弹窗完成辅助功能、屏幕录制等权限授权。
 
@@ -859,6 +888,10 @@ make frist-api-up
 - `FRIST_API_REQUIRE_CAPTCHA=1`，仅用于注册挑战；登录不再要求验证码
 - `FRIST_API_CAPTCHA_MAX_ATTEMPTS=3`
 - `FRIST_API_AUTH_RATE_LIMIT_MAX=20`
+- `FRIST_API_PASSWORD_RESET_REQUEST_RATE_LIMIT_MAX=3` 与 `FRIST_API_PASSWORD_RESET_REQUEST_RATE_LIMIT_WINDOW_MS=900000`：同一账号 15 分钟最多请求 3 封重置邮件，邮件投递在全局 runtime 写队列外执行
+- `FRIST_API_PASSWORD_RESET_CONFIRM_RATE_LIMIT_MAX=5` 与 `FRIST_API_PASSWORD_RESET_CONFIRM_RATE_LIMIT_WINDOW_MS=900000`：重置确认除 IP 外按账号再限制 5 次/15 分钟
+- `FRIST_API_RATE_LIMIT_MAX_ENTRIES=10000`：限流桶满后拒绝新桶，不淘汰现有封禁
+- `FRIST_API_TRUSTED_PROXY_IPS=127.0.0.1`：仅当 Node 直连对端确为本机 Nginx 时使用；未配置时忽略全部 `X-Forwarded-For`，配置错误会让反代用户共享一个限流桶
 - `FRIST_API_BACKUP_STATUS_MAX_AGE_HOURS=26`: 备份超过 26 小时未登记则生产检查不通过
 - `FRIST_API_SLA_RETENTION_DAYS=30`: 渠道 SLA 探测事件保留 30 天
 - `FRIST_API_LOW_INVENTORY_WEBHOOK`: 可选，低库存通知 Webhook
@@ -1061,147 +1094,29 @@ XIANYU_COOKIES=你的新Cookie
 
 ## 四、部署验证清单
 
+### 当前支持的桌面发布路径
 
-## ✅ 已完成的工作
+- 历史 `OpenClaw-Installer-v4.0.zip`、Web 安装器、百度网盘下载和“退款自动销毁”方案均未进入当前仓库发布链，不得再对外宣称已提供。
+- 桌面端只允许执行 `make tauri-build`。安装器的唯一运行真值为 `src-tauri/npm-runtime-lock/`：当前 OpenClaw 精确固定到 `2026.7.2-beta.7`，全部传递依赖带 SHA-512；MCP 与供应链门都从该 manifest 读取版本，不保留第二份版本字符串。稳定版重新进入前必须同时满足相同配置合同、`npm audit` 高危为 0 和回滚门。
+- MCP Store 当前只展示桌面代码内登记的 8 个受管运行包目录；返回值不含 command/args/env，桌面端不声称已经建立 stdio 会话，也不提供伪启动/停止按钮。真实 MCP 配置和会话仍由 CC Switch/OpenClaw 官方配置链负责；受管运行时仍通过锁文件 `npm ci --ignore-scripts` 安装，任何在线 `npx -y`、自定义解释器、额外参数和未登记环境变量均失败关闭。
+- Frist 充值先在本地短事务中锁定订单，再在事务外请求支付渠道，成功/失败各自以第二个短事务落库；渠道请求受 `FRIST_API_PAYMENT_REQUEST_TIMEOUT_MS` 硬超时保护，默认 15 秒。微信回调还必须匹配配置商户身份、原渠道、平台序列号、时间戳窗口和平台交易号唯一性，重复成功回调不增长事件记录。
+- Docker Compose 的外部镜像必须使用 `tag@sha256:<digest>`；`make clean-install-check` 在临时目录用 npm 与 Python 哈希锁重装，验证开发机没有依赖缓存假绿。
+- 当前发行边界仍是 macOS 本机内测。没有 Developer ID、公证和 Windows/Linux 实机构建证据时，不得宣称跨平台公开安装包已经就绪。
 
-### 1. 核心文件
-- ✅ `web_installer.py` - 主安装器（8步自动部署）
-- ✅ `license_manager.py` - 离线License验证
-- ✅ `docs/agents.md` - 三省六部架构配置
-- ✅ `docs/quick-start-guide.md` - API/Telegram/飞书/钉钉教程
-- ✅ `docs/product-copy.txt` - 闲鱼商品描述
-- ✅ `tools/xianyu_product_image.html` - 商品图模板
+### 发布前证据
 
-### 2. 部署功能
-- ✅ 安装 OpenClaw 核心（npm install -g openclaw@latest）
-- ✅ 初始化 OpenClaw（openclaw onboard --install-daemon）
-- ✅ 部署三省六部 AGENTS.md 到 ~/.openclaw/workspace/
-- ✅ 安装5个热门 Skills（playwright/pdf/doc/vercel-deploy/cloudflare-deploy）
-- ✅ 提供 Manager UI 下载链接（.dmg/.exe/.AppImage）
-- ✅ 配置 MCP 服务（Context7 + GitHub Grep）
-- ✅ 配置 AI 模型（DeepSeek/硅基流动/OpenRouter/Ollama/自定义）
+1. `make python-lock-check` 复算 Linux/macOS 两份哈希锁，`make supply-chain-check` 核验 Action SHA、354 包 npm 完整性和高危漏洞，随后运行 `make ci-local`。
+2. `scripts/auto_health_check.sh --json` 必须同时返回 `ok=true` 与 `release_ready=true`。
+3. `make tauri-build` 成功后，`/Applications` 只能保留一个 `OpenClaw.app`，并通过严格签名校验、`make tauri-rollback-check` 和真实首屏截图验收。
+4. CC中转继续按本手册“一、CC中转 / Frist-API 运营操作清单”执行真实小额单、库存、履约和回滚门；不复用已经废止的桌面安装包售卖文案。
 
-### 3. 安全功能
-- ✅ 离线 License 验证（HMAC签名 + 过期时间）
-- ✅ 退款自动销毁（`python web_installer.py --destroy`）
+### 2026-08-04 最终实测证据
 
-### 4. 打包文件
-- ✅ 打包脚本：`tools/package.sh`
-- ✅ 压缩包：`dist/OpenClaw-Installer-v4.0.zip`
-- ✅ 启动脚本：`启动安装器.command` / `启动安装器.bat`
-- ✅ 销毁脚本：`退款销毁.command` / `退款销毁.bat`
-- ✅ README.txt 使用说明
+- `make ci-local` 的最终数字必须以命令末次输出和 `docs/086-release-evidence.md` 为准；该门现在包含 Python 双锁复算、受管 npm 审计、临时目录干净安装、Python/Frist/桌面/Rust 全量测试、TypeScript、ESLint、Vite、覆盖率和文档真实性检查。
+- npm 三组审计与 `pip-audit` 均为 0；Gitleaks 扫描 859 个提交、约 55 MB 历史无泄漏；354 包完整性与 Linux/macOS Python 哈希锁复算通过。
+- `make tauri-build` 成功生成并安装 `OpenClaw.app` 和 DMG；构建脚本在删除旧 App 前先完成所有本地备份，任何备份不完整都保持旧安装不动；随后由 `codesign --verify --deep --strict`、`hdiutil verify`、`make tauri-rollback-check` 和唯一安装检查生成证据。
+- `/Applications` 只存在 `OpenClaw.app`，版本 `0.1.1`、Bundle ID `com.openclaw.manager`；0.1.1 与 0.1.0 的 CDHash 不同，已实测 `0.1.1 → 0.1.0 → 0.1.1` 双向交换并在每一步通过严格签名和回滚检查。清单同时记录源码补丁 SHA-256 与 DMG SHA-256；同指纹副本会被拒绝，不再计为有效回滚。真实安装包首屏截图见 `output/playwright/openclaw-installed-app-final.png`。当前签名为 ad-hoc 内测签名，未持有 Developer ID/公证凭据，因此不扩张为公开发行证据。
 
-## 📦 打包内容
-
-```
-OpenClaw-Installer-v4.0.zip
-├── web_installer.py          # 主安装器
-├── license_manager.py         # License管理
-├── 启动安装器.command          # Mac启动脚本
-├── 启动安装器.bat             # Windows启动脚本
-├── 退款销毁.command           # Mac销毁脚本
-├── 退款销毁.bat              # Windows销毁脚本
-├── README.txt                # 使用说明
-└── docs/
-    ├── agents.md             # 三省六部配置
-    ├── quick-start-guide.md  # 免费模型教程
-    └── product-copy.txt      # 闲鱼文案
-```
-
-## 🧪 测试激活码
-
-```
-OC-5E08E78A-6B9831D5-1447136E
-```
-有效期：365天
-
-## 📤 下一步操作
-
-### 1. 上传百度网盘
-```bash
-# 文件位置
-/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot/dist/OpenClaw-Installer-v4.0.zip
-
-# 上传后获取分享链接，格式如：
-https://pan.baidu.com/s/xxxxx
-提取码: xxxx
-```
-
-### 2. 更新配置文件
-编辑 `config/.env`：
-```env
-BAIDU_PAN_LINK=https://pan.baidu.com/s/xxxxx
-BAIDU_PAN_CODE=xxxx
-```
-
-### 3. 生成商品图
-```bash
-# 在浏览器打开
-open tools/xianyu_product_image.html
-
-# 截图保存为 750x1000 PNG
-```
-
-### 4. 发布到闲鱼
-- 标题：🦞 OpenClaw龙虾AI助手一键部署 GitHub315k⭐ 三省六部架构 小白可用
-- 价格：¥19.9
-- 描述：复制 `docs/product-copy.txt` 内容
-- 图片：上传商品图截图
-
-## 🔑 License 生成
-
-卖家端生成激活码：
-```python
-from src.deployer.license_manager import generate_offline_key
-
-# 生成1年期激活码
-key = generate_offline_key(days=365)
-print(key)  # OC-XXXXXXXX-XXXXXXXX-XXXXXXXX
-```
-
-## 🛠️ 故障排查
-
-### 问题1：Node.js版本过低
-解决：引导买家安装 Node.js >= 22
-https://nodejs.org/
-
-### 问题2：npm安装失败
-解决：检查网络，或使用国内镜像
-```bash
-npm config set registry https://registry.npmmirror.com
-```
-
-### 问题3：Skills安装失败
-解决：可跳过，不影响核心功能
-
-### 问题4：激活码无效
-解决：检查是否复制完整，是否过期
-
-## 📊 成本分析
-
-- 开发成本：0元（开源项目）
-- 服务器成本：0元（离线验证）
-- 模型成本：0元（买家自己注册）
-- 售后成本：极低（自动化部署）
-
-定价建议：¥19.9 - ¥29.9
-
-## 🎯 核心卖点
-
-1. **GitHub 315k⭐ 官方项目** - 不是山寨
-2. **三省六部架构（9.6k⭐）** - 智能决策系统
-3. **一键部署** - 双击启动，浏览器操作
-4. **免费模型教程** - 不骗人说"免费模型"
-5. **完整生态** - Manager UI + Skills + MCP
-6. **小白友好** - 详细教程 + 7天售后
-
-## ⚠️ 注意事项
-
-1. 不要宣传"免费模型"，只说"免费模型获取教程"
-2. 明确说明需要自己注册API
-3. 退款后激活码自动失效并删除已部署内容
-4. 提供7天售后支持
 ## 每日资讯 V2 本机部署与回滚
 
 ### 生产合同

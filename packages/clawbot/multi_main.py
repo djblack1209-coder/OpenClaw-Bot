@@ -262,6 +262,16 @@ async def main():
     logger.info(f"存储: SQLite ({history_store.db_path})")
     logger.info("=" * 60)
 
+    # === OMEGA 主循环边界 ===
+    # 必须先于任何后台任务、PTB 轮询和独立 Uvicorn 线程，避免其他循环抢占全局单例。
+    from src.core.event_bus import init_event_bus
+    from src.core.brain import init_brain
+
+    _omega_event_bus = init_event_bus()
+    _omega_brain = init_brain()
+    _omega_gateway = None
+    logger.info("  OMEGA 事件总线与核心编排器已固定到主事件循环")
+
     # === 集成优化模块 (2026-03-17 优化报告) ===
 
     # 0. 初始化 Langfuse 观测层（LLM 全链路追踪）
@@ -269,8 +279,36 @@ async def main():
     logger.info(f"  Langfuse 观测层: {'已连接' if langfuse_ok else '未配置（静默降级）'}")
 
     # 1. 启动 Prometheus 指标服务器
+    api_server = None
+
+    def _runtime_health_components() -> dict[str, str]:
+        """从实际 Bot 轮询与内控 API 生命周期生成监控状态。"""
+        bot_statuses = health_checker.get_status()
+        configured_bot_count = sum(bool(config.get("token")) for config in BOTS)
+        bot_running = configured_bot_count > 0 and len(bots) == configured_bot_count
+        if bot_running:
+            bot_running = all(
+                health_checker.is_polling(bot.app)
+                and bot_statuses.get(bot.bot_id, {}).get("healthy", False)
+                and bot_statuses.get(bot.bot_id, {}).get("last_heartbeat_ago", 301) <= 300
+                for bot in bots
+            )
+
+        api_thread = getattr(api_server, "_thread", None)
+        uvicorn_server = getattr(api_server, "_server", None)
+        api_running = bool(
+            api_thread
+            and api_thread.is_alive()
+            and getattr(uvicorn_server, "started", False)
+            and not getattr(uvicorn_server, "should_exit", True)
+        )
+        return {
+            "bot": "running" if bot_running else "stopped",
+            "api": "running" if api_running else "stopped",
+        }
+
     metrics_port = int(os.environ.get("METRICS_PORT", "9090"))
-    metrics_server = start_metrics_server(port=metrics_port)
+    metrics_server = start_metrics_server(port=metrics_port, health_provider=_runtime_health_components)
     logger.info(f"  Prometheus 指标服务器: http://localhost:{metrics_port}/metrics")
 
     # 2. 设置 API 池路由策略为综合均衡模式
@@ -532,25 +570,8 @@ async def main():
     # crewai_bridge 内部已是懒加载单例，无需启动时预热
     logger.info("  CrewAI 多 Agent 协作桥接: 延迟加载模式（首次使用时初始化）")
 
-    # === 启动内控 API 服务器 (搬运 freqtrade RPC + Open WebUI 模式) ===
-    api_port = int(os.environ.get("API_PORT", "18790"))
-    try:
-        api_server = start_api_server(port=api_port)
-        logger.info(f"  内控 API 服务器已启动: http://127.0.0.1:{api_port}/api/docs")
-    except Exception as e:
-        api_server = None
-        logger.warning(f"  内控 API 服务器启动失败（非致命）: {e}")
-
-    # === OMEGA v2.0 核心模块初始化 ===
-    _omega_brain = None
-    _omega_gateway = None
-    try:
-        from src.core.event_bus import get_event_bus
-
-        _omega_event_bus = get_event_bus()
-        logger.info("  OMEGA 事件总线已初始化")
-    except Exception as e:
-        logger.info(f"  OMEGA 事件总线初始化跳过: {e}")
+    # API 服务器使用独立 Uvicorn 线程；必须先把全局 IBKR 单例固定到主循环。
+    ibkr.bind_current_loop()
 
     # === 统一通知系统 (搬运 Apprise 16.1k⭐) — 订阅 EventBus 事件 ===
     try:
@@ -561,14 +582,6 @@ async def main():
         logger.info("  统一通知系统已初始化 (EventBus 事件订阅已注册)")
     except Exception as e:
         logger.info(f"  统一通知系统初始化跳过: {e}")
-
-    try:
-        from src.core.brain import init_brain
-
-        _omega_brain = init_brain()
-        logger.info("  OMEGA 核心编排器 (Brain) 已初始化")
-    except Exception as e:
-        logger.info(f"  OMEGA Brain 初始化跳过: {e}")
 
     try:
         from src.core.cost_control import get_cost_controller
@@ -608,15 +621,13 @@ async def main():
     except Exception as e:
         logger.info(f"  OMEGA Gateway Bot 初始化跳过: {e}")
 
-    # === 进化引擎 — 延迟到首次扫描时初始化（每 24h 才用一次，不必常驻内存） ===
-    _evolution_engine = None  # 懒加载：定时任务触发时才 import + 实例化
-    logger.info("  进化引擎: 延迟加载模式（首次定时扫描时初始化）")
-
-    # === 社交自动驾驶 — 检查是否需要自动恢复 (搬运 APScheduler 模式) ===
+    # === 社交自动驾驶 — 先固定主循环，再恢复持久化状态 ===
+    _autopilot = None
     try:
         from src.social_scheduler import SocialAutopilot, _load_state as _load_ap_state
 
         _autopilot = SocialAutopilot()
+        _autopilot.bind_current_loop()
         _ap_state = _load_ap_state()
         if _ap_state.get("enabled", False):
             _autopilot.start()
@@ -625,6 +636,10 @@ async def main():
             logger.info("  社交自动驾驶待命（可通过 Manager UI 启动）")
     except Exception as e:
         logger.info(f"  社交自动驾驶初始化跳过: {e}")
+
+    # === 进化引擎 — 延迟到首次扫描时初始化（每 24h 才用一次，不必常驻内存） ===
+    _evolution_engine = None  # 懒加载：定时任务触发时才 import + 实例化
+    logger.info("  进化引擎: 延迟加载模式（首次定时扫描时初始化）")
 
     logger.info("=" * 60)
     logger.info(f"成功启动 {len(bots)} 个 Bot:")
@@ -941,6 +956,16 @@ async def main():
 
     alert_mgr.on_alert(lambda name, msg: push_event(WSMessageType.RISK_ALERT, {"rule": name, "message": msg}))
 
+    # === 启动内控 API 服务器 (搬运 freqtrade RPC + Open WebUI 模式) ===
+    # 所有跨线程可见的有状态服务先完成主循环绑定，API 才开始接受请求。
+    api_port = int(os.environ.get("API_PORT", "18790"))
+    try:
+        api_server = start_api_server(port=api_port)
+        logger.info(f"  内控 API 服务器已启动: http://127.0.0.1:{api_port}/api/docs")
+    except Exception as e:
+        api_server = None
+        logger.warning(f"  内控 API 服务器启动失败（非致命）: {e}")
+
     _heartbeat_interval = int(os.environ.get("HEARTBEAT_INTERVAL", "60"))
     _cleanup_interval = int(os.environ.get("CLEANUP_INTERVAL", "60"))
     _cleanup_max_age = float(os.environ.get("CLEANUP_MAX_AGE", "3600.0"))
@@ -964,10 +989,7 @@ async def main():
             if heartbeat_counter >= _heartbeat_interval:
                 heartbeat_counter = 0
                 for bot in bots:
-                    # 只要 Bot 实例存在就发心跳，不依赖 updater.running
-                    # 避免网络波动导致所有 Bot 同时丢失心跳
-                    if bot.app:
-                        health_checker.heartbeat(bot.bot_id)
+                    health_checker.heartbeat_if_polling(bot.bot_id, bot.app)
             if cleanup_counter >= _cleanup_interval:
                 cleanup_counter = 0
                 collab_orchestrator.cleanup_old_tasks(max_age=_cleanup_max_age)
@@ -1099,12 +1121,24 @@ async def main():
         logger.debug("关闭OMEGA执行引擎时异常(可忽略): %s", e)
     await execution_hub.stop_scheduler()
     await stop_trading_system()
+    # SocialAutopilot 的 APScheduler 运行在线程池中，必须在主循环仍存活时由 owner 关闭。
+    if _autopilot is not None:
+        try:
+            await _autopilot.close()
+            logger.info("  SocialAutopilot 与所有者循环已关闭")
+        except Exception as e:
+            logger.warning("关闭 SocialAutopilot 失败: %s", e)
     # 停止内控 API 服务器
     try:
         stop_api_server()
         logger.info("  内控 API 服务器已停止")
     except Exception as e:
         logger.debug("关闭内控API服务器时异常(可忽略): %s", e)
+    try:
+        await ibkr.close()
+        logger.info("  IBKR 连接与所有者循环已关闭")
+    except Exception as e:
+        logger.warning("关闭 IBKR 连接失败: %s", e)
     if auto_recovery:
         auto_recovery.stop()
     if metrics_server:

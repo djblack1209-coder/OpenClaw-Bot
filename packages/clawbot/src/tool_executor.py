@@ -552,9 +552,7 @@ class ToolExecutor:
         """截断过长的工具结果，防止撑爆上下文"""
         for key in ("content", "stdout", "stderr", "output"):
             if key in result and isinstance(result[key], str) and len(result[key]) > self.max_result_length:
-                result[key] = (
-                    f"{result[key][:self.max_result_length]}\n\n... [截断，原始长度 {len(result[key])} 字符]"
-                )
+                result[key] = f"{result[key][: self.max_result_length]}\n\n... [截断，原始长度 {len(result[key])} 字符]"
         return result
 
     def get_tools_schema(self) -> list[dict]:
@@ -660,7 +658,7 @@ class ToolExecutor:
             lines = []
             # IBKR 实盘持仓
             if ibkr.is_connected():
-                positions = ibkr.get_positions()
+                positions = await ibkr.get_positions()
                 if positions:
                     lines.append("-- IBKR 实盘持仓 --")
                     for p in positions:

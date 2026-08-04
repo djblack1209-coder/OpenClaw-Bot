@@ -200,6 +200,41 @@ async def test_execution_scheduler_runs_intel_production_through_injected_runner
     assert scheduler._last_intel_brief_date == "2026-07-07"
 
 
+@pytest.mark.asyncio
+async def test_execution_scheduler_retries_failed_production_delivery(monkeypatch, tmp_path):
+    """生产投递明确失败时不得封存当天，后续调度必须仍可重试。"""
+    summary = tmp_path / "summary.json"
+    summary.write_text('{"status":"partial_fallback","items":[{"title":"x"}]}', encoding="utf-8")
+    calls: list[dict[str, object]] = []
+
+    def runner(**kwargs):
+        calls.append(kwargs)
+        return {"status": "failed", "network_calls": 1, "error": "telegram timeout"}
+
+    monkeypatch.setenv("INTEL_BRIEF_ENABLED", "true")
+    monkeypatch.setenv("INTEL_BRIEF_MODE", "production")
+    monkeypatch.setenv("INTEL_BRIEF_SCHEDULER_TIMEZONE", "UTC")
+    monkeypatch.setenv("INTEL_BRIEF_TELEGRAM_BOT_TOKEN", "123456:SECRET-DO-NOT-LEAK")
+    monkeypatch.setenv("INTEL_BRIEF_TELEGRAM_CHAT_ID", "987654")
+    monkeypatch.setenv("INTEL_BRIEF_WORKER_PLACEMENT_CONFIRMED", "true")
+    monkeypatch.setenv("INTEL_BRIEF_SCHEDULER_PRODUCTION_ACK", PRODUCTION_ACK_VALUE)
+    monkeypatch.setenv("INTEL_BRIEF_TELEGRAM_SANDBOX_SEND_ACK", "I_UNDERSTAND_TELEGRAM_SANDBOX_SEND")
+    monkeypatch.setenv("INTEL_BRIEF_SUMMARY_EVIDENCE", str(summary))
+    monkeypatch.setenv("INTEL_BRIEF_EVIDENCE_DIR", str(tmp_path / "phaseprod"))
+
+    scheduler = ExecutionScheduler()
+    scheduler.intel_brief_production_runner = runner
+    now = datetime(2026, 7, 7, 8, 31, tzinfo=UTC)
+
+    first = await scheduler._run_intel_brief(now, (8, 30))
+    second = await scheduler._run_intel_brief(now, (8, 30))
+
+    assert first["status"] == "failed"
+    assert second["status"] == "failed"
+    assert len(calls) == 2
+    assert scheduler._last_intel_brief_date == ""
+
+
 def test_intel_scheduler_gate_allows_sandbox_when_collect_evidence_exists(tmp_path):
     collect = tmp_path / "collect.json"
     collect.write_text('{"status":"success","runs":[]}', encoding="utf-8")

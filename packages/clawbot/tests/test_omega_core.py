@@ -11,6 +11,7 @@ pytest.ini 已配置 asyncio_mode = auto，async 测试不需要装饰器。
 """
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from src.core.executor import MultiPathExecutor
@@ -428,7 +429,7 @@ class TestMultiPathExecutor:
         mock_resp.headers = {"content-type": "application/json"}
         mock_resp.json.return_value = {"price": 150.0}
 
-        self.executor._http_client.get = AsyncMock(return_value=mock_resp)
+        self.executor._http_client.request = AsyncMock(return_value=mock_resp)
 
         # 测试环境跳过 SSRF 检查（api.example.com 无法通过真实 DNS 解析）
         with patch("src.core.security.check_ssrf", return_value=True):
@@ -442,11 +443,43 @@ class TestMultiPathExecutor:
         assert result.execution_path == "api"
         assert result.data == {"price": 150.0}
 
+    async def test_api_redirect_to_private_address_fails_before_second_request(self):
+        """API 公网入口重定向到本机时必须失败关闭。"""
+        first_response = MagicMock()
+        first_response.status_code = 302
+        first_response.next_request = httpx.Request("GET", "http://127.0.0.1/admin")
+        first_response.aclose = AsyncMock()
+        first_response.headers = {"content-type": "text/plain"}
+        first_response.raise_for_status = MagicMock()
+        self.executor._http_client.get = AsyncMock(return_value=first_response)
+        self.executor._http_client.request = AsyncMock(return_value=first_response)
+        self.executor._http_client.send = AsyncMock()
+
+        with patch(
+            "src.core.security.check_ssrf",
+            side_effect=lambda value: "127.0.0.1" not in str(value),
+        ):
+            result = await self.executor.execute_with_fallback(
+                [{"type": "api", "endpoint": "https://public.example/redirect"}],
+                platform="test",
+            )
+
+        assert result.success is False
+        self.executor._http_client.send.assert_not_awaited()
+
+    def test_browser_targets_are_limited_to_registered_platform_hosts(self):
+        """浏览器路径不得接受攻击者控制的任意公网域名。"""
+        from src.core.executor import is_allowed_browser_target
+
+        assert is_allowed_browser_target("https://www.dianping.com/shop/1") is True
+        assert is_allowed_browser_target("https://attacker.example/redirect") is False
+        assert is_allowed_browser_target("http://127.0.0.1:18790/api/v1/status") is False
+
     # ── C2. API 失败 → 降级到下一路径 ────────────────────
 
     async def test_api_failure_fallback(self):
         """API 抛异常 → 尝试下一条 human 策略。"""
-        self.executor._http_client.get = AsyncMock(
+        self.executor._http_client.request = AsyncMock(
             side_effect=Exception("Connection refused")
         )
 

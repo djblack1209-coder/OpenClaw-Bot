@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
 import { createFristApiServer, resolveSmtpSocketTargets } from '../server/server.js';
+import { runtimeTokenKey } from '../server/auth.js';
 import { normalizeClientAvailableModels } from '../src/core.js';
 
 function decodeUrlSafeBase64(value) {
@@ -631,6 +632,122 @@ describe('CC中转 public server chain', () => {
     }
   });
 
+  it('keeps password reset SMTP outside the global runtime write queue', async () => {
+    let releaseEmail;
+    let markEmailStarted;
+    const emailBlocked = new Promise((resolve) => {
+      releaseEmail = resolve;
+    });
+    const emailStarted = new Promise((resolve) => {
+      markEmailStarted = resolve;
+    });
+    const fixture = await createServerFixture({
+      requireEmailVerification: false,
+      authRateLimitMax: 100,
+      accountEmailSender: async (message) => {
+        if (/密码重置/.test(String(message.subject || ''))) {
+          markEmailStarted();
+          await emailBlocked;
+        }
+      },
+    });
+
+    try {
+      await fixture.request('/api/frist/register', {
+        method: 'POST',
+        body: { email: 'smtp-queue@example.com', password: 'OldPass123!' },
+      });
+      const resetRequest = fixture.request('/api/frist/password-reset/request', {
+        method: 'POST',
+        body: { email: 'smtp-queue@example.com' },
+      });
+      await emailStarted;
+
+      const loginResult = await Promise.race([
+        fixture.request('/api/frist/login', {
+          method: 'POST',
+          body: { email: 'smtp-queue@example.com', password: 'OldPass123!' },
+        }),
+        new Promise((resolve) => setTimeout(() => resolve({ status: 'timeout' }), 250)),
+      ]);
+
+      assert.equal(loginResult.status, 200);
+      releaseEmail();
+      assert.equal((await resetRequest).status, 200);
+    } finally {
+      releaseEmail?.();
+      await fixture.close();
+    }
+  });
+
+  it('rate limits password reset requests by account before sending more email', async () => {
+    const sentEmails = [];
+    const fixture = await createServerFixture({
+      requireEmailVerification: false,
+      authRateLimitMax: 100,
+      passwordResetRequestRateLimitMax: 3,
+      passwordResetRequestRateLimitWindowMs: 60_000,
+      accountEmailSender: async (message) => sentEmails.push(message),
+    });
+
+    try {
+      await fixture.request('/api/frist/register', {
+        method: 'POST',
+        body: { email: 'reset-limit@example.com', password: 'OldPass123!' },
+      });
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const accepted = await fixture.request('/api/frist/password-reset/request', {
+          method: 'POST',
+          body: { email: 'reset-limit@example.com' },
+        });
+        assert.equal(accepted.status, 200);
+      }
+
+      const rejected = await fixture.request('/api/frist/password-reset/request', {
+        method: 'POST',
+        body: { email: 'reset-limit@example.com' },
+      });
+      assert.equal(rejected.status, 429);
+      assert.match(rejected.text, /请求过于频繁/);
+      assert.equal(sentEmails.filter((message) => /密码重置/.test(message.subject)).length, 3);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('rate limits email verification attempts by both client and account', async () => {
+    const fixture = await createServerFixture({
+      authRateLimitMax: 100,
+      emailVerificationRateLimitMax: 2,
+      emailVerificationRateLimitWindowMs: 60_000,
+    });
+
+    try {
+      const registered = await fixture.request('/api/frist/register', {
+        method: 'POST',
+        body: { email: 'verify-limit@example.com', password: 'TestPass123!' },
+      });
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const rejected = await fixture.request('/api/frist/verify', {
+          method: 'POST',
+          cookie: registered.cookie,
+          body: { code: '000000' },
+        });
+        assert.equal(rejected.status, 400);
+      }
+
+      const limited = await fixture.request('/api/frist/verify', {
+        method: 'POST',
+        cookie: registered.cookie,
+        body: { code: '000000' },
+      });
+      assert.equal(limited.status, 429);
+      assert.match(limited.text, /请求过于频繁/);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it('lets customers rename and delete their own API keys through HTTP APIs', async () => {
     const fixture = await createServerFixture({ requireEmailVerification: false });
 
@@ -720,6 +837,76 @@ describe('CC中转 public server chain', () => {
     }
   });
 
+  it('does not hold the global write queue while a payment provider request is pending', async () => {
+    const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const wechatPrivateKey = privateKey.export({ type: 'pkcs8', format: 'pem' });
+    const wechatPublicKey = publicKey.export({ type: 'spki', format: 'pem' });
+    let releaseProvider;
+    let markProviderStarted;
+    const providerStarted = new Promise((resolve) => {
+      markProviderStarted = resolve;
+    });
+    const providerResponse = new Promise((resolve) => {
+      releaseProvider = resolve;
+    });
+    const fixture = await createServerFixture({
+      paymentEnabled: true,
+      wechatPayEnabled: true,
+      wechatPayAppId: 'wx-test-app',
+      wechatPayMchId: '1900000001',
+      wechatPaySerialNo: 'SERIALNO',
+      wechatPayPrivateKey: wechatPrivateKey,
+      wechatPayPublicKey: wechatPublicKey,
+      wechatPayPlatformSerialNo: 'PLATFORM-SERIAL',
+      wechatPayApiV3Key: '12345678901234567890123456789012',
+      fetchImpl: async () => {
+        markProviderStarted();
+        return providerResponse;
+      },
+    });
+
+    try {
+      const cookie = await fixture.createVerifiedCustomer('payment-queue@example.com');
+      const providerRecharge = fixture.request('/api/frist/recharge', {
+        method: 'POST',
+        cookie,
+        body: { planId: 'codex-30-unlimited', method: 'wechat_native' },
+      });
+      await providerStarted;
+
+      const manualRecharge = fixture.request('/api/frist/recharge', {
+        method: 'POST',
+        cookie,
+        body: { amountCny: 8, method: 'bank_transfer' },
+      });
+      const queueProbe = await Promise.race([
+        manualRecharge.then((response) => ({ timedOut: false, response })),
+        new Promise((resolve) => setTimeout(() => resolve({ timedOut: true }), 250)),
+      ]);
+
+      releaseProvider(signedWechatJsonResponse(
+        200,
+        { code_url: 'weixin://wxpay/bizpayurl?pr=queue-test' },
+        wechatPrivateKey,
+        'PLATFORM-SERIAL',
+      ));
+      const providerResult = await providerRecharge;
+      const manualResult = queueProbe.timedOut ? await manualRecharge : queueProbe.response;
+
+      assert.equal(queueProbe.timedOut, false);
+      assert.equal(manualResult.status, 202);
+      assert.equal(providerResult.status, 202);
+    } finally {
+      releaseProvider?.(signedWechatJsonResponse(
+        200,
+        { code_url: 'weixin://wxpay/bizpayurl?pr=cleanup' },
+        wechatPrivateKey,
+        'PLATFORM-SERIAL',
+      ));
+      await fixture.close();
+    }
+  });
+
   it('creates WeChat native payment orders and credits exactly once after signed notify', async () => {
     const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
     const wechatPrivateKey = privateKey.export({ type: 'pkcs8', format: 'pem' });
@@ -733,10 +920,16 @@ describe('CC中转 public server chain', () => {
       wechatPaySerialNo: 'SERIALNO',
       wechatPayPrivateKey: wechatPrivateKey,
       wechatPayPublicKey: wechatPublicKey,
+      wechatPayPlatformSerialNo: 'PLATFORM-SERIAL',
       wechatPayApiV3Key: apiV3Key,
       fetchImpl: async (url) => {
         assert.equal(String(url), 'https://api.mch.weixin.qq.com/v3/pay/transactions/native');
-        return jsonResponse(200, { code_url: 'weixin://wxpay/bizpayurl?pr=test' });
+        return signedWechatJsonResponse(
+          200,
+          { code_url: 'weixin://wxpay/bizpayurl?pr=test' },
+          wechatPrivateKey,
+          'PLATFORM-SERIAL',
+        );
       },
     });
 
@@ -755,12 +948,60 @@ describe('CC中转 public server chain', () => {
       const notifyBody = buildWechatNotifyBody({
         apiV3Key,
         transaction: {
+          appid: 'wx-test-app',
+          mchid: '1900000001',
           out_trade_no: created.json.paymentOrder.id,
           transaction_id: 'wx-transaction-1',
           trade_state: 'SUCCESS',
-          amount: { total: 888, payer_total: 888 },
+          amount: { total: 888, payer_total: 688 },
         },
       });
+
+      for (const merchantOverride of [
+        { appid: 'wx-other-app' },
+        { mchid: '1900000999' },
+      ]) {
+        const invalidBody = buildWechatNotifyBody({
+          apiV3Key,
+          transaction: {
+            appid: 'wx-test-app',
+            mchid: '1900000001',
+            out_trade_no: created.json.paymentOrder.id,
+            transaction_id: 'wx-invalid-merchant',
+            trade_state: 'SUCCESS',
+            amount: { total: 888, payer_total: 888 },
+            ...merchantOverride,
+          },
+        });
+        const invalidNotify = await fixture.rawRequest('/api/frist/payments/wechat/notify', {
+          method: 'POST',
+          headers: signWechatNotifyHeaders({
+            privateKey: wechatPrivateKey,
+            bodyText: invalidBody,
+          }),
+          bodyText: invalidBody,
+        });
+        assert.equal(invalidNotify.status, 400);
+        assert.match(invalidNotify.text, /商户身份不匹配/);
+      }
+
+      for (const signatureOverride of [
+        { timestamp: String(Math.floor(Date.now() / 1000) - 301) },
+        { serialNo: 'PLATFORM-SERIAL-OLD' },
+      ]) {
+        const invalidSignature = await fixture.rawRequest('/api/frist/payments/wechat/notify', {
+          method: 'POST',
+          headers: signWechatNotifyHeaders({
+            privateKey: wechatPrivateKey,
+            bodyText: notifyBody,
+            ...signatureOverride,
+          }),
+          bodyText: notifyBody,
+        });
+        assert.equal(invalidSignature.status, 400);
+        assert.match(invalidSignature.text, /(签名时间戳无效|平台序列号不匹配)/);
+      }
+
       const notify = await fixture.rawRequest('/api/frist/payments/wechat/notify', {
         method: 'POST',
         headers: signWechatNotifyHeaders({
@@ -786,8 +1027,41 @@ describe('CC中转 public server chain', () => {
       assert.equal(dashboard.json.account.boosterQuota, '$30.00');
       assert.equal(dashboard.json.account.balance, '$30.00');
       const data = await fixture.readData();
-      assert.equal(data.paymentOrders[0].status, 'paid');
+      const paidOrder = data.paymentOrders.find((order) => order.id === created.json.paymentOrder.id);
+      assert.equal(paidOrder.status, 'paid');
       assert.equal(data.events.filter((event) => event.type === 'provider_payment_confirmed').length, 1);
+      assert.equal(data.events.filter((event) => event.type === 'payment_callback').length, 1);
+
+      const second = await fixture.request('/api/frist/recharge', {
+        method: 'POST',
+        cookie,
+        body: { planId: 'codex-30-unlimited', method: 'wechat_native' },
+      });
+      const reusedTransactionBody = buildWechatNotifyBody({
+        apiV3Key,
+        transaction: {
+          appid: 'wx-test-app',
+          mchid: '1900000001',
+          out_trade_no: second.json.paymentOrder.id,
+          transaction_id: 'wx-transaction-1',
+          trade_state: 'SUCCESS',
+          amount: { total: 888, payer_total: 888 },
+        },
+      });
+      const reusedTransaction = await fixture.rawRequest('/api/frist/payments/wechat/notify', {
+        method: 'POST',
+        headers: signWechatNotifyHeaders({
+          privateKey: wechatPrivateKey,
+          bodyText: reusedTransactionBody,
+        }),
+        bodyText: reusedTransactionBody,
+      });
+      assert.equal(reusedTransaction.status, 409);
+      assert.match(reusedTransaction.text, /平台交易号已绑定其他订单/);
+
+      const afterReuse = await fixture.readData();
+      const secondOrder = afterReuse.paymentOrders.find((order) => order.id === second.json.paymentOrder.id);
+      assert.equal(secondOrder.status, 'pending_provider_payment');
     } finally {
       await fixture.close();
     }
@@ -804,14 +1078,14 @@ describe('CC中转 public server chain', () => {
       alipayPrivateKey,
       alipayPublicKey,
       fetchImpl: async () =>
-        jsonResponse(200, {
+        signedAlipayJsonResponse(200, {
           alipay_trade_precreate_response: {
             code: '10000',
             msg: 'Success',
             out_trade_no: 'server-generated',
             qr_code: 'https://qr.alipay.com/test',
           },
-        }),
+        }, alipayPrivateKey),
     });
 
     try {
@@ -865,14 +1139,14 @@ describe('CC中转 public server chain', () => {
       fetchImpl: async (url, options = {}) => {
         assert.equal(String(url), 'https://openapi.alipay.com/gateway.do');
         assert.match(String(options.body || ''), /alipay.trade.precreate/);
-        return jsonResponse(200, {
+        return signedAlipayJsonResponse(200, {
           alipay_trade_precreate_response: {
             code: '10000',
             msg: 'Success',
             out_trade_no: 'server-generated',
             qr_code: 'https://qr.alipay.com/test',
           },
-        });
+        }, alipayPrivateKey);
       },
     });
 
@@ -888,6 +1162,47 @@ describe('CC中转 public server chain', () => {
       assert.equal(created.json.paymentOrder.status, 'pending_provider_payment');
       assert.equal(created.json.qrCode, 'https://qr.alipay.com/test');
 
+      const wrongAppBody = signAlipayNotifyBody(
+        {
+          app_id: '2021000000000999',
+          out_trade_no: created.json.paymentOrder.id,
+          trade_no: 'ali-wrong-app-1',
+          trade_status: 'TRADE_SUCCESS',
+          total_amount: '5.88',
+        },
+        alipayPrivateKey,
+      );
+      const wrongApp = await fixture.rawRequest('/api/frist/payments/alipay/notify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        bodyText: wrongAppBody,
+      });
+      assert.equal(wrongApp.status, 400);
+      assert.match(wrongApp.text, /商户身份不匹配/);
+
+      const manual = await fixture.request('/api/frist/recharge', {
+        method: 'POST',
+        cookie,
+        body: { planId: 'codex-30-day', method: 'bank_transfer' },
+      });
+      const wrongChannelBody = signAlipayNotifyBody(
+        {
+          app_id: '2021000000000000',
+          out_trade_no: manual.json.paymentOrder.id,
+          trade_no: 'ali-wrong-channel-1',
+          trade_status: 'TRADE_SUCCESS',
+          total_amount: '5.88',
+        },
+        alipayPrivateKey,
+      );
+      const wrongChannel = await fixture.rawRequest('/api/frist/payments/alipay/notify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        bodyText: wrongChannelBody,
+      });
+      assert.equal(wrongChannel.status, 409);
+      assert.match(wrongChannel.text, /支付订单渠道不匹配/);
+
       const notifyBody = signAlipayNotifyBody(
         {
           app_id: '2021000000000000',
@@ -895,6 +1210,8 @@ describe('CC中转 public server chain', () => {
           trade_no: 'ali-trade-1',
           trade_status: 'TRADE_SUCCESS',
           total_amount: '5.88',
+          receipt_amount: '5.00',
+          buyer_pay_amount: '5.00',
         },
         alipayPrivateKey,
       );
@@ -917,7 +1234,10 @@ describe('CC中转 public server chain', () => {
       assert.equal(dashboard.json.account.plan, '日卡');
       assert.equal(dashboard.json.account.packageQuota, '$30.00');
       const data = await fixture.readData();
-      assert.equal(data.paymentOrders[0].status, 'paid');
+      const paidOrder = data.paymentOrders.find((order) => order.id === created.json.paymentOrder.id);
+      assert.equal(paidOrder.status, 'paid');
+      const manualOrder = data.paymentOrders.find((order) => order.id === manual.json.paymentOrder.id);
+      assert.equal(manualOrder.status, 'pending_manual_payment');
       assert.equal(data.events.filter((event) => event.type === 'provider_payment_confirmed').length, 1);
     } finally {
       await fixture.close();
@@ -1443,7 +1763,7 @@ describe('CC中转 public server chain', () => {
       const cookie = await fixture.createVerifiedCustomer('expired-session@example.com');
       const data = await fixture.readData();
       const token = cookie.split('=')[1];
-      data.sessions[token].expiresAt = '2020-01-01T00:00:00.000Z';
+      data.sessions[runtimeTokenKey(token)].expiresAt = '2020-01-01T00:00:00.000Z';
       await fixture.writeData(data);
 
       const dashboard = await fixture.request('/api/frist/dashboard', { cookie });
@@ -3074,6 +3394,114 @@ describe('CC中转 public server chain', () => {
       });
       assert.equal(second.status, 429);
       assert.match(second.text, /请求过于频繁/);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('ignores spoofed forwarding headers unless the direct proxy is explicitly trusted', async () => {
+    const fixture = await createServerFixture({ authRateLimitMax: 1, authRateLimitWindowMs: 60_000 });
+
+    try {
+      const first = await fixture.request('/api/frist/login', {
+        method: 'POST',
+        headers: { 'x-forwarded-for': '198.51.100.10' },
+        body: { email: 'spoofed-forwarding@example.com', password: 'wrong-password' },
+      });
+      assert.equal(first.status, 401);
+
+      const second = await fixture.request('/api/frist/login', {
+        method: 'POST',
+        headers: { 'x-forwarded-for': '198.51.100.11' },
+        body: { email: 'spoofed-forwarding@example.com', password: 'wrong-password' },
+      });
+      assert.equal(second.status, 429);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('rate limits password reset confirmation by a keyed account digest across client IPs', async () => {
+    const fixture = await createServerFixture({
+      authRateLimitMax: 100,
+      passwordResetConfirmRateLimitMax: 2,
+      passwordResetConfirmRateLimitWindowMs: 60_000,
+      trustedProxyIps: ['127.0.0.1'],
+    });
+
+    try {
+      await fixture.request('/api/frist/register', {
+        method: 'POST',
+        body: { email: 'reset-account-limit@example.com', password: 'OldPass123!' },
+      });
+      await fixture.request('/api/frist/password-reset/request', {
+        method: 'POST',
+        body: { email: 'reset-account-limit@example.com' },
+      });
+
+      for (const forwardedFor of ['198.51.100.20', '198.51.100.21']) {
+        const rejected = await fixture.request('/api/frist/password-reset/confirm', {
+          method: 'POST',
+          headers: { 'x-forwarded-for': forwardedFor },
+          body: {
+            email: 'reset-account-limit@example.com',
+            code: '000000',
+            newPassword: 'NewPass123!',
+          },
+        });
+        assert.equal(rejected.status, 400);
+      }
+
+      const limited = await fixture.request('/api/frist/password-reset/confirm', {
+        method: 'POST',
+        headers: { 'x-forwarded-for': '198.51.100.22' },
+        body: {
+          email: 'reset-account-limit@example.com',
+          code: '000000',
+          newPassword: 'NewPass123!',
+        },
+      });
+      assert.equal(limited.status, 429);
+
+      const securitySource = readFileSync(new URL('../server/security.js', import.meta.url), 'utf8');
+      assert.match(securitySource, /createHmac\('sha256'/);
+      assert.equal(securitySource.includes('password-reset:account:${email}'), false);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('keeps the rate limit bucket map bounded without evicting an existing client block', async () => {
+    const fixture = await createServerFixture({
+      authRateLimitMax: 1,
+      authRateLimitWindowMs: 60_000,
+      rateLimitMaxEntries: 3,
+      trustedProxyIps: ['127.0.0.1'],
+    });
+
+    try {
+      for (const forwardedFor of ['198.51.100.30', '198.51.100.31', '198.51.100.32']) {
+        const firstAttempt = await fixture.request('/api/frist/login', {
+          method: 'POST',
+          headers: { 'x-forwarded-for': forwardedFor },
+          body: { email: 'bounded-rate-limit@example.com', password: 'wrong-password' },
+        });
+        assert.equal(firstAttempt.status, 401);
+      }
+
+      const newClient = await fixture.request('/api/frist/login', {
+        method: 'POST',
+        headers: { 'x-forwarded-for': '198.51.100.33' },
+        body: { email: 'bounded-rate-limit@example.com', password: 'wrong-password' },
+      });
+      assert.equal(newClient.status, 429);
+
+      const stillLimited = await fixture.request('/api/frist/login', {
+        method: 'POST',
+        headers: { 'x-forwarded-for': '198.51.100.30' },
+        body: { email: 'bounded-rate-limit@example.com', password: 'wrong-password' },
+      });
+      assert.equal(stillLimited.status, 429);
     } finally {
       await fixture.close();
     }
@@ -6584,6 +7012,40 @@ describe('CC中转 public server chain', () => {
       /公开模式配置不安全/,
     );
 
+    assert.throws(
+      () =>
+        createFristApiServer({
+          publicMode: true,
+          adminToken: 'admin-token-with-enough-randomness-2026',
+          sessionSecret: 'session-secret-with-enough-randomness-2026',
+          passwordHashSecret: 'replace-with-a-long-random-password-hash-secret',
+          dataEncryptionKey: 'replace-with-a-long-random-runtime-encryption-key',
+          adminPageCode: 'replace-with-hidden-admin-entry-code',
+          adminClaimCodes: ['replace-with-one-time-owner-claim-code'],
+          requireAdmin2fa: true,
+          adminTotpSecrets: ['replace-with-base32-totp-secret'],
+          requireEmailVerification: true,
+          requireCsrf: true,
+          publicGatewayBaseUrl: 'https://gateway.frist-api.dev/v1',
+        }),
+      /公开模式配置不安全/,
+    );
+
+    assert.throws(
+      () =>
+        createFristApiServer({
+          publicMode: true,
+          adminToken: 'admin-token-with-enough-randomness-2026',
+          sessionSecret: 'session-secret-with-enough-randomness-2026',
+          dataEncryptionKey: 'runtime-encryption-key-with-enough-randomness-2026',
+          adminPageCode: 'hidden-admin-entry-2026',
+          requireEmailVerification: false,
+          requireCsrf: true,
+          publicGatewayBaseUrl: 'https://gateway.frist-api.dev/v1',
+        }),
+      /邮箱验证/,
+    );
+
     const server = createFristApiServer({
       publicMode: true,
       adminToken: 'admin-token-with-enough-randomness-2026',
@@ -6629,6 +7091,7 @@ describe('CC中转 public server chain', () => {
       enforceProductionReadiness: true,
       requireNewApiDatabase: true,
       newApiEnabled: true,
+      newApiGatewayEnabled: true,
       newApiBaseUrl: 'http://openclaw-newapi:3000',
       newApiAccessToken: 'new-api-access-token-with-enough-randomness',
       newApiUserId: '1',
@@ -6679,6 +7142,9 @@ describe('CC中转 public server chain', () => {
       });
       assert.equal(verified.status, 200);
       assert.match(verified.setCookie, /frist_admin_2fa=/);
+      const adminSessionToken = verified.setCookie.match(/frist_admin_2fa=([^;]+)/)?.[1] || '';
+      assert.ok(adminSessionToken);
+      assert.equal((await fixture.readRawData()).includes(adminSessionToken), false);
 
       const inventory = await fixture.request('/api/admin/replenishments', {
         headers: { 'x-admin-token': 'admin-test-token' },
@@ -6686,6 +7152,60 @@ describe('CC中转 public server chain', () => {
       });
       assert.equal(inventory.status, 200);
       assert.equal(Array.isArray(inventory.json.credentials), true);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('rate limits administrator TOTP attempts before writing more runtime events', async () => {
+    const fixture = await createServerFixture({
+      requireAdmin2fa: true,
+      adminTotpSecrets: ['JBSWY3DPEHPK3PXP'],
+      admin2faRateLimitMax: 2,
+      admin2faRateLimitWindowMs: 60_000,
+    });
+
+    try {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const rejected = await fixture.request('/api/admin/2fa/verify', {
+          method: 'POST',
+          headers: { 'x-admin-token': 'admin-test-token' },
+          body: { code: '000000' },
+        });
+        assert.equal(rejected.status, 401);
+      }
+      const limited = await fixture.request('/api/admin/2fa/verify', {
+        method: 'POST',
+        headers: { 'x-admin-token': 'admin-test-token' },
+        body: { code: '000000' },
+      });
+      assert.equal(limited.status, 429);
+      const data = await fixture.readData();
+      assert.equal(data.events.filter((event) => event.type === 'admin_auth_failed').length, 2);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('keeps only a bounded history of administrator TOTP failures', async () => {
+    const fixture = await createServerFixture({
+      requireAdmin2fa: true,
+      adminTotpSecrets: ['JBSWY3DPEHPK3PXP'],
+      admin2faRateLimitMax: 100,
+      admin2faRateLimitWindowMs: 60_000,
+    });
+
+    try {
+      for (let attempt = 0; attempt < 55; attempt += 1) {
+        const rejected = await fixture.request('/api/admin/2fa/verify', {
+          method: 'POST',
+          headers: { 'x-admin-token': 'admin-test-token' },
+          body: { code: '000000' },
+        });
+        assert.equal(rejected.status, 401);
+      }
+      const data = await fixture.readData();
+      assert.equal(data.events.filter((event) => event.type === 'admin_auth_failed').length, 50);
     } finally {
       await fixture.close();
     }
@@ -6787,7 +7307,8 @@ describe('CC中转 public server chain', () => {
 
       const viewerCookie = await fixture.createVerifiedCustomer('sla-viewer@example.com');
       const current = await fixture.readData();
-      current.userKeys.find((item) => item.id === 'key-sla').userId = current.sessions[viewerCookie.split('=')[1]].userId;
+      const viewerSession = current.sessions[runtimeTokenKey(viewerCookie.split('=')[1])];
+      current.userKeys.find((item) => item.id === 'key-sla').userId = viewerSession.userId;
       await fixture.writeData(current);
       const dashboard = await fixture.request('/api/frist/dashboard', { cookie: viewerCookie });
       const check = dashboard.json.channelChecks.find((item) => item.model === 'gpt-5.5');
@@ -7005,8 +7526,11 @@ describe('CC中转 public server chain', () => {
 
   it('ships runtime write failure warnings and CLI graceful shutdown hooks', () => {
     const serverSource = readFileSync(new URL('../server/server.js', import.meta.url), 'utf8');
+    const runtimeStoreSource = readFileSync(new URL('../server/runtime-store.js', import.meta.url), 'utf8');
 
-    assert.match(serverSource, /FRIST_API_RUNTIME_WRITE_FAILED/);
+    assert.match(serverSource, /from '\.\/runtime-store\.js'/);
+    assert.doesNotMatch(serverSource, /FRIST_API_RUNTIME_WRITE_FAILED/);
+    assert.match(runtimeStoreSource, /FRIST_API_RUNTIME_WRITE_FAILED/);
     assert.match(serverSource, /FRIST_API_ADMIN_AUDIT_WRITE_FAILED/);
     assert.match(serverSource, /process\.once\('SIGTERM'/);
     assert.match(serverSource, /process\.once\('SIGINT'/);
@@ -7276,6 +7800,14 @@ async function createServerFixture(options = {}) {
     turnstileAllowedHostnames: options.turnstileAllowedHostnames,
     authRateLimitMax: options.authRateLimitMax,
     authRateLimitWindowMs: options.authRateLimitWindowMs,
+    passwordResetConfirmRateLimitMax: options.passwordResetConfirmRateLimitMax,
+    passwordResetConfirmRateLimitWindowMs: options.passwordResetConfirmRateLimitWindowMs,
+    passwordResetRequestRateLimitMax: options.passwordResetRequestRateLimitMax,
+    passwordResetRequestRateLimitWindowMs: options.passwordResetRequestRateLimitWindowMs,
+    emailVerificationRateLimitMax: options.emailVerificationRateLimitMax,
+    emailVerificationRateLimitWindowMs: options.emailVerificationRateLimitWindowMs,
+    rateLimitMaxEntries: options.rateLimitMaxEntries,
+    trustedProxyIps: options.trustedProxyIps,
     redemptionRateLimitMax: options.redemptionRateLimitMax,
     redemptionRateLimitWindowMs: options.redemptionRateLimitWindowMs,
     publicMode: options.publicMode,
@@ -7306,11 +7838,14 @@ async function createServerFixture(options = {}) {
     passwordResetTtlMs: options.passwordResetTtlMs,
     sessionTtlMs: options.sessionTtlMs,
     paymentEnabled: options.paymentEnabled,
+    paymentRequestTimeoutMs: options.paymentRequestTimeoutMs,
     enforceProductionReadiness: options.enforceProductionReadiness,
     requireNewApiDatabase: options.requireNewApiDatabase,
     requireAdmin2fa: options.requireAdmin2fa,
     adminTotpSecrets: options.adminTotpSecrets,
     admin2faSessionTtlMs: options.admin2faSessionTtlMs,
+    admin2faRateLimitMax: options.admin2faRateLimitMax,
+    admin2faRateLimitWindowMs: options.admin2faRateLimitWindowMs,
     backupStatusMaxAgeHours: options.backupStatusMaxAgeHours,
     slaRetentionDays: options.slaRetentionDays,
     requireCsrf: options.requireCsrf,
@@ -7328,6 +7863,7 @@ async function createServerFixture(options = {}) {
     wechatPaySerialNo: options.wechatPaySerialNo,
     wechatPayPrivateKey: options.wechatPayPrivateKey,
     wechatPayPublicKey: options.wechatPayPublicKey,
+    wechatPayPlatformSerialNo: options.wechatPayPlatformSerialNo,
     wechatPayApiV3Key: options.wechatPayApiV3Key,
     wechatPayGateway: options.wechatPayGateway,
     wechatPayNotifyUrl: options.wechatPayNotifyUrl,
@@ -7439,6 +7975,32 @@ function jsonResponse(status, body) {
   });
 }
 
+function signedWechatJsonResponse(status, body, privateKey, serialNo) {
+  const rawBody = JSON.stringify(body);
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const nonce = 'wechat-response-nonce';
+  const signature = createSign('RSA-SHA256')
+    .update(`${timestamp}\n${nonce}\n${rawBody}\n`)
+    .sign(privateKey, 'base64');
+  return new Response(rawBody, {
+    status,
+    headers: {
+      'content-type': 'application/json',
+      'wechatpay-timestamp': timestamp,
+      'wechatpay-nonce': nonce,
+      'wechatpay-signature': signature,
+      'wechatpay-serial': serialNo,
+    },
+  });
+}
+
+function signedAlipayJsonResponse(status, body, privateKey) {
+  const responseKey = Object.keys(body).find((key) => key.endsWith('_response'));
+  const content = JSON.stringify(body[responseKey]);
+  const sign = createSign('RSA-SHA256').update(content).sign(privateKey, 'base64');
+  return jsonResponse(status, { ...body, sign });
+}
+
 function textResponse(status, body, contentType = 'text/html') {
   return new Response(body, {
     status,
@@ -7470,15 +8032,14 @@ function buildWechatNotifyBody({ apiV3Key, transaction }) {
   });
 }
 
-function signWechatNotifyHeaders({ privateKey, bodyText }) {
-  const timestamp = '1777777777';
+function signWechatNotifyHeaders({ privateKey, bodyText, timestamp = String(Math.floor(Date.now() / 1000)), serialNo = 'PLATFORM-SERIAL' }) {
   const nonce = 'notify-nonce';
   const message = `${timestamp}\n${nonce}\n${bodyText}\n`;
   return {
     'wechatpay-timestamp': timestamp,
     'wechatpay-nonce': nonce,
     'wechatpay-signature': createSign('RSA-SHA256').update(message).sign(privateKey, 'base64'),
-    'wechatpay-serial': 'TEST-SERIAL',
+    'wechatpay-serial': serialNo,
     'content-type': 'application/json',
   };
 }

@@ -5,6 +5,6 @@ if [[ ! -x "$PYTHON" ]]; then
     echo "g4f disabled: reproducible runtime is not installed"
     exit 0
 fi
-cd "/Users/blackdj/Desktop/OpenEverything/packages/clawbot/browser-agent"
+cd "/Users/blackdj/Desktop/OpenEverything/packages/clawbot/browser-agent" || exit 1
 exec "$PYTHON" \
     -m g4f api --port 18891 --g4f-api-key dummy --no-gui

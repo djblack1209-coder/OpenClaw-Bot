@@ -3,20 +3,16 @@
 # 使用: docker compose build openclaw
 
 # ── Stage 1: 构建依赖 ────────────────────────────────
-FROM python:3.12-slim AS builder
+FROM python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de AS builder
 
 WORKDIR /build
 
-# 系统依赖 (编译某些 pip 包需要)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc g++ libffi-dev && \
-    rm -rf /var/lib/apt/lists/*
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+# 只接受 Linux 哈希锁；仅对没有 Python 3.12/Linux wheel 的六个纯 Python 包放开已哈希源码包。
+COPY requirements-lock.txt .
+RUN pip install --no-cache-dir --disable-pip-version-check --require-hashes --only-binary=:all: --no-binary=jieba,jsonpath,pyjsparser,sgmllib3k,snownlp,ta --prefix=/install -r requirements-lock.txt
 
 # ── Stage 2: 运行时镜像 ──────────────────────────────
-FROM python:3.12-slim AS runtime
+FROM python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de AS runtime
 
 # 非 root 用户
 RUN groupadd -r clawbot && useradd -r -g clawbot -d /app -s /sbin/nologin clawbot
@@ -43,7 +39,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=30s \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:18790/api/v1/ping')" || exit 1
+    CMD python -c "import os, urllib.request; request = urllib.request.Request('http://localhost:18790/api/v1/ping', headers={'X-API-Token': os.environ.get('OPENCLAW_API_TOKEN', '')}); urllib.request.urlopen(request, timeout=8)" || exit 1
 
 # 暴露端口
 EXPOSE 18790 9090

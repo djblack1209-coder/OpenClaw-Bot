@@ -1,9 +1,9 @@
 """CLI-Anything API 端点 — 桌面软件远程控制
 
-提供 REST API 让 Tauri 桌面端和其他客户端管理 CLI-Anything 工具:
+提供 REST API 让 Tauri 桌面端和其他客户端使用本机预装的 CLI-Anything 工具:
 - GET  /api/v1/cli/tools    — 列出已安装工具
 - POST /api/v1/cli/run      — 执行工具命令
-- POST /api/v1/cli/install  — 安装新工具
+- POST /api/v1/cli/install  — 明确拒绝远程安装
 """
 
 import logging
@@ -89,14 +89,15 @@ async def run_cli_command(req: CLIRunRequest):
 
 @router.post("/cli/install", response_model=CLIInstallResponse)
 async def install_cli_tool(req: CLIInstallRequest):
-    """安装一个 CLI-Anything 工具
-
-    通过 pip install cli-anything-<tool> 安装。
-    """
+    """拒绝远程安装；工具必须由本机管理员审核并预装。"""
     try:
         mgr = CLIAnythingManager.get_instance()
         result = await mgr.install(req.tool)
+        if result.get("reason") == "remote_install_disabled":
+            raise HTTPException(status_code=403, detail=result["message"])
         return CLIInstallResponse(**result)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("安装 CLI 工具失败: tool=%s", req.tool)
         raise HTTPException(status_code=500, detail="安装失败") from e

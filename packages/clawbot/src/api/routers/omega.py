@@ -9,6 +9,8 @@ from urllib.parse import urlparse
 
 from fastapi import APIRouter, Body, HTTPException, Query
 
+from src.core.loop_owner import OwnerLoopNotReady
+
 from ..error_utils import safe_error as _safe_error
 
 logger = logging.getLogger(__name__)
@@ -24,10 +26,13 @@ async def omega_status():
         from src.core.brain import get_brain
 
         brain = get_brain()
+        brain_state = await brain.get_runtime_state()
         result["brain"] = {
-            "active_tasks": len(brain._active_tasks),
-            "pending_callbacks": len(brain._pending_callbacks),
+            "active_tasks": len(brain_state["active_tasks"]),
+            "pending_callbacks": brain_state["pending_callbacks"],
         }
+    except OwnerLoopNotReady:
+        result["brain"] = {"ready": False}
     except Exception as e:
         logger.exception("获取 Brain 状态失败")
         result["brain"] = {"error": _safe_error(e)}
@@ -126,7 +131,12 @@ async def omega_tasks():
         from src.core.brain import get_brain
 
         brain = get_brain()
-        return {"tasks": brain.get_active_tasks()}
+        state = await brain.get_runtime_state()
+        return {"tasks": state["active_tasks"]}
+    except OwnerLoopNotReady as e:
+        raise HTTPException(status_code=503, detail="Brain 尚未就绪") from e
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("获取活跃任务失败")
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e
@@ -144,6 +154,10 @@ async def omega_process(
         brain = get_brain()
         result = await brain.process_message(source=source, message=message)
         return result.to_dict()
+    except OwnerLoopNotReady as e:
+        raise HTTPException(status_code=503, detail="Brain 尚未就绪") from e
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("Brain API 消息处理失败")
         raise HTTPException(status_code=500, detail=_safe_error(e)) from e

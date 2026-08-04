@@ -111,10 +111,12 @@ function SidebarButton({
     <li>
       <button
         onClick={() => onNavigate(item.id)}
-        title={collapsed ? label : undefined}
+        title={label}
         className={clsx(
           'w-full flex items-center gap-3 rounded-xl transition-all duration-200 relative focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:outline-none',
-          collapsed ? 'px-0 py-3 justify-center' : 'px-4 py-3',
+          collapsed
+            ? 'px-0 py-3 justify-center'
+            : 'px-0 py-3 justify-center sm:px-4 sm:justify-start',
         )}
         style={{
           fontFamily: 'var(--font-display)',
@@ -153,7 +155,7 @@ function SidebarButton({
             color: isActive ? 'var(--accent-cyan)' : 'rgba(255,255,255,0.5)',
           }}
         />
-        {!collapsed && <span className="truncate">{label}</span>}
+        {!collapsed && <span className="hidden truncate sm:inline">{label}</span>}
       </button>
     </li>
   );
@@ -201,7 +203,7 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
     <aside
       className={clsx(
         'transition-all duration-300 flex flex-col relative z-10',
-        sidebarCollapsed ? 'w-[56px]' : 'w-[240px]',
+        sidebarCollapsed ? 'w-[56px]' : 'w-[56px] sm:w-[240px]',
       )}
       style={{
         background: 'var(--sidebar)',
@@ -224,7 +226,7 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
             <span className="text-sm">🦞</span>
           </div>
           {!sidebarCollapsed && (
-            <div className="flex flex-col">
+            <div className="hidden flex-col sm:flex">
               <span
                 className="font-display font-bold leading-tight"
                 style={{ fontSize: '14px', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}
@@ -261,7 +263,7 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
           <>
             <div className="my-2 mx-2 h-px" style={{ background: 'var(--glass-border)' }} />
             {!sidebarCollapsed && (
-              <div className="px-2 py-1 mb-1">
+              <div className="hidden px-2 py-1 mb-1 sm:block">
                 <span
                   className="font-mono uppercase"
                   style={{ fontSize: '10px', letterSpacing: '1.5px', color: 'var(--accent-cyan)', opacity: 0.5 }}
@@ -292,7 +294,8 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
       >
         {/* 系统状态指示 */}
         {!sidebarCollapsed ? (
-          <div className="flex items-center gap-2 px-2 py-1.5 mb-2 rounded-lg"
+          <>
+          <div className="hidden items-center gap-2 px-2 py-1.5 mb-2 rounded-lg sm:flex"
             style={{ background: 'rgba(255,255,255,0.02)' }}
           >
             <span className={isOnline ? 'status-dot-green' : 'status-dot-red'} />
@@ -308,6 +311,10 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
             </span>
             )}
           </div>
+          <div className="flex justify-center py-2 mb-1 sm:hidden">
+            <span className={isOnline ? 'status-dot-green' : 'status-dot-red'} />
+          </div>
+          </>
         ) : (
           <div className="flex justify-center py-2 mb-1">
             <span className={isOnline ? 'status-dot-green' : 'status-dot-red'} />
@@ -315,16 +322,19 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
         )}
 
         {/* DEV 模式开关 + 折叠按钮 */}
-        <div className={clsx('flex items-center', sidebarCollapsed ? 'flex-col gap-2' : 'gap-1')}>
+        <div className={clsx(
+          'flex items-center',
+          sidebarCollapsed ? 'flex-col gap-2' : 'flex-col gap-2 sm:flex-row sm:gap-1',
+        )}>
           {/* DEV 开关 */}
           <button
             onClick={toggleDevMode}
             title={devMode ? t('sidebar.devModeOn') : t('sidebar.devModeOff')}
-            className="flex items-center justify-center rounded-lg transition-all duration-200 focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:outline-none"
+            className={clsx(
+              'flex h-8 w-8 items-center justify-center rounded-lg p-0 transition-all duration-200 focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:outline-none',
+              !sidebarCollapsed && 'sm:w-auto sm:px-[10px]',
+            )}
             style={{
-              width: sidebarCollapsed ? 32 : 'auto',
-              height: 32,
-              padding: sidebarCollapsed ? 0 : '0 10px',
               background: devMode ? 'rgba(0, 212, 255, 0.1)' : 'transparent',
               color: devMode ? 'var(--accent-cyan)' : 'var(--text-disabled)',
               border: devMode ? '1px solid rgba(0, 212, 255, 0.15)' : '1px solid transparent',
@@ -345,13 +355,13 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
             }}
           >
             <Terminal size={12} />
-            {!sidebarCollapsed && <span className="ml-1">DEV</span>}
+            {!sidebarCollapsed && <span className="ml-1 hidden sm:inline">DEV</span>}
           </button>
 
           {/* 用户头像区域（三击解锁 dev） */}
           {!sidebarCollapsed && (
             <button
-              className="flex items-center gap-2 flex-1 min-w-0 rounded-lg px-2 py-1 transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:outline-none"
+              className="hidden items-center gap-2 flex-1 min-w-0 rounded-lg px-2 py-1 transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:outline-none sm:flex"
               style={{ color: 'var(--text-tertiary)' }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
@@ -376,7 +386,7 @@ export function Sidebar({ currentPage, onNavigate, serviceStatus }: SidebarProps
           {/* 折叠按钮 */}
           <button
             onClick={toggleSidebar}
-            className="flex items-center justify-center w-8 h-8 rounded-lg transition-colors duration-200 flex-shrink-0 focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:outline-none"
+            className="hidden items-center justify-center w-8 h-8 rounded-lg transition-colors duration-200 flex-shrink-0 focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:outline-none sm:flex"
             style={{ color: 'var(--text-tertiary)' }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
