@@ -13,6 +13,35 @@ AUTHORITATIVE_DOCS=(
 )
 PROJECT_MAP="$DOCS_DIR/001-project-map.md"
 
+# 文档门禁必须能在最小 CI 镜像运行，优先使用 rg，缺失时回退到 POSIX 常见的 grep。
+search_fixed() {
+  local pattern="$1"
+  shift
+  if command -v rg >/dev/null 2>&1; then
+    rg -Fq -- "$pattern" "$@"
+  else
+    grep -Fq -- "$pattern" "$@"
+  fi
+}
+
+search_regex_stdin() {
+  local pattern="$1"
+  if command -v rg >/dev/null 2>&1; then
+    rg -q -- "$pattern"
+  else
+    grep -Eq -- "$pattern"
+  fi
+}
+
+extract_repository_refs() {
+  local pattern="\`(packages|apps|scripts|docs|\\.github)/[^\`[:space:]]+\`"
+  if command -v rg >/dev/null 2>&1; then
+    rg -o --no-filename "$pattern" "${AUTHORITATIVE_DOCS[@]}"
+  else
+    grep -Eho -- "$pattern" "${AUTHORITATIVE_DOCS[@]}"
+  fi
+}
+
 report_failure() {
   printf '❌ %s\n' "$1" >&2
   FAILED=1
@@ -94,8 +123,7 @@ while IFS= read -r ref; do
     MISSING_REFS="${MISSING_REFS}${MISSING_REFS:+$'\n'}$ref"
   fi
 done < <(
-  rg -o --no-filename '\`(?:packages|apps|scripts|docs|\.github)/[^\`[:space:]]+\`' "${AUTHORITATIVE_DOCS[@]}" \
-    | sort -u
+  extract_repository_refs | sort -u
 )
 if [[ -n "$MISSING_REFS" ]]; then
   report_failure "权威文档引用了不存在的仓库路径：\n$MISSING_REFS"
@@ -108,7 +136,7 @@ MUTABLE_INSTALL_SPECS=(
   'open-computer-use@latest'
 )
 for spec in "${MUTABLE_INSTALL_SPECS[@]}"; do
-  if rg -Fq "$spec" "${AUTHORITATIVE_DOCS[@]:0:3}"; then
+  if search_fixed "$spec" "${AUTHORITATIVE_DOCS[@]:0:3}"; then
     report_failure "当前架构/注册表/运维文档仍包含可变安装规格：$spec"
   fi
 done
@@ -124,7 +152,7 @@ for required_fact in \
   'tag@sha256' \
   'make clean-install-check' \
   'docs/086-release-evidence.md'; do
-  if ! rg -Fq -- "$required_fact" "${AUTHORITATIVE_DOCS[@]:0:3}"; then
+  if ! search_fixed "$required_fact" "${AUTHORITATIVE_DOCS[@]:0:3}"; then
     report_failure "权威文档缺少当前发布门事实：$required_fact"
   fi
 done
@@ -138,7 +166,7 @@ check_registered_line_count() {
   local expected_row
   actual_lines="$(wc -l < "$ROOT_DIR/$source_path" | tr -d ' ')"
   printf -v expected_row "| %s | \`%s\` | %s |" "$module_name" "$registry_path" "$actual_lines"
-  if ! rg -Fq -- "$expected_row" "$DOCS_DIR/006-registries.md"; then
+  if ! search_fixed "$expected_row" "$DOCS_DIR/006-registries.md"; then
     report_failure "模块注册行数与源码不一致：$source_path 实际 $actual_lines 行"
   fi
 }
@@ -157,7 +185,7 @@ PROJECT_STRUCTURE="$(awk '
   in_section && /^---$/ { exit }
   in_section { print }
 ' "$PROJECT_MAP")"
-if printf '%s\n' "$PROJECT_STRUCTURE" | rg -q '\([0-9][0-9,]*[[:space:]]*(行|文件)'; then
+if printf '%s\n' "$PROJECT_STRUCTURE" | search_regex_stdin '\([0-9][0-9,]*[[:space:]]*(行|文件)'; then
   report_failure "项目结构图包含易漂移的手写行数或文件数；请只记录稳定职责，由命令实时生成规模数据"
 fi
 
