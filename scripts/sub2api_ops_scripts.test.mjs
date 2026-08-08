@@ -107,6 +107,7 @@ test('充值页只使用固定公开整店且 WebUI 更新只能进入固定 roo
   assert.match(patchContent, /v-if="isJiyuRechargePage" class="jiyu-recharge-shell"/);
   assert.match(patchContent, /height: calc\(100dvh - 64px\)/);
   assert.doesNotMatch(patchContent, /height: calc\(100dvh - 64px -/);
+  assert.match(patchContent, /@media \(max-width: 640px\)[\s\S]*\.jiyu-recharge-open[\s\S]*display: none/);
   assert.match(patchContent, /:src="JIYU_RECHARGE_URL"/);
   assert.doesNotMatch(patchContent, /^\+.*buildEmbeddedUrl\([\s\S]*JIYU_RECHARGE_URL/m);
   assert.match(content, /StandardInput=socket/);

@@ -1102,7 +1102,7 @@ index 8006695..8bab495 100644
    if (slug) {
      fetchAndRenderMarkdown(slug)
    } else {
-@@ -374,6 +401,45 @@ onUnmounted(() => {
+@@ -374,6 +401,51 @@ onUnmounted(() => {
  </script>
 -
 +
@@ -1130,6 +1130,12 @@ index 8006695..8bab495 100644
 +  height: 100%;
 +  border: 0;
 +  background: #ffffff;
++}
++
++@media (max-width: 640px) {
++  .jiyu-recharge-open {
++    display: none;
++  }
 +}
 +
 +@media (min-width: 768px) {
