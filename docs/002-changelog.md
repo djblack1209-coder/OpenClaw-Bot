@@ -15,10 +15,13 @@
 - 真实调用保留失败事实：渠道A返回上游 502，渠道B专用 Key 返回 401；未生成图片、未伪造绿色状态，也未把不可用能力公开为已闭环。
 - 新增锁定官方 MCP SDK `1.30.0` 的本机生图服务和一键安装器，替换 CC Switch 两个失效旧条目；Key 只从环境变量或 macOS 钥匙串读取，付费 POST 不自动重试，生产依赖审计为 0。
 - 将 WebUI 更新方案实现为 GitHub Actions 兼容包、SHA-256/大小清单、固定域名 root-only 代理和原子暂存；另起 systemd 任务在重启后验证运行哈希与健康状态，失败或 10 分钟未重启会恢复二进制、VERSION 与 PostgreSQL。保留旧版本安全失败关闭，待首个发布包与新后端部署后再启用。
+- 合并 Dependabot 的 `h2 4.4.1` 与 `pypdf 6.15.0` 双平台哈希锁更新，并补齐 `hpack 4.2.0` 兼容约束；删除会持续创建旧 New-API 同步分支的定时工作流，冷回滚研究仍可显式运行 `make new-api-sync`，生产继续只使用 Sub2API。
 ### 文件变更
 - `.github/workflows/sub2api-jiyu-compat.yml` — 从官方标签应用 JIYU 补丁、跑聚焦门、构建 ARM64 包并发布校验清单。
+- New-API Scheduled Sync workflow — 删除已与 Sub2API 生产架构冲突的自动分支生成任务。
 - `scripts/sub2api_jiyu_update_broker.sh`、`scripts/sub2api_oracle_manage.sh`、`scripts/sub2api-jiyu-v0.1.172.patch` — 受管更新代理、暂存/启用命令和 WebUI 后端入口。
 - `scripts/jiyu-image-mcp/`、`scripts/install_jiyu_image_mcp.sh` — 锁定依赖的生图 MCP 与 CC Switch/钥匙串安装入口。
+- `packages/clawbot/requirements.txt`、`requirements-lock.txt`、`requirements-lock-macos.txt` — `h2`/`pypdf` 安全版本和双平台哈希同步。
 - `docs/006-registries.md`、`docs/007-operations.md`、`docs/009-health.md`、`docs/053-jiyu-growth-payment-image-update-plan.md`、`docs/087-jiyu-image-mcp-guide.md`、`docs/012-handoff.md` — 同步合同、操作步骤、风险和交接。
 ### 验证
 - JIYU 补丁在官方 `v0.1.172` 干净提交上通过 `git apply --check`；上游更新服务 unit 用例 `1/1`、排序/端点/CC Switch 前端用例 `13/13`、Vue 类型检查、运维脚本合同 `4/4`、工作流 YAML 与文档门均通过。
@@ -3369,7 +3372,7 @@
 - 推送后复验：仓库级 Actions 权限从只读改为 write 并允许创建 PR；`New-API Scheduled Sync` run `25588894721` 已通过全部步骤，并创建 `codex/new-api-scheduled-sync` 到 `main` 的 PR #1。
 
 ### 文件变更
-- `.github/workflows/new-api-sync.yml` — 为 compose 校验注入 CI 占位 token，并只把退出码 2 当作需要同步。
+- 当时的 New-API Scheduled Sync workflow — 为 compose 校验注入 CI 占位 token，并只把退出码 2 当作需要同步；该 workflow 后续随 Sub2API 切换删除。
 - `scripts/sync_new_api_upstream.sh` — `check` 模式用退出码 2 表达版本漂移。
 - `docs/002-changelog.md` / `docs/009-health.md` — 登记 GitHub Actions 根因、修复和剩余 New-API 生产升级风险。
 
@@ -3978,7 +3981,7 @@
 - 验证结果: Frist-API `npm test` 113/113 通过；聚焦 New-API/Codex 回归 5/5 通过；`make new-api-check` 确认当前仍为最新 `v1.0.0-rc.2`；`docker compose -f docker-compose.newapi.yml config` 通过。
 
 ### 文件变更
-- `.github/workflows/new-api-sync.yml` — 新增 New-API 定时同步 PR 自动化
+- 当时的 New-API Scheduled Sync workflow — 新增 New-API 定时同步 PR 自动化；该 workflow 后续随 Sub2API 切换删除
 - `apps/frist-api/server/newApiBridge.js` — 新增 New-API 业务桥接层
 - `apps/frist-api/server/server.js` — 接入桥接层，保留本地业务逻辑兜底
 - `apps/frist-api/tests/server.test.mjs` — 覆盖 New-API dashboard/token/import/gateway 闭环

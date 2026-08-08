@@ -508,7 +508,7 @@
 | 品牌补丁 | `new-api-brand-patch` / `apply_new_api_brand_patch.sh` | `make new-api-brand-patch` | `scripts/patches/new-api-cc-brand.patch` 是 CC中转品牌修改的可维护基线；submodule 保持上游干净状态，升级后先检查兼容，再按需应用补丁 |
 | 本机启动 | `new-api-up` / `frist-api-up` | `Makefile` | `make new-api-up` 先备份 `data/newapi` 再启动 QuantumNous/new-api；`make frist-api-up` 先运行本机桥接配置，再同时启动 New-API 与 Frist-API |
 | 本机桥接配置 | `setup_local_newapi_bridge.mjs` | `scripts/setup_local_newapi_bridge.mjs` | 从 `data/newapi/one-api.db` 读取已生成 access token 用户，写入 `.env` 的 Frist-API/New-API 桥接变量；密钥不打印到终端 |
-| 定时同步 | `New-API Scheduled Sync` | `.github/workflows/new-api-sync.yml` | 每天检查最新 release，落后时自动开 `codex/new-api-scheduled-sync` PR；不会直接升级生产数据库 |
+| New-API 冷回滚同步 | `make new-api-check` / `make new-api-sync` | 人工显式执行 | 自动创建分支的定时 workflow 已随生产切换到 Sub2API 删除；旧底座研究不得自动恢复服务或生产数据库 |
 | Frist-API 桥接 | `newApiBridge.js` | `apps/frist-api/server/newApiBridge.js` | 通过共享 New-API 管理账号承接看板、Token、日志、兑换和可选网关代理；本地 runtime 保存 `token_id → customer_id` 归属，看板/日志/更新/删除/导入按归属过滤。创建 Key 先持久化人民币分预留，再创建零额度上游 Token；只有归属落盘后才激活换算后的 New-API units，失败会撤销暂存 Token 并回滚余额。Frist `/v1` 也按 owner 完整性、唯一用户、active 状态和上游 finite/enabled/正余额共同鉴权；历史无归属或无限 Token 默认隔离。Oracle Frist 调用 `127.0.0.1:13000`，Apache 主域仍直接代理 New-API |
 | 迁移/回滚 | `frist_api_newapi_migration_dry_run.mjs` | `scripts/frist_api_newapi_migration_dry_run.mjs` | 默认只读 Frist-API runtime；`--package` 生成带时间戳的 runtime 备份、幂等迁移计划和回滚脚本；2026-07-03 已授权并执行生产 `--apply`，回滚目录在服务器 `/opt/frist-api/backups/newapi-migration-20260703T005433Z` |
 | 历史 Token 归属映射 | `frist_api_newapi_ownership_map.mjs` | `scripts/frist_api_newapi_ownership_map.mjs` | 只接受显式 `--token-id + --user-id + --reason`，默认 dry-run；`--apply` 还必须提供 `--newapi-db`，用 `sqlite3 -readonly` 验证目标 Token 为 `unlimited_quota=0` 且有限额度为正。从读取到备份、原子写入全程持有同目录独占锁，已有锁、未知用户和已有归属一律拒绝，不按邮箱、名称或顺序自动猜测。生产 Token 1–9 当前全是无限 Token，全部不映射进 Frist，也不禁用/迁移，客户改为重建有限 Key |
@@ -992,6 +992,7 @@
 | 包/区域 | 版本/动作 | 用途 | 说明 |
 |---|---|---|---|
 | `@modelcontextprotocol/sdk` | `1.30.0`，npm lockfile 固定 | JIYU 生图 stdio MCP | 安装时执行 `npm ci --omit=dev --ignore-scripts`；只暴露单图工具，Key 从环境变量或 macOS 钥匙串读取，不把凭据写入 CC Switch；升级后生产依赖审计为 0 |
+| `h2` / `hpack` / `pypdf` | `4.4.1` / `4.2.0` / `6.15.0`，Linux 与 macOS 哈希锁同步 | ClawBot HTTP/2 与 PDF 解析 | 合并 Dependabot 安全更新并补齐 `h2` 必需的 `hpack>=4.2`；`pypdf` 直接依赖下限同步为 `>=6.15.0,<7.0.0`，不改变业务接口 |
 
 
 ## OSS 安全依赖收口 (2026-06-22)
