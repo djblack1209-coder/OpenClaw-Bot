@@ -37,18 +37,32 @@ jobs:
           esac
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-      - name: Stop when this tag was already adapted
+      - name: Resolve immutable compatibility release
         id: existing
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: jiyu-${{ steps.release.outputs.tag }}
+          BASE_RELEASE_TAG: jiyu-${{ steps.release.outputs.tag }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "${RELEASE_TAG} already exists"
-            echo "skip=true" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          release_tag="$BASE_RELEASE_TAG"
+          if gh release view "$BASE_RELEASE_TAG" >/dev/null 2>&1; then
+            if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+              release_tag="${BASE_RELEASE_TAG}-r${GITHUB_RUN_ID}"
+              if gh release view "$release_tag" >/dev/null 2>&1; then
+                echo "immutable revision ${release_tag} already exists" >&2
+                exit 1
+              fi
+              echo "base release exists; publishing immutable revision ${release_tag}"
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "${BASE_RELEASE_TAG} already exists"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+            fi
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
+          echo "release_tag=${release_tag}" >> "$GITHUB_OUTPUT"
 
       - name: Clone official source at the resolved tag
         if: steps.existing.outputs.skip != 'true'
@@ -101,13 +115,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           UPSTREAM_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_TAG: ${{ steps.existing.outputs.release_tag }}
         run: |
           set -euo pipefail
           version="v${UPSTREAM_TAG#v}-jiyu.${GITHUB_RUN_ID}"
-          release_tag="jiyu-${UPSTREAM_TAG}"
           sha256="$(sha256sum sub2api-jiyu-linux-arm64 | awk '{print $1}')"
           size="$(wc -c < sub2api-jiyu-linux-arm64 | tr -d ' ')"
-          artifact_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${release_tag}/sub2api-jiyu-linux-arm64"
+          artifact_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/sub2api-jiyu-linux-arm64"
           jq -n \
             --arg version "$version" \
             --arg upstream_version "$UPSTREAM_TAG" \
@@ -116,7 +130,7 @@ jobs:
             --argjson size "$size" \
             '{schema_version:1,version:$version,upstream_version:$upstream_version,platform:"linux",arch:"arm64",artifact_url:$artifact_url,sha256:$sha256,size:$size}' \
             > jiyu-update-manifest.json
-          gh release create "$release_tag" sub2api-jiyu-linux-arm64 jiyu-update-manifest.json \
+          gh release create "$RELEASE_TAG" sub2api-jiyu-linux-arm64 jiyu-update-manifest.json \
             --title "JIYU compatibility package ${UPSTREAM_TAG}" \
             --notes "Built from ${UPSTREAM_TAG} with the reviewed JIYU patch; install only through the root broker." \
             --prerelease \

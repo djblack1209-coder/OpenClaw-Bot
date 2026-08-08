@@ -7,6 +7,7 @@ import { test } from 'node:test';
 const manager = 'scripts/sub2api_oracle_manage.sh';
 const broker = 'scripts/sub2api_jiyu_update_broker.sh';
 const compatibilityWorkflow = '.github/workflows/sub2api-jiyu-compat.yml';
+const compatibilityPatch = 'scripts/sub2api-jiyu-v0.1.172.patch';
 const brandLogo = 'scripts/assets/jiyu-ai-logo-email.png';
 
 test('Sub2API 管理入口可执行且 Bash 语法有效', async () => {
@@ -40,6 +41,7 @@ test('充值页无 CSP iframe，WebUI 更新只能进入固定 root 代理', asy
   const content = await readFile(manager, 'utf8');
   const brokerContent = await readFile(broker, 'utf8');
   const workflowContent = await readFile(compatibilityWorkflow, 'utf8');
+  const patchContent = await readFile(compatibilityPatch, 'utf8');
   assert.doesNotMatch(content, /<iframe/i);
   assert.doesNotMatch(content, /window\.html/);
   assert.match(content, /LocationMatch "\^\/api\/v1\/admin\/system\/\(update\|rollback\)\$"/);
@@ -49,6 +51,11 @@ test('充值页无 CSP iframe，WebUI 更新只能进入固定 root 代理', asy
   assert.match(content, /JIYU-RESPONSES-WEBSOCKET/);
   assert.match(content, /upgrade=websocket retry=0 timeout=120/);
   assert.match(content, /responses-websocket/);
+  assert.match(content, /GATEWAY_OPENAI_WS_MODE_ROUTER_V2_ENABLED=true/);
+  assert.match(content, /openai-ws-http-bridge/);
+  assert.match(content, /openai-ws-legacy/);
+  assert.match(content, /set_openai_ws_mode_router true/);
+  assert.match(content, /set_openai_ws_mode_router false/);
   assert.match(brokerContent, /\[\[ "\$#" -eq 0 \]\]/);
   assert.match(brokerContent, /sha256sum/);
   assert.match(brokerContent, /MAX_ARTIFACT_BYTES/);
@@ -57,7 +64,14 @@ test('充值页无 CSP iframe，WebUI 更新只能进入固定 root 代理', asy
   assert.doesNotMatch(brokerContent, /eval |bash -c|sh -c/);
   assert.match(workflowContent, /go test -tags embed \.\/internal\/web/);
   assert.match(workflowContent, /go build -tags embed/);
+  assert.match(workflowContent, /EVENT_NAME: \$\{\{ github\.event_name \}\}/);
+  assert.match(workflowContent, /release_tag="\$\{BASE_RELEASE_TAG\}-r\$\{GITHUB_RUN_ID\}"/);
+  assert.match(workflowContent, /RELEASE_TAG: \$\{\{ steps\.existing\.outputs\.release_tag \}\}/);
   assert.match(workflowContent, /gh release upload jiyu-latest jiyu-update-manifest\.json --clobber/);
+  assert.match(patchContent, /diff --git a\/frontend\/src\/views\/admin\/AccountsView\.vue/);
+  assert.match(patchContent, /-function accountHomepageUrl\(row: Account\): string/);
+  assert.doesNotMatch(patchContent, /^\+.*accountHomepageUrl/m);
+  assert.doesNotMatch(patchContent, /^\+.*:href="accountHomepageUrl/m);
 });
 
 test('JIYU 图形 Logo 是 512 像素 PNG', async () => {

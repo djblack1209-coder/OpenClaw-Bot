@@ -4,6 +4,28 @@
 
 ---
 
+## [2026-08-08 15:00] JIYU Codex WS 闭环与源站收口取证
+
+### 本次完成了什么
+- 启用官方 OpenAI WS 模式路由，四个 OpenAI 文本 API Key 账号经真实管理 WebUI 保存为 `http_bridge`，两个生图账号保持 `off`；部署脚本增加启用与回滚命令。
+- 原始 Responses WebSocket 和 Codex `0.147.0` 均真实成功；站内新增第 9、10 条用量，Codex 记录为 `openai_ws_mode=true`，首 Token 2482 ms、服务端总时长 2964 ms。
+- 渠道A Claude 账号 #2 根因确认为上游分组拒绝 `/v1/messages`，继续保持 error 和停调度。08-08 的 25 次 503 已全部归因，05:04 后无新增。
+- 发现管理端账号名称仍链接真实供货域名；JIYU 补丁已改为普通文本，保持账号编辑和 Anthropic/OpenAI/Grok 协议生态标签不变，等待受管兼容包发布验收。
+
+### 未完成的工作
+- 渠道A Claude 需上游恢复 Messages 协议，或经业务确认后临时隐藏公开分组；未擅自改线路或用户可见行为。
+- 源站第一阶段只应把 443 收口到 Cloudflare CIDR；80 被同机直连 ACME HTTP-01 使用，需迁移 DNS-01 后再评估。防火墙仍待老板确认。
+- 生图 502/401、链动小铺合规、Turnstile 开放注册前验收继续保持原阻塞条件。
+
+### 需要注意的坑
+- 永久测试用户和 10 条真实用量不得删除；任何密码、Key、Token、Cookie 不得输出、截图或入仓库。
+- Codex CLI 本次总墙钟时间包含本机技能/MCP 初始化，服务端真实处理只有 2964 ms；不要把本机启动噪声误判为 JIYU 转发延迟。
+- 不能直接封共享主机 80/443；必须先安排自动回滚并验证三个 HTTPS vhost 和直连 ACME 依赖。
+
+### 当前系统状态
+- 生产 `v0.1.172-jiyu.31237926226`；Sub2API、Redis、Apache active，四个文本账号 WS HTTP bridge 生效。
+- P0 为 0；Codex WS P1 已关闭，仍未关闭 P1 为 HI-1001、HI-1005。
+
 ## [2026-08-08 14:10] JIYU 永久测试用户、真实客户端与边缘防护
 
 ### 本次完成了什么
@@ -95,22 +117,3 @@
 - Sub2API、专用 Redis、更新检查 timer、每日备份 timer 均 active，生产健康检查通过。
 - 链动小铺商品为 7 个下架草稿；充值中心仍不含链动购买链接。
 - 工作树含本轮 JIYU/闲鱼改动，最终提交和只保留 `main` 尚未执行。
-
-## [2026-05-04 12:00] Frist-API 清理提交前交接
-
-### 本次完成了什么
-- Frist-API 已完成 Workbench UI、New-API 桥接、DeepSeek v4 默认模型、登录免验证码、注册挑战增强、CC Switch/Codex 导入和美元计价等前序改动。
-- 本轮补齐后端不可用时的用户恢复入口：工作台会显示离线恢复条，并提供一键重新连接。
-- 文档治理已归集到 `docs/` 根目录编号文件，旧散落文档和历史 usecase 文档已进入本次清理范围。
-
-### 未完成的工作
-- 正式商业化仍需固定域名 HTTPS、真实支付回调、注册邮箱验证码/找回密码闭环、Turnstile/Redis 限流、管理员 2FA、数据库迁移、备份监控和真实 DeepSeek Key 在 Codex 桌面端端到端实测。
-- New-API 已作为上游 submodule 和桥接层接入，但历史用户、余额、Key、订单和日志迁移仍需单独演练。
-
-### 需要注意的坑
-- 不要把服务器密码、管理员入口码、管理员令牌、用户真实 Key、上游 Key 或运行时 JSON 写入仓库、文档或最终汇报。
-- `packages/new-api-upstream` 是上游 submodule，同步应走 `make new-api-check` / `make new-api-sync`，不要手工复制上游代码。
-
-### 当前系统状态
-- Frist-API 本地测试需要继续以 `cd apps/frist-api && npm test` 作为提交前验收。
-- New-API 同步检查需要继续以 `make new-api-check` 验证 GitHub latest release、submodule 指针和 Compose 镜像一致。

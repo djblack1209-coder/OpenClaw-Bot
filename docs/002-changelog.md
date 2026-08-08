@@ -5,6 +5,26 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
+## [2026-08-08] JIYU Codex WebSocket 桥接与源站收口取证
+> 领域: `backend` | `ai-pool` | `deploy` | `infra` | `docs`
+> 影响模块: `Sub2API`, `Codex`, `Responses WebSocket`, `Cloudflare`, `Oracle firewall`
+> 关联问题: HI-1000, HI-1001, HI-1002, HI-1005, HI-1006, HI-1007
+### 变更内容
+- 启用 Sub2API 官方 OpenAI WS 模式路由，通过管理 WebUI 把四个 OpenAI Pro/Plus 文本 API Key 账号设为 `http_bridge`；两个生图账号保持 `off`，未改上游地址、分组、定价或调度关系。
+- 管理脚本新增桥接启用和旧模式回滚入口，新安装默认启用模式路由；全局配置、账号配置和生产重载均有独立复核。
+- 原始 Responses WebSocket 完成模型输出，真实 Codex `0.147.0` 调用成功且站内记录为 WS 模式；永久测试账号累计 10 条用量，继续保留。
+- 明确渠道A Claude 根因为上游分组拒绝 `/v1/messages`，继续保持错误与停调度，不用假绿掩盖。
+- 复核源站共享业务后把防火墙方案修正为先收口 443；公网 80 因直连 ACME HTTP-01 暂时保留，待迁移 DNS-01 后再评估。未获确认前未应用防火墙。
+- 修复管理端账号列表隐私残留：账号名称不再链接或悬浮显示真实供货 `base_url`；编辑表单和 Anthropic/OpenAI/Grok 协议生态标签继续保留。
+- 修复兼容包同版本修订会被已有发布错误跳过：定时任务继续去重，手动修订改为独立不可变 `-r<run_id>` 标签，`jiyu-latest` 只移动清单，不覆盖旧二进制。
+### 文件变更
+- `.github/workflows/sub2api-jiyu-compat.yml`、`scripts/sub2api_oracle_manage.sh`、`scripts/sub2api-jiyu-v0.1.172.patch`、`scripts/sub2api_ops_scripts.test.mjs` — 不可变同版本修订、OpenAI WS 模式路由启用/回滚、账号列表供货域名隐藏和聚焦合同。
+- `docs/002-changelog.md`、`docs/006-registries.md`、`docs/007-operations.md`、`docs/009-health.md`、`docs/012-handoff.md`、`docs/086-release-evidence.md` — 同步真实客户端指标、渠道根因、5xx 归因和源站方案。
+### 验证
+- 运维脚本合同 `4/4`、Bash 语法和 diff 检查通过；生产 Sub2API active、`/health` 通过，四个文本账号重载后为 `http_bridge=true`，两个生图账号仍为 `off=false`。
+- 最小 WS 客户端首输出 4287 ms、总时长 4524 ms、缓存读取 3840/4395；真实 Codex 首 Token 2482 ms、服务端总时长 2964 ms、站内计费 `$0.087439`。
+- 08-08 的 25 次源站 503 全部归因于渠道A失败验证或发布重启，05:04 后没有新增；最新 main CI `31243427810` 为 5/5 成功。
+
 ## [2026-08-08] JIYU 永久测试用户、真实客户端基线与边缘防护
 > 领域: `backend` | `ai-pool` | `deploy` | `infra` | `docs`
 > 影响模块: `Sub2API`, `Claude Code`, `Codex`, `Responses API`, `Apache`, `Cloudflare`, `risk control`

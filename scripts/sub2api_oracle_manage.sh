@@ -360,6 +360,7 @@ SECURITY_URL_ALLOWLIST_ENABLED=true
 SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=false
 SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=false
 SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS=${UPSTREAM_ALLOWLIST_HOSTS}
+GATEWAY_OPENAI_WS_MODE_ROUTER_V2_ENABLED=true
 EOF
   chown root:root "$ENV_FILE"
   chmod 0600 "$ENV_FILE"
@@ -390,6 +391,41 @@ apply_upstream_allowlist() {
   systemctl restart "$SUB2API_SERVICE"
   wait_for_health 90 || fail "应用上游域名白名单后健康检查失败。"
   log "上游域名白名单已收紧为官方默认域名及 api.aigo0.com、www.huyunapi.com。"
+}
+
+set_openai_ws_mode_router() {
+  require_root
+  require_linux
+  [[ -f "$ENV_FILE" ]] || fail "找不到 Sub2API 环境配置: ${ENV_FILE}"
+
+  local enabled="$1"
+  [[ "$enabled" == "true" || "$enabled" == "false" ]] || fail "WS 模式路由开关只能是 true 或 false。"
+
+  local temporary_file
+  temporary_file="$(mktemp)"
+  awk -v enabled="$enabled" '
+    BEGIN { replaced = 0 }
+    /^GATEWAY_OPENAI_WS_MODE_ROUTER_V2_ENABLED=/ {
+      print "GATEWAY_OPENAI_WS_MODE_ROUTER_V2_ENABLED=" enabled
+      replaced = 1
+      next
+    }
+    { print }
+    END {
+      if (!replaced) print "GATEWAY_OPENAI_WS_MODE_ROUTER_V2_ENABLED=" enabled
+    }
+  ' "$ENV_FILE" >"$temporary_file"
+  chown root:root "$temporary_file"
+  chmod 0600 "$temporary_file"
+  mv -f "$temporary_file" "$ENV_FILE"
+
+  systemctl restart "$SUB2API_SERVICE"
+  wait_for_health 90 || fail "应用 OpenAI WS 模式路由配置后健康检查失败。"
+  if [[ "$enabled" == "true" ]]; then
+    log "OpenAI WS 模式路由已启用；API Key 账号需在 WebUI 中选择 HTTP 桥接。"
+  else
+    log "OpenAI WS 模式路由已关闭，已恢复旧版账号传输判定。"
+  fi
 }
 
 install_clean() {
@@ -1329,6 +1365,8 @@ usage() {
   upstream-allowlist    重新应用两个指定上游的安全域名白名单
   harden-apache      禁止浏览器直接更新或回滚生产二进制
   responses-websocket  修复 Codex Responses WebSocket 的 Apache 代理顺序
+  openai-ws-http-bridge  启用 API Key 账号的官方 HTTP 桥接模式路由
+  openai-ws-legacy       关闭模式路由，回滚到旧版账号传输判定
   cutover            把 jiyu.245334.xyz 从 New-API 切换到 Sub2API
   clean-apache       清理切换后遗留的 New-API HTML 品牌注入
   rollback-cutover   把域名恢复到旧 New-API
@@ -1390,6 +1428,12 @@ main() {
       ;;
     responses-websocket)
       repair_apache_responses_websocket_proxy
+      ;;
+    openai-ws-http-bridge)
+      set_openai_ws_mode_router true
+      ;;
+    openai-ws-legacy)
+      set_openai_ws_mode_router false
       ;;
     cutover)
       cutover_to_sub2api
