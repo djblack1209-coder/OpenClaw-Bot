@@ -5,7 +5,7 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
-## [2026-08-08] JIYU 充值专用嵌入候选与 CC Switch 下载区响应式修复
+## [2026-08-08] JIYU 充值专用全屏嵌入与 CC Switch 下载区响应式修复
 > 领域: `frontend` | `deploy` | `docs`
 > 影响模块: `充值中心`, `security.csp.policy`, `CC Switch 下载区`, `Sub2API 运维脚本`
 > 关联问题: HI-987, HI-991, HI-992
@@ -17,11 +17,13 @@
 - `scripts/sub2api-jiyu-v0.1.172.patch` — 固定店铺专用全内容区嵌入和响应式高度。
 - `scripts/sub2api_oracle_manage.sh` — 最小回退页、CSP 精确放行、响应式下载网格和生产自检。
 - `scripts/sub2api_ops_scripts.test.mjs` — 更新固定地址、CSP 与专用前端分支聚焦合同。
+- `scripts/assets/audit-jiyu-recharge-shop-after-desktop-20260808.png`、`scripts/assets/audit-jiyu-recharge-shop-after-mobile-20260808.png` — 充值中心生产双视口证据。
 - `scripts/assets/audit-jiyu-docs-downloads-after-desktop-20260808.png`、`scripts/assets/audit-jiyu-docs-downloads-after-mobile-20260808.png` — 文档下载区双视口证据。
 - `docs/002-changelog.md`、`docs/007-operations.md`、`docs/009-health.md` — 同步生产操作与剩余安全边界。
 ### 验证
-- 官方 `v0.1.172` 干净源码应用补丁后，前端 `vue-tsc --noEmit` 通过；Bash 语法和 4 项聚焦脚本合同通过。
-- 文档下载区已保存 `1440×1000` 与 `390×844` 真实截图。充值专用构建仍需 CI、生产发布和双视口真实浏览器验收，本条不把候选代码记为生产闭环。
+- 官方 `v0.1.172` 干净源码应用补丁后，前端 `vue-tsc --noEmit` 和生产构建通过；Bash 语法、ShellCheck、4 项聚焦脚本合同和文档检查通过。GitHub Actions `31260440018` 完成类型检查、嵌入前端门、Go 聚焦测试和 ARM64 构建。
+- 生产已发布 `v0.1.172-jiyu.31260440018`，运行二进制 SHA-256 与不可变发布清单一致，`/health` 和充值页均为 HTTP 200，CSP 只在 `frame-src` 出现一次 `https://pay.ldxp.cn`。
+- 真实 Chrome 在 `1440×1000` 记录 iframe `1176×936`，在 `390×844` 记录 `390×780`；两者均占满扣除 64px 顶栏后的内容区，不存在 Markdown/目录、URL 查询参数、横向页面溢出、Console 异常或失败网络请求，七档商品正文可见。
 
 ## [2026-08-08] JIYU Claude 透传、Passkey 与链动充值中心闭环
 > 领域: `frontend` | `backend` | `ai-pool` | `deploy` | `docs`
