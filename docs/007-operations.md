@@ -5,7 +5,7 @@
 
 ## 2026-08-08 当前主站：JIYU AI（Sub2API 底座）
 
-当前用户主站 `https://jiyu.245334.xyz` 的对外品牌为 `JIYU AI`，运行基于官方 Sub2API `v0.1.172` 固定提交构建的 `v0.1.172-jiyu.31250692935`。JIYU 改动以仓库补丁固化，WebUI 只安装通过聚焦门和完整性清单的 JIYU 兼容包，不会用官方原版覆盖定制。
+当前用户主站 `https://jiyu.245334.xyz` 的对外品牌为 `JIYU AI`，运行基于官方 Sub2API `v0.1.172` 固定提交构建的 `v0.1.172-jiyu.31260440018`。JIYU 改动以仓库补丁固化，WebUI 只安装通过聚焦门和完整性清单的 JIYU 兼容包，不会用官方原版覆盖定制。
 
 | 项目 | 当前值 |
 |---|---|
@@ -118,6 +118,7 @@ WebUI 更新方案 A 已在仓库和生产启用：`.github/workflows/sub2api-ji
 
 - 店铺昵称、公告、头像和自定义链接已统一为 JIYU AI；¥1/10/50/100/300/500/1000 七档商品已建立并使用同一 JY Logo，标题、详情和兑换步骤已保存。
 - 保证金账户已真实显示 ¥100；七档商品各导入 1 张既有兑换码并上架，七个公开页均显示“立即购买”。充值中心由 JIYU 前端对 `recharge-center` 专门嵌入固定公开整店页 `https://pay.ldxp.cn/shop/ZCUGEDMV`，不得经过通用 URL 参数拼接；受管重建命令为 `ssh oracle-arm1 'sudo /usr/local/sbin/openclaw-sub2api-manager recharge-center'`。
+- 专用嵌入必须在 `1440×1000` 与 `390×844` 记录 iframe 几何、查询参数、Console 和失败网络请求；当前验收尺寸分别为 `1176×936` 与 `390×780`，均等于可用内容区，查询参数和新增浏览器错误为零。
 - 重建命令会通过 Sub2API 原生 `security.csp.policy`，只在 `frame-src` 去重加入精确来源 `https://pay.ldxp.cn`，不会放宽 `script-src`、`connect-src` 或其他 CSP 指令。若链动后续返回 `X-Frame-Options` 或 `frame-ancestors` 阻止内嵌，停止使用 iframe 并报告，不得反代绕过。
 - 仍未执行真实购买。首笔 ¥1 实单必须在操作当时再次确认，再按“付款 → 自动发货 → 兑换到账 → 创建密钥 → CC Switch 导入 → 用量查询”完成闭环；任一步失败立即下架并保留交易证据。
 - Sub2API 支付与异步生图对象存储继续关闭：当前没有支付服务商回调/签名配置，也没有 JIYU 专用 S3 端点、存储桶和访问凭据。异步生图与备份共用 S3 客户端，但不得复用现有备份资源或为此擅自开通付费资源。
