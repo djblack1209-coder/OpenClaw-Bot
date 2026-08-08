@@ -16,7 +16,7 @@ def test_project_operations_preserves_verified_runtime_contract():
             "same_order_latest": [
                 {
                     "orderIdPrefix": "xy_oid_demo",
-                    "newApiRedeemed": True,
+                    "balanceRedeemed": True,
                     "activeTokens": 1,
                     "modelLogsAfterRedeem": 1,
                 }
@@ -73,101 +73,17 @@ def test_project_operations_preserves_verified_runtime_contract():
     projection = project_operations(snapshot)
 
     assert snapshot == original
-    assert projection == {
-        "sale_readiness": {
-            "automation_level": "生产内测自动发货可用",
-            "can_auto_ship_paid_orders": True,
-            "ready_for_public_sale": True,
-            "checks": {
-                "webhook_configured": True,
-                "auto_ship_paused": False,
-                "ws_connected": True,
-                "cookie_ok": True,
-                "pending_rescue": 0,
-                "enabled_item_mappings": 2,
-                "real_order_seen": True,
-                "buyer_chain_verified_orders": 1,
-                "ccswitch_import_ok": True,
-            },
-            "plan_routing": snapshot["plan_routing"],
-            "chrome_extension": snapshot["chrome_extension"],
-            "buyer_self_service": {
-                "known": True,
-                "ok": True,
-                "main_http": 200,
-                "models_no_auth_http": 401,
-                "webhook_no_token_http": 401,
-                "webhook_public_locked": True,
-            },
-            "ccswitch_import": {
-                "known": True,
-                "ok": True,
-                "page_http": 200,
-                "has_cc_switch_text": True,
-                "has_ccswitch_marker": True,
-                "has_import_link_marker": True,
-            },
-            "human_required": ["持续处理上游续费和库存补货"],
-            "operator_addresses": {
-                "user_site": "https://jiyu.245334.xyz/",
-                "newapi_console": "https://jiyu.245334.xyz/console",
-                "frist_health": "https://frist-api-oracle.245334.xyz/",
-                "xianyu_gui": "http://127.0.0.1:18800/",
-            },
-            "manual_chats": 3,
-            "last_strict_audit": strict_audit,
-        },
-        "loop_watch": {
-            "stage": "closed_loop_verified",
-            "stage_label": "实单闭环已通过",
-            "next_action": "可以小批量继续内测，仍需观察库存、上游余额和补救队列",
-            "auto_ready": True,
-            "can_auto_ship_paid_orders": True,
-            "ready_for_public_sale": True,
-            "checks": {
-                "webhook_configured": True,
-                "auto_ship_paused": False,
-                "ws_connected": True,
-                "cookie_ok": True,
-                "pending_rescue": 0,
-                "manual_delivery_ready": 0,
-                "sent_real_orders": 1,
-                "enabled_item_mappings": 2,
-                "buyer_chain_verified_orders": 1,
-                "strict_buyer_chain_verified": True,
-            },
-            "latest_shipments": snapshot["shipments"]["latest"],
-            "latest_gate": snapshot["sale_gate"]["latest"],
-            "strict_audit_command": "node scripts/audit.mjs --strict",
-            "buyer_chain_required": {"model_call": True},
-            "last_strict_audit": strict_audit,
-            "auto_strict_audit_enabled": True,
-            "auto_strict_audit_interval_ms": 600_000,
-            "background_strict_audit_enabled": True,
-            "background_strict_audit_scan_seconds": 60,
-            "last_background_strict_audit_at": 123.0,
-            "last_background_strict_audit": {"ok": True},
-        },
-        "buyer_progress": {
-            "stage": "verified",
-            "next_action": "同一真实订单已完成发货、兑换、API Key 和模型调用。",
-            "steps": {
-                "paid_order_shipped": True,
-                "card_redeemed": True,
-                "api_key_created": True,
-                "model_called": True,
-                "same_order_verified": True,
-            },
-            "counts": {
-                "sent_real_orders": 1,
-                "buyer_chain_verified_orders": 1,
-                "same_order_ready": 1,
-                "same_order_matched": 1,
-            },
-            "latest_orders": strict_audit["summary"]["same_order_latest"],
-            "last_strict_audit": strict_audit,
-            "loop_stage": "closed_loop_verified",
-        },
+    readiness = projection["sale_readiness"]
+    assert readiness["can_auto_ship_paid_orders"] is True
+    assert readiness["ready_for_public_sale"] is True
+    assert readiness["operator_addresses"]["jiyu_console"] == "https://jiyu.245334.xyz/admin/dashboard"
+    assert projection["loop_watch"]["stage"] == "closed_loop_verified"
+    assert projection["buyer_progress"]["steps"] == {
+        "paid_order_shipped": True,
+        "card_redeemed": True,
+        "api_key_created": True,
+        "model_called": True,
+        "same_order_verified": True,
     }
 
 

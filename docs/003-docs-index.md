@@ -1,7 +1,7 @@
 # OpenClaw 文档总索引
 
-> 最后更新: 2026-08-05
-> 总文件: 24 个（001-015 核心/附录 + 050-052 功能计划 + 080-086 报告/手册，083 为历史停用编号）
+> 最后更新: 2026-08-08
+> 总文件: 26 个（001-015 核心/附录 + 050-053 功能计划 + 080-087 报告/手册，083 为历史停用编号）
 
 ## 核心文档 (001-010)
 
@@ -35,6 +35,7 @@
 | 050 | `050-frist-api-86game-clone-commerce-plan.md` | Frist-API 86GameStore 风格后台、兑换码售卖闭环、渠道同步倍率和闲鱼发货计划 |
 | 051 | `051-jiyu-brand-production-plan.md` | CC中转品牌收口、域名/HTTPS、生产加固分期和生产内测验收 |
 | 052 | `052-intel-brief-master-plan.md` | Intel Brief 总体方案、开源轮子搬运规划、多服务器运行基线和分阶段验证路线 |
+| 053 | `053-jiyu-growth-payment-image-update-plan.md` | JIYU 生图渠道、MCP、链动充值和 WebUI 自助更新分阶段方案 |
 
 ## 报告/归档 (080-099)
 
@@ -46,6 +47,7 @@
 | 084 | `084-intel-brief-implementation-report.md` | Intel Brief Phase 0 / Phase B 历史验收证据汇总；当前状态以健康文档和变更日志为准 |
 | 085 | `085-intel-brief-design-qa.md` | 每日资讯 V2 方案 C + Top 3 + 候选 3 的视觉决策、同视口对比与 Telegram 验收边界 |
 | 086 | `086-release-evidence.md` | 全维度审计闭环的 CI、安全、供应链、灾备、桌面构建与截图证据 |
+| 087 | `087-jiyu-image-mcp-guide.md` | JIYU 生图专用 Key、CC Switch MCP 和可复制 AI 安装提示词小白教程 |
 
 ## 排除范围
 

@@ -19,7 +19,7 @@ SHELLCHECK_FILES := $(filter-out \
 	packages/clawbot/scripts/start_xianyu.sh, \
 	$(wildcard scripts/*.sh packages/clawbot/scripts/*.sh tools/launchagents/*.sh apps/frist-api/deploy/*.sh))
 
-.PHONY: test lint format typecheck docker clean help ci-local syntax-check docs-check shellcheck gitleaks-check dependency-audit rust-audit security-check clean-install-check supply-chain-check python-lock python-lock-check critical-coverage-check frist-api-test frist-api-dev frist-api-static frist-api-up frist-api-down frist-api-newapi-setup new-api-up new-api-down new-api-check new-api-sync new-api-brand-patch cc-seller-chrome cc-seller-bridge cc-seller-auto backup-run backup-schedule-install backup-schedule-status backup-schedule-uninstall backup-restore-drill tauri-rollback-check tauri-rollback
+.PHONY: test lint format typecheck docker clean help ci-local syntax-check docs-check shellcheck gitleaks-check dependency-audit rust-audit security-check clean-install-check supply-chain-check python-lock python-lock-check critical-coverage-check frist-api-test frist-api-dev frist-api-static frist-api-up frist-api-down frist-api-newapi-setup new-api-up new-api-down new-api-check new-api-sync new-api-brand-patch sub2api-check cc-seller-chrome cc-seller-bridge cc-seller-auto backup-run backup-schedule-install backup-schedule-status backup-schedule-uninstall backup-restore-drill tauri-rollback-check tauri-rollback
 
 ## ─── 帮助 ───
 help: ## 显示所有可用命令
@@ -145,6 +145,10 @@ new-api-sync: ## 同步 New-API submodule 指针和 docker-compose 镜像 tag �
 
 new-api-brand-patch: ## 在干净 New-API submodule 上应用 CC中转品牌补丁
 	scripts/apply_new_api_brand_patch.sh
+
+sub2api-check: ## 检查 Sub2API Oracle 部署脚本的语法与安全合同
+	bash -n scripts/sub2api_oracle_manage.sh
+	node --test scripts/sub2api_ops_scripts.test.mjs
 
 cc-seller-chrome: ## 启动 CC中转闲鱼卖家专用 Chrome，并打开插件加载目录
 	node scripts/cc_zhongzhuan_launch_seller_chrome.mjs --copy-token

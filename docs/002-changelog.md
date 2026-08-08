@@ -5,6 +5,126 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
+## [2026-08-08] JIYU 双端点、监控排序和生图 MCP 方案
+> 领域: `frontend` | `ai-pool` | `deploy` | `docs`
+> 影响模块: `Sub2API`, `channel monitor`, `API keys`, `CC Switch`, `JIYU update`
+> 关联问题: HI-985, HI-986, HI-994, HI-995, HI-996
+### 变更内容
+- 生产发布 `v0.1.172-jiyu.5`：渠道监控固定按渠道A五条、渠道B五条排列，第二列仅显示匿名渠道，不再混排或展示第三方供应商名称；真实正常、降级和错误状态保持不变。
+- “API 密钥”页固定同时展示 Claude 根端点和 ChatGPT `/v1` 端点；创建密钥弹窗选择分组后仍保留双端点说明，并默认勾选导入 CC Switch。
+- 修复 JIYU 定制版本与同一官方基础版比较时的虚假更新提示；官方二进制继续禁止直接覆盖定制补丁，WebUI 自助更新改为“CI 兼容包 + root-only 安装代理”推荐方案，等待架构确认后实施。
+- 确认 Sub2API 已原生支持 `/v1/images/generations`、生图权限、图片倍率和尺寸计价；确认本机两个旧生图 MCP 都指向不存在脚本，且两个现有上游配置只登记了文本模型，未把未知生图模型伪装为已同步。
+- 新增生图、充值和自助更新执行方案，以及面向小白的生图专用 Key + CC Switch stdio MCP 教程和可复制 AI 提示词。
+### 文件变更
+- `scripts/sub2api-jiyu-v0.1.172.patch` — 固化双端点、定制版更新提示、监控排序和匿名渠道列。
+- `docs/053-jiyu-growth-payment-image-update-plan.md` — 生图渠道、链动充值与 WebUI 更新分阶段方案。
+- `docs/087-jiyu-image-mcp-guide.md` — 生图专用 Key 和 MCP 小白教程。
+- `docs/003-docs-index.md`、`docs/007-operations.md`、`docs/009-health.md`、`docs/012-handoff.md` — 同步索引、生产事实、风险和交接。
+### 验证
+- EndpointPopover 聚焦测试 `2/2`、Vue 类型检查和 Vite 生产构建通过；补丁在干净的官方 `v0.1.172` 固定提交上通过 `git apply --check`。
+- ARM64 二进制构建和生产安装成功，管理脚本状态确认 Sub2API、专用 Redis、更新检查 timer、备份 timer 均 active，内网健康检查通过。
+- 真实 Chrome 重载确认 `v0.1.172-jiyu.5` 和 10 条监控顺序；表头为“渠道”，行值只显示渠道A/渠道B。
+
+## [2026-08-08] JIYU AI 生产审计、10 路渠道和新手密钥闭环
+> 领域: `frontend` | `ai-pool` | `deploy` | `infra` | `xianyu` | `docs`
+> 影响模块: `Sub2API`, `CC Switch`, `channel monitor`, `JIYU readiness`, `链动小铺`
+> 关联问题: HI-985, HI-986, HI-987, HI-988, HI-989
+### 变更内容
+- 将 10 个业务分组落为 10 个一对一渠道和 10 条真实监控，均保持 300 秒周期、±30 秒抖动；用户倍率继续严格等于对应上游倍率绝对增加 `0.05x`，渠道A OpenAI Plus 为 `0.06x → 0.11x`。
+- 基于官方 Sub2API `v0.1.172` 固定提交维护可重复应用的 JIYU 补丁，生产发布 `v0.1.172-jiyu.3`；自动更新改为只检查，定制版只允许显式构建发布并在健康失败时自动回滚。新建监控表单默认值与生产合同统一为 300±30 秒。
+- 创建密钥页按分组显示 Claude 根端点或 OpenAI `/v1` 端点，默认勾选“创建后立即导入 CC Switch”；首页只展示 JIYU AI、JY Logo、渠道A和渠道B，移除上游仓库入口并修复重复版本前缀。
+- 系统监控默认周期从遗留 60 秒同步为 300 秒，定制表单默认抖动为 ±30 秒；更新检查能识别“基于当前官方最新版的 JIYU 构建”，不再误报待升级。
+- 闲鱼/CC 运营投影升级为只读 readiness v2，真实反映 10 个渠道、10 条监控、倍率合同、库存和自动发货门，不用静态绿色掩盖异常。
+- 链动小铺资料已改为 JIYU AI 并建立 ¥1/10/50/100/300/500/1000 七档统一 Logo 商品草稿；平台规则禁止代理类服务，全部保持下架、零库存，未绕过审核、未执行真实付款，也未把无效链接写回充值中心。
+### 文件变更
+- `scripts/sub2api-jiyu-v0.1.172.patch` — 固化品牌、端点引导、CC Switch 导入和空状态修复。
+- `scripts/sub2api_oracle_manage.sh`、`scripts/sub2api_configure_jiyu_channels.mjs`、`scripts/sub2api_ops_scripts.test.mjs` — 固化检查式更新、构建发布、备份回滚和 10×10 配置合同。
+- `scripts/cc_zhongzhuan_readiness_audit.mjs`、`packages/clawbot/src/xianyu/operations_projection.py`、`packages/clawbot/src/xianyu/xianyu_admin.py` 及聚焦测试 — readiness v2 和真实运营门。
+- `scripts/assets/` — JY Logo 与不含凭据的审计截图。
+- `docs/001-project-map.md`、`docs/002-changelog.md`、`docs/006-registries.md`、`docs/007-operations.md`、`docs/009-health.md`、`docs/012-handoff.md` — 同步生产事实、风险和交接证据。
+### 验证
+- Sub2API 聚焦前端测试 `10/10`、Vue 类型检查、Vite 生产构建、补丁干净应用和 `make sub2api-check` 均通过；生产服务、Redis、更新检查和备份 timer 均 active，内网健康检查通过。
+- 闲鱼自动发货与 owner-loop 热点聚焦用例全绿；真实浏览器逐页检查用户端、管理端和系统设置 9 个标签，10 条监控页面同时显示正常、降级和错误状态。
+
+## [2026-08-07] JIYU AI 上游展示名称匿名化
+> 领域: `ai-pool` | `deploy` | `docs`
+> 影响模块: `Sub2API`, `accounts`, `groups`, `channels`, `channel monitors`, `audit logs`
+> 关联问题: HI-985
+### 变更内容
+- 将两个第三方上游在全站账号、分组、渠道、监控、备注、描述和后台审计记录中的展示名称统一替换为“渠道A”和“渠道B”，不再暴露供应商名称。
+- 仅调整展示文本；API Key、上游域名、倍率、分组关系、模型定价、可调度状态和监控周期均保持不变。
+### 文件变更
+- `docs/002-changelog.md`、`docs/006-registries.md`、`docs/007-operations.md`、`docs/009-health.md` — 统一匿名渠道口径和远端验证证据。
+### 验证
+- PostgreSQL 全部 public 表逐表扫描确认旧展示名称残留为 `0`；账号、分组、渠道和监控数量保持 `10 / 10 / 6 / 6`。
+- `make sub2api-check`、`make docs-check` 和 `git diff --check` 通过；管理端 WebUI 使用真实浏览器复核渠道显示。
+
+## [2026-08-07] JIYU AI 上游、定价、监控、邮箱与文档运营闭环
+> 领域: `ai-pool` | `deploy` | `frontend` | `docs`
+> 影响模块: `Sub2API`, `JIYU AI branding`, `channel pricing`, `channel monitor`, `SMTP`, `CC Switch docs`
+> 关联问题: HI-985, HI-986
+### 变更内容
+- 渠道A与渠道B各新建 5 个 JIYU 专用 Key，接入 10 个账号和 10 个独立分组；用户倍率统一为当前上游倍率绝对增加 `0.05x`，不复用历史上游 Key。
+- 建立 6 个 active 渠道并同步模型定价，建立 6 条 Claude/OpenAI/Grok 真实连通监控，统一为 300 秒周期和 ±30 秒抖动。
+- 渠道B的 5 个账号全部通过站内真实请求；渠道A的 Claude Kiro、OpenAI Pro、OpenAI Plus 通过。渠道A的 Claude 满血因上游组不支持 Anthropic 路由保持不可调度，监控继续如实记录 Grok/OpenAI 上游波动。
+- 完成通用设置、2026-08-07 登录条款、用户默认值和 Gmail SMTP；开放注册保持关闭、邮箱验证开启。测试邮件与真实邮箱绑定验证码接口均返回 200。
+- 邮箱绑定验证码、通知邮箱验证码和运维告警模板加入同域 JY 图形 Logo、验证码和有效期说明；保留既有深蓝、青绿、橙色视觉体系。
+- 左侧新增“文档”，提供 CC Switch v3.19.2 官方三平台下载、站内一键导入和手动地址；修复手机端目录侧栏遮挡正文。
+- 管理脚本新增 `brand-asset`，发布 512×512 PNG 到同域公开地址并随全新安装固化；上游白名单只增加两个指定域名，SSRF 私网防护不放宽。
+### 文件变更
+- `scripts/sub2api_oracle_manage.sh` — 固化图形 Logo 资源、手机文档样式、CC Switch 文档和上游白名单运维入口。
+- `scripts/assets/jiyu-ai-logo-email.png` — 邮件与文档使用的 512×512 JY 图形 Logo。
+- `scripts/sub2api_ops_scripts.test.mjs` — 增加品牌资源、文档和安全白名单合同测试。
+- `.gitignore` — 仅放行已确认的 JIYU AI 品牌 PNG，其他临时截图继续忽略。
+- `docs/002-changelog.md`、`docs/006-registries.md`、`docs/007-operations.md`、`docs/009-health.md` — 同步运营配置、已知上游限制和验证证据。
+### 验证
+- 渠道B的 Claude Kiro、Claude 满血、OpenAI Pro、OpenAI Plus、Grok 真实请求均返回内容；渠道A的 Claude Kiro、OpenAI Pro、OpenAI Plus 返回内容。
+- PostgreSQL 查询确认 10 个分组的 `user_rate - upstream_rate = 0.0500`，6 个渠道均 active、6 条监控均 enabled。
+- `/api/v1/pages/docs/images/jiyu-ai-logo.png` 返回 HTTP 200 `image/png`；手机 390×844 截图无目录遮挡。
+- `/api/v1/admin/settings/send-test-email` 与 `/api/v1/user/account-bindings/email/send-code` 均返回 HTTP 200。
+
+## [2026-08-07] CC中转切换为干净 Sub2API 底座并清理旧 New-API
+> 领域: `deploy` | `infra` | `docs`
+> 影响模块: `Sub2API`, `Oracle ARM`, `Apache`, `PostgreSQL`, `Redis`, `R2 backup`, `Tencent cold rollback`
+> 关联问题: HI-983, HI-984
+### 变更内容
+- 生产站 OEM 品牌改为 `JIYU AI`，副标题改为 `Unified AI API Gateway`；登录页、首页、后台侧边栏和浏览器标题统一从 PostgreSQL 公共设置读取，底层服务名、数据库名和官方升级来源继续使用 `sub2api` 技术标识。
+- 管理脚本新增可重复执行的 `brand` 命令，并在全新安装收口时自动应用品牌，避免未来重装或更新后回到默认站名。
+- 尝试调用本机 `86gamestore_image` MCP 的 `gpt-image-2`，MCP 启动正常但上游返回 `502 Upstream access forbidden`；保留失败证据后改用可编辑 SVG 生成 4 套 Logo 方案，并导出 PNG 到桌面 `JIYU AI Logos` 目录。
+- Oracle 主站 `jiyu.245334.xyz` 从 New-API 切换到官方 `Wei-Shaw/sub2api` `v0.1.171` ARM64 release；Sub2API 仅监听 `127.0.0.1:18080`，专用 Redis 监听 `127.0.0.1:16379`，PostgreSQL 使用独立 `sub2api` 数据库。
+- 全新安装没有迁移任何旧用户、API Key、渠道、兑换码、日志或上游凭据；数据库验收为 `users=1`（新管理员）、`accounts=0`、`api_keys=0`、`channels=0`、`usage_logs=0`。
+- 新增官方 release SHA-256 校验、升级前 PostgreSQL 备份、`flock` 并发锁、启动健康检查和失败自动回滚；`sub2api-update.timer` 每日检查，`sub2api-backup.timer` 每日做一致性备份。
+- 删除 Oracle 与腾讯云的旧 New-API SQLite、运行目录、环境密钥、二进制、systemd 服务、Docker 容器/镜像及同名本地备份；旧 R2 加密对象删除 19 个并重新生成不含 `one-api.db` 的加密备份。
+- 删除 Apache 旧 New-API HTML 品牌替换/标题注入，恢复 Sub2API 原生 CSP 页面；Frist-API 兼容服务仍保留，但其 New-API 桥接开关已落为 `0`。
+- 将唯一管理员邮箱更新为 `djblack1209@gmail.com`，密码使用 bcrypt 写入数据库并同步 root-only 环境文件与 macOS 钥匙串；更新前已创建 PostgreSQL 备份，旧本机钥匙串账号已删除。
+- 补充小白首次使用说明，明确“补号”入口为“账号管理 → 添加账号”，首次配置顺序为“分组管理 → 账号管理 → API 密钥”。
+### 文件变更
+- `scripts/sub2api_oracle_manage.sh` — 新增全新安装、收口、状态、检查、升级、备份、品牌恢复、切换、清理和旧底座永久清除入口。
+- `scripts/sub2api_ops_scripts.test.mjs` — 新增 Shell 管理脚本 7 项安全合同。
+- `Makefile` — 新增 `make sub2api-check`。
+- `docs/001-project-map.md`、`docs/006-registries.md`、`docs/007-operations.md`、`docs/009-health.md` — 同步当前底座与清理边界。
+### 验证
+- `make sub2api-check`：6 passed；ShellCheck、Bash 语法和 `git diff --check` 通过。
+- Oracle：Sub2API、专用 Redis、PostgreSQL、Apache、两个 Sub2API timer 均 active；`/health` 返回 `{"status":"ok"}`，`jiyu.245334.xyz` 首页/登录页 200，未授权 `/v1/models` 401。
+- 新管理员邮箱的公网登录接口实际返回 admin 角色和访问令牌；管理员密码未写入仓库，已存 macOS 钥匙串“CC中转 Sub2API 管理员”。
+- Playwright 截图：`output/playwright/sub2api-public-home-20260807.png`、`sub2api-public-home-mobile-20260807.png`、`sub2api-login-20260807.png`；桌面/移动首页和登录页无控制台错误。
+- PostgreSQL 备份恢复到临时数据库成功（`restore_check=ok users=1`）；手动触发 `sub2api-update.service` 返回“当前 v0.1.171 已是最新稳定版”。
+
+## [2026-08-07] 腾讯云失效 ClawBot 备用实例退役
+> 领域: `deploy` | `infra` | `docs`
+> 影响模块: `ClawBot VPS backup`, `failover timer`, `macOS LaunchAgent`, `Tencent shared services`
+> 关联问题: HI-982
+### 变更内容
+- 线上核验确认 macOS `ai.openclaw.clawbot-agent` 是唯一持续运行的主实例，腾讯云保存的主心跳已约 109 天未更新；旧 `clawbot-failover.timer` 每 30 秒尝试提升备用实例，而备用进程因缺失 Python 模块持续失败并累计大量重启。
+- 在服务器标准备份目录保存 service、timer、故障转移脚本和状态文件后，停用腾讯云 `clawbot.service` 与 `clawbot-failover.timer`，清除失效的提升状态但保留应用数据和回滚材料。
+- 腾讯云 `wechat-receiver`、`openclaw-cloud-control` 与 `sillytavern` 保持运行；本次不触碰 Oracle 上的 New-API/Frist，也不删除任何业务数据。
+### 验证
+- 腾讯云旧 ClawBot 与 failover timer 均为 `inactive/disabled`；Mac 主 LaunchAgent 为 `running`，PID 保持不变且 `last exit code = never exited`。
+- 状态页、EduMath 和 CC 中转公网健康探针均返回 HTTP 200；腾讯云其余三项共享业务仍为 active。
+- 腾讯云可用内存约 502 MiB（25.7%），比退役前释放部分压力但仍低于 30% 运维余量线，继续作为资源优化项，不伪装为已闭环。
+### 文件变更
+- `docs/001-project-map.md`、`docs/002-changelog.md`、`docs/009-health.md` — 收口单主实例与 VPS 备用边界。
+
 ## [2026-08-05] 全维度审计闭环：安全、供应链、架构与自动灾备
 > 领域: `backend` | `frontend` | `deploy` | `infra` | `docs` | `xianyu`
 > 影响模块: `HTTP/浏览器安全`, `Frist runtime`, `闲鱼管理面`, `Intel Brief`, `Docker`, `CI`, `本机灾备`, `AI 开发 SOP`

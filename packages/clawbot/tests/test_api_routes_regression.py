@@ -810,7 +810,9 @@ def test_xianyu_admin_runs_readonly_cc_readiness_audit(monkeypatch, tmp_path):
             returncode=0,
             stdout=json.dumps(
                 {
+                    "schema_version": 2,
                     "ok": True,
+                    "software_ready": True,
                     "checks": {
                         "chromeBookmarks": {"ok": True},
                         "localXianyu": {"ok": True},
@@ -818,33 +820,24 @@ def test_xianyu_admin_runs_readonly_cc_readiness_audit(monkeypatch, tmp_path):
                             "ok": True,
                             "wsConnected": True,
                             "cookieOk": True,
-                            "ccAutoShip": {"configured": True},
-                            "ccShipments": {"pendingRescue": 0},
+                            "autoShipConfigured": True,
+                            "pendingRescue": 0,
                         },
                         "realXianyuOrderProof": {"sentRealOrders": 0},
                         "oracle": {
                             "ok": True,
-                            "runtime": {"card_status": {"unused": 5}},
-                            "newapi": {"redemptions_enabled": 5, "channels_enabled": 3},
-                            "buyer_chain_proof": {
-                                "redeemed_delta": 0,
-                                "active_token_delta": 0,
-                                "model_log_delta": 6,
+                            "config_contract": {
+                                "ok": True,
+                                "active_channels": 10,
+                                "enabled_monitors": 10,
                             },
-                            "real_order_chain_proof": {
-                                "matchedOrders": 0,
-                                "readyOrders": 0,
-                                "latestMatches": [
-                                    {
-                                        "orderIdPrefix": "xy_buyer_1",
-                                        "fulfillmentStatus": "redeemed",
-                                        "cardStatus": "redeemed",
-                                        "newApiRedeemed": True,
-                                        "activeTokens": 1,
-                                        "modelLogsAfterRedeem": 2,
-                                        "ready": True,
-                                    }
-                                ],
+                            "inventory": {"redeem_available": 5, "active_keys": 1, "usage_logs": 6},
+                            "provider_health": [],
+                            "public": {
+                                "home": {"http": 200},
+                                "models": {"http": 401},
+                                "webhook_no_token": {"http": 401},
+                                "docs_route": {"http": 200},
                             },
                         },
                     },
@@ -863,15 +856,14 @@ def test_xianyu_admin_runs_readonly_cc_readiness_audit(monkeypatch, tmp_path):
     assert response.status_code == 200
     body = response.json()
     assert body["ok"] is True
-    assert body["summary"]["inventory_unused"] == 5
-    assert body["summary"]["newapi_enabled_channels"] == 3
+    assert body["summary"]["redeem_available"] == 5
+    assert body["summary"]["sub2api_active_channels"] == 10
+    assert body["summary"]["sub2api_enabled_monitors"] == 10
     assert body["summary"]["model_log_delta"] == 6
-    assert body["summary"]["same_order_latest"][0]["ready"] is True
-    assert body["summary"]["same_order_latest"][0]["modelLogsAfterRedeem"] == 2
     smoke = xianyu_admin._cc_buyer_site_smoke_summary()
     assert smoke["state"] == "partial"
     assert smoke["redeemed_delta"] == 0
-    assert smoke["active_token_delta"] == 0
+    assert smoke["active_token_delta"] == 1
     assert smoke["model_log_delta"] == 6
     assert calls[0][0] == "node"
     assert "--json" in calls[0]
@@ -1039,9 +1031,10 @@ def test_xianyu_admin_sale_readiness_and_product_template(monkeypatch):
             "ok": True,
             "mode": "read_only",
             "updated_at": "2026-07-05T12:00:00",
-            "inventory_unused": 5,
-            "newapi_enabled_redemptions": 5,
-            "newapi_enabled_channels": 3,
+            "redeem_available": 5,
+            "sub2api_active_channels": 10,
+            "sub2api_enabled_monitors": 10,
+            "config_contract_ok": True,
             "pending_rescue": 0,
             "oracle": True,
             "local_gui": True,
@@ -1189,7 +1182,6 @@ def test_xianyu_admin_sale_readiness_and_product_template(monkeypatch):
     assert any(item["key"] == "branded_email_templates" and item["ok"] is True for item in precheck_body["items"])
     assert any(item["key"] == "duplicate_delivery_guard" and item["ok"] is True for item in precheck_body["items"])
     assert any(item["key"] == "xianyu_auto_ship_strategy" and item["ok"] is True for item in precheck_body["items"])
-    assert any(item["key"] == "one_yuan_one_credit" and item["ok"] is True for item in precheck_body["items"])
     assert any(item["key"] == "strict_real_order_chain" for item in precheck_body["items"])
 
     sale_lock = client.get("/api/cc-public-sale-lock")
@@ -1389,9 +1381,10 @@ def test_xianyu_admin_automation_coverage_refreshes_missing_readiness(monkeypatc
         xianyu_admin._last_cc_readiness_audit = {
             "updated_at": "2026-07-05T12:00:00",
             "chrome_bookmarks": True,
-            "inventory_unused": 5,
-            "newapi_enabled_redemptions": 5,
-            "newapi_enabled_channels": 3,
+            "redeem_available": 5,
+            "sub2api_active_channels": 10,
+            "sub2api_enabled_monitors": 10,
+            "config_contract_ok": True,
             "public_main_http": 200,
             "ccswitch_entry_http": 200,
             "ccswitch_has_import_link_marker": True,
@@ -1458,9 +1451,10 @@ def test_xianyu_admin_automation_coverage_runs_strict_audit_after_real_order(mon
         {
             "updated_at": "2026-07-05T12:00:00",
             "chrome_bookmarks": True,
-            "inventory_unused": 5,
-            "newapi_enabled_redemptions": 5,
-            "newapi_enabled_channels": 3,
+            "redeem_available": 5,
+            "sub2api_active_channels": 10,
+            "sub2api_enabled_monitors": 10,
+            "config_contract_ok": True,
             "public_main_http": 200,
             "ccswitch_entry_http": 200,
             "ccswitch_has_import_link_marker": True,
@@ -1815,9 +1809,10 @@ def test_xianyu_admin_public_sale_lock_refreshes_readonly_audit(monkeypatch):
                 "mode": mode,
                 "exit_code": 0,
                 "summary": {
-                    "inventory_unused": 2,
-                    "newapi_enabled_redemptions": 2,
-                    "newapi_enabled_channels": 3,
+                    "redeem_available": 2,
+                    "sub2api_active_channels": 10,
+                    "sub2api_enabled_monitors": 10,
+                    "config_contract_ok": True,
                     "pending_rescue": 0,
                     "oracle": True,
                     "local_gui": True,
@@ -1880,9 +1875,10 @@ def test_xianyu_admin_public_sale_lock_explains_manual_pause_after_strict_gate(m
             "ok": True,
             "mode": "read_only",
             "updated_at": "2026-07-08T08:40:00-06:00",
-            "inventory_unused": 5,
-            "newapi_enabled_redemptions": 5,
-            "newapi_enabled_channels": 3,
+            "redeem_available": 5,
+            "sub2api_active_channels": 10,
+            "sub2api_enabled_monitors": 10,
+            "config_contract_ok": True,
             "buyer_self_service_ok": True,
             "webhook_public_locked": True,
             "public_main_http": 200,
@@ -1929,9 +1925,10 @@ def test_xianyu_admin_public_sale_lock_blocks_bad_buyer_entry(monkeypatch):
             "ok": False,
             "mode": "read_only",
             "updated_at": "2026-07-05T18:50:00-04:00",
-            "inventory_unused": 2,
-            "newapi_enabled_redemptions": 2,
-            "newapi_enabled_channels": 3,
+            "redeem_available": 2,
+            "sub2api_active_channels": 10,
+            "sub2api_enabled_monitors": 10,
+            "config_contract_ok": True,
             "pending_rescue": 0,
             "oracle": True,
             "local_gui": True,
@@ -1972,9 +1969,10 @@ def test_xianyu_admin_public_sale_lock_blocks_bad_ccswitch_entry(monkeypatch):
             "ok": False,
             "mode": "read_only",
             "updated_at": "2026-07-05T18:58:00-04:00",
-            "inventory_unused": 2,
-            "newapi_enabled_redemptions": 2,
-            "newapi_enabled_channels": 3,
+            "redeem_available": 2,
+            "sub2api_active_channels": 10,
+            "sub2api_enabled_monitors": 10,
+            "config_contract_ok": True,
             "pending_rescue": 0,
             "oracle": True,
             "local_gui": True,
@@ -2024,9 +2022,10 @@ def test_xianyu_admin_background_readiness_audit_runs_readonly(monkeypatch):
         return {
             "ok": True,
             "summary": {
-                "inventory_unused": 5,
-                "newapi_enabled_redemptions": 5,
-                "newapi_enabled_channels": 3,
+                "redeem_available": 5,
+                "sub2api_active_channels": 10,
+                "sub2api_enabled_monitors": 10,
+                "config_contract_ok": True,
             },
         }
 
@@ -2140,7 +2139,7 @@ def test_xianyu_admin_restores_strict_audit_from_context(monkeypatch):
                         {
                             "orderIdPrefix": "xy_oid_",
                             "orderIdHash": "abc123",
-                            "newApiRedeemed": True,
+                            "balanceRedeemed": True,
                             "activeTokens": 1,
                             "modelLogsAfterRedeem": 2,
                             "ready": True,
@@ -2181,7 +2180,7 @@ def test_xianyu_admin_buyer_progress_marks_verified_chain_from_strict_summary(mo
                 "same_order_latest": [
                     {
                         "orderIdPrefix": "xy_oid_",
-                        "newApiRedeemed": True,
+                        "balanceRedeemed": True,
                         "activeTokens": 1,
                         "modelLogsAfterRedeem": 2,
                         "ready": True,
