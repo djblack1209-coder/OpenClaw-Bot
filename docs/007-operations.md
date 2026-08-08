@@ -3,6 +3,79 @@
 
 > 合并自原 024-frist-api-operator-runbook.md + 025-frist-api-quickstart.md + 026-xianyu-cookie-guide.md + 029-deployment-checklist.md
 
+## 2026-08-08 当前主站：JIYU AI（Sub2API 底座）
+
+当前用户主站 `https://jiyu.245334.xyz` 的对外品牌为 `JIYU AI`，运行基于官方 Sub2API `v0.1.172` 固定提交构建的 `v0.1.172-jiyu.5`。JIYU 改动以仓库补丁固化，更新检查不会自动覆盖定制版。
+
+| 项目 | 当前值 |
+|---|---|
+| 对外品牌 | `JIYU AI` / `Unified AI API Gateway` |
+| Sub2API | `sub2api.service`，`127.0.0.1:18080` |
+| PostgreSQL | `sub2api` 独立数据库，PostgreSQL 16 |
+| Redis | `sub2api-redis.service`，`127.0.0.1:16379` |
+| 自动更新 | `sub2api-update.timer` 每日只检查官方 release；不自动安装 |
+| 自动备份 | `sub2api-backup.timer`，每日 PostgreSQL 一致性备份，`/var/backups/sub2api` 保留 30 天 |
+| 管理员邮箱 | `djblack1209@gmail.com` |
+| 管理员密码 | macOS 钥匙串服务“CC中转 Sub2API 管理员”；Oracle env 仅 root 可读 |
+
+### 当前运营配置（2026-08-08）
+
+- 两个上游分别使用 5 个新建 JIYU 专用 Key，不复用历史 Key。日常补号继续进入“账号管理”，日常轮换上游 Key 时保持同名专用用途并在站内执行真实测试。
+- 10 个用户分组统一采用“上游账号倍率 + `0.05x`”绝对加价。修改任一上游倍率后，必须同步修改对应分组并核对差值仍为 `0.0500`；渠道A OpenAI Pro 为 `0.095 → 0.145`，OpenAI Plus 为 `0.06 → 0.11`。
+- 10 个渠道已启用并分别绑定一个分组；10 条连通监控统一每 300 秒执行，随机抖动 ±30 秒。页面固定先显示渠道A五条，再显示渠道B五条，渠道列不显示上游名称；红色/降级表示上游真实波动，不得手工改成绿色。
+- 上游安全白名单只新增 `api.aigo0.com`、`www.huyunapi.com`，私网和不安全 HTTP 仍拒绝。
+
+### 邮箱绑定、验证码与告警
+
+1. 用户从“个人资料 → 管理邮箱”输入邮箱并点击“发送验证码”，收到带 JY 图形 Logo 的 `JIYU AI 邮箱绑定验证码`；输入验证码和当前密码后才会更换主邮箱。
+2. “系统设置 → 安全与认证”保持邮箱验证开启、开放注册关闭；需要开放内测注册时必须先确认地区条款、邀请码和风控策略。
+3. Gmail SMTP 使用 `smtp.gmail.com:587` + TLS。应用密码只保存在服务器设置中；不得写入本文件、仓库或截图。
+4. `auth.verify_code`、`notification_email.verify_code` 和 `ops.alert` 模板已品牌化。图形 Logo 公网地址为 `https://jiyu.245334.xyz/api/v1/pages/docs/images/jiyu-ai-logo.png`。
+5. SMTP“测试邮件”只有连接成功标识，不含验证码；验收验证码必须从个人资料的真实邮箱绑定入口触发。2026-08-07 实际发送接口返回 HTTP 200。
+
+### 文档和 CC Switch
+
+- 左侧“文档”进入 `https://jiyu.245334.xyz/custom/docs`，提供 CC Switch v3.19.2 三平台下载。“API 密钥”页和创建弹窗固定同时显示 Claude 根端点与 ChatGPT `/v1` 端点，并默认勾选创建后导入 CC Switch。
+- OpenAI 兼容地址为 `https://jiyu.245334.xyz/v1`，Claude 兼容地址为 `https://jiyu.245334.xyz`。Key 只在站内创建并导入本机 CC Switch，不发送给未配置外站。
+- 文档页手机端隐藏内置目录侧栏，避免正文被覆盖；桌面端保留目录。
+
+### 小白首次使用与补号
+
+1. 打开 `https://jiyu.245334.xyz/login`，使用管理员邮箱登录。首次进入后台必须由实例负责人本人阅读并完成“部署与运营合规确认”，不要交给自动化脚本代为同意。
+2. 左侧进入“分组管理”并创建分组。分组相当于一个可用模型套餐，先选择平台并确认倍率；只自用也建议先建一个清晰命名的测试分组。
+3. 左侧进入“账号管理”并点击“添加账号”。这就是日常所说的“补号”：选择 Anthropic、OpenAI、Gemini 或 Grok，再按页面选择 OAuth、Setup Token、API Key 等添加方式。只使用本人有权使用且符合上游条款的账号或 Key。
+4. 把新增账号绑定到对应分组，保持“可调度”开启；添加后先在账号列表执行测试并确认状态正常。账号失效或额度不足时，也回到“账号管理”处理重新授权、停用或添加替代账号。
+5. 左侧“API 密钥”点击“创建 API 密钥”，选择刚才的分组。生成的 Key 只展示给需要调用的客户端，不要发到聊天或提交到仓库。
+
+首次登录会显示官方 21 步引导，顺序就是“分组管理 → 账号管理 → API 密钥”。“用户管理”是管理下游用户，“渠道管理”是平台定价/状态，不是补号入口。
+
+小白日常只需要看这三个命令（不打印密码）：
+
+```bash
+ssh oracle-arm1 '/usr/local/sbin/openclaw-sub2api-manager status'
+ssh oracle-arm1 '/usr/local/sbin/openclaw-sub2api-manager check'
+ssh oracle-arm1 'systemctl list-timers sub2api-update.timer sub2api-backup.timer --no-pager'
+```
+
+`update` 当前默认只检查。发布新的 JIYU 构建必须先从固定官方提交应用 `scripts/sub2api-jiyu-v0.1.172.patch`、完成聚焦验证和 ARM64 构建，再执行 `SUB2API_JIYU_VERSION=<version> openclaw-sub2api-manager install-jiyu-build <path>`。该命令会先备份并在健康失败时回滚；不要直接替换二进制或修改 Apache。
+
+老板要求后续可从 WebUI 直接更新，推荐采用 `docs/053-jiyu-growth-payment-image-update-plan.md` 的方案 A：CI 只发布通过补丁和测试的 JIYU 兼容包，WebUI 只触发 root-only 安装代理，安装前备份、安装后健康检查、失败自动回滚。该架构实施前，页面不得重新放开官方 `/admin/system/update` 直装入口，否则会覆盖双端点、监控排序和 CC Switch 定制。
+
+### 生图与 MCP
+
+- Sub2API 已原生提供 `POST /v1/images/generations` 和图片权限/计价能力，不需要另建一套公网生图网关。
+- 两个计划中的上游生图入口必须在用户侧匿名为 `JIYU 生图 · 渠道A`、`JIYU 生图 · 渠道B`，分别使用独立账号、分组、渠道、监控和专用用户 Key。
+- 本机 CC Switch 中两个旧生图 MCP 记录都指向已不存在的脚本，当前不可用；不要向旧条目写入新 Key。新手安装和验证步骤见 `docs/087-jiyu-image-mcp-guide.md`。
+- 当前两个上游的 CC Switch 配置只列出文本模型，生图模型、真实价格和兼容协议尚未核实；未确认前禁止创建生产生图渠道或执行真实付费测试。
+
+### 链动小铺运营边界
+
+- 店铺昵称、公告、头像和自定义链接已统一为 JIYU AI；¥1/10/50/100/300/500/1000 七档商品已建立草稿并使用同一 JY Logo。
+- 平台规则禁止代理类服务，当前全部商品必须保持下架、零库存。没有平台书面确认前，不得通过改名、暗语或其他方式绕审发布，也不得把草稿链接写回充值中心。
+- 获得合规确认后再按“发布 ¥1 → 真实购买 → 发货/兑换到账 → 创建密钥 → CC Switch 导入 → 用量查询”顺序完成小额闭环；任一步失败立即下架并保留交易证据。
+
+品牌名称异常时执行 `ssh oracle-arm1 '/usr/local/sbin/openclaw-sub2api-manager brand'`；邮件或文档图形 Logo 异常时执行 `ssh oracle-arm1 '/usr/local/sbin/openclaw-sub2api-manager brand-asset'`。选定的 2K JY 标志已上线，512×512 邮件资源由 `scripts/assets/jiyu-ai-logo-email.png` 固化，两个命令都带健康检查。
+
 ---
 
 ## 0.1 老板统一入口与一键排障
@@ -98,7 +171,9 @@ CC中转当前沿用 Frist-API 内部服务名，处于生产环境内测，暂�
 | 模型列表 | 客户可见模型只来自健康上游 `/v1/models` / 真实探测；内置目录仅做后台审计排序参考 | 定期审计上游真实模型和价格 |
 | 上游来源 | 授权供应商余额站/自有额度为主；CPA JSON、chong 只作为人工审核备用渠道登记 | 禁止把批量 OAuth Session、来路不明 JSON 号源或规避风控的账号池默认当作生产库存 |
 
-## Oracle 主生产部署摘要（腾讯云冷回滚）
+## Oracle 主生产部署摘要（旧 New-API 历史，禁止执行）
+
+> 下面的旧 New-API/腾讯冷回滚段落是历史记录，不代表当前运行态。当前生产操作以本页顶部“干净 Sub2API 底座”段落和 `scripts/sub2api_oracle_manage.sh` 为准；旧数据、服务和回滚副本已按要求清理。
 
 Frist-API 生产流量已从国内腾讯云迁到 Oracle ARM Always Free，目的是把公开客户网关放到资源更充沛、长期免费的海外实例上，同时降低国内共享服务器端口和资源耦合。腾讯云只保留冷回滚数据，不再承接正式流量。
 

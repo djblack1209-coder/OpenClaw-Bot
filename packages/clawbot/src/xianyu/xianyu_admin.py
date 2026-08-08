@@ -707,9 +707,10 @@ def _remember_readiness_audit(audit: dict) -> None:
         "mode": audit.get("mode") or "read_only",
         "exit_code": audit.get("exit_code"),
         "updated_at": now_et().isoformat(),
-        "inventory_unused": int(summary.get("inventory_unused") or 0),
-        "newapi_enabled_redemptions": int(summary.get("newapi_enabled_redemptions") or 0),
-        "newapi_enabled_channels": int(summary.get("newapi_enabled_channels") or 0),
+        "redeem_available": int(summary.get("redeem_available") or 0),
+        "sub2api_active_channels": int(summary.get("sub2api_active_channels") or 0),
+        "sub2api_enabled_monitors": int(summary.get("sub2api_enabled_monitors") or 0),
+        "config_contract_ok": bool(summary.get("config_contract_ok")),
         "pending_rescue": int(summary.get("pending_rescue") or 0),
         "oracle": bool(summary.get("oracle")),
         "local_gui": bool(summary.get("local_gui")),
@@ -743,7 +744,7 @@ def _sanitize_strict_audit_summary(summary: dict) -> dict:
         "orderIdHash",
         "fulfillmentStatus",
         "cardStatus",
-        "newApiRedeemed",
+        "balanceRedeemed",
         "usedUserIdPresent",
         "activeTokens",
         "modelLogsAfterRedeem",
@@ -752,7 +753,10 @@ def _sanitize_strict_audit_summary(summary: dict) -> dict:
     for item in latest[:5]:
         if not isinstance(item, dict):
             continue
-        safe_latest.append({key: item.get(key) for key in allowed_keys if key in item})
+        safe_item = {key: item.get(key) for key in allowed_keys if key in item}
+        if "balanceRedeemed" not in safe_item and "newApiRedeemed" in item:
+            safe_item["balanceRedeemed"] = bool(item.get("newApiRedeemed"))
+        safe_latest.append(safe_item)
     trusted_real_orders = len(
         [
             item
@@ -926,9 +930,10 @@ def _cc_public_sale_lock_summary(refresh: bool = False) -> dict:
     readiness_auto = _auto_readiness_audit_config()
     inventory_known = bool(audit.get("updated_at"))
     pending_rescue = int(checks.get("pending_rescue") or 0)
-    inventory_unused = int(audit.get("inventory_unused") or 0)
-    enabled_redemptions = int(audit.get("newapi_enabled_redemptions") or 0)
-    enabled_channels = int(audit.get("newapi_enabled_channels") or 0)
+    inventory_unused = int(audit.get("redeem_available") or 0)
+    enabled_channels = int(audit.get("sub2api_active_channels") or 0)
+    enabled_monitors = int(audit.get("sub2api_enabled_monitors") or 0)
+    config_contract_ok = bool(audit.get("config_contract_ok"))
     buyer_self_service_known = bool(audit.get("public_main_http") or audit.get("public_models_no_auth_http"))
     buyer_self_service_ready = (not buyer_self_service_known) or bool(audit.get("buyer_self_service_ok"))
     webhook_public_locked = (not buyer_self_service_known) or bool(audit.get("webhook_public_locked"))
@@ -949,8 +954,8 @@ def _cc_public_sale_lock_summary(refresh: bool = False) -> dict:
         "pending_rescue_clear": pending_rescue == 0,
         "inventory_known": inventory_known,
         "inventory_ready": inventory_known and inventory_unused > 0,
-        "redemptions_ready": inventory_known and enabled_redemptions > 0,
-        "channels_ready": inventory_known and enabled_channels > 0,
+        "redemptions_ready": inventory_known and inventory_unused > 0,
+        "channels_ready": inventory_known and config_contract_ok and enabled_channels == 10 and enabled_monitors == 10,
         "buyer_self_service_ready": buyer_self_service_ready,
         "webhook_public_locked": webhook_public_locked,
         "ccswitch_import_ready": ccswitch_import_ready,
@@ -989,9 +994,9 @@ def _cc_public_sale_lock_summary(refresh: bool = False) -> dict:
         if not gates["inventory_ready"]:
             blockers.append("未售兑换码库存为 0")
         if not gates["redemptions_ready"]:
-            blockers.append("New-API 启用兑换码为 0")
+            blockers.append("Sub2API 可售兑换码库存为 0")
         if not gates["channels_ready"]:
-            blockers.append("New-API 启用渠道为 0")
+            blockers.append("Sub2API 10 渠道 / 10 监控合同未满足")
         if not gates["buyer_self_service_ready"]:
             blockers.append("买家主站或 API 网关公网入口异常")
         if not gates["webhook_public_locked"]:
@@ -1051,8 +1056,10 @@ def _cc_public_sale_lock_summary(refresh: bool = False) -> dict:
         "audit_error": audit_error,
         "inventory": {
             "unused_cards": inventory_unused if inventory_known else None,
-            "enabled_redemptions": enabled_redemptions if inventory_known else None,
-            "enabled_channels": enabled_channels if inventory_known else None,
+            "redeem_available": inventory_unused if inventory_known else None,
+            "active_channels": enabled_channels if inventory_known else None,
+            "enabled_monitors": enabled_monitors if inventory_known else None,
+            "config_contract_ok": config_contract_ok if inventory_known else None,
             "buyer_self_service_ok": audit.get("buyer_self_service_ok") if buyer_self_service_known else None,
             "webhook_public_locked": audit.get("webhook_public_locked") if buyer_self_service_known else None,
             "public_main_http": audit.get("public_main_http") if buyer_self_service_known else None,
@@ -1092,21 +1099,17 @@ def _summarize_cc_readiness_payload(payload: dict) -> dict:
     oracle = checks.get("oracle") or {}
     gui = checks.get("localXianyuGui") or {}
     proof = checks.get("realXianyuOrderProof") or {}
-    buyer = oracle.get("buyer_chain_proof") or {}
-    same_order = oracle.get("real_order_chain_proof") or {}
-    latest_matches = same_order.get("latestMatches") if isinstance(same_order, dict) else []
-    if not isinstance(latest_matches, list):
-        latest_matches = []
-    runtime = oracle.get("runtime") or {}
-    newapi = oracle.get("newapi") or {}
+    contract = oracle.get("config_contract") or {}
+    inventory = oracle.get("inventory") or {}
     public = oracle.get("public") or {}
-    public_main_http = int(public.get("main_http") or 0)
-    public_models_no_auth_http = int(public.get("models_no_auth_http") or 0)
-    public_webhook_no_token_http = int(public.get("webhook_no_token_http") or 0)
-    ccswitch_entry = public.get("ccswitch_entry") or {}
-    ccswitch_entry_http = int(ccswitch_entry.get("http") or 0)
+    public_main_http = int((public.get("home") or {}).get("http") or 0)
+    public_models_no_auth_http = int((public.get("models") or {}).get("http") or 0)
+    public_webhook_no_token_http = int((public.get("webhook_no_token") or {}).get("http") or 0)
+    docs_route_http = int((public.get("docs_route") or {}).get("http") or 0)
     return {
+        "schema_version": int(payload.get("schema_version") or 0),
         "overall_ok": bool(payload.get("ok")),
+        "software_ready": bool(payload.get("software_ready")),
         "chrome_bookmarks": bool((checks.get("chromeBookmarks") or {}).get("ok")),
         "local_xianyu": bool((checks.get("localXianyu") or {}).get("ok")),
         "local_gui": bool(gui.get("ok")),
@@ -1116,25 +1119,24 @@ def _summarize_cc_readiness_payload(payload: dict) -> dict:
         "public_main_http": public_main_http,
         "public_models_no_auth_http": public_models_no_auth_http,
         "public_webhook_no_token_http": public_webhook_no_token_http,
-        "ccswitch_entry_ok": bool(ccswitch_entry.get("ok")),
-        "ccswitch_entry_http": ccswitch_entry_http,
-        "ccswitch_has_cc_switch_text": bool(ccswitch_entry.get("has_cc_switch_text")),
-        "ccswitch_has_ccswitch_marker": bool(ccswitch_entry.get("has_ccswitch_marker")),
-        "ccswitch_has_import_link_marker": bool(ccswitch_entry.get("has_import_link_marker")),
+        "ccswitch_entry_ok": docs_route_http == 200,
+        "ccswitch_entry_http": docs_route_http,
         "ws_connected": bool(gui.get("wsConnected")),
         "cookie_ok": bool(gui.get("cookieOk")),
-        "auto_ship_configured": bool((gui.get("ccAutoShip") or {}).get("configured")),
-        "pending_rescue": int((gui.get("ccShipments") or {}).get("pendingRescue") or 0),
-        "inventory_unused": int((runtime.get("card_status") or {}).get("unused") or 0),
-        "newapi_enabled_redemptions": int(newapi.get("redemptions_enabled") or 0),
-        "newapi_enabled_channels": int(newapi.get("channels_enabled") or 0),
+        "auto_ship_configured": bool(gui.get("autoShipConfigured")),
+        "pending_rescue": int(gui.get("pendingRescue") or 0),
+        "redeem_available": int(inventory.get("redeem_available") or 0),
+        "sub2api_active_channels": int(contract.get("active_channels") or 0),
+        "sub2api_enabled_monitors": int(contract.get("enabled_monitors") or 0),
+        "config_contract_ok": bool(contract.get("ok")),
+        "provider_health": list(oracle.get("provider_health") or [])[:10],
         "real_orders": int(proof.get("sentRealOrders") or 0),
-        "same_order_ready": int(same_order.get("readyOrders") or 0),
-        "same_order_matched": int(same_order.get("matchedOrders") or 0),
-        "same_order_latest": latest_matches[:5],
-        "redeemed_delta": int(buyer.get("redeemed_delta") or 0),
-        "active_token_delta": int(buyer.get("active_token_delta") or 0),
-        "model_log_delta": int(buyer.get("model_log_delta") or 0),
+        "same_order_ready": int(proof.get("sentRealOrders") or 0),
+        "same_order_matched": int(proof.get("sentRealOrders") or 0),
+        "same_order_latest": [],
+        "redeemed_delta": 0,
+        "active_token_delta": int(inventory.get("active_keys") or 0),
+        "model_log_delta": int(inventory.get("usage_logs") or 0),
     }
 
 
@@ -1279,7 +1281,7 @@ def _cc_operator_next_action_summary() -> dict:
             "ops_links": "http://127.0.0.1:18800/ops-links",
             "xianyu_gui": "http://127.0.0.1:18800/",
             "user_site": "https://jiyu.245334.xyz/",
-            "newapi_console": "https://jiyu.245334.xyz/console",
+            "jiyu_console": "https://jiyu.245334.xyz/admin/dashboard",
             "frist_health": "https://frist-api-oracle.245334.xyz/",
         },
         "lock_state": lock.get("state"),
@@ -1316,9 +1318,9 @@ def _cc_auto_ship_resume_preflight() -> dict:
         if not gates.get("inventory_ready"):
             blockers.append("可售卡密库存为 0，先补库存")
         if not gates.get("redemptions_ready"):
-            blockers.append("New-API 启用兑换码为 0，先补兑换码")
+            blockers.append("Sub2API 可售兑换码为 0，先补兑换码")
         if not gates.get("channels_ready"):
-            blockers.append("New-API 启用渠道为 0，先恢复上游渠道")
+            blockers.append("Sub2API 10 渠道 / 10 监控合同未满足")
         if not gates.get("buyer_self_service_ready"):
             blockers.append("买家主站或 API 网关异常，先修复公网入口")
         if not gates.get("webhook_public_locked"):
@@ -1506,7 +1508,7 @@ def _cc_real_order_test_pack_summary() -> dict:
             "ops_links": "http://127.0.0.1:18800/ops-links",
             "xianyu_gui": "http://127.0.0.1:18800/",
             "user_site": "https://jiyu.245334.xyz/",
-            "newapi_console": "https://jiyu.245334.xyz/console",
+            "jiyu_console": "https://jiyu.245334.xyz/admin/dashboard",
             "frist_health": "https://frist-api-oracle.245334.xyz/",
             "ccswitch_entry": "https://frist-api-oracle.245334.xyz/",
             "model_gateway": "https://jiyu.245334.xyz/v1",
@@ -1609,8 +1611,9 @@ def _cc_buyer_site_smoke_plan_summary() -> dict:
     can_prepare = bool(
         lock.get("can_internal_test")
         and int(inventory.get("unused_cards") or 0) > 0
-        and int(inventory.get("enabled_redemptions") or 0) > 0
-        and int(inventory.get("enabled_channels") or 0) > 0
+        and int(inventory.get("redeem_available") or 0) > 0
+        and int(inventory.get("active_channels") or 0) == 10
+        and int(inventory.get("enabled_monitors") or 0) == 10
         and inventory.get("buyer_self_service_ok") is not False
         and inventory.get("ccswitch_entry_ok") is not False
     )
@@ -1639,7 +1642,7 @@ def _cc_buyer_site_smoke_plan_summary() -> dict:
         "current_smoke": smoke,
         "would_write": [
             "创建临时买家账号",
-            "消耗 1 张临时兑换码并写入 New-API 兑换记录",
+            "消耗 1 张临时兑换码并写入 Sub2API 兑换记录",
             "创建 1 个临时 API Key",
             "可选：发起 1 次最小模型调用并写入调用日志",
         ],
@@ -1726,8 +1729,8 @@ def _cc_automation_coverage_summary() -> dict:
             "card_allocation",
             "自动分配未使用兑换码",
             bool(gates.get("inventory_ready") and gates.get("redemptions_ready")),
-            f"未售卡密={audit.get('inventory_unused', 0)}，New-API启用兑换码={audit.get('newapi_enabled_redemptions', 0)}",
-            "补充未售兑换码并同步 New-API",
+            f"可售兑换码={audit.get('redeem_available', 0)}",
+            "补充 Sub2API 可售兑换码",
         ),
         make_item(
             "delivery_message_send",
@@ -1747,7 +1750,7 @@ def _cc_automation_coverage_summary() -> dict:
             "buyer_register_redeem",
             "买家自助注册/兑换",
             bool(gates.get("buyer_self_service_ready") and gates.get("redemptions_ready")),
-            f"主站HTTP={buyer_self_service.get('main_http', audit.get('public_main_http', '未知'))}，兑换码={audit.get('newapi_enabled_redemptions', 0)}，兑换Δ={buyer_site_smoke['redeemed_delta']}",
+            f"主站HTTP={buyer_self_service.get('main_http', audit.get('public_main_http', '未知'))}，兑换码={audit.get('redeem_available', 0)}，兑换Δ={buyer_site_smoke['redeemed_delta']}",
             "修复买家主站或补充启用兑换码",
         ),
         make_item(
@@ -1768,8 +1771,8 @@ def _cc_automation_coverage_summary() -> dict:
             "model_call",
             "模型调用",
             bool(gates.get("channels_ready")),
-            f"启用渠道={audit.get('newapi_enabled_channels', 0)}，模型日志Δ={buyer_site_smoke['model_log_delta']}",
-            "刷新/修复 New-API 渠道状态",
+            f"启用渠道={audit.get('sub2api_active_channels', 0)}，监控={audit.get('sub2api_enabled_monitors', 0)}，模型日志Δ={buyer_site_smoke['model_log_delta']}",
+            "刷新/修复 Sub2API 渠道和监控状态",
         ),
         make_item(
             "safety_boundaries",
@@ -1882,20 +1885,6 @@ def _cc_manual_precheck_evidence_summary() -> dict:
         ]
     )
 
-    one_yuan_local_ok = all(
-        token in frist_server_js
-        for token in [
-            "id: 'xianyu-test-1'",
-            "quotaUsd: 1, priceCny: 1",
-            "String(plan?.id || '').startsWith('xianyu-')",
-            "return planPriceCents(plan)",
-        ]
-    )
-    one_yuan_newapi_ok = (
-        "newApiQuotaFromCents(card.creditCents)" in frist_server_js
-        and "function newApiQuotaFromCents" in frist_server_js
-    )
-
     duplicate_guard_ok = all(
         token in (xianyu_admin_py + xianyu_live_py)
         for token in [
@@ -1967,16 +1956,6 @@ def _cc_manual_precheck_evidence_summary() -> dict:
             else "缺少后端确认发货或浏览器兜底证据",
             "只对真实数字订单、已发卡记录并显式开启时实验后端确认发货。",
             "xianyu",
-        ),
-        _manual_precheck_item(
-            "one_yuan_one_credit",
-            "闲鱼价格与兑换额度 1:1",
-            one_yuan_local_ok and one_yuan_newapi_ok,
-            "xianyu-test-1 按 priceCny 入账，New-API 同步读取 card.creditCents，不再按美元汇率放大"
-            if (one_yuan_local_ok and one_yuan_newapi_ok)
-            else "未同时证明本地入账和 New-API 同步使用 1:1 额度",
-            "检查 Frist-API 套餐表、planCreditCents 和 New-API redemptions 同步。",
-            "billing",
         ),
         _manual_precheck_item(
             "strict_real_order_chain",
@@ -2395,11 +2374,11 @@ def _run_background_readiness_audit_once() -> dict:
         audit = _run_cc_readiness_audit("read_only")
         summary = audit.get("summary") or {}
         logger.info(
-            "[XianyuAdmin] 后台只读巡检完成 ok=%s unused=%s redemptions=%s channels=%s",
+            "[XianyuAdmin] 后台只读巡检完成 ok=%s redeem_available=%s monitors=%s channels=%s",
             bool(audit.get("ok")),
-            summary.get("inventory_unused"),
-            summary.get("newapi_enabled_redemptions"),
-            summary.get("newapi_enabled_channels"),
+            summary.get("redeem_available"),
+            summary.get("sub2api_enabled_monitors"),
+            summary.get("sub2api_active_channels"),
         )
         return {"ran": True, "ok": bool(audit.get("ok"))}
     except Exception as e:
@@ -4509,7 +4488,7 @@ def _cc_simulation_gate_summary() -> dict:
         matches = []
 
     redeemed = bool(int(audit_summary.get("redeemed_delta") or 0) > 0) or any(
-        bool(item.get("newApiRedeemed")) for item in matches if isinstance(item, dict)
+        bool(item.get("balanceRedeemed")) for item in matches if isinstance(item, dict)
     )
     api_key_created = bool(int(audit_summary.get("active_token_delta") or 0) > 0) or any(
         int((item or {}).get("activeTokens") or 0) > 0 for item in matches if isinstance(item, dict)
@@ -4531,7 +4510,7 @@ def _cc_simulation_gate_summary() -> dict:
     ccswitch_ok = bool(readiness.get("ccswitch_entry_ok"))
     channel_server_ok = (
         bool(readiness.get("overall_ok") or readiness.get("oracle"))
-        and int(readiness.get("newapi_enabled_channels") or 0) > 0
+        and bool(readiness.get("config_contract_ok"))
     )
 
     steps = [
@@ -4686,8 +4665,9 @@ def _cc_export_status_report() -> dict:
         "queues": queues,
         "inventory": {
             "unused_cards": (sale_lock.get("inventory") or {}).get("unused_cards"),
-            "enabled_redemptions": (sale_lock.get("inventory") or {}).get("enabled_redemptions"),
-            "enabled_channels": (sale_lock.get("inventory") or {}).get("enabled_channels"),
+            "redeem_available": (sale_lock.get("inventory") or {}).get("redeem_available"),
+            "active_channels": (sale_lock.get("inventory") or {}).get("active_channels"),
+            "enabled_monitors": (sale_lock.get("inventory") or {}).get("enabled_monitors"),
             "updated_at": (sale_lock.get("inventory") or {}).get("updated_at"),
         },
         "simulation_gate": {
@@ -4927,11 +4907,11 @@ function renderSnapshot(data,mode){
     pill(paused?'发货暂停':(autoReady?'自动发货正常':'自动发货待处理'),paused?'warn':boolKind(autoReady)),
     pill((watch.stage_label||'实单闭环未知'),watch.ready_for_public_sale?'ok':'warn')
   );
-  const completed=[autoReady, Number(inv.unused_cards||0)>0, Number(inv.enabled_redemptions||0)>0, Number(inv.enabled_channels||0)>0, gates.ccswitch_import_ready===true, (progress.steps||{}).same_order_verified===true].filter(Boolean).length;
+  const completed=[autoReady, Number(inv.redeem_available||0)>0, Number(inv.active_channels||0)===10, Number(inv.enabled_monitors||0)===10, gates.ccswitch_import_ready===true, (progress.steps||{}).same_order_verified===true].filter(Boolean).length;
   const percent=pct(completed,6); $('ring').style.setProperty('--pct',percent); $('ring-num').textContent=percent+'%'; $('ring-label').textContent=publicReady?'已放行':'内测闭环';
   $('ring-desc').textContent=`关键步骤 ${completed}/6；正式售卖前仍以真实小额单为准。`;
   setMetric('ship',paused?'暂停':(autoReady?'正常':'检查'),`补救 ${ship.pending_rescue??0}；闲鱼 ${status.ws_connected?'在线':'离线'}；Cookie ${status.cookie_ok?'正常':'异常'}`);
-  setMetric('stock',`${inv.unused_cards??'--'} 张`,`${inv.enabled_redemptions??'--'} 个兑换码；${inv.enabled_channels??'--'} 个渠道`);
+  setMetric('stock',`${inv.redeem_available??'--'} 个`,`渠道 ${inv.active_channels??'--'}/10；监控 ${inv.enabled_monitors??'--'}/10`);
   const steps=progress.steps||{}; setMetric('buyer',steps.same_order_verified?'完成':'待跑',progress.next_action||watch.next_action||'等待真实小额单');
   $('next-action').textContent=paused?'如需继续售卖：先确认库存，再打开操作台恢复自动发货。':(action.primary_action||lock.next_action||watch.next_action||'继续观察。');
   $('debug-list').replaceChildren(...[
@@ -5265,10 +5245,10 @@ function renderMode(mode,status,lock,snap){
   const confirmFailed=Number(ship.xianyu_confirm_failed||0);
   const stockKnown=inv.unused_cards!==null && inv.unused_cards!==undefined;
   const stock=stockKnown?Number(inv.unused_cards||0):0;
-  const redemptionsKnown=inv.enabled_redemptions!==null && inv.enabled_redemptions!==undefined;
-  const redemptions=redemptionsKnown?Number(inv.enabled_redemptions||0):0;
-  const channelsKnown=inv.enabled_channels!==null && inv.enabled_channels!==undefined;
-  const channels=channelsKnown?Number(inv.enabled_channels||0):0;
+  const redemptionsKnown=inv.redeem_available!==null && inv.redeem_available!==undefined;
+  const redemptions=redemptionsKnown?Number(inv.redeem_available||0):0;
+  const channelsKnown=inv.active_channels!==null && inv.active_channels!==undefined;
+  const channels=channelsKnown?Number(inv.active_channels||0):0;
   const audit=status.cc_readiness_audit?.last||{};
   const balanceKnown=Boolean(audit.updated_at || inv.updated_at);
   const balanceOk=Boolean(audit.oracle || lock.gates?.inventory_known);
@@ -5468,7 +5448,7 @@ async function confirmShipmentBackend(id){if(!id)return; askConfirm('只对真�
 async function resolveShipment(id){if(!id)return; askPrompt('处理备注，可空','已人工处理',async(note)=>{ await apiFetch(`/api/cc-shipments/${id}/resolve`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({note})}); await load(true)})}
 async function generateProductTemplate(){const params=new URLSearchParams({title:$('title-input').value||'CC中转内测卡',plan_id:$('plan-input').value||'',price:'小额测试价'}); const data=await apiFetch(`/api/cc-product-template?${params.toString()}`); $('product-template').value=data.template||''}
 async function copyProductTemplate(){if(!$('product-template').value){await generateProductTemplate()} await navigator.clipboard.writeText($('product-template').value); notice('已复制')}
-async function runReadinessAudit(mode){$('audit-result').textContent='巡检运行中...'; try{const data=await apiFetch(`/api/cc-readiness-audit?mode=${encodeURIComponent(mode)}`); const s=data.summary||{}; $('audit-result').textContent=`${mode==='strict'?'正式售卖严格门':'生产内测巡检'}：${data.ok?'通过':'未通过'}；库存 ${s.inventory_unused??0}；渠道 ${s.newapi_enabled_channels??0}；真实订单 ${s.real_orders??0}`; await load(true)}catch(err){$('audit-result').textContent='巡检失败：'+(err.message||err)}}
+async function runReadinessAudit(mode){$('audit-result').textContent='巡检运行中...'; try{const data=await apiFetch(`/api/cc-readiness-audit?mode=${encodeURIComponent(mode)}`); const s=data.summary||{}; $('audit-result').textContent=`${mode==='strict'?'正式售卖严格门':'生产内测巡检'}：${data.ok?'通过':'未通过'}；库存 ${s.redeem_available??0}；渠道 ${s.sub2api_active_channels??0}/10；监控 ${s.sub2api_enabled_monitors??0}/10；真实订单 ${s.real_orders??0}`; await load(true)}catch(err){$('audit-result').textContent='巡检失败：'+(err.message||err)}}
 async function probePaidOrders(){
   $('paid-probe-result').textContent='正在只读扫描闲鱼待发货订单...';
   try{

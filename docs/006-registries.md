@@ -2,6 +2,52 @@
 
 > 合并自原 030-api-pool-registry.md + 031-command-registry.md + 032-dependency-map.md + 033-module-registry.md
 
+## 2026-08-08 JIYU AI / Sub2API 部署注册
+
+> 本节是当前生产唯一事实源。下方旧 New-API 注册项仅保留给本地开发历史和代码兼容查阅，不能据此恢复生产数据或服务。
+
+| 类型 | 唯一事实源 / 入口 | 当前合同 |
+|---|---|---|
+| 对外品牌 | `JIYU AI` / `Unified AI API Gateway` | 通过 Sub2API OEM `site_name`、`site_subtitle` 保存到 PostgreSQL；登录页、首页、侧边栏和浏览器标题统一读取该设置 |
+| 生产底座 | Oracle `jiyu.245334.xyz` / `sub2api.service` | 基于官方 Sub2API `v0.1.172` 固定提交构建的 `v0.1.172-jiyu.5` ARM64 二进制；JIYU 补丁可从官方提交重复应用，主进程只绑定 `127.0.0.1:18080` |
+| 数据库 | PostgreSQL 16 `sub2api` | 独立角色、独立数据库；首次安装不导入 New-API 用户、Key、渠道、兑换码、日志或上游凭据；当前只保留 1 个管理员 |
+| 缓存 | `sub2api-redis.service` | 专用 Redis 7 实例，绑定 `127.0.0.1:16379`，密码只保存在 Oracle `/etc/sub2api/sub2api.env` |
+| 管理脚本 | `scripts/sub2api_oracle_manage.sh` / Oracle `/usr/local/sbin/openclaw-sub2api-manager` | 新增 `install-jiyu-build <path>`；发布前备份二进制、版本、PostgreSQL、环境、Apache/systemd 和页面资源，健康失败自动回滚。官方二进制更新必须显式 opt-in |
+| 自动更新 | `sub2api-update.timer` / `sub2api-update.service` | 每日 04:20（Asia/Singapore，随机延迟 20 分钟）只检查官方稳定 release 并报告，不自动覆盖定制构建 |
+| 自动备份 | `sub2api-backup.timer` / `sub2api-backup.service` | 每日 03:40（Asia/Singapore，随机延迟 15 分钟）备份 PostgreSQL、二进制、版本和 root-only 环境文件；本地 `/var/backups/sub2api` 保留 30 天 |
+| 管理员账号 | `djblack1209@gmail.com` | 当前唯一管理员；密码不写仓库，已存入 macOS 钥匙串服务“CC中转 Sub2API 管理员” |
+| 凭据保管 | Oracle `/etc/sub2api/sub2api.env` + 本机钥匙串 | Oracle env `0600 root-only`；修改管理员密码后同步更新这两处并做真实登录验证 |
+| 旧底座清理 | Oracle、腾讯云、R2 | Oracle/Tencent 旧 New-API 数据目录、SQLite/容器/镜像、systemd 服务和同名本地备份已删除；旧 R2 加密对象已删除并重建为只含 Frist runtime/application.env 的新备份 |
+| 图形 Logo | `scripts/assets/jiyu-ai-logo-email.png` / `/api/v1/pages/docs/images/jiyu-ai-logo.png` | 512×512 PNG，源自选定的 2K JY 标志；站内继续使用 2K 等比图形，验证码、通知邮箱和运维告警模板通过同域公开 PNG 加载 |
+| 文档入口 | `/custom/docs` / `md:docs` | 左侧“文档”提供 CC Switch v3.19.2 三平台下载；创建密钥时按 Claude/OpenAI 展示根端点或 `/v1`，并默认在创建后立即导入 CC Switch |
+| 定制补丁 | `scripts/sub2api-jiyu-v0.1.172.patch` | 固定应用到官方 `v0.1.172` 提交；覆盖品牌隐私、标题/版本徽标、创建密钥端点引导、CC Switch 和公告空状态 |
+| 渠道迁移 | `scripts/sub2api_configure_jiyu_channels.mjs` | 带完整备份和前置基线门，把 6 个聚合渠道/监控迁移为 10 个一对一渠道/监控，不输出账号凭据 |
+
+### JIYU AI 上游、分组与渠道注册
+
+所有名称只登记用途，不登记密钥值。两个上游各有 5 个独立 Key：`JIYU——Claude Kiro`、`JIYU——Claude 官 Key`、`JIYU——OpenAI Pro`、`JIYU——OpenAI Plus`、`JIYU——Grok`；未复用历史 Key。
+
+| 上游 | 账号/分组数 | 上游倍率 | 用户倍率 | 当前验证 |
+|---|---:|---|---|---|
+| 渠道A | 5 / 5 | Kiro `0.05`、Claude 官 Key `0.12`、OpenAI Pro `0.095`、OpenAI Plus `0.06`、Grok `0.03` | 分别为 `0.10`、`0.17`、`0.145`、`0.11`、`0.08` | 倍率合同已由数据库联表和创建密钥页面重载核对；真实可用性以监控的正常/降级/错误状态为准 |
+| 渠道B | 5 / 5 | Kiro `0.16`、Claude 官 Key `1.30`、OpenAI Pro `0.18`、OpenAI Plus `0.13`、Grok `0.08` | 分别为 `0.21`、`1.35`、`0.23`、`0.18`、`0.13` | 5 个分组均满足绝对增加 `0.05x`；实时状态继续由监控真实记录 |
+
+用户倍率合同为“上游账号倍率 **绝对增加 `0.05x`**”，不是把成本乘以 1.05。10 个分组均启用利润控制，10 个 active 渠道分别只绑定 1 个业务分组并同步模型定价。
+
+| 监控 | 模型 | 周期 | 当前合同 |
+|---|---|---|---|
+| 渠道A Kiro / 官 Key / Plus / Pro / Grok | 按各分组真实可调用模型 | 300 秒，±30 秒抖动 | 5 条均启用；状态如实反映正常、降级或错误，不用静态绿灯覆盖故障 |
+| 渠道B Kiro / 官 Key / Plus / Pro / Grok | 按各分组真实可调用模型 | 300 秒，±30 秒抖动 | 5 条均启用；真实状态持续写入监控历史 |
+
+### JIYU AI 邮箱与条款注册
+
+| 项目 | 当前合同 |
+|---|---|
+| SMTP | Gmail `smtp.gmail.com:587` + TLS；用户名、发件邮箱均为管理员邮箱，应用密码只保存在服务器加密设置，不写仓库 |
+| 邮箱绑定 | 个人资料提供“管理邮箱 → 发送验证码 → 更换主邮箱”；开放注册仍关闭，注册邮箱验证已开启，新用户默认余额 `0`、并发 `5`、RPM `60` |
+| 邮件模板 | `auth.verify_code`、`notification_email.verify_code`、`ops.alert` 中文模板均使用 JY 图形 Logo；验证码模板明确绑定用途、验证码和有效期 |
+| 登录条款 | 2026-08-07 生效；弹窗强制确认，明确不向中国大陆及联合国、新加坡、美国、欧盟或上游限制、制裁、出口管制地区开放 |
+
 ---
 
 ## 2026-08-05 审计闭环注册增量

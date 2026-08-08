@@ -126,7 +126,7 @@ def _project_sale_readiness(snapshot: Mapping[str, object]) -> dict[str, object]
         "human_required": human_required,
         "operator_addresses": {
             "user_site": "https://jiyu.245334.xyz/",
-            "newapi_console": "https://jiyu.245334.xyz/console",
+            "jiyu_console": "https://jiyu.245334.xyz/admin/dashboard",
             "frist_health": "https://frist-api-oracle.245334.xyz/",
             "xianyu_gui": "http://127.0.0.1:18800/",
         },
@@ -239,7 +239,7 @@ def _project_buyer_progress(
     same_order_verified = bool(snapshot.get("strict_ready"))
     steps = {
         "paid_order_shipped": int(checks.get("sent_real_orders") or 0) > 0,
-        "card_redeemed": any(bool(item.get("newApiRedeemed")) for item in matches),
+        "card_redeemed": any(bool(item.get("balanceRedeemed")) for item in matches),
         "api_key_created": any(int(item.get("activeTokens") or 0) > 0 for item in matches),
         "model_called": any(int(item.get("modelLogsAfterRedeem") or 0) > 0 for item in matches),
         "same_order_verified": same_order_verified,

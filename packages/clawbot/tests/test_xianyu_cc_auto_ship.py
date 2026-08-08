@@ -3050,7 +3050,7 @@ def test_xianyu_admin_relist_online_verified_counts_for_simulation_gate(tmp_path
                     {
                         "orderIdPrefix": "xy_manual_",
                         "orderIdHash": hashlib.sha256(order_id.encode()).hexdigest(),
-                        "newApiRedeemed": True,
+                        "balanceRedeemed": True,
                         "activeTokens": 1,
                         "modelLogsAfterRedeem": 1,
                         "ready": True,
@@ -3071,7 +3071,9 @@ def test_xianyu_admin_relist_online_verified_counts_for_simulation_gate(tmp_path
             "oracle": True,
             "buyer_self_service_ok": True,
             "ccswitch_entry_ok": True,
-            "newapi_enabled_channels": 3,
+            "sub2api_active_channels": 10,
+            "sub2api_enabled_monitors": 10,
+            "config_contract_ok": True,
         }
     )
     xianyu_admin._last_cc_strict_audit.clear()
@@ -3639,7 +3641,7 @@ def test_xianyu_admin_simulation_gate_tracks_strict_like_steps_without_unlocking
                     {
                         "orderIdPrefix": "xy_manual_",
                         "orderIdHash": manual_hash,
-                        "newApiRedeemed": True,
+                        "balanceRedeemed": True,
                         "activeTokens": 1,
                         "modelLogsAfterRedeem": 2,
                         "ready": True,
@@ -3660,7 +3662,9 @@ def test_xianyu_admin_simulation_gate_tracks_strict_like_steps_without_unlocking
             "oracle": True,
             "buyer_self_service_ok": True,
             "ccswitch_entry_ok": True,
-            "newapi_enabled_channels": 3,
+            "sub2api_active_channels": 10,
+            "sub2api_enabled_monitors": 10,
+            "config_contract_ok": True,
             "public_main_http": 200,
             "public_models_no_auth_http": 401,
             "public_webhook_no_token_http": 401,

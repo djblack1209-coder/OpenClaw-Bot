@@ -1,6 +1,6 @@
 # OpenClaw Bot — 项目全景地图
 
-> 最后更新: 2026-08-05 (全维度审计、软件闭环与自动灾备) | AI 开发助手请先读完本文再开始工作 | 当前健康状态以 `docs/009-health.md` 和 `docs/002-changelog.md` 最近条目为准
+> 最后更新: 2026-08-08 (JIYU AI v0.1.172-jiyu.5、10×10 渠道监控与双端点密钥引导) | AI 开发助手请先读完本文再开始工作 | 当前健康状态以 `docs/009-health.md` 和 `docs/002-changelog.md` 最近条目为准
 
 ## 一句话概述
 
@@ -152,6 +152,8 @@ OpenEverything/
 - **客户隔离**：Frist 在共享 New-API 管理账号之上维护客户 Token 归属；看板、日志、更新、删除和导入均按归属过滤。额度从客户已购余额划转，禁止无限 Key。
 - **桌面控制面**：管理器新建本地 `gateway.auth.token` 时只生成强随机字符串；当前受管运行时精确锁定 `OpenClaw 2026.7.2-beta.7`，Token/密码/远程 SecretRef 原样保留并交给官方校验。354 个直接/传递 npm 包由内嵌 SHA-512 锁安装。MCP Store 只展示受管运行包目录，不返回 command/args/env，也不伪装成已建立的 stdio 会话；真实 MCP 配置仍由 CC Switch/OpenClaw 官方配置链负责。配置跨实例原子写入，WebView 只接收脱敏配置，服务停止只针对管理器登记且核验通过的 PID，WebView 不直接拥有文件系统权限。
 - **运行时真值**：G4F、Kiro、Ollama、IBKR 和 VPS 心跳全部改为显式开关；未启用能力不进入 LiteLLM 路由、fallback 或交易定时器。健康检查同时验证必需 LaunchAgent 的 `running + PID` 和真实 HTTP/TCP 端点，不再用“服务已加载”代替“服务可用”。
+- **部署拓扑**：macOS LaunchAgent 是当前唯一 OpenEverything/ClawBot 活跃主实例。腾讯云旧备用实例因主心跳长期失效且进程持续启动失败，已于 2026-08-07 备份后停用其服务和 30 秒故障转移定时器；腾讯云上的微信接收、OpenClaw 云控和 SillyTavern 仍独立运行。恢复 VPS 自动接管前必须重新建立实时心跳、单主写入隔离和真实 Telegram 用户链路验收。
+- **JIYU AI / CC中转底座（2026-08-08）**：Oracle ARM 主站 `jiyu.245334.xyz` 对外品牌为 `JIYU AI`，当前运行基于官方 Sub2API `v0.1.172` 固定提交构建的 `v0.1.172-jiyu.5`。Sub2API 只监听 `127.0.0.1:18080`，专用 Redis 只监听 `127.0.0.1:16379`，PostgreSQL 使用独立 `sub2api` 数据库。10 个账号/分组对应 10 个渠道和 10 条真实监控；监控页面按渠道A、渠道B分段显示且不展示第三方名称；更新 timer 只检查官方版本，不自动覆盖 JIYU 补丁，显式发布前会完整备份并在健康失败时回滚。生图 API 已有原生入口，但独立生图渠道和安全 MCP 仍按 `docs/053-jiyu-growth-payment-image-update-plan.md` 待确认。
 
 ### 2026-08-05 全维度审计收口
 

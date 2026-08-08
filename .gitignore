@@ -141,6 +141,8 @@ apps/OpenClaw.app/
 
 # === 审计截图（根目录临时产物） ===
 *.png
+!scripts/assets/jiyu-ai-logo-email.png
+!scripts/assets/audit-*.png
 
 # === Playwright 调试产物 ===
 .playwright-cli/

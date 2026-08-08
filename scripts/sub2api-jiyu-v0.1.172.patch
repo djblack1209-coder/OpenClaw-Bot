@@ -1,0 +1,814 @@
+diff --git a/frontend/src/components/admin/AdminComplianceDialog.vue b/frontend/src/components/admin/AdminComplianceDialog.vue
+index 9982020..a3362b1 100644
+--- a/frontend/src/components/admin/AdminComplianceDialog.vue
++++ b/frontend/src/components/admin/AdminComplianceDialog.vue
+@@ -127,9 +127,9 @@ const canSubmit = computed(() => typedPhrase.value.trim() === expectedPhrase.val
+ const currentDocument = computed(() => getLocale() === 'zh' ? zhDocument : enDocument)
+ const documentUrl = computed(() => {
+   if (getLocale() === 'zh') {
+-    return complianceStore.status?.document_url_zh || 'https://github.com/Wei-Shaw/sub2api/blob/main/docs/legal/admin-compliance.zh.md'
++    return complianceStore.status?.document_url_zh || '/custom/docs'
+   }
+-  return complianceStore.status?.document_url_en || 'https://github.com/Wei-Shaw/sub2api/blob/main/docs/legal/admin-compliance.en.md'
++  return complianceStore.status?.document_url_en || '/custom/docs'
+ })
+ const inputError = computed(() => {
+   if (!attemptedSubmit.value || canSubmit.value) {
+diff --git a/frontend/src/components/admin/monitor/MonitorFormDialog.vue b/frontend/src/components/admin/monitor/MonitorFormDialog.vue
+index 14a9e2d..1d45b34 100644
+--- a/frontend/src/components/admin/monitor/MonitorFormDialog.vue
++++ b/frontend/src/components/admin/monitor/MonitorFormDialog.vue
+@@ -244,6 +244,9 @@ const systemDefaultInterval = computed<number>(() => {
+   return configured && configured > 0 ? configured : DEFAULT_INTERVAL_SECONDS
+ })
+ 
++// 新建监控默认使用 30 秒抖动，并确保不会突破后端的最小检测间隔。
++const defaultJitterSeconds = computed<number>(() => Math.min(30, Math.max(0, systemDefaultInterval.value - 15)))
++
+ // editing is true when we have an existing monitor
+ const editing = computed<ChannelMonitor | null>(() => props.monitor)
+ 
+@@ -284,7 +287,7 @@ const form = reactive<MonitorForm>({
+   extra_models: [],
+   group_name: '',
+   interval_seconds: systemDefaultInterval.value,
+-  jitter_seconds: 0,
++  jitter_seconds: defaultJitterSeconds.value,
+   enabled: true,
+   template_id: null,
+   extra_headers: {},
+@@ -453,7 +456,7 @@ function resetForm() {
+   form.extra_models = []
+   form.group_name = ''
+   form.interval_seconds = systemDefaultInterval.value
+-  form.jitter_seconds = 0
++  form.jitter_seconds = defaultJitterSeconds.value
+   form.enabled = true
+   form.template_id = null
+   form.extra_headers = {}
+diff --git a/frontend/src/components/common/VersionBadge.vue b/frontend/src/components/common/VersionBadge.vue
+index 7fd6294..b6938af 100644
+--- a/frontend/src/components/common/VersionBadge.vue
++++ b/frontend/src/components/common/VersionBadge.vue
+@@ -231,7 +231,33 @@
+                 </button>
+               </div>
+ 
+-              <!-- Priority 3: Update available for source build - show git pull hint -->
++              <!-- 优先级 3：JIYU 定制构建只走受控兼容发布流程。 -->
++              <div v-else-if="hasUpdate && isJiyuBuild" class="space-y-2">
++                <div
++                  class="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800/50 dark:bg-amber-900/20"
++                >
++                  <div
++                    class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/50"
++                  >
++                    <Icon
++                      name="download"
++                      size="sm"
++                      :stroke-width="2"
++                      class="text-amber-600 dark:text-amber-400"
++                    />
++                  </div>
++                  <div class="min-w-0 flex-1">
++                    <p class="text-sm font-medium text-amber-700 dark:text-amber-300">
++                      {{ t('version.jiyuUpdatePending', { version: 'v' + latestVersion }) }}
++                    </p>
++                    <p class="mt-1 text-xs leading-4 text-amber-600/80 dark:text-amber-400/80">
++                      {{ t('version.jiyuUpdateHint') }}
++                    </p>
++                  </div>
++                </div>
++              </div>
++
++              <!-- 优先级 4：源码构建提示使用 git pull。 -->
+               <div v-else-if="hasUpdate && !isReleaseBuild" class="space-y-2">
+                 <a
+                   v-if="releaseInfo?.html_url && releaseInfo.html_url !== '#'"
+@@ -291,7 +317,7 @@
+                 </div>
+               </div>
+ 
+-              <!-- Priority 4: Update available for release build - show update button -->
++              <!-- 优先级 5：官方发行构建显示在线更新按钮。 -->
+               <div v-else-if="hasUpdate && isReleaseBuild" class="space-y-2">
+                 <!-- Update info card -->
+                 <div
+@@ -375,7 +401,7 @@
+                 </a>
+ 
+                 <!-- Version rollback entry -->
+-                <div class="border-t border-gray-100 pt-2 dark:border-dark-700">
++                <div v-if="!isJiyuBuild" class="border-t border-gray-100 pt-2 dark:border-dark-700">
+                   <button
+                     @click="toggleRollbackPanel"
+                     class="group flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-600 dark:text-dark-500 dark:hover:bg-dark-700/50 dark:hover:text-dark-300"
+@@ -671,9 +697,14 @@ const dropdownRef = ref<HTMLElement | null>(null)
+ 
+ // Use store's cached version state
+ const loading = computed(() => appStore.versionLoading)
+-const currentVersion = computed(() => appStore.currentVersion || props.version || '')
+-const latestVersion = computed(() => appStore.latestVersion)
+-const hasUpdate = computed(() => appStore.hasUpdate)
++// 统一由组件补充版本前缀，避免后端已返回 v 时显示成 vv。
++const normalizeVersion = (version: string | undefined) => (version || '').replace(/^v/i, '')
++const rawCurrentVersion = computed(() => appStore.currentVersion || props.version || '')
++const currentVersion = computed(() => normalizeVersion(rawCurrentVersion.value))
++const latestVersion = computed(() => normalizeVersion(appStore.latestVersion))
++const currentBaseVersion = computed(() => currentVersion.value.replace(/-jiyu\..*$/i, ''))
++const isJiyuBuild = computed(() => /-jiyu\./i.test(rawCurrentVersion.value))
++const hasUpdate = computed(() => appStore.hasUpdate && currentBaseVersion.value !== latestVersion.value)
+ const releaseInfo = computed(() => appStore.releaseInfo)
+ const buildType = computed(() => appStore.buildType)
+ 
+diff --git a/frontend/src/components/keys/EndpointPopover.vue b/frontend/src/components/keys/EndpointPopover.vue
+index 49db50b..711b271 100644
+--- a/frontend/src/components/keys/EndpointPopover.vue
++++ b/frontend/src/components/keys/EndpointPopover.vue
+@@ -18,10 +18,17 @@ let copiedResetTimer: number | undefined
+ const allEndpoints = computed(() => {
+   const items: Array<{ name: string; endpoint: string; description: string; isDefault: boolean }> = []
+   if (props.apiBaseUrl) {
++    const baseUrl = props.apiBaseUrl.replace(/\/+$/, '').replace(/\/v1$/i, '')
+     items.push({
+-      name: t('keys.endpoints.title'),
+-      endpoint: props.apiBaseUrl,
+-      description: '',
++      name: t('keys.endpoints.claude'),
++      endpoint: baseUrl,
++      description: t('keys.endpointGuide.claudeHint'),
++      isDefault: true,
++    })
++    items.push({
++      name: t('keys.endpoints.chatgpt'),
++      endpoint: `${baseUrl}/v1`,
++      description: t('keys.endpointGuide.chatgptHint'),
+       isDefault: true,
+     })
+   }
+diff --git a/frontend/src/components/keys/__tests__/EndpointPopover.spec.ts b/frontend/src/components/keys/__tests__/EndpointPopover.spec.ts
+index 4d753da..99ca37a 100644
+--- a/frontend/src/components/keys/__tests__/EndpointPopover.spec.ts
++++ b/frontend/src/components/keys/__tests__/EndpointPopover.spec.ts
+@@ -5,11 +5,15 @@ const copyToClipboard = vi.fn().mockResolvedValue(true)
+ 
+ const messages: Record<string, string> = {
+   'keys.endpoints.title': 'API 端点',
++  'keys.endpoints.claude': 'Claude 端点',
++  'keys.endpoints.chatgpt': 'ChatGPT 端点',
+   'keys.endpoints.default': '默认',
+   'keys.endpoints.copied': '已复制',
+   'keys.endpoints.copiedHint': '已复制到剪贴板',
+   'keys.endpoints.clickToCopy': '点击可复制此端点',
+   'keys.endpoints.speedTest': '测速',
++  'keys.endpointGuide.claudeHint': 'Claude 说明',
++  'keys.endpointGuide.chatgptHint': 'ChatGPT 说明',
+ }
+ 
+ vi.mock('vue-i18n', () => ({
+@@ -62,7 +66,7 @@ describe('EndpointPopover', () => {
+     await wrapper.find('[role="button"]').trigger('click')
+     await flushPromises()
+ 
+-    expect(copyToClipboard).toHaveBeenCalledWith('https://default.example.com/v1', '已复制')
++    expect(copyToClipboard).toHaveBeenCalledWith('https://default.example.com', '已复制')
+     expect(wrapper.text()).toContain('已复制到剪贴板')
+     expect(wrapper.find('button[aria-label="已复制到剪贴板"]').exists()).toBe(true)
+   })
+diff --git a/frontend/src/components/layout/AppHeader.vue b/frontend/src/components/layout/AppHeader.vue
+index 3c33ac7..d4ce430 100644
+--- a/frontend/src/components/layout/AppHeader.vue
++++ b/frontend/src/components/layout/AppHeader.vue
+@@ -163,24 +163,6 @@
+                   {{ t('nav.apiKeys') }}
+                 </router-link>
+ 
+-                <a
+-                  v-if="authStore.isAdmin"
+-                  href="https://github.com/Wei-Shaw/sub2api"
+-                  target="_blank"
+-                  rel="noopener noreferrer"
+-                  @click="closeDropdown"
+-                  class="dropdown-item"
+-                >
+-                  <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+-                    <path
+-                      fill-rule="evenodd"
+-                      clip-rule="evenodd"
+-                      d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.464-1.11-1.464-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z"
+-                    />
+-                  </svg>
+-                  {{ t('nav.github') }}
+-                </a>
+-
+               </div>
+ 
+               <!-- Contact Support (only show if configured) -->
+diff --git a/frontend/src/i18n/locales/en/admin/channels.ts b/frontend/src/i18n/locales/en/admin/channels.ts
+index 0a52cab..be69201 100644
+--- a/frontend/src/i18n/locales/en/admin/channels.ts
++++ b/frontend/src/i18n/locales/en/admin/channels.ts
+@@ -496,6 +496,7 @@ export default {
+       primaryModelRequired: 'Please enter a primary model',
+       columns: {
+         name: 'Name',
++        channel: 'Channel',
+         provider: 'Provider',
+         primaryModel: 'Primary Model',
+         availability7d: '7d Availability',
+diff --git a/frontend/src/i18n/locales/en/admin/resources.ts b/frontend/src/i18n/locales/en/admin/resources.ts
+index f418166..007fb8a 100644
+--- a/frontend/src/i18n/locales/en/admin/resources.ts
++++ b/frontend/src/i18n/locales/en/admin/resources.ts
+@@ -438,6 +438,7 @@ export default {
+       readAt: 'Read at',
+       unread: 'Unread',
+       searchUsers: 'Search users...',
++      noAnnouncements: 'There are no announcements yet. Create the first one when you are ready to publish.',
+       failedToLoad: 'Failed to load announcements',
+       failedToCreate: 'Failed to create announcement',
+       failedToUpdate: 'Failed to update announcement',
+diff --git a/frontend/src/i18n/locales/en/dashboard.ts b/frontend/src/i18n/locales/en/dashboard.ts
+index 88ade69..071b33a 100644
+--- a/frontend/src/i18n/locales/en/dashboard.ts
++++ b/frontend/src/i18n/locales/en/dashboard.ts
+@@ -71,6 +71,8 @@ export default {
+     searchPlaceholder: 'Search name or key...',
+     endpoints: {
+       title: 'API Endpoints',
++      claude: 'Claude endpoint',
++      chatgpt: 'ChatGPT endpoint',
+       default: 'Default',
+       copied: 'Copied',
+       copiedHint: 'Copied to clipboard',
+@@ -96,6 +98,14 @@ export default {
+     copyToClipboard: 'Copy to clipboard',
+     copied: 'Copied!',
+     importToCcSwitch: 'Import to CCS',
++    createAndImport: 'Import into CC Switch after creation',
++    createAndImportHint: 'Includes the provider, matching endpoint, and usage query configuration. You can still copy the key manually if the app is not installed.',
++    endpointGuide: {
++      claudeTitle: 'Claude endpoint',
++      claudeHint: 'For Messages API clients. Use the site root and do not append /v1 again.',
++      chatgptTitle: 'ChatGPT endpoint',
++      chatgptHint: 'For OpenAI Responses and Chat Completions clients. The endpoint must end in /v1.'
++    },
+     enable: 'Enable',
+     disable: 'Disable',
+     nameLabel: 'Name',
+diff --git a/frontend/src/i18n/locales/en/landing.ts b/frontend/src/i18n/locales/en/landing.ts
+index c443bfe..6c35003 100644
+--- a/frontend/src/i18n/locales/en/landing.ts
++++ b/frontend/src/i18n/locales/en/landing.ts
+@@ -5,6 +5,7 @@ export default {
+   },
+   // Home Page
+   home: {
++    pageTitle: 'Home',
+     viewOnGithub: 'View on GitHub',
+     viewDocs: 'View Documentation',
+     docs: 'Docs',
+@@ -16,7 +17,7 @@ export default {
+     goToDashboard: 'Go to Dashboard',
+     // User-focused value proposition
+     heroSubtitle: 'One Key, All AI Models',
+-    heroDescription: 'No need to manage multiple subscriptions. Access Claude, GPT, Gemini and more with a single API key',
++    heroDescription: 'Use one API key to access multiple AI services through Channel A and Channel B',
+     tags: {
+       subscriptionToApi: 'Subscription to API',
+       stickySession: 'Session Persistence',
+@@ -94,14 +95,12 @@ export default {
+       }
+     },
+     providers: {
+-      title: 'Supported AI Models',
+-      description: 'One API, Multiple Choices',
++      title: 'Available Service Channels',
++      description: 'One API with two clearly identified service channels',
+       supported: 'Supported',
+       soon: 'Soon',
+-      claude: 'Claude',
+-      gemini: 'Gemini',
+-      antigravity: 'Antigravity',
+-      more: 'More'
++      channelA: 'Channel A',
++      channelB: 'Channel B'
+     },
+     // CTA section
+     cta: {
+diff --git a/frontend/src/i18n/locales/en/misc.ts b/frontend/src/i18n/locales/en/misc.ts
+index e8f5404..b06c7f7 100644
+--- a/frontend/src/i18n/locales/en/misc.ts
++++ b/frontend/src/i18n/locales/en/misc.ts
+@@ -35,6 +35,9 @@ export default {
+     updating: 'Updating...',
+     updateComplete: 'Update Complete',
+     updateFailed: 'Update Failed',
++    jiyuUpdatePending: 'JIYU-compatible {version} is pending release',
++    jiyuUpdateHint:
++      'Compatibility checks and backup deployment are required. This page will not install the upstream binary over JIYU branding, channels, and key-import customizations.',
+     restartRequired: 'Please restart the service to apply the update',
+     restartNow: 'Restart Now',
+     restarting: 'Restarting...',
+diff --git a/frontend/src/i18n/locales/zh/admin/channels.ts b/frontend/src/i18n/locales/zh/admin/channels.ts
+index 45fbf70..d04a433 100644
+--- a/frontend/src/i18n/locales/zh/admin/channels.ts
++++ b/frontend/src/i18n/locales/zh/admin/channels.ts
+@@ -496,6 +496,7 @@ export default {
+       primaryModelRequired: '请输入主模型',
+       columns: {
+         name: '名称',
++        channel: '渠道',
+         provider: '供应商',
+         primaryModel: '主模型',
+         availability7d: '7 天可用率',
+diff --git a/frontend/src/i18n/locales/zh/admin/resources.ts b/frontend/src/i18n/locales/zh/admin/resources.ts
+index 21a7df3..a812ad4 100644
+--- a/frontend/src/i18n/locales/zh/admin/resources.ts
++++ b/frontend/src/i18n/locales/zh/admin/resources.ts
+@@ -435,6 +435,7 @@ export default {
+       readAt: '已读时间',
+       unread: '未读',
+       searchUsers: '搜索用户...',
++      noAnnouncements: '当前还没有公告，可创建第一条公告后再发布。',
+       failedToLoad: '加载公告失败',
+       failedToCreate: '创建公告失败',
+       failedToUpdate: '更新公告失败',
+diff --git a/frontend/src/i18n/locales/zh/dashboard.ts b/frontend/src/i18n/locales/zh/dashboard.ts
+index 5918132..f8cc6be 100644
+--- a/frontend/src/i18n/locales/zh/dashboard.ts
++++ b/frontend/src/i18n/locales/zh/dashboard.ts
+@@ -71,6 +71,8 @@ export default {
+     searchPlaceholder: '搜索名称或Key...',
+     endpoints: {
+       title: 'API 端点',
++      claude: 'Claude 端点',
++      chatgpt: 'ChatGPT 端点',
+       default: '默认',
+       copied: '已复制',
+       copiedHint: '已复制到剪贴板',
+@@ -96,6 +98,14 @@ export default {
+     copyToClipboard: '复制到剪贴板',
+     copied: '已复制！',
+     importToCcSwitch: '导入到 CCS',
++    createAndImport: '创建后立即导入 CC Switch',
++    createAndImportHint: '自动带入供应商、对应端点和用量查询配置；未安装时仍可在密钥列表手动复制。',
++    endpointGuide: {
++      claudeTitle: 'Claude 端点',
++      claudeHint: '适用于 Messages API 客户端。端点填写站点根地址，不要重复追加 /v1。',
++      chatgptTitle: 'ChatGPT 端点',
++      chatgptHint: '适用于 OpenAI Responses 与 Chat Completions 客户端。端点必须以 /v1 结尾。'
++    },
+     enable: '启用',
+     disable: '禁用',
+     nameLabel: '名称',
+diff --git a/frontend/src/i18n/locales/zh/landing.ts b/frontend/src/i18n/locales/zh/landing.ts
+index 18a7b25..658e2f0 100644
+--- a/frontend/src/i18n/locales/zh/landing.ts
++++ b/frontend/src/i18n/locales/zh/landing.ts
+@@ -5,6 +5,7 @@ export default {
+   },
+   // Home Page
+   home: {
++    pageTitle: '首页',
+     viewOnGithub: '在 GitHub 上查看',
+     viewDocs: '查看文档',
+     docs: '文档',
+@@ -16,7 +17,7 @@ export default {
+     goToDashboard: '进入控制台',
+     // 新增：面向用户的价值主张
+     heroSubtitle: '一个密钥，畅用多个 AI 模型',
+-    heroDescription: '无需管理多个订阅账号，一站式接入 Claude、GPT、Gemini 等主流 AI 服务',
++    heroDescription: '无需管理多个订阅账号，通过渠道A和渠道B统一接入多种 AI 服务',
+     tags: {
+       subscriptionToApi: '订阅转 API',
+       stickySession: '会话保持',
+@@ -94,14 +95,12 @@ export default {
+       }
+     },
+     providers: {
+-      title: '已支持的 AI 模型',
+-      description: '一个 API，多种选择',
++      title: '可用服务渠道',
++      description: '一个 API，两条清晰可选的服务渠道',
+       supported: '已支持',
+       soon: '即将推出',
+-      claude: 'Claude',
+-      gemini: 'Gemini',
+-      antigravity: 'Antigravity',
+-      more: '更多'
++      channelA: '渠道A',
++      channelB: '渠道B'
+     },
+     // CTA 区块
+     cta: {
+diff --git a/frontend/src/i18n/locales/zh/misc.ts b/frontend/src/i18n/locales/zh/misc.ts
+index 6a51408..3d616d9 100644
+--- a/frontend/src/i18n/locales/zh/misc.ts
++++ b/frontend/src/i18n/locales/zh/misc.ts
+@@ -35,6 +35,8 @@ export default {
+     updating: '正在更新...',
+     updateComplete: '更新完成',
+     updateFailed: '更新失败',
++    jiyuUpdatePending: 'JIYU 兼容版 {version} 待发布',
++    jiyuUpdateHint: '已进入兼容验证和备份发布流程。为避免覆盖品牌、渠道与密钥导入定制，本页不会直接安装官方二进制。',
+     restartRequired: '请重启服务以应用更新',
+     restartNow: '立即重启',
+     restarting: '正在重启...',
+diff --git a/frontend/src/router/index.ts b/frontend/src/router/index.ts
+index 1221a53..fa3b4f2 100644
+--- a/frontend/src/router/index.ts
++++ b/frontend/src/router/index.ts
+@@ -36,7 +36,8 @@ const routes: RouteRecordRaw[] = [
+     component: () => import('@/views/HomeView.vue'),
+     meta: {
+       requiresAuth: false,
+-      title: 'Home'
++      title: 'Home',
++      titleKey: 'home.pageTitle'
+     }
+   },
+   {
+diff --git a/frontend/src/router/title.ts b/frontend/src/router/title.ts
+index be5cf9d..4266b9e 100644
+--- a/frontend/src/router/title.ts
++++ b/frontend/src/router/title.ts
+@@ -7,7 +7,7 @@ import type { CustomMenuItem } from '@/types'
+  * 优先使用 titleKey 通过 i18n 翻译，fallback 到静态 routeTitle。
+  */
+ export function resolveDocumentTitle(routeTitle: unknown, siteName?: string, titleKey?: string): string {
+-  const normalizedSiteName = typeof siteName === 'string' && siteName.trim() ? siteName.trim() : 'Sub2API'
++  const normalizedSiteName = typeof siteName === 'string' && siteName.trim() ? siteName.trim() : 'JIYU AI'
+ 
+   if (typeof titleKey === 'string' && titleKey.trim()) {
+     const translated = i18n.global.t(titleKey)
+diff --git a/frontend/src/utils/__tests__/ccswitchImport.spec.ts b/frontend/src/utils/__tests__/ccswitchImport.spec.ts
+index 50789b5..97f9ff0 100644
+--- a/frontend/src/utils/__tests__/ccswitchImport.spec.ts
++++ b/frontend/src/utils/__tests__/ccswitchImport.spec.ts
+@@ -38,7 +38,7 @@ describe('ccswitchImport utils', () => {
+ 
+     expect(params.get('resource')).toBe('provider')
+     expect(params.get('app')).toBe('codex')
+-    expect(params.get('endpoint')).toBe(baseInput.baseUrl)
++    expect(params.get('endpoint')).toBe(`${baseInput.baseUrl}/v1`)
+     expect(params.get('model')).toBe(OPENAI_CC_SWITCH_CODEX_MODEL)
+     expect(atob(params.get('usageScript') || '')).toBe(baseInput.usageScript)
+   })
+diff --git a/frontend/src/utils/ccswitchImport.ts b/frontend/src/utils/ccswitchImport.ts
+index d7858ea..7f291e2 100644
+--- a/frontend/src/utils/ccswitchImport.ts
++++ b/frontend/src/utils/ccswitchImport.ts
+@@ -39,7 +39,7 @@ export function resolveCcSwitchImportConfig(
+     case 'openai':
+       return {
+         app: 'codex',
+-        endpoint: baseUrl,
++        endpoint: withV1Endpoint(baseUrl),
+         model: OPENAI_CC_SWITCH_CODEX_MODEL
+       }
+     case 'gemini':
+diff --git a/frontend/src/views/HomeView.vue b/frontend/src/views/HomeView.vue
+index ddb3e87..754835f 100644
+--- a/frontend/src/views/HomeView.vue
++++ b/frontend/src/views/HomeView.vue
+@@ -362,81 +362,36 @@
+         </div>
+ 
+         <div class="mb-16 flex flex-wrap items-center justify-center gap-4">
+-          <!-- Claude - Supported -->
++          <!-- 渠道 A -->
+           <div
+             class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
+           >
+             <div
+-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-orange-400 to-orange-500"
++              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary-500 to-primary-600"
+             >
+-              <span class="text-xs font-bold text-white">C</span>
+-            </div>
+-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.claude') }}</span>
+-            <span
+-              class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
+-              >{{ t('home.providers.supported') }}</span
+-            >
+-          </div>
+-          <!-- GPT - Supported -->
+-          <div
+-            class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
+-          >
+-            <div
+-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-green-500 to-green-600"
+-            >
+-              <span class="text-xs font-bold text-white">G</span>
+-            </div>
+-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">GPT</span>
+-            <span
+-              class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
+-              >{{ t('home.providers.supported') }}</span
+-            >
+-          </div>
+-          <!-- Gemini - Supported -->
+-          <div
+-            class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
+-          >
+-            <div
+-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-blue-600"
+-            >
+-              <span class="text-xs font-bold text-white">G</span>
++              <span class="text-xs font-bold text-white">A</span>
+             </div>
+-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.gemini') }}</span>
++            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.channelA') }}</span>
+             <span
+               class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
+               >{{ t('home.providers.supported') }}</span
+             >
+           </div>
+-          <!-- Antigravity - Supported -->
++          <!-- 渠道 B -->
+           <div
+             class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
+           >
+             <div
+-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-rose-500 to-pink-600"
++              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-500 to-cyan-600"
+             >
+-              <span class="text-xs font-bold text-white">A</span>
++              <span class="text-xs font-bold text-white">B</span>
+             </div>
+-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.antigravity') }}</span>
++            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.channelB') }}</span>
+             <span
+               class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
+               >{{ t('home.providers.supported') }}</span
+             >
+           </div>
+-          <!-- More - Coming Soon -->
+-          <div
+-            class="flex items-center gap-2 rounded-xl border border-gray-200/50 bg-white/40 px-5 py-3 opacity-60 backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/40"
+-          >
+-            <div
+-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-gray-500 to-gray-600"
+-            >
+-              <span class="text-xs font-bold text-white">+</span>
+-            </div>
+-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.more') }}</span>
+-            <span
+-              class="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-dark-700 dark:text-dark-400"
+-              >{{ t('home.providers.soon') }}</span
+-            >
+-          </div>
+         </div>
+       </div>
+     </main>
+@@ -449,7 +404,7 @@
+         <p class="text-sm text-gray-500 dark:text-dark-400">
+           &copy; {{ currentYear }} {{ siteName }}. {{ t('home.footer.allRightsReserved') }}
+         </p>
+-        <div class="flex items-center gap-4">
++        <div v-if="docUrl" class="flex items-center gap-4">
+           <a
+             v-if="docUrl"
+             :href="docUrl"
+@@ -459,14 +414,6 @@
+           >
+             {{ t('home.docs') }}
+           </a>
+-          <a
+-            :href="githubUrl"
+-            target="_blank"
+-            rel="noopener noreferrer"
+-            class="text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-white"
+-          >
+-            GitHub
+-          </a>
+         </div>
+       </div>
+     </footer>
+@@ -487,9 +434,9 @@ const authStore = useAuthStore()
+ const appStore = useAppStore()
+ 
+ // Site settings - directly from appStore (already initialized from injected config)
+-const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'Sub2API')
++const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'JIYU AI')
+ const siteLogo = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
+-const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || 'AI API Gateway Platform')
++const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || 'AI API 服务平台')
+ const docUrl = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.doc_url || appStore.docUrl || ''))
+ const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
+ const hasHomeContent = computed(() => homeContent.value.trim().length > 0)
+@@ -504,9 +451,6 @@ const isHomeContentUrl = computed(() => {
+ // Theme
+ const isDark = ref(document.documentElement.classList.contains('dark'))
+ 
+-// GitHub URL
+-const githubUrl = 'https://github.com/Wei-Shaw/sub2api'
+-
+ // Auth state
+ const isAuthenticated = computed(() => authStore.isAuthenticated)
+ const isAdmin = computed(() => authStore.isAdmin)
+diff --git a/frontend/src/views/admin/AnnouncementsView.vue b/frontend/src/views/admin/AnnouncementsView.vue
+index 3d1593e..9385ee5 100644
+--- a/frontend/src/views/admin/AnnouncementsView.vue
++++ b/frontend/src/views/admin/AnnouncementsView.vue
+@@ -148,7 +148,7 @@
+           <template #empty>
+             <EmptyState
+               :title="t('empty.noData')"
+-              :description="t('admin.announcements.failedToLoad')"
++              :description="t('admin.announcements.noAnnouncements')"
+               :action-text="t('admin.announcements.createAnnouncement')"
+               @action="openCreateDialog"
+             />
+diff --git a/frontend/src/views/admin/ChannelMonitorView.vue b/frontend/src/views/admin/ChannelMonitorView.vue
+index d58a842..ece2683 100644
+--- a/frontend/src/views/admin/ChannelMonitorView.vue
++++ b/frontend/src/views/admin/ChannelMonitorView.vue
+@@ -27,7 +27,7 @@
+ 
+           <template #cell-provider="{ row }">
+             <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium" :class="providerBadgeClass(row.provider)">
+-              {{ providerLabel(row.provider) }}
++              {{ monitorChannelLabel(row) }}
+             </span>
+           </template>
+ 
+@@ -176,7 +176,7 @@ let searchTimeout: ReturnType<typeof setTimeout> | null = null
+ 
+ const columns = computed<Column[]>(() => [
+   { key: 'name', label: t('admin.channelMonitor.columns.name'), sortable: false },
+-  { key: 'provider', label: t('admin.channelMonitor.columns.provider'), sortable: false },
++  { key: 'provider', label: t('admin.channelMonitor.columns.channel'), sortable: false },
+   { key: 'primary_model', label: t('admin.channelMonitor.columns.primaryModel'), sortable: false },
+   { key: 'availability_7d', label: t('admin.channelMonitor.columns.availability7d'), sortable: false },
+   { key: 'latency', label: t('admin.channelMonitor.columns.latency'), sortable: false },
+@@ -206,7 +206,7 @@ async function reload() {
+ 
+     const res = await adminAPI.channelMonitor.list(params, { signal: ctrl.signal })
+     if (ctrl.signal.aborted || abortController !== ctrl) return
+-    monitors.value = res.items || []
++    monitors.value = [...(res.items || [])].sort(compareMonitorDisplayOrder)
+     pagination.total = res.total
+   } catch (err: unknown) {
+     const e = err as { name?: string; code?: string }
+@@ -220,6 +220,33 @@ async function reload() {
+   }
+ }
+ 
++const monitorProductOrder = ['Claude Kiro', 'Claude 官 Key', 'OpenAI Plus', 'OpenAI Pro', 'Grok']
++
++function monitorChannelLabel(monitor: ChannelMonitor): string {
++  const label = `${monitor.group_name || ''} ${monitor.name || ''}`
++  if (label.includes('渠道A')) return '渠道A'
++  if (label.includes('渠道B')) return '渠道B'
++  return providerLabel(monitor.provider)
++}
++
++function compareMonitorDisplayOrder(left: ChannelMonitor, right: ChannelMonitor): number {
++  const leftLabel = `${left.group_name || ''} ${left.name || ''}`
++  const rightLabel = `${right.group_name || ''} ${right.name || ''}`
++  const channelRank = (label: string) =>
++    label.includes('渠道A') ? 0 : label.includes('渠道B') ? 1 : 2
++  const productRank = (label: string) => {
++    const rank = monitorProductOrder.findIndex((product) => label.includes(product))
++    return rank === -1 ? monitorProductOrder.length : rank
++  }
++
++  return (
++    channelRank(leftLabel) - channelRank(rightLabel) ||
++    productRank(leftLabel) - productRank(rightLabel) ||
++    leftLabel.localeCompare(rightLabel, 'zh-CN') ||
++    left.id - right.id
++  )
++}
++
+ function handleSearch() {
+   if (searchTimeout) clearTimeout(searchTimeout)
+   searchTimeout = setTimeout(() => {
+diff --git a/frontend/src/views/user/KeysView.vue b/frontend/src/views/user/KeysView.vue
+index 0237576..34872e2 100644
+--- a/frontend/src/views/user/KeysView.vue
++++ b/frontend/src/views/user/KeysView.vue
+@@ -505,8 +505,50 @@
+               />
+             </template>
+           </Select>
++
++          <div
++            v-if="!showEditModal && selectedCreateGroup"
++            class="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-800/60"
++            data-testid="key-endpoint-guide"
++          >
++            <div class="flex items-start gap-3">
++              <Icon name="terminal" size="md" class="mt-0.5 flex-shrink-0 text-primary-500" />
++              <div class="min-w-0 flex-1 space-y-3">
++                <div v-for="guide in defaultEndpointGuides" :key="guide.title">
++                  <p class="text-sm font-medium text-gray-900 dark:text-white">
++                    {{ guide.title }}
++                  </p>
++                  <code class="mt-1 block overflow-x-auto whitespace-nowrap rounded bg-gray-900 px-2.5 py-2 text-xs text-gray-100">
++                    {{ guide.endpoint }}
++                  </code>
++                  <p class="mt-1.5 text-xs leading-5 text-gray-500 dark:text-gray-400">
++                    {{ guide.hint }}
++                  </p>
++                </div>
++              </div>
++            </div>
++          </div>
+         </div>
+ 
++        <label
++          v-if="!showEditModal && !publicSettings?.hide_ccs_import_button"
++          class="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 p-3 dark:border-dark-700"
++        >
++          <input
++            v-model="importAfterCreate"
++            type="checkbox"
++            class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
++          />
++          <span class="min-w-0">
++            <span class="block text-sm font-medium text-gray-900 dark:text-white">
++              {{ t('keys.createAndImport') }}
++            </span>
++            <span class="mt-0.5 block text-xs leading-5 text-gray-500 dark:text-gray-400">
++              {{ t('keys.createAndImportHint') }}
++            </span>
++          </span>
++        </label>
++
+         <!-- Custom Key Section (only for create) -->
+         <div v-if="!showEditModal" class="space-y-3">
+           <div class="flex items-center justify-between">
+@@ -1303,6 +1345,7 @@ const showUseKeyModal = ref(false)
+ const showCcsClientSelect = ref(false)
+ const showColumnDropdown = ref(false)
+ const pendingCcsRow = ref<ApiKey | null>(null)
++const importAfterCreate = ref(true)
+ const selectedKey = ref<ApiKey | null>(null)
+ const copiedKeyId = ref<number | null>(null)
+ const groupSelectorKeyId = ref<number | null>(null)
+@@ -1349,6 +1392,28 @@ const formData = ref({
+   expiration_date: ''
+ })
+ 
++const selectedCreateGroup = computed(() =>
++  groups.value.find((group) => group.id === formData.value.group_id) || null
++)
++
++const defaultEndpointGuides = computed(() => {
++  const baseUrl = (publicSettings.value?.api_base_url || window.location.origin)
++    .replace(/\/+$/, '')
++    .replace(/\/v1$/i, '')
++  return [
++    {
++      title: t('keys.endpointGuide.claudeTitle'),
++      endpoint: baseUrl,
++      hint: t('keys.endpointGuide.claudeHint')
++    },
++    {
++      title: t('keys.endpointGuide.chatgptTitle'),
++      endpoint: `${baseUrl}/v1`,
++      hint: t('keys.endpointGuide.chatgptHint')
++    }
++  ]
++})
++
+ // 自定义Key验证
+ const customKeyError = computed(() => {
+   if (!formData.value.use_custom_key || !formData.value.custom_key) {
+@@ -1736,7 +1801,8 @@ const handleSubmit = async () => {
+       appStore.showSuccess(t('keys.keyUpdatedSuccess'))
+     } else {
+       const customKey = formData.value.use_custom_key ? formData.value.custom_key : undefined
+-      await keysAPI.create(
++      const shouldImport = importAfterCreate.value && !publicSettings.value?.hide_ccs_import_button
++      const createdKey = await keysAPI.create(
+         formData.value.name,
+         formData.value.group_id,
+         customKey,
+@@ -1746,11 +1812,15 @@ const handleSubmit = async () => {
+         expiresInDays,
+         rateLimitData
+       )
++      createdKey.group = groups.value.find((group) => group.id === formData.value.group_id)
+       appStore.showSuccess(t('keys.keyCreatedSuccess'))
+       // Only advance tour if active, on submit step, and creation succeeded
+       if (onboardingStore.isCurrentStep('[data-tour="key-form-submit"]')) {
+         onboardingStore.nextStep(500)
+       }
++      if (shouldImport) {
++        setTimeout(() => importToCcswitch(createdKey), 0)
++      }
+     }
+     closeModals()
+     loadApiKeys()
+@@ -1787,6 +1857,7 @@ const closeModals = () => {
+   showCreateModal.value = false
+   showEditModal.value = false
+   selectedKey.value = null
++  importAfterCreate.value = true
+   formData.value = {
+     name: '',
+     group_id: null,
