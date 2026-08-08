@@ -1036,7 +1036,7 @@ harden_apache_admin_updates() {
 APACHE
   fi
   apache2ctl configtest
-  systemctl reload apache2.service
+  reload_apache_with_recovery || fail "Apache 重载和自动重启后公网健康检查仍失败。"
   log "已禁止浏览器直接更新或回滚生产二进制。"
 }
 
@@ -1067,7 +1067,7 @@ SYSTEMD
   if [[ -f "$APACHE_SITE" ]]; then
     sed -i '/# JIYU-BLOCK-UPSTREAM-SELF-UPDATE:/,/^<\/LocationMatch>$/d' "$APACHE_SITE"
     apache2ctl configtest
-    systemctl reload apache2.service
+    reload_apache_with_recovery || fail "启用 WebUI 更新时 Apache 未能恢复公网服务。"
   fi
   systemctl daemon-reload
   systemctl restart "$SUB2API_SERVICE"
@@ -1149,19 +1149,40 @@ repair_apache_responses_websocket_proxy() {
     cp -a "$temporary_backup" "$APACHE_SITE"
     fail "Responses WebSocket 代理校验失败，已恢复原配置。"
   fi
-  systemctl reload apache2.service
-  if ! verify_public_health; then
+  if ! reload_apache_with_recovery; then
     cp -a "$temporary_backup" "$APACHE_SITE"
-    apache2ctl configtest
-    systemctl reload apache2.service
+    reload_apache_with_recovery || fail "Responses WebSocket 代理回滚后公网健康仍失败。"
     fail "Responses WebSocket 代理上线后公网健康失败，已恢复原配置。"
   fi
   rm -f "$temporary_backup"
   log "Responses WebSocket 代理已位于根代理之前，Codex 升级请求不会再被普通 HTTP 代理截断。"
 }
 
+verify_public_url() {
+  local url="$1"
+  local attempt
+  for ((attempt = 1; attempt <= 5; attempt += 1)); do
+    if curl -fsS --max-time 15 "$url" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
 verify_public_health() {
-  curl -fsS --max-time 15 "https://${DOMAIN}/health" >/dev/null
+  verify_public_url "https://${DOMAIN}/health"
+}
+
+reload_apache_with_recovery() {
+  local public_url="${1:-https://${DOMAIN}/health}"
+  apache2ctl configtest || return 1
+  if systemctl reload apache2.service && verify_public_url "$public_url"; then
+    return 0
+  fi
+  log "Apache 重载后公网 TLS/健康检查失败，自动执行完整重启。"
+  systemctl restart apache2.service || return 1
+  verify_public_url "$public_url"
 }
 
 cutover_to_sub2api() {
@@ -1185,12 +1206,10 @@ cutover_to_sub2api() {
     cp -a "$APACHE_ROLLBACK_FILE" "$APACHE_SITE"
     fail "Apache 配置校验失败，已恢复原配置。"
   fi
-  systemctl reload apache2.service
-
-  if ! verify_public_health; then
+  if ! reload_apache_with_recovery; then
     cp -a "$APACHE_ROLLBACK_FILE" "$APACHE_SITE"
     apache2ctl configtest
-    systemctl reload apache2.service
+    systemctl restart apache2.service
     fail "公网健康检查失败，已恢复 New-API 域名代理。"
   fi
 
@@ -1214,12 +1233,10 @@ clean_apache_after_cutover() {
     cp -a "$temporary_backup" "$APACHE_SITE"
     fail "清理旧品牌注入后 Apache 校验失败，已恢复。"
   fi
-  systemctl reload apache2.service
-  if ! verify_public_health; then
+  if ! reload_apache_with_recovery; then
     cp -a "$temporary_backup" "$APACHE_SITE"
-    apache2ctl configtest
-    systemctl reload apache2.service
-    fail "清理旧品牌注入后公网健康失败，已恢复。"
+    reload_apache_with_recovery || fail "恢复旧 Apache 配置后公网健康仍失败。"
+    fail "清理旧品牌注入后公网健康失败，已恢复原配置。"
   fi
   rm -f "$temporary_backup"
   log "Apache 旧 New-API HTML 注入已清理。"
@@ -1231,10 +1248,8 @@ rollback_cutover() {
   [[ -f "$APACHE_ROLLBACK_FILE" ]] || fail "找不到切换前 Apache 配置，无法自动回滚。"
   systemctl enable --now "$NEWAPI_SERVICE"
   cp -a "$APACHE_ROLLBACK_FILE" "$APACHE_SITE"
-  apache2ctl configtest
-  systemctl reload apache2.service
-  curl -fsS --max-time 15 "https://${DOMAIN}/api/status" >/dev/null || \
-    fail "Apache 已恢复，但旧 New-API 公网状态检查失败。"
+  reload_apache_with_recovery "https://${DOMAIN}/api/status" || \
+    fail "Apache 完整重启后旧 New-API 公网状态检查仍失败。"
   log "域名已回滚到旧 New-API。Sub2API 服务保持运行，便于排障。"
 }
 

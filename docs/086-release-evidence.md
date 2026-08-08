@@ -15,6 +15,8 @@
 | Cloudflare | 成功 | Managed WAF、OWASP、L7 DDoS；注册/验证码 5 次/60 秒封禁 600 秒，登录/2FA 20 次/60 秒封禁 300 秒 |
 | WebUI 深链刷新 | 观察 | 移动端 `/usage` 曾有 1 次瞬时 503；08-08 源站 25 次 503 均归因于明确失败测试或发布重启，05:04 后无新增，Console 0 error/0 warning |
 | 账号列表品牌隐私 | 待发布验收 | JIYU 补丁已移除账号名称到真实供货 `base_url` 的超链接与悬浮提示；编辑入口和协议生态标签保持不变，待受管兼容包发布后以生产 DOM 和安全截图关闭。 |
+| JIYU 同版兼容更新 | 待发布验收 | 版本面板不再依赖官方基础版 `hasUpdate`；root 代理比较完整构建号，已最新使用官方 HTTP 200 no-op 语义。旧代码红灯 2 项、当前聚焦合同 4/4。 |
+| Apache 525 恢复 | 待部署验收 | 多个 JIYU Apache 修改入口已统一执行配置校验、graceful reload、公网 HTTPS 复核，失败自动 full restart 并再次复核；部署前公网健康 5/5 为 200。 |
 
 永久测试账号为用户 ID 2，必须保留；密码、API Key、Token 和 Cookie 只在钥匙串或服务器私有配置中，不出现在本报告。Codex WS 调度已关闭；渠道A Claude 上游协议和源站 443 公网绕过仍是未关闭 P1，验收方案见 `docs/009-health.md` HI-1001、HI-1005。
 

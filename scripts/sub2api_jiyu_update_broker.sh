@@ -109,12 +109,11 @@ main() {
     fail "兼容包大小超过安全范围"
   validate_https_host "$artifact_url"
 
-  local current current_base
+  local current
   current="$(tr -d '[:space:]' <"${INSTALL_DIR}/VERSION")"
-  current_base="${current%%-jiyu.*}"
-  if [[ "$current_base" == "$upstream_version" ]]; then
-    printf '当前 JIYU 构建已基于 %s，无需更新。\n' "$upstream_version"
-    return 0
+  if [[ "$current" == "$version" ]]; then
+    printf '当前已是 JIYU 兼容包 %s，无需更新。\n' "$version"
+    return 3
   fi
 
   curl -fsSL --proto '=https' --proto-redir '=https' --max-filesize "$MAX_ARTIFACT_BYTES" \

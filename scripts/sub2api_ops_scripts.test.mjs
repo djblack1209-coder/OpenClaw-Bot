@@ -35,6 +35,14 @@ test('生产更新改为只检查，完整备份覆盖品牌与页面', async ()
   assert.match(content, /restore_database "\$\{backup_dir\}\/sub2api\.dump"/);
   assert.match(content, /enable-web-update/);
   assert.match(content, /JIYU 构建健康检查失败，正在恢复发布前版本和数据库/);
+  assert.match(content, /reload_apache_with_recovery/);
+  assert.match(content, /systemctl restart apache2\.service/);
+  assert.equal((content.match(/systemctl reload apache2\.service/g) || []).length, 1);
+  assert.match(
+    content,
+    /reload_apache_with_recovery\(\)[\s\S]*apache2ctl configtest[\s\S]*systemctl reload apache2\.service[\s\S]*verify_public_url[\s\S]*systemctl restart apache2\.service[\s\S]*verify_public_url/,
+  );
+  assert.match(content, /reload_apache_with_recovery "https:\/\/\$\{DOMAIN\}\/api\/status"/);
 });
 
 test('充值页无 CSP iframe，WebUI 更新只能进入固定 root 代理', async () => {
@@ -61,6 +69,9 @@ test('充值页无 CSP iframe，WebUI 更新只能进入固定 root 代理', asy
   assert.match(brokerContent, /MAX_ARTIFACT_BYTES/);
   assert.match(brokerContent, /兼容包大小不一致/);
   assert.match(brokerContent, /trap cleanup EXIT/);
+  assert.match(brokerContent, /\[\[ "\$current" == "\$version" \]\]/);
+  assert.match(brokerContent, /return 3/);
+  assert.doesNotMatch(brokerContent, /current_base/);
   assert.doesNotMatch(brokerContent, /eval |bash -c|sh -c/);
   assert.match(workflowContent, /go test -tags embed \.\/internal\/web/);
   assert.match(workflowContent, /go build -tags embed/);
@@ -72,6 +83,8 @@ test('充值页无 CSP iframe，WebUI 更新只能进入固定 root 代理', asy
   assert.match(patchContent, /-function accountHomepageUrl\(row: Account\): string/);
   assert.doesNotMatch(patchContent, /^\+.*accountHomepageUrl/m);
   assert.doesNotMatch(patchContent, /^\+.*:href="accountHomepageUrl/m);
+  assert.match(patchContent, /v-else-if="isJiyuBuild"/);
+  assert.match(patchContent, /ExitCode\(\) == 3/);
 });
 
 test('JIYU 图形 Logo 是 512 像素 PNG', async () => {
