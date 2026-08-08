@@ -23,6 +23,17 @@ CALLBACK_HOST = "127.0.0.1"
 CALLBACK_PORT = 1455
 CALLBACK_PATH = "/auth/callback"
 _AUTH_HOSTS = {"auth.openai.com", "login.openai.com", "chatgpt.com", "openai.com"}
+_OTP_SELECTORS = (
+    'input[autocomplete="one-time-code"]',
+    'input[name*="otp" i]',
+    'input[id*="otp" i]',
+    'input[name*="mfa" i]',
+    'input[id*="mfa" i]',
+    'input[aria-label*="verification code" i]',
+    'input[placeholder*="verification code" i]',
+    'input[aria-label*="2fa" i]',
+    'input[placeholder*="2fa" i]',
+)
 
 
 class JobSkipped(RuntimeError):
@@ -39,18 +50,22 @@ class ReplenishRunner:
     def __init__(self, *, dry_run: bool = False) -> None:
         self.dry_run = dry_run
         self.jobs: list[ReplenishJob] = []
+        self.target_channel = "A"
         self.running = False
         self._batch_task: asyncio.Task[None] | None = None
         self._stop_event = asyncio.Event()
         self._actions: dict[str, asyncio.Queue[tuple[str, int | None]]] = {}
         self._client = Sub2AdminClient()
 
-    def replace_jobs(self, jobs: list[ReplenishJob]) -> None:
+    def replace_jobs(self, jobs: list[ReplenishJob], *, target_channel: str = "A") -> None:
         """新批次覆盖旧批次前清除旧凭据引用。"""
         if self.running:
             raise RuntimeError("当前批次仍在运行")
+        if target_channel not in {"A", "B"}:
+            raise ValueError("目标渠道必须是渠道A或渠道B")
         self.wipe_all()
         self.jobs = jobs
+        self.target_channel = target_channel
         self._actions = {job.id: asyncio.Queue() for job in jobs}
         self._stop_event = asyncio.Event()
 
@@ -58,6 +73,7 @@ class ReplenishRunner:
         return {
             "running": self.running,
             "dry_run": self.dry_run,
+            "target_channel": self.target_channel,
             "jobs": [job.public() for job in self.jobs],
             "notice": "短信、实体手机号、CAPTCHA 或风控必须由本人在打开的浏览器中完成。",
         }
@@ -186,16 +202,16 @@ class ReplenishRunner:
             return
 
         all_groups = await self._client.list_openai_groups()
-        groups = matching_plan_groups(all_groups, job.plan_type)
+        groups = matching_plan_groups(all_groups, job.plan_type, self.target_channel)
         if len(groups) == 1:
             job.selected_group_id = int(groups[0]["id"])
         else:
             job.status = "group_required"
-            job.group_options = groups or manual_openai_group_options(all_groups)
+            job.group_options = groups or manual_openai_group_options(all_groups, self.target_channel)
             if groups:
-                job.message = "Plus/Pro 已识别，但渠道A/B无法唯一判断，请选择目标分组"
+                job.message = f"计划已识别，但渠道{self.target_channel}存在多个目标分组，请人工核对"
             else:
-                job.message = "计划类型无法唯一判断，请人工核对 Plus/Pro 和渠道后选择分组"
+                job.message = f"计划无法识别或目标组不存在，请核对渠道{self.target_channel}内的 Plus/Pro 分组"
             if not job.group_options:
                 raise RuntimeError("没有可选的 JIYU OpenAI Plus/Pro 分组")
             action, group_id = await self._actions[job.id].get()
@@ -338,7 +354,7 @@ class ReplenishRunner:
         fields = (
             ("email", ('input[type="email"]', 'input[name="email"]', 'input[name="username"]')),
             ("password", ('input[type="password"]', 'input[name="password"]')),
-            ("otp", ('input[autocomplete="one-time-code"]', 'input[inputmode="numeric"]')),
+            ("otp", _OTP_SELECTORS),
         )
         for kind, selectors in fields:
             if now - attempted.get(kind, 0) < (25 if kind == "otp" else 4):

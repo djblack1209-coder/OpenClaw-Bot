@@ -124,11 +124,17 @@ def create_app(*, dry_run: bool = False) -> FastAPI:
         require_session(request)
         payload = await read_json(request)
         raw = payload.get("raw")
+        target_channel = payload.get("target_channel", "A")
         if not isinstance(raw, str):
             raise HTTPException(status_code=400, detail="请粘贴卖家发货原文")
+        if target_channel not in {"A", "B"}:
+            raise HTTPException(status_code=400, detail="请选择渠道A或渠道B")
         try:
             credentials = parse_seller_payload(raw)
-            runner.replace_jobs([ReplenishJob(credential=item) for item in credentials])
+            runner.replace_jobs(
+                [ReplenishJob(credential=item) for item in credentials],
+                target_channel=target_channel,
+            )
         except InputFormatError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from None
         except RuntimeError as exc:

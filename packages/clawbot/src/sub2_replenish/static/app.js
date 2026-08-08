@@ -3,6 +3,7 @@
   const csrf = document.querySelector('meta[name="jiyu-csrf"]').content;
   const dryRun = document.querySelector('meta[name="jiyu-dry-run"]').content === "true";
   const payload = document.querySelector("#payload");
+  const targetChannel = document.querySelector("#target-channel");
   const parseButton = document.querySelector("#parse");
   const startButton = document.querySelector("#start");
   const stopButton = document.querySelector("#stop");
@@ -90,6 +91,8 @@
     startButton.disabled = state.running || !state.jobs.some((job) => job.status === "pending");
     stopButton.disabled = !state.running;
     parseButton.disabled = state.running;
+    targetChannel.disabled = state.running;
+    if (state.target_channel) targetChannel.value = state.target_channel;
     if (state.running && timer === null) timer = window.setInterval(refresh, 1000);
     if (!state.running && timer !== null) {
       window.clearInterval(timer);
@@ -108,7 +111,7 @@
   }
 
   parseButton.addEventListener("click", async () => {
-    await act("/api/parse", {raw: payload.value});
+    await act("/api/parse", {raw: payload.value, target_channel: targetChannel.value});
     payload.value = "";
   });
   startButton.addEventListener("click", async () => act("/api/start", {}));
