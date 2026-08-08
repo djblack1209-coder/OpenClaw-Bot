@@ -5,6 +5,19 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
+## [2026-08-09] JIYU 生产服务与真实用量只读复核
+> 领域: `deploy` | `ai-pool` | `docs`
+> 影响模块: `Sub2API 服务`, `Responses WebSocket`, `Cloudflare 源站收口`, `运营健康记录`
+> 关联问题: HI-985, HI-1006, HI-1014
+### 变更内容
+- 回读确认 12/12 账号和 12/12 渠道均启用且恰好一个分组；10 条启用监控保持 `300s + 30s`，两个生图监控因真实上游异常继续禁用。
+- 回读 `v0.1.172-jiyu.31278104138` 服务、PostgreSQL、Redis、Responses WebSocket 代理与 Cloudflare 443 源站收口均正常；服务本次启动后的应用错误日志和 `ops_error_logs` 新增记录均为 0。
+- 永久测试账号继续保留：累计 10 条真实用量、WS 2 条，缓存读取 20608/输入 21660；未额外发起付费或循环测试。
+### 文件变更
+- `docs/009-health.md`、`docs/012-handoff.md` — 更新生产复核事实与外部阻塞边界。
+### 验证
+- `/usr/local/sbin/openclaw-sub2api-manager status`、`check` 均通过；公网 `/health`、`/api/v1/model-plaza` 与模型广场页面均为 HTTP 200。
+
 ## [2026-08-09] JIYU 模型广场按上游实况对齐并清理旧兼容入口
 > 领域: `ai-pool` | `frontend` | `deploy` | `docs`
 > 影响模块: `Sub2 模型广场`, `渠道模型限制`, `JIYU 兼容补丁`, `品牌清理`
