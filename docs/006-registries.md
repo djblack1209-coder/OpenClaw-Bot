@@ -259,6 +259,8 @@
 | WebUI 更新启用 | `scripts/sub2api_oracle_manage.sh enable-web-update <broker> <manifest-url>` | 安装固定 root 代理、root-only 清单 URL、最小 sudoers 和 systemd 环境；完成健康检查后才放开受管更新接口 |
 | Codex WS 桥接启用 | `scripts/sub2api_oracle_manage.sh openai-ws-http-bridge` | 启用官方 OpenAI WS 模式路由；账号仍需在 WebUI 选择 `http_bridge`，不直接写数据库或改上游地址 |
 | Codex WS 旧模式回滚 | `scripts/sub2api_oracle_manage.sh openai-ws-legacy` | 关闭官方模式路由并恢复旧版传输判定；用于桥接异常时快速回滚 |
+| 本地补号助手 | `make jiyu-sub2-replenish` | 只绑定 `127.0.0.1:18796`；粘贴 `email----password----totp_secret` 后串行走 Sub2 原生 OpenAI OAuth，密码/TOTP/Token 只在进程内存，挑战页面暂停人工 |
+| 本地补号演练 | `make jiyu-sub2-replenish-dry-run` | 只验证解析、掩码和页面，不读取钥匙串、不打开登录窗口、不调用生产接口 |
 
 ---
 
@@ -1135,6 +1137,15 @@
 ---
 
 ## 四、Python 模块索引
+
+### JIYU Sub2 本地补号助手（2026-08-08）
+
+| 路径 | 用途 | 安全合同 |
+|---|---|---|
+| `packages/clawbot/src/sub2_replenish/core.py` | 固定分隔符解析、邮箱掩码、TOTP 生成和内存任务模型 | `repr=False`、不持久化、不回显密码/TOTP |
+| `packages/clawbot/src/sub2_replenish/sub2_client.py` | 读取 macOS 钥匙串并调用 Sub2 原生 OAuth、账号、分组接口 | 固定 `https://jiyu.245334.xyz`，错误不带响应正文，倍率不使用默认值 |
+| `packages/clawbot/src/sub2_replenish/runner.py` | 独立 BrowserContext、`localhost:1455` 回调、串行/暂停/重试/停止 | 不读 Cookie/session；CAPTCHA、短信、实体手机号和风控交人工 |
+| `packages/clawbot/src/sub2_replenish/app.py` | localhost UI、同源校验、随机 HttpOnly 会话和 CSP | 无 CORS；仅 `127.0.0.1:18796` |
 
 
 > 最后更新: 2026-04-19 | 新增 3 个模块 (285→288): ai-hedge-fund 估值 + Hurst + 大师 Agent

@@ -74,6 +74,7 @@
 | HI-1009 | `BUG/INFRA` | 🟠 重要 | 线上已关闭 | 生产 Apache 在密集 graceful reload 后曾出现工作进程 abort 和 Cloudflare 525，full restart 后恢复。全部 JIYU Apache 维护入口现统一执行 `configtest → reload → 公网 HTTPS 5 次容错复核`，失败自动 full restart 并再次复核；旧 New-API 回滚使用独立 `/api/status`。新管理器已部署，真实 reload happy path 与最终公网健康均为 5/5 200；为避免主动制造生产 525，full restart 分支由聚焦静态合同覆盖。 |
 | HI-1010 | `BUG/INFRA` | 🟠 重要 | 线上已关闭 | PostgreSQL 曾因 `pg_ctl` 不可执行和日志不可写中断。持续复发根因是 Headscale 故障转移脚本每两分钟对既有 `/var/log` 执行 `install -d -m 700`，把 postgres ACL mask 清零；生产脚本已改为不修改系统日志根目录。Sub2API 管理器新增 `pg_ctl`、`/dev/shm`、日志目录、服务和 SQL 连通性预检，并接入备份与全部更新发布路径；手动运行故障转移任务后 ACL 与数据库预检保持通过。 |
 | HI-1011 | `SECURITY/OPS` | 🟡 一般 | 外部凭据阻塞 | LinuxDo、GitHub/Google 邮箱快捷登录、Turnstile、支付服务商和异步生图 S3 均缺少真实专用凭据，因此保持关闭；异步生图不会复用现有备份存储。生产当前管理员 API Key 已通过不回显管道写入 macOS 钥匙串服务“JIYU AI Sub2API 管理员 API Key”，只记录匹配验收结果，未重新生成或写入仓库、文档和截图。 |
+| HI-1012 | `SECURITY/AI_POOL` | 🟡 一般 | 本地工具已就绪，真实补号待人工挑战 | 新增只绑定 `127.0.0.1:18796` 的 Sub2 补号助手：卖家 `邮箱----密码----totp_secret` 只在进程内存，独立 Playwright Context、本地 PyOTP、Sub2 原生 OAuth、邮箱/账号标识去重、Plus/Pro 与渠道选择、模板倍率继承和创建后回读均已实现。聚焦测试 `11 passed`，桌面/移动 dry-run 截图已保存；只读生产预检确认 Plus/Pro 各 2 个分组且 4/4 有唯一模板倍率。真实账号仍可能要求 CAPTCHA、短信或海外实体手机号，助手不会绕过。 |
 
 | 编号 | 分类 | 严重度 | 状态 | 当前结论 |
 |---|---|---|---|---|

@@ -5,6 +5,24 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
+## [2026-08-08] JIYU Sub2 本地补号助手（OAuth + 本地 2FA）
+> 领域: `backend` | `ai-pool` | `security` | `docs`
+> 影响模块: `packages/clawbot/src/sub2_replenish`, `Makefile`, `Sub2 原生账号接口`
+> 关联问题: HI-1012
+### 变更内容
+- 新增只绑定 `127.0.0.1:18796` 的本地补号助手，逐行解析 `email----password----totp_secret`；密码和 TOTP 只在当前进程内存存在，页面、异常和访问日志只显示掩码邮箱。
+- 通过 Sub2 原生 OpenAI OAuth 换取计划类型后按邮箱与 OpenAI 账号标识去重；Plus/Pro 或渠道A/B无法唯一判断时暂停人工选择，不直写数据库、不猜分组。
+- 每个账号使用独立 headed Playwright Context，本地 PyOTP 生成 2FA；CAPTCHA、短信、实体手机号和风控只暂停等待人工，禁止绕过挑战、读取或导出 Cookie/session token。
+- 新账号从所选分组现有模板账号读取倍率，只有唯一一致时自动继承；不存在或不一致时要求人工确认，创建后回读账号、分组、状态和倍率。
+### 文件变更
+- `packages/clawbot/src/sub2_replenish/` — 本地 UI、解析器、Sub2 客户端和串行 OAuth 执行器。
+- `packages/clawbot/tests/test_sub2_replenish_helper.py` — 解析、脱敏、分组/倍率合同和 dry-run 页面会话聚焦测试。
+- `Makefile` — 新增 `jiyu-sub2-replenish` 与 `jiyu-sub2-replenish-dry-run`。
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_sub2_replenish_helper.py -q`：`11 passed`。
+- Ruff、Python 编译门通过；Playwright 演练模式在桌面与 `390×844` 移动视口完成粘贴、解析和 dry-run，Console 无新增错误；截图保存在 `output/playwright/jiyu-sub2-replenish-dry-run.png` 与 `output/playwright/jiyu-sub2-replenish-dry-run-mobile.png`（不含真实凭据）。
+- 使用钥匙串管理员 API Key 完成只读生产预检且不回显凭据：Plus/Pro 各匹配 2 个现有 JIYU 分组，4/4 目标分组均存在唯一模板账号倍率；未发起 OAuth、未创建或修改账号。
+
 ## [2026-08-08] JIYU 充值专用全屏嵌入与 CC Switch 下载区响应式修复
 > 领域: `frontend` | `deploy` | `docs`
 > 影响模块: `充值中心`, `security.csp.policy`, `CC Switch 下载区`, `Sub2API 运维脚本`

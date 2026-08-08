@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="jiyu-csrf" content="__CSRF_TOKEN__">
+  <meta name="jiyu-dry-run" content="__DRY_RUN__">
+  <title>JIYU Sub2 补号助手</title>
+  <style>
+    :root { color-scheme: light dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f5f6f8; color: #18212b; }
+    main { width: min(980px, 100%); margin: 0 auto; padding: 28px 20px 60px; }
+    h1 { margin: 0 0 8px; font-size: 26px; letter-spacing: 0; }
+    p { line-height: 1.6; }
+    .notice { border-left: 4px solid #d97706; background: #fff7ed; padding: 12px 14px; margin: 18px 0; }
+    .panel { border: 1px solid #d8dde4; background: #fff; padding: 18px; margin-top: 16px; border-radius: 6px; }
+    textarea { width: 100%; min-height: 180px; resize: vertical; border: 1px solid #aeb7c2; border-radius: 4px; padding: 12px; font: 14px ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+    button, select, input { min-height: 42px; border: 1px solid #8a96a3; border-radius: 4px; padding: 0 14px; font: inherit; }
+    button { cursor: pointer; background: #146c43; color: #fff; border-color: #146c43; }
+    button.secondary { background: #fff; color: #18212b; }
+    button.danger { background: #b42318; border-color: #b42318; }
+    button:disabled { cursor: not-allowed; opacity: .55; }
+    #error { min-height: 24px; color: #b42318; margin-top: 10px; }
+    .job { border-top: 1px solid #e2e6eb; padding: 14px 0; display: grid; grid-template-columns: 170px 130px 1fr auto; gap: 12px; align-items: center; }
+    .job:first-child { border-top: 0; }
+    .email { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .status { font-weight: 650; }
+    .message { color: #4b5563; line-height: 1.45; }
+    .job-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+    .job-actions button { min-height: 36px; padding: 0 10px; }
+    .empty { color: #667085; padding: 18px 0; }
+    @media (max-width: 700px) {
+      main { padding: 20px 14px 44px; }
+      .job { grid-template-columns: 1fr; }
+      .job-actions { justify-content: flex-start; }
+      button, select { max-width: 100%; }
+    }
+    @media (prefers-color-scheme: dark) {
+      body { background: #111418; color: #edf1f5; }
+      .panel { background: #191e24; border-color: #3a424c; }
+      .notice { background: #33230b; }
+      textarea, select, input, button.secondary { background: #111418; color: #edf1f5; border-color: #59636f; }
+      .message, .empty { color: #b7c0ca; }
+      .job { border-color: #343b44; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>JIYU Sub2 补号助手</h1>
+  <p>逐行粘贴卖家发货原文。解析后页面只显示掩码邮箱，2FA 验证码只在本机生成。</p>
+  <div class="notice" id="notice">遇到 CAPTCHA、短信、实体手机号或风控时，助手会暂停并保留隔离登录窗口，完成后自动继续。商品要求绑定海外实体手机号的步骤不能全自动。</div>
+  <section class="panel">
+    <label for="payload"><strong>卖家发货原文</strong></label>
+    <textarea id="payload" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="email----password----totp_secret"></textarea>
+    <div class="actions">
+      <button id="parse" type="button">解析并检查</button>
+      <button id="start" type="button" disabled>开始串行补号</button>
+      <button id="stop" class="danger" type="button" disabled>停止并清除内存凭据</button>
+    </div>
+    <div id="error" role="alert" aria-live="polite"></div>
+  </section>
+  <section class="panel" aria-live="polite">
+    <strong>任务进度</strong>
+    <div id="jobs" class="empty">尚未解析账号</div>
+  </section>
+</main>
+<script src="/app.js" defer></script>
+</body>
+</html>
