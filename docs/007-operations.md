@@ -11,7 +11,7 @@
 |---|---|
 | 对外品牌 | `JIYU AI` / `Unified AI API Gateway` |
 | Sub2API | `sub2api.service`，`127.0.0.1:18080` |
-| PostgreSQL | `sub2api` 独立数据库，PostgreSQL 16 |
+| PostgreSQL | `sub2api` 独立数据库，PostgreSQL 16；备份与更新前强制预检 |
 | Redis | `sub2api-redis.service`，`127.0.0.1:16379` |
 | 自动更新 | `sub2api-update.timer` 每日检查官方 release；管理员从 WebUI 显式安装 JIYU 兼容包 |
 | 自动备份 | `sub2api-backup.timer`，每日 PostgreSQL 一致性备份，`/var/backups/sub2api` 保留 30 天 |
@@ -51,9 +51,9 @@ ssh oracle-arm1 '/usr/local/sbin/openclaw-sub2api-manager status'
 - 开放注册保持关闭、邮箱验证保持开启。源站 Redis 限流为注册 5 次/分钟、登录 20 次/分钟、验证码 5 次/分钟；Cloudflare 对同一主机再叠加注册/验证码 5 次/60 秒并封禁 600 秒、登录/2FA 20 次/60 秒并封禁 300 秒。
 - Cloudflare 代理、严格 SSL、最低 TLS 1.3、Managed WAF、OWASP、L7 DDoS 和高安全级别均启用。Super Bot Fight Mode 没有做全区域一刀切，避免误伤 `/v1` 的 Codex/Claude 等合法非浏览器客户端和同区域其他站点。
 - Turnstile 当前关闭。正式开放注册前必须先创建 JIYU 专用 widget，再以桌面/手机真实注册、验证码、失败和无障碍流程验收；不得直接复用历史 New-API 口径声称已开启。
-- Oracle 443 当前仍可从公网直达，存在绕过 Cloudflare WAF/DDoS 的路径。三个 HTTPS vhost 都经 Cloudflare 代理；但 `naive-iad` 使用直连 DNS，并依赖公网 80 的 ACME HTTP-01，不能直接同时封 80/443。
-- 待确认的第一阶段方案：下载并校验 Cloudflare 官方 15 个 IPv4、7 个 IPv6 CIDR；备份当前 nftables；先安排 5 分钟自动回滚；只在现有 443 accept 规则之前允许 Cloudflare CIDR并拒绝其他来源；从 Cloudflare 域名验证首页、登录、API、WebSocket 和两个共享 HTTPS vhost，再从源站直连验证 443 被拒绝；全部通过后才持久化并取消回滚。80、22、Tailscale 和其他业务端口均不动。
-- 第二阶段先把 `naive-iad` 的证书签发迁到 DNS-01、独立入口或其他不依赖公网 80 的方案，再单独评估 80 收口。该变更涉及共享主机网络，未获确认前只保留方案和只读证据，不应用防火墙。
+- Oracle 443 第一阶段已收口：`jiyu-cloudflare-origin.service` 从 Cloudflare 官方地址页下载并校验 CIDR，只允许 Cloudflare、loopback 和 Tailscale 访问 443。应用命令先安排 5 分钟自动回滚；必须从独立外部主机确认直连源站超时后，才能执行确认命令取消回滚。
+- 2026-08-08 验收：三个 HTTPS vhost 经 Cloudflare 分别返回 200/301/预期未授权 404；三个独立外部 VPS 直连源站 443 均超时。80 TCP、SSH、Tailscale 未改，`naive-cert-renew.timer` active 且最近结果 success。
+- 第二阶段先把 `naive-iad` 的证书签发迁到 DNS-01、独立入口或其他不依赖公网 80 的方案，再单独评估 80 收口。80 收口涉及共享主机网络，未获确认前只保留方案和只读证据，不应用对应规则。
 
 ### 邮箱绑定、验证码与告警
 
@@ -87,6 +87,16 @@ ssh oracle-arm1 '/usr/local/sbin/openclaw-sub2api-manager check'
 ssh oracle-arm1 'systemctl list-timers sub2api-update.timer sub2api-backup.timer --no-pager'
 ```
 
+数据库或源站权限异常时只使用管理器入口：
+
+```bash
+ssh oracle-arm1 'sudo /usr/local/sbin/openclaw-sub2api-manager postgres-preflight'
+ssh oracle-arm1 'sudo /usr/local/sbin/openclaw-sub2api-manager cloudflare-origin-443'
+# 仅在独立外部主机确认直连 443 已阻断且公网域名正常后执行：
+ssh oracle-arm1 'sudo /usr/local/sbin/openclaw-sub2api-manager confirm-cloudflare-origin-443'
+ssh oracle-arm1 'sudo /usr/local/sbin/openclaw-sub2api-manager rollback-cloudflare-origin-443'
+```
+
 `update` 当前默认只检查。发布新的 JIYU 构建必须先从固定官方提交应用 `scripts/sub2api-jiyu-v0.1.172.patch`、完成聚焦验证和 ARM64 构建，再执行 `SUB2API_JIYU_VERSION=<version> openclaw-sub2api-manager install-jiyu-build <path>`。该命令会先备份并在健康失败时回滚；不要直接替换二进制或修改 Apache。
 
 WebUI 更新方案 A 已在仓库和生产启用：`.github/workflows/sub2api-jiyu-compat.yml` 只发布通过补丁、类型检查、嵌入式前端根页和聚焦测试的 ARM64 兼容包及 SHA-256 清单；首个基础版使用不可变 `jiyu-vX.Y.Z` 标签，同一上游版本的手动修订使用不可变 `jiyu-vX.Y.Z-r<run_id>`，旧发布和旧工件不覆盖；定时任务看到已适配基础版仍直接跳过。`jiyu-latest` 只移动清单且清单始终引用不可变工件。`scripts/sub2api_jiyu_update_broker.sh` 不接受任何浏览器参数，只读取 root 管理的清单并调用 `stage-jiyu-build`。版本面板对 JIYU 构建始终显示“检查并安装”，代理按完整 `vX.Y.Z-jiyu.<run_id>` 比较；相同构建固定返回“已是最新”，不会下载或重启。应用进程保留 `NoNewPrivileges`，只允许通过 `/run/sub2api-jiyu-update.sock` 连接 systemd 按需启动的固定 root 代理；套接字仅 `root:sub2api` 可读写，服务端状态协议只接受 `noop`、`staged`、`error`，旧 sudoers 会在启用时删除。暂存时会另起独立 systemd 验证任务；管理员点击重启后，该任务核对正在运行的二进制哈希和 `/health`，失败自动恢复二进制、VERSION 与 PostgreSQL，10 分钟未重启也会撤销暂存。禁止恢复官方裸二进制更新路径。
@@ -102,9 +112,9 @@ WebUI 更新方案 A 已在仓库和生产启用：`.github/workflows/sub2api-ji
 
 ### 链动小铺运营边界
 
-- 店铺昵称、公告、头像和自定义链接已统一为 JIYU AI；¥1/10/50/100/300/500/1000 七档商品已建立草稿并使用同一 JY Logo。
-- 平台规则禁止代理类服务，当前全部商品必须保持下架、零库存。没有平台书面确认前，不得通过改名、暗语或其他方式绕审发布，也不得把草稿链接写回充值中心。
-- 获得合规确认后再按“发布 ¥1 → 真实购买 → 发货/兑换到账 → 创建密钥 → CC Switch 导入 → 用量查询”顺序完成小额闭环；任一步失败立即下架并保留交易证据。
+- 店铺昵称、公告、头像和自定义链接已统一为 JIYU AI；¥1/10/50/100/300/500/1000 七档商品已建立并使用同一 JY Logo，标题、详情和兑换步骤已保存。
+- 卡密库存接口要求保证金账户至少 ¥100；当前保证金余额为 0，所以七档商品仍是下架、零库存。不得绕过保证金或把不可购买链接写回充值中心。
+- 老板完成保证金充值并确认平台规则后，按“导入库存 → 发布 ¥1 → 真实购买 → 发货/兑换到账 → 创建密钥 → CC Switch 导入 → 用量查询”顺序完成小额闭环；最终支付前必须再次确认，任一步失败立即下架并保留交易证据。
 
 品牌名称异常时执行 `ssh oracle-arm1 '/usr/local/sbin/openclaw-sub2api-manager brand'`；邮件或文档图形 Logo 异常时执行 `ssh oracle-arm1 '/usr/local/sbin/openclaw-sub2api-manager brand-asset'`。选定的 2K JY 标志已上线，512×512 邮件资源由 `scripts/assets/jiyu-ai-logo-email.png` 固化，两个命令都带健康检查。
 

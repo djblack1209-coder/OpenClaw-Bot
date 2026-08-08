@@ -49,7 +49,7 @@
 | HI-984 | `INFRA` | 🟡 一般 | 线上已关闭 | 旧 R2 备份脚本原先强制备份 `one-api.db`，会在清理后失败或重新制造旧底座副本；已移除该来源，删除 19 个旧 R2 对象，重新生成只含 `runtime.json` 与 `application.env` 的加密回程备份。Sub2API 自己由 `sub2api-backup.timer` 每日做 PostgreSQL 一致性备份。 |
 | HI-985 | `DEPLOY/AI_POOL` | 🟡 一般 | 内测可运营，持续观测 | 渠道A与渠道B各 5 个文本专用 Key，加上 2 个生图专用账号；12 个分组和 12 个一对一渠道已建立。10 条文本监控按 300±30 秒运行；2 条生图监控保存同样合同和加密凭据，但因上游 502/401 保持禁用。文本用户倍率相对当前上游倍率绝对增加 `0.05x`；生图按上游每张价格绝对增加 `0.05`。 |
 | HI-986 | `FRONTEND/SECURITY` | 🟡 一般 | 线上已关闭 | 登录条款、邮箱验证码和邮件模板已品牌化；创建密钥按 Claude/OpenAI 分组显示正确端点并默认导入 CC Switch。首页、标题、版本徽标和管理员菜单已清理供货上游品牌/仓库残留；按老板确认，Anthropic/OpenAI/Grok 作为模型/API 生态标签保留，匿名化对象仅限真实供货上游及域名。 |
-| HI-987 | `BUSINESS/COMPLIANCE` | 🟠 重要 | 外部平台阻塞 | 链动小铺明确禁止代理类服务。店铺资料和 7 档 JIYU 商品草稿已完成，但全部保持下架、零库存，未绕词上架、未执行 ¥1 真实购买，充值中心也未写入不可购买链接。需平台书面确认允许的商品类型后才能继续发布和支付闭环。 |
+| HI-987 | `BUSINESS/COMPLIANCE` | 🟠 重要 | 保证金与平台规则阻塞 | 7 档 JIYU 余额商品的统一 Logo、详情和兑换说明已真实保存，未售临时码已轮换。库存接口明确要求保证金账户至少 ¥100，当前余额为 0，因此商品仍是下架/零库存，未执行 ¥1 购买，充值中心也未写入不可购买链接。缴纳保证金属于真实资金操作，需老板在链动钱包页确认；上架后仍需遵守平台商品规则。 |
 | HI-988 | `OPS` | 🟠 重要 | 持续观测 | 10 条真实监控当前存在上游错误与降级样本，这是线路真实状态而非前端故障。正式售卖前需逐条恢复或制定对用户透明的降级策略；禁止直接改状态为绿色。 |
 | HI-989 | `SECURITY/ARCH_LIMIT` | 🟡 一般 | 方案待实施 | 当前 CC Switch 官方导入协议仍把新建 Key 作为本机深链参数传递；虽然只发往本机应用，仍可能进入浏览器历史或系统日志。建议后续改为同域一次性导入票据，并在 JIYU Switch 中默认开启用量查询和本地路由转发。 |
 | HI-990 | `BUSINESS` | 🟠 重要 | 库存阻塞 | 闲鱼/CC readiness v2 已如实返回 10×10 合同，但自动发货仍暂停且可用兑换码库存为 0，正式售卖门保持关闭。补库存、恢复 owner-loop 并完成真实小额同单验收前不得公开售卖。 |
@@ -67,11 +67,12 @@
 | HI-1002 | `ARCH_LIMIT/BUG` | 🟠 重要 | 线上已关闭 | 启用官方 `gateway.openai_ws.mode_router_v2_enabled`，四个 OpenAI 文本 API Key 账号通过 WebUI 设为 `http_bridge`，两个生图账号保持 `off`。原始 WS 完成模型输出；Codex `0.147.0` 真实调用的服务端记录为 `openai_ws_mode=true`，首 Token 2482 ms、总时长 2964 ms。部署脚本新增启用与旧模式回滚命令，未改上游域名、账号、分组或定价。 |
 | HI-1003 | `SECURITY` | 🟡 一般 | 基础防护线上已关闭 | 已启用风险控制、会话阻断和 7 条高置信中英文系统提示词窃取预拦截；正常请求 200，恶意短语约 840 ms 返回 403，8 条用量记录不增加，确认无上游调用和计费。关键词可被改写绕过；语义扫描器需先观察误伤率和额外延迟，再决定是否引入本地模型或独立服务。 |
 | HI-1004 | `SECURITY/INFRA` | 🟡 一般 | Cloudflare 代理链已关闭 | JIYU 主机已启用严格 TLS、Managed WAF、OWASP 与 L7 DDoS；新增主机级边缘限流：注册/验证码 5 次/60 秒并封禁 600 秒，登录/2FA 20 次/60 秒并封禁 300 秒。开放注册仍关闭、邮箱验证开启；Turnstile 在开放注册前完成专用 widget 和双视口实测，不复用历史配置口径。 |
-| HI-1005 | `SECURITY/ARCH_LIMIT` | 🟠 重要 | 精确方案待确认 | Oracle Apache 的 443 仍公开监听，可绕过 Cloudflare。三个 HTTPS vhost 均经 Cloudflare 代理，但同机 `naive-iad` 以直连 DNS 使用 80 端口完成 ACME HTTP-01，因此不能把 80/443 一刀切。第一阶段仅把 443 收口到 Cloudflare 官方 15 个 IPv4、7 个 IPv6 CIDR，保留 80、SSH/Tailscale 和自动回滚；第二阶段先把该 ACME 迁到 DNS-01 或独立入口，再评估收口 80。未经确认不应用防火墙。 |
+| HI-1005 | `SECURITY/ARCH_LIMIT` | 🟠 重要 | 第一阶段线上已关闭 | Oracle 443 已通过独立 nftables 表只允许 Cloudflare 官方 CIDR、loopback 和 Tailscale。应用前安排 5 分钟自动回滚；公网三个 vhost 正常后，三个独立外部 VPS 直连源站均超时才取消回滚。80、SSH、Tailscale 未改，ACME 续期 timer 最近成功；第二阶段仍需先迁移 DNS-01 再评估 80。 |
 | HI-1006 | `PERF` | 🔵 低优先 | 观察中，暂无新异常 | 真实浏览器曾记录 1 次 `/usage` 导航 503，随后同路由 12/12 为 200。08-08 源站 25 次 503 已全部归因：16 次为渠道A Claude 明确失败验证，9 次集中于发布重启窗口；05:04 后无新增 503，当前管理页 Console 0 error/0 warning。Codex 首次模型目录刷新曾瞬时失败，但随后 `/v1/models` 两种请求均为 200；不做猜测性改动。 |
 | HI-1007 | `FRONTEND/SECURITY` | 🟠 重要 | 线上已关闭 | 管理端“账号管理”曾把 API Key 账号名称渲染成真实 `base_url` 超链接，并在悬浮提示中显示域名。生产 `v0.1.172-jiyu.31250692935` 真实重载后 12 个账号名称均为普通文本，供货域名链接为 0；账号编辑能力、Anthropic/OpenAI/Grok 标签、调度和定价数据保持不变，部署后 Console 新错误为 0。 |
 | HI-1008 | `FRONTEND/DEPLOY` | 🟠 重要 | 线上已关闭 | 官方基础版比较曾让同版 JIYU 修订隐藏安装入口，首版修复又因应用内 sudo 被 `NoNewPrivileges` 正确阻止而返回 500。最终改为 root 管理的 systemd Unix 激活套接字，应用进程不提权、不传参数，只解析三种固定状态。生产从旧修订安装至 `v0.1.172-jiyu.31250692935` 后，真实 WebUI 再次点击以 HTTP 200 返回“已是最新版本”，Sub2API PID 不变、无暂存文件、无报错。 |
 | HI-1009 | `BUG/INFRA` | 🟠 重要 | 线上已关闭 | 生产 Apache 在密集 graceful reload 后曾出现工作进程 abort 和 Cloudflare 525，full restart 后恢复。全部 JIYU Apache 维护入口现统一执行 `configtest → reload → 公网 HTTPS 5 次容错复核`，失败自动 full restart 并再次复核；旧 New-API 回滚使用独立 `/api/status`。新管理器已部署，真实 reload happy path 与最终公网健康均为 5/5 200；为避免主动制造生产 525，full restart 分支由聚焦静态合同覆盖。 |
+| HI-1010 | `BUG/INFRA` | 🟠 重要 | 线上已关闭 | PostgreSQL 曾因 `pg_ctl` 不可执行和日志不可写中断。持续复发根因是 Headscale 故障转移脚本每两分钟对既有 `/var/log` 执行 `install -d -m 700`，把 postgres ACL mask 清零；生产脚本已改为不修改系统日志根目录。Sub2API 管理器新增 `pg_ctl`、`/dev/shm`、日志目录、服务和 SQL 连通性预检，并接入备份与全部更新发布路径；手动运行故障转移任务后 ACL 与数据库预检保持通过。 |
 
 | 编号 | 分类 | 严重度 | 状态 | 当前结论 |
 |---|---|---|---|---|

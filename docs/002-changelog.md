@@ -5,6 +5,23 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
+## [2026-08-08] JIYU 源站 443、PostgreSQL 与链动商品收口
+> 领域: `deploy` | `infra` | `ai-pool` | `docs`
+> 影响模块: `Oracle nftables`, `Sub2API PostgreSQL`, `channel monitors`, `链动小铺`
+> 关联问题: HI-985, HI-987, HI-1005, HI-1010
+### 变更内容
+- Oracle 新增独立 nftables 表，只允许 Cloudflare 官方 IPv4/IPv6、loopback 和 Tailscale 访问 443；应用时自动安排 5 分钟回滚，三个独立外部主机确认直连源站超时后才取消回滚。公网 80、SSH、Tailscale 和其他端口未改。
+- 管理器新增 PostgreSQL 运行权限与连通性预检，并接入备份、官方更新、JIYU 构建发布、暂存验证和 WebUI 受管更新。定位并修复 Headscale 故障转移脚本每两分钟把 `/var/log` 改成 0700、清空 postgres ACL mask 的真实根因。
+- 恢复 10 条文本监控启用合同；2 条生图监控继续因上游 502/401 禁用。复核 12 个分组、12 个 active 渠道，10 个文本用户倍率与上游差值均为 `0.0500`，生图价格保持 `0.10/0.12` 每张。
+- 链动小铺 7 档商品的标题、统一 JY Logo、详情和兑换说明已保存；轮换一枚可能进入诊断视图但从未售出的临时兑换码。平台要求保证金账户至少缴纳 ¥100，当前余额为 0，因此库存导入、上架、充值中心链接和 ¥1 实单均保持阻塞，没有绕过平台门槛。
+### 文件变更
+- `scripts/sub2api_oracle_manage.sh` — PostgreSQL 预检、Cloudflare 443 应用/确认/回滚入口。
+- `docs/002-changelog.md`、`docs/007-operations.md`、`docs/009-health.md`、`docs/012-handoff.md`、`docs/086-release-evidence.md` — 同步生产事实、外部阻塞和验收证据。
+### 验证
+- `bash -n`、ShellCheck、现有 Sub2API 运维合同 `4/4`、`git diff --check` 通过。
+- 公网 `jiyu` 首页/健康为 200，旧入口为 301，未授权运营入口为预期 404；三个独立外部 VPS 直连源站 443 均超时，公网 80 TCP 可达，ACME 定时任务最近结果为 success。
+- 生产管理器状态确认 Sub2API、Redis、PostgreSQL、Cloudflare 443 策略、更新/备份 timer 均 active，内网健康和 Responses WebSocket 代理通过。
+
 ## [2026-08-08] JIYU 同版兼容更新入口与 Apache 525 自动恢复
 > 领域: `frontend` | `backend` | `deploy` | `infra` | `docs`
 > 影响模块: `Sub2API VersionBadge`, `JIYU update broker`, `Oracle Apache`
