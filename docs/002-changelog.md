@@ -5,6 +5,25 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
+## [2026-08-08] JIYU Claude 透传、Passkey 与链动充值中心闭环
+> 领域: `frontend` | `backend` | `ai-pool` | `deploy` | `docs`
+> 影响模块: `Sub2API accounts`, `WebAuthn`, `gateway settings`, `链动小铺`, `充值中心`
+> 关联问题: HI-987, HI-993, HI-1001, HI-1004, HI-1011
+### 变更内容
+- 渠道A Claude 官 Key 账号开启“自动透传（仅替换认证）”，保持自动探测开启、自动同步关闭；`claude-sonnet-4-6` 单次连接测试获得有效模型响应后，才通过单账号批量操作恢复正常状态与调度。未修改倍率、分组、模型映射或上游地址。
+- 启用可用渠道、模型广场、忘记密码和 Passkey；生产 WebAuthn 使用 `JIYU AI`、`jiyu.245334.xyz` 与唯一 HTTPS 来源，配置写入前备份，重启后本地/公网健康与 PostgreSQL 预检通过，WebUI 重载确认开关生效。
+- 启用流超时处理、API Key 签名整流、用户精简错误可见性，以及余额不足邮件提醒；默认阈值为 `$1`，充值按钮指向同源充值中心。Turnstile、LinuxDo、GitHub/Google 邮箱快捷登录、支付和异步生图对象存储因缺少真实专用凭据保持关闭。
+- 链动保证金账户真实显示 ¥100；七档商品各导入 1 张既有兑换码并上架，七个公开购买页的“立即购买”均可用。充值中心发布七档链接、兑换和 CC Switch 后续步骤；未执行真实购买。
+- 生产当前管理员 API Key 通过不回显管道写入 macOS 钥匙串并完成匹配校验；未重新生成，也未进入终端输出、仓库、文档或截图。
+### 文件变更
+- `scripts/sub2api_oracle_manage.sh` — 充值中心七档正式页面与兼容运维入口。
+- `scripts/assets/audit-chain-products-after-live-20260808.png`、`scripts/assets/audit-jiyu-recharge-center-after-20260808.png` — 上架库存与充值中心最终截图。
+- `docs/002-changelog.md`、`docs/006-registries.md`、`docs/007-operations.md`、`docs/009-health.md`、`docs/012-handoff.md` — 同步真实生产状态和外部凭据阻塞。
+### 验证
+- `bash -n`、ShellCheck、`git diff --check`、`make docs-check` 通过；聚焦脚本测试 `4/4` 通过。生产 Sub2API 本地/公网健康、PostgreSQL 预检和充值中心 HTTP 200 通过。
+- WebUI 重载确认可用渠道、模型广场、忘记密码、Passkey、三项网关保护和 `$1` 低余额提醒均为真实保存值。
+- 七档公开商品页均可购买；站内充值中心显示 7 个购买链接和兑换入口，前后截图不含密码、Key、Token、Cookie 或卡密正文。
+
 ## [2026-08-08] JIYU 源站 443、PostgreSQL 与链动商品收口
 > 领域: `deploy` | `infra` | `ai-pool` | `docs`
 > 影响模块: `Oracle nftables`, `Sub2API PostgreSQL`, `channel monitors`, `链动小铺`
