@@ -21,7 +21,7 @@
 - 账号/分组和 WS mode 的业务配置继续通过 WebUI 管理，不能直接改数据库；任何付费复测只跑单组最小样本，不做循环。
 
 ### 当前系统状态
-- 本地 `node scripts/cc_zhongzhuan_readiness_audit.mjs --mode=read_only --json` PASS；Oracle manager `status` PASS，Sub2API/Redis/Frist/Apache active，Responses WebSocket 代理通过，服务 `NRestarts=0`。
+- 本地 `node scripts/cc_zhongzhuan_readiness_audit.mjs --mode=read_only --json` PASS；Oracle manager `status` PASS，Sub2API/Redis/Frist/Apache active，Responses WebSocket 代理通过；本次 `NRestarts=1` 为 systemd 历史累计重启计数，服务当前 `active/running` 且 `ExecMainStatus=0`，不代表当前故障。
 - 工作树仅含本次文档更新，分支保持 `main`；未读取、输出或写入密码、API Key、Token、Cookie、TOTP secret 或卡密。
 
 ---
@@ -87,7 +87,7 @@
 ### 当前系统状态
 - 默认只读审计真实 PASS：分组 12/12、渠道 12/12、文本监控 10/10、生图监控 0/2，调度 12/12。
 - 严格只读审计同样 PASS；现场回读为可用兑换码 7、自动发货未暂停、历史真实闲鱼订单 1 单、补救队列 0。
-- `sub2api.service` 自 2026-08-08 16:06:55 UTC 发布以来 `NRestarts=0`；精确 fatal/panic 与 JSON/键值 5xx 日志匹配均为 0，公网 `/health` 连续 5/5 为 200。
+- 历史发布窗口（2026-08-08 16:06:55 UTC 起）回读 `sub2api.service` 的 `NRestarts=0`；精确 fatal/panic 与 JSON/键值 5xx 日志匹配均为 0，公网 `/health` 连续 5/5 为 200。
 - 账号 #2 回读为 active、可调度、单分组；未读取、输出或写入密码、API Key、Token、Cookie、TOTP secret 或卡密。
 
 ## [2026-08-09 00:33] JIYU 充值、补号与生产稳定性交接
@@ -109,7 +109,7 @@
 - 不得直接开启 rate sync：渠道A probe resolved 值会与存储倍率漂移，且原生写回不联动用户分组，会破坏“账号倍率 + `0.05x`”合同。
 
 ### 当前系统状态
-- 2026-08-08 16:06:55 至 16:27:35 UTC 的发布后窗口无 5xx，`sub2api.service` 的 `NRestarts=0`，公网健康连续 5/5 为 200。
+- 2026-08-08 16:06:55 至 16:27:35 UTC 的历史发布后窗口无 5xx，`sub2api.service` 的 `NRestarts=0`，公网健康连续 5/5 为 200。
 - OpenClaw CI `31266478126` 与 JIYU 兼容构建 `31265860057` 均成功；`HEAD` 与 `origin/main` 在 `c3cb942` 时一致，分支只保留 `main`。
 - 充值中心与补号助手证据已入库；所有本轮临时浏览器均已关闭，当前没有待继续占用的验收会话。
 

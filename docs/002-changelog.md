@@ -12,6 +12,7 @@
 ### 变更内容
 - 只读回读确认渠道A Claude 官 Key 账号 #2 为 `anthropic/apikey`、active、可调度、单分组；对应渠道 active、单分组，最近监控 operational，排除“空分组”软件故障。
 - 只读复核 Apache upgrade 规则顺序、Sub2API 全局模式路由和账号级 WS mode；近期公网 Codex 有 101 握手，Responses 用量 6 条（WS 2 条），最新样本计费 `$0.087439`、缓存读取 1408、首 Token 2482 ms、总时长 2964 ms。
+- 更正本次状态回读口径：`NRestarts=1` 是 systemd 历史累计重启计数；Sub2API 当前仍为 `active/running` 且 `ExecMainStatus=0`，不把累计值误报为当前故障。
 - 复核 Cloudflare 443 收口服务与 nftables 规则；未修改防火墙、定价、注册、支付、数据库或上游线路，也未循环发起付费请求。
 ### 文件变更
 - `docs/007-operations.md` — 修正当前生产版本和渠道A Claude 账号状态，补充 WS 复核证据。
@@ -72,7 +73,7 @@
 - `docs/002-changelog.md` — 记录本次只读审计修复。
 ### 验证
 - `node --check scripts/cc_zhongzhuan_readiness_audit.mjs` 通过；默认与 `--require-real-order --json` 两种只读审计均真实返回 PASS，生产合同为 12/12、12/12、10/10、0/2，调度为 12/12。
-- 发布时间仍为 2026-08-08 16:06:55 UTC，`sub2api.service` 的 `NRestarts=0`；精确 fatal/panic 与 JSON/键值 5xx 日志匹配均为 0，公网 `/health` 连续 5/5 为 200，账号 #2 回读为 active、可调度、单分组。
+- 历史发布窗口起点为 2026-08-08 16:06:55 UTC，当时回读 `sub2api.service` 的 `NRestarts=0`；精确 fatal/panic 与 JSON/键值 5xx 日志匹配均为 0，公网 `/health` 连续 5/5 为 200，账号 #2 回读为 active、可调度、单分组。
 
 ## [2026-08-09] JIYU 生产事实与倍率探测边界同步
 > 领域: `docs` | `ai-pool` | `infra`
