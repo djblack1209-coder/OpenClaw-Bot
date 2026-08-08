@@ -17,6 +17,7 @@ from src.sub2_replenish.sub2_client import (
     Sub2AdminClient,
     find_duplicate_account,
     group_rate_candidates,
+    group_rate_template,
     manual_openai_group_options,
     matching_plan_groups,
 )
@@ -64,17 +65,22 @@ def test_parser_rejects_invalid_or_duplicate_lines_without_echoing_secrets(raw):
 
 def test_plan_matching_and_duplicate_detection_respect_self_hosted_pool():
     groups = [
-        {"id": 1, "name": "JIYU OpenAI Plus 自营号池", "platform": "openai", "status": "active"},
-        {"id": 2, "name": "JIYU OpenAI Pro 自营号池", "platform": "openai", "status": "active"},
+        {"id": 1, "name": "JIYU OpenAI Plus 自营号池", "platform": "openai", "status": "active", "rate_multiplier": 2},
+        {"id": 2, "name": "JIYU OpenAI Pro 自营号池", "platform": "openai", "status": "active", "rate_multiplier": 3},
         {"id": 3, "name": "JIYU 渠道A · OpenAI Plus", "platform": "openai", "status": "active"},
     ]
     assert [group["id"] for group in matching_plan_groups(groups, "plus")] == [1]
     assert [group["id"] for group in matching_plan_groups(groups, "pro")] == [2]
+    assert matching_plan_groups(groups, "plus")[0]["rate_multiplier"] == 2.0
+    assert manual_openai_group_options(groups)[1]["rate_multiplier"] == 3.0
     assert matching_plan_groups(groups, "team") == []
     assert [group["id"] for group in manual_openai_group_options(groups)] == [1, 2]
     assert group_rate_candidates([{"rate_multiplier": 0.08}, {"rate_multiplier": 0.08}]) == [0.08]
     assert group_rate_candidates([{"rate_multiplier": 0.08}, {"rate_multiplier": 0.1}]) == [0.08, 0.1]
     assert group_rate_candidates([]) == []
+    assert group_rate_template(groups[0]) == 2.0
+    assert group_rate_template(groups[1]) == 3.0
+    assert group_rate_template({"rate_multiplier": "invalid"}) is None
 
     accounts = [{"id": 9, "name": "person@example.test", "credentials": {}}]
     assert find_duplicate_account(accounts, {"email": "PERSON@example.test"})["id"] == 9

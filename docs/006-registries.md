@@ -261,6 +261,7 @@
 | Codex WS 旧模式回滚 | `scripts/sub2api_oracle_manage.sh openai-ws-legacy` | 关闭官方模式路由并恢复旧版传输判定；用于桥接异常时快速回滚 |
 | 本地补号助手 | `make jiyu-sub2-replenish` | 只绑定 `127.0.0.1:18796` 的可视化 Web App；兼容分隔行、标签块和 JSON，串行走 Sub2 原生 OpenAI OAuth，识别 Plus/Pro 后只匹配同名自营号池，绝不回退渠道A/B；密码/TOTP/Token 只在进程内存，挑战页面暂停人工 |
 | 本地补号演练 | `make jiyu-sub2-replenish-dry-run` | 只验证三类严格解析、自营号池语义、掩码和页面，不读取钥匙串、不打开登录窗口、不调用生产接口 |
+| Telegram 远程补号 | `/jiyu_replenish`、`/jiyu_replenish status|stop|cancel` | 仅授权管理员私聊提交 JSON 或分隔行；Bot 只输出脱敏批次状态，本机主事件循环执行 OAuth 浏览器和人工风控，禁止群聊与并行批次 |
 
 ---
 
@@ -1146,6 +1147,7 @@
 | `packages/clawbot/src/sub2_replenish/sub2_client.py` | 读取 macOS 钥匙串并调用 Sub2 原生 OAuth、账号、分组接口 | 固定 `https://jiyu.245334.xyz`，错误不带响应正文，倍率不使用默认值 |
 | `packages/clawbot/src/sub2_replenish/runner.py` | 批次渠道、计划自动分组、独立 BrowserContext、`localhost:1455` 回调、串行/暂停/重试/停止 | OTP 只匹配明确 one-time-code/OTP/TOTP/MFA/verification code 语义；CAPTCHA、短信、实体手机号和风控交人工 |
 | `packages/clawbot/src/sub2_replenish/app.py` | localhost UI、同源校验、随机 HttpOnly 会话和 CSP | 无 CORS；仅 `127.0.0.1:18796` |
+| `packages/clawbot/src/bot/cmd_jiyu_replenish_mixin.py` | Telegram 远程补号菜单、严格号源接收和脱敏状态 | 仅 `ALLOWED_USER_IDS` 私聊；不回显邮箱/密码/TOTP/Token；复用本地 Runner |
 
 
 > 最后更新: 2026-04-19 | 新增 3 个模块 (285→288): ai-hedge-fund 估值 + Hurst + 大师 Agent

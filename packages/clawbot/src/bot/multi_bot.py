@@ -467,6 +467,9 @@ class MultiBot(
         return self
 
     async def stop_async(self):
+        remote_runner = getattr(self, "_remote_replenish_runner", None)
+        if remote_runner is not None:
+            await remote_runner.stop()
         if self.app:
             try:
                 await self.app.updater.stop()
