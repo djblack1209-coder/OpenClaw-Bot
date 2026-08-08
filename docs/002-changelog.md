@@ -20,8 +20,10 @@
 - 将 OpenClaw Manager 的 `js-yaml` / `nanoid` override 提升到 `4.3.1` / `3.3.17`，关闭主 CI 新识别的两个高危公告，不升级桌面框架。
 - 修复首个兼容包使用工作流序号造成的版本倒退：改用全仓库单调递增的 GitHub Run ID，拒绝把新构建以低于生产 `.5` 的编号发布。
 - 首个生产候选暴露“健康接口正常但首页 404”与代理退出清理报错后，立即从发布前备份回滚 `.5`；兼容包改为 `-tags embed` 嵌入前端并增加嵌入式根页聚焦门，代理清理由全局受控路径负责，避免函数返回后的未绑定变量。
-- 增加 `jiyu-latest` 受信任移动清单：未来官方版本变化时 WebUI 始终读取新清单，二进制仍留在按上游版本命名的不可变 Release 中并接受哈希、大小、平台和架构校验。
+- 增加 `jiyu-latest` 受信任移动清单：未来官方版本变化时 WebUI 始终读取新清单，二进制仍留在按上游版本命名的不可变 Release 中并接受哈希、大小、平台和架构校验；两类 JIYU Release 均标记为预发布兼容包，不占用仓库正式版的 Latest 标记。
 - 收紧兼容包聚焦门：更新服务测试显式启用上游 `unit` 构建标签；嵌入式前端只验证标志、`index.html` 和根路由，不再误用依赖上游默认 `logo.png` 的无关旧子用例。
+- 生产发布 `v0.1.172-jiyu.31237926226` 并启用 `jiyu-latest` 受管更新；固定 sudo 路径真实返回“当前基础版已最新”，首页、渠道状态和健康接口均为 200。用户渠道卡顺序实测为 `AAAAABBBBB`，新截图保留真实正常/降级/错误状态。
+- 明确品牌边界：Anthropic/OpenAI/Grok 作为模型与 API 生态标签保留；只匿名真实供货上游名称及域名，避免把用户需要理解的协议生态误删。
 ### 文件变更
 - `.github/workflows/sub2api-jiyu-compat.yml` — 从官方标签应用 JIYU 补丁、跑聚焦门、构建 ARM64 包并发布校验清单。
 - New-API Scheduled Sync workflow — 删除已与 Sub2API 生产架构冲突的自动分支生成任务。
@@ -30,6 +32,7 @@
 - `packages/clawbot/requirements.txt`、`requirements-lock.txt`、`requirements-lock-macos.txt` — `h2`/`pypdf` 安全版本和双平台哈希同步。
 - `packages/clawbot/src/xianyu/xianyu_admin.py` — 删除未使用的 Frist server 源码读取，不改变预检结果。
 - `apps/openclaw-manager-src/package.json`、`package-lock.json` — 桌面构建传递依赖安全 override 与锁文件。
+- `scripts/assets/audit-jiyu-monitor-after-managed-update-20260808.jpg` — 生产发布后渠道排序、产品生态标签和真实健康状态截图。
 - `docs/006-registries.md`、`docs/007-operations.md`、`docs/009-health.md`、`docs/053-jiyu-growth-payment-image-update-plan.md`、`docs/087-jiyu-image-mcp-guide.md`、`docs/012-handoff.md` — 同步合同、操作步骤、风险和交接。
 ### 验证
 - JIYU 补丁在官方 `v0.1.172` 干净提交上通过 `git apply --check`；上游更新服务 unit 用例 `1/1`、排序/端点/CC Switch 前端用例 `13/13`、Vue 类型检查、运维脚本合同 `4/4`、工作流 YAML 与文档门均通过。

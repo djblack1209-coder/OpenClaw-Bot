@@ -5,7 +5,7 @@
 
 ## 2026-08-08 当前主站：JIYU AI（Sub2API 底座）
 
-当前用户主站 `https://jiyu.245334.xyz` 的对外品牌为 `JIYU AI`，运行基于官方 Sub2API `v0.1.172` 固定提交构建的 `v0.1.172-jiyu.5`。JIYU 改动以仓库补丁固化，更新检查不会自动覆盖定制版。
+当前用户主站 `https://jiyu.245334.xyz` 的对外品牌为 `JIYU AI`，运行基于官方 Sub2API `v0.1.172` 固定提交构建的 `v0.1.172-jiyu.31237926226`。JIYU 改动以仓库补丁固化，WebUI 只安装通过聚焦门和完整性清单的 JIYU 兼容包，不会用官方原版覆盖定制。
 
 | 项目 | 当前值 |
 |---|---|
@@ -13,7 +13,7 @@
 | Sub2API | `sub2api.service`，`127.0.0.1:18080` |
 | PostgreSQL | `sub2api` 独立数据库，PostgreSQL 16 |
 | Redis | `sub2api-redis.service`，`127.0.0.1:16379` |
-| 自动更新 | `sub2api-update.timer` 每日只检查官方 release；不自动安装 |
+| 自动更新 | `sub2api-update.timer` 每日检查官方 release；管理员从 WebUI 显式安装 JIYU 兼容包 |
 | 自动备份 | `sub2api-backup.timer`，每日 PostgreSQL 一致性备份，`/var/backups/sub2api` 保留 30 天 |
 | 管理员邮箱 | `djblack1209@gmail.com` |
 | 管理员密码 | macOS 钥匙串服务“CC中转 Sub2API 管理员”；Oracle env 仅 root 可读 |
@@ -22,7 +22,8 @@
 
 - 两个上游分别使用 5 个新建 JIYU 专用 Key，不复用历史 Key。日常补号继续进入“账号管理”，日常轮换上游 Key 时保持同名专用用途并在站内执行真实测试。
 - 10 个用户分组统一采用“上游账号倍率 + `0.05x`”绝对加价。修改任一上游倍率后，必须同步修改对应分组并核对差值仍为 `0.0500`；渠道A OpenAI Pro 为 `0.095 → 0.145`，OpenAI Plus 为 `0.06 → 0.11`。
-- 10 个文本渠道加 2 个生图渠道已启用并分别绑定一个分组；12 条连通监控统一每 300 秒执行，随机抖动 ±30 秒。页面固定先显示渠道A再显示渠道B，渠道列不显示上游名称；红色/降级表示上游真实波动，不得手工改成绿色。
+- 10 个文本渠道加 2 个生图渠道已启用并分别绑定一个分组；10 条文本监控每 300 秒执行、随机抖动 ±30 秒。2 条生图监控配置也固定为 300±30 秒并保存加密凭据，但因上游 502/401 保持禁用，避免持续错误探测或付费请求。页面固定先显示渠道A再显示渠道B；红色/降级表示真实波动，不得手工改成绿色。
+- `Anthropic`、`OpenAI`、`Grok` 是帮助用户识别模型/API 生态的产品标签，必须保留；匿名化对象仅限真实供货上游及其域名，用户可见渠道统一为渠道A/渠道B。
 - 上游安全白名单只新增 `api.aigo0.com`、`www.huyunapi.com`，私网和不安全 HTTP 仍拒绝。
 
 ### 邮箱绑定、验证码与告警
@@ -59,7 +60,7 @@ ssh oracle-arm1 'systemctl list-timers sub2api-update.timer sub2api-backup.timer
 
 `update` 当前默认只检查。发布新的 JIYU 构建必须先从固定官方提交应用 `scripts/sub2api-jiyu-v0.1.172.patch`、完成聚焦验证和 ARM64 构建，再执行 `SUB2API_JIYU_VERSION=<version> openclaw-sub2api-manager install-jiyu-build <path>`。该命令会先备份并在健康失败时回滚；不要直接替换二进制或修改 Apache。
 
-WebUI 更新方案 A 已在仓库实现：`.github/workflows/sub2api-jiyu-compat.yml` 只发布通过补丁、类型检查、嵌入式前端根页和聚焦测试的 ARM64 兼容包及 SHA-256 清单；不可变版本包位于 `jiyu-vX.Y.Z`，`jiyu-latest` 只移动清单且清单仍引用不可变工件。`scripts/sub2api_jiyu_update_broker.sh` 不接受任何浏览器参数，只读取 root 管理的 `https://github.com/djblack1209-coder/OpenClaw-Bot/releases/download/jiyu-latest/jiyu-update-manifest.json` 并调用 `stage-jiyu-build`。暂存时会另起独立 systemd 验证任务；管理员点击重启后，该任务核对正在运行的二进制哈希和 `/health`，失败自动恢复二进制、VERSION 与 PostgreSQL，10 分钟未重启也会撤销暂存。生产部署新补丁后，用 `enable-web-update <broker> <manifest-url>` 安装固定 sudoers 和 systemd 环境，再从版本面板点击更新。生产仍运行 `v0.1.172-jiyu.5` 时不得单独解禁官方路径。
+WebUI 更新方案 A 已在仓库和生产启用：`.github/workflows/sub2api-jiyu-compat.yml` 只发布通过补丁、类型检查、嵌入式前端根页和聚焦测试的 ARM64 兼容包及 SHA-256 清单；不可变版本包位于 `jiyu-vX.Y.Z`，`jiyu-latest` 只移动清单且清单仍引用不可变工件。`scripts/sub2api_jiyu_update_broker.sh` 不接受任何浏览器参数，只读取 root 管理的 `https://github.com/djblack1209-coder/OpenClaw-Bot/releases/download/jiyu-latest/jiyu-update-manifest.json` 并调用 `stage-jiyu-build`。暂存时会另起独立 systemd 验证任务；管理员点击重启后，该任务核对正在运行的二进制哈希和 `/health`，失败自动恢复二进制、VERSION 与 PostgreSQL，10 分钟未重启也会撤销暂存。生产已验证 `sub2api` 固定 sudo 路径、清单解析和“当前基础版已最新”正常退出；下一官方版本出现后可直接从版本面板安装，禁止恢复官方裸二进制更新路径。
 
 ### 生图与 MCP
 

@@ -118,14 +118,20 @@ jobs:
             > jiyu-update-manifest.json
           gh release create "$release_tag" sub2api-jiyu-linux-arm64 jiyu-update-manifest.json \
             --title "JIYU compatibility package ${UPSTREAM_TAG}" \
-            --notes "Built from ${UPSTREAM_TAG} with the reviewed JIYU patch; install only through the root broker."
+            --notes "Built from ${UPSTREAM_TAG} with the reviewed JIYU patch; install only through the root broker." \
+            --prerelease \
+            --latest=false
           if gh release view jiyu-latest >/dev/null 2>&1; then
             gh release upload jiyu-latest jiyu-update-manifest.json --clobber
             gh release edit jiyu-latest \
               --title "Latest JIYU compatibility manifest" \
-              --notes "Moving manifest pointer only; artifacts remain immutable under their upstream-version release."
+              --notes "Moving manifest pointer only; artifacts remain immutable under their upstream-version release." \
+              --prerelease \
+              --latest=false
           else
             gh release create jiyu-latest jiyu-update-manifest.json \
               --title "Latest JIYU compatibility manifest" \
-              --notes "Moving manifest pointer only; artifacts remain immutable under their upstream-version release."
+              --notes "Moving manifest pointer only; artifacts remain immutable under their upstream-version release." \
+              --prerelease \
+              --latest=false
           fi
