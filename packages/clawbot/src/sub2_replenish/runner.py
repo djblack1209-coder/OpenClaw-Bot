@@ -15,6 +15,7 @@ from .sub2_client import (
     Sub2AdminClient,
     find_duplicate_account,
     group_rate_candidates,
+    group_rate_template,
     manual_openai_group_options,
     matching_plan_groups,
 )
@@ -203,8 +204,10 @@ class ReplenishRunner:
 
         all_groups = await self._client.list_openai_groups()
         groups = matching_plan_groups(all_groups, job.plan_type)
+        selected_group: dict[str, Any] | None = None
         if len(groups) == 1:
-            job.selected_group_id = int(groups[0]["id"])
+            selected_group = groups[0]
+            job.selected_group_id = int(selected_group["id"])
         else:
             job.status = "group_required"
             job.group_options = groups or manual_openai_group_options(all_groups)
@@ -222,6 +225,10 @@ class ReplenishRunner:
             if action != "group" or group_id is None:
                 raise RuntimeError("未收到有效分组选择")
             self.choose_group_value(job, group_id)
+            selected_group = next(
+                (option for option in job.group_options if int(option["id"]) == group_id),
+                None,
+            )
 
         if job.token_info is None or job.selected_group_id is None:
             raise RuntimeError("账号创建前状态不完整")
@@ -230,6 +237,10 @@ class ReplenishRunner:
         )
         if len(rate_candidates) == 1:
             job.selected_rate_multiplier = rate_candidates[0]
+        elif not rate_candidates and (template_rate := group_rate_template(selected_group)) is not None:
+            job.selected_rate_multiplier = template_rate
+            job.status = "rate_selected"
+            job.message = f"已使用自营号池模板倍率 {template_rate:g}x，正在创建账号"
         else:
             job.status = "rate_required"
             job.rate_options = rate_candidates

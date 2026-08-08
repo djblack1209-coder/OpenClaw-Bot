@@ -61,6 +61,15 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin, VoiceHandlerMixin, Sessi
         if not self._is_authorized(user.id):
             return
 
+        # 补号远程入口优先消费严格号源文本，避免把密码/TOTP送入普通对话或日志链路。
+        try:
+            if await self._handle_jiyu_replenish_text(update, text):
+                return
+        except Exception:
+            logger.exception("Telegram 远程补号处理失败")
+            await update.message.reply_text("补号处理失败，敏感详情未写入响应；请重新发送 /jiyu_replenish。")
+            return
+
         # ── 输入消毒 — 拦截 XSS/SQL注入/命令注入等攻击载荷 (HI-037) ──
         # 所有用户消息在进入 LLM/Brain 处理前先过安全过滤
         # 安全策略: fail-close — 消毒失败时拒绝处理，防止恶意输入绕过

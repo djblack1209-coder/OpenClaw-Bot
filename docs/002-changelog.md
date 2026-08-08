@@ -19,8 +19,25 @@
 - `packages/clawbot/src/sub2_replenish/`、`packages/clawbot/tests/test_sub2_replenish_helper.py` — 自营号池路由和页面语义。
 - `docs/006-registries.md`、`docs/007-operations.md`、`docs/009-health.md` — 同步操作、能力边界和未决业务配置。
 ### 验证
-- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_sub2_replenish_helper.py -q`：`11 passed`。
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_sub2_replenish_helper.py tests/test_jiyu_replenish_telegram.py tests/test_multibot_startup_registration.py -q`：`15 passed`；Python 编译、Ruff、docs-check 和 `git diff --check` 通过。
 - Python 编译、`node --check`、真实浏览器桌面/移动页面和移动宽度回读通过；不包含真实凭据。
+
+## [2026-08-09] JIYU 自营池模板倍率与 Telegram 远程补号
+> 领域: `backend` | `ai-pool` | `xianyu` | `docs`
+> 影响模块: `Sub2 自营号池`, `Telegram Bot`, `本地补号助手`, `闲鱼启停`
+> 关联问题: HI-1012, HI-1021
+### 变更内容
+- 生产创建 `JIYU OpenAI Plus 自营号池`（专属、空池、模板 `2.0x`）和 `JIYU OpenAI Pro 自营号池`（专属、空池、模板 `3.0x`）；不绑定渠道、用户或默认分组。
+- 本地补号助手在目标空池没有账号时读取分组模板倍率，不再让首个账号反复人工输入；已有模板账号倍率冲突仍暂停确认。
+- Telegram Bot 新增 `/jiyu_replenish`、`status`、`stop`、`cancel` 私聊菜单，号源解析复用本地安全合同；闲鱼既有 `/xianyu start|stop|status` 保持可用。
+- Telegram 入口补充中文手机按钮菜单，点击“🧾 一键补号”即可进入号源等待状态。
+### 文件变更
+- `packages/clawbot/src/sub2_replenish/sub2_client.py`、`runner.py`、`tests/test_sub2_replenish_helper.py` — 自营池模板倍率读取和空池回退。
+- `packages/clawbot/src/bot/cmd_jiyu_replenish_mixin.py`、`cmd_execution_mixin.py`、`message_mixin.py`、`multi_bot.py`、`multi_main.py` — Telegram 远程控制和菜单。
+- `docs/006-registries.md`、`docs/007-operations.md`、`docs/009-health.md` — 入口、安全边界和生产事实。
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_sub2_replenish_helper.py -q`：`11 passed`。
+- 生产管理端刷新回读 14 个分组，新建两池分别显示 `2x/专属` 与 `3x/专属`；不包含任何凭据。
 
 ## [2026-08-09] JIYU 收尾回归文档清理
 > 领域: `docs` | `deploy` | `infra`

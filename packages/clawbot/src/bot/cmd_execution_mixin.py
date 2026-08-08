@@ -9,6 +9,7 @@ Bot — 执行场景命令入口 (兼容性垫片)
 
 > 最后更新: 2026-03-28
 """
+from src.bot.cmd_jiyu_replenish_mixin import JiyuReplenishCommandsMixin
 from src.bot.cmd_life_mixin import LifeCommandsMixin
 from src.bot.cmd_novel_mixin import NovelCommandsMixin
 from src.bot.cmd_ops_mixin import OpsCommandsMixin
@@ -18,6 +19,7 @@ from src.bot.cmd_xianyu_mixin import XianyuCommandsMixin
 
 class ExecutionCommandsMixin(
     SocialCommandsMixin,
+    JiyuReplenishCommandsMixin,
     XianyuCommandsMixin,
     LifeCommandsMixin,
     NovelCommandsMixin,

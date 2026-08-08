@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import subprocess
 from typing import Any
 
@@ -218,7 +219,11 @@ def matching_plan_groups(groups: list[dict[str, Any]], plan_type: str) -> list[d
             and "自营号池" in name
             and isinstance(group.get("id"), int)
         ):
-            matches.append({"id": group["id"], "name": name})
+            match = {"id": group["id"], "name": name}
+            template_rate = group_rate_template(group)
+            if template_rate is not None:
+                match["rate_multiplier"] = template_rate
+            matches.append(match)
     return matches
 
 
@@ -237,8 +242,28 @@ def manual_openai_group_options(groups: list[dict[str, Any]]) -> list[dict[str, 
             and ("plus" in normalized or "pro" in normalized)
             and isinstance(group.get("id"), int)
         ):
-            options.append({"id": group["id"], "name": name})
+            option = {"id": group["id"], "name": name}
+            template_rate = group_rate_template(group)
+            if template_rate is not None:
+                option["rate_multiplier"] = template_rate
+            options.append(option)
     return options
+
+
+def group_rate_template(group: dict[str, Any] | None) -> float | None:
+    """读取自营号池分组倍率，作为空池首个账号的明确模板。"""
+    if not isinstance(group, dict):
+        return None
+    raw = group.get("rate_multiplier")
+    if isinstance(raw, bool) or raw is None:
+        return None
+    try:
+        rate = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(rate) or not 0 <= rate <= 100:
+        return None
+    return round(rate, 8)
 
 
 def group_rate_candidates(accounts: list[dict[str, Any]]) -> list[float]:
