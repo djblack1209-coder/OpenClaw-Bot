@@ -3,7 +3,7 @@
 
 > 合并自原 024-frist-api-operator-runbook.md + 025-frist-api-quickstart.md + 026-xianyu-cookie-guide.md + 029-deployment-checklist.md
 
-## 2026-08-08 当前主站：JIYU AI（Sub2API 底座）
+## 2026-08-09 当前主站：JIYU AI（Sub2API 底座）
 
 当前用户主站 `https://jiyu.245334.xyz` 的对外品牌为 `JIYU AI`，运行基于官方 Sub2API `v0.1.172` 固定提交构建的 `v0.1.172-jiyu.31265860057`。JIYU 改动以仓库补丁固化，WebUI 只安装通过聚焦门和完整性清单的 JIYU 兼容包，不会用官方原版覆盖定制。
 
@@ -52,6 +52,12 @@ Sub2 `v0.1.172` 原生账号导入只接收已经生成的 Codex `auth.json`、a
 - `Anthropic`、`OpenAI`、`Grok` 是帮助用户识别模型/API 生态的产品标签，必须保留；匿名化对象仅限真实供货上游及其域名，用户可见渠道统一为渠道A/渠道B。
 - 上游安全白名单只新增 `api.aigo0.com`、`www.huyunapi.com`，私网和不安全 HTTP 仍拒绝。
 
+### 上游倍率探测与同步边界（2026-08-09）
+
+- Sub2 `v0.1.172` 原生 upstream billing probe 已在全局启用，当前每 30 分钟执行一次；系统允许的最短周期为 5 分钟。probe 只作为上游计费信号观察，不等于允许自动修改生产倍率。
+- 12 个账号的 rate sync 均保持关闭。渠道A的 probe resolved 值会与已存账号倍率漂移；启用原生自动写回只会修改 `accounts.rate_multiplier`，不会同步修改对应用户分组。
+- JIYU 文本定价合同是“用户分组倍率 = 账号倍率 + `0.05x`”。在业务确认定价策略以及账号/分组联动或写回后校验方案前，禁止直接开启任何账号的 rate sync；不得让原生写回静默破坏 `0.05x` 差值。本轮没有修改倍率、分组、账号或线路。
+
 ### 永久测试账号与真实客户端基线（2026-08-08）
 
 - 永久测试账号为 `jiyu-e2e-20260808@245334.xyz`（用户 ID 2），必须保留；密码和两个活动 Key 分别存入 macOS 钥匙串，不得输出、截图或写入仓库。旧 OpenAI Key 已轮换并停用，历史用量保留用于对账。
@@ -77,9 +83,9 @@ ssh oracle-arm1 '/usr/local/sbin/openclaw-sub2api-manager status'
 - 开放注册保持关闭、邮箱验证保持开启。源站 Redis 限流为注册 5 次/分钟、登录 20 次/分钟、验证码 5 次/分钟；Cloudflare 对同一主机再叠加注册/验证码 5 次/60 秒并封禁 600 秒、登录/2FA 20 次/60 秒并封禁 300 秒。
 - Cloudflare 代理、严格 SSL、最低 TLS 1.3、Managed WAF、OWASP、L7 DDoS 和高安全级别均启用。Super Bot Fight Mode 没有做全区域一刀切，避免误伤 `/v1` 的 Codex/Claude 等合法非浏览器客户端和同区域其他站点。
 - Turnstile 当前关闭。正式开放注册前必须先创建 JIYU 专用 widget，再以桌面/手机真实注册、验证码、失败和无障碍流程验收；不得直接复用历史 New-API 口径声称已开启。
-- Oracle 443 第一阶段已收口：`jiyu-cloudflare-origin.service` 从 Cloudflare 官方地址页下载并校验 CIDR，只允许 Cloudflare、loopback 和 Tailscale 访问 443。应用命令先安排 5 分钟自动回滚；必须从独立外部主机确认直连源站超时后，才能执行确认命令取消回滚。
-- 2026-08-08 验收：三个 HTTPS vhost 经 Cloudflare 分别返回 200/301/预期未授权 404；三个独立外部 VPS 直连源站 443 均超时。80 TCP、SSH、Tailscale 未改，`naive-cert-renew.timer` active 且最近结果 success。
-- 第二阶段先把 `naive-iad` 的证书签发迁到 DNS-01、独立入口或其他不依赖公网 80 的方案，再单独评估 80 收口。80 收口涉及共享主机网络，未获确认前只保留方案和只读证据，不应用对应规则。
+- JIYU 443 使用 Cloudflare Origin CA，并已通过 `jiyu-cloudflare-origin.service` 收口：服务从 Cloudflare 官方地址页下载并校验 CIDR，nftables 只允许 Cloudflare、loopback 和 Tailscale 访问 443。应用命令先安排 5 分钟自动回滚；必须从独立外部主机确认直连源站超时后，才能执行确认命令取消回滚。
+- 2026-08-08 验收：三个 HTTPS vhost 经 Cloudflare 分别返回 200/301/预期未授权 404；三个独立外部 VPS 直连源站 443 均超时。SSH、Tailscale 未改。
+- 共享 80 端口承载与 JIYU 无关的 `naive-iad` 服务入口，并非 ACME 依赖；JIYU 自身 HTTP 只返回 301。不得把迁移 DNS-01 写成共享 80 收口的前置条件，也不得为完成 JIYU 443 闭环而修改或关闭共享 80。
 
 ### 邮箱绑定、验证码与告警
 
