@@ -62,17 +62,16 @@ def test_parser_rejects_invalid_or_duplicate_lines_without_echoing_secrets(raw):
     assert "JBSWY3DPEHPK3PXP" not in message
 
 
-def test_plan_matching_and_duplicate_detection_respect_batch_channel():
+def test_plan_matching_and_duplicate_detection_respect_self_hosted_pool():
     groups = [
-        {"id": 1, "name": "JIYU 渠道A · OpenAI Plus", "platform": "openai", "status": "active"},
-        {"id": 2, "name": "JIYU 渠道B · OpenAI Plus", "platform": "openai", "status": "active"},
-        {"id": 3, "name": "JIYU 渠道A · OpenAI Pro", "platform": "openai", "status": "active"},
+        {"id": 1, "name": "JIYU OpenAI Plus 自营号池", "platform": "openai", "status": "active"},
+        {"id": 2, "name": "JIYU OpenAI Pro 自营号池", "platform": "openai", "status": "active"},
+        {"id": 3, "name": "JIYU 渠道A · OpenAI Plus", "platform": "openai", "status": "active"},
     ]
-    assert [group["id"] for group in matching_plan_groups(groups, "plus", "A")] == [1]
-    assert [group["id"] for group in matching_plan_groups(groups, "plus", "B")] == [2]
-    assert [group["id"] for group in matching_plan_groups(groups, "pro", "A")] == [3]
-    assert matching_plan_groups(groups, "team", "A") == []
-    assert [group["id"] for group in manual_openai_group_options(groups, "A")] == [1, 3]
+    assert [group["id"] for group in matching_plan_groups(groups, "plus")] == [1]
+    assert [group["id"] for group in matching_plan_groups(groups, "pro")] == [2]
+    assert matching_plan_groups(groups, "team") == []
+    assert [group["id"] for group in manual_openai_group_options(groups)] == [1, 2]
     assert group_rate_candidates([{"rate_multiplier": 0.08}, {"rate_multiplier": 0.08}]) == [0.08]
     assert group_rate_candidates([{"rate_multiplier": 0.08}, {"rate_multiplier": 0.1}]) == [0.08, 0.1]
     assert group_rate_candidates([]) == []
@@ -130,7 +129,7 @@ def test_group_and_rate_actions_reserve_state_before_queueing():
     job = ReplenishJob(parse_seller_payload(SELLER_LINE)[0])
     runner.replace_jobs([job])
     job.status = "group_required"
-    job.group_options = [{"id": 8, "name": "JIYU 渠道A · OpenAI Plus"}]
+    job.group_options = [{"id": 8, "name": "JIYU OpenAI Plus 自营号池"}]
 
     runner.choose_group(job.id, 8)
     assert job.status == "group_selected"
@@ -161,10 +160,10 @@ def test_dry_run_ui_requires_same_origin_session_and_never_persists_secrets(tmp_
         parsed = client.post(
             "/api/parse",
             headers=headers,
-            json={"raw": SELLER_LINE, "target_channel": "B"},
+            json={"raw": SELLER_LINE, "target_pool": "self_hosted"},
         )
         assert parsed.status_code == 200
-        assert parsed.json()["target_channel"] == "B"
+        assert parsed.json()["target_pool"] == "self_hosted"
         response_text = parsed.text
         assert "never-log-password" not in response_text
         assert "JBSWY3DPEHPK3PXP" not in response_text

@@ -5,6 +5,23 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
+## [2026-08-09] JIYU 自营补号池与支付/倍率能力澄清
+> 领域: `backend` | `ai-pool` | `docs` | `xianyu`
+> 影响模块: `本地补号助手`, `Sub2 原生支付`, `上游倍率探测`, `闲鱼本机运营台`
+> 关联问题: HI-1011, HI-1012, HI-1013, HI-1014
+### 变更内容
+- 本地补号助手从“渠道A/B”改为“Plus/Pro 自营号池”语义：JSON/卖家原文由 OAuth 计划识别后只匹配同名自营池，池缺失或不唯一时失败关闭，绝不写入渠道A/B。
+- 明确本地助手是 `127.0.0.1:18796` 可视化 Web App；真实浏览器在桌面和 `390×844` 下验收，移动端 `scrollWidth=clientWidth=390`，无横向溢出。验收浏览器和本地演练服务均已关闭。
+- 官方能力复核：Sub2 原生支付支持 EasyPay、支付宝、微信支付和 Stripe，但链动整店嵌入不等于自动余额入账；没有商户签名凭据或链动可信回调时保持关闭。
+- 官方能力复核：上游倍率探测支持 5-1440 分钟，原生同步只写账号倍率，不能维持用户分组 `+0.05x` 合同，继续保持写回关闭。
+- 明确闲鱼本机 GUI 已由 `127.0.0.1:18800/dashboard` 提供；外部 Electron/GPL 与 AGPL 候选只能独立试运行，不能取代库存与发货真值。
+### 文件变更
+- `packages/clawbot/src/sub2_replenish/`、`packages/clawbot/tests/test_sub2_replenish_helper.py` — 自营号池路由和页面语义。
+- `docs/006-registries.md`、`docs/007-operations.md`、`docs/009-health.md` — 同步操作、能力边界和未决业务配置。
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_sub2_replenish_helper.py -q`：`11 passed`。
+- Python 编译、`node --check`、真实浏览器桌面/移动页面和移动宽度回读通过；不包含真实凭据。
+
 ## [2026-08-09] JIYU 收尾回归文档清理
 > 领域: `docs` | `deploy` | `infra`
 > 影响模块: `生产事实摘要`, `健康登记`, `会话交接`

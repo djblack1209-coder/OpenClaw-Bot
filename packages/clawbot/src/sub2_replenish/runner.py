@@ -50,22 +50,22 @@ class ReplenishRunner:
     def __init__(self, *, dry_run: bool = False) -> None:
         self.dry_run = dry_run
         self.jobs: list[ReplenishJob] = []
-        self.target_channel = "A"
+        self.target_pool = "self_hosted"
         self.running = False
         self._batch_task: asyncio.Task[None] | None = None
         self._stop_event = asyncio.Event()
         self._actions: dict[str, asyncio.Queue[tuple[str, int | None]]] = {}
         self._client = Sub2AdminClient()
 
-    def replace_jobs(self, jobs: list[ReplenishJob], *, target_channel: str = "A") -> None:
+    def replace_jobs(self, jobs: list[ReplenishJob], *, target_pool: str = "self_hosted") -> None:
         """新批次覆盖旧批次前清除旧凭据引用。"""
         if self.running:
             raise RuntimeError("当前批次仍在运行")
-        if target_channel not in {"A", "B"}:
-            raise ValueError("目标渠道必须是渠道A或渠道B")
+        if target_pool != "self_hosted":
+            raise ValueError("补号只能导入 JIYU 自营号池")
         self.wipe_all()
         self.jobs = jobs
-        self.target_channel = target_channel
+        self.target_pool = target_pool
         self._actions = {job.id: asyncio.Queue() for job in jobs}
         self._stop_event = asyncio.Event()
 
@@ -73,7 +73,7 @@ class ReplenishRunner:
         return {
             "running": self.running,
             "dry_run": self.dry_run,
-            "target_channel": self.target_channel,
+            "target_pool": self.target_pool,
             "jobs": [job.public() for job in self.jobs],
             "notice": "短信、实体手机号、CAPTCHA 或风控必须由本人在打开的浏览器中完成。",
         }
@@ -202,18 +202,18 @@ class ReplenishRunner:
             return
 
         all_groups = await self._client.list_openai_groups()
-        groups = matching_plan_groups(all_groups, job.plan_type, self.target_channel)
+        groups = matching_plan_groups(all_groups, job.plan_type)
         if len(groups) == 1:
             job.selected_group_id = int(groups[0]["id"])
         else:
             job.status = "group_required"
-            job.group_options = groups or manual_openai_group_options(all_groups, self.target_channel)
+            job.group_options = groups or manual_openai_group_options(all_groups)
             if groups:
-                job.message = f"计划已识别，但渠道{self.target_channel}存在多个目标分组，请人工核对"
+                job.message = "计划已识别，但对应自营号池存在多个目标分组，请人工核对"
             else:
-                job.message = f"计划无法识别或目标组不存在，请核对渠道{self.target_channel}内的 Plus/Pro 分组"
+                job.message = "计划无法识别或对应自营号池不存在，请核对 Plus/Pro 自营号池"
             if not job.group_options:
-                raise RuntimeError("没有可选的 JIYU OpenAI Plus/Pro 分组")
+                raise RuntimeError("没有可选的 JIYU OpenAI Plus/Pro 自营号池")
             action, group_id = await self._actions[job.id].get()
             if action == "skip":
                 raise JobSkipped
