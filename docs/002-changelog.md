@@ -5,6 +5,21 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
+## [2026-08-09] 修复 JIYU WebUI 更新后的正常退出不重启
+> 领域: `deploy` | `infra` | `docs`
+> 影响模块: `Sub2API systemd`, `JIYU WebUI 更新`, `健康与交接`
+> 关联问题: HI-1018
+### 变更内容
+- 根因确认：WebUI 重启接口让进程以退出码 0 正常退出，而生产 unit 使用 `Restart=on-failure`，导致兼容包新进程未启动，独立验证任务超时并自动回滚。
+- 将 `scripts/sub2api_oracle_manage.sh` 的 Sub2API unit 改为 `Restart=always`，并在 Oracle 生产 unit 同步修复；不修改数据库、定价、渠道、支付或上游状态。
+- 首次更新失败后生产已自动回滚到旧构建且健康恢复；受控重启验证新 PID `1288563→1291998`，本机 `/health` 返回 200。
+### 文件变更
+- `scripts/sub2api_oracle_manage.sh` — 让正常退出触发 systemd 自动重启。
+- `docs/009-health.md`、`docs/012-handoff.md`、`docs/002-changelog.md` — 登记真实回滚证据与下一次验收门。
+### 验证
+- `git diff --check`、`node --test scripts/sub2api_ops_scripts.test.mjs`、`make docs-check`。
+- Oracle `systemctl show sub2api.service -p Restart` 返回 `Restart=always`；受控重启后健康检查 200。下一次 WebUI 兼容包更新仍需真实验收，不能把本次回滚误报为已安装新版本。
+
 ## [2026-08-09] JIYU 充值审计、补号操作说明与密钥页移动端修复
 > 领域: `frontend` | `ai-pool` | `xianyu` | `docs`
 > 影响模块: `Sub2API 兼容补丁`, `充值中心`, `本地补号助手`, `闲鱼运营选型`
