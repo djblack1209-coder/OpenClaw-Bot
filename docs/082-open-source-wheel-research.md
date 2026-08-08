@@ -1,6 +1,6 @@
 # 开源轮子调研：闲鱼、社媒、财经与爬虫
 
-> 调研时间: 2026-07-08；闲鱼候选复核: 2026-08-08
+> 调研时间: 2026-07-08；闲鱼候选复核: 2026-08-09
 > 调研方式: agent-reach GitHub/gh CLI 拉取仓库元数据、README、目录结构和 LICENSE 片段
 > 目的: 找出 OpenEverything 可以直接复用的轮子、只适合借鉴的思路、以及暂不建议接入的项目。
 
@@ -12,7 +12,7 @@
 2. **`d60/twikit`**：X/Twitter 内部接口客户端，MIT，适合做只读热点/搜索补充，但不能乱自动互动。
 3. **`Evil0ctal/Douyin_TikTok_Download_API`**：Apache-2.0、FastAPI/Docker 化，适合独立跑成“抖音/TikTok/B站解析服务”。
 
-**闲鱼方向已允许采用更重但更好用的助手**：当前选定 [`zhinianboke/xianyu-auto-reply`](https://github.com/zhinianboke/xianyu-auto-reply) 作为独立 AGPL 服务候选，不复制或合并其源码到 OpenEverything。它的产品闭环比继续扩张现有自研模块更完整，但部署必须先满足资源、私网暴露和闲鱼出口风控边界。
+**闲鱼方向允许采用更重但更好用的助手，但不应替换现有履约真值**：优先评估 [`GuDong2003/xianyu-auto-reply-fix`](https://github.com/GuDong2003/xianyu-auto-reply-fix) 作为独立运营工作台候选，负责多账号登录态、客服、商品和订单浏览；OpenClaw 继续作为库存、自动发货、补救队列和严格门的唯一真值。候选均为 AGPL/GPL，必须独立部署、固定提交、自建镜像，不能复制或合并源码。
 
 **MediaCrawler 很强，但许可证写明非商业学习**，不能直接作为商业功能代码搬进来；可以拿它当“平台适配层设计参考”。
 
@@ -34,6 +34,8 @@
 |---|---|---|---|
 | [`cv-cat/XianYuApis`](https://github.com/cv-cat/XianYuApis) | **B：重点借鉴** | 闲鱼 WebSocket、HTTP API、签名、消息收发，是我们自动发货/AI 客服最相关的参考。 | README 写 MIT 徽章，但 GitHub 未识别 LICENSE 文件；不要直接复制代码。重点对照我们现有 `xianyu_apis.py`、`xianyu_live.py`，补齐 mtop 发货/状态接口。 |
 | [`zhinianboke/xianyu-auto-reply`](https://github.com/zhinianboke/xianyu-auto-reply) | **A/B：独立服务候选** | 截至 2026-08-08 为 6,337 stars，最近 pushed 2026-08-01；FastAPI + React + MySQL + Redis + Playwright，覆盖多账号、自动回复、自动发货和商品发布。最低 2c4G，推荐 4c8G。 | AGPL-3.0，只能作为边界清晰的独立服务部署并履行许可证义务，不能复制合并源码。默认部署安全边界不足，必须先完成下方加固。 |
+| [`GuDong2003/xianyu-auto-reply-fix`](https://github.com/GuDong2003/xianyu-auto-reply-fix) | **A/B：优先试运行候选** | 截至 2026-08-09 为 2,122 stars、462 forks、最近 pushed 2026-07-14；FastAPI + SQLite + Playwright/DrissionPage，包含多用户/账号、客服回复、商品、订单、发货、日志和 Docker。比 MySQL/Redis 方案更轻，修复分支持续处理登录态与风控页面问题。 | AGPL-3.0；仍有每日人脸、滑块和 Cookie 过期的公开问题，不能绕过。仅承担运营工作台，不能拿它的发货结果覆盖 OpenClaw 的库存扣减和补救队列。 |
+| [`23Star/xianyu-super-butler`](https://github.com/23Star/xianyu-super-butler) | **B：界面与规则借鉴** | 截至 2026-08-09 为 675 stars、513 forks、最近 pushed 2026-08-08；有多账号、商品/订单/消息、三级发货规则、发送前风险拦截、Cookie/监听生命周期和 SQLite/Docker。 | AGPL，项目较新且最近提交以维护性杂项为主；可借鉴运营界面、三级规则和失败可见性，不作为首个生产替换。 |
 | [`shaxiu/XianyuAutoAgent`](https://github.com/shaxiu/XianyuAutoAgent) | **B：AI 客服思路借鉴** | 多专家协同、议价、上下文记忆、客服 prompt，很适合后续 AI 智能客服。 | LICENSE 为 GPL-3.0；不直接复制代码。我们只借鉴“客服 Agent 分工”和“议价/售后意图分类”。 |
 | [`chinamonarchs/xyxyxy`](https://github.com/chinamonarchs/xyxyxy) | **C：不建议接入** | 有商品监控、过滤、钉钉推送等思路。 | 最后 push 很早，偏抢拍/秒拍/强聊，风控和合规风险高；不适合我们的“稳定售卖 + 售后”路线。 |
 
@@ -41,10 +43,11 @@
 
 当前落地决定：
 
-1. **独立服务，不合并源码**：固定审阅后的 commit，自行构建镜像；禁止 `curl | bash`，也不直接信任可变 latest 镜像。
-2. **部署前强制加固**：不使用默认 `admin/admin123`；9000/8089/8090/8091 不得暴露公网，只绑定私网或 loopback，经带认证的反向代理访问；关闭默认远程广告、远程公告和卡片远程基址，使用强随机管理凭据。
-3. **资源与出口阻塞**：当前国内 VPS 只有约 13GB 空闲磁盘，源码构建可能突破安全余量；Oracle SGW 约有 88GB 空闲，但海外出口对闲鱼登录与风控不利。因此本轮不真实部署，状态是“候选已选定、部署客观阻塞”，不是完成。
-4. **业务安全边界**：即使后续部署，也只处理授权店铺的客服、商品和真实订单；不做抢拍、强聊、批量骚扰，不绕过 CAPTCHA、短信、实体手机号或平台风控。
+1. **部分替换，不替换履约核心**：优先把 `GuDong2003/xianyu-auto-reply-fix` 固定提交后作为独立运营工作台试运行；OpenClaw 继续是卡密库存、发货确认、失败补救和严格 readiness 的唯一真值。主项目不接收 AGPL 源码。
+2. **不直接采用 zhinianboke 作为履约核心**：其公开实现中自动确认异常路径会失败开放，且公开 issue 持续出现 x5sec/滑块/Cookie 生命周期问题；不能让它在异常时继续发货。
+3. **部署前强制加固**：不使用默认 `admin/admin123`；服务端口不得暴露公网，只绑定私网或 loopback，经带认证的反向代理访问；关闭默认远程广告、远程公告和卡片远程基址，使用强随机管理凭据。
+4. **资源与出口阻塞**：当前国内 VPS 只有约 13GB 空闲磁盘，源码构建可能突破安全余量；Oracle SGW 约有 88GB 空闲，但海外出口对闲鱼登录与风控不利。因此本轮不真实部署，状态是“候选已完成对比、部署仍受资源/出口约束”，不是完成。
+5. **业务安全边界**：即使后续部署，也只处理授权店铺的客服、商品和真实订单；不做抢拍、强聊、批量骚扰，不绕过 CAPTCHA、短信、实体手机号或平台风控。
 
 ---
 
