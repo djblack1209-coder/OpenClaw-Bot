@@ -13,14 +13,14 @@
 | 数据库 | PostgreSQL 16 `sub2api` | 独立角色、独立数据库；首次安装不导入 New-API 用户、Key、渠道、兑换码、日志或上游凭据；当前只保留 1 个管理员 |
 | 缓存 | `sub2api-redis.service` | 专用 Redis 7 实例，绑定 `127.0.0.1:16379`，密码只保存在 Oracle `/etc/sub2api/sub2api.env` |
 | 管理脚本 | `scripts/sub2api_oracle_manage.sh` / Oracle `/usr/local/sbin/openclaw-sub2api-manager` | `install-jiyu-build <path>` 用于完整发布；`stage-jiyu-build <path>` 原子暂存已校验二进制，并调度独立 systemd 任务在 WebUI 重启后核对运行哈希和健康状态，失败或 10 分钟未重启会恢复二进制、版本与 PostgreSQL；`enable-web-update <broker> <manifest-url>` 安装固定 root 代理与最小 sudoers |
-| 自动更新 | `.github/workflows/sub2api-jiyu-compat.yml` + `scripts/sub2api_jiyu_update_broker.sh` + `sub2api-update.timer` | CI 从官方稳定标签构建带 JIYU 补丁的 ARM64 兼容包并生成 SHA-256 清单；WebUI 后端只能无参数调用 root 代理下载、校验和暂存。当前生产 `v0.1.172-jiyu.31237926226` 已启用受管 WebUI 更新；同一官方基础版显示已是最新，下一官方版本由 JIYU 兼容包完成首次真实安装验收 |
+| 自动更新 | `.github/workflows/sub2api-jiyu-compat.yml` + `scripts/sub2api_jiyu_update_broker.sh` + `sub2api-update.timer` | CI 从官方稳定标签构建带 JIYU 补丁的 ARM64 兼容包并生成 SHA-256 清单；定时任务跳过已适配基础版，手动同版本修订发布为不可变 `-r<run_id>` 标签，旧工件不覆盖。WebUI 后端只能无参数调用 root 代理下载、校验和暂存。当前生产 `v0.1.172-jiyu.31237926226` 已启用受管 WebUI 更新 |
 | 自动备份 | `sub2api-backup.timer` / `sub2api-backup.service` | 每日 03:40（Asia/Singapore，随机延迟 15 分钟）备份 PostgreSQL、二进制、版本和 root-only 环境文件；本地 `/var/backups/sub2api` 保留 30 天 |
 | 管理员账号 | `djblack1209@gmail.com` | 当前唯一管理员；密码不写仓库，已存入 macOS 钥匙串服务“CC中转 Sub2API 管理员” |
 | 凭据保管 | Oracle `/etc/sub2api/sub2api.env` + 本机钥匙串 | Oracle env `0600 root-only`；修改管理员密码后同步更新这两处并做真实登录验证 |
 | 旧底座清理 | Oracle、腾讯云、R2 | Oracle/Tencent 旧 New-API 数据目录、SQLite/容器/镜像、systemd 服务和同名本地备份已删除；旧 R2 加密对象已删除并重建为只含 Frist runtime/application.env 的新备份 |
 | 图形 Logo | `scripts/assets/jiyu-ai-logo-email.png` / `/api/v1/pages/docs/images/jiyu-ai-logo.png` | 512×512 PNG，源自选定的 2K JY 标志；站内继续使用 2K 等比图形，验证码、通知邮箱和运维告警模板通过同域公开 PNG 加载 |
 | 文档入口 | `/custom/docs` / `md:docs` | 左侧“文档”提供 CC Switch v3.19.2 三平台下载；创建密钥时按 Claude/OpenAI 展示根端点或 `/v1`，并默认在创建后立即导入 CC Switch |
-| 定制补丁 | `scripts/sub2api-jiyu-v0.1.172.patch` | 固定应用到官方 `v0.1.172` 提交；覆盖品牌隐私、标题/版本徽标、创建密钥端点引导、CC Switch 和公告空状态 |
+| 定制补丁 | `scripts/sub2api-jiyu-v0.1.172.patch` | 固定应用到官方 `v0.1.172` 提交；覆盖品牌隐私、账号列表供货域名隐藏、标题/版本徽标、创建密钥端点引导、CC Switch 和公告空状态 |
 | 渠道迁移 | `scripts/sub2api_configure_jiyu_channels.mjs` | 带完整备份和前置基线门，把 6 个聚合渠道/监控迁移为 10 个一对一渠道/监控，不输出账号凭据 |
 
 ### JIYU AI 上游、分组与渠道注册
@@ -255,6 +255,8 @@
 | 兼容包暂存 | `scripts/sub2api_oracle_manage.sh stage-jiyu-build <path>` | root 发布内部入口；备份后原子替换磁盘二进制与 VERSION，不直接杀死正在服务的进程，并创建独立验证任务 |
 | 兼容包验证 | `scripts/sub2api_oracle_manage.sh verify-jiyu-stage` | 仅供 systemd 内部调用；重启后校验运行中 `/proc/<pid>/exe` 哈希与 `/health`，失败或超时自动恢复发布前二进制、VERSION 和数据库 |
 | WebUI 更新启用 | `scripts/sub2api_oracle_manage.sh enable-web-update <broker> <manifest-url>` | 安装固定 root 代理、root-only 清单 URL、最小 sudoers 和 systemd 环境；完成健康检查后才放开受管更新接口 |
+| Codex WS 桥接启用 | `scripts/sub2api_oracle_manage.sh openai-ws-http-bridge` | 启用官方 OpenAI WS 模式路由；账号仍需在 WebUI 选择 `http_bridge`，不直接写数据库或改上游地址 |
+| Codex WS 旧模式回滚 | `scripts/sub2api_oracle_manage.sh openai-ws-legacy` | 关闭官方模式路由并恢复旧版传输判定；用于桥接异常时快速回滚 |
 
 ---
 

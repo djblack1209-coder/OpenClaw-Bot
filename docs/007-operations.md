@@ -31,15 +31,18 @@
 - 永久测试账号为 `jiyu-e2e-20260808@245334.xyz`（用户 ID 2），必须保留；密码和两个活动 Key 分别存入 macOS 钥匙串，不得输出、截图或写入仓库。旧 OpenAI Key 已轮换并停用，历史用量保留用于对账。
 - Claude Code 使用 `ANTHROPIC_BASE_URL=https://jiyu.245334.xyz` 和独立 Claude Key。渠道B连续两次成功；服务端成功样本为输入 327、输出 101、首 Token 3155 ms、总时长 7430 ms、站内计费 `$0.002496`。短单轮提示没有可复用缓存块，缓存为 0 属预期；渠道A对应分组当前 0 个可调度账号，真实返回 503，禁止继续对外显示为可用。
 - OpenAI Responses 使用 `https://jiyu.245334.xyz/v1` 和独立 OpenAI Key。最近成功样本为非缓存输入 550、缓存读取 3840、输出 6，缓存占总输入 `87.47%`，HTTP 客户端首包 5889 ms、总时长 6150 ms，服务端处理 4609 ms，站内计费 `$0.004850`、上游实际成本 `$0.0011155`。
-- Codex `0.147.0` 默认 Responses WebSocket。Apache 已把 `/v1/responses` 升级代理放在根代理之前，握手由 426 修复为 101；Sub2API 对 API Key 账号的 WebSocket 调度仍返回无可用账号，不能把直连 curl 成功写成 Codex 客户端成功。处理方案见 HEALTH HI-1002。
-- 本轮账号共有 8 条真实计费记录；内容拦截 403 后记录总数仍为 8，证明预拦截请求没有进入上游或扣费。每次体验回归只跑一组最小真实请求，不循环消耗余额。
+- Codex `0.147.0` 默认 Responses WebSocket。Apache upgrade 代理和 Sub2API 官方模式路由均已启用，四个 OpenAI 文本 API Key 账号在 WebUI 使用 `HTTP 桥接（http_bridge）`，两个生图账号保持关闭。最小 WS 样本客户端首输出 4287 ms、总时长 4524 ms，缓存 3840/4395；真实 Codex 服务端首 Token 2482 ms、总时长 2964 ms，记录为 `openai_ws_mode=true`。
+- 本轮账号共有 10 条真实计费记录；内容拦截 403 后记录数不增加，证明预拦截请求没有进入上游或扣费。每次体验回归只跑一组最小真实请求，不循环消耗余额。
 
 Apache 规则必须位于通用根代理之前；未来重装或配置漂移后执行：
 
 ```bash
 ssh oracle-arm1 '/usr/local/sbin/openclaw-sub2api-manager responses-websocket'
+ssh oracle-arm1 '/usr/local/sbin/openclaw-sub2api-manager openai-ws-http-bridge'
 ssh oracle-arm1 '/usr/local/sbin/openclaw-sub2api-manager status'
 ```
+
+账号级模式在“账号管理”中保存，不直接改数据库。只筛选四个 OpenAI Pro/Plus 文本账号，批量把 `WS mode` 设为 `HTTP 桥接（http_bridge）`；生图账号保持 `off`。如需回滚，先在 WebUI 把四个账号恢复为 `off`，再执行 `ssh oracle-arm1 '/usr/local/sbin/openclaw-sub2api-manager openai-ws-legacy'`。
 
 ### 风控、反注册机与 Cloudflare（2026-08-08）
 
@@ -48,7 +51,9 @@ ssh oracle-arm1 '/usr/local/sbin/openclaw-sub2api-manager status'
 - 开放注册保持关闭、邮箱验证保持开启。源站 Redis 限流为注册 5 次/分钟、登录 20 次/分钟、验证码 5 次/分钟；Cloudflare 对同一主机再叠加注册/验证码 5 次/60 秒并封禁 600 秒、登录/2FA 20 次/60 秒并封禁 300 秒。
 - Cloudflare 代理、严格 SSL、最低 TLS 1.3、Managed WAF、OWASP、L7 DDoS 和高安全级别均启用。Super Bot Fight Mode 没有做全区域一刀切，避免误伤 `/v1` 的 Codex/Claude 等合法非浏览器客户端和同区域其他站点。
 - Turnstile 当前关闭。正式开放注册前必须先创建 JIYU 专用 widget，再以桌面/手机真实注册、验证码、失败和无障碍流程验收；不得直接复用历史 New-API 口径声称已开启。
-- Oracle 80/443 当前仍可从公网直达，存在绕过 Cloudflare WAF/DDoS 的路径。收口需要 Cloudflare IPv4/IPv6 allowlist、持久化防火墙、带外 SSH 回滚和外部健康探针，属于共享主机网络架构变更，未获确认前不得直接封端口。
+- Oracle 443 当前仍可从公网直达，存在绕过 Cloudflare WAF/DDoS 的路径。三个 HTTPS vhost 都经 Cloudflare 代理；但 `naive-iad` 使用直连 DNS，并依赖公网 80 的 ACME HTTP-01，不能直接同时封 80/443。
+- 待确认的第一阶段方案：下载并校验 Cloudflare 官方 15 个 IPv4、7 个 IPv6 CIDR；备份当前 nftables；先安排 5 分钟自动回滚；只在现有 443 accept 规则之前允许 Cloudflare CIDR并拒绝其他来源；从 Cloudflare 域名验证首页、登录、API、WebSocket 和两个共享 HTTPS vhost，再从源站直连验证 443 被拒绝；全部通过后才持久化并取消回滚。80、22、Tailscale 和其他业务端口均不动。
+- 第二阶段先把 `naive-iad` 的证书签发迁到 DNS-01、独立入口或其他不依赖公网 80 的方案，再单独评估 80 收口。该变更涉及共享主机网络，未获确认前只保留方案和只读证据，不应用防火墙。
 
 ### 邮箱绑定、验证码与告警
 
@@ -84,7 +89,7 @@ ssh oracle-arm1 'systemctl list-timers sub2api-update.timer sub2api-backup.timer
 
 `update` 当前默认只检查。发布新的 JIYU 构建必须先从固定官方提交应用 `scripts/sub2api-jiyu-v0.1.172.patch`、完成聚焦验证和 ARM64 构建，再执行 `SUB2API_JIYU_VERSION=<version> openclaw-sub2api-manager install-jiyu-build <path>`。该命令会先备份并在健康失败时回滚；不要直接替换二进制或修改 Apache。
 
-WebUI 更新方案 A 已在仓库和生产启用：`.github/workflows/sub2api-jiyu-compat.yml` 只发布通过补丁、类型检查、嵌入式前端根页和聚焦测试的 ARM64 兼容包及 SHA-256 清单；不可变版本包位于 `jiyu-vX.Y.Z`，`jiyu-latest` 只移动清单且清单仍引用不可变工件。`scripts/sub2api_jiyu_update_broker.sh` 不接受任何浏览器参数，只读取 root 管理的 `https://github.com/djblack1209-coder/OpenClaw-Bot/releases/download/jiyu-latest/jiyu-update-manifest.json` 并调用 `stage-jiyu-build`。暂存时会另起独立 systemd 验证任务；管理员点击重启后，该任务核对正在运行的二进制哈希和 `/health`，失败自动恢复二进制、VERSION 与 PostgreSQL，10 分钟未重启也会撤销暂存。生产已验证 `sub2api` 固定 sudo 路径、清单解析和“当前基础版已最新”正常退出；下一官方版本出现后可直接从版本面板安装，禁止恢复官方裸二进制更新路径。
+WebUI 更新方案 A 已在仓库和生产启用：`.github/workflows/sub2api-jiyu-compat.yml` 只发布通过补丁、类型检查、嵌入式前端根页和聚焦测试的 ARM64 兼容包及 SHA-256 清单；首个基础版使用不可变 `jiyu-vX.Y.Z` 标签，同一上游版本的手动修订使用不可变 `jiyu-vX.Y.Z-r<run_id>`，旧发布和旧工件不覆盖；定时任务看到已适配基础版仍直接跳过。`jiyu-latest` 只移动清单且清单始终引用不可变工件。`scripts/sub2api_jiyu_update_broker.sh` 不接受任何浏览器参数，只读取 root 管理的 `https://github.com/djblack1209-coder/OpenClaw-Bot/releases/download/jiyu-latest/jiyu-update-manifest.json` 并调用 `stage-jiyu-build`。暂存时会另起独立 systemd 验证任务；管理员点击重启后，该任务核对正在运行的二进制哈希和 `/health`，失败自动恢复二进制、VERSION 与 PostgreSQL，10 分钟未重启也会撤销暂存。生产已验证 `sub2api` 固定 sudo 路径、清单解析和“当前基础版已最新”正常退出；同版本品牌修订和下一官方版本均可从受管链安装，禁止恢复官方裸二进制更新路径。
 
 ### 生图与 MCP
 
