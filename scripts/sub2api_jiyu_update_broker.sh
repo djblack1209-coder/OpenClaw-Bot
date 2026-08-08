@@ -19,6 +19,7 @@ cleanup() {
 }
 
 fail() {
+  printf 'JIYU_UPDATE_STATUS=error\n' >&2
   printf 'JIYU 兼容包更新失败：%s\n' "$*" >&2
   exit 1
 }
@@ -112,8 +113,9 @@ main() {
   local current
   current="$(tr -d '[:space:]' <"${INSTALL_DIR}/VERSION")"
   if [[ "$current" == "$version" ]]; then
+    printf 'JIYU_UPDATE_STATUS=noop\n'
     printf '当前已是 JIYU 兼容包 %s，无需更新。\n' "$version"
-    return 3
+    return 0
   fi
 
   curl -fsSL --proto '=https' --proto-redir '=https' --max-filesize "$MAX_ARTIFACT_BYTES" \
@@ -125,7 +127,11 @@ main() {
   file "$artifact_file" | grep -Eq 'ELF 64-bit.*(ARM aarch64|x86-64)' || fail "兼容包不是受支持的 Linux ELF"
   chmod 0755 "$artifact_file"
 
-  SUB2API_JIYU_VERSION="$version" "$MANAGER_PATH" stage-jiyu-build "$artifact_file"
+  local stage_output
+  if ! stage_output="$(SUB2API_JIYU_VERSION="$version" "$MANAGER_PATH" stage-jiyu-build "$artifact_file" 2>&1)"; then
+    fail "$stage_output"
+  fi
+  printf 'JIYU_UPDATE_STATUS=staged\n'
   printf 'JIYU 兼容包 %s 已校验并暂存，请在 WebUI 点击重启完成更新。\n' "$version"
 }
 
