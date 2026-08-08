@@ -23,7 +23,7 @@
 - 所有证据继续禁止密码、API Key、Token、Cookie、TOTP secret、卡密和个人邮箱；浏览器只保留充值中心主标签。
 
 ### 当前系统状态
-- 分支只有 `main`，兼容补丁、文档与截图已推送；本地源码已更新为 `Restart=always`，生产 unit 已同步。ShellCheck `SC1111` 注释字符修复待本次提交推送后确认远端 `security-gates` 回绿。
+- 分支只有 `main`，兼容补丁、文档与截图已推送；本地源码已更新为 `Restart=always`，生产 unit 已同步。ShellCheck `SC1111` 注释字符修复已由 OpenClaw CI `31272391317` 的 `security-gates` 确认回绿。
 - CI `31271410817` 工件已落地；生产新版本健康，WebUI 更新链路已完成真实验收。
 
 ## [2026-08-09 01:54] JIYU 充值移动端与补号/闲鱼审计交接
