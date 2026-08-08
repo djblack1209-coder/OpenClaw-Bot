@@ -1074,6 +1074,56 @@ remove_newapi_apache_branding() {
     "$APACHE_SITE"
 }
 
+ensure_apache_responses_websocket_proxy() {
+  local proxy_count temporary_file
+  proxy_count="$(grep -Ec '^[[:space:]]*ProxyPass(Reverse)? /v1/responses http://127\.0\.0\.1:18080/v1/responses' "$APACHE_SITE" || true)"
+  if [[ "$proxy_count" -eq 2 ]]; then
+    return 0
+  fi
+  [[ "$proxy_count" -eq 0 ]] || fail "Apache Responses WebSocket 代理配置不完整，拒绝自动覆盖。"
+
+  temporary_file="$(mktemp)"
+  if ! awk '
+    !inserted && /^[[:space:]]*ProxyPass \/ http:\/\/127\.0\.0\.1:18080\// {
+      print "    # JIYU-RESPONSES-WEBSOCKET: Codex 新版默认使用 Responses WebSocket。"
+      print "    ProxyPass /v1/responses http://127.0.0.1:18080/v1/responses upgrade=websocket retry=0 timeout=120"
+      print "    ProxyPassReverse /v1/responses http://127.0.0.1:18080/v1/responses"
+      print ""
+      inserted = 1
+    }
+    { print }
+    END { if (!inserted) exit 42 }
+  ' "$APACHE_SITE" >"$temporary_file"; then
+    rm -f "$temporary_file"
+    fail "找不到 Sub2API 根代理，无法安全插入 Responses WebSocket 规则。"
+  fi
+  cat "$temporary_file" >"$APACHE_SITE"
+  rm -f "$temporary_file"
+}
+
+repair_apache_responses_websocket_proxy() {
+  require_root
+  require_linux
+  [[ -f "$APACHE_SITE" ]] || fail "找不到 Apache 站点配置: ${APACHE_SITE}"
+  local temporary_backup
+  temporary_backup="$(mktemp)"
+  cp -a "$APACHE_SITE" "$temporary_backup"
+  ensure_apache_responses_websocket_proxy
+  if ! apache2ctl configtest; then
+    cp -a "$temporary_backup" "$APACHE_SITE"
+    fail "Responses WebSocket 代理校验失败，已恢复原配置。"
+  fi
+  systemctl reload apache2.service
+  if ! verify_public_health; then
+    cp -a "$temporary_backup" "$APACHE_SITE"
+    apache2ctl configtest
+    systemctl reload apache2.service
+    fail "Responses WebSocket 代理上线后公网健康失败，已恢复原配置。"
+  fi
+  rm -f "$temporary_backup"
+  log "Responses WebSocket 代理已位于根代理之前，Codex 升级请求不会再被普通 HTTP 代理截断。"
+}
+
 verify_public_health() {
   curl -fsS --max-time 15 "https://${DOMAIN}/health" >/dev/null
 }
@@ -1093,6 +1143,7 @@ cutover_to_sub2api() {
   cp -a "$APACHE_SITE" "$APACHE_ROLLBACK_FILE"
   sed -i 's#http://127\.0\.0\.1:13000/#http://127.0.0.1:18080/#g' "$APACHE_SITE"
   remove_newapi_apache_branding
+  ensure_apache_responses_websocket_proxy
 
   if ! apache2ctl configtest; then
     cp -a "$APACHE_ROLLBACK_FILE" "$APACHE_SITE"
@@ -1122,6 +1173,7 @@ clean_apache_after_cutover() {
   temporary_backup="$(mktemp)"
   cp -a "$APACHE_SITE" "$temporary_backup"
   remove_newapi_apache_branding
+  ensure_apache_responses_websocket_proxy
   if ! apache2ctl configtest; then
     cp -a "$temporary_backup" "$APACHE_SITE"
     fail "清理旧品牌注入后 Apache 校验失败，已恢复。"
@@ -1246,6 +1298,13 @@ show_status() {
     log "内网健康检查: 失败"
     return 1
   fi
+  local responses_websocket_proxy_count
+  responses_websocket_proxy_count="$(grep -Ec '^[[:space:]]*ProxyPass(Reverse)? /v1/responses http://127\.0\.0\.1:18080/v1/responses' "$APACHE_SITE" 2>/dev/null || true)"
+  if [[ "$responses_websocket_proxy_count" -eq 2 ]]; then
+    log "Responses WebSocket 代理: 通过"
+  else
+    log "Responses WebSocket 代理: 缺失或不完整"
+  fi
 }
 
 usage() {
@@ -1269,6 +1328,7 @@ usage() {
   docs-page           重新应用文档入口和 CC Switch 下载、导入说明
   upstream-allowlist    重新应用两个指定上游的安全域名白名单
   harden-apache      禁止浏览器直接更新或回滚生产二进制
+  responses-websocket  修复 Codex Responses WebSocket 的 Apache 代理顺序
   cutover            把 jiyu.245334.xyz 从 New-API 切换到 Sub2API
   clean-apache       清理切换后遗留的 New-API HTML 品牌注入
   rollback-cutover   把域名恢复到旧 New-API
@@ -1327,6 +1387,9 @@ main() {
       ;;
     harden-apache)
       harden_apache_admin_updates
+      ;;
+    responses-websocket)
+      repair_apache_responses_websocket_proxy
       ;;
     cutover)
       cutover_to_sub2api

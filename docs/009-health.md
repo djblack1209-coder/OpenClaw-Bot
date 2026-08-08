@@ -62,6 +62,13 @@
 | HI-997 | `SECURITY` | 🟡 一般 | 剩余 1 项上游架构风险 | main 推送回执从 31 项降至 9、3，最终只剩 Tauri 最新 `2.11.5` 在 Linux 目标锁入的 `glib 0.18.5` 中危；可直接修复的 `h2/hpack/pypdf/js-yaml/nanoid` 均已升级。`glib 0.20` 需要 GTK/Tauri 依赖链迁移，当前 macOS 生产目标不执行该 Linux 路径，本轮不为清零数字强升 GUI 栈。 |
 | HI-998 | `FRONTEND/BUG` | 🟡 一般 | 线上已关闭 | 管理端和用户“渠道状态”现复用同一排序器，生产真实重载顺序为 `AAAAABBBBB`；截图 `scripts/assets/audit-jiyu-monitor-after-managed-update-20260808.jpg` 同时保留正常、降级和错误状态，没有静态绿灯。 |
 | HI-999 | `CI/BUG` | 🟡 一般 | 远端已关闭 | 兼容包遗漏新文件、ShellCheck `SC2155`、Ruff `F841` 和桌面端两个高危公告均已修；OpenClaw CI `31237915263` 的 5 个作业全部成功，JIYU 兼容包 CI `31237926226` 成功并发布 108,200,098 字节 ARM64 嵌入式前端工件。 |
+| HI-1000 | `QA/PERF` | 🟡 一般 | 真实链路已验收 | 保留账号 `jiyu-e2e-20260808@245334.xyz` 已完成 Claude Code 与 OpenAI Responses 真实调用并产生 8 条用量记录。OpenAI 最近样本缓存读取 3840 / 总输入 4390（87.47%），首包 5889 ms、总时长 6150 ms、站内计费 `$0.004850`；Claude 样本首 Token 3155 ms、总时长 7430 ms、计费 `$0.002496`。账号、历史用量和活动 Key 保留，密码/Key/Token/Cookie 均不入仓库或截图。 |
+| HI-1001 | `AI_POOL/BUG` | 🟠 重要 | 上游线路待确认 | 渠道A Claude 官 Key 分组仍向用户提供模型，但绑定账号处于 ERROR 且关闭调度，真实 Claude Code 请求返回 503；渠道B同协议成功。验收标准是恢复一个健康可调度账号并通过真实 Claude Code，或在恢复前从公开可选模型中隐藏该分组。两者都涉及上游线路/用户可见业务行为，未擅自修改。 |
+| HI-1002 | `ARCH_LIMIT/BUG` | 🟠 重要 | WebSocket 入口已修，调度待方案 | Codex `0.147.0` 默认 Responses WebSocket；Apache 错误 426 已通过专用 upgrade 代理修为 101，并固化到运维脚本。Sub2API WebSocket 调度仍不接受当前 API Key 账号，关闭前返回无可用账号；直连 Responses HTTP/SSE 成功不能替代 Codex 客户端验收。建议优先补兼容账号，或评估让 WS 调度对 API Key 账号安全回退 Responses HTTP，均需先确认上游线路/架构方案。 |
+| HI-1003 | `SECURITY` | 🟡 一般 | 基础防护线上已关闭 | 已启用风险控制、会话阻断和 7 条高置信中英文系统提示词窃取预拦截；正常请求 200，恶意短语约 840 ms 返回 403，8 条用量记录不增加，确认无上游调用和计费。关键词可被改写绕过；语义扫描器需先观察误伤率和额外延迟，再决定是否引入本地模型或独立服务。 |
+| HI-1004 | `SECURITY/INFRA` | 🟡 一般 | Cloudflare 代理链已关闭 | JIYU 主机已启用严格 TLS、Managed WAF、OWASP 与 L7 DDoS；新增主机级边缘限流：注册/验证码 5 次/60 秒并封禁 600 秒，登录/2FA 20 次/60 秒并封禁 300 秒。开放注册仍关闭、邮箱验证开启；Turnstile 在开放注册前完成专用 widget 和双视口实测，不复用历史配置口径。 |
+| HI-1005 | `SECURITY/ARCH_LIMIT` | 🟠 重要 | 方案待确认 | Oracle Apache 的 80/443 仍公开监听，攻击者知道源站地址时可绕过 Cloudflare WAF/DDoS。建议用 Cloudflare 官方 IPv4/IPv6 allowlist 收口并保留带外 SSH、规则持久化、CIDR 自动同步和外部健康探针；该主机还承载其他 vhost，直接改防火墙可能中断共享业务，因此本轮未擅自实施。 |
+| HI-1006 | `PERF` | 🔵 低优先 | 观察中 | 真实浏览器切到 390×844 后刷新 `/usage` 时记录到 1 次 HTML 导航 503，但页面恢复、同页 8 个业务 API 均为 200、Console 0 error/0 warning；随后无凭据连续请求 `/usage` 为 12/12 HTTP 200，TTFB 0.79–1.51 秒。当前不能稳定复现，不做猜测性改动；验收标准为接入 5xx 率观察并确认 24 小时深链导航无异常突增。 |
 
 | 编号 | 分类 | 严重度 | 状态 | 当前结论 |
 |---|---|---|---|---|

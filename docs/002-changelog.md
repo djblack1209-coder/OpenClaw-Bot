@@ -5,6 +5,26 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
+## [2026-08-08] JIYU 永久测试用户、真实客户端基线与边缘防护
+> 领域: `backend` | `ai-pool` | `deploy` | `infra` | `docs`
+> 影响模块: `Sub2API`, `Claude Code`, `Codex`, `Responses API`, `Apache`, `Cloudflare`, `risk control`
+> 关联问题: HI-1000, HI-1001, HI-1002, HI-1003, HI-1004, HI-1005, HI-1006
+### 变更内容
+- 创建并保留永久测试用户，Claude/OpenAI Key 分离并只保存在 macOS 钥匙串；轮换停用可能暴露的旧 OpenAI Key，保留账号和历史用量。
+- 使用 Claude Code 和 OpenAI Responses 做最小真实调用，对齐客户端与服务端的 Token、缓存、首 Token/首包、总时长、站内计费和上游实际成本；8 条计费记录留作长期体验基线。
+- 修复 Codex 新版 Responses WebSocket 在 Apache 被普通 HTTP 代理截断的 426：专用 upgrade 路由位于根代理之前，握手恢复 101；将幂等修复、配置校验、公网健康和自动回滚固化为 `responses-websocket` 运维命令。
+- 开启站内风险控制、会话级阻断和高置信系统提示词窃取预拦截；真实正常请求 200、恶意短语 403 且没有新增用量或计费。
+- 复核 Cloudflare 严格 TLS、Managed WAF、OWASP 和 L7 DDoS；新增 JIYU 主机级注册/验证码与登录/2FA 限流，不对整个区域启用可能误伤模型 API 的 Bot Fight Mode。
+- 如实登记渠道A空分组、Codex API Key WebSocket 调度和源站公网绕过三个 P1，不擅自调整上游线路、公开分组或共享主机防火墙。
+- 真实移动端刷新曾出现一次 `/usage` HTML 503；随后连续 12 次均为 200、业务 API 全部 200，登记为 24 小时 5xx 观察项，不做无法证伪的猜测性修改。
+### 文件变更
+- `scripts/sub2api_oracle_manage.sh`、`scripts/sub2api_ops_scripts.test.mjs` — Responses WebSocket 代理幂等修复、校验和合同。
+- `docs/001-project-map.md`、`docs/006-registries.md`、`docs/007-operations.md`、`docs/009-health.md`、`docs/012-handoff.md`、`docs/086-release-evidence.md` — 同步生产版本、永久账号、真实指标、防护和残余风险。
+### 验证
+- `make sub2api-check` 聚焦门；Oracle Sub2API/Redis/Apache active，Apache Syntax OK，公网健康接口 200。
+- Claude Code 渠道B成功；OpenAI Responses 最近样本缓存读取 3840 / 总输入 4390（87.47%）、首包 5889 ms、总时长 6150 ms、计费 `$0.004850`。
+- Cloudflare API 重载确认两条规则 active；恶意短语约 840 ms 返回 403，用量记录仍为 8。
+
 ## [2026-08-08] JIYU 生图渠道、受管 WebUI 更新与 CC Switch MCP
 > 领域: `frontend` | `backend` | `ai-pool` | `deploy` | `infra` | `docs`
 > 影响模块: `Sub2API`, `Images API`, `CC Switch`, `GitHub Actions`, `JIYU update`

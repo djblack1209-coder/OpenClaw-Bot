@@ -4,6 +4,28 @@
 
 ---
 
+## [2026-08-08 14:10] JIYU 永久测试用户、真实客户端与边缘防护
+
+### 本次完成了什么
+- 创建并保留测试用户 `jiyu-e2e-20260808@245334.xyz`（ID 2）；Claude/OpenAI Key 分离并保存在钥匙串，旧 OpenAI Key 已轮换停用，账号和 8 条真实用量不删除。
+- Claude Code 渠道B真实成功；OpenAI Responses 真实成功且缓存输入占比 87.47%。内容预拦截真实 403 且用量不增加。
+- Cloudflare Managed WAF/OWASP/L7 DDoS 复核正常；新增 JIYU 主机级注册、验证码、登录和 2FA 边缘限流。Apache Responses WebSocket 由 426 修为 101，并固化为 `responses-websocket` 运维命令。
+
+### 未完成的工作
+- 渠道A Claude 官 Key 分组没有可调度账号；需恢复上游账号或临时隐藏公开分组，属于上游线路/业务行为确认。
+- Codex 0.147 WebSocket 已到达 Sub2API，但 API Key 账号未被 WS 调度器接受；需补兼容账号或实现安全 HTTP 回退方案后再做真实客户端验收。
+- Oracle 80/443 可绕过 Cloudflare；需批准共享主机防火墙 allowlist、带外回滚和 CIDR 自动同步方案。开放注册前还需启用并实测专用 Turnstile。
+
+### 需要注意的坑
+- 不得删除 ID 2 测试用户或其历史用量；不得输出、截图、提交任何测试/管理员密码、Key、Token 或 Cookie。
+- 直连 curl 成功不等于 Codex 客户端成功；渠道分组显示正常不等于有可调度账号。
+- 关键词预拦截不是完整语义防投毒；新增泛化规则前先观察误伤和延迟。
+
+### 当前系统状态
+- 生产 `v0.1.172-jiyu.31237926226`；Sub2API、Redis、Apache active，Apache 配置 Syntax OK。
+- 注册关闭、邮箱验证开启；站内风险控制和 Cloudflare 主机级限流 active。
+- P0 为 0；未关闭 P1 为 HI-1001、HI-1002、HI-1005。
+
 ## [2026-08-08 12:07] JIYU 受管更新与渠道排序闭环
 
 ### 本次完成了什么
