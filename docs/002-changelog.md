@@ -17,6 +17,7 @@
 - 将 WebUI 更新方案实现为 GitHub Actions 兼容包、SHA-256/大小清单、固定域名 root-only 代理和原子暂存；另起 systemd 任务在重启后验证运行哈希与健康状态，失败或 10 分钟未重启会恢复二进制、VERSION 与 PostgreSQL。保留旧版本安全失败关闭，待首个发布包与新后端部署后再启用。
 - 合并 Dependabot 的 `h2 4.4.1` 与 `pypdf 6.15.0` 双平台哈希锁更新，并补齐 `hpack 4.2.0` 兼容约束；删除会持续创建旧 New-API 同步分支的定时工作流，冷回滚研究仍可显式运行 `make new-api-sync`，生产继续只使用 Sub2API。
 - 修复首轮 CI 发现的三个确定性问题：补丁纳入共享排序器新文件，生图安装器消除 ShellCheck `SC2155`，闲鱼人工预检删除未使用文件读取以消除 Ruff `F841`。
+- 将 OpenClaw Manager 的 `js-yaml` / `nanoid` override 提升到 `4.3.1` / `3.3.17`，关闭主 CI 新识别的两个高危公告，不升级桌面框架。
 ### 文件变更
 - `.github/workflows/sub2api-jiyu-compat.yml` — 从官方标签应用 JIYU 补丁、跑聚焦门、构建 ARM64 包并发布校验清单。
 - New-API Scheduled Sync workflow — 删除已与 Sub2API 生产架构冲突的自动分支生成任务。
@@ -24,6 +25,7 @@
 - `scripts/jiyu-image-mcp/`、`scripts/install_jiyu_image_mcp.sh` — 锁定依赖的生图 MCP 与 CC Switch/钥匙串安装入口。
 - `packages/clawbot/requirements.txt`、`requirements-lock.txt`、`requirements-lock-macos.txt` — `h2`/`pypdf` 安全版本和双平台哈希同步。
 - `packages/clawbot/src/xianyu/xianyu_admin.py` — 删除未使用的 Frist server 源码读取，不改变预检结果。
+- `apps/openclaw-manager-src/package.json`、`package-lock.json` — 桌面构建传递依赖安全 override 与锁文件。
 - `docs/006-registries.md`、`docs/007-operations.md`、`docs/009-health.md`、`docs/053-jiyu-growth-payment-image-update-plan.md`、`docs/087-jiyu-image-mcp-guide.md`、`docs/012-handoff.md` — 同步合同、操作步骤、风险和交接。
 ### 验证
 - JIYU 补丁在官方 `v0.1.172` 干净提交上通过 `git apply --check`；上游更新服务 unit 用例 `1/1`、排序/端点/CC Switch 前端用例 `13/13`、Vue 类型检查、运维脚本合同 `4/4`、工作流 YAML 与文档门均通过。
