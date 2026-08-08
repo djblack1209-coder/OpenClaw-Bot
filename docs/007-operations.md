@@ -62,6 +62,9 @@ ssh oracle-arm1 '/usr/local/sbin/openclaw-sub2api-manager status'
 3. Gmail SMTP 使用 `smtp.gmail.com:587` + TLS。应用密码只保存在服务器设置中；不得写入本文件、仓库或截图。
 4. `auth.verify_code`、`notification_email.verify_code` 和 `ops.alert` 模板已品牌化。图形 Logo 公网地址为 `https://jiyu.245334.xyz/api/v1/pages/docs/images/jiyu-ai-logo.png`。
 5. SMTP“测试邮件”只有连接成功标识，不含验证码；验收验证码必须从个人资料的真实邮箱绑定入口触发。2026-08-07 实际发送接口返回 HTTP 200。
+6. 忘记密码和 Passkey 已启用。Passkey 部署配置固定为 `JIYU AI`、RP ID `jiyu.245334.xyz`、来源 `https://jiyu.245334.xyz`；修改前备份 `/opt/sub2api/data/config.yaml`，重启后必须复核本地/公网健康和 WebUI 的 RP 状态。
+7. 余额不足邮件提醒已开启，默认阈值 `$1`，充值链接为 `https://jiyu.245334.xyz/custom/recharge-center`。账号限额通知未启用，先确认通知邮箱、静默窗口和去重策略。
+8. Turnstile、LinuxDo、GitHub/Google 邮箱快捷登录没有真实专用凭据，保持关闭；开放注册继续关闭、邮箱验证继续开启。不得填入测试占位值冒充已配置。
 
 ### 文档和 CC Switch
 
@@ -113,8 +116,9 @@ WebUI 更新方案 A 已在仓库和生产启用：`.github/workflows/sub2api-ji
 ### 链动小铺运营边界
 
 - 店铺昵称、公告、头像和自定义链接已统一为 JIYU AI；¥1/10/50/100/300/500/1000 七档商品已建立并使用同一 JY Logo，标题、详情和兑换步骤已保存。
-- 卡密库存接口要求保证金账户至少 ¥100；当前保证金余额为 0，所以七档商品仍是下架、零库存。不得绕过保证金或把不可购买链接写回充值中心。
-- 老板完成保证金充值并确认平台规则后，按“导入库存 → 发布 ¥1 → 真实购买 → 发货/兑换到账 → 创建密钥 → CC Switch 导入 → 用量查询”顺序完成小额闭环；最终支付前必须再次确认，任一步失败立即下架并保留交易证据。
+- 保证金账户已真实显示 ¥100；七档商品各导入 1 张既有兑换码并上架，七个公开页均显示“立即购买”。站内充值中心已回填七档链接；受管重建命令为 `ssh oracle-arm1 'sudo /usr/local/sbin/openclaw-sub2api-manager recharge-center'`。
+- 仍未执行真实购买。首笔 ¥1 实单必须在操作当时再次确认，再按“付款 → 自动发货 → 兑换到账 → 创建密钥 → CC Switch 导入 → 用量查询”完成闭环；任一步失败立即下架并保留交易证据。
+- Sub2API 支付与异步生图对象存储继续关闭：当前没有支付服务商回调/签名配置，也没有 JIYU 专用 S3 端点、存储桶和访问凭据。异步生图与备份共用 S3 客户端，但不得复用现有备份资源或为此擅自开通付费资源。
 
 品牌名称异常时执行 `ssh oracle-arm1 '/usr/local/sbin/openclaw-sub2api-manager brand'`；邮件或文档图形 Logo 异常时执行 `ssh oracle-arm1 '/usr/local/sbin/openclaw-sub2api-manager brand-asset'`。选定的 2K JY 标志已上线，512×512 邮件资源由 `scripts/assets/jiyu-ai-logo-email.png` 固化，两个命令都带健康检查。
 

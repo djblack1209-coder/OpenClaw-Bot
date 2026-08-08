@@ -617,7 +617,7 @@ apply_brand_asset() {
   log "JIYU AI 图形 Logo 已发布到 ${BRAND_LOGO_PUBLIC_PATH}。"
 }
 
-apply_recharge_placeholder() {
+apply_recharge_center() {
   require_root
   require_linux
   require_command psql
@@ -629,11 +629,26 @@ apply_recharge_placeholder() {
   cat >"${pages_dir}/${RECHARGE_PAGE_SLUG}.md" <<'MARKDOWN'
 # JIYU AI 充值中心
 
-当前充值通道正在完成商品与自动发货验收。验收完成前不会展示无法付款的假入口。
+选择充值金额后会打开链动小铺。付款完成后自动交付 1 个 JIYU AI 余额兑换码。
 
-充值后的标准流程：注册或登录 → 兑换余额 → 创建 API 密钥 → 导入 CC Switch → 开始使用。
+| 充值余额 | 购买入口 |
+| ---: | :--- |
+| **$1** | [购买 ¥1 兑换码](https://pay.ldxp.cn/item/shpn5d) |
+| **$10** | [购买 ¥10 兑换码](https://pay.ldxp.cn/item/6yfdfr) |
+| **$50** | [购买 ¥50 兑换码](https://pay.ldxp.cn/item/o4e9b6) |
+| **$100** | [购买 ¥100 兑换码](https://pay.ldxp.cn/item/29km97) |
+| **$300** | [购买 ¥300 兑换码](https://pay.ldxp.cn/item/xbszyn) |
+| **$500** | [购买 ¥500 兑换码](https://pay.ldxp.cn/item/wiz21c) |
+| **$1000** | [购买 ¥1000 兑换码](https://pay.ldxp.cn/item/gpwljy) |
 
-如已持有兑换码，请直接前往 [兑换中心](/redeem)。
+## 使用步骤
+
+1. 先在 JIYU AI 注册或登录，再选择金额完成购买。
+2. 收到兑换码后前往 [兑换中心](/redeem) 兑换余额。
+3. 前往 [API 密钥](/keys) 创建 Claude 或 ChatGPT 密钥。
+4. 在创建结果中一键导入 CC Switch，然后开始使用。
+
+兑换码只用于 JIYU AI 站内余额，不可提现或转让。遇到支付或发货问题时，请保留链动小铺订单号并联系站内客服。
 MARKDOWN
 
   chown sub2api:sub2api "${pages_dir}/${RECHARGE_PAGE_SLUG}.md"
@@ -670,8 +685,8 @@ SET value = EXCLUDED.value, updated_at = NOW();
 SQL
 
   systemctl restart "$SUB2API_SERVICE"
-  wait_for_health 90 || fail "应用充值中心预留页后健康检查失败。"
-  log "充值中心已使用同源 Markdown 模式预留，未向外部网站传递用户令牌。"
+  wait_for_health 90 || fail "应用充值中心页面后健康检查失败。"
+  log "充值中心七档购买入口已发布；外部链接不携带站内用户令牌。"
 }
 
 apply_docs_page() {
@@ -1589,7 +1604,7 @@ usage() {
   backup             立即生成数据库、页面、品牌、配置和二进制一致性备份
   brand              重新应用 JIYU AI 网站名称、副标题和 JY Logo
   brand-asset        重新发布邮件和文档使用的 JIYU AI 图形 Logo
-  recharge-placeholder  重新应用充值中心外部窗口预留页
+  recharge-center     重新应用充值中心七档可购买页面
   docs-page           重新应用文档入口和 CC Switch 下载、导入说明
   upstream-allowlist    重新应用两个指定上游的安全域名白名单
   harden-apache      禁止浏览器直接更新或回滚生产二进制
@@ -1647,8 +1662,8 @@ main() {
     brand-asset)
       apply_brand_asset
       ;;
-    recharge-placeholder)
-      apply_recharge_placeholder
+    recharge-center|recharge-placeholder)
+      apply_recharge_center
       ;;
     docs-page)
       apply_docs_page
