@@ -21,9 +21,9 @@
 - `scripts/assets/audit-jiyu-docs-downloads-after-desktop-20260808.png`、`scripts/assets/audit-jiyu-docs-downloads-after-mobile-20260808.png` — 文档下载区双视口证据。
 - `docs/002-changelog.md`、`docs/007-operations.md`、`docs/009-health.md` — 同步生产操作与剩余安全边界。
 ### 验证
-- 官方 `v0.1.172` 干净源码应用补丁后，前端 `vue-tsc --noEmit` 和生产构建通过；Bash 语法、ShellCheck、4 项聚焦脚本合同和文档检查通过。GitHub Actions `31260440018` 完成类型检查、嵌入前端门、Go 聚焦测试和 ARM64 构建。
-- 生产已发布 `v0.1.172-jiyu.31260440018`，运行二进制 SHA-256 与不可变发布清单一致，`/health` 和充值页均为 HTTP 200，CSP 只在 `frame-src` 出现一次 `https://pay.ldxp.cn`。
-- 真实 Chrome 在 `1440×1000` 记录 iframe `1176×936`，在 `390×844` 记录 `390×780`；两者均占满扣除 64px 顶栏后的内容区，不存在 Markdown/目录、URL 查询参数、横向页面溢出、Console 异常或失败网络请求，七档商品正文可见。
+- 官方 `v0.1.172` 干净源码应用补丁后，前端 `vue-tsc --noEmit` 和生产构建通过；Bash 语法、ShellCheck、4 项聚焦脚本合同和文档检查通过。GitHub Actions `31261229885` 完成类型检查、嵌入前端门、Go 聚焦测试和 ARM64 构建。
+- 生产已发布 `v0.1.172-jiyu.31261229885`，运行二进制 SHA-256 与不可变发布清单一致，`/health` 和充值页均为 HTTP 200，CSP 只在 `frame-src` 出现一次 `https://pay.ldxp.cn`。
+- 真实 Chrome 在 `1440×1000` 记录 iframe `1176×936`，在 `390×844` 记录 `390×780`；两者均占满扣除 64px 顶栏后的内容区。移动端外链兜底按钮为 `display:none`，不遮挡链动导航；不存在 Markdown/目录、URL 查询参数、外层横向页面溢出、Console 异常或失败网络请求，七档商品正文可见。
 
 ## [2026-08-08] JIYU Claude 透传、Passkey 与链动充值中心闭环
 > 领域: `frontend` | `backend` | `ai-pool` | `deploy` | `docs`
