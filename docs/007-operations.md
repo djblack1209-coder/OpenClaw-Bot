@@ -89,7 +89,9 @@ ssh oracle-arm1 'systemctl list-timers sub2api-update.timer sub2api-backup.timer
 
 `update` 当前默认只检查。发布新的 JIYU 构建必须先从固定官方提交应用 `scripts/sub2api-jiyu-v0.1.172.patch`、完成聚焦验证和 ARM64 构建，再执行 `SUB2API_JIYU_VERSION=<version> openclaw-sub2api-manager install-jiyu-build <path>`。该命令会先备份并在健康失败时回滚；不要直接替换二进制或修改 Apache。
 
-WebUI 更新方案 A 已在仓库和生产启用：`.github/workflows/sub2api-jiyu-compat.yml` 只发布通过补丁、类型检查、嵌入式前端根页和聚焦测试的 ARM64 兼容包及 SHA-256 清单；首个基础版使用不可变 `jiyu-vX.Y.Z` 标签，同一上游版本的手动修订使用不可变 `jiyu-vX.Y.Z-r<run_id>`，旧发布和旧工件不覆盖；定时任务看到已适配基础版仍直接跳过。`jiyu-latest` 只移动清单且清单始终引用不可变工件。`scripts/sub2api_jiyu_update_broker.sh` 不接受任何浏览器参数，只读取 root 管理的 `https://github.com/djblack1209-coder/OpenClaw-Bot/releases/download/jiyu-latest/jiyu-update-manifest.json` 并调用 `stage-jiyu-build`。暂存时会另起独立 systemd 验证任务；管理员点击重启后，该任务核对正在运行的二进制哈希和 `/health`，失败自动恢复二进制、VERSION 与 PostgreSQL，10 分钟未重启也会撤销暂存。生产已验证 `sub2api` 固定 sudo 路径、清单解析和“当前基础版已最新”正常退出；同版本品牌修订和下一官方版本均可从受管链安装，禁止恢复官方裸二进制更新路径。
+WebUI 更新方案 A 已在仓库和生产启用：`.github/workflows/sub2api-jiyu-compat.yml` 只发布通过补丁、类型检查、嵌入式前端根页和聚焦测试的 ARM64 兼容包及 SHA-256 清单；首个基础版使用不可变 `jiyu-vX.Y.Z` 标签，同一上游版本的手动修订使用不可变 `jiyu-vX.Y.Z-r<run_id>`，旧发布和旧工件不覆盖；定时任务看到已适配基础版仍直接跳过。`jiyu-latest` 只移动清单且清单始终引用不可变工件。`scripts/sub2api_jiyu_update_broker.sh` 不接受任何浏览器参数，只读取 root 管理的清单并调用 `stage-jiyu-build`。版本面板对 JIYU 构建始终显示“检查并安装”，代理按完整 `vX.Y.Z-jiyu.<run_id>` 比较；相同构建固定返回“已是最新”，不会下载或重启。暂存时会另起独立 systemd 验证任务；管理员点击重启后，该任务核对正在运行的二进制哈希和 `/health`，失败自动恢复二进制、VERSION 与 PostgreSQL，10 分钟未重启也会撤销暂存。禁止恢复官方裸二进制更新路径。
+
+所有会修改 Apache 配置的 JIYU 运维命令必须经 `reload_apache_with_recovery`：先运行 `apache2ctl configtest`，再 graceful reload 并最多 5 次复核 `https://jiyu.245334.xyz/health`；公网 TLS/健康失败时自动执行 full restart 并再次复核。`rollback-cutover` 使用旧服务的 `/api/status`，不能误用 Sub2API `/health`。不要直接运行 `systemctl reload apache2` 代替该入口。
 
 ### 生图与 MCP
 

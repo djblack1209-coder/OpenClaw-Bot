@@ -22,7 +22,7 @@ index 82df3bb..eae4fe6 100644
  	info, err := s.CheckUpdate(ctx, true)
  	if err != nil {
  		return err
-@@ -175,6 +181,23 @@ func (s *UpdateService) PerformUpdate(ctx context.Context) error {
+@@ -175,6 +181,26 @@ func (s *UpdateService) PerformUpdate(ctx context.Context) error {
  	return s.applyReleaseAssets(ctx, info.ReleaseInfo.Assets)
  }
  
@@ -35,6 +35,9 @@ index 82df3bb..eae4fe6 100644
 +		message = message[:800]
 +	}
 +	if err != nil {
++		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 3 {
++			return ErrNoUpdateAvailable
++		}
 +		if message == "" {
 +			message = "JIYU compatibility package is unavailable"
 +		}
@@ -104,7 +107,7 @@ index 7fd6294..43b8d92 100644
  
 -              <!-- Priority 3: Update available for source build - show git pull hint -->
 +              <!-- 优先级 3：JIYU 定制构建只安装通过门禁的兼容包。 -->
-+              <div v-else-if="hasUpdate && isJiyuBuild" class="space-y-2">
++              <div v-else-if="isJiyuBuild" class="space-y-2">
 +                <div
 +                  class="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800/50 dark:bg-amber-900/20"
 +                >
@@ -120,7 +123,7 @@ index 7fd6294..43b8d92 100644
 +                  </div>
 +                  <div class="min-w-0 flex-1">
 +                    <p class="text-sm font-medium text-amber-700 dark:text-amber-300">
-+                      {{ t('version.jiyuUpdatePending', { version: 'v' + latestVersion }) }}
++                      {{ updateSuccess && !needRestart ? t('version.upToDate') : t('version.jiyuUpdatePending') }}
 +                    </p>
 +                    <p class="mt-1 text-xs leading-4 text-amber-600/80 dark:text-amber-400/80">
 +                      {{ t('version.jiyuUpdateHint') }}
@@ -148,7 +151,7 @@ index 7fd6294..43b8d92 100644
 +                    ></path>
 +                  </svg>
 +                  <Icon v-else name="download" size="sm" :stroke-width="2" />
-+                  {{ updating ? t('version.updating') : t('version.updateNow') }}
++                  {{ updating ? t('version.updating') : t('version.jiyuUpdateAction') }}
 +                </button>
 +              </div>
 +
@@ -192,6 +195,15 @@ index 7fd6294..43b8d92 100644
  const releaseInfo = computed(() => appStore.releaseInfo)
  const buildType = computed(() => appStore.buildType)
  
+@@ -762,7 +816,7 @@ async function handleUpdate() {
+     const result = await performUpdate()
+     successKind.value = 'update'
+     updateSuccess.value = true
+-    needRestart.value = result.need_restart
++    needRestart.value = Boolean(result.need_restart)
+     // Clear version cache to reflect update completed
+     appStore.clearVersionCache()
+   } catch (error: unknown) {
 diff --git a/frontend/src/components/keys/EndpointPopover.vue b/frontend/src/components/keys/EndpointPopover.vue
 index 49db50b..711b271 100644
 --- a/frontend/src/components/keys/EndpointPopover.vue
@@ -371,13 +383,14 @@ diff --git a/frontend/src/i18n/locales/en/misc.ts b/frontend/src/i18n/locales/en
 index e8f5404..897d378 100644
 --- a/frontend/src/i18n/locales/en/misc.ts
 +++ b/frontend/src/i18n/locales/en/misc.ts
-@@ -35,6 +35,9 @@ export default {
+@@ -35,6 +35,10 @@ export default {
      updating: 'Updating...',
      updateComplete: 'Update Complete',
      updateFailed: 'Update Failed',
-+    jiyuUpdatePending: 'JIYU-compatible {version} is pending release',
++    jiyuUpdatePending: 'Check JIYU compatibility updates',
++    jiyuUpdateAction: 'Check and install',
 +    jiyuUpdateHint:
-+      'Only a verified JIYU compatibility package can be installed. The upstream binary will not overwrite branding, channels, or key-import customizations.',
++      'The server compares the complete JIYU build version and only stages a verified compatibility package. Branding, channels, and key-import customizations remain intact.',
      restartRequired: 'Please restart the service to apply the update',
      restartNow: 'Restart Now',
      restarting: 'Restarting...',
@@ -477,12 +490,13 @@ diff --git a/frontend/src/i18n/locales/zh/misc.ts b/frontend/src/i18n/locales/zh
 index 6a51408..297978e 100644
 --- a/frontend/src/i18n/locales/zh/misc.ts
 +++ b/frontend/src/i18n/locales/zh/misc.ts
-@@ -35,6 +35,8 @@ export default {
+@@ -35,6 +35,9 @@ export default {
      updating: '正在更新...',
      updateComplete: '更新完成',
      updateFailed: '更新失败',
-+    jiyuUpdatePending: 'JIYU 兼容版 {version} 待发布',
-+    jiyuUpdateHint: '只安装通过门禁并校验完成的 JIYU 兼容包，不会用官方原版覆盖品牌、渠道和密钥导入定制。',
++    jiyuUpdatePending: '检查 JIYU 兼容更新',
++    jiyuUpdateAction: '检查并安装',
++    jiyuUpdateHint: '服务器会核对完整 JIYU 构建版本，只暂存通过门禁和校验的兼容包，不会覆盖品牌、渠道和密钥导入定制。',
      restartRequired: '请重启服务以应用更新',
      restartNow: '立即重启',
      restarting: '正在重启...',
