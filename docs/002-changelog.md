@@ -5,6 +5,19 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
+## [2026-08-09] JIYU 生产渠道与 Responses WebSocket 只读复核
+> 领域: `ai-pool` | `deploy` | `infra` | `docs`
+> 影响模块: `Oracle Sub2API 账号/分组`, `Apache Responses WebSocket`, `Cloudflare 源站收口`, `健康审计`
+> 关联问题: HI-1019, HI-1020
+### 变更内容
+- 只读回读确认渠道A Claude 官 Key 账号 #2 为 `anthropic/apikey`、active、可调度、单分组；对应渠道 active、单分组，最近监控 operational，排除“空分组”软件故障。
+- 只读复核 Apache upgrade 规则顺序、Sub2API 全局模式路由和账号级 WS mode；近期公网 Codex 有 101 握手，Responses 用量 6 条（WS 2 条），最新样本计费 `$0.087439`、缓存读取 1408、首 Token 2482 ms、总时长 2964 ms。
+- 复核 Cloudflare 443 收口服务与 nftables 规则；未修改防火墙、定价、注册、支付、数据库或上游线路，也未循环发起付费请求。
+### 文件变更
+- `docs/007-operations.md` — 修正当前生产版本和渠道A Claude 账号状态，补充 WS 复核证据。
+- `docs/009-health.md` — 登记本次生产只读审计结论和持续观察边界。
+- `docs/012-handoff.md` — 写入本次交接摘要。
+
 ## [2026-08-09] 修复并验收 JIYU WebUI 更新重启链路
 > 领域: `deploy` | `infra` | `docs`
 > 影响模块: `Sub2API systemd`, `JIYU WebUI 更新`, `健康与交接`

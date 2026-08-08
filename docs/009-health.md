@@ -81,6 +81,8 @@
 | HI-1016 | `UX/THIRD_PARTY` | 🟡 一般 | 外部待处理 | 链动小铺整店已在 JIYU 的 `390×844` 充值页全宽嵌入且不再白屏，但其自身页面没有可用移动专用路由：顶部导航被压成竖排、商品卡可横向滑动。第三方内容跨域，JIYU 不注入 CSS 或代理改写；保留桌面内嵌和移动端全宽嵌入，后续需链动提供响应式店铺模板或移动入口。 |
 | HI-1017 | `FRONTEND/BUG` | 🟡 一般 | 线上已关闭 | API 密钥页端点说明浮层已在兼容包 `v0.1.172-jiyu.31271410817` 发布并通过 WebUI 更新；真实 Chrome `390×844` 创建密钥弹窗回读 `body.scrollWidth=390`、`documentElement.scrollWidth=390`，截图 `scripts/assets/audit-20260809-create-key-mobile-after-update.jpg`。 |
 | HI-1018 | `DEPLOY/BUG` | 🟠 重要 | 线上已关闭 | 首次兼容修订因 `Restart=on-failure` 在正常退出后不拉起新进程而回滚；已将安装脚本和生产 unit 改为 `Restart=always`。第二次真实 WebUI 更新使用 CI `31271410817` 成功应用，生产 VERSION 回读 `v0.1.172-jiyu.31271410817`、stage 结果 `applied`、健康 200，服务 PID `1294441`。随后确认 CI 的 `SC1111` 仅由模板注释中文弯引号触发，已替换为 ASCII 引号；不影响线上运行配置。 |
+| HI-1019 | `AI_POOL/OPS` | 🟡 一般 | 只读复核通过，无软件问题 | 2026-08-09 Oracle 只读回读确认渠道A Claude 官 Key 账号 #2 为 `anthropic/apikey`、`active=true`、可调度且单分组；对应渠道 active 且单分组，最近监控为 `operational`。生产 12/12 账号和 12/12 active 渠道均满足单分组合同，未发现空分组或 WS 调度兼容 bug，因此没有执行 WebUI/API 业务写入、定价、线路或数据库变更。 |
+| HI-1020 | `ARCH_LIMIT/OPS` | 🟡 一般 | 只读复核通过，持续观察 | Apache `/v1/responses` upgrade 规则在通用根代理之前，近期公网 Codex 请求有 `101` 握手；Sub2API 模式路由全局开启，四个 OpenAI 文本账号为 `http_bridge=true`，两个生图账号为 `off=false`。Responses 用量 6 条、其中 WS 2 条，最新样本含缓存读取 1408、首 Token 2482 ms、总时长 2964 ms、计费 `$0.087439`；未循环发起付费请求。Cloudflare 443 收口服务 active，nftables 仅允许官方 CIDR、loopback 和 Tailscale，本轮未改防火墙。 |
 
 | 编号 | 分类 | 严重度 | 状态 | 当前结论 |
 |---|---|---|---|---|

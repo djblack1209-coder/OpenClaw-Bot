@@ -4,6 +4,28 @@
 
 ---
 
+## [2026-08-09 03:15] JIYU 渠道A Claude 与 Responses WebSocket 只读复核交接
+
+### 本次完成了什么
+- Oracle 生产只读回读确认渠道A Claude 官 Key 账号 #2 为 `anthropic/apikey`、`active=true`、可调度且恰好绑定 1 个分组；对应渠道 active 且恰好绑定 1 个分组，最近监控状态 `operational`。12 个账号和 12 个 active 渠道均通过单分组合同，排除“空分组”软件故障。
+- 复核 Apache `/v1/responses` upgrade 规则在通用根代理之前，公网近期 Codex 请求出现 `101`；Sub2API 全局模式路由开启，四个 OpenAI 文本账号为 `http_bridge=true`，两个生图账号为 `off=false`。
+- 复核生产 Responses 用量 6 条、其中 WS 2 条；最新 WS 样本记录缓存读取 1408、首 Token 2482 ms、总时长 2964 ms、站内计费 `$0.087439`。未循环或新增付费请求。
+- 复核 Cloudflare 443 收口服务 active，nftables 仅放行 Cloudflare 官方 CIDR、loopback 和 Tailscale；未执行任何防火墙写操作。
+
+### 未完成的工作
+- 本轮没有发现需要软件侧修复的空分组或 WS 调度兼容 bug，因此没有执行 WebUI/API 账号分组业务操作，也没有修改定价、注册、支付、数据库或上游线路。
+- 链动小铺首笔 ¥1 真实购买、自动发货与站内兑换仍需操作时由老板确认；生图渠道真实 502/401 异常继续保持失败关闭。
+
+### 需要注意的坑
+- 生产版本当前为 `v0.1.172-jiyu.31271410817`；后续更新沿用“检查并安装 → 立即重启 → VERSION/stage/health/PID 回读”验收门。
+- 账号/分组和 WS mode 的业务配置继续通过 WebUI 管理，不能直接改数据库；任何付费复测只跑单组最小样本，不做循环。
+
+### 当前系统状态
+- 本地 `node scripts/cc_zhongzhuan_readiness_audit.mjs --mode=read_only --json` PASS；Oracle manager `status` PASS，Sub2API/Redis/Frist/Apache active，Responses WebSocket 代理通过，服务 `NRestarts=0`。
+- 工作树仅含本次文档更新，分支保持 `main`；未读取、输出或写入密码、API Key、Token、Cookie、TOTP secret 或卡密。
+
+---
+
 ## [2026-08-09 02:18] JIYU WebUI 更新重启根因修复交接
 
 ### 本次完成了什么
