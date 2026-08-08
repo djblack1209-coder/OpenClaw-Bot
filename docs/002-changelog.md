@@ -18,6 +18,7 @@
 - 合并 Dependabot 的 `h2 4.4.1` 与 `pypdf 6.15.0` 双平台哈希锁更新，并补齐 `hpack 4.2.0` 兼容约束；删除会持续创建旧 New-API 同步分支的定时工作流，冷回滚研究仍可显式运行 `make new-api-sync`，生产继续只使用 Sub2API。
 - 修复首轮 CI 发现的三个确定性问题：补丁纳入共享排序器新文件，生图安装器消除 ShellCheck `SC2155`，闲鱼人工预检删除未使用文件读取以消除 Ruff `F841`。
 - 将 OpenClaw Manager 的 `js-yaml` / `nanoid` override 提升到 `4.3.1` / `3.3.17`，关闭主 CI 新识别的两个高危公告，不升级桌面框架。
+- 修复首个兼容包使用工作流序号造成的版本倒退：改用全仓库单调递增的 GitHub Run ID，拒绝把新构建以低于生产 `.5` 的编号发布。
 ### 文件变更
 - `.github/workflows/sub2api-jiyu-compat.yml` — 从官方标签应用 JIYU 补丁、跑聚焦门、构建 ARM64 包并发布校验清单。
 - New-API Scheduled Sync workflow — 删除已与 Sub2API 生产架构冲突的自动分支生成任务。
