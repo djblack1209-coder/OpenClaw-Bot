@@ -54,6 +54,7 @@ test('充值页无 CSP iframe，WebUI 更新只能进入固定 root 代理', asy
   assert.doesNotMatch(brokerContent, /eval |bash -c|sh -c/);
   assert.match(workflowContent, /go test -tags embed \.\/internal\/web/);
   assert.match(workflowContent, /go build -tags embed/);
+  assert.match(workflowContent, /gh release upload jiyu-latest jiyu-update-manifest\.json --clobber/);
 });
 
 test('JIYU 图形 Logo 是 512 像素 PNG', async () => {
