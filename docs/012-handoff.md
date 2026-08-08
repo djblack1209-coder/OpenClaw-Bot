@@ -13,7 +13,6 @@
 - 第一版新修订已发布并更新生产；账号页供货域名链接已清零。真实点击发现 `NoNewPrivileges` 与旧 sudo 调用冲突，现改为 systemd Unix 激活套接字，生产非特权预演已安全返回 `noop`。
 
 ### 未完成的工作
-- 当前二次修复尚待提交触发兼容包 CI，再把生产更新到新修订，并从真实 WebUI 点击确认“已是最新”无报错、无暂存和无重启。
 - 渠道A Claude、源站 443 收口、生图上游与链动小铺合规仍按既有边界处理，本次未修改。
 
 ### 需要注意的坑
@@ -21,8 +20,8 @@
 - 不要直接重复执行 Apache graceful reload；任何配置操作必须走带 full restart 降级和公网 TLS 复核的管理器。
 
 ### 当前系统状态
-- 生产为 `v0.1.172-jiyu.31249771695`；Sub2API、Redis、Apache 和 `sub2api-jiyu-update.socket` active，公网健康 5/5 为 200。
-- 工作树包含二次修复、规定文档及前后截图，待 CI、生产最终点击验收和提交收尾。
+- 生产为 `v0.1.172-jiyu.31250692935`；Sub2API、Redis、Apache 和 `sub2api-jiyu-update.socket` active，独立哈希验证通过，公网健康 5/5 为 200。
+- 真实 WebUI 最新版检查为 HTTP 200，PID 不变且无暂存；账号页供货域名链接为 0，Anthropic/OpenAI/Grok 标签保留，最终前后截图已生成。
 
 ## [2026-08-08 15:00] JIYU Codex WS 闭环与源站收口取证
 

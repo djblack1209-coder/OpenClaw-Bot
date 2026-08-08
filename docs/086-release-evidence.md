@@ -14,8 +14,8 @@
 | 内容预拦截 | 成功 | 正常提示 200；高置信恶意短语约 840 ms 返回 403；用量记录仍为 8，无上游调用或计费 |
 | Cloudflare | 成功 | Managed WAF、OWASP、L7 DDoS；注册/验证码 5 次/60 秒封禁 600 秒，登录/2FA 20 次/60 秒封禁 300 秒 |
 | WebUI 深链刷新 | 观察 | 移动端 `/usage` 曾有 1 次瞬时 503；08-08 源站 25 次 503 均归因于明确失败测试或发布重启，05:04 后无新增，Console 0 error/0 warning |
-| 账号列表品牌隐私 | 成功 | 生产 `v0.1.172-jiyu.31249771695` 重载后 12 个账号名称均为普通文本，供货域名链接为 0；Anthropic/OpenAI/Grok 生态标签保留，前后截图已入仓库。 |
-| JIYU 同版兼容更新 | 二次修复待发布 | 生产已从旧修订安装新修订并显示固定入口；真实点击发现应用内 sudo 被 `NoNewPrivileges` 正确阻止。现改为 systemd Unix 激活套接字，非特权生产预演已返回 `noop`，待新二进制 WebUI 点击关闭。 |
+| 账号列表品牌隐私 | 成功 | 生产 `v0.1.172-jiyu.31250692935` 重载后 12 个账号名称均为普通文本，供货域名链接为 0；Anthropic/OpenAI/Grok 生态标签保留，前后截图已入仓库。 |
+| JIYU 同版兼容更新 | 成功 | systemd Unix 激活套接字保留应用 `NoNewPrivileges`；兼容包 CI `31250692935` 成功。生产真实 WebUI 最新版检查返回 HTTP 200/“已是最新版本”，耗时 302 ms，PID `1125212` 不变、无暂存文件。 |
 | Apache 525 恢复 | 部署完成 | 全部 JIYU Apache 修改入口已统一执行配置校验、graceful reload、公网 HTTPS 复核，失败自动 full restart 并再次复核；生产管理器已安装，真实 happy path 与公网健康 5/5 为 200。为避免主动制造 525，full restart 分支以静态合同覆盖。 |
 
 永久测试账号为用户 ID 2，必须保留；密码、API Key、Token 和 Cookie 只在钥匙串或服务器私有配置中，不出现在本报告。Codex WS 调度已关闭；渠道A Claude 上游协议和源站 443 公网绕过仍是未关闭 P1，验收方案见 `docs/009-health.md` HI-1001、HI-1005。
