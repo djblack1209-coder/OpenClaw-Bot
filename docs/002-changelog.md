@@ -17,10 +17,13 @@
 ### 文件变更
 - `scripts/sub2api-jiyu-v0.1.172.patch`、`scripts/sub2api_jiyu_update_broker.sh` — JIYU 更新入口、完整构建号比较和安全无操作语义。
 - `scripts/sub2api_oracle_manage.sh`、`scripts/sub2api_ops_scripts.test.mjs` — Apache reload 自动恢复、按需更新套接字和原有 4 项聚焦合同。
-- `docs/002-changelog.md`、`docs/007-operations.md`、`docs/009-health.md`、`docs/012-handoff.md`、`docs/086-release-evidence.md` — 同步故障根因、操作合同和待发布验收项。
+- `scripts/assets/audit-jiyu-account-links-before-hotfix-20260808.png`、`scripts/assets/audit-jiyu-account-links-after-hotfix-20260808.png`、`scripts/assets/audit-jiyu-managed-update-entry-20260808.png` — 账号链接修复前后和最终 WebUI 无操作证据。
+- `docs/002-changelog.md`、`docs/007-operations.md`、`docs/009-health.md`、`docs/012-handoff.md`、`docs/086-release-evidence.md` — 同步故障根因、操作合同和最终验收事实。
 ### 验证
 - 旧提交红灯为 `2 passed / 2 failed`，当前代码绿灯为 `4 passed / 0 failed`；Bash 语法和 diff 检查通过。
-- 第一版兼容包 CI `31249771695` 成功，生产已更新为 `v0.1.172-jiyu.31249771695`，账号页 12 个名称不再含供货域名链接且 Anthropic/OpenAI/Grok 标签保留；真实点击同时暴露并推动套接字修复。非特权生产预演已返回 `JIYU_UPDATE_STATUS=noop`，新二进制 CI 与最终 WebUI 验收将在受管发布后回填。
+- 第一版兼容包 CI `31249771695` 暴露提权冲突后，二次修复 CI `31250692935` 成功；生产最终更新为 `v0.1.172-jiyu.31250692935`，独立任务确认运行哈希和健康通过，公网 `/health` 连续 `5/5` 为 200。
+- 对应主线 CI `31250687597` 的 5 个作业全部成功；发布资产摘要与清单 SHA-256 一致，ARM64 工件大小为 108,200,098 字节。
+- 真实 WebUI 最新版点击返回 HTTP 200 和“已是最新版本”，耗时 302 ms；Sub2API PID 保持 `1125212`、无暂存文件、部署后 Console 新错误为 0。账号页 12 个名称的供货域名链接为 0，Anthropic/OpenAI/Grok 标签全部保留。
 
 ## [2026-08-08] JIYU Codex WebSocket 桥接与源站收口取证
 > 领域: `backend` | `ai-pool` | `deploy` | `infra` | `docs`

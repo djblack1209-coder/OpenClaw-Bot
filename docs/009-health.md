@@ -45,7 +45,7 @@
 
 | 编号 | 分类 | 严重度 | 状态 | 当前结论 |
 |---|---|---|---|---|
-| HI-983 | `DEPLOY/SECURITY` | 🟠 重要 | 线上已关闭 | 旧主站 New-API 运行库、上游 Key、用户/Token/渠道/日志和回滚副本已按老板要求清理；Oracle 主站当前为基于官方 Sub2API `v0.1.172` 固定提交构建的 `v0.1.172-jiyu.31237926226`，只绑定 loopback `18080`，PostgreSQL/专用 Redis 均为独立实例。受管 WebUI 更新只安装带 JIYU 补丁的校验包，发布带完整备份、健康检查和失败回滚。 |
+| HI-983 | `DEPLOY/SECURITY` | 🟠 重要 | 线上已关闭 | 旧主站 New-API 运行库、上游 Key、用户/Token/渠道/日志和回滚副本已按老板要求清理；Oracle 主站当前为基于官方 Sub2API `v0.1.172` 固定提交构建的 `v0.1.172-jiyu.31250692935`，只绑定 loopback `18080`，PostgreSQL/专用 Redis 均为独立实例。受管 WebUI 更新只安装带 JIYU 补丁的校验包，发布带完整备份、健康检查和失败回滚。 |
 | HI-984 | `INFRA` | 🟡 一般 | 线上已关闭 | 旧 R2 备份脚本原先强制备份 `one-api.db`，会在清理后失败或重新制造旧底座副本；已移除该来源，删除 19 个旧 R2 对象，重新生成只含 `runtime.json` 与 `application.env` 的加密回程备份。Sub2API 自己由 `sub2api-backup.timer` 每日做 PostgreSQL 一致性备份。 |
 | HI-985 | `DEPLOY/AI_POOL` | 🟡 一般 | 内测可运营，持续观测 | 渠道A与渠道B各 5 个文本专用 Key，加上 2 个生图专用账号；12 个分组和 12 个一对一渠道已建立。10 条文本监控按 300±30 秒运行；2 条生图监控保存同样合同和加密凭据，但因上游 502/401 保持禁用。文本用户倍率相对当前上游倍率绝对增加 `0.05x`；生图按上游每张价格绝对增加 `0.05`。 |
 | HI-986 | `FRONTEND/SECURITY` | 🟡 一般 | 线上已关闭 | 登录条款、邮箱验证码和邮件模板已品牌化；创建密钥按 Claude/OpenAI 分组显示正确端点并默认导入 CC Switch。首页、标题、版本徽标和管理员菜单已清理供货上游品牌/仓库残留；按老板确认，Anthropic/OpenAI/Grok 作为模型/API 生态标签保留，匿名化对象仅限真实供货上游及域名。 |
@@ -56,7 +56,7 @@
 | HI-991 | `PERF/QA` | 🔵 低优先 | 待补证据 | 当前 Chrome 接管接口不能设置精确视口，已完成真实窗口和历史 390×844 证据复核，但本轮无法从同一登录态重新生成 1440×1000/390×844 双主题全页面截图。另有 Vite 原有大分包警告，暂未观察到明显交互卡顿。 |
 | HI-992 | `SECURITY` | 🟠 重要 | 方案待实施 | 生产 CSP 已启用 nonce、`frame-ancestors 'none'` 和 `form-action 'self'`，但 `connect-src https:` 与 `img-src https:` 仍允许任意 HTTPS 目标；同时未返回 HSTS 和 Permissions-Policy。收紧前需先盘点支付、验证码、对象存储和 OAuth 真实域名，采用 report-only 观察后再切强制策略，避免直接中断登录或支付。 |
 | HI-993 | `OPS` | 🟠 重要 | 业务确认待办 | 8 条运维告警规则已启用，SMTP 与到期提醒已配置，但余额不足和账号限额通知当前关闭，通知邮箱列表为空。建议以管理员邮箱作为首个收件人并设置去重/静默窗口后再启用，避免直接打开造成邮件轰炸。 |
-| HI-994 | `DEPLOY/ARCH_LIMIT` | 🟠 重要 | 线上已关闭 | 旧 Apache 拦截曾把更新错误截成 `status c`。现生产已启用 CI 兼容包、`jiyu-latest` 移动清单、SHA-256/大小/架构校验、固定 root-only 代理、最小 sudoers、原子暂存与独立 systemd 哈希/健康验证。首个候选因未嵌入前端导致首页 404，被真实 GET 门发现并从发布前备份回滚；修正后 `v0.1.172-jiyu.31237926226` 首页/监控/健康均为 200。定时任务跳过已适配基础版；同上游版本的手动品牌修订改用不可变 `-r<run_id>` 发布，避免覆盖旧工件或被错误跳过。 |
+| HI-994 | `DEPLOY/ARCH_LIMIT` | 🟠 重要 | 线上已关闭 | 旧 Apache 拦截曾把更新错误截成 `status c`。现生产已启用 CI 兼容包、`jiyu-latest` 移动清单、SHA-256/大小/架构校验、root 管理的 systemd Unix 激活套接字、原子暂存与独立哈希/健康验证；应用继续保留 `NoNewPrivileges`，旧 sudoers 已删除。首个候选因未嵌入前端导致首页 404，被真实 GET 门发现并回滚；最终 `v0.1.172-jiyu.31250692935` 的首页、账号页和健康接口均为 200。定时任务跳过已适配基础版；同上游版本的手动修订使用不可变 `-r<run_id>` 发布。 |
 | HI-995 | `AI_POOL/BUSINESS` | 🟠 重要 | 渠道已建，上游阻塞 | 两个匿名生图分组、账号、渠道和 300±30 秒监控配置均已建立，仅开放 `gpt-image-2`。渠道A按上游 `0.05/张` 定价 `0.10/张`，真实调用返回 `502 Upstream access forbidden`；渠道B高质量组按 `0.07/张` 定价 `0.12/张`，专用 Key 返回 `401 invalid token`。两条监控保持禁用，不伪造绿色、不持续付费探测。 |
 | HI-996 | `BUG/SECURITY` | 🟠 重要 | 本机运行时已重建，专用站内 Key 待创建 | 已删除 CC Switch 中两个指向缺失脚本的旧条目，安装基于官方 MCP SDK `1.30.0` 的 `jiyu-ai-image` stdio MCP，并同步 Claude、Codex、OpenCode；该版本修复 `1.29.0` 传递依赖的中危路径穿越公告，生产依赖审计为 0。MCP 只允许 JIYU 固定域名、单图、20 MiB 上限且付费 POST 不自动重试；当前钥匙串未配置站内生图专用 Key，因此失败关闭，待上游 502/401 修复后做一次真实单图验收。 |
 | HI-997 | `SECURITY` | 🟡 一般 | 剩余 1 项上游架构风险 | main 推送回执从 31 项降至 9、3，最终只剩 Tauri 最新 `2.11.5` 在 Linux 目标锁入的 `glib 0.18.5` 中危；可直接修复的 `h2/hpack/pypdf/js-yaml/nanoid` 均已升级。`glib 0.20` 需要 GTK/Tauri 依赖链迁移，当前 macOS 生产目标不执行该 Linux 路径，本轮不为清零数字强升 GUI 栈。 |
@@ -69,9 +69,9 @@
 | HI-1004 | `SECURITY/INFRA` | 🟡 一般 | Cloudflare 代理链已关闭 | JIYU 主机已启用严格 TLS、Managed WAF、OWASP 与 L7 DDoS；新增主机级边缘限流：注册/验证码 5 次/60 秒并封禁 600 秒，登录/2FA 20 次/60 秒并封禁 300 秒。开放注册仍关闭、邮箱验证开启；Turnstile 在开放注册前完成专用 widget 和双视口实测，不复用历史配置口径。 |
 | HI-1005 | `SECURITY/ARCH_LIMIT` | 🟠 重要 | 精确方案待确认 | Oracle Apache 的 443 仍公开监听，可绕过 Cloudflare。三个 HTTPS vhost 均经 Cloudflare 代理，但同机 `naive-iad` 以直连 DNS 使用 80 端口完成 ACME HTTP-01，因此不能把 80/443 一刀切。第一阶段仅把 443 收口到 Cloudflare 官方 15 个 IPv4、7 个 IPv6 CIDR，保留 80、SSH/Tailscale 和自动回滚；第二阶段先把该 ACME 迁到 DNS-01 或独立入口，再评估收口 80。未经确认不应用防火墙。 |
 | HI-1006 | `PERF` | 🔵 低优先 | 观察中，暂无新异常 | 真实浏览器曾记录 1 次 `/usage` 导航 503，随后同路由 12/12 为 200。08-08 源站 25 次 503 已全部归因：16 次为渠道A Claude 明确失败验证，9 次集中于发布重启窗口；05:04 后无新增 503，当前管理页 Console 0 error/0 warning。Codex 首次模型目录刷新曾瞬时失败，但随后 `/v1/models` 两种请求均为 200；不做猜测性改动。 |
-| HI-1007 | `FRONTEND/SECURITY` | 🟠 重要 | 兼容包待发布验收 | 管理端“账号管理”曾把 API Key 账号名称渲染成真实 `base_url` 超链接，并在悬浮提示中显示域名，导致已匿名化的渠道仍可从 DOM 识别供货上游。JIYU 补丁现把名称固定为普通文本，并删除仅服务该链接的 URL 生成逻辑；账号编辑中的 Base URL、Anthropic/OpenAI/Grok 协议生态标签、调度和定价数据均保持不变。验收标准为生产受管更新后真实重载列表，DOM 不含第三方供货域名链接且 Console 无错误。 |
-| HI-1008 | `FRONTEND/DEPLOY` | 🟠 重要 | 二次修复待发布 | 官方版本比较只认识 `v0.1.172`，因此生产 JIYU 旧修订与新兼容包同属一个基础版时 `hasUpdate=false`，版本面板不显示安装入口；root 代理也曾按基础版直接跳过。首版修复已让生产从旧修订安装新修订并显示入口，但真实点击发现 `NoNewPrivileges` 会阻止应用内 `sudo`，仍返回 500。现改为 root 管理的 systemd Unix 激活套接字，应用进程不提权、不传参数，只解析三种固定状态；生产已用 `sub2api` 用户直连验证 `noop`。验收标准是新二进制在 WebUI 再次点击时返回“已是最新”，不下载、不重启、不报错。 |
-| HI-1009 | `BUG/INFRA` | 🟠 重要 | 修复待部署 | 生产 Apache 在密集 graceful reload 后出现工作进程 abort，Cloudflare 返回 525；full restart 后恢复。项目内原有多个 Apache 配置命令只执行 reload，且没有统一复核公网 TLS。现全部 JIYU Apache 维护入口统一执行 `configtest → reload → 公网 HTTPS 5 次容错复核`，失败自动 full restart 并再次复核；旧 New-API 回滚使用独立 `/api/status` 探针。部署后需确认日志不再有未恢复的 reload 故障，公网连续 200。 |
+| HI-1007 | `FRONTEND/SECURITY` | 🟠 重要 | 线上已关闭 | 管理端“账号管理”曾把 API Key 账号名称渲染成真实 `base_url` 超链接，并在悬浮提示中显示域名。生产 `v0.1.172-jiyu.31250692935` 真实重载后 12 个账号名称均为普通文本，供货域名链接为 0；账号编辑能力、Anthropic/OpenAI/Grok 标签、调度和定价数据保持不变，部署后 Console 新错误为 0。 |
+| HI-1008 | `FRONTEND/DEPLOY` | 🟠 重要 | 线上已关闭 | 官方基础版比较曾让同版 JIYU 修订隐藏安装入口，首版修复又因应用内 sudo 被 `NoNewPrivileges` 正确阻止而返回 500。最终改为 root 管理的 systemd Unix 激活套接字，应用进程不提权、不传参数，只解析三种固定状态。生产从旧修订安装至 `v0.1.172-jiyu.31250692935` 后，真实 WebUI 再次点击以 HTTP 200 返回“已是最新版本”，Sub2API PID 不变、无暂存文件、无报错。 |
+| HI-1009 | `BUG/INFRA` | 🟠 重要 | 线上已关闭 | 生产 Apache 在密集 graceful reload 后曾出现工作进程 abort 和 Cloudflare 525，full restart 后恢复。全部 JIYU Apache 维护入口现统一执行 `configtest → reload → 公网 HTTPS 5 次容错复核`，失败自动 full restart 并再次复核；旧 New-API 回滚使用独立 `/api/status`。新管理器已部署，真实 reload happy path 与最终公网健康均为 5/5 200；为避免主动制造生产 525，full restart 分支由聚焦静态合同覆盖。 |
 
 | 编号 | 分类 | 严重度 | 状态 | 当前结论 |
 |---|---|---|---|---|
