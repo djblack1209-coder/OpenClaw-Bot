@@ -5,6 +5,24 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
+## [2026-08-08] JIYU 充值专用嵌入候选与 CC Switch 下载区响应式修复
+> 领域: `frontend` | `deploy` | `docs`
+> 影响模块: `充值中心`, `security.csp.policy`, `CC Switch 下载区`, `Sub2API 运维脚本`
+> 关联问题: HI-987, HI-991, HI-992
+### 变更内容
+- JIYU 前端补丁为 `recharge-center` 新增专用公开嵌入分支，固定只使用 `https://pay.ldxp.cn/shop/ZCUGEDMV`，绕开 Markdown 卡片、目录、通用 `buildEmbeddedUrl` 和认证参数拼接；iframe 抵消主内容区内边距并按 `100dvh` 适配移动端，保留 44px 新窗口图标兜底。
+- 受管重建命令通过 Sub2API 原生 `security.csp.policy` 配置，只把精确来源 `https://pay.ldxp.cn` 去重加入 `frame-src`；其他 CSP 指令保持原值，重复执行不会追加重复来源。
+- 文档页四个 CC Switch 下载入口改为响应式同宽网格：桌面四列、窄屏两列，统一最小高度、内部对齐和文字换行，不增加前端依赖。
+### 文件变更
+- `scripts/sub2api-jiyu-v0.1.172.patch` — 固定店铺专用全内容区嵌入和响应式高度。
+- `scripts/sub2api_oracle_manage.sh` — 最小回退页、CSP 精确放行、响应式下载网格和生产自检。
+- `scripts/sub2api_ops_scripts.test.mjs` — 更新固定地址、CSP 与专用前端分支聚焦合同。
+- `scripts/assets/audit-jiyu-docs-downloads-after-desktop-20260808.png`、`scripts/assets/audit-jiyu-docs-downloads-after-mobile-20260808.png` — 文档下载区双视口证据。
+- `docs/002-changelog.md`、`docs/007-operations.md`、`docs/009-health.md` — 同步生产操作与剩余安全边界。
+### 验证
+- 官方 `v0.1.172` 干净源码应用补丁后，前端 `vue-tsc --noEmit` 通过；Bash 语法和 4 项聚焦脚本合同通过。
+- 文档下载区已保存 `1440×1000` 与 `390×844` 真实截图。充值专用构建仍需 CI、生产发布和双视口真实浏览器验收，本条不把候选代码记为生产闭环。
+
 ## [2026-08-08] JIYU Claude 透传、Passkey 与链动充值中心闭环
 > 领域: `frontend` | `backend` | `ai-pool` | `deploy` | `docs`
 > 影响模块: `Sub2API accounts`, `WebAuthn`, `gateway settings`, `链动小铺`, `充值中心`

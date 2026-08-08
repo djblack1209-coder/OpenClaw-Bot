@@ -69,6 +69,7 @@ ssh oracle-arm1 '/usr/local/sbin/openclaw-sub2api-manager status'
 ### 文档和 CC Switch
 
 - 左侧“文档”进入 `https://jiyu.245334.xyz/custom/docs`，提供 CC Switch v3.19.2 三平台下载。“API 密钥”页和创建弹窗固定同时显示 Claude 根端点与 ChatGPT `/v1` 端点，并默认勾选创建后导入 CC Switch。
+- 四个下载入口使用同宽响应式网格：桌面四列，窄屏两列；最小触控高度 52px，文字允许换行。修改文档模板后必须在 1440×1000 和 390×844 两个视口确认无横向滚动、截断或高度不一致。
 - OpenAI 兼容地址为 `https://jiyu.245334.xyz/v1`，Claude 兼容地址为 `https://jiyu.245334.xyz`。Key 只在站内创建并导入本机 CC Switch，不发送给未配置外站。
 - 文档页手机端隐藏内置目录侧栏，避免正文被覆盖；桌面端保留目录。
 
@@ -116,7 +117,8 @@ WebUI 更新方案 A 已在仓库和生产启用：`.github/workflows/sub2api-ji
 ### 链动小铺运营边界
 
 - 店铺昵称、公告、头像和自定义链接已统一为 JIYU AI；¥1/10/50/100/300/500/1000 七档商品已建立并使用同一 JY Logo，标题、详情和兑换步骤已保存。
-- 保证金账户已真实显示 ¥100；七档商品各导入 1 张既有兑换码并上架，七个公开页均显示“立即购买”。站内充值中心已回填七档链接；受管重建命令为 `ssh oracle-arm1 'sudo /usr/local/sbin/openclaw-sub2api-manager recharge-center'`。
+- 保证金账户已真实显示 ¥100；七档商品各导入 1 张既有兑换码并上架，七个公开页均显示“立即购买”。充值中心由 JIYU 前端对 `recharge-center` 专门嵌入固定公开整店页 `https://pay.ldxp.cn/shop/ZCUGEDMV`，不得经过通用 URL 参数拼接；受管重建命令为 `ssh oracle-arm1 'sudo /usr/local/sbin/openclaw-sub2api-manager recharge-center'`。
+- 重建命令会通过 Sub2API 原生 `security.csp.policy`，只在 `frame-src` 去重加入精确来源 `https://pay.ldxp.cn`，不会放宽 `script-src`、`connect-src` 或其他 CSP 指令。若链动后续返回 `X-Frame-Options` 或 `frame-ancestors` 阻止内嵌，停止使用 iframe 并报告，不得反代绕过。
 - 仍未执行真实购买。首笔 ¥1 实单必须在操作当时再次确认，再按“付款 → 自动发货 → 兑换到账 → 创建密钥 → CC Switch 导入 → 用量查询”完成闭环；任一步失败立即下架并保留交易证据。
 - Sub2API 支付与异步生图对象存储继续关闭：当前没有支付服务商回调/签名配置，也没有 JIYU 专用 S3 端点、存储桶和访问凭据。异步生图与备份共用 S3 客户端，但不得复用现有备份资源或为此擅自开通付费资源。
 

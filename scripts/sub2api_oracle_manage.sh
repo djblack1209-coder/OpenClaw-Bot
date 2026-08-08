@@ -42,6 +42,8 @@ readonly CLOUDFLARE_ROLLBACK_UNIT="jiyu-cloudflare-origin-rollback"
 readonly SITE_BRAND_NAME="${SUB2API_SITE_NAME:-JIYU AI}"
 readonly SITE_BRAND_SUBTITLE="${SUB2API_SITE_SUBTITLE:-Unified AI API Gateway}"
 readonly RECHARGE_PAGE_SLUG="recharge-center"
+readonly CHAIN_STORE_ORIGIN="https://pay.ldxp.cn"
+readonly CHAIN_STORE_URL="${CHAIN_STORE_ORIGIN}/shop/ZCUGEDMV"
 readonly DOCS_PAGE_SLUG="docs"
 readonly BRAND_LOGO_SOURCE="${SUB2API_BRAND_LOGO_SOURCE:-/usr/local/share/jiyu-ai/jiyu-ai-logo.png}"
 readonly BRAND_LOGO_PUBLIC_PATH="/api/v1/pages/${DOCS_PAGE_SLUG}/images/jiyu-ai-logo.png"
@@ -617,38 +619,112 @@ apply_brand_asset() {
   log "JIYU AI 图形 Logo 已发布到 ${BRAND_LOGO_PUBLIC_PATH}。"
 }
 
+apply_recharge_csp_policy() {
+  local config_file="${INSTALL_DIR}/data/config.yaml"
+  local current_policy
+  local config_temp
+
+  require_command curl
+  require_command python3
+  [[ -f "$config_file" ]] || fail "找不到 Sub2API 配置文件: ${config_file}"
+
+  current_policy="$(
+    curl -fsS -D - -o /dev/null --max-time 15 "$HEALTH_URL" |
+      awk 'BEGIN { IGNORECASE=1 } /^Content-Security-Policy:/ {
+        sub(/^[^:]+:[[:space:]]*/, ""); sub(/\r$/, ""); print; exit
+      }'
+  )"
+  [[ -n "$current_policy" ]] || fail "无法读取 Sub2API 当前有效 CSP。"
+
+  config_temp="$(mktemp "${config_file}.csp.XXXXXX")"
+  if ! CSP_ORIGIN="$CHAIN_STORE_ORIGIN" EFFECTIVE_CSP="$current_policy" \
+    python3 - "$config_file" "$config_temp" <<'PY'
+import os
+import re
+import sys
+
+import yaml
+
+source_path, target_path = sys.argv[1:]
+origin = os.environ["CSP_ORIGIN"]
+effective_policy = os.environ["EFFECTIVE_CSP"]
+
+with open(source_path, "r", encoding="utf-8") as source:
+    config = yaml.safe_load(source) or {}
+
+if not isinstance(config, dict):
+    raise SystemExit("Sub2API 配置根节点不是对象")
+
+security = config.setdefault("security", {})
+if not isinstance(security, dict):
+    raise SystemExit("Sub2API security 配置不是对象")
+csp = security.setdefault("csp", {})
+if not isinstance(csp, dict):
+    raise SystemExit("Sub2API security.csp 配置不是对象")
+
+policy = csp.get("policy")
+if not isinstance(policy, str) or not policy.strip():
+    policy = effective_policy
+policy = re.sub(r"'nonce-[^']+'", "__CSP_NONCE__", policy)
+
+directives = [item.strip() for item in policy.split(";") if item.strip()]
+result = []
+frame_sources = []
+frame_index = None
+for directive in directives:
+    tokens = directive.split()
+    if not tokens:
+        continue
+    name = tokens[0].lower()
+    sources = [token for token in tokens[1:] if token != origin]
+    if name == "frame-src":
+        if frame_index is None:
+            frame_index = len(result)
+        for source in sources:
+            if source not in frame_sources:
+                frame_sources.append(source)
+        continue
+    result.append(" ".join([tokens[0], *sources]))
+
+frame_sources.append(origin)
+frame_directive = " ".join(["frame-src", *frame_sources])
+if frame_index is None:
+    result.append(frame_directive)
+else:
+    result.insert(frame_index, frame_directive)
+
+origin_directives = [item for item in result if origin in item.split()[1:]]
+if origin_directives != [frame_directive] or frame_directive.split().count(origin) != 1:
+    raise SystemExit("链动小铺来源必须且只能出现一次于 frame-src")
+
+csp["enabled"] = True
+csp["policy"] = "; ".join(result) + ";"
+
+with open(target_path, "w", encoding="utf-8") as target:
+    yaml.safe_dump(config, target, allow_unicode=True, sort_keys=False)
+PY
+  then
+    rm -f "$config_temp"
+    fail "无法写入 Sub2API CSP 配置。"
+  fi
+
+  chown --reference="$config_file" "$config_temp"
+  chmod --reference="$config_file" "$config_temp"
+  mv -f "$config_temp" "$config_file"
+}
+
 apply_recharge_center() {
   require_root
   require_linux
   require_command psql
 
   local pages_dir
+  local effective_csp
   pages_dir="${INSTALL_DIR}/data/pages"
   install -d -m 0750 -o sub2api -g sub2api "$pages_dir"
 
-  cat >"${pages_dir}/${RECHARGE_PAGE_SLUG}.md" <<'MARKDOWN'
-# JIYU AI 充值中心
-
-选择充值金额后会打开链动小铺。付款完成后自动交付 1 个 JIYU AI 余额兑换码。
-
-| 充值余额 | 购买入口 |
-| ---: | :--- |
-| **$1** | [购买 ¥1 兑换码](https://pay.ldxp.cn/item/shpn5d) |
-| **$10** | [购买 ¥10 兑换码](https://pay.ldxp.cn/item/6yfdfr) |
-| **$50** | [购买 ¥50 兑换码](https://pay.ldxp.cn/item/o4e9b6) |
-| **$100** | [购买 ¥100 兑换码](https://pay.ldxp.cn/item/29km97) |
-| **$300** | [购买 ¥300 兑换码](https://pay.ldxp.cn/item/xbszyn) |
-| **$500** | [购买 ¥500 兑换码](https://pay.ldxp.cn/item/wiz21c) |
-| **$1000** | [购买 ¥1000 兑换码](https://pay.ldxp.cn/item/gpwljy) |
-
-## 使用步骤
-
-1. 先在 JIYU AI 注册或登录，再选择金额完成购买。
-2. 收到兑换码后前往 [兑换中心](/redeem) 兑换余额。
-3. 前往 [API 密钥](/keys) 创建 Claude 或 ChatGPT 密钥。
-4. 在创建结果中一键导入 CC Switch，然后开始使用。
-
-兑换码只用于 JIYU AI 站内余额，不可提现或转让。遇到支付或发货问题时，请保留链动小铺订单号并联系站内客服。
+  cat >"${pages_dir}/${RECHARGE_PAGE_SLUG}.md" <<MARKDOWN
+[打开 JIYU AI 链动小铺](${CHAIN_STORE_URL})
 MARKDOWN
 
   chown sub2api:sub2api "${pages_dir}/${RECHARGE_PAGE_SLUG}.md"
@@ -684,9 +760,27 @@ ON CONFLICT (key) DO UPDATE
 SET value = EXCLUDED.value, updated_at = NOW();
 SQL
 
+  apply_recharge_csp_policy
   systemctl restart "$SUB2API_SERVICE"
   wait_for_health 90 || fail "应用充值中心页面后健康检查失败。"
-  log "充值中心七档购买入口已发布；外部链接不携带站内用户令牌。"
+  effective_csp="$(
+    curl -fsS -D - -o /dev/null --max-time 15 "https://${DOMAIN}/health" |
+      awk 'BEGIN { IGNORECASE=1 } /^Content-Security-Policy:/ {
+        sub(/^[^:]+:[[:space:]]*/, ""); sub(/\r$/, ""); print; exit
+      }'
+  )"
+  CSP_ORIGIN="$CHAIN_STORE_ORIGIN" CSP_POLICY="$effective_csp" python3 <<'PY'
+import os
+
+origin = os.environ["CSP_ORIGIN"]
+directives = [item.strip().split() for item in os.environ["CSP_POLICY"].split(";") if item.strip()]
+matches = [(tokens[0].lower(), tokens[1:].count(origin)) for tokens in directives if origin in tokens[1:]]
+if matches != [("frame-src", 1)]:
+    raise SystemExit("生产 CSP 未把链动小铺来源精确限制到 frame-src")
+PY
+  curl -fsS --max-time 20 "https://${DOMAIN}/custom/${RECHARGE_PAGE_SLUG}" >/dev/null || \
+    fail "充值中心公网页面不可用。"
+  log "充值中心已启用专用公开整店嵌入；固定地址不携带站内用户参数。"
 }
 
 apply_docs_page() {
@@ -699,12 +793,6 @@ apply_docs_page() {
   install -d -m 0750 -o sub2api -g sub2api "$pages_dir"
 
   cat >"${pages_dir}/${DOCS_PAGE_SLUG}.md" <<'MARKDOWN'
-<style>
-@media (max-width: 640px) {
-  .custom-page-layout .toc-sidebar { display: none !important; }
-}
-</style>
-
 # JIYU AI 使用文档
 
 > 当前为邀请内测。JIYU AI 不向中国大陆及其他受限制、制裁或上游禁止服务的地区开放。
@@ -713,11 +801,11 @@ apply_docs_page() {
 
 官方版本：**v3.19.2**（2026-08-06 发布）
 
-<div style="display:flex;flex-wrap:wrap;gap:10px;margin:16px 0 24px">
-  <a href="https://github.com/farion1231/cc-switch/releases/download/v3.19.2/CC-Switch-v3.19.2-macOS.dmg" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;padding:9px 14px;border-radius:6px;background:#0f766e;color:#fff;text-decoration:none;font-weight:650">下载 macOS</a>
-  <a href="https://github.com/farion1231/cc-switch/releases/download/v3.19.2/CC-Switch-v3.19.2-Windows.msi" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;padding:9px 14px;border-radius:6px;background:#111827;color:#fff;text-decoration:none;font-weight:650">下载 Windows</a>
-  <a href="https://github.com/farion1231/cc-switch/releases/download/v3.19.2/CC-Switch-v3.19.2-Linux-x86_64.AppImage" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;padding:9px 14px;border-radius:6px;background:#f97316;color:#fff;text-decoration:none;font-weight:650">下载 Linux</a>
-  <a href="https://github.com/farion1231/cc-switch/releases/latest" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;padding:9px 14px;border:1px solid #94a3b8;border-radius:6px;color:inherit;text-decoration:none;font-weight:650">全部官方版本</a>
+<div class="cc-switch-download-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:16px 0 24px">
+  <a class="cc-switch-download-link cc-switch-download-link--mac" href="https://github.com/farion1231/cc-switch/releases/download/v3.19.2/CC-Switch-v3.19.2-macOS.dmg" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;box-sizing:border-box;width:100%;min-width:0;min-height:52px;padding:10px 8px;border:1px solid transparent;border-radius:6px;background:#0f766e;color:#fff;text-align:center;line-height:1.35;overflow-wrap:anywhere;text-decoration:none;font-weight:650">下载 macOS</a>
+  <a class="cc-switch-download-link cc-switch-download-link--windows" href="https://github.com/farion1231/cc-switch/releases/download/v3.19.2/CC-Switch-v3.19.2-Windows.msi" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;box-sizing:border-box;width:100%;min-width:0;min-height:52px;padding:10px 8px;border:1px solid transparent;border-radius:6px;background:#111827;color:#fff;text-align:center;line-height:1.35;overflow-wrap:anywhere;text-decoration:none;font-weight:650">下载 Windows</a>
+  <a class="cc-switch-download-link cc-switch-download-link--linux" href="https://github.com/farion1231/cc-switch/releases/download/v3.19.2/CC-Switch-v3.19.2-Linux-x86_64.AppImage" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;box-sizing:border-box;width:100%;min-width:0;min-height:52px;padding:10px 8px;border:1px solid transparent;border-radius:6px;background:#c2410c;color:#fff;text-align:center;line-height:1.35;overflow-wrap:anywhere;text-decoration:none;font-weight:650">下载 Linux</a>
+  <a class="cc-switch-download-link cc-switch-download-link--all" href="https://github.com/farion1231/cc-switch/releases/latest" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;box-sizing:border-box;width:100%;min-width:0;min-height:52px;padding:10px 8px;border:1px solid #64748b;border-radius:6px;background:transparent;color:inherit;text-align:center;line-height:1.35;overflow-wrap:anywhere;text-decoration:none;font-weight:650">全部官方版本</a>
 </div>
 
 ## 一键导入
@@ -1604,7 +1692,7 @@ usage() {
   backup             立即生成数据库、页面、品牌、配置和二进制一致性备份
   brand              重新应用 JIYU AI 网站名称、副标题和 JY Logo
   brand-asset        重新发布邮件和文档使用的 JIYU AI 图形 Logo
-  recharge-center     重新应用充值中心七档可购买页面
+  recharge-center     重新应用充值中心固定公开店铺和精确 CSP
   docs-page           重新应用文档入口和 CC Switch 下载、导入说明
   upstream-allowlist    重新应用两个指定上游的安全域名白名单
   harden-apache      禁止浏览器直接更新或回滚生产二进制

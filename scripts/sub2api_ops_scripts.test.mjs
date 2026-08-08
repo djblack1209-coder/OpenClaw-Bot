@@ -45,12 +45,21 @@ test('生产更新改为只检查，完整备份覆盖品牌与页面', async ()
   assert.match(content, /reload_apache_with_recovery "https:\/\/\$\{DOMAIN\}\/api\/status"/);
 });
 
-test('充值页无 CSP iframe，WebUI 更新只能进入固定 root 代理', async () => {
+test('充值页只使用固定公开整店且 WebUI 更新只能进入固定 root 代理', async () => {
   const content = await readFile(manager, 'utf8');
   const brokerContent = await readFile(broker, 'utf8');
   const workflowContent = await readFile(compatibilityWorkflow, 'utf8');
   const patchContent = await readFile(compatibilityPatch, 'utf8');
-  assert.doesNotMatch(content, /<iframe/i);
+  assert.match(content, /readonly CHAIN_STORE_URL="\$\{CHAIN_STORE_ORIGIN\}\/shop\/ZCUGEDMV"/);
+  assert.doesNotMatch(content, /<iframe src="\$\{CHAIN_STORE_URL\}"/);
+  assert.match(content, /\[打开 JIYU AI 链动小铺\]\(\$\{CHAIN_STORE_URL\}\)/);
+  assert.doesNotMatch(content, /pay\.ldxp\.cn[^"']*[?&](?:user_id|token|cookie)=/i);
+  assert.match(content, /security\.setdefault\("csp", \{\}\)/);
+  assert.match(content, /origin_directives != \[frame_directive\]/);
+  assert.match(content, /matches != \[\("frame-src", 1\)\]/);
+  assert.match(content, /cc-switch-download-grid/);
+  assert.match(content, /grid-template-columns:repeat\(auto-fit,minmax\(130px,1fr\)\)/);
+  assert.match(content, /min-height:52px/);
   assert.doesNotMatch(content, /window\.html/);
   assert.match(content, /LocationMatch "\^\/api\/v1\/admin\/system\/\(update\|rollback\)\$"/);
   assert.match(content, /Require all denied/);
@@ -93,6 +102,13 @@ test('充值页无 CSP iframe，WebUI 更新只能进入固定 root 代理', asy
   assert.match(patchContent, /DialContext\(ctx, "unix", socketPath\)/);
   assert.match(patchContent, /JIYU_UPDATE_STATUS=noop/);
   assert.doesNotMatch(patchContent, /exec\.CommandContext|sudo/);
+  assert.match(patchContent, /const JIYU_RECHARGE_PAGE_ID = 'recharge-center'/);
+  assert.match(patchContent, /const JIYU_RECHARGE_URL = 'https:\/\/pay\.ldxp\.cn\/shop\/ZCUGEDMV'/);
+  assert.match(patchContent, /v-if="isJiyuRechargePage" class="jiyu-recharge-shell"/);
+  assert.match(patchContent, /height: calc\(100dvh - 64px\)/);
+  assert.doesNotMatch(patchContent, /height: calc\(100dvh - 64px -/);
+  assert.match(patchContent, /:src="JIYU_RECHARGE_URL"/);
+  assert.doesNotMatch(patchContent, /^\+.*buildEmbeddedUrl\([\s\S]*JIYU_RECHARGE_URL/m);
   assert.match(content, /StandardInput=socket/);
   assert.match(content, /NoNewPrivileges=yes/);
 });
