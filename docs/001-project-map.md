@@ -92,9 +92,7 @@ OpenEverything/
 ├── apps/
 │   ├── openclaw-manager-src/       # React/TypeScript UI + Tauri 2 Rust 本机控制面
 │   │   └── src-tauri/npm-runtime-lock/ # OpenClaw/MCP 直接与传递依赖完整性锁
-│   ├── frist-api/                  # CC中转用户站、管理端和 Node.js 服务
-│   │   ├── server/                 # HTTP 组合入口与认证、安全、支付、runtime store 等领域模块
-│   │   └── tests/                  # Node 18/24 业务与安全合同
+│   ├── sub2api/                    # JIYU AI 生产底座（Oracle 受管二进制，不在仓库内复制）
 │   └── openclaw/                   # Bot 人设、Skills 和 Memory 运行资产，路径不可移动
 ├── scripts/                        # 健康检查、发布、回滚、迁移与运营脚本
 ├── tools/launchagents/             # macOS 服务定义
@@ -103,7 +101,7 @@ OpenEverything/
 
 `packages/clawbot/src/core/loop_owner.py` 是跨线程调用 Brain、EventBus、IBKR、闲鱼实时客户端和社媒调度器时复用的事件循环所有权边界；调用线程不得直接操作这些对象持有的异步资源。
 
-`packages/clawbot/src/xianyu/operations_projection.py` 只接受普通不可变快照，一次生成售卖就绪、循环观察和买家进度；HTTP/background adapter 不得把 WebSocket、owner-loop 或文件句柄传入投影层。`apps/frist-api/server/runtime-store.js` 统一承担 Frist 原子文件写、串行 mutation 和敏感字段加密，`server.js` 只保留 HTTP 分派与数据规范化边界。
+`packages/clawbot/src/xianyu/operations_projection.py` 只接受普通不可变快照，一次生成售卖就绪、循环观察和买家进度；HTTP/background adapter 不得把 WebSocket、owner-loop 或文件句柄传入投影层。JIYU AI 生产数据由 Sub2API PostgreSQL、专用 Redis 和受管更新代理统一负责，仓库不再保留旧 Node 网关副本。
 
 ---
 
@@ -149,7 +147,7 @@ OpenEverything/
 - **Agent 工具**：自动 LLM 循环不提供文件、Shell、代码执行和记忆写入工具；外部网页内容进入上下文后，当前请求后续工具权限全部撤销。`/agent` 使用只读 `ToolCallingAgent`，不再使用本地 `CodeAgent`；Bash 禁用 Git，`/claude` 不接受远程提示词。Python 代码仅在受限子进程执行 RestrictedPython 字节码，Node/Shell 代码执行关闭。
 - **交易状态**：真实持仓只接受券商确认的正数成交量；未决订单等待券商对账，失败/取消/零成交不删持仓，模拟回退不写真实日志。自动交易与空闲强制交易默认关闭。
 - **社媒发布**：自动化只生成草稿；发布必须依次通过内容审核快照、短时一次性最终确认和原子消费。发布中/已发布草稿不可变；外部成功但本地状态冲突时追加对账审计并明确禁止重发。
-- **客户隔离**：Frist 在共享 New-API 管理账号之上维护客户 Token 归属；看板、日志、更新、删除和导入均按归属过滤。额度从客户已购余额划转，禁止无限 Key。
+- **客户隔离**：JIYU 在共享 New-API 管理账号之上维护客户 Token 归属；看板、日志、更新、删除和导入均按归属过滤。额度从客户已购余额划转，禁止无限 Key。
 - **桌面控制面**：管理器新建本地 `gateway.auth.token` 时只生成强随机字符串；当前受管运行时精确锁定 `OpenClaw 2026.7.2-beta.7`，Token/密码/远程 SecretRef 原样保留并交给官方校验。354 个直接/传递 npm 包由内嵌 SHA-512 锁安装。MCP Store 只展示受管运行包目录，不返回 command/args/env，也不伪装成已建立的 stdio 会话；真实 MCP 配置仍由 CC Switch/OpenClaw 官方配置链负责。配置跨实例原子写入，WebView 只接收脱敏配置，服务停止只针对管理器登记且核验通过的 PID，WebView 不直接拥有文件系统权限。
 - **运行时真值**：G4F、Kiro、Ollama、IBKR 和 VPS 心跳全部改为显式开关；未启用能力不进入 LiteLLM 路由、fallback 或交易定时器。健康检查同时验证必需 LaunchAgent 的 `running + PID` 和真实 HTTP/TCP 端点，不再用“服务已加载”代替“服务可用”。
 - **部署拓扑**：macOS LaunchAgent 是当前唯一 OpenEverything/ClawBot 活跃主实例。腾讯云旧备用实例因主心跳长期失效且进程持续启动失败，已于 2026-08-07 备份后停用其服务和 30 秒故障转移定时器；腾讯云上的微信接收、OpenClaw 云控和 SillyTavern 仍独立运行。恢复 VPS 自动接管前必须重新建立实时心跳、单主写入隔离和真实 Telegram 用户链路验收。
@@ -159,7 +157,7 @@ OpenEverything/
 
 - **安全**：SSRF 逐跳固定、可信代理限流、最终日志脱敏、闲鱼短时 HttpOnly 管理会话、CLI 远程安装关闭和依赖/容器供应链门均失败关闭。
 - **可靠性**：Intel Brief 真实旧库已从 schema v3 备份并迁移到 v4；每日备份以 SQLite 在线快照、双层校验、恢复演练和 macOS LaunchAgent 自动执行。
-- **架构**：Frist runtime store 与闲鱼运营投影成为独立 deep module；RPC 兼容门面冻结，新功能继续进入领域 router。
+- **架构**：JIYU runtime store 与闲鱼运营投影成为独立 deep module；RPC 兼容门面冻结，新功能继续进入领域 router。
 - **发布**：PR 覆盖所有目标分支，ShellCheck、Gitleaks、npm/pip/RustSec、固定 Action SHA、Docker 哈希锁和非 root 冒烟进入本地/远端门禁。
 - **边界**：离机 GPG 公钥、第三方凭据回执、Developer ID/公证和真实平台付费仍由资产所有者掌握；代码不伪造这些证据。
 

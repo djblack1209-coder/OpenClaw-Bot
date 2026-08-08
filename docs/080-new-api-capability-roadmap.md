@@ -35,17 +35,17 @@ New-API 原生支持:
 当前生产状态:
 
 - 注册/登录 API 已通过受控生产 E2E：临时关闭 Turnstile/邮箱验证后在 Oracle 本机直连完成成功路径，随后恢复生产安全门。
-- 2026-07-05 已复用旧 Frist-API 生产配置写入 New-API 原生设置: `turnstile_check=true`、`email_verification=true`；公网无 Turnstile 注册/登录返回 `Turnstile token 为空`。
-- 旧 Frist Turnstile 允许域名已包含 `jiyu.245334.xyz`，可继续复用。
-- New-API 管理员/root 账户已复用旧 Frist 管理员 TOTP secret，当前 `two_fas=2`。
+- 2026-07-05 已复用旧 JIYU AI 生产配置写入 New-API 原生设置: `turnstile_check=true`、`email_verification=true`；公网无 Turnstile 注册/登录返回 `Turnstile token 为空`。
+- 旧 JIYU Turnstile 允许域名已包含 `jiyu.245334.xyz`，可继续复用。
+- New-API 管理员/root 账户已复用旧 JIYU 管理员 TOTP secret，当前 `two_fas=2`。
 - `passkey_login=false`
 - OAuth 均未启用。
 - 用户数 20。
 
 补齐优先级:
 
-- P0: Turnstile、SMTP、邮箱验证/找回密码已复用 Frist 配置并启用；继续做真人浏览器验收。
-- P0: 管理员账号 2FA 已复用 Frist TOTP 配置启用。
+- P0: Turnstile、SMTP、邮箱验证/找回密码已复用 JIYU 配置并启用；继续做真人浏览器验收。
+- P0: 管理员账号 2FA 已复用 JIYU TOTP 配置启用。
 - P1: Passkey 可作为可选增强，不作为售卖首发硬门槛。
 - P2: OAuth 暂不启用，除非明确需要社交登录。
 
@@ -64,12 +64,12 @@ New-API 原生支持:
 
 - 生产 E2E 已验证 Key 创建/更新/禁用/恢复/删除。
 - `/v1/models` 返回 15 个模型。
-- CC Switch 已在 `chats` 入口中出现；Frist 轻集成已验证 `ccswitch:` provider 导入链接，endpoint 为 `https://jiyu.245334.xyz/v1`，同 Key 调模型 200，删除后 401。
+- CC Switch 已在 `chats` 入口中出现；JIYU 轻集成已验证 `ccswitch:` provider 导入链接，endpoint 为 `https://jiyu.245334.xyz/v1`，同 Key 调模型 200，删除后 401。
 - 活跃 Token 数 1，E2E 临时 Token 清理后为 0 残留。
 
 补齐优先级:
 
-- P0: 继续使用 New-API 原生 API Key 管理作为主流程；Frist 运营台只做自动发货/CC Switch 轻集成，不替换 New-API Token 表。
+- P0: 继续使用 New-API 原生 API Key 管理作为主流程；JIYU 运营台只做自动发货/CC Switch 轻集成，不替换 New-API Token 表。
 - P1: CC Switch 只作为客户端导入增强，不另建 API Key 管理系统。
 - P1: 如需“一键导出多客户端配置”，优先扩展 New-API 的 chat/client link 配置，不改 Token 主逻辑。
 
@@ -87,7 +87,7 @@ New-API 原生支持:
 
 当前生产状态:
 
-- 生产 E2E 已验证管理员创建兑换码、用户兑换到账；Frist 运营台生成的卡密可同步到 New-API，并在闲鱼履约分配后随买家兑换回写状态。
+- 生产 E2E 已验证管理员创建兑换码、用户兑换到账；JIYU 运营台生成的卡密可同步到 New-API，并在闲鱼履约分配后随买家兑换回写状态。
 - 兑换码表当前 2 条，`available_redemptions=0`。
 - TopUp 记录 4 条。
 - 订阅相关表存在，但还未作为主售卖路径使用。
@@ -190,7 +190,7 @@ New-API 原生支持:
 
 - P0: 用 New-API 原生日志/用量作为客服排障和对账依据。
 - P0: 校准渠道自动测试和自动禁用规则。
-- P1: 接入 Uptime Kuma 或保留 Frist 现有 readiness/备份监控作为补强。
+- P1: 接入 Uptime Kuma 或保留 JIYU 现有 readiness/备份监控作为补强。
 - P1: 公共 FAQ/公告如果没有必要，不主动新增产品文案。
 
 ### 2.7 安全与风控
@@ -207,9 +207,9 @@ New-API 原生支持:
 
 当前生产状态:
 
-- 2026-07-05 已复用 Frist-API 旧配置启用 New-API 原生 Turnstile、SMTP/邮箱验证和管理员 2FA。
+- 2026-07-05 已复用 JIYU AI 旧配置启用 New-API 原生 Turnstile、SMTP/邮箱验证和管理员 2FA。
 - 公网注册/登录不带 Turnstile token 会返回 `Turnstile token 为空`。
-- Frist 旧入口曾有 Turnstile/2FA/readiness，但公网主入口切到 New-API 后，应优先补 New-API 原生安全配置。
+- JIYU 旧入口曾有 Turnstile/2FA/readiness，但公网主入口切到 New-API 后，应优先补 New-API 原生安全配置。
 
 补齐优先级:
 
@@ -333,9 +333,9 @@ New-API 原生支持:
 
 | 优先级 | New-API 原生能力 | 当前审计结果 | 补齐方式 |
 |--------|------------------|--------------|----------|
-| P0 | Turnstile 人机验证 | 已复用 Frist 配置，`turnstile_check=true`，公网无 token 注册/登录会被拦截 | 剩余真人浏览器验收 |
-| P0 | SMTP / 邮箱验证 / 找回密码 | 已复用 Frist SMTP 配置，`email_verification=true`，Oracle SMTP TLS 握手通过 | 剩余真实收信验收 |
-| P0 | 管理员 2FA | 已复用 Frist TOTP 配置，`two_fas=2` | 管理员登录时使用旧 Frist 管理 TOTP |
+| P0 | Turnstile 人机验证 | 已复用 JIYU 配置，`turnstile_check=true`，公网无 token 注册/登录会被拦截 | 剩余真人浏览器验收 |
+| P0 | SMTP / 邮箱验证 / 找回密码 | 已复用 JIYU SMTP 配置，`email_verification=true`，Oracle SMTP TLS 握手通过 | 剩余真实收信验收 |
+| P0 | 管理员 2FA | 已复用 JIYU TOTP 配置，`two_fas=2` | 管理员登录时使用旧 JIYU 管理 TOTP |
 | P0 | 模型请求限流 | 状态接口未显示已启用的模型限流配置 | 使用 New-API 原生 rate limit 配置，先保守限流 |
 | P0 | 可售兑换码库存 | `redemptions=2` 且 `status=2`，当前可售库存为 0 | 用 New-API 原生兑换码批量生成库存 |
 | P1 | 订阅套餐 | `subscription_plans=0`、`user_subscriptions=0` | 如果卖月包/套餐，优先配置 New-API 原生订阅计划 |
@@ -346,7 +346,7 @@ New-API 原生支持:
 
 先补 New-API 原生 P0，不先写自研功能：
 
-1. **安全入口**：Turnstile、SMTP/邮箱验证、管理员 2FA 已复用 Frist 配置并启用。
+1. **安全入口**：Turnstile、SMTP/邮箱验证、管理员 2FA 已复用 JIYU 配置并启用。
 2. **防刷成本控制**：下一步配置模型请求 rate limit → 渠道自动禁用/恢复阈值。
 3. **可售库存**：用 New-API 原生兑换码生成一批内测库存并导出发货话术。
 4. **再测闭环**：外网注册、登录、兑换、创建 Key、模型调用、禁用 Key、渠道刷新。
@@ -383,5 +383,5 @@ New-API 原生支持:
 - New-API 后端路由: `packages/new-api-upstream/router/api-router.go`、`relay-router.go`
 - New-API 前端模块: `packages/new-api-upstream/web/default/src/features/*`、`routes/*`
 - 生产状态接口: `http://127.0.0.1:13000/api/status`
-- 生产数据库摘要: `/opt/frist-api/data/newapi/one-api.db`
+- 生产数据库摘要: `/opt/sub2api/data/newapi/one-api.db`
 - 生产验证结论: 2026-07-05 外网 E2E 已验证注册、登录、兑换、API Key、模型调用、渠道刷新和清理闭环。

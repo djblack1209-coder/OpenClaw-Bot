@@ -6,6 +6,12 @@
 
 ## 全维度审计与软件闭环目标（2026-08-05）
 
+### 2026-08-09 模型广场真实上游对齐
+
+| 编号 | 分类 | 严重度 | 状态 | 当前结论 |
+|---|---|---|---|---|
+| HI-1023 | `AI_POOL/FRONTEND` | 🟠 重要 | 兼容包待发布 | 模型广场原先使用渠道定价目录，未启用分组白名单，导致展示未实测的预置模型。已通过 Sub2 原生“同步上游模型”对 12 个账号做一次实测：11 个成功、1 个生图账号无法返回清单；生产 12 条渠道已保存“上游清单 ∩ 已有定价”的精确映射并启用 `restrict_models`，未验证渠道失败关闭。仓库兼容补丁已让受限渠道不再由定价行回填模型，并加入聚焦回归；待 CI 构建后通过 WebUI 受管更新安装并回读 `/model-plaza`。 |
+
 ### Destination
 
 目标：对 OpenEverything/OpenClaw 完成功能、架构、并发、安全、供应链、测试、发布、灾备、运维和用户可感知体验审计；持续修复并验证所有可在软件侧闭环的问题。最终只保留必须由资产所有者完成的硬件/账号续费、平台凭据、真实付费或不可逆生产操作。
@@ -21,7 +27,7 @@
 ### Decisions so far
 
 - 优先级固定为：资金/身份/履约安全 > 数据可恢复 > 并发与事件循环正确性 > 供应链可复现 > 架构深度 > 视觉与文档。
-- 采用渐进迁移而非大重写：Frist 把持久化事务深模块化；闲鱼把运行对象收口为不可变快照和纯投影；`api/rpc.py` 冻结为兼容门面，新行为继续进入领域 router。
+- 采用渐进迁移而非大重写：JIYU 把持久化事务深模块化；闲鱼把运行对象收口为不可变快照和纯投影；`api/rpc.py` 冻结为兼容门面，新行为继续进入领域 router。
 - 关闭功能不是故障：G4F、Kiro、Ollama、IBKR 和 VPS heartbeat 只有显式启用后才进入健康红灯。
 - 本机备份默认落在 `~/.local/share/openclaw/backups`；离机目录只允许 GPG 加密包，绝不向同步盘发布明文密钥或 Cookie。
 
@@ -88,7 +94,7 @@
 | 编号 | 分类 | 严重度 | 状态 | 当前结论 |
 |---|---|---|---|---|
 | HI-965 | `SECURITY` | 🔴 阻塞 | 本地已关闭 | 通用 HTTP 客户端和浏览器链路曾可被 DNS 重绑定、重定向或子资源绕过 SSRF 限制；现逐跳解析并固定已验证地址，浏览器主文档、子资源和 WebSocket 均按精确主机拦截，相关组合回归通过。 |
-| HI-966 | `SECURITY` | 🟠 重要 | 本地已关闭 | Frist 邮箱验证、重置、2FA、会话和限流存在可枚举、容量或持久令牌风险；现会话只存 SHA-256 指纹，重置/2FA 叠加账号与 IP 桶，限流表满时失败关闭，公共占位配置不再伪装可用。 |
+| HI-966 | `SECURITY` | 🟠 重要 | 本地已关闭 | JIYU 邮箱验证、重置、2FA、会话和限流存在可枚举、容量或持久令牌风险；现会话只存 SHA-256 指纹，重置/2FA 叠加账号与 IP 桶，限流表满时失败关闭，公共占位配置不再伪装可用。 |
 | HI-967 | `SECURITY` | 🟠 重要 | 本地已关闭 | 闲鱼管理页曾把根 Token 暴露给浏览器持久存储并允许宽松脚本渲染；现根 Token 只换取 15 分钟、最多 128 个随机 HttpOnly 会话，写请求同源校验，逐响应 nonce CSP，动态内容只走 DOM `textContent`。 |
 | HI-968 | `ARCH_LIMIT` | 🟠 重要 | 本地已关闭 | 闲鱼管理线程曾直接读取 owner-loop 内实时对象，三套运营摘要重复组合同一事实；现 owner 只导出普通不可变快照，`operations_projection.py` 一次生成售卖、循环观察和买家进度投影，运行对象输入固定拒绝。 |
 | HI-969 | `BUG` | 🟠 重要 | 本地已关闭 | Bot 运行状态与自动健康脚本曾把进程存在或 LaunchAgent 已加载误报为服务健康；现必需服务同时验证 `running + PID + 真实端点`，可选能力按显式开关区分 disabled 与 bad。 |
@@ -100,23 +106,23 @@
 | HI-975 | `SECURITY` | 🟠 重要 | 本地已关闭 | 主容器曾允许平台/源码根定位漂移，依赖安装也不能证明来自哈希锁；现固定 amd64 构建平台、哈希锁安装和非 root 用户，容器内 API store 根定位有回归，完整镜像构建与导入冒烟通过。 |
 | HI-976 | `BUG` | 🔴 阻塞 | 本机已关闭 | 旧备份只是文件复制，活动 SQLite、半成品、路径穿越、明文同步盘和不可恢复包均可能被误当成功；现在线 `.backup`、双层 SHA-256、原子 `.ready`、安全 tar、SQLite quick_check、GPG 离机加密、恢复 drill 和每日 LaunchAgent 全部闭环。 |
 | HI-977 | `BUG` | 🟠 重要 | 本机已关闭 | Intel Brief 生产库停在 schema v3，`content_delivery_attempts` 缺 `event_key`，导致 2026-08-04 定时投递崩溃；现 schema v4 原子重建并保留旧投递记录，真实库备份/quick_check/迁移成功，旧库红绿测试与 37 项链路回归通过。 |
-| HI-978 | `ARCH_LIMIT` | 🟡 一般 | 本地已关闭 | Frist 原子文件写、串行 mutation 和敏感字段加密曾继续占据 HTTP 巨型入口；现集中到 `server/runtime-store.js`，入口只注入数据规范化边界，直接合同 `3/3`、Frist 全量 `234/234`。 |
+| HI-978 | `ARCH_LIMIT` | 🟡 一般 | 本地已关闭 | JIYU 原子文件写、串行 mutation 和敏感字段加密曾继续占据 HTTP 巨型入口；现集中到 `server/runtime-store.js`，入口只注入数据规范化边界，直接合同 `3/3`、JIYU 全量 `234/234`。 |
 | HI-979 | `SECURITY` | 🟡 一般 | 外部凭据待办 | 离机备份已经强制 GPG，但本机尚未配置用户选择的公钥指纹和真正独立的同步/远端目录；缺任一项时 `--require-offsite` 固定失败，当前只保留本机加密权限边界内的备份。 |
 | HI-980 | `TECH_DEBT` | 🔵 低优先 | 上游隔离 | New-API 子模块未部署的 Electron dev 依赖仍有上游审计告警，三个参考 MCP server 已 deprecated；生产 Go 容器和受管 npm runtime 审计为 0，旧包只读展示、不执行。替换需跟随上游方案，不在本轮伪造重写。 |
 | HI-981 | `BUG` | 🟠 重要 | 已关闭 | 首次推送后的 Linux CI 暴露三处本机未触发的兼容问题：健康脚本 heredoc 组合写法在 Linux Bash 解析失败并触发 ShellCheck SC2015，Node 24 在后台巡检最后一次原子写期间清理测试目录会偶发 `ENOTEMPTY`，文档门禁假设 CI 预装 `rg`。现健康巡检使用明确子 shell 并始终产出可解析失败 JSON，测试夹具对已停止服务的在途文件写执行有限重试，文档门禁在无 `rg` 时回退到 `grep`；Linux 容器聚焦回归和远程 CI 用于锁定跨平台合同。 |
 
 ## 全维度 8 分目标整改（2026-08-04，历史基线）
 
-当前结论：审计确认的 P0 已全部关闭，影响当前 macOS 单机 + Oracle 内测拓扑的 P1 已修复、失败关闭或以可核验证据降级为 P2。实盘卖出、闲鱼并发履约、生产管理面鉴权、旧事件循环关闭、Frist 外部 I/O 写队列和桌面异版本回滚已追加红绿回归；最终全量数字和五维二元评分以 `docs/086-release-evidence.md` 为唯一事实源。
+当前结论：审计确认的 P0 已全部关闭，影响当前 macOS 单机 + Oracle 内测拓扑的 P1 已修复、失败关闭或以可核验证据降级为 P2。实盘卖出、闲鱼并发履约、生产管理面鉴权、旧事件循环关闭、JIYU 外部 I/O 写队列和桌面异版本回滚已追加红绿回归；最终全量数字和五维二元评分以 `docs/086-release-evidence.md` 为唯一事实源。
 
 | 编号 | 分类 | 严重度 | 状态 | 当前结论 |
 |---|---|---|---|---|
 | HI-934 | `SECURITY` | 🔴 阻塞 | 本地已关闭 | 支付宝缺少平台公钥时曾仍显示就绪且异步通知跳过验签；现要求完整公私钥配置，通知无公钥固定失败关闭。旧代码安全用例 `0/2`，修复后支付宝聚焦链路 `4/4`。 |
 | HI-935 | `BUG` | 🔴 阻塞 | 本地已关闭 | Portfolio 曾单击即提交整仓 MKT 卖出，并把 HTTP 200 的 `success=false` 误报为成功；现增加危险操作复核、同步防重复锁和严格业务结果校验，危险框默认聚焦取消。桌面合同红绿通过，桌面/移动截图无溢出。 |
 | HI-936 | `SECURITY` | 🟠 重要 | 本地已关闭 | 闲鱼单次放行票曾以无锁 JSON 读改写，并在状态缺失/损坏时默认恢复发货；现使用跨进程事务锁、原子替换和失败关闭。旧代码并发实测一张票可成功消费 5 次，修复后只允许 1 次。 |
-| HI-937 | `SECURITY` | 🟠 重要 | 本地已关闭 | Frist 曾无条件信任最左侧 `X-Forwarded-For`，密码重置确认只有 IP 限流且限流表无容量边界；现默认只信 socket 对端，仅对显式可信代理从右侧解析链路，重置确认叠加账号 HMAC 桶，限流表满时拒绝新桶。旧代码三项安全用例 `0/3`，修复后 `3/3`。 |
+| HI-937 | `SECURITY` | 🟠 重要 | 本地已关闭 | JIYU 曾无条件信任最左侧 `X-Forwarded-For`，密码重置确认只有 IP 限流且限流表无容量边界；现默认只信 socket 对端，仅对显式可信代理从右侧解析链路，重置确认叠加账号 HMAC 桶，限流表满时拒绝新桶。旧代码三项安全用例 `0/3`，修复后 `3/3`。 |
 | HI-938 | `SECURITY` | 🟠 重要 | 本地已关闭 | WebSocket 在未配置 Token 时曾无条件放行，和 HTTP 的生产/外网失败关闭策略不一致；现 HTTP/WS 共用同一判定，`production`、`prod` 或非本机绑定均拒绝，仅本机开发模式可无 Token。 |
-| HI-939 | `SECURITY` | 🟠 重要 | 本地已关闭 | Frist 管理员根令牌曾长期写入 `localStorage`；现只保存在页面内存，刷新或关闭页面即失效，所有管理操作统一从当前密码框捕获，不再写浏览器持久存储。 |
+| HI-939 | `SECURITY` | 🟠 重要 | 本地已关闭 | JIYU 管理员根令牌曾长期写入 `localStorage`；现只保存在页面内存，刷新或关闭页面即失效，所有管理操作统一从当前密码框捕获，不再写浏览器持久存储。 |
 | HI-940 | `BUG` | 🟠 重要 | 本地已关闭 | 隔夜取消的 BUY 单曾默认加入队列并在次日自动提交，绕过自动交易默认关闭与人工确认；现默认关闭重挂，且显式开关和 `AutoTrader.auto_mode=true` 缺一不可。 |
 | HI-941 | `BUG` | 🟠 重要 | 本地已关闭 | Intel Brief runner 返回 `failed/partial_failed` 时曾仍写入当天已运行，导致全天漏发；现只有明确 `status=success` 才封存日期，失败结果保留后续调度重试机会。 |
 | HI-942 | `SECURITY` | 🔴 阻塞 | 本地已关闭 | 支付回调曾只验签和金额，不绑定本机 `appid/mchid`、订单原渠道与平台交易号唯一性；现商户身份、渠道、订单状态、交易号和金额缺一即拒绝。错误微信 App ID/商户号、错误支付宝 App ID、手工订单渠道错配和跨订单复用交易号均保持未入账。 |
@@ -126,11 +132,11 @@
 | HI-946 | `BUG` | 🟠 重要 | 本地已关闭 | Scheduler 切换曾漏传目标状态，Store 同时维护第二份插件事实，Assistant 停止按钮不能中止流；现后端确认目标状态、Store 读取 Tauri MCP 配置、Assistant 使用 AbortController 保留已接收内容。调度异常字段不再击穿整页。 |
 | HI-947 | `ARCH_LIMIT` | 🟠 重要 | 本地已关闭 | Brain、EventBus、SocialAutopilot、IBKR、闲鱼、WebSocket 推送、CLI bridge、LiteLLM Router 和 resilience primitive 曾可跨事件循环复用；现显式绑定所有者循环，停止/提交竞态失败关闭，loop.close 前取消并排空已启动任务，未就绪返回 503/504，API 在交易/调度状态服务就绪后才监听。 |
 | HI-948 | `TECH_DEBT` | 🟠 重要 | 本地已关闭 | Python 曾无可复算平台锁，CI 缺前端 lint/build、关键覆盖率、文档真实性和供应链门；现 Linux/macOS 双哈希锁可复算，总覆盖率门 40%，高风险聚合门 80%，逐文件下限、Action SHA、npm/Python 审计和文档事实检查均进入本地/远端 CI。 |
-| HI-949 | `TECH_DEBT` | 🟡 一般 | 持续收窄 | Frist 的支付、会话/CSRF、限流、共享规则和 runtime store 已下沉，`server.js` 当前 7,943 行；闲鱼运营纯投影下沉后 `xianyu_admin.py` 为 5,557 行。`api/rpc.py` 冻结为兼容门面，其余热点继续按域渐进拆分，不以一次大重写冒险。 |
+| HI-949 | `TECH_DEBT` | 🟡 一般 | 持续收窄 | JIYU 的支付、会话/CSRF、限流、共享规则和 runtime store 已下沉，`server.js` 当前 7,943 行；闲鱼运营纯投影下沉后 `xianyu_admin.py` 为 5,557 行。`api/rpc.py` 冻结为兼容门面，其余热点继续按域渐进拆分，不以一次大重写冒险。 |
 | HI-950 | `TECH_DEBT` | 🔵 低优先 | 已降级 | 三个旧 MCP server 包已被上游标记 deprecated；桌面 Store 已明确降级为受管目录只读展示，不声称建立 stdio 会话。真实 MCP 仍需用户通过 CC Switch/OpenClaw 官方配置链显式启用，版本与传递工件保持锁定且 npm audit 为 0。 |
 | HI-951 | `ARCH_LIMIT` | 🔵 低优先 | 已降级 | OpenClaw 当前安全工件是精确 beta 版本，不作为公开发行承诺；其 CLI 版本、gateway token/password、配置校验和插件枚举已在干净 HOME 冒烟通过。新稳定版只有在完整性锁、0 高危审计和同组回归全绿后才可替换。 |
 | HI-952 | `SECURITY` | 🟠 重要 | 本地已关闭 | 微信/支付宝下单曾接受未验平台签名的 HTTP 200 响应，可能把伪造二维码交给客户；现外部请求硬超时、订单总额字段优先于折扣展示字段，微信校验时间戳、nonce、平台序列号和原始响应 RSA-SHA256，支付宝校验响应 `sign`，缺失、过期、序列号不符或验签失败均返回 502。重复成功回调不重复追加事件。 |
-| HI-953 | `SECURITY` | 🟠 重要 | 本地已关闭 | Frist 辅助模块曾保留可接受 `enc:v1:` 占位 API Key、绕过 2FA 的管理员接口以及弱化的代理头、流式断连和 SLA 实现；现加密占位值固定拒绝，旧接口和零调用重复事实源已删除，并由 8 项安全合同防止回归。 |
+| HI-953 | `SECURITY` | 🟠 重要 | 本地已关闭 | JIYU 辅助模块曾保留可接受 `enc:v1:` 占位 API Key、绕过 2FA 的管理员接口以及弱化的代理头、流式断连和 SLA 实现；现加密占位值固定拒绝，旧接口和零调用重复事实源已删除，并由 8 项安全合同防止回归。 |
 | HI-954 | `SECURITY` | 🟠 重要 | 本地已关闭 | MCP Store 曾读取用户旧配置并把凭据带入 WebView 日志，且空配置可能伪装成可用 stdio；现目录 DTO 不包含 command/args/env，桌面只展示受管注册表，不读旧配置、不启动子进程，Rust/TypeScript 静态合同锁住该边界。 |
 | HI-955 | `SECURITY` | 🟠 重要 | 本地已关闭 | 充值路由曾在全局写队列内等待外部支付渠道，渠道挂起会阻塞所有订单；现采用准备事务 → 外部请求（硬超时）→ 成功/失败落库的两阶段流程，并保留支付入账竞态合同。 |
 | HI-956 | `TECH_DEBT` | 🟡 一般 | 本地已关闭 | 供应链门曾允许 Compose 只写可移动 tag、临时安装复用本机缓存，且桌面构建可能在备份失败时先删旧 App；现镜像固定 tag+digest、干净临时目录安装门和备份就绪闸门均有自动化回归。 |
@@ -140,7 +146,7 @@
 | HI-960 | `SECURITY` | 🟠 重要 | 本地已关闭 | 闲鱼消息缺真实订单标识时曾用包含时间戳等易变字段生成履约键；同一付款事件并发到达时主 webhook 仍可能双发，暂停分支还能覆盖已发送状态。现只接受真实订单/交易 ID，无法证明唯一性即不发；webhook 分配、轮询复用、人工发送均先原子领取，发送异常进入不可自动重试的不确定态，终态禁止被暂停覆盖。 |
 | HI-961 | `SECURITY` | 🟠 重要 | 本地已关闭 | 闲鱼管理面曾只识别 `ENV=production`，并用配置主机而非实际监听地址判断外网，`ENV=prod` 或实际外网绑定存在无 Token 放行风险。现 `prod/production` 与实际 bind host 统一进入失败关闭，HTTP/WS 共用边界。 |
 | HI-962 | `ARCH_LIMIT` | 🟠 重要 | 本地已关闭 | 旧 owner loop 的 close guard 曾在对象已重绑新循环后仍设置全局关闭标记并清空新 owner。现只回收属于正在关闭循环的任务，且仅当该循环仍是当前 owner 时更新关闭状态；重绑竞态有专门回归。 |
-| HI-963 | `ARCH_LIMIT` | 🟠 重要 | 本地已关闭 | Frist 注册/重置邮件、补货探测、渠道巡检、上游余额和 Token 外部调用曾可占用全局 runtime 写队列。现普通 `mutate` 拒绝 Promise，外部 I/O 均在队列外执行并以短事务准备/落库；生产禁止本地旧网关兼容链，重置邮件另有账号级 3 次/15 分钟限流。 |
+| HI-963 | `ARCH_LIMIT` | 🟠 重要 | 本地已关闭 | JIYU 注册/重置邮件、补货探测、渠道巡检、上游余额和 Token 外部调用曾可占用全局 runtime 写队列。现普通 `mutate` 拒绝 Promise，外部 I/O 均在队列外执行并以短事务准备/落库；生产禁止本地旧网关兼容链，重置邮件另有账号级 3 次/15 分钟限流。 |
 | HI-964 | `BUG` | 🟠 重要 | 本地已关闭 | 桌面重复构建会把同一 CDHash 同时保存为当前版和“上一版”，`rollback_ready=true` 不能证明可回退。现清单要求当前/上一版指纹不同，记录源码补丁与 DMG SHA-256；0.1.1/0.1.0 已真实双向交换，同指纹自动化用例固定拒绝。 |
 
 ### 五维最终评分
@@ -149,7 +155,7 @@
 |---|---:|---|---|
 | 功能完整度 | 9.0 | 10 项二元门通过 9 项；支付、实盘交易、闲鱼履约、认证、Scheduler、MCP 目录、Assistant、桌面安装和恢复均有成功/失败合同 | 缺真实商户小额支付验收，F10 计 0 |
 | 测试与发布 | 9.0 | 10 项二元门通过 9 项；本地 CI、覆盖率、前端/Rust、干净安装、供应链、签名、DMG、异版本回滚和截图可复核 | 本工作树未在远端 Linux runner 新跑，T10 计 0 |
-| 系统架构 | 8.0 | 10 项二元门通过 8 项；所有者循环、事务外 I/O、原子履约、单一注册表和生命周期边界有回归 | Frist/RPC 巨型入口与 JSON runtime 兼容层各计 0 |
+| 系统架构 | 8.0 | 10 项二元门通过 8 项；所有者循环、事务外 I/O、原子履约、单一注册表和生命周期边界有回归 | JIYU/RPC 巨型入口与 JSON runtime 兼容层各计 0 |
 | 安全边界 | 8.0 | 10 项二元门通过 8 项；资金、支付、履约、身份、本机执行、限流、供应链和密钥扫描失败关闭 | 历史第三方凭据轮换无平台侧证明、无 Developer ID/公证，各计 0 |
 | 可维护性 | 8.0 | 10 项二元门通过 8 项；锁、lint/build、覆盖率、文档门、注册表、热点命令、版本源和回滚清单可复现 | 巨型热点未清零、未取得当前工作树远端 CI 产物，各计 0 |
 | **综合** | **8.4** | `(9+9+8+8+8)/5`；逐项定义和命令证据集中在 `docs/086-release-evidence.md` | 评分只覆盖当前 macOS 单机 + Oracle 内测拓扑 |
@@ -179,7 +185,7 @@
 
 ## P0 安全与正确性整改（2026-08-03）
 
-本轮对 Telegram 控制面、Agent 工具、交易订单、OMEGA 编排、社媒发布、Frist/New-API 多租户、桌面 Gateway、运行时真值和 CI 做了端到端整改。下表状态已按 2026-08-03 本机 Bot/Gateway、macOS App 和 Oracle Frist 实装结果回写；评分边界仍只覆盖当前 macOS + Oracle 内测拓扑。
+本轮对 Telegram 控制面、Agent 工具、交易订单、OMEGA 编排、社媒发布、JIYU/New-API 多租户、桌面 Gateway、运行时真值和 CI 做了端到端整改。下表状态已按 2026-08-03 本机 Bot/Gateway、macOS App 和 Oracle JIYU 实装结果回写；评分边界仍只覆盖当前 macOS + Oracle 内测拓扑。
 
 | 编号 | 分类 | 严重度 | 状态 | 当前结论 |
 |---|---|---|---|---|
@@ -187,28 +193,28 @@
 | HI-914 | `BUG` | 🔴 阻塞 | 已部署关闭 | 自动交易默认关闭；预算同步不突破配置上限也不清零已花金额；零成交、取消、未决和模拟订单不会再伪造真实持仓，退出订单按累计成交量对账。Bot 重启日志确认 IBKR 未启用且没有新重连循环。 |
 | HI-915 | `SECURITY` | 🔴 阻塞 | 已部署关闭 | 社媒正文直发和夜间自动发布旁路关闭；只有内容未变化的已审核草稿可签发短时一次性确认。发布中/已发布草稿不可变，外部成功与本地状态冲突会追加对账审计并提示禁止重发。 |
 | HI-916 | `SECURITY` | 🟠 重要 | 已部署关闭 | 桌面端移除固定 Gateway Token、WebView 文件权限和 IBKR Shell 配置；管理器新建 Token 使用强随机字符串，OpenClaw 2026.7.1 支持的 Token/密码/远程 SecretRef 原样保留并交由官方校验；WebView 配置/导出递归脱敏且数组内凭据可安全回写，Provider 更新保留 SecretRef 和官方扩展字段；跨实例锁、PID 所有权和日志边界统一。实装 App 已通过严格 ad-hoc sealed 签名与真实首屏验收。 |
-| HI-917 | `SECURITY` | 🔴 阻塞 | 生产已关闭 | Frist 对共享 New-API Token 建立客户归属并保护读写/导入/网关代理；人民币分和 New-API units 已分离，创建 Key 使用“本地预留 → 上游零额度暂存 → 归属落盘 → 激活”及失败补偿。Oracle 已配置默认有限额度 7200；历史 Token 1–9 仍全部无限且 owner 为空，dry-run 确认拒绝映射。 |
-| HI-918 | `TECH_DEBT` | 🟠 重要 | 本地已关闭 | CI 不再容忍预存失败；Frist、Tauri Rust、桌面安全边界和文档治理均进入必过门禁。 |
+| HI-917 | `SECURITY` | 🔴 阻塞 | 生产已关闭 | JIYU 对共享 New-API Token 建立客户归属并保护读写/导入/网关代理；人民币分和 New-API units 已分离，创建 Key 使用“本地预留 → 上游零额度暂存 → 归属落盘 → 激活”及失败补偿。Oracle 已配置默认有限额度 7200；历史 Token 1–9 仍全部无限且 owner 为空，dry-run 确认拒绝映射。 |
+| HI-918 | `TECH_DEBT` | 🟠 重要 | 本地已关闭 | CI 不再容忍预存失败；JIYU、Tauri Rust、桌面安全边界和文档治理均进入必过门禁。 |
 | HI-919 | `ARCH_LIMIT` | 🔵 低优先 | 已隔离 | `CodeTool` 使用 RestrictedPython + 受限子进程，不等同容器/内核级沙箱；当前自动 Agent 和 Telegram 不可达。重新开放前应迁移到容器或专用沙箱。 |
 | HI-920 | `SECURITY` | 🔵 低优先 | 已隔离 | `FileTool` 的路径预检与实际打开之间存在理论上的本机并发换链竞态；当前自动 Agent 和未授权入口不可达。重新开放写入前应改用 `openat/dirfd` 与 no-follow 原子打开。 |
 | HI-921 | `TECH_DEBT` | 🔵 低优先 | 已关闭 | 已对 Tauri Rust 工作区执行统一格式化；`cargo fmt --all -- --check`、34 项 Rust 测试和 `cargo check` 全部通过。 |
 | HI-922 | `ARCH_LIMIT` | 🔵 低优先 | 已降级 | 桌面渠道 JSON/env 联合读写在管理器进程内和多个管理器实例间使用同一把锁，普通写入错误会恢复 env 快照；两个独立文件仍不具备断电或强制终止级原子提交，极窄窗口内可能留下跨文件版本差异。当前 env 只承载测试目标 ID，可通过重新保存渠道配置恢复；若未来把凭据迁入该联合事务，必须先改成单一持久化源或增加可恢复事务日志。 |
 | HI-923 | `TECH_DEBT` | 🔵 低优先 | 已关闭 | 历史 Bot 日志有 19 条 `Unclosed client session`；2026-08-03 重启后持续到桌面实装完成的日志窗口新增 0 条，同时 IBKR 重连新增 0 条。若未来再次出现，按 client 持有者重新登记，不沿用本次已关闭结论。 |
-| HI-924 | `PERF` | 🔵 低优先 | 已关闭 | Frist Node 18 测试夹具过去逐例等待 5 秒 HTTP keep-alive，200 项矩阵显著慢于 Node 24；fixture close 已主动清理空闲与现存连接，不改变生产优雅关闭路径。 |
+| HI-924 | `PERF` | 🔵 低优先 | 已关闭 | JIYU Node 18 测试夹具过去逐例等待 5 秒 HTTP keep-alive，200 项矩阵显著慢于 Node 24；fixture close 已主动清理空闲与现存连接，不改变生产优雅关闭路径。 |
 | HI-925 | `TECH_DEBT` | 🔵 低优先 | 已关闭 | 闲鱼操作台暂停/恢复测试曾读取本机历史库存缓存，导致干净 CI 的首个阻断从“真实小额单严格门”漂移为“库存为 0”；测试已显式注入冷缓存与刷新后状态，生产预检逻辑不变。 |
 | HI-926 | `PERF` | 🔵 低优先 | 已降级 | 本机重启时 OpenClaw Weixin 上游通道首次连接约 230 秒后超时降级，期间 Gateway 已监听 18789 但 HTTP 未就绪；进程无 CPU/内存异常，日志随后出现 `gateway ready`，`/health` 恢复约 2ms。部署验收必须等待 ready/HTTP 200，后续升级 Weixin 插件时复测启动耗时。 |
 | HI-927 | `BUG` | 🟠 重要 | 已关闭 | 真实 `make tauri-build` 先发现 Rust Tauri `2.11.5` 与 JavaScript API/CLI `2.10.1` 主次版本不一致，修复后又发现无 Apple 身份时 App 资源未 sealed、严格 `codesign` 失败。API/CLI 已对齐到 `2.11.x`，Tauri 官方 ad-hoc `signingIdentity="-"`、构建产物和覆盖前临时安装副本签名门均已生效；旧树合同红灯 2 项、当前 7/7 绿，最终 App 严格签名、唯一安装和真实首屏均通过。 |
 
-上线硬门槛已执行：Oracle 回滚包 `/opt/frist-api/backups/release-gate2-20260803T064021Z` 含 runtime、New-API SQLite 在线备份、源码、环境、Apache/systemd 和哈希；目标机 Node 18 staging 为 `200/200`；systemd 环境已设置 `FRIST_API_NEWAPI_DEFAULT_TOKEN_QUOTA=7200`；`newApiTokenOwners` 对历史 Token 1–9 仍为空且 ownership dry-run 拒绝无限 Token。Apache 主域 `jiyu.245334.xyz → New-API:13000` 未改变，Frist 3180、New-API 13000、两个公网入口和未授权 401 门均已复验。
+上线硬门槛已执行：Oracle 回滚包 `/opt/sub2api/backups/release-gate2-20260803T064021Z` 含 runtime、New-API SQLite 在线备份、源码、环境、Apache/systemd 和哈希；目标机 Node 18 staging 为 `200/200`；systemd 环境已设置 `SUB2API_NEWAPI_DEFAULT_TOKEN_QUOTA=7200`；`newApiTokenOwners` 对历史 Token 1–9 仍为空且 ownership dry-run 拒绝无限 Token。Apache 主域 `jiyu.245334.xyz → New-API:13000` 未改变，JIYU 3180、New-API 13000、两个公网入口和未授权 401 门均已复验。
 
 保留的安全降级边界：券商下单成功与本地订单 ID 落盘之间若进程被强制终止，会留下未绑定预算预留并阻止后续买入；必须先用券商订单记录人工对账或显式重置，系统不会猜测释放额度。社媒外发成功后若磁盘无法落盘，草稿保持 `publishing` 并阻止重发，调用方会收到平台结果和人工对账提示。桌面渠道 JSON/env 已对管理器读写统一加锁并在普通错误时补偿恢复，但强制终止发生在两个文件替换之间时仍需重新保存渠道配置，不能宣称具备跨文件崩溃原子性。
 
-发布验证证据：本地 `make ci-local`、GitHub PR #11 干净环境 5 个 job、Oracle Node 18 staging 和实际部署冒烟均全绿；覆盖 Python `2182` 项收集/0 失败/2 项预期跳过、Frist `200/200`、桌面静态合同 `20/20`、Rust `34/34`、TypeScript/编译和 22 份文档治理。桌面/Frist npm 与项目 Python 3.12 审计均为 0 已知漏洞，gitleaks 无泄漏。Release Gate 2.0 六维评分为架构 8.3、代码质量 8.2、测试工程 8.8、安全 8.6、可靠性 8.3、运维发布 8.4，综合 8.4；六维均达到 8 分，只覆盖当前 macOS/Oracle 内测拓扑。
+发布验证证据：本地 `make ci-local`、GitHub PR #11 干净环境 5 个 job、Oracle Node 18 staging 和实际部署冒烟均全绿；覆盖 Python `2182` 项收集/0 失败/2 项预期跳过、JIYU `200/200`、桌面静态合同 `20/20`、Rust `34/34`、TypeScript/编译和 22 份文档治理。桌面/JIYU npm 与项目 Python 3.12 审计均为 0 已知漏洞，gitleaks 无泄漏。Release Gate 2.0 六维评分为架构 8.3、代码质量 8.2、测试工程 8.8、安全 8.6、可靠性 8.3、运维发布 8.4，综合 8.4；六维均达到 8 分，只覆盖当前 macOS/Oracle 内测拓扑。
 
 
 ### 每日简报 / CC中转文档治理 — 已收口
 
-2026-07-10 最终审计发现两处会让后续 AI 继续“越整理越乱”的治理漂移：根目录 `intel-brief-implementation-report.md` 不在唯一文档目录中，`docs/superpowers/` 又违反 `docs/` 禁止子目录规则。现已把历史验收报告归档为 `docs/084-intel-brief-implementation-report.md`，在顶部明确它只代表旧阶段证据；已删除完成任务后不再需要的补充执行计划目录，并把有效内容继续由 `docs/052-intel-brief-master-plan.md`、`docs/084-intel-brief-implementation-report.md` 和当前健康记录承接。新增 `scripts/check_docs_layout.sh` 与 `make docs-check`，自动检查根目录散落文档、`docs/` 子目录、编号命名、索引漏登记和陈旧索引引用，并纳入 `make ci-local`。完整 CI 首轮还发现微信桥证据读取器使用 `datetime.UTC`，会破坏 Intel worker 的 Python 3.10 兼容门；现已改回 `timezone.utc` 并保留 Ruff 兼容说明。验证：`bash -n scripts/check_docs_layout.sh` 通过；`make docs-check` 返回 22 个文档全部合规；Frist-API `npm test` 为 `187 passed / 0 failed`；每日简报/微信相关回归为 `96 passed`；第二轮 `make ci-local` 的 Ruff、Python 全量测试、Python 语法、前端 TypeScript 和 docs-check 全部通过。为建立可维护 Git 基线，New-API submodule 的 5 处品牌改动已保存为 `scripts/patches/new-api-cc-brand.patch`，submodule 恢复到干净的上游 `v1.0.0-rc.4`；后续升级使用 `make new-api-check` 检查补丁兼容，使用 `make new-api-brand-patch` 应用，不再依赖无法从上游拉取的本地 detached commit。`output/` 与 `packages/clawbot/relative-launch/` 已明确列为可再生成本地产物，不纳入源码基线。
+2026-07-10 最终审计发现两处会让后续 AI 继续“越整理越乱”的治理漂移：根目录 `intel-brief-implementation-report.md` 不在唯一文档目录中，`docs/superpowers/` 又违反 `docs/` 禁止子目录规则。现已把历史验收报告归档为 `docs/084-intel-brief-implementation-report.md`，在顶部明确它只代表旧阶段证据；已删除完成任务后不再需要的补充执行计划目录，并把有效内容继续由 `docs/052-intel-brief-master-plan.md`、`docs/084-intel-brief-implementation-report.md` 和当前健康记录承接。新增 `scripts/check_docs_layout.sh` 与 `make docs-check`，自动检查根目录散落文档、`docs/` 子目录、编号命名、索引漏登记和陈旧索引引用，并纳入 `make ci-local`。完整 CI 首轮还发现微信桥证据读取器使用 `datetime.UTC`，会破坏 Intel worker 的 Python 3.10 兼容门；现已改回 `timezone.utc` 并保留 Ruff 兼容说明。验证：`bash -n scripts/check_docs_layout.sh` 通过；`make docs-check` 返回 22 个文档全部合规；JIYU AI `npm test` 为 `187 passed / 0 failed`；每日简报/微信相关回归为 `96 passed`；第二轮 `make ci-local` 的 Ruff、Python 全量测试、Python 语法、前端 TypeScript 和 docs-check 全部通过。为建立可维护 Git 基线，New-API submodule 的 5 处品牌改动已保存为 `scripts/patches/new-api-cc-brand.patch`，submodule 恢复到干净的上游 `v1.0.0-rc.4`；后续升级使用 `make new-api-check` 检查补丁兼容，使用 `make new-api-brand-patch` 应用，不再依赖无法从上游拉取的本地 detached commit。`output/` 与 `packages/clawbot/relative-launch/` 已明确列为可再生成本地产物，不纳入源码基线。
 
 ### Intel Brief 每日简报入口 — Telegram 已真人闭环，微信编号已接入，飞书/钉钉未真实闭环
 
@@ -244,9 +250,9 @@
 
 ### CC中转 VPS 部署与故障转移 — 主站在 Oracle ARM-1，Oracle ARM-2 可做温备候选
 
-2026-07-08 只读调研 `/Users/blackdj/Documents/VPS-Config` 与本项目运维文档：当前 CC中转生产主入口为 `https://jiyu.245334.xyz`，Cloudflare proxied A 指向 Oracle ARM-1 `150.136.73.15`，Oracle Apache/Origin CA 反代 New-API `127.0.0.1:13000`，Frist-API 兼容与运营能力运行在 `127.0.0.1:3180`；关键服务为 `frist-api.service`、`openclaw-newapi.service`、`apache2`、`frist-api-r2-backup.timer`。`/Users/blackdj/Documents/VPS-Config` 中已登记 Oracle ARM-2 / Oracle 3055 `129.213.33.101`，并已有 `openeverything_health` / `openeverything_home` 这类 loopback-only 状态探针、server-status fallback、ccgame standby、Sonic active/passive 等可借鉴的主备思路。
+2026-07-08 只读调研 `/Users/blackdj/Documents/VPS-Config` 与本项目运维文档：当前 CC中转生产主入口为 `https://jiyu.245334.xyz`，Cloudflare proxied A 指向 Oracle ARM-1 `150.136.73.15`，Oracle Apache/Origin CA 反代 New-API `127.0.0.1:13000`，JIYU AI 兼容与运营能力运行在 `127.0.0.1:3180`；关键服务为 `sub2api.service`、`openclaw-newapi.service`、`apache2`、`sub2api-backup.timer`。`/Users/blackdj/Documents/VPS-Config` 中已登记 Oracle ARM-2 / Oracle 3055 `129.213.33.101`，并已有 `openeverything_health` / `openeverything_home` 这类 loopback-only 状态探针、server-status fallback、ccgame standby、Sonic active/passive 等可借鉴的主备思路。
 
-故障转移建议：先做“温备主从”，不要直接做双活写入。主站继续放在 Oracle ARM-1；Oracle ARM-2 预装同版本 New-API/Frist-API/Apache/证书/健康探针，运行数据通过 R2 备份和定时只读同步预热。故障时由 18800 操作台或一键脚本完成三件事：冻结主站写入、在 ARM-2 恢复最近备份并跑健康检查、把 Cloudflare DNS/Load Balancer 切到 ARM-2。对 Telegram/微信每日简报推荐“双入口单数据库”：两个客户端都读写同一个订阅数据库，不做两边聊天内容流式同步，避免用户在 Telegram 点了暂停、微信又自动恢复这类错乱。
+故障转移建议：先做“温备主从”，不要直接做双活写入。主站继续放在 Oracle ARM-1；Oracle ARM-2 预装同版本 New-API/JIYU AI/Apache/证书/健康探针，运行数据通过 R2 备份和定时只读同步预热。故障时由 18800 操作台或一键脚本完成三件事：冻结主站写入、在 ARM-2 恢复最近备份并跑健康检查、把 Cloudflare DNS/Load Balancer 切到 ARM-2。对 Telegram/微信每日简报推荐“双入口单数据库”：两个客户端都读写同一个订阅数据库，不做两边聊天内容流式同步，避免用户在 Telegram 点了暂停、微信又自动恢复这类错乱。
 
 ### CC中转真实小额订单预检问题 — 已恢复自动发货，首单观察中
 
@@ -292,7 +298,7 @@
 
 2026-07-07 操作台/UI 与后半段补救复核：本机 `http://127.0.0.1:18800/` 已重做为 Apple 风格深色状态面板，首屏只显示老板日常 6 件事，工程排障默认折叠。已新增 `GET /api/cc-xianyu-confirm/current-page-candidate`：旧 `xy_manual_*` / `xy_browser_*` 测试单即使已经是 `message_sent`、已发卡密，也可以在卖家 Chromium 当前页明确可见“已付款/待发货/等待发货”信号时继续点击闲鱼发货；页面没有付款信号时桥接器返回 `no_paid_order_signal` 并跳过。该路径只用于生产内测补救，不保存真实订单号，不计入正式 `xy_oid_*` 严格门。当前截图证据为 `output/playwright/cc-ops-console-redesign-20260707-final.png`，生产内测可继续；正式售卖仍需新 `xy_oid_*` 真实订单严格门通过。
 
-2026-07-07 追加复核：已修正商品绑定稳健性，完整闲鱼分享文本、短链接本体、`短链接 CZ007` 都能命中同一套餐映射；本机 `ai.openclaw.xianyu` 已重启加载新规则，卖家专用 Chromium 已重新拉起，本机桥接器 `--once` 返回 `ok=true` 且无已付款信号时安全跳过。最新验证：Python 闲鱼/接口回归 `[100%]`、Chrome 扩展测试 `47 passed`、Frist-API 全量 `185 passed`、生产内测只读巡检 `ok=true`。Oracle runtime 只读复核显示上游余额同步 `level=ok`、低余额阈值 `50/20` 元，今日自动补库存曾创建 `32` 张后再次巡检创建 `0` 张，说明六档安全库存已补齐。正式售卖严格门仍保持 `ok=false`，原因仍是尚无新的 `xy_oid_*` 真实闲鱼自动订单；这不是故障，等待老板再跑 1 单小额真实付款。
+2026-07-07 追加复核：已修正商品绑定稳健性，完整闲鱼分享文本、短链接本体、`短链接 CZ007` 都能命中同一套餐映射；本机 `ai.openclaw.xianyu` 已重启加载新规则，卖家专用 Chromium 已重新拉起，本机桥接器 `--once` 返回 `ok=true` 且无已付款信号时安全跳过。最新验证：Python 闲鱼/接口回归 `[100%]`、Chrome 扩展测试 `47 passed`、JIYU AI 全量 `185 passed`、生产内测只读巡检 `ok=true`。Oracle runtime 只读复核显示上游余额同步 `level=ok`、低余额阈值 `50/20` 元，今日自动补库存曾创建 `32` 张后再次巡检创建 `0` 张，说明六档安全库存已补齐。正式售卖严格门仍保持 `ok=false`，原因仍是尚无新的 `xy_oid_*` 真实闲鱼自动订单；这不是故障，等待老板再跑 1 单小额真实付款。
 
 2026-07-07 最新收口：系统已补齐三条发货路径：1）WebSocket 结构化付款卡片自动发卡；2）卖家订单列表 `NOT_SHIP` 轮询兜底（当前登录态可能返回 `PERMISSION_EXCEPTION::无权限访问`，只能作为加分能力）；3）Chrome 付款页 `paid_page_dispatch` 兜底，在当前闲鱼页可见“已付款/待发货”时自动生成话术并发送。确认发货已支持后端真实数字订单号内存确认和浏览器页面点击两种路径；恢复可售已补 `/api/cc-xianyu-relist/next` 队列，只对已确认发货记录候选，且页面必须显示已下架/已售罄和重新上架按钮才点击。严格门口径已收紧：只有 `xy_oid_*` 真实自动订单才算正式售卖证明，`xy_manual_*` 与 `xy_browser_*` 只算内测/补救，不再冒充真实自动订单；看板历史摘要也已按该口径规整，旧手工单不会再显示为真实自动订单。当前只读生产内测巡检 `ok=true`，但 `--require-real-order` 严格门 `ok=false`，原因是尚未产生新的 `xy_oid_*` 真实闲鱼付款自动发货订单。实机复核发现当前 Chrome 仍只有旧社媒插件心跳，未检测到 `OpenEverything Social Pilot` 已加载；操作台已改为明确提示运行 `make cc-seller-chrome` 并加载运行版插件目录 `~/.openclaw/cc-social-pilot-runtime-extension`，避免把“没装插件”误报为“刷新一下即可”。
 
@@ -302,11 +308,11 @@
 
 此前人工确认发送的内测单已证明“卡密分配 → 闲鱼聊天发送 → 买家兑换 → 创建 API Key → CC Switch 导入 → 调模型”这条业务链路能跑通，但该单属于 `xy_manual_*`/浏览器补救口径，不能作为正式售卖严格门证据。当前补救队列为 0，仍可继续生产内测；正式放量必须再跑一笔新的 1 元真实闲鱼付款单，并由 WebSocket/卖家订单路径产生 `xy_oid_*` 自动订单证据。
 
-2026-07-07 追加：方案 B 自动运营增强已落地到代码侧。Chrome 发货助手已补后台心跳和后端能力保留，发送卡密话术成功后会继续在当前闲鱼页面安全点击“去发货/无需物流/确认发货”，并把成功或失败原因写回 `cc_shipments.xianyu_confirm_*`；页面没有“已付款/待发货”信号时不会点击。恢复可售只做兜底：商品页明确显示“已下架/已售罄/重新上架”时才点击恢复上架，并写回 `cc_shipments.xianyu_relist_*`，不会自动改标题、价格或新建商品。Frist-API 侧已把 `1/5/15/50/100/500` 档位库存自动补卡接入后台定时，New-API 上游余额同步和 50 元低余额预警配置已补齐。
+2026-07-07 追加：方案 B 自动运营增强已落地到代码侧。Chrome 发货助手已补后台心跳和后端能力保留，发送卡密话术成功后会继续在当前闲鱼页面安全点击“去发货/无需物流/确认发货”，并把成功或失败原因写回 `cc_shipments.xianyu_confirm_*`；页面没有“已付款/待发货”信号时不会点击。恢复可售只做兜底：商品页明确显示“已下架/已售罄/重新上架”时才点击恢复上架，并写回 `cc_shipments.xianyu_relist_*`，不会自动改标题、价格或新建商品。JIYU AI 侧已把 `1/5/15/50/100/500` 档位库存自动补卡接入后台定时，New-API 上游余额同步和 50 元低余额预警配置已补齐。
 
-2026-07-07 追加生产收口：方案 B 已部署到 Oracle 生产内测 Frist-API，远端 `frist-api.service` 与 `openclaw-newapi.service` 均 active。生产套餐已从旧 `codex-30-*` 收口为 `1元测试/5/15/50/100/500` 六档，并执行自动补库存，当前安全库存为 `3/10/10/5/3/1`；本机闲鱼默认套餐与测试商品映射已改为 `xianyu-test-1`。上游余额同步可用，最近同步 `level=ok`。安全修正：`xy_manual_*` 手工兜底单不再进入自动点击闲鱼发货队列，只保留发码与买家链路证据；真实数字闲鱼订单才会进入浏览器确认发货队列。当前唯一需要人工保持的是卖家专用 Chromium 窗口打开并登录闲鱼；本机卖家桥接器已常驻接管浏览器兜底巡检。2026-07-07 老板已确认方案 B 的六档套餐、库存自动补、每日余额同步和低余额预警口径；代码侧已把公共 `shared.js` 默认套餐同步为六档，避免默认配置漂移。
+2026-07-07 追加生产收口：方案 B 已部署到 Oracle 生产内测 JIYU AI，远端 `sub2api.service` 与 `openclaw-newapi.service` 均 active。生产套餐已从旧 `codex-30-*` 收口为 `1元测试/5/15/50/100/500` 六档，并执行自动补库存，当前安全库存为 `3/10/10/5/3/1`；本机闲鱼默认套餐与测试商品映射已改为 `xianyu-test-1`。上游余额同步可用，最近同步 `level=ok`。安全修正：`xy_manual_*` 手工兜底单不再进入自动点击闲鱼发货队列，只保留发码与买家链路证据；真实数字闲鱼订单才会进入浏览器确认发货队列。当前唯一需要人工保持的是卖家专用 Chromium 窗口打开并登录闲鱼；本机卖家桥接器已常驻接管浏览器兜底巡检。2026-07-07 老板已确认方案 B 的六档套餐、库存自动补、每日余额同步和低余额预警口径；代码侧已把公共 `shared.js` 默认套餐同步为六档，避免默认配置漂移。
 
-2026-07-07 继续收口：本地与 Oracle 的 `apps/frist-api/server/shared.js` 已同步为六档套餐，远端备份为 `/opt/frist-api/backups/shared.js-before-cc-plan-default-20260707T132748Z.bak`；`frist-api.service` 重启后 active，公网主站 HTTP 200，未授权 `/v1/models` HTTP 401。Oracle 上一次 `unified-monitoring-agent_restarter.service` 失败只是 OCI 监控重启触发器历史标记，真实 `unified-monitoring-agent.service` 正在 running；已执行 `systemctl reset-failed`，当前 `systemctl --failed` 为 0。
+2026-07-07 继续收口：本地与 Oracle 的 `JIYU AI Sub2API WebUI/server/shared.js` 已同步为六档套餐，远端备份为 `/opt/sub2api/backups/shared.js-before-cc-plan-default-20260707T132748Z.bak`；`sub2api.service` 重启后 active，公网主站 HTTP 200，未授权 `/v1/models` HTTP 401。Oracle 上一次 `unified-monitoring-agent_restarter.service` 失败只是 OCI 监控重启触发器历史标记，真实 `unified-monitoring-agent.service` 正在 running；已执行 `systemctl reset-failed`，当前 `systemctl --failed` 为 0。
 
 2026-07-07 继续收口：老板确认方案 B 后，已把浏览器兜底从“插件直接 fetch localhost”升级为“本机卖家桥接器”。原因是新版 Chromium 的 Local Network Access 会让扩展 Service Worker 访问 127.0.0.1 不稳定；现由 `ai.openclaw.cc-seller-bridge` LaunchAgent 常驻，每 15 秒读取本机 18800 队列，再通过 DevTools 注入同一套闲鱼页面执行器，执行自动发卡发送、确认发货和恢复可售巡检。本机运行态已验证：桥接器 `running`，`/api/status.cc_chrome_extension` 显示 `manifest_version=bridge`、`supports_paid_page_dispatch=true`、`supports_relist_queue=true`、`needs_refresh_for_global_watch=false`；当前闲鱼页无已付款信号时安全跳过，不发送消息。正式售卖严格门仍不放宽，仍需新的 `xy_oid_*` 真实小额单。
 
@@ -314,7 +320,7 @@
 
 ### CC中转闲鱼重复发卡风险 — 已加单次放行闸门（仍待真实小额单严格门）
 
-2026-07-08 最终严格门收口：已从闲鱼 `message.headinfo` 网络响应只读提取真实订单号和商品 ID，当前真实订单已从 `xy_browser_*` 浏览器临时单安全接管为 `xy_oid_87f...`，没有再次发送卡密。Frist-API 已上线低权限 `/api/ops/xianyu/remap-order`，只改已发卡履约的订单号，不分配新卡；Oracle `frist-api.service` 重启后 active。随后用同一真实订单对应买家 API Key 做一次极小真实模型调用，`model_logs_after_redeem` 从 0 变为 1；`node scripts/cc_zhongzhuan_readiness_audit.mjs --require-real-order` 已 PASS，18800 严格门摘要显示 `real_orders=1`、`same_order_ready=1`。当前公开售卖锁只剩 `auto_ship_paused=true` 人为安全开关，重复发卡事故后不自动恢复常驻发货；老板确认后可在 18800 操作台手动恢复。
+2026-07-08 最终严格门收口：已从闲鱼 `message.headinfo` 网络响应只读提取真实订单号和商品 ID，当前真实订单已从 `xy_browser_*` 浏览器临时单安全接管为 `xy_oid_87f...`，没有再次发送卡密。JIYU AI 已上线低权限 `/api/ops/xianyu/remap-order`，只改已发卡履约的订单号，不分配新卡；Oracle `sub2api.service` 重启后 active。随后用同一真实订单对应买家 API Key 做一次极小真实模型调用，`model_logs_after_redeem` 从 0 变为 1；`node scripts/cc_zhongzhuan_readiness_audit.mjs --require-real-order` 已 PASS，18800 严格门摘要显示 `real_orders=1`、`same_order_ready=1`。当前公开售卖锁只剩 `auto_ship_paused=true` 人为安全开关，重复发卡事故后不自动恢复常驻发货；老板确认后可在 18800 操作台手动恢复。
 2026-07-08 追加售卖锁人话修正：`/api/cc-public-sale-lock?refresh=true` 现在能把“严格门已通过但自动发货被老板手动暂停保护”和“自动发货链路故障”区分开。当前 live 返回 `state=paused_after_strict_gate`、`state_label=严格门已通过，自动发货暂停保护`、`can_public_sale=false`，唯一 blocker 是 `自动发货被手动暂停保护（防重复发卡）`；这只是文案和诊断字段收口，没有恢复常驻自动发货。
 2026-07-08 继续追加恢复前安全预检：`POST /api/cc-operator-mode` 现在恢复自动发货前会先做只读预检，缺库存/渠道证据、补救队列未清、买家入口/CC Switch/闲鱼登录异常或真实小额单严格门未通过时返回 409，保持 `auto_ship_paused=true`。新增 `GET /api/cc-operator-mode/resume-preflight` 和 18800 “恢复前安全检查”按钮；live 复验只读刷新后 `safe_to_resume=true`，但没有自动恢复，仍等待老板明确确认。
 2026-07-08 继续追加恢复后首单观察保险：老板明确恢复常驻自动发货时，系统会自动写入 `auto_resume_canary`，第 1 条卡密真正进入 `message_sent` 后立刻自动暂停，防止恢复后一口气连续处理多单。该保险覆盖 18800 `mark-sent` 和 `XianyuLive` WebSocket 自动发货记录路径；当前 live 没有恢复，所以 `auto_resume_canary_active=false`。
@@ -344,7 +350,7 @@
 
 2026-07-06 针对用户已发布的闲鱼测试商品 `https://m.tb.cn/h.RC4QcXM?tk=DxWwgNjrfdQ CZ007` 做真实下单前预备检查：已扩展本机操作台商品绑定接口，支持直接粘贴 `【闲鱼】[短链接](短链接) CZ007 「标题」点击链接直接打开` 这类完整分享文本，后台会规整为 `短链接 + 分享码` 后再保存，避免老板每次手动删除前后说明。新增回归测试先确认旧行为会把整段文本原样保存，再修复为自动规整。
 
-预备检查同时发现当前测试商品曾绑定到套餐 `1`，该值不是 CC中转发货接口认可的套餐 ID；如果直接真实付款，可能导致已付款但找不到可发卡密。现已把该测试商品映射修正为当前有库存的 `codex-30-day`，本机 `/api/cc-operator-mode` 返回 `auto_ship_paused=false`、`webhook_configured=true`、`can_auto_ship_paid_orders=true`、`pending_rescue=0`、`enabled_item_mappings=1`。只读生产巡检 `node scripts/cc_zhongzhuan_readiness_audit.mjs --mode=read_only --json` 返回 `ok=true`：闲鱼 WebSocket/Cookie 正常，自动发货 webhook 已配置，补救队列 0，Oracle `frist-api.service` / `openclaw-newapi.service` / `apache2` 均 active，未售卡密 5，New-API 启用兑换码 5、启用渠道 3，公网主站 200。当前仍是生产环境内测；正式售卖前唯一剩余门槛仍是用另一个账号跑 1 单真实小额付款，并完成买家兑换、创建 API Key、CC Switch 导入和调模型严格门。
+预备检查同时发现当前测试商品曾绑定到套餐 `1`，该值不是 CC中转发货接口认可的套餐 ID；如果直接真实付款，可能导致已付款但找不到可发卡密。现已把该测试商品映射修正为当前有库存的 `codex-30-day`，本机 `/api/cc-operator-mode` 返回 `auto_ship_paused=false`、`webhook_configured=true`、`can_auto_ship_paid_orders=true`、`pending_rescue=0`、`enabled_item_mappings=1`。只读生产巡检 `node scripts/cc_zhongzhuan_readiness_audit.mjs --mode=read_only --json` 返回 `ok=true`：闲鱼 WebSocket/Cookie 正常，自动发货 webhook 已配置，补救队列 0，Oracle `sub2api.service` / `openclaw-newapi.service` / `apache2` 均 active，未售卡密 5，New-API 启用兑换码 5、启用渠道 3，公网主站 200。当前仍是生产环境内测；正式售卖前唯一剩余门槛仍是用另一个账号跑 1 单真实小额付款，并完成买家兑换、创建 API Key、CC Switch 导入和调模型严格门。
 
 ### CC中转老板入口收敛与公网自用模式移除 — 已复验（内测）
 
@@ -357,7 +363,7 @@
 
 ### CC中转生产内测售卖闭环与运营台入口 — 已复验（内测）
 
-2026-07-05 最新复验：本机 `ai.openclaw.xianyu` 已重启，`/api/cc-public-sale-lock?refresh=true` 返回 `state=internal_test_ready`、`can_internal_test=true`、`can_public_sale=false`，WebSocket/Cookie 正常，CC自动发货已配置，默认发货套餐已固定到当前唯一可售日卡库存，自动发货套餐路由预判显示 `mode=default_plan`、`risk=low`，买家自助入口健康已纳入上架锁且 live 为主站 200 / models 401 / webhook 401，CC Switch 导入入口也已纳入只读巡检和上架锁，live 为 Frist 首页 200 且 `ccswitch` / `data-import-link` 标记齐全；新增 `/api/cc-real-order-test-pack` 和 GUI“实单验收包”，服务刚重启时可自动只读刷新证据并返回 `run_real_small_order`；后台严格门观察状态已暴露到 `/api/status` 和 `/api/cc-loop-watch`，严格门通过后的买家进度恢复已修复并过滤敏感字段，新增闭环覆盖清单且支持冷启动只读刷新和真实单后自动严格门只读观察，统一运营快照 `/api/cc-ops-snapshot` 也已返回同一份 `auto_strict_audit_status`，并新增 `buyer_site_smoke` 站内买家烟测证据；本轮新增 `/api/cc-buyer-site-smoke-plan` 只读计划，live 为 `state=ready_requires_confirmation`、`can_prepare=true`、`executes_now=false`，不会擅自创建用户、兑换、创建 API Key 或调模型；`/api/cc-automation-coverage` live 为 10/11、内部自动化 ready、正式售卖仍锁定，`auto_strict_audit_status.state=waiting_paid_order`，即严格门自动观察已开启但正在等待真实已付款订单；`buyer_site_smoke.state=partial`，当前兑换增量 0、API Key 增量 0、模型调用日志为正；`/api/cc-real-order-test-pack` 和 `/api/cc-operator-next-action` 已把 `buyer_site_smoke` 与 `buyer_site_smoke_plan` 纳入检查项；补救队列 0，未售卡密 5，New-API 启用兑换码 5，启用渠道 3。Chrome 书签脚本已重新修复 `Default`、`Profile 1`、`Profile 2`、`Profile 3` 的 `CC中转运营` 文件夹，只读审计 `chromeBookmarks.ok=true`；若 Chrome 运行中未即时显示书签栏，可直接访问/收藏 `http://127.0.0.1:18800/ops-links`，必要时重启 Chrome 刷新本地书签文件。`XianyuLive` 的稳定订单号识别已补强到闲鱼 URL 参数，已付款状态识别覆盖待发货/买家已付款/已支付等变体和订单结构化字段位置；已付款订单自带商品 ID 时会优先用于商品套餐映射，找不到再回退最近聊天商品/默认套餐，同时保护待付款/未付款/退款/关闭与普通聊天文本不误发卡或发错套餐；`make test` 全量跑到 `[100%]` 且退出码 0。当前唯一正式售卖 blocker 仍是：尚未通过真实闲鱼小额单的兑换、创建 API Key、CC Switch 导入和调模型严格门。
+2026-07-05 最新复验：本机 `ai.openclaw.xianyu` 已重启，`/api/cc-public-sale-lock?refresh=true` 返回 `state=internal_test_ready`、`can_internal_test=true`、`can_public_sale=false`，WebSocket/Cookie 正常，CC自动发货已配置，默认发货套餐已固定到当前唯一可售日卡库存，自动发货套餐路由预判显示 `mode=default_plan`、`risk=low`，买家自助入口健康已纳入上架锁且 live 为主站 200 / models 401 / webhook 401，CC Switch 导入入口也已纳入只读巡检和上架锁，live 为 JIYU 首页 200 且 `ccswitch` / `data-import-link` 标记齐全；新增 `/api/cc-real-order-test-pack` 和 GUI“实单验收包”，服务刚重启时可自动只读刷新证据并返回 `run_real_small_order`；后台严格门观察状态已暴露到 `/api/status` 和 `/api/cc-loop-watch`，严格门通过后的买家进度恢复已修复并过滤敏感字段，新增闭环覆盖清单且支持冷启动只读刷新和真实单后自动严格门只读观察，统一运营快照 `/api/cc-ops-snapshot` 也已返回同一份 `auto_strict_audit_status`，并新增 `buyer_site_smoke` 站内买家烟测证据；本轮新增 `/api/cc-buyer-site-smoke-plan` 只读计划，live 为 `state=ready_requires_confirmation`、`can_prepare=true`、`executes_now=false`，不会擅自创建用户、兑换、创建 API Key 或调模型；`/api/cc-automation-coverage` live 为 10/11、内部自动化 ready、正式售卖仍锁定，`auto_strict_audit_status.state=waiting_paid_order`，即严格门自动观察已开启但正在等待真实已付款订单；`buyer_site_smoke.state=partial`，当前兑换增量 0、API Key 增量 0、模型调用日志为正；`/api/cc-real-order-test-pack` 和 `/api/cc-operator-next-action` 已把 `buyer_site_smoke` 与 `buyer_site_smoke_plan` 纳入检查项；补救队列 0，未售卡密 5，New-API 启用兑换码 5，启用渠道 3。Chrome 书签脚本已重新修复 `Default`、`Profile 1`、`Profile 2`、`Profile 3` 的 `CC中转运营` 文件夹，只读审计 `chromeBookmarks.ok=true`；若 Chrome 运行中未即时显示书签栏，可直接访问/收藏 `http://127.0.0.1:18800/ops-links`，必要时重启 Chrome 刷新本地书签文件。`XianyuLive` 的稳定订单号识别已补强到闲鱼 URL 参数，已付款状态识别覆盖待发货/买家已付款/已支付等变体和订单结构化字段位置；已付款订单自带商品 ID 时会优先用于商品套餐映射，找不到再回退最近聊天商品/默认套餐，同时保护待付款/未付款/退款/关闭与普通聊天文本不误发卡或发错套餐；`make test` 全量跑到 `[100%]` 且退出码 0。当前唯一正式售卖 blocker 仍是：尚未通过真实闲鱼小额单的兑换、创建 API Key、CC Switch 导入和调模型严格门。
 
 
 
@@ -402,9 +408,9 @@
 
 2026-07-05 继续推进“全自动闭环”：本机闲鱼助手 `ai.openclaw.xianyu` 启动时会同时启动后台严格门观察线程，不再依赖老板打开 GUI 页面。该线程默认每 60 秒观察一次 `/api/cc-loop-watch` 同等状态；只有真实闲鱼订单已自动发货、无补救队列、自动发货链路可用且阶段为 `waiting_buyer_chain` 时，才按 10 分钟节流运行 `mode=strict` 的只读正式售卖严格门。它不调用 `--webhook-smoke`、不发送闲鱼消息、不分配卡密、不改库存；当前 live 阶段仍是 `waiting_paid_order`，所以会等待真实小额付款订单后再触发。复验：`py_compile xianyu_admin.py` 通过，`test_xianyu_cc_auto_ship.py + test_api_routes_regression.py` 为 `44 passed / 0 failed`；重启 `ai.openclaw.xianyu` 后 `/api/cc-loop-watch` 显示 `background_strict_audit_enabled=true`、`background_strict_audit_scan_seconds=60`、`stage=waiting_paid_order`、`pending_rescue=0`；默认生产只读审计 `ok=true`，严格门仍按预期因真实闲鱼实单数为 0 失败。
 
-2026-07-05 已把兑换码与闲鱼自动发货助手收口到公网运营入口 `https://frist-api-oracle.245334.xyz/admin.html`，该入口经 Cloudflare proxied A → Oracle Apache → Frist-API `127.0.0.1:3180`，并继续受后台入口码/Cookie 保护；用户主入口仍是 `https://jiyu.245334.xyz`，旧 `frist-api.245334.xyz` 继续 301 到用户主站。已修复 Frist-API 在 Cloudflare/Apache 链式代理 `X-Forwarded-*` 逗号列表下 URL 解析崩溃的问题，并新增回归测试。生产内测 E2E 结果：New-API 受控成功路径完成注册、登录、兑换、API Key 创建/更新/禁用/恢复/删除、`/v1/models`、OpenAI/Claude 真实调用和渠道刷新；测试结束后已恢复 `turnstile_check=true`、`email_verification=true`，公网无 Turnstile 注册/登录继续返回 `Turnstile token 为空`，临时用户/Token/兑换码残留为 0。Frist 运营闭环完成卡密生成、同步 New-API、闲鱼履约 `delivered`、readiness `ready=true`；CC Switch E2E 已确认 `ccswitch:` provider 导入链接包含 `https://jiyu.245334.xyz/v1`、`gpt-5.4-mini` 和匹配 Key，调模型 200，删除 Key 后 401。New-API 原生渠道检测每 10 分钟开启，自动禁用/恢复、模型请求限流开启；当前 3 个渠道启用、15 个模型倍率已写入；Oracle 已显式固定 `FRIST_API_RATE_MARKUP=0.1`，最终复验显示渠道同步 `rateMarkup=0.1`、3 个渠道健康。已追加低权限全自动发货 webhook 和 OpenClaw `XianyuLive` 接入：已付款订单可自动发卡并发送话术，未付款订单阻断；2026-07-05 已补齐 `XianyuLive` 到 CC中转 webhook 的独立回归测试，`test_auto_shipper.py + test_xianyu_cc_auto_ship.py` 为 `20 passed / 0 failed`，并修复买家不聊天直接付款时 recent item 为空导致跳过发货的风险；同日进一步修复 Frist-API 无套餐/无 SKU 订单误判“没有可发货兑换码”的生产 Bug，生产无套餐 webhook 冒烟返回 `delivered` 且清理后仍保留 5 张未售日卡库存，New-API 启用兑换码为 5 条；本机 `ai.openclaw.xianyu` 已重启加载最新配置，日志显示 WebSocket 注册成功，且已把第三方 HTTP 客户端日志降噪并脱敏旧 Telegram 通知 URL；仍保持“生产环境内测，暂未正式售卖”；正式发闲鱼商品前建议老板用真人浏览器完成一次 Turnstile 注册/邮箱验证码/兑换的人工验收，并小批量实单观察闲鱼发送稳定性。
+2026-07-05 已把兑换码与闲鱼自动发货助手收口到公网运营入口 `https://jiyu.245334.xyz/admin.html`，该入口经 Cloudflare proxied A → Oracle Apache → JIYU AI `127.0.0.1:3180`，并继续受后台入口码/Cookie 保护；用户主入口仍是 `https://jiyu.245334.xyz`，旧 `jiyu.245334.xyz` 继续 301 到用户主站。已修复 JIYU AI 在 Cloudflare/Apache 链式代理 `X-Forwarded-*` 逗号列表下 URL 解析崩溃的问题，并新增回归测试。生产内测 E2E 结果：New-API 受控成功路径完成注册、登录、兑换、API Key 创建/更新/禁用/恢复/删除、`/v1/models`、OpenAI/Claude 真实调用和渠道刷新；测试结束后已恢复 `turnstile_check=true`、`email_verification=true`，公网无 Turnstile 注册/登录继续返回 `Turnstile token 为空`，临时用户/Token/兑换码残留为 0。JIYU 运营闭环完成卡密生成、同步 New-API、闲鱼履约 `delivered`、readiness `ready=true`；CC Switch E2E 已确认 `ccswitch:` provider 导入链接包含 `https://jiyu.245334.xyz/v1`、`gpt-5.4-mini` 和匹配 Key，调模型 200，删除 Key 后 401。New-API 原生渠道检测每 10 分钟开启，自动禁用/恢复、模型请求限流开启；当前 3 个渠道启用、15 个模型倍率已写入；Oracle 已显式固定 `SUB2API_RATE_MARKUP=0.1`，最终复验显示渠道同步 `rateMarkup=0.1`、3 个渠道健康。已追加低权限全自动发货 webhook 和 OpenClaw `XianyuLive` 接入：已付款订单可自动发卡并发送话术，未付款订单阻断；2026-07-05 已补齐 `XianyuLive` 到 CC中转 webhook 的独立回归测试，`test_auto_shipper.py + test_xianyu_cc_auto_ship.py` 为 `20 passed / 0 failed`，并修复买家不聊天直接付款时 recent item 为空导致跳过发货的风险；同日进一步修复 JIYU AI 无套餐/无 SKU 订单误判“没有可发货兑换码”的生产 Bug，生产无套餐 webhook 冒烟返回 `delivered` 且清理后仍保留 5 张未售日卡库存，New-API 启用兑换码为 5 条；本机 `ai.openclaw.xianyu` 已重启加载最新配置，日志显示 WebSocket 注册成功，且已把第三方 HTTP 客户端日志降噪并脱敏旧 Telegram 通知 URL；仍保持“生产环境内测，暂未正式售卖”；正式发闲鱼商品前建议老板用真人浏览器完成一次 Turnstile 注册/邮箱验证码/兑换的人工验收，并小批量实单观察闲鱼发送稳定性。
 
-2026-07-05 追加复验：本机 Chrome `Default`、`Profile 1`、`Profile 2`、`Profile 3` 均已写入并去重 `CC中转运营` 书签文件夹，书签栏已开启；普通 Chrome 窗口已打开用户主站、New-API 后台、Frist 运营台、`/v1` 和 `/v1/models` 五个入口。新增一键审计 `scripts/cc_zhongzhuan_readiness_audit.mjs` 后，默认只读模式返回 `PASS`，带 `--webhook-smoke` 的生产低权限 webhook 冒烟也返回 `PASS`，测试履约已清理且库存恢复为 `unused=5`。项目级回归 `make test` 已跑到 `[100%]` 且 exit 0；Frist-API 全量回归为 `181 passed / 0 failed`。
+2026-07-05 追加复验：本机 Chrome `Default`、`Profile 1`、`Profile 2`、`Profile 3` 均已写入并去重 `CC中转运营` 书签文件夹，书签栏已开启；普通 Chrome 窗口已打开用户主站、New-API 后台、JIYU 运营台、`/v1` 和 `/v1/models` 五个入口。新增一键审计 `scripts/cc_zhongzhuan_readiness_audit.mjs` 后，默认只读模式返回 `PASS`，带 `--webhook-smoke` 的生产低权限 webhook 冒烟也返回 `PASS`，测试履约已清理且库存恢复为 `unused=5`。项目级回归 `make test` 已跑到 `[100%]` 且 exit 0；JIYU AI 全量回归为 `181 passed / 0 failed`。
 
 2026-07-05 再追加自动化运营补救：本机闲鱼管理面板 `http://127.0.0.1:18800/` 已新增“CC中转发货补救队列”，并由 `cc_shipments` SQLite 表持久化。若 CC中转 webhook 已分配兑换码但闲鱼 WebSocket 消息发送失败，会记录 `message_send_failed`、保留完整待补发话术、触发健康告警，并允许在受 `X-API-Token` 保护的 GUI 中标记 `manually_resolved`；webhook HTTP 失败、话术缺失和异常也会进入同一队列。已重启 `ai.openclaw.xianyu`，首页无 token 可打开并提示输入本机 `OPENCLAW_API_TOKEN`，API 无 token 仍为 401，带正确 `X-API-Token` 的 `/api/status` 和 `/api/cc-shipments?limit=5` 均为 200。
 
@@ -418,19 +424,19 @@
 
 2026-07-05 继续把正式售卖验收门做成 GUI 可见：本机闲鱼助手 `http://127.0.0.1:18800/` 首页新增“正式售卖验收门”卡片，直接展示真实闲鱼发货是否已发生、`xy_* / message_sent` 真实订单数、补救待处理数，以及严格验收命令。`/api/status` 新增 `cc_final_sale_gate`，来源为本机 SQLite `cc_shipments` 汇总，不泄露完整卡密或买家信息。当前 GUI 已重启加载新版，页面包含该卡片；默认审计和 webhook 冒烟均 `PASS`，严格实单门仍按预期 `FAIL`。
 
-2026-07-05 继续补齐买家自助路径：Frist-API 闲鱼发货话术已从“兑换入口 + 卡密”升级为完整操作步骤：注册/登录、进入“兑换码”到账、进入“API Key”创建 Key、进入“CC Switch”复制导入链接并选择模型测试；未加入营销文案，不暴露上游信息，也不直接写 `/v1` 网关地址。该变更已单文件部署到 Oracle 并重启 `frist-api.service`，生产 webhook 冒烟和内网话术检查均通过，库存清理后仍为 `unused_after=5`。
+2026-07-05 继续补齐买家自助路径：JIYU AI 闲鱼发货话术已从“兑换入口 + 卡密”升级为完整操作步骤：注册/登录、进入“兑换码”到账、进入“API Key”创建 Key、进入“CC Switch”复制导入链接并选择模型测试；未加入营销文案，不暴露上游信息，也不直接写 `/v1` 网关地址。该变更已单文件部署到 Oracle 并重启 `sub2api.service`，生产 webhook 冒烟和内网话术检查均通过，库存清理后仍为 `unused_after=5`。
 
-2026-07-05 继续补齐 New-API 原生兑换回写：Frist-API 已新增默认 60 秒一次的 New-API 兑换状态同步器，并部署到 Oracle。同步器读取 New-API SQLite `redemptions`，按卡密哈希匹配 Frist 卡密，不打印完整卡密；买家若直接在 New-API 主站兑换，Frist 兑换卡和对应闲鱼履约会自动回写为 `redeemed`。一键审计 `--require-real-order` 也从“只看数量增长”升级为“同一 `xy_*` 真实闲鱼订单哈希关联”：要求同一订单已自动发货、对应卡密已兑换、履约已回写、兑换用户有启用 API Key 且兑换后有模型调用日志。当前默认生产内测审计和 webhook 冒烟均 `PASS`；严格正式售卖门仍按预期 `FAIL`，唯一原因是尚未发布闲鱼商品并完成 1 单小额真实付款/买家兑换/API/调模型。
+2026-07-05 继续补齐 New-API 原生兑换回写：JIYU AI 已新增默认 60 秒一次的 New-API 兑换状态同步器，并部署到 Oracle。同步器读取 New-API SQLite `redemptions`，按卡密哈希匹配 JIYU 卡密，不打印完整卡密；买家若直接在 New-API 主站兑换，JIYU 兑换卡和对应闲鱼履约会自动回写为 `redeemed`。一键审计 `--require-real-order` 也从“只看数量增长”升级为“同一 `xy_*` 真实闲鱼订单哈希关联”：要求同一订单已自动发货、对应卡密已兑换、履约已回写、兑换用户有启用 API Key 且兑换后有模型调用日志。当前默认生产内测审计和 webhook 冒烟均 `PASS`；严格正式售卖门仍按预期 `FAIL`，唯一原因是尚未发布闲鱼商品并完成 1 单小额真实付款/买家兑换/API/调模型。
 
 2026-07-05 继续补齐老板可视化验收：本机闲鱼助手 GUI 已新增“一键闭环审计”卡片和 `GET /api/cc-readiness-audit?mode=read_only|strict`，可直接点击运行生产内测巡检或正式售卖严格门。该 GUI 接口只读，不开放 `--webhook-smoke` 写入冒烟，避免误点改变生产库存。复验显示页面包含“一键闭环审计 / 运行内测巡检 / 运行正式售卖严格门”，API `read_only` 返回 `ok=true, exit=0`，`strict` 返回 `ok=false, exit=1`，严格失败原因仍是尚无真实小额闲鱼订单。
 
-2026-07-05 继续补齐多商品自动发货防错发：本机闲鱼助手 GUI 新增“闲鱼商品套餐映射”，可配置 `item_id → planId`，`XianyuLive` 检测到已付款订单后会优先按已启用映射调用 CC中转低权限 webhook；没有映射时继续回退默认套餐或任意未售卡密。CC中转自动发货接管时，旧 OpenClaw 部署包 License 话术不再同时发送，避免买家收到两套无关内容。复验：`test_xianyu_cc_auto_ship.py + test_api_routes_regression.py` 为 `41 passed / 0 failed`，`py_compile` 通过，默认闭环审计 `PASS`；本机 GUI 首页 200、无 token API 401、带 token `/api/status` 200，`ws_connected=true`、`cookie_ok=true`、`cc_auto_ship.configured=true`、`pending_rescue=0`，映射 API 冒烟“新增 → 查询 → 删除”通过且测试数据已清理；`make test` 全量 pytest exit 0，Frist-API 全量 Node 测试 `182 passed / 0 failed`。
+2026-07-05 继续补齐多商品自动发货防错发：本机闲鱼助手 GUI 新增“闲鱼商品套餐映射”，可配置 `item_id → planId`，`XianyuLive` 检测到已付款订单后会优先按已启用映射调用 CC中转低权限 webhook；没有映射时继续回退默认套餐或任意未售卡密。CC中转自动发货接管时，旧 OpenClaw 部署包 License 话术不再同时发送，避免买家收到两套无关内容。复验：`test_xianyu_cc_auto_ship.py + test_api_routes_regression.py` 为 `41 passed / 0 failed`，`py_compile` 通过，默认闭环审计 `PASS`；本机 GUI 首页 200、无 token API 401、带 token `/api/status` 200，`ws_connected=true`、`cookie_ok=true`、`cc_auto_ship.configured=true`、`pending_rescue=0`，映射 API 冒烟“新增 → 查询 → 删除”通过且测试数据已清理；`make test` 全量 pytest exit 0，JIYU AI 全量 Node 测试 `182 passed / 0 failed`。
 
 2026-07-05 继续把运营状态做成老板可读 GUI：本机闲鱼助手新增“自动化运营水位”和“闲鱼商品模板”。`/api/cc-sale-readiness` 会汇总自动发货可用性、正式售卖是否仍缺真实小额单验收、webhook/ws/cookie/补救队列/商品映射状态和仍需人工介入事项；`/api/cc-product-template` 生成只含履约说明的极简闲鱼商品模板，包含付款后自动发卡、注册/登录、兑换、创建 API Key、CC Switch 导入和模型测试步骤，不写额外营销话术，不暴露 `/v1` 网关。复验：相关 pytest `42 passed / 0 failed`，GUI 首页包含“自动化运营水位 / 闲鱼商品模板”，带 token API 冒烟返回 `can_auto_ship_paid_orders=true`、`ready_for_public_sale=false`、`pending_rescue=0`；默认闭环审计继续 `PASS`。
 
-2026-07-05 继续补齐 Chrome 运营入口可维护性：新增 `scripts/cc_zhongzhuan_chrome_bookmarks.mjs`，可重复修复/重建本机 Chrome 各 Profile 的 `CC中转运营` 书签文件夹，写入本机运营入口总页、用户主站、New-API 后台、Frist 运营台、`/v1`、`/v1/models` 和本机闲鱼助手 GUI 共 7 个入口，并开启书签栏显示；写入前会在 Chrome Profile 原目录生成 `.codex-backup-*` 备份。已用临时 Chrome Profile 冒烟验证去重/保留旧入口/备份逻辑，并对真实 `Default`、`Profile 1`、`Profile 2`、`Profile 3` 运行修复，均返回 `ok=true`、`urlCount=7`、`bookmarkBarVisible=true`；随后默认闭环审计继续 `PASS` 且 `chromeBookmarks: PASS`。
+2026-07-05 继续补齐 Chrome 运营入口可维护性：新增 `scripts/cc_zhongzhuan_chrome_bookmarks.mjs`，可重复修复/重建本机 Chrome 各 Profile 的 `CC中转运营` 书签文件夹，写入本机运营入口总页、用户主站、New-API 后台、JIYU 运营台、`/v1`、`/v1/models` 和本机闲鱼助手 GUI 共 7 个入口，并开启书签栏显示；写入前会在 Chrome Profile 原目录生成 `.codex-backup-*` 备份。已用临时 Chrome Profile 冒烟验证去重/保留旧入口/备份逻辑，并对真实 `Default`、`Profile 1`、`Profile 2`、`Profile 3` 运行修复，均返回 `ok=true`、`urlCount=7`、`bookmarkBarVisible=true`；随后默认闭环审计继续 `PASS` 且 `chromeBookmarks: PASS`。
 
-2026-07-05 继续把老板可见入口和多商品映射收口：本机闲鱼 GUI 新增免 token 运营入口总页 `http://127.0.0.1:18800/ops-links`，集中跳转用户主站、New-API 后台、Frist 运营台、本机闲鱼 GUI、模型接口检查和 API Base URL；Chrome `CC中转运营` 书签文件夹升级为 7 个入口，并清理废弃 `file://cc_zhongzhuan_ops_links.html` 链接，真实 `Default`、`Profile 1`、`Profile 2`、`Profile 3` 复写后均为 `urlCount=7`。GUI 的“闲鱼商品套餐映射”新增“最近捕获到的闲鱼商品”列表，点“填入映射”即可把 `item_id`、标题和价格带入表单/商品模板。复验：`test_xianyu_cc_auto_ship.py + test_api_routes_regression.py` 为 `42 passed / 0 failed`，`/ops-links` 和 GUI 首页 HTTP 200，默认闭环审计 `PASS`；严格实单门仍按预期 `FAIL`，因为尚未发生真实闲鱼小额付款订单。
+2026-07-05 继续把老板可见入口和多商品映射收口：本机闲鱼 GUI 新增免 token 运营入口总页 `http://127.0.0.1:18800/ops-links`，集中跳转用户主站、New-API 后台、JIYU 运营台、本机闲鱼 GUI、模型接口检查和 API Base URL；Chrome `CC中转运营` 书签文件夹升级为 7 个入口，并清理废弃 `file://cc_zhongzhuan_ops_links.html` 链接，真实 `Default`、`Profile 1`、`Profile 2`、`Profile 3` 复写后均为 `urlCount=7`。GUI 的“闲鱼商品套餐映射”新增“最近捕获到的闲鱼商品”列表，点“填入映射”即可把 `item_id`、标题和价格带入表单/商品模板。复验：`test_xianyu_cc_auto_ship.py + test_api_routes_regression.py` 为 `42 passed / 0 failed`，`/ops-links` 和 GUI 首页 HTTP 200，默认闭环审计 `PASS`；严格实单门仍按预期 `FAIL`，因为尚未发生真实闲鱼小额付款订单。
 
 2026-07-05 继续补齐买家站内闭环可视化：本机闲鱼助手“一键闭环审计”卡片现在会显示同一真实订单的分阶段明细，包括订单前缀、履约状态、卡密状态、New-API 兑换、API Key 数量、兑换后模型调用数和最终结论。当前没有真实小额订单，所以 `/api/cc-readiness-audit?mode=read_only` 返回 `same_order_latest=[]`、`same_order_ready=0`，属于预期；真实订单发生后这里会用于定位买家卡在“已发货 / 已兑换 / API Key / 调模型”的哪一步。复验：相关 pytest `42 passed / 0 failed`，默认闭环审计 `PASS`，GUI 首页包含分阶段状态渲染逻辑。
 
@@ -440,9 +446,9 @@
 
 ### CC中转 New-API 公网主入口 — 已闭环（生产内测）
 
-2026-07-05 已把 `https://jiyu.245334.xyz/` 公网主入口从旧 Frist 自研页面切到成熟开源 New-API 面板：Cloudflare → Oracle Apache → `127.0.0.1:13000`；旧 `frist-api.245334.xyz` 继续 301 到主站，Frist-API 仍在 `127.0.0.1:3180` 运行用于 CC Switch/旧桥接能力和内部兼容。公网全链路 E2E 已通过：原生注册、登录、兑换码创建/兑换到账、API Key 创建/列表/详情/取 Key/更新/禁用/恢复/删除、`/v1/models`、OpenAI `gpt-5.4-mini`、Claude `claude-haiku-4-5-20251001`、渠道刷新均正常；清理后 New-API SQLite `e2e_users=0`、`e2e_tokens=0`、`e2e_redemptions=0`。当前 New-API 库存为 3 个启用渠道、15 个模型；未授权 `/v1/models` 返回 401；Playwright 验证首页、登录页、注册页可打开，标题最终为「CC中转」，无前端 error/warning。当前仍是生产环境内测，未正式售卖；2026-07-05 已复用旧 Frist-API 生产配置写入 New-API 原生设置，`turnstile_check=true`、`email_verification=true`，New-API 管理员/root 账户 `two_fas=2`。
+2026-07-05 已把 `https://jiyu.245334.xyz/` 公网主入口从旧 JIYU 自研页面切到成熟开源 New-API 面板：Cloudflare → Oracle Apache → `127.0.0.1:13000`；旧 `jiyu.245334.xyz` 继续 301 到主站，JIYU AI 仍在 `127.0.0.1:3180` 运行用于 CC Switch/旧桥接能力和内部兼容。公网全链路 E2E 已通过：原生注册、登录、兑换码创建/兑换到账、API Key 创建/列表/详情/取 Key/更新/禁用/恢复/删除、`/v1/models`、OpenAI `gpt-5.4-mini`、Claude `claude-haiku-4-5-20251001`、渠道刷新均正常；清理后 New-API SQLite `e2e_users=0`、`e2e_tokens=0`、`e2e_redemptions=0`。当前 New-API 库存为 3 个启用渠道、15 个模型；未授权 `/v1/models` 返回 401；Playwright 验证首页、登录页、注册页可打开，标题最终为「CC中转」，无前端 error/warning。当前仍是生产环境内测，未正式售卖；2026-07-05 已复用旧 JIYU AI 生产配置写入 New-API 原生设置，`turnstile_check=true`、`email_verification=true`，New-API 管理员/root 账户 `two_fas=2`。
 
-2026-07-05 追加 New-API 原生能力只读审计：CC Switch 入口、API Key、渠道、模型、能力映射、兑换/充值、日志统计均可继续沿用 New-API 原生能力；已复用 Frist 旧配置补齐 New-API Turnstile、SMTP/邮箱验证和管理员 2FA。正式售卖前剩余 P0 技术债为模型请求限流、可售兑换码库存和老板真人浏览器 Turnstile 注册/登录/兑换验收；`subscription_plans=0` 表示套餐订阅尚未配置。
+2026-07-05 追加 New-API 原生能力只读审计：CC Switch 入口、API Key、渠道、模型、能力映射、兑换/充值、日志统计均可继续沿用 New-API 原生能力；已复用 JIYU 旧配置补齐 New-API Turnstile、SMTP/邮箱验证和管理员 2FA。正式售卖前剩余 P0 技术债为模型请求限流、可售兑换码库存和老板真人浏览器 Turnstile 注册/登录/兑换验收；`subscription_plans=0` 表示套餐订阅尚未配置。
 
 
 ### CC中转生产内测品牌收口与售卖前验收 — 已闭环（内测）
@@ -452,19 +458,19 @@
 
 ### CC中转 Cloudflare/Oracle 生产内测入口 — 已闭环
 
-2026-07-04 已按“优先用 xyz 子域名”的生产路径上线：`jiyu.245334.xyz` 已在 Cloudflare `245334.xyz` 区域创建 proxied A 记录并指向 Oracle ARM `150.136.73.15`；Oracle Apache 使用 Cloudflare Origin CA 证书，证书覆盖 `jiyu.245334.xyz`、`frist-api.245334.xyz` 和 `frist-api-oracle.245334.xyz`；旧 `frist-api.245334.xyz` 已 301 跳转到 CC中转主站。2026-07-05 公网主入口已改为反代 New-API `127.0.0.1:13000`，Frist-API `127.0.0.1:3180` 仅保留为内部兼容/旧桥接服务。公网验证：CC中转首页 HTTP 200，登录页/注册页可打开，未授权 `/v1/models` HTTP 401，旧 Frist 域名最终跳转到 CC中转主站；Oracle `frist-api.service`、`openclaw-newapi.service`、`apache2`、`frist-api-r2-backup.timer` 均 active。 2026-07-04 追加生产强制模式验收：`FRIST_API_PUBLIC_MODE=1`、`FRIST_API_ENFORCE_PRODUCTION_READINESS=1`、`FRIST_API_ALLOW_INSECURE_PUBLIC_HTTP=0` 已启用；Frist-API 管理员 TOTP 2FA 已开启；R2 备份 `frist-api-20260705T000508Z.tar.gz` 已完成恢复演练并登记；2026-07-05 New-API 主入口已复用同一套 Turnstile/SMTP/TOTP 生产配置。
+2026-07-04 已按“优先用 xyz 子域名”的生产路径上线：`jiyu.245334.xyz` 已在 Cloudflare `245334.xyz` 区域创建 proxied A 记录并指向 Oracle ARM `150.136.73.15`；Oracle Apache 使用 Cloudflare Origin CA 证书，证书覆盖 `jiyu.245334.xyz`、`jiyu.245334.xyz` 和 `jiyu.245334.xyz`；旧 `jiyu.245334.xyz` 已 301 跳转到 CC中转主站。2026-07-05 公网主入口已改为反代 New-API `127.0.0.1:13000`，JIYU AI `127.0.0.1:3180` 仅保留为内部兼容/旧桥接服务。公网验证：CC中转首页 HTTP 200，登录页/注册页可打开，未授权 `/v1/models` HTTP 401，旧 JIYU 域名最终跳转到 CC中转主站；Oracle `sub2api.service`、`openclaw-newapi.service`、`apache2`、`sub2api-backup.timer` 均 active。 2026-07-04 追加生产强制模式验收：`SUB2API_PUBLIC_MODE=1`、`SUB2API_ENFORCE_PRODUCTION_READINESS=1`、`SUB2API_ALLOW_INSECURE_PUBLIC_HTTP=0` 已启用；JIYU AI 管理员 TOTP 2FA 已开启；R2 备份 `jiyu-ai-20260705T000508Z.tar.gz` 已完成恢复演练并登记；2026-07-05 New-API 主入口已复用同一套 Turnstile/SMTP/TOTP 生产配置。
 
 ### CC中转品牌重塑与兑换码生产内测基线 — 本地回归通过
 
-2026-07-04 已把 Frist-API 对外品牌收口为「CC中转」：用户端、管理端、CC Switch 导入名、邮件模板、默认卡密前缀、生产配置示例和静态品牌资产已统一为 CC中转；新增服务说明、服务条款、售后/退款规则和隐私说明四个用户可达页面，用户可见文案不再使用“官方合作/官方授权/平台直营/第三方”等高风险表达，模型价格展示也改为“参考标价”口径。兑换码安全已升级：新生成卡密只在创建响应和导出文本中出现明文，运行数据落库为 `codeHash + codeCipher + codePreview`；闲鱼履约话术按需解密生成，不长期保存完整卡密话术；兑换接口新增 IP + 登录账号双维度限流，降低暴力猜码风险。快速开源复用检查未发现 86GameStore 本身公开仓库；MIT 卡密商城 `34892002/edgeKey` 技术栈与当前链路不一致，本轮不迁移。验证结果：`cd apps/frist-api && node --check server/server.js src/app.js src/admin.js src/core.js src/businessFlow.js server/shared.js server/catalog.js server/email.js` exit 0；`cd apps/frist-api && node --test tests/*.test.mjs` 为 `166 passed / 0 failed / 0 skipped`；`git diff --check` exit 0。生产内测入口为 `https://jiyu.245334.xyz/`。
+2026-07-04 已把 JIYU AI 对外品牌收口为「CC中转」：用户端、管理端、CC Switch 导入名、邮件模板、默认卡密前缀、生产配置示例和静态品牌资产已统一为 CC中转；新增服务说明、服务条款、售后/退款规则和隐私说明四个用户可达页面，用户可见文案不再使用“官方合作/官方授权/平台直营/第三方”等高风险表达，模型价格展示也改为“参考标价”口径。兑换码安全已升级：新生成卡密只在创建响应和导出文本中出现明文，运行数据落库为 `codeHash + codeCipher + codePreview`；闲鱼履约话术按需解密生成，不长期保存完整卡密话术；兑换接口新增 IP + 登录账号双维度限流，降低暴力猜码风险。快速开源复用检查未发现 86GameStore 本身公开仓库；MIT 卡密商城 `34892002/edgeKey` 技术栈与当前链路不一致，本轮不迁移。验证结果：`cd JIYU AI Sub2API WebUI && node --check server/server.js src/app.js src/admin.js src/core.js src/businessFlow.js server/shared.js server/catalog.js server/email.js` exit 0；`cd JIYU AI Sub2API WebUI && node --test tests/*.test.mjs` 为 `166 passed / 0 failed / 0 skipped`；`git diff --check` exit 0。生产内测入口为 `https://jiyu.245334.xyz/`。
 
-### Frist-API + QuantumNous/new-api 本机直连栈 — 已跑通
+### JIYU AI + QuantumNous/new-api 本机直连栈 — 已跑通
 
-2026-07-04 已把本机运行方式改成“直接跑 QuantumNous/new-api，本机 Frist-API 全面桥接”的路径：New-API 固定 `calciumion/new-api:v1.0.0-rc.4`，容器 `openclaw-newapi` 监听 `127.0.0.1:3000`；Frist-API 容器 `frist-api-server` 监听 `127.0.0.1:3180`。新增 `make new-api-up`、`make frist-api-newapi-setup`、`make frist-api-up/down`；桥接脚本从 `data/newapi/one-api.db` 读取已生成 access token 用户并写入本机 `.env`，不在终端打印密钥。Frist-API New-API adapter 已接管看板、Token、日志/用量、兑换、订阅/充值/邀请读取和可选 `/v1` 网关代理，同时保留 Frist 自研工作台、CC Switch/Codex/OpenCode/Claude/Hermes 导入、兑换码售卖、闲鱼发货和补号助手。验证结果：`node --check scripts/setup_local_newapi_bridge.mjs apps/frist-api/server/server.js apps/frist-api/server/newApiBridge.js` exit 0；`cd apps/frist-api && node --test tests/*.test.mjs` 为 `165 passed / 0 failed / 0 skipped`；New-API `/api/status` 返回 `success=true`、`version=v1.0.0-rc.4`、`setup=true`；Frist Dashboard 返回 HTTP 200；Playwright 打开 `http://127.0.0.1:3180/` 控制台 `0 error / 0 warning`，截图为 `output/playwright/frist-api-newapi-login-20260704.png`。
+2026-07-04 旧本地桥接验收已归档；当前生产统一由 JIYU AI Sub2API 承担，旧 Node/JSON 网关和迁移脚本已删除。后续只以 `jiyu.245334.xyz`、Sub2API PostgreSQL、专用 Redis 和受管更新代理为事实源。
 
-### Frist-API 86GameStore 风格后台与兑换/闲鱼履约闭环 — 本地审计通过
+### JIYU AI 86GameStore 风格后台与兑换/闲鱼履约闭环 — 本地审计通过
 
-2026-07-04 已按“克隆上游后台骨架 + 保留 Frist 功能 + 重点打通兑换”的方向完成 Frist-API 本地版本：用户端切为 86GameStore Downstream 浅色工作台，保留 CC Switch / API Key / 测试 / 使用记录 / 可用渠道 / 兑换码 / 套餐订阅；管理端新增 86GameStore 渠道同步、倍率 `+0.1` 下游加价、兑换码批量生成、卡密 `sold` 状态和闲鱼自动发货履约区。追加按 GitHub 高星方案复核后的高保真克隆层：参考 `abi/screenshot-to-code` 的截图转代码方法，未登录页已还原上游公开登录页的蓝紫渐变、居中白色卡片、邮箱/密码/忘记密码/注册/条款提示；管理端补 AdminLTE 式左侧导航和分组锚点。Plus 等上游倍率会以脱敏快照方式保存，示例 `0.18 → 0.28`，已修复刷新后售卖倍率回退为上游倍率的问题。闲鱼链路当前已可“订单号 + 套餐 → 分配未售出卡密 → 生成发货话术 → 买家兑换后自动标记已兑换”；真实“检测闲鱼下单并自动发送”仍需要后续用户授权登录态/浏览器环境后接入，当前不要求用户交出密码。验证结果：Frist-API 语法检查通过；`cd apps/frist-api && node --test tests/*.test.mjs` 为 `165 passed / 0 failed / 0 skipped`；本地 Playwright 审计用户页和管理页通过，用户页与管理页控制台均 `0 error / 0 warning`；截图为 `output/playwright/frist-api-clone-login-20260704.png` 和 `output/playwright/frist-api-admin-clone-shell-20260704.png`。
+2026-07-04 已按“克隆上游后台骨架 + 保留 JIYU 功能 + 重点打通兑换”的方向完成 JIYU AI 本地版本：用户端切为 86GameStore Downstream 浅色工作台，保留 CC Switch / API Key / 测试 / 使用记录 / 可用渠道 / 兑换码 / 套餐订阅；管理端新增 86GameStore 渠道同步、倍率 `+0.1` 下游加价、兑换码批量生成、卡密 `sold` 状态和闲鱼自动发货履约区。追加按 GitHub 高星方案复核后的高保真克隆层：参考 `abi/screenshot-to-code` 的截图转代码方法，未登录页已还原上游公开登录页的蓝紫渐变、居中白色卡片、邮箱/密码/忘记密码/注册/条款提示；管理端补 AdminLTE 式左侧导航和分组锚点。Plus 等上游倍率会以脱敏快照方式保存，示例 `0.18 → 0.28`，已修复刷新后售卖倍率回退为上游倍率的问题。闲鱼链路当前已可“订单号 + 套餐 → 分配未售出卡密 → 生成发货话术 → 买家兑换后自动标记已兑换”；真实“检测闲鱼下单并自动发送”仍需要后续用户授权登录态/浏览器环境后接入，当前不要求用户交出密码。验证结果：JIYU AI 语法检查通过；`cd JIYU AI Sub2API WebUI && node --test tests/*.test.mjs` 为 `165 passed / 0 failed / 0 skipped`；本地 Playwright 审计用户页和管理页通过，用户页与管理页控制台均 `0 error / 0 warning`；截图为 `output/playwright/jiyu-ai-clone-login-20260704.png` 和 `output/playwright/jiyu-ai-admin-clone-shell-20260704.png`。
 
 ### 社媒运营插件排程与增长复盘 — 提交前验证通过
 
@@ -560,16 +566,16 @@
 | API 池 | ✅ 139/142 活跃源 |
 | 闲鱼客服 | ✅ 自动回复活跃 |
 | 社媒自动驾驶 | 🟡 草稿生成、素材计划、网页登录额度接力、只读互动扫描、增长复盘和 Telegram 审核/排程中控可运行；旧自动互动/自动发布已锁住，外部发布/评论必须走人工最终确认 |
-| 测试 | ✅ 2026-07-05 CC中转闲鱼自动发货/API/WorldMonitor focused 回归 `85 passed / 0 failed`，`xianyu_live.py` / `xianyu_context.py` / `xianyu_admin.py` / `world_monitor.py` / 相关测试 `py_compile` 通过；同日 `make test` 全量跑到 `[100%]` 且退出码 `0`；2026-07-04 Frist-API Node 全量 `166 passed / 0 failed / 0 skipped`，语法检查通过，用户页/管理页本地 Playwright 审计通过；2026-07-03 收口验证：后端 pytest `1606 passed / 2 skipped / 0 failed`，`make lint` 0 遗留，桌面端 typecheck/lint/build 通过，桌面端与 Frist-API `npm audit --audit-level=high --omit=dev` 均 0 高危，Python 3.12 环境 `pip check` 无破损依赖，`.venv312/bin/python -m pip_audit` 无已知漏洞，可提交文件 gitleaks 0 泄露，可达 Git 历史 gitleaks 0 泄露，`git diff --check` 0 问题。历史基线：后端 pytest 1601 passed / 2 skipped / 0 failed，Frist-API 157/157，桌面端 typecheck/build 通过；本地必须走 `make test` 或 `.venv312/bin/python -m pytest`，不能直接用系统 `pytest`。 |
-| Frist-API 入口 | ✅ 生产内测入口 `https://jiyu.245334.xyz` 已切到 Oracle ARM `150.136.73.15`，通过 Cloudflare proxied A + Apache/Origin CA 闭环，外网首页/Dashboard 200；旧 `frist-api.245334.xyz` 已跳转到 CC中转主站，旧腾讯云/nip.io 入口只保留为冷回滚，不再对用户宣称为可用兜底 |
-| Frist-API | ✅ AI_POOL 自动熔断、真实调用失败降级、客户可见模型真实上游优先和 AGPL 源码入口已处理。2026-07-04 本地已新增 86GameStore Downstream 后台骨架、渠道脱敏同步、倍率 `+0.1`、兑换码生成/管理/核销和闲鱼自动发货履约雏形。New-API 生产迁移已按授权执行：用户 19、token 1、充值/订单 4、兑换码 2、日志 162 已迁入，回滚目录为 `/opt/frist-api/backups/newapi-migration-20260703T005433Z`；Oracle 当前以 `frist-api.service` + `openclaw-newapi.service` 承接生产，R2 定时备份在 Oracle 启用。16 个历史 `enc:v1:` 用户 Key 因旧加密密钥缺失未迁移，必须重新生成/补录。SMTP 密码已通过隐藏输入方式写入 Oracle root-only 环境文件，并用 Gmail 465/TLS 发出生产测试邮件。 |
-| Frist-API 批注修复 | ✅ 2026-05-09 已处理 Logo、状态灯、工作台折叠菜单、通道展示批注、管理员快捷入口、固定工作台导航、趋势图 hover 数据和首页当前项背景；423×718 浏览器复验无横向溢出，Logo 105px，状态灯 18px，导航默认折叠且切页后自动收起，顶栏“登录/身份码/管理”可操作，`.provider-models` 为 0，控制台 0 error/0 warning；同日追加 319×718 极窄屏修复，Dashboard 与 CC Switch 本地浏览器复验 `scrollWidth=319`，顶栏账户按钮 173px，CC Switch 用量说明宽 235px 且无横向裁切 |
-| Frist-API Oracle 生产 / 腾讯冷回滚 | ✅ 2026-07-03 已从国内腾讯云切到 Oracle ARM `150.136.73.15`；2026-07-04 CC中转子域名上线：Oracle `/opt/frist-api` 运行 `frist-api.service`、`openclaw-newapi.service`、`apache2` 和 `frist-api-r2-backup.timer`；Cloudflare `jiyu.245334.xyz` 代理到 Oracle，旧 `frist-api.245334.xyz` 跳转到 CC中转。公网 Dashboard HTTP 200，未授权 `/v1/models` HTTP 401；最新外网压测 Dashboard 100/100 HTTP 200（p95 0.792s），models 50/50 HTTP 401（p95 0.758s）。腾讯云 `/opt/frist-api` 仅保留冷回滚数据和备份，旧 `frist-api-server` / `openclaw-newapi` 容器已停止，旧 R2 timer 已禁用，避免双源探测和备份漂移。 |
+| 测试 | ✅ 2026-07-05 CC中转闲鱼自动发货/API/WorldMonitor focused 回归 `85 passed / 0 failed`，`xianyu_live.py` / `xianyu_context.py` / `xianyu_admin.py` / `world_monitor.py` / 相关测试 `py_compile` 通过；同日 `make test` 全量跑到 `[100%]` 且退出码 `0`；2026-07-04 JIYU AI Node 全量 `166 passed / 0 failed / 0 skipped`，语法检查通过，用户页/管理页本地 Playwright 审计通过；2026-07-03 收口验证：后端 pytest `1606 passed / 2 skipped / 0 failed`，`make lint` 0 遗留，桌面端 typecheck/lint/build 通过，桌面端与 JIYU AI `npm audit --audit-level=high --omit=dev` 均 0 高危，Python 3.12 环境 `pip check` 无破损依赖，`.venv312/bin/python -m pip_audit` 无已知漏洞，可提交文件 gitleaks 0 泄露，可达 Git 历史 gitleaks 0 泄露，`git diff --check` 0 问题。历史基线：后端 pytest 1601 passed / 2 skipped / 0 failed，JIYU AI 157/157，桌面端 typecheck/build 通过；本地必须走 `make test` 或 `.venv312/bin/python -m pytest`，不能直接用系统 `pytest`。 |
+| JIYU AI 入口 | ✅ 生产内测入口 `https://jiyu.245334.xyz` 已切到 Oracle ARM `150.136.73.15`，通过 Cloudflare proxied A + Apache/Origin CA 闭环，外网首页/Dashboard 200；旧 `jiyu.245334.xyz` 已跳转到 CC中转主站，旧腾讯云/nip.io 入口只保留为冷回滚，不再对用户宣称为可用兜底 |
+| JIYU AI | ✅ AI_POOL 自动熔断、真实调用失败降级、客户可见模型真实上游优先和 AGPL 源码入口已处理。2026-07-04 本地已新增 86GameStore Downstream 后台骨架、渠道脱敏同步、倍率 `+0.1`、兑换码生成/管理/核销和闲鱼自动发货履约雏形。New-API 生产迁移已按授权执行：用户 19、token 1、充值/订单 4、兑换码 2、日志 162 已迁入，回滚目录为 `/opt/sub2api/backups/newapi-migration-20260703T005433Z`；Oracle 当前以 `sub2api.service` + `openclaw-newapi.service` 承接生产，R2 定时备份在 Oracle 启用。16 个历史 `enc:v1:` 用户 Key 因旧加密密钥缺失未迁移，必须重新生成/补录。SMTP 密码已通过隐藏输入方式写入 Oracle root-only 环境文件，并用 Gmail 465/TLS 发出生产测试邮件。 |
+| JIYU AI 批注修复 | ✅ 2026-05-09 已处理 Logo、状态灯、工作台折叠菜单、通道展示批注、管理员快捷入口、固定工作台导航、趋势图 hover 数据和首页当前项背景；423×718 浏览器复验无横向溢出，Logo 105px，状态灯 18px，导航默认折叠且切页后自动收起，顶栏“登录/身份码/管理”可操作，`.provider-models` 为 0，控制台 0 error/0 warning；同日追加 319×718 极窄屏修复，Dashboard 与 CC Switch 本地浏览器复验 `scrollWidth=319`，顶栏账户按钮 173px，CC Switch 用量说明宽 235px 且无横向裁切 |
+| JIYU AI Oracle 生产 / 腾讯冷回滚 | ✅ 2026-07-03 已从国内腾讯云切到 Oracle ARM `150.136.73.15`；2026-07-04 CC中转子域名上线：Oracle `/opt/sub2api` 运行 `sub2api.service`、`openclaw-newapi.service`、`apache2` 和 `sub2api-backup.timer`；Cloudflare `jiyu.245334.xyz` 代理到 Oracle，旧 `jiyu.245334.xyz` 跳转到 CC中转。公网 Dashboard HTTP 200，未授权 `/v1/models` HTTP 401；最新外网压测 Dashboard 100/100 HTTP 200（p95 0.792s），models 50/50 HTTP 401（p95 0.758s）。腾讯云 `/opt/sub2api` 仅保留冷回滚数据和备份，旧 `jiyu-ai-server` / `openclaw-newapi` 容器已停止，旧 R2 timer 已禁用，避免双源探测和备份漂移。 |
 | ClawBot 腾讯云部署 | ✅ 2026-05-08 已单文件部署闲鱼管理页转义修复到 `/home/clawbot/clawbot/src/xianyu/xianyu_admin.py`；远端备份 `/home/clawbot/clawbot/backups/xianyu_admin_20260508155652_before_escape.py`；远端 `py_compile` 通过，`clawbot.service` 重启后 active |
 | 微信命令 | ✅ 27/27 可用 (25✅ 2⚠️数据空) |
 | Ollama 内存 | ✅ 151MB (原9.3GB) |
 | 日志目录 | ✅ 2026-05-09 已清理本地 `packages/clawbot/logs/` 旧运行日志；生产日志和远端备份未清理 |
-| 本地冗余 | ✅ 2026-05-09 已清理 `.DS_Store`、源码/测试 `__pycache__`、`.pytest_cache`、`.ruff_cache`、`.playwright-mcp`、Playwright/Expect 调试产物、Frist-API 历史审计截图和根目录临时截图；`.env`、`.openclaw/`、runtime 数据、`node_modules`、`.venv312` 保留 |
+| 本地冗余 | ✅ 2026-05-09 已清理 `.DS_Store`、源码/测试 `__pycache__`、`.pytest_cache`、`.ruff_cache`、`.playwright-mcp`、Playwright/Expect 调试产物、JIYU AI 历史审计截图和根目录临时截图；`.env`、`.openclaw/`、runtime 数据、`node_modules`、`.venv312` 保留 |
 | 文档治理 | ✅ 主项目 docs 从散落状态统一归集到 43 个编号 Markdown，扁平化无子目录，历史截图/旧审计/散落设计报告/冗余打包文档已清理；2026-05-09 已补本轮清理日志 |
 | 公开仓库安全 | 🟡 Git 历史已重写并通过本地扫描；本轮新增 CI secret/audit 门禁并准备推送触发 GitHub 重算；历史泄露凭据是否轮换由 Carven 自行判断 |
 
@@ -581,9 +587,9 @@
 
 | ID | 分类 | 描述 | 发现日期 | 状态 |
 |----|------|------|----------|------|
-| HI-907 | AI_POOL/INFRA | CC中转生产内测曾因 New-API 与 Frist 本地库存均无健康上游而阻塞正式售卖；2026-07-05 用户补充的 3 条 86Game 上游 Key 已脱敏探测并接入生产内测，New-API 当前 3 个可用渠道/15 个模型，OpenAI 与 Claude 真实调用 200，readiness 返回 `ready=true`；本机闲鱼助手已具备已付款自动发货、稳定 `orderId` 幂等防重复发卡（含 URL 参数真实订单号识别）和已付款状态变体/字段位置识别、补救队列、浏览器发货助手、后台只读巡检、CC Switch 导入入口上架锁、后台严格门观察、实单验收包、运营统一快照和 macOS 状态提醒；2026-07-06 真实测试单因闲鱼推送漏单仍处于 `manual_delivery_ready/pending_rescue=1`，需要打开对应闲鱼聊天页由插件/人工发出后再继续买家兑换、创建 API Key、CC Switch 导入和模型调用严格门 | 2026-07-05 | 🟡 生产内测可发货但当前有待补发真单，正式售卖锁等待真实小额订单闭环 |
-| HI-872 | UX | Frist-API `#switch` 页面曾因导出模型展开逻辑被部分上游库存裁掉 `gpt-5.4`、`gpt-5.4-mini`、`gpt-image-2`、`gpt-5.3-codex`，且品牌标被 Tabcode 皮肤覆盖；已补完整 OpenAI 模型族可见逻辑、恢复原品牌标并加回归 | 2026-05-05 | ✅ 已处理 |
-| HI-873 | INFRA | Frist-API 免费 nip.io 裸域名 `101-43-41-96.nip.io` 曾和品牌域名并列直接服务同一页面，用户误以为有两个网站；历史阶段已收口裸域名跳转。2026-07-04 后正式入口改为 `https://jiyu.245334.xyz`，旧 `https://frist-api.245334.xyz` 跳转，旧 nip.io 只保留腾讯冷回滚排障，不再作为用户内容入口 | 2026-05-05 | ✅ 已处理 |
+| HI-907 | AI_POOL/INFRA | CC中转生产内测曾因 New-API 与 JIYU 本地库存均无健康上游而阻塞正式售卖；2026-07-05 用户补充的 3 条 86Game 上游 Key 已脱敏探测并接入生产内测，New-API 当前 3 个可用渠道/15 个模型，OpenAI 与 Claude 真实调用 200，readiness 返回 `ready=true`；本机闲鱼助手已具备已付款自动发货、稳定 `orderId` 幂等防重复发卡（含 URL 参数真实订单号识别）和已付款状态变体/字段位置识别、补救队列、浏览器发货助手、后台只读巡检、CC Switch 导入入口上架锁、后台严格门观察、实单验收包、运营统一快照和 macOS 状态提醒；2026-07-06 真实测试单因闲鱼推送漏单仍处于 `manual_delivery_ready/pending_rescue=1`，需要打开对应闲鱼聊天页由插件/人工发出后再继续买家兑换、创建 API Key、CC Switch 导入和模型调用严格门 | 2026-07-05 | 🟡 生产内测可发货但当前有待补发真单，正式售卖锁等待真实小额订单闭环 |
+| HI-872 | UX | JIYU AI `#switch` 页面曾因导出模型展开逻辑被部分上游库存裁掉 `gpt-5.4`、`gpt-5.4-mini`、`gpt-image-2`、`gpt-5.3-codex`，且品牌标被 Tabcode 皮肤覆盖；已补完整 OpenAI 模型族可见逻辑、恢复原品牌标并加回归 | 2026-05-05 | ✅ 已处理 |
+| HI-873 | INFRA | JIYU AI 免费 nip.io 裸域名 `101-43-41-96.nip.io` 曾和品牌域名并列直接服务同一页面，用户误以为有两个网站；历史阶段已收口裸域名跳转。2026-07-04 后正式入口改为 `https://jiyu.245334.xyz`，旧 `https://jiyu.245334.xyz` 跳转，旧 nip.io 只保留腾讯冷回滚排障，不再作为用户内容入口 | 2026-05-05 | ✅ 已处理 |
 | HI-817 | SECURITY | 公开 Git 历史曾提交 `.openclaw/openclaw.json*`、`.openclaw/devices/paired.json` 和数据库文件；当前工作树、可达历史和发布工件扫描未发现新增明文，CI 已阻断复发。第三方平台是否完成历史凭据轮换没有平台侧回执，不能宣称关闭；因当前生产凭据只从 root-only/ignored 配置加载且无代码旁路，降级为 P2 人工残余。 | 2026-04-28 | 🟡 P2 人工残余，平台轮换待证明 |
 | HI-818 | SECURITY | 本机 ignored `.env` 与浏览器 profile 日志曾含真实 API token；当前跟踪文件和发布工件无新增明文，生产读取边界不把值写日志或 WebView。第三方平台轮换仍缺平台侧证明，按 P2 人工残余登记，不计入“已关闭”安全项。 | 2026-04-28 | 🟡 P2 人工残余，平台轮换待证明 |
 | HI-885 | BUG | 后端全量测试发现 `src.api.routers.store` 被删除但 `api/server.py` 仍挂载，导致 APIServer 初始化失败；已恢复 `/api/v1/store/catalog` 和 `/api/v1/store/categories` 最小兼容路由，并用 1491 passed 回归确认 | 2026-05-08 | ✅ 已处理 |
@@ -591,16 +597,16 @@
 | HI-887 | AI_POOL/PERF | 86GameStore/余额站类渠道已补日消费限额、当日消费高于剩余额度且慢线时自动熔断、慢线降级到备用健康渠道和一次性告警；补号入库可保存 `dailySpendLimitCents` / `slowLatencyThresholdMs` / `costSensitive`。充值本身仍由用户付款处理。 | 2026-05-08 | ✅ 已处理（充值为人工事项） |
 | HI-890 | SECURITY | 服务器 root 密码曾在对话中明文出现。2026-08-04 只读复核确认 Oracle root 密码修改日期晚于暴露日期且 fail2ban 活跃；腾讯冷回滚机禁止密码认证并限制 root 为密钥登录，fail2ban 活跃。仓库和历史扫描无该值，因此从 P1 降为 P2 运维观察；Oracle 仍允许 root 密码登录，后续应迁移为密钥专用，但当前暴露密码已失效。 | 2026-05-08 | 🟡 P2 运维观察，已验证暴露口令不可用 |
 | HI-891 | INFRA | `New-API Scheduled Sync` 最近失败 run `25576027773` 卡在 `docker compose -f docker-compose.newapi.yml config`：CI 缺少 `NEWAPI_INITIAL_TOKEN`，导致已完成的 New-API 同步无法进入创建 PR；已给 compose 校验注入 CI 占位 token，并让检查脚本用退出码 `2` 明确表示“需要同步”、其他非零表示真实错误；复验 run `25588894721` 已成功并创建 PR #1 | 2026-05-08 | ✅ 已处理 |
-| HI-892 | UX | 内置浏览器审计发现 Frist-API 隐藏视图的多个返回按钮文本箭头会在可访问性快照中聚合为 `← ← ←`，对屏幕阅读器和自动化审计产生噪音；已将 `.back-home::before` 改为纯 CSS 图形箭头，本地浏览器复验不再出现箭头文本且控制台无 error/warn | 2026-05-08 | ✅ 已处理 |
+| HI-892 | UX | 内置浏览器审计发现 JIYU AI 隐藏视图的多个返回按钮文本箭头会在可访问性快照中聚合为 `← ← ←`，对屏幕阅读器和自动化审计产生噪音；已将 `.back-home::before` 改为纯 CSS 图形箭头，本地浏览器复验不再出现箭头文本且控制台无 error/warn | 2026-05-08 | ✅ 已处理 |
 | HI-893 | UX | 内置浏览器复审发现账户弹窗密码字段不在真实 `form` 内，浏览器密码管理器会给出结构提示；已将登录/注册、改密码、重置密码和身份码激活拆成独立 `data-auth-form`，补齐 `autocomplete`，并让回车提交复用原处理逻辑 | 2026-05-08 | ✅ 已处理 |
 | HI-894 | INFRA | 审计入口复核发现直接运行系统 `pytest` 会命中本机 Python 3.9 用户级脚本，导致 Python 3.12 项目代码被旧解释器误判；已将 AGENTS 和快速导航命令收口为 `make test` / `.venv312/bin/python -m pytest`，并用 `make test` 复验 | 2026-05-08 | ✅ 已处理 |
 | HI-895 | INFRA | 腾讯云 New-API 远端 compose 曾仍为 `v1.0.0-rc.2`；2026-05-09 已重新备份运行数据，成功拉取 `calciumion/new-api:v1.0.0-rc.4`，并处理共享服务器 `127.0.0.1:3000` 端口冲突和 `data/newapi` UID 501 权限问题。2026-07-03 后 Oracle `openclaw-newapi.service` 为生产，腾讯旧 `openclaw-newapi` 容器已停止并保留冷回滚 | 2026-05-08 | ✅ 已处理 |
 | HI-896 | AI_POOL/BUG | 已补“探测健康但真实调用失败”的降级：真实聊天返回 503/401 时自动标记上游 failed/exhausted、清理会话粘滞、一次性告警，并避免面板继续把该渠道展示成可用。补充/轮换真实上游 Key 仍是平台账号人工事项。 | 2026-05-09 | ✅ 代码侧已处理，补 Key 为人工事项 |
 | HI-897 | INFRA/DOCS | 本地工作区遗留可重建缓存、调试日志和审计截图容易干扰后续审计基线；已清理 `.DS_Store`、`.playwright-mcp`、`.pytest_cache`、`__pycache__`、`.ruff_cache`、Playwright/Expect 临时产物、历史审计截图和本地旧日志，并保留运行配置、runtime 数据、依赖环境与生产备份 | 2026-05-09 | ✅ 已处理 |
-| HI-898 | UX/AI_POOL | 移动端批注发现 Frist-API 顶栏状态灯和 Logo 挤压、工作台导航占屏、连通性卡按 Claude/OpenAI 模型分类且存在默认延迟疑似 mock；已改为小状态点、紧凑 Logo、默认折叠导航、卡商号池渠道展示、60 秒刷新口径和无真实延迟空态，并用 423×718 浏览器复验 | 2026-05-09 | ✅ 已处理 |
+| HI-898 | UX/AI_POOL | 移动端批注发现 JIYU AI 顶栏状态灯和 Logo 挤压、工作台导航占屏、连通性卡按 Claude/OpenAI 模型分类且存在默认延迟疑似 mock；已改为小状态点、紧凑 Logo、默认折叠导航、卡商号池渠道展示、60 秒刷新口径和无真实延迟空态，并用 423×718 浏览器复验 | 2026-05-09 | ✅ 已处理 |
 | HI-899 | UX/AI_POOL | 移动端管理员入口仅在账户弹窗底部，且无人请求时缺后台 Key 巡检，导致“看起来已连通但真实 Key 失效”不易被及时发现；已新增顶栏 `身份码/管理` 快捷入口、后台 60 秒巡检、Key 认证/额度异常自动降级和一次性补号提醒（Telegram/Webhook） | 2026-05-09 | ✅ 已处理 |
-| HI-900 | UX | 浏览器批注发现 Frist-API 用户端 Logo 被退回单字母 F、趋势图鼠标移入不显示数据、首页导航当前项有大块背景且页面像脱离左侧导航；已恢复红白斜切抽象 Logo、给趋势图补整块 hover/键盘聚焦数据浮层、把工作台导航固定在左侧并让所有内容在右侧 `workspace-content` 内切换，当前项只保留细线提示 | 2026-05-09 | ✅ 已处理 |
-| HI-901 | UX | 319px 移动端批注发现 Frist-API 顶栏语言/状态/登录余额遮挡、工作台折叠菜单箭头溢出、模型消耗空饼图过于单调、异常/通道空态缺说明、语言按钮像完整中英文切换、CC Switch 和用量教程比例裁切；已改为双行顶栏、固定箭头、解释型空状态、语言偏好提示和 CC Switch 两列/单列移动布局，并用 319×718 浏览器回测无横向溢出 | 2026-05-09 | ✅ 已处理 |
+| HI-900 | UX | 浏览器批注发现 JIYU AI 用户端 Logo 被退回单字母 F、趋势图鼠标移入不显示数据、首页导航当前项有大块背景且页面像脱离左侧导航；已恢复红白斜切抽象 Logo、给趋势图补整块 hover/键盘聚焦数据浮层、把工作台导航固定在左侧并让所有内容在右侧 `workspace-content` 内切换，当前项只保留细线提示 | 2026-05-09 | ✅ 已处理 |
+| HI-901 | UX | 319px 移动端批注发现 JIYU AI 顶栏语言/状态/登录余额遮挡、工作台折叠菜单箭头溢出、模型消耗空饼图过于单调、异常/通道空态缺说明、语言按钮像完整中英文切换、CC Switch 和用量教程比例裁切；已改为双行顶栏、固定箭头、解释型空状态、语言偏好提示和 CC Switch 两列/单列移动布局，并用 319×718 浏览器回测无横向溢出 | 2026-05-09 | ✅ 已处理 |
 
 ### 🟡 一般
 
@@ -635,63 +641,63 @@
 | HI-821 | TECH_DEBT | Makefile 测试入口优先使用系统 Python 导致 pytest 缺失；API RPC 价格补齐和社媒 Cookie 检测存在重复实现 | 2026-05-01 |
 | HI-822 | TECH_DEBT | AGENTS/SOP/索引仍指向历史大写文档路径；部分抽象类和聚合类保留空占位语句 | 2026-05-01 |
 | HI-823 | INFRA | `make lint` 依赖 ruff 但开发依赖未声明；已补齐 requirements-dev 与依赖注册表 | 2026-05-01 |
-| HI-824 | BUG | Frist-API 轻量后端静态首页因绝对路径归一化返回 403；已补回归测试并修复为同域 200 | 2026-05-01 |
-| HI-825 | SECURITY | Frist-API 公开充值按钮会直接给用户加余额；已改为待处理充值单 + 管理端人工确认入账，生产默认关闭演示充值 | 2026-05-01 |
-| HI-826 | TECH_DEBT | Frist-API 补号缺少直连/代理择优、上游不支持模型列表时的 fallback 探测和按真实 usage 扣费；已补齐轻量实现并纳入回归测试 | 2026-05-01 |
-| HI-827 | ARCH_LIMIT | Frist-API 网关缺少公开可用级会话粘滞、真实流式透传和生产配置硬门槛；已补齐并纳入回归测试 | 2026-05-01 |
-| HI-828 | UX | Frist-API 用户端信息密度过高、左侧导航/分组冗余、首屏存在演示数据闪现；已移除侧栏和 sticky，注册登录收进右上角，首屏只保留余额、模型消耗、连通性和导入入口，游客页不再显示演示消耗 | 2026-05-02 |
-| HI-829 | SECURITY | Frist-API 公开管理页不应暴露给普通用户，注册登录需要基础防刷；已加入隐藏管理入口码、验证码挑战、认证限流和公网冒烟检查 | 2026-05-02 |
-| HI-830 | UX | Frist-API 用户端缺少模型测试广场、数据看板、模型定价目录和配置教程；已补齐广场对话/生图、模型消耗分布、服务可用性、模型广场和 Codex/Claude/OpenClaw 一键配置教程 | 2026-05-02 |
-| HI-831 | SECURITY | Frist-API 管理员升级不应依赖用户把账号密码交给开发者；已改为登录后输入一次性管理员身份码，成功后当前账号升级且身份码作废 | 2026-05-02 |
-| HI-832 | UX | Frist-API 用户端注册登录、页面返回、广场消息管理、API Key 改名/删除、CC Switch 全模型导出、官方 Pro 模型优先级和 OpenCode/Hermes/Harmes 教程完整度不足；已补齐用户侧闭环并纳入回归测试 | 2026-05-02 |
-| HI-833 | UX | Frist-API Codex/OpenCode 导出后用户无法在页面确认完整模型清单，外部 GUI 若只读单一字段可能只显示默认模型；已在 CC Switch 页可见化默认模型/全模型列表，并补齐多套模型列表兼容字段 | 2026-05-02 |
-| HI-834 | INFRA | Frist-API 裸 IP 测试入口拒绝连接；根因是容器仅本地绑定且 Nginx 未监听测试端口，同时服务器代码落后于本地 open4；已同步代码、更新 Nginx 监听并通过公网冒烟 | 2026-05-02 |
-| HI-835 | UX | Frist-API 首屏主卡过大、品牌标识弱化、快捷入口过于等分；已恢复黑白红品牌标识，并改为主控台、右侧说明、核心指标和不对称任务轨道 | 2026-05-02 |
+| HI-824 | BUG | JIYU AI 轻量后端静态首页因绝对路径归一化返回 403；已补回归测试并修复为同域 200 | 2026-05-01 |
+| HI-825 | SECURITY | JIYU AI 公开充值按钮会直接给用户加余额；已改为待处理充值单 + 管理端人工确认入账，生产默认关闭演示充值 | 2026-05-01 |
+| HI-826 | TECH_DEBT | JIYU AI 补号缺少直连/代理择优、上游不支持模型列表时的 fallback 探测和按真实 usage 扣费；已补齐轻量实现并纳入回归测试 | 2026-05-01 |
+| HI-827 | ARCH_LIMIT | JIYU AI 网关缺少公开可用级会话粘滞、真实流式透传和生产配置硬门槛；已补齐并纳入回归测试 | 2026-05-01 |
+| HI-828 | UX | JIYU AI 用户端信息密度过高、左侧导航/分组冗余、首屏存在演示数据闪现；已移除侧栏和 sticky，注册登录收进右上角，首屏只保留余额、模型消耗、连通性和导入入口，游客页不再显示演示消耗 | 2026-05-02 |
+| HI-829 | SECURITY | JIYU AI 公开管理页不应暴露给普通用户，注册登录需要基础防刷；已加入隐藏管理入口码、验证码挑战、认证限流和公网冒烟检查 | 2026-05-02 |
+| HI-830 | UX | JIYU AI 用户端缺少模型测试广场、数据看板、模型定价目录和配置教程；已补齐广场对话/生图、模型消耗分布、服务可用性、模型广场和 Codex/Claude/OpenClaw 一键配置教程 | 2026-05-02 |
+| HI-831 | SECURITY | JIYU AI 管理员升级不应依赖用户把账号密码交给开发者；已改为登录后输入一次性管理员身份码，成功后当前账号升级且身份码作废 | 2026-05-02 |
+| HI-832 | UX | JIYU AI 用户端注册登录、页面返回、广场消息管理、API Key 改名/删除、CC Switch 全模型导出、官方 Pro 模型优先级和 OpenCode/Hermes/Harmes 教程完整度不足；已补齐用户侧闭环并纳入回归测试 | 2026-05-02 |
+| HI-833 | UX | JIYU AI Codex/OpenCode 导出后用户无法在页面确认完整模型清单，外部 GUI 若只读单一字段可能只显示默认模型；已在 CC Switch 页可见化默认模型/全模型列表，并补齐多套模型列表兼容字段 | 2026-05-02 |
+| HI-834 | INFRA | JIYU AI 裸 IP 测试入口拒绝连接；根因是容器仅本地绑定且 Nginx 未监听测试端口，同时服务器代码落后于本地 open4；已同步代码、更新 Nginx 监听并通过公网冒烟 | 2026-05-02 |
+| HI-835 | UX | JIYU AI 首屏主卡过大、品牌标识弱化、快捷入口过于等分；已恢复黑白红品牌标识，并改为主控台、右侧说明、核心指标和不对称任务轨道 | 2026-05-02 |
 | HI-836 | UX/ARCH_LIMIT | CC Switch 跨模型家族导入存在断点：ChatGPT 模型不能直接导入 Claude Code，Claude 模型导入 Codex 缺少 Responses 降级链路；已补齐 Claude Code Anthropic Messages 配置、Codex Responses fallback、开发者模式引导和支付最后一公里手册 | 2026-05-02 |
 | HI-837 | UX | CC Switch 跨模型导入教程仍偏文字化，用户不知道 Claude 左上角菜单、第三方推理输入框和 Codex 配置字段在哪里；已补两张仿真实操流程图、编号步骤、字段对照和上下文切换验收提示 | 2026-05-02 |
-| HI-838 | UX/BUG | Frist-API 登录、创建 Key、连通性刷新、模型命名、mock 数据和价格管理存在实测断点；已补明确反馈、刷新留在当前页、渠道聚合状态、官方模型名清洗、真实数据空态、后台价格 JSON 管理和 60 刀测试额度入账 | 2026-05-02 |
-| HI-839 | UX/BUG | Frist-API 外网实测发现 CC Switch 一键导入入口藏在长教程后、广场 `gpt-5.5` Chat Completions 返回上游 `Route /openai/chat/completions not found`、OpenCode 前缀路由未接住、OpenCode 导入模型清单缺 `gpt-5.4` / `gpt-5.3-codex`，桌面端实际导入后 `config.models` 仍只写默认模型；已前置一键导入主操作、补 OpenCode `/openai/*` 兼容路由、Chat Completions 缺失时降级 Responses，并按 OpenCode/CC Switch 真实配置格式补完整模型映射 | 2026-05-02 |
+| HI-838 | UX/BUG | JIYU AI 登录、创建 Key、连通性刷新、模型命名、mock 数据和价格管理存在实测断点；已补明确反馈、刷新留在当前页、渠道聚合状态、官方模型名清洗、真实数据空态、后台价格 JSON 管理和 60 刀测试额度入账 | 2026-05-02 |
+| HI-839 | UX/BUG | JIYU AI 外网实测发现 CC Switch 一键导入入口藏在长教程后、广场 `gpt-5.5` Chat Completions 返回上游 `Route /openai/chat/completions not found`、OpenCode 前缀路由未接住、OpenCode 导入模型清单缺 `gpt-5.4` / `gpt-5.3-codex`，桌面端实际导入后 `config.models` 仍只写默认模型；已前置一键导入主操作、补 OpenCode `/openai/*` 兼容路由、Chat Completions 缺失时降级 Responses，并按 OpenCode/CC Switch 真实配置格式补完整模型映射 | 2026-05-02 |
 | HI-840 | TECH_DEBT | 主项目文档、历史截图、旧审计报告、本地构建缓存和服务器临时产物过多；已压缩 docs 到 19 个 Markdown，本地仓库体积从约 2.4GB 降到约 196MB，并分层清理服务器日志、缓存、临时文件和 Docker 非运行对象 | 2026-05-03 |
-| HI-841 | UX/BUG | Frist-API 广场和补号对 `5.5`、`image2` 这类商业别名不够稳，图片库存严格探测可能误走聊天接口；已补别名清洗、图片模型 `/images/generations` 探测、广场一键实测状态和回归测试 | 2026-05-03 |
-| HI-842 | SECURITY/ARCH_LIMIT | Frist-API 需要把 CPA JSON 和 chong 作为备用渠道人工管理，但不能默认进入生产路由；已增加渠道类型、风险状态、人工确认和隔离态路由过滤 | 2026-05-03 |
+| HI-841 | UX/BUG | JIYU AI 广场和补号对 `5.5`、`image2` 这类商业别名不够稳，图片库存严格探测可能误走聊天接口；已补别名清洗、图片模型 `/images/generations` 探测、广场一键实测状态和回归测试 | 2026-05-03 |
+| HI-842 | SECURITY/ARCH_LIMIT | JIYU AI 需要把 CPA JSON 和 chong 作为备用渠道人工管理，但不能默认进入生产路由；已增加渠道类型、风险状态、人工确认和隔离态路由过滤 | 2026-05-03 |
 | HI-843 | BUG | 腾讯云公网实测发现上游返回 `API key is disabled` 时，网关 503 路径会回滚库存状态，导致广场继续展示失效模型；已改为保留失败状态并让模型清单自动下线 | 2026-05-03 |
 | HI-844 | BUG/UX | 授权余额站上游根地址会返回网站 HTML 壳，旧补号探测可能把 2xx HTML 当成健康或额度错误；已改为根地址失败后自动尝试 `/v1`、校验 OpenAI 兼容 JSON，并把首页改为控制台工作台布局 | 2026-05-03 |
 | HI-845 | UX/AI_POOL | 新余额站 `gpt-image-2` 真请求耗时 40-110 秒，广场默认图片参数过重容易放大公网等待；已改为轻量 PNG 请求并完成裸 IP 公网图片真测 | 2026-05-03 |
-| HI-858 | UX | Frist-API Workbench 壳不足：侧栏品牌与顶部 Logo 重复、仪表盘指标/图表/日志不足、API 管理缺搜索和端点展示、缺使用记录/订阅/兑换/邀请/资料页面、CC Switch 需覆盖 Gemini/OpenCode/OpenClaw/Hermes/Harmes 和 Codex DeepSeek；已完成 UI 外壳、美元展示和回归测试 | 2026-05-03 |
-| HI-859 | ARCH_LIMIT | Frist-API 已接入服务端 New-API 业务桥接层和每日 GitHub Actions 同步 PR；New-API 可接管看板、Token、日志、兑换、订阅、充值配置、邀请返利和可选网关代理。仍保留 Frist-API 自研 UI、CC Switch/Codex/DeepSeek 配置、补号助手、余额预警和 JSON 兜底；完整切换还需要历史用户/余额/Key/订单迁移和生产 New-API 初始化 | 2026-05-03 |
-| HI-848 | UX | Frist-API 用户无法按自己的心理安全线设置余额提醒；已新增账单页自定义阈值、收件邮箱、测试邮件和扣费跨阈值一次性提醒 | 2026-05-03 |
-| HI-849 | INFRA | 本机到 Gmail SMTP 异常；腾讯云实测 IPv6 SMTP TLS 与真实发信可用，IPv4 465 超时；已补 Node SMTP DNS 地址轮询和 `FRIST_API_SMTP_FAMILY` 配置 | 2026-05-03 |
-| HI-855 | SECURITY/UX | Frist-API 验证码原为简单算术题且登录也强制填写；已改为仅注册需要多题型挑战、单题错误次数限制，登录保留频率限制但不再要求验证码 | 2026-05-03 |
-| HI-851 | SECURITY | Frist-API 密码哈希使用 SHA-256（GPU 友好）；已改为 PBKDF2-SHA256 新格式，旧 SHA-256 用户登录成功后自动升级 | 2026-05-04 |
-| HI-852 | SECURITY | Frist-API Session Cookie 缺少 `Secure` 标记；已在 HTTPS 公网网关或 `x-forwarded-proto=https` 下自动加 `Secure` | 2026-05-04 |
-| HI-860 | SECURITY | Frist-API 用户端和管理端部分动态 `innerHTML` 字段未统一转义；已补齐 API Key 属性、充值/导入按钮、管理端摘要/审计日志等转义并加回归 | 2026-05-04 |
-| HI-861 | AI_POOL/UX | Frist-API Codex DeepSeek 导入仍默认旧 `deepseek-chat`，与 DeepSeek 官方当前 v4 模型文档不一致；已将新导入默认模型改为 `deepseek-v4-flash`，补 `deepseek-v4-pro` 并保留旧模型兼容 | 2026-05-04 |
-| HI-862 | UX | Frist-API 后端不可用时用户只看到顶部错误提示，不知道如何恢复；已在工作台增加离线恢复条和一键重新连接入口 | 2026-05-04 |
-| HI-850 | SECURITY | Frist-API runtime.json 明文存储用户 fk-live Key 和上游 rawKey；已新增 AES-256-GCM 字段加密，兼容旧明文读取并在保存时迁移 | 2026-05-04 |
-| HI-853 | UX | Frist-API 无"忘记密码"功能，用户丢失密码后无法自助恢复；已新增 SMTP 重置验证码和确认改密接口 | 2026-05-04 |
-| HI-854 | UX | Frist-API 前端服务不可用时静默降级无重试入口，用户看不到明确恢复指引 | 2026-05-03 |
-| HI-856 | ARCH_LIMIT | Frist-API 当时抽取 shared/catalog/newApiBridge/email/auth/payments/store 等职责，并把 SMTP DNS 轮询、注册/重置/余额预警邮件模板和邮箱归一化迁入 `server/email.js`，阶段回归为 `161/161`。2026-08-04 复核发现旧 `store.js` 未被使用且会丢运行字段，现已删除；当前权威存储安全超集仍保留在 `server.js`，完整拆分继续按独立批次推进。 | 2026-05-03 |
-| HI-857 | ARCH_LIMIT | 当前 Frist-API 单实例部署下，轻量 captcha/rateLimit 内存态可接受；生产水平扩展或多进程部署前必须迁移到 Redis/SQLite。已在运维文档写明判断依据和触发条件。 | 2026-05-03 |
-| HI-863 | INFRA | Frist-API 长期入口已复用 VPS-Config 既有域名和 Cloudflare 资产闭环：`jiyu.245334.xyz` 当前通过 Cloudflare proxied A 指向 Oracle ARM `150.136.73.15`，旧 `frist-api.245334.xyz` 跳转到 CC中转主站，旧 `frist-api.101-43-41-96.nip.io` 只保留冷回滚排障语境，不再作为生产兜底入口 | 2026-05-04 |
-| HI-864 | UX/COMMERCE | Frist-API 个人阶段不再推进个人收款码自动识别；已改为管理端批量生成一次性兑换码、用户端专属兑换页核销自动到账，并预留闲鱼商品链接位置 | 2026-05-04 |
-| HI-865 | AI_POOL/UX | Frist-API 需要管理自用 ChatGPT Plus 账号资产但不能把 Plus 账号变成可售 API 路由库存；已新增管理端 Plus 台账、到期摘要、敏感备注加密和用户路由隔离回归 | 2026-05-04 |
-| HI-866 | AI_POOL/UX | Frist-API 需要参考 New-API Codex OAuth 和 Grok RT JSON 格式支持 Refresh Token 批量管理，同时不能减少原 New-API 管理侧能力；已新增管理端 RT JSON/TXT 导入、脱敏台账、加密落盘和路由隔离回归 | 2026-05-04 |
-| HI-867 | UX/PERF | Frist-API 用户端和管理端解释性文案偏多、深色 Hyperstudio 壳与 Apple 简洁方向不一致，搜索和测试台存在不必要局部重绘；已切换 Refero Apple 浅色控制台、压缩首屏指标和导航文案、保留管理侧原功能并补局部渲染优化 | 2026-05-05 |
-| HI-868 | UX/PERF | Frist-API 参考 Tabcode 控制台克隆吸收优秀设计：替换旧视觉皮肤为 `tabcode-console`，后续按用户反馈收敛为深色顶栏、深色工作区、160px 侧栏、14px 卡片和短动效反馈，管理端原有 New-API/价格/入账/卡密/Plus/RT/接入/订单/库存/审计能力不减少 | 2026-05-05 |
-| HI-869 | BUG | Frist-API Plus 台账金额字段审计发现异常数字输入可能把 `NaN` 带入运行数据；已改为有限数字归一化并补回归，异常 TRY 余额/月费统一落为 0 | 2026-05-05 |
-| HI-870 | UX/SECURITY/ARCH_LIMIT | Frist-API CC Switch 导出曾按本机 Tabcode Claude/Codex 真实导入结构补齐大块 `settings_config`；后续 HI-877 已按 CC Switch 当前官方 parser 收敛为短 deep link，页面仍展示完整模型清单，协议无响应时自动复制降级；管理认证失败脱敏审计、runtime 写入失败 warning 和 SIGTERM/SIGINT 优雅关闭已保留 | 2026-05-05 |
-| HI-871 | UX | Frist-API Tabcode 浅色皮肤存在旧深色规则残留，黑底按钮/代码栏复制按钮/返回按钮出现灰字低对比；已更新资源版本并增加对比度护栏，用户端 6 个主路由和管理端可见交互元素扫描低对比为 0 | 2026-05-05 |
-| HI-874 | AI_POOL/INFRA | 用户提供的 `https://www.inroi.shop/v1` 是授权上游请求地址，后续字符串是上游 Key，不是 Frist-API 对外入口；已按 `x-admin-token` 复查远端管理号池，同 Key 旧根地址记录为 `exhausted/enabled=false` 不可路由，正确 `/v1` 记录为 `healthy/enabled=true` 且模型 21 个，runtime 中 rawKey 为 AES-GCM 加密字段 | 2026-05-05 |
-| HI-875 | UX/AI_POOL | Frist-API 用户端日志过长、测试页文字爆炸、深色对比不足、模型价格说明不完整、记录页缺客户端/费用/延迟、API Key 前缀像 fake；已改为 5 条精简日志、短动效反馈、深色控制台逐页审计、官方输入/缓存/输出价、3 分钟自动检测、消费后余额刷新、邮箱遮罩、兑换码前置、消费返利 5% 上限和资料可编辑；2026-07-04 当前生产入口已迁到 Oracle `https://jiyu.245334.xyz`，旧 Frist 域名跳转，历史腾讯入口仅冷回滚；2026-05-06 上线前安全复审已将新 Key 前缀恢复为 `fk-live-*` | 2026-05-05 |
-| HI-876 | SECURITY | Frist-API 上线前安全闭环复审发现 CSRF、SSRF、支付少付入账、runtime 写入原子性、用户 Key 明文回显、共享脱敏前缀和生产模板开关存在上线风险；已补 CSRF Token、补号 URL 私网阻断、支付金额校验、临时文件 fsync+rename、Dashboard 不再持久回显明文 Key、`fk-live-*` 脱敏一致性和生产 `FRIST_API_REQUIRE_CSRF`/`FRIST_API_ALLOW_PRIVATE_UPSTREAM_URLS` 登记 | 2026-05-06 |
-| HI-877 | UX/BACKEND | CC Switch 用量查询曾只能靠用户按教程手填 Key 和 API 地址，且 DeepSeek 官方端点导入时用量脚本可能误用上游域名；已核对 CC Switch 3.14.1 官方 deep link 支持 `usageScript` 等字段，导入链接自动带 Base64URL 用量脚本并移除旧 `config` / `availableModels` 大块参数，新增 `/api/frist/key-usage` 只读脱敏接口，修复 New-API 用量接口 500 回归，并将模型请求地址与 Frist 用量查询地址解耦；2026-05-06 实机验证中 CC Switch 日志确认解析 `resource=provider/app=claude/name=Frist-API`，临时等价导入后 Claude CLI 返回 `Frist API CLI OK`，测试后已恢复用户原配置 | 2026-05-06 |
-| HI-878 | UX/BACKEND | Frist-API 渠道状态监视器此前只有 healthy/total 简表，用户无法判断降级、慢线、最近状态和刷新口径；已参考 86GameStore `/monitor` 补齐当前库存快照、可用率、最低/平均延迟、慢线/失败状态条和 60 秒刷新展示，响应继续脱敏；2026-05-07 已通过 HI-882 补齐持久化探测事件和 7/15/30 天 SLA 摘要 | 2026-05-06 |
-| HI-879 | BUG/AI_POOL | Frist-API “Claude 兼容入口 · 查询失败”根因是 CC Switch 用量脚本返回对象型 `extra`，同时 Claude 原生 Messages 上游未优先直连；已将 `extra` 改为字符串、补 Claude `/v1/messages` 原生路由/严格探测、同 Key 多模型组隔离和导出按模型组选 Key。86GameStore Claude/OpenAI 号源已加密写入 ignored runtime，用户流程、Claude CLI、Codex CLI 和浏览器刷新均已实测闭环 | 2026-05-06 |
+| HI-858 | UX | JIYU AI Workbench 壳不足：侧栏品牌与顶部 Logo 重复、仪表盘指标/图表/日志不足、API 管理缺搜索和端点展示、缺使用记录/订阅/兑换/邀请/资料页面、CC Switch 需覆盖 Gemini/OpenCode/OpenClaw/Hermes/Harmes 和 Codex DeepSeek；已完成 UI 外壳、美元展示和回归测试 | 2026-05-03 |
+| HI-859 | ARCH_LIMIT | JIYU AI 已接入服务端 New-API 业务桥接层和每日 GitHub Actions 同步 PR；New-API 可接管看板、Token、日志、兑换、订阅、充值配置、邀请返利和可选网关代理。仍保留 JIYU AI 自研 UI、CC Switch/Codex/DeepSeek 配置、补号助手、余额预警和 JSON 兜底；完整切换还需要历史用户/余额/Key/订单迁移和生产 New-API 初始化 | 2026-05-03 |
+| HI-848 | UX | JIYU AI 用户无法按自己的心理安全线设置余额提醒；已新增账单页自定义阈值、收件邮箱、测试邮件和扣费跨阈值一次性提醒 | 2026-05-03 |
+| HI-849 | INFRA | 本机到 Gmail SMTP 异常；腾讯云实测 IPv6 SMTP TLS 与真实发信可用，IPv4 465 超时；已补 Node SMTP DNS 地址轮询和 `SUB2API_SMTP_FAMILY` 配置 | 2026-05-03 |
+| HI-855 | SECURITY/UX | JIYU AI 验证码原为简单算术题且登录也强制填写；已改为仅注册需要多题型挑战、单题错误次数限制，登录保留频率限制但不再要求验证码 | 2026-05-03 |
+| HI-851 | SECURITY | JIYU AI 密码哈希使用 SHA-256（GPU 友好）；已改为 PBKDF2-SHA256 新格式，旧 SHA-256 用户登录成功后自动升级 | 2026-05-04 |
+| HI-852 | SECURITY | JIYU AI Session Cookie 缺少 `Secure` 标记；已在 HTTPS 公网网关或 `x-forwarded-proto=https` 下自动加 `Secure` | 2026-05-04 |
+| HI-860 | SECURITY | JIYU AI 用户端和管理端部分动态 `innerHTML` 字段未统一转义；已补齐 API Key 属性、充值/导入按钮、管理端摘要/审计日志等转义并加回归 | 2026-05-04 |
+| HI-861 | AI_POOL/UX | JIYU AI Codex DeepSeek 导入仍默认旧 `deepseek-chat`，与 DeepSeek 官方当前 v4 模型文档不一致；已将新导入默认模型改为 `deepseek-v4-flash`，补 `deepseek-v4-pro` 并保留旧模型兼容 | 2026-05-04 |
+| HI-862 | UX | JIYU AI 后端不可用时用户只看到顶部错误提示，不知道如何恢复；已在工作台增加离线恢复条和一键重新连接入口 | 2026-05-04 |
+| HI-850 | SECURITY | JIYU AI runtime.json 明文存储用户 fk-live Key 和上游 rawKey；已新增 AES-256-GCM 字段加密，兼容旧明文读取并在保存时迁移 | 2026-05-04 |
+| HI-853 | UX | JIYU AI 无"忘记密码"功能，用户丢失密码后无法自助恢复；已新增 SMTP 重置验证码和确认改密接口 | 2026-05-04 |
+| HI-854 | UX | JIYU AI 前端服务不可用时静默降级无重试入口，用户看不到明确恢复指引 | 2026-05-03 |
+| HI-856 | ARCH_LIMIT | JIYU AI 当时抽取 shared/catalog/newApiBridge/email/auth/payments/store 等职责，并把 SMTP DNS 轮询、注册/重置/余额预警邮件模板和邮箱归一化迁入 `server/email.js`，阶段回归为 `161/161`。2026-08-04 复核发现旧 `store.js` 未被使用且会丢运行字段，现已删除；当前权威存储安全超集仍保留在 `server.js`，完整拆分继续按独立批次推进。 | 2026-05-03 |
+| HI-857 | ARCH_LIMIT | 当前 JIYU AI 单实例部署下，轻量 captcha/rateLimit 内存态可接受；生产水平扩展或多进程部署前必须迁移到 Redis/SQLite。已在运维文档写明判断依据和触发条件。 | 2026-05-03 |
+| HI-863 | INFRA | JIYU AI 长期入口已复用 VPS-Config 既有域名和 Cloudflare 资产闭环：`jiyu.245334.xyz` 当前通过 Cloudflare proxied A 指向 Oracle ARM `150.136.73.15`，旧 `jiyu.245334.xyz` 跳转到 CC中转主站，旧 `jiyu.245334.xyz` 只保留冷回滚排障语境，不再作为生产兜底入口 | 2026-05-04 |
+| HI-864 | UX/COMMERCE | JIYU AI 个人阶段不再推进个人收款码自动识别；已改为管理端批量生成一次性兑换码、用户端专属兑换页核销自动到账，并预留闲鱼商品链接位置 | 2026-05-04 |
+| HI-865 | AI_POOL/UX | JIYU AI 需要管理自用 ChatGPT Plus 账号资产但不能把 Plus 账号变成可售 API 路由库存；已新增管理端 Plus 台账、到期摘要、敏感备注加密和用户路由隔离回归 | 2026-05-04 |
+| HI-866 | AI_POOL/UX | JIYU AI 需要参考 New-API Codex OAuth 和 Grok RT JSON 格式支持 Refresh Token 批量管理，同时不能减少原 New-API 管理侧能力；已新增管理端 RT JSON/TXT 导入、脱敏台账、加密落盘和路由隔离回归 | 2026-05-04 |
+| HI-867 | UX/PERF | JIYU AI 用户端和管理端解释性文案偏多、深色 Hyperstudio 壳与 Apple 简洁方向不一致，搜索和测试台存在不必要局部重绘；已切换 Refero Apple 浅色控制台、压缩首屏指标和导航文案、保留管理侧原功能并补局部渲染优化 | 2026-05-05 |
+| HI-868 | UX/PERF | JIYU AI 参考 Tabcode 控制台克隆吸收优秀设计：替换旧视觉皮肤为 `tabcode-console`，后续按用户反馈收敛为深色顶栏、深色工作区、160px 侧栏、14px 卡片和短动效反馈，管理端原有 New-API/价格/入账/卡密/Plus/RT/接入/订单/库存/审计能力不减少 | 2026-05-05 |
+| HI-869 | BUG | JIYU AI Plus 台账金额字段审计发现异常数字输入可能把 `NaN` 带入运行数据；已改为有限数字归一化并补回归，异常 TRY 余额/月费统一落为 0 | 2026-05-05 |
+| HI-870 | UX/SECURITY/ARCH_LIMIT | JIYU AI CC Switch 导出曾按本机 Tabcode Claude/Codex 真实导入结构补齐大块 `settings_config`；后续 HI-877 已按 CC Switch 当前官方 parser 收敛为短 deep link，页面仍展示完整模型清单，协议无响应时自动复制降级；管理认证失败脱敏审计、runtime 写入失败 warning 和 SIGTERM/SIGINT 优雅关闭已保留 | 2026-05-05 |
+| HI-871 | UX | JIYU AI Tabcode 浅色皮肤存在旧深色规则残留，黑底按钮/代码栏复制按钮/返回按钮出现灰字低对比；已更新资源版本并增加对比度护栏，用户端 6 个主路由和管理端可见交互元素扫描低对比为 0 | 2026-05-05 |
+| HI-874 | AI_POOL/INFRA | 用户提供的 `https://www.inroi.shop/v1` 是授权上游请求地址，后续字符串是上游 Key，不是 JIYU AI 对外入口；已按 `x-admin-token` 复查远端管理号池，同 Key 旧根地址记录为 `exhausted/enabled=false` 不可路由，正确 `/v1` 记录为 `healthy/enabled=true` 且模型 21 个，runtime 中 rawKey 为 AES-GCM 加密字段 | 2026-05-05 |
+| HI-875 | UX/AI_POOL | JIYU AI 用户端日志过长、测试页文字爆炸、深色对比不足、模型价格说明不完整、记录页缺客户端/费用/延迟、API Key 前缀像 fake；已改为 5 条精简日志、短动效反馈、深色控制台逐页审计、官方输入/缓存/输出价、3 分钟自动检测、消费后余额刷新、邮箱遮罩、兑换码前置、消费返利 5% 上限和资料可编辑；2026-07-04 当前生产入口已迁到 Oracle `https://jiyu.245334.xyz`，旧 JIYU 域名跳转，历史腾讯入口仅冷回滚；2026-05-06 上线前安全复审已将新 Key 前缀恢复为 `fk-live-*` | 2026-05-05 |
+| HI-876 | SECURITY | JIYU AI 上线前安全闭环复审发现 CSRF、SSRF、支付少付入账、runtime 写入原子性、用户 Key 明文回显、共享脱敏前缀和生产模板开关存在上线风险；已补 CSRF Token、补号 URL 私网阻断、支付金额校验、临时文件 fsync+rename、Dashboard 不再持久回显明文 Key、`fk-live-*` 脱敏一致性和生产 `SUB2API_REQUIRE_CSRF`/`SUB2API_ALLOW_PRIVATE_UPSTREAM_URLS` 登记 | 2026-05-06 |
+| HI-877 | UX/BACKEND | CC Switch 用量查询曾只能靠用户按教程手填 Key 和 API 地址，且 DeepSeek 官方端点导入时用量脚本可能误用上游域名；已核对 CC Switch 3.14.1 官方 deep link 支持 `usageScript` 等字段，导入链接自动带 Base64URL 用量脚本并移除旧 `config` / `availableModels` 大块参数，新增 `/api/frist/key-usage` 只读脱敏接口，修复 New-API 用量接口 500 回归，并将模型请求地址与 JIYU 用量查询地址解耦；2026-05-06 实机验证中 CC Switch 日志确认解析 `resource=provider/app=claude/name=JIYU AI`，临时等价导入后 Claude CLI 返回 `JIYU API CLI OK`，测试后已恢复用户原配置 | 2026-05-06 |
+| HI-878 | UX/BACKEND | JIYU AI 渠道状态监视器此前只有 healthy/total 简表，用户无法判断降级、慢线、最近状态和刷新口径；已参考 86GameStore `/monitor` 补齐当前库存快照、可用率、最低/平均延迟、慢线/失败状态条和 60 秒刷新展示，响应继续脱敏；2026-05-07 已通过 HI-882 补齐持久化探测事件和 7/15/30 天 SLA 摘要 | 2026-05-06 |
+| HI-879 | BUG/AI_POOL | JIYU AI “Claude 兼容入口 · 查询失败”根因是 CC Switch 用量脚本返回对象型 `extra`，同时 Claude 原生 Messages 上游未优先直连；已将 `extra` 改为字符串、补 Claude `/v1/messages` 原生路由/严格探测、同 Key 多模型组隔离和导出按模型组选 Key。86GameStore Claude/OpenAI 号源已加密写入 ignored runtime，用户流程、Claude CLI、Codex CLI 和浏览器刷新均已实测闭环 | 2026-05-06 |
 | HI-880 | UX/BUG | CC Switch 小白导入 Workflow 存在边界不清：供应商 deep link 和 MCP deep link 是两个 resource，页面曾把 MCP 偏向 Codex 且用户显式选择模型时服务端返回默认模型、深链模型和 TOML 默认模型可能不一致；已按 CC Switch `origin/main` 源码收敛为两步 Workflow，MCP 增强包覆盖 `claude,codex,gemini,opencode,hermes`，明确 OpenClaw MCP 会被当前 CC Switch 忽略，并补齐用户选择模型一致性回归 | 2026-05-06 |
-| HI-881 | UX/BACKEND | Frist-API 用户侧缺少导入后的闭环检测和异常消费提醒，管理侧号池对小白管理员仍难以判断哪个端点/渠道断了；已将 OpenAI 命名收敛、补导入后检测闭环、`gpt-image-2` 流程图验证入口、轻量异常消费检测、管理端号池首次使用流程和渠道诊断。受控实机验证中，文本 `pong`、图片返回、用量脚本、记录页消费、异常提醒和 `gpt-image-2` 降级 `1/2 可用` 均闭环 | 2026-05-07 |
-| HI-882 | SECURITY/ARCH_LIMIT | Frist-API New-API 剩余生产边界缺少统一硬门槛；已新增生产强制开关、固定品牌域名检查、New-API 数据库必备开关、管理员 TOTP 2FA、真实支付商户状态、备份/恢复登记和 7/15/30 天渠道 SLA 事件摘要。外部仍需购买/绑定真实品牌域名、在商户平台开户、部署备份任务并完成历史 JSON 到 New-API 数据迁移 | 2026-05-07 |
-| HI-883 | UX/BUG | Frist-API 用户端浏览器批注发现状态灯、导航间距、趋势图、CC Switch 教程、重复 Harmes、复制按钮、模型展示名、资料页、登录弹窗和游客库存展示存在视觉 QA 问题；已按批注修复，未登录 Dashboard 不再展示 `channelChecks`，真实内部模型 ID 继续保留以免影响路由 | 2026-05-08 |
-| HI-884 | BUG/SECURITY | Frist-API 登录失败曾把真实 401 账号错误统一显示为“后端暂不可用”，且公网容器仍使用默认管理令牌，SMTP 未配置时用户无法自助恢复密码；已补真实错误反馈、管理员账号恢复接口、独立密码哈希密钥、默认管理令牌替换和 CSRF。历史 runtime 已有 `enc:v1` 字段但缺原始数据加密密钥，公网暂保留兼容模式，后续需一次性迁移后再启用公开模式数据加密 | 2026-05-08 |
+| HI-881 | UX/BACKEND | JIYU AI 用户侧缺少导入后的闭环检测和异常消费提醒，管理侧号池对小白管理员仍难以判断哪个端点/渠道断了；已将 OpenAI 命名收敛、补导入后检测闭环、`gpt-image-2` 流程图验证入口、轻量异常消费检测、管理端号池首次使用流程和渠道诊断。受控实机验证中，文本 `pong`、图片返回、用量脚本、记录页消费、异常提醒和 `gpt-image-2` 降级 `1/2 可用` 均闭环 | 2026-05-07 |
+| HI-882 | SECURITY/ARCH_LIMIT | JIYU AI New-API 剩余生产边界缺少统一硬门槛；已新增生产强制开关、固定品牌域名检查、New-API 数据库必备开关、管理员 TOTP 2FA、真实支付商户状态、备份/恢复登记和 7/15/30 天渠道 SLA 事件摘要。外部仍需购买/绑定真实品牌域名、在商户平台开户、部署备份任务并完成历史 JSON 到 New-API 数据迁移 | 2026-05-07 |
+| HI-883 | UX/BUG | JIYU AI 用户端浏览器批注发现状态灯、导航间距、趋势图、CC Switch 教程、重复 Harmes、复制按钮、模型展示名、资料页、登录弹窗和游客库存展示存在视觉 QA 问题；已按批注修复，未登录 Dashboard 不再展示 `channelChecks`，真实内部模型 ID 继续保留以免影响路由 | 2026-05-08 |
+| HI-884 | BUG/SECURITY | JIYU AI 登录失败曾把真实 401 账号错误统一显示为“后端暂不可用”，且公网容器仍使用默认管理令牌，SMTP 未配置时用户无法自助恢复密码；已补真实错误反馈、管理员账号恢复接口、独立密码哈希密钥、默认管理令牌替换和 CSRF。历史 runtime 已有 `enc:v1` 字段但缺原始数据加密密钥，公网暂保留兼容模式，后续需一次性迁移后再启用公开模式数据加密 | 2026-05-08 |
 
 ---
 
@@ -704,14 +710,14 @@
 | TD-003 | TECH_DEBT | `/cli` 已正式注册到 `CLICommandsMixin` 和 `MultiBot`，并补启动注册回归；不再是预备死代码 | ✅ 已处理 |
 | TD-004 | TECH_DEBT | 历史 `pass` 已从 63 降到 49；剩余均为可选依赖降级、任务取消、幂等辅助或异常兜底路径，并补中文注释说明保留原因，不再静默误导主流程 | ✅ 已处理 |
 | TD-005 | TECH_DEBT | 历史 lint 问题已机械清理到 `make lint` 可通过；2026-07-02 fresh `make lint` 输出 `All checks passed!` | ✅ 已处理 |
-| TD-006 | ARCH_LIMIT | Frist-API JSON runtime → New-API 生产迁移已按授权执行：用户 19、token 1、充值/订单 4、兑换码 2、日志 162 已迁入，New-API adapter 已启用，回滚目录为 `/opt/frist-api/backups/newapi-migration-20260703T005433Z`；16 个历史 `enc:v1:` 用户 Key 因旧加密密钥缺失未迁移，需重新生成/补录 | ✅ 代码/迁移已处理，旧 Key 为人工补录 |
-| TD-007 | INFRA | 域名/Cloudflare/R2 不新购，已复用 `/Users/blackdj/Documents/VPS-Config` 既有资产并完成 Oracle 切流：`jiyu.245334.xyz` 为 Cloudflare proxied A → Oracle ARM `150.136.73.15` → Apache/Origin CA → New-API `127.0.0.1:13000`，旧 `frist-api.245334.xyz` 301 到 CC中转；Frist-API `127.0.0.1:3180` 仅保留内部兼容；R2 备份 timer 在 Oracle enabled/active，腾讯旧 timer disabled/inactive。SMTP 密码已通过隐藏输入方式写入 Oracle `/etc/frist-api/frist-api.env` 和兼容 `.env`，生产测试邮件返回 `smtp_test=sent`；密码未写入命令历史/Git/文档正文 | ✅ 域名/R2/Oracle/SMTP 已处理，旧 Key 为人工补录 |
+| TD-006 | ARCH_LIMIT | JIYU AI JSON runtime → New-API 生产迁移已按授权执行：用户 19、token 1、充值/订单 4、兑换码 2、日志 162 已迁入，New-API adapter 已启用，回滚目录为 `/opt/sub2api/backups/newapi-migration-20260703T005433Z`；16 个历史 `enc:v1:` 用户 Key 因旧加密密钥缺失未迁移，需重新生成/补录 | ✅ 代码/迁移已处理，旧 Key 为人工补录 |
+| TD-007 | INFRA | 域名/Cloudflare/R2 不新购，已复用 `/Users/blackdj/Documents/VPS-Config` 既有资产并完成 Oracle 切流：`jiyu.245334.xyz` 为 Cloudflare proxied A → Oracle ARM `150.136.73.15` → Apache/Origin CA → New-API `127.0.0.1:13000`，旧 `jiyu.245334.xyz` 301 到 CC中转；JIYU AI `127.0.0.1:3180` 仅保留内部兼容；R2 备份 timer 在 Oracle enabled/active，腾讯旧 timer disabled/inactive。SMTP 密码已通过隐藏输入方式写入 Oracle `/etc/sub2api/jiyu-ai.env` 和兼容 `.env`，生产测试邮件返回 `smtp_test=sent`；密码未写入命令历史/Git/文档正文 | ✅ 域名/R2/Oracle/SMTP 已处理，旧 Key 为人工补录 |
 | TD-008 | ARCH_LIMIT | 客户可见模型目录已改为健康上游 `/v1/models` / 真实探测优先；硬编码模型目录只用于后台审计排序，不再兜底展示不存在模型 | ✅ 已处理 |
-| TD-009 | TECH_DEBT | Frist-API `ccswitch://` 导入链接依赖用户已安装 CC Switch，浏览器无协议处理器时降级体验为空；已改为点击导入自动复制链接并显示短降级反馈 | ✅ 已处理 |
-| TD-010 | SECURITY | Frist-API 管理 API 失败认证不生成审计事件，暴力破解无法检测；已补脱敏审计事件且不记录提交的 token | ✅ 已处理 |
-| TD-011 | ARCH_LIMIT | Frist-API 无优雅关闭（SIGTERM/SIGINT），连接直接断开对网关流式请求不友好；CLI 启动已补优雅关闭和超时兜底 | ✅ 已处理 |
-| TD-012 | ARCH_LIMIT | Frist-API 文件写入失败被 `catch(() => {})` 静默吞掉，store 破损后无告警；已改为 `FRIST_API_RUNTIME_WRITE_FAILED` warning | ✅ 已处理 |
-| TD-013 | ARCH_LIMIT | Frist-API 已将网关成功、慢线、失败和额度耗尽写入 `channelProbeEvents` 并返回 7/15/30 天 SLA 摘要；2026-05-09 已补独立 60 秒后台探测队列覆盖无人调用时段，并支持 Key 异常一次性补号提醒 | ✅ 已处理 |
+| TD-009 | TECH_DEBT | JIYU AI `ccswitch://` 导入链接依赖用户已安装 CC Switch，浏览器无协议处理器时降级体验为空；已改为点击导入自动复制链接并显示短降级反馈 | ✅ 已处理 |
+| TD-010 | SECURITY | JIYU AI 管理 API 失败认证不生成审计事件，暴力破解无法检测；已补脱敏审计事件且不记录提交的 token | ✅ 已处理 |
+| TD-011 | ARCH_LIMIT | JIYU AI 无优雅关闭（SIGTERM/SIGINT），连接直接断开对网关流式请求不友好；CLI 启动已补优雅关闭和超时兜底 | ✅ 已处理 |
+| TD-012 | ARCH_LIMIT | JIYU AI 文件写入失败被 `catch(() => {})` 静默吞掉，store 破损后无告警；已改为 `SUB2API_RUNTIME_WRITE_FAILED` warning | ✅ 已处理 |
+| TD-013 | ARCH_LIMIT | JIYU AI 已将网关成功、慢线、失败和额度耗尽写入 `channelProbeEvents` 并返回 7/15/30 天 SLA 摘要；2026-05-09 已补独立 60 秒后台探测队列覆盖无人调用时段，并支持 Key 异常一次性补号提醒 | ✅ 已处理 |
 | TD-014 | TECH_DEBT | requests/urllib3/aiohttp/FastAPI/Starlette/LiteLLM 等依赖安全下限已升级；高风险可选依赖默认移出并保留 graceful degradation；第三方 `js2py` / `Starlette TestClient` Python 3.12 兼容提示已通过 pytest 过滤隔离；2026-07-02 `pip check` 无破损依赖、`pip-audit` 无已知漏洞 | ✅ 已处理 |
 | TD-015 | INFRA | 已查询上游并升级到 `actions/cache@v6`、`actions/setup-python@v6`、`astral-sh/setup-uv@v8.2.0`，CI 增加 secret/audit 门禁，Node 20 action 预警代码侧已收口 | ✅ 已处理 |
 | TD-016 | ARCH_LIMIT | 社媒自动化只做工程质量收口，继续保持“待审草稿/只读采集/人工最终确认”边界；本轮没有恢复自动发布、评论、关注、私信、点赞或推广 | ✅ 工程侧已收口，外发仍人工 |

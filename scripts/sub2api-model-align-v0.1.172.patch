@@ -1,0 +1,68 @@
+diff --git a/backend/internal/service/channel.go b/backend/internal/service/channel.go
+index 4a3bdf3..a138ea9 100644
+--- a/backend/internal/service/channel.go
++++ b/backend/internal/service/channel.go
+@@ -494,6 +494,8 @@ func buildPricingIndex(pricings []ChannelModelPricing) map[string]*platformPrici
+ //   - 通配符 src（如 "claude-3-*"）：用同 platform 定价里前缀匹配的模型作为候选展开，
+ //     每个候选用自身定价（通配符场景一般是 passthrough，target 通常也是通配符）。
+ //   - "*" 单独 mapping key 走通配符分支（前缀为空 → 全展开）。
++//   - 当 RestrictModels 启用且存在显式映射时，映射是唯一的可用模型事实来源；
++//     定价仍负责计费，但不能单独把模型重新暴露出来。
+ //   - Pass B（pricing-only）：遍历 ModelPricing 中所有非通配符模型，对未在 Pass A 添加过的
+ //     补齐——显示名 = 定价模型名，定价 = 自身（这是关键修复：定价存在即代表渠道支持该模型，
+ //     即使没配映射）。
+@@ -581,11 +583,14 @@ func (c *Channel) SupportedModels() []SupportedModel {
+ 		}
+ 	}
+ 
+-	// Pass B：从 pricing 补齐 mapping 未覆盖的具体模型（修复"定价存在但没配映射 → 不显示"）
+-	for platform, pidx := range idx {
+-		for _, name := range pidx.names {
+-			display, pricing := lookup(pidx, name)
+-			add(platform, display, pricing)
++	// 受限渠道的显式映射来自已验证的上游模型清单，不能让历史定价行绕过该白名单。
++	if !c.RestrictModels || len(c.ModelMapping) == 0 {
++		// Pass B：从 pricing 补齐 mapping 未覆盖的具体模型（修复"定价存在但没配映射 → 不显示"）
++		for platform, pidx := range idx {
++			for _, name := range pidx.names {
++				display, pricing := lookup(pidx, name)
++				add(platform, display, pricing)
++			}
+ 		}
+ 	}
+ 
+diff --git a/backend/internal/service/channel_test.go b/backend/internal/service/channel_test.go
+index 2f371f8..7270ff9 100644
+--- a/backend/internal/service/channel_test.go
++++ b/backend/internal/service/channel_test.go
+@@ -489,6 +489,22 @@ func TestSupportedModels_ExactKeysAndPricing(t *testing.T) {
+ 	require.Equal(t, int64(10), got[1].Pricing.ID)
+ }
+ 
++func TestSupportedModels_RestrictedChannelDoesNotExposePricingOnlyModels(t *testing.T) {
++	ch := &Channel{
++		RestrictModels: true,
++		ModelPricing: []ChannelModelPricing{
++			{ID: 10, Platform: "anthropic", Models: []string{"claude-sonnet-4-6", "claude-opus-4-6"}},
++		},
++		ModelMapping: map[string]map[string]string{
++			"anthropic": {"claude-sonnet-4-6": "claude-sonnet-4-6"},
++		},
++	}
++
++	got := ch.SupportedModels()
++	require.Len(t, got, 1)
++	require.Equal(t, "claude-sonnet-4-6", got[0].Name)
++}
++
+ func TestSupportedModels_WildcardExpandedFromPricing(t *testing.T) {
+ 	ch := &Channel{
+ 		ModelPricing: []ChannelModelPricing{
+@@ -513,7 +529,6 @@ func TestSupportedModels_WildcardExpandedFromPricing(t *testing.T) {
+ 	}
+ }
+ 
+-
+ func TestSupportedModels_MissingPricingKeepsNilPricing(t *testing.T) {
+ 	ch := &Channel{
+ 		ModelMapping: map[string]map[string]string{

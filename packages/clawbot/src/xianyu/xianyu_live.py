@@ -1512,12 +1512,8 @@ class XianyuLive:
     def _cc_zhongzhuan_auto_ship_config() -> dict[str, str | bool]:
         """读取 CC中转自动发货配置，只返回是否可用，不记录敏感 token。"""
         enabled = os.getenv("CC_XIANYU_AUTO_SHIP_ENABLED", "").strip().lower()
-        endpoint = (
-            os.getenv("CC_XIANYU_WEBHOOK_URL", "").strip() or os.getenv("FRIST_API_XIANYU_WEBHOOK_URL", "").strip()
-        )
-        token = (
-            os.getenv("CC_XIANYU_WEBHOOK_TOKEN", "").strip() or os.getenv("FRIST_API_XIANYU_WEBHOOK_TOKEN", "").strip()
-        )
+        endpoint = os.getenv("CC_XIANYU_WEBHOOK_URL", "").strip()
+        token = os.getenv("CC_XIANYU_WEBHOOK_TOKEN", "").strip()
         disabled = enabled in {"0", "false", "no", "off"}
         paused = is_auto_ship_paused()
         webhook_configured = (not disabled) and bool(endpoint and token)

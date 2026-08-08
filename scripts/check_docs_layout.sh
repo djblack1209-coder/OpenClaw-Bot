@@ -148,7 +148,7 @@ for required_fact in \
   '--fail-under=80' \
   'src/core/loop_owner.py' \
   'MANAGED_MCP_PACKAGES' \
-  'FRIST_API_PAYMENT_REQUEST_TIMEOUT_MS' \
+  'SUB2API_PAYMENT_REQUEST_TIMEOUT_MS' \
   'tag@sha256' \
   'make clean-install-check' \
   'docs/086-release-evidence.md'; do

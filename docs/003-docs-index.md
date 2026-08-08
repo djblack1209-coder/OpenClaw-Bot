@@ -13,7 +13,7 @@
 | 004 | `004-architecture.md` | 系统架构：OMEGA v2 设计 + Bot Agent 三省六部指令 |
 | 005 | `005-quickstart.md` | 快速启动、部署、开发者指南、灾备、密钥轮换、API 注册 |
 | 006 | `006-registries.md` | 注册表总集：API 池 + 命令 + 依赖 + 模块 |
-| 007 | `007-operations.md` | Frist-API 运维、闲鱼 Cookie、部署验证 |
+| 007 | `007-operations.md` | JIYU AI 运维、闲鱼 Cookie、部署验证 |
 | 008 | `008-sop.md` | 开发规范：文档优先协议 + 错误翻译参考 |
 | 009 | `009-health.md` | 系统健康、Bug、技术债 + 经验库 + 需求跟踪 |
 | 010 | `010-feature-specs.md` | 功能规格总集：16 个设计文档 |
@@ -32,7 +32,6 @@
 
 | 编号 | 文档 | 内容概要 |
 |------|------|---------|
-| 050 | `050-frist-api-86game-clone-commerce-plan.md` | Frist-API 86GameStore 风格后台、兑换码售卖闭环、渠道同步倍率和闲鱼发货计划 |
 | 051 | `051-jiyu-brand-production-plan.md` | CC中转品牌收口、域名/HTTPS、生产加固分期和生产内测验收 |
 | 052 | `052-intel-brief-master-plan.md` | Intel Brief 总体方案、开源轮子搬运规划、多服务器运行基线和分阶段验证路线 |
 | 053 | `053-jiyu-growth-payment-image-update-plan.md` | JIYU 生图渠道、MCP、链动充值和 WebUI 自助更新分阶段方案 |
