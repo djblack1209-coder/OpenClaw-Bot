@@ -26,6 +26,30 @@
 - `Anthropic`、`OpenAI`、`Grok` 是帮助用户识别模型/API 生态的产品标签，必须保留；匿名化对象仅限真实供货上游及其域名，用户可见渠道统一为渠道A/渠道B。
 - 上游安全白名单只新增 `api.aigo0.com`、`www.huyunapi.com`，私网和不安全 HTTP 仍拒绝。
 
+### 永久测试账号与真实客户端基线（2026-08-08）
+
+- 永久测试账号为 `jiyu-e2e-20260808@245334.xyz`（用户 ID 2），必须保留；密码和两个活动 Key 分别存入 macOS 钥匙串，不得输出、截图或写入仓库。旧 OpenAI Key 已轮换并停用，历史用量保留用于对账。
+- Claude Code 使用 `ANTHROPIC_BASE_URL=https://jiyu.245334.xyz` 和独立 Claude Key。渠道B连续两次成功；服务端成功样本为输入 327、输出 101、首 Token 3155 ms、总时长 7430 ms、站内计费 `$0.002496`。短单轮提示没有可复用缓存块，缓存为 0 属预期；渠道A对应分组当前 0 个可调度账号，真实返回 503，禁止继续对外显示为可用。
+- OpenAI Responses 使用 `https://jiyu.245334.xyz/v1` 和独立 OpenAI Key。最近成功样本为非缓存输入 550、缓存读取 3840、输出 6，缓存占总输入 `87.47%`，HTTP 客户端首包 5889 ms、总时长 6150 ms，服务端处理 4609 ms，站内计费 `$0.004850`、上游实际成本 `$0.0011155`。
+- Codex `0.147.0` 默认 Responses WebSocket。Apache 已把 `/v1/responses` 升级代理放在根代理之前，握手由 426 修复为 101；Sub2API 对 API Key 账号的 WebSocket 调度仍返回无可用账号，不能把直连 curl 成功写成 Codex 客户端成功。处理方案见 HEALTH HI-1002。
+- 本轮账号共有 8 条真实计费记录；内容拦截 403 后记录总数仍为 8，证明预拦截请求没有进入上游或扣费。每次体验回归只跑一组最小真实请求，不循环消耗余额。
+
+Apache 规则必须位于通用根代理之前；未来重装或配置漂移后执行：
+
+```bash
+ssh oracle-arm1 '/usr/local/sbin/openclaw-sub2api-manager responses-websocket'
+ssh oracle-arm1 '/usr/local/sbin/openclaw-sub2api-manager status'
+```
+
+### 风控、反注册机与 Cloudflare（2026-08-08）
+
+- Sub2API 风控和会话级阻断已启用；内容审核使用 `pre_block + keyword_only`，7 条中英文高置信系统提示词窃取短语命中时返回 403，10 次命中进入自动封禁统计。没有外接内容审核 API，因此不会额外外传提示词或增加模型前置网络耗时。
+- 真实验证：正常提示返回 200；精确恶意短语在约 840 ms 内返回 `content_policy_violation`，无上游调用和计费。关键词规则只覆盖确定性短语，不等价于语义级防提示注入，新增规则前必须复核误伤。
+- 开放注册保持关闭、邮箱验证保持开启。源站 Redis 限流为注册 5 次/分钟、登录 20 次/分钟、验证码 5 次/分钟；Cloudflare 对同一主机再叠加注册/验证码 5 次/60 秒并封禁 600 秒、登录/2FA 20 次/60 秒并封禁 300 秒。
+- Cloudflare 代理、严格 SSL、最低 TLS 1.3、Managed WAF、OWASP、L7 DDoS 和高安全级别均启用。Super Bot Fight Mode 没有做全区域一刀切，避免误伤 `/v1` 的 Codex/Claude 等合法非浏览器客户端和同区域其他站点。
+- Turnstile 当前关闭。正式开放注册前必须先创建 JIYU 专用 widget，再以桌面/手机真实注册、验证码、失败和无障碍流程验收；不得直接复用历史 New-API 口径声称已开启。
+- Oracle 80/443 当前仍可从公网直达，存在绕过 Cloudflare WAF/DDoS 的路径。收口需要 Cloudflare IPv4/IPv6 allowlist、持久化防火墙、带外 SSH 回滚和外部健康探针，属于共享主机网络架构变更，未获确认前不得直接封端口。
+
 ### 邮箱绑定、验证码与告警
 
 1. 用户从“个人资料 → 管理邮箱”输入邮箱并点击“发送验证码”，收到带 JY 图形 Logo 的 `JIYU AI 邮箱绑定验证码`；输入验证码和当前密码后才会更换主邮箱。

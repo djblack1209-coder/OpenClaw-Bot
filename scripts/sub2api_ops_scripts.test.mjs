@@ -46,6 +46,9 @@ test('充值页无 CSP iframe，WebUI 更新只能进入固定 root 代理', asy
   assert.match(content, /Require all denied/);
   assert.match(content, /sub2api ALL=\(root\) NOPASSWD/);
   assert.match(content, /SUB2API_JIYU_MANAGED_UPDATE=1/);
+  assert.match(content, /JIYU-RESPONSES-WEBSOCKET/);
+  assert.match(content, /upgrade=websocket retry=0 timeout=120/);
+  assert.match(content, /responses-websocket/);
   assert.match(brokerContent, /\[\[ "\$#" -eq 0 \]\]/);
   assert.match(brokerContent, /sha256sum/);
   assert.match(brokerContent, /MAX_ARTIFACT_BYTES/);

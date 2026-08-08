@@ -9,11 +9,11 @@
 | 类型 | 唯一事实源 / 入口 | 当前合同 |
 |---|---|---|
 | 对外品牌 | `JIYU AI` / `Unified AI API Gateway` | 通过 Sub2API OEM `site_name`、`site_subtitle` 保存到 PostgreSQL；登录页、首页、侧边栏和浏览器标题统一读取该设置 |
-| 生产底座 | Oracle `jiyu.245334.xyz` / `sub2api.service` | 基于官方 Sub2API `v0.1.172` 固定提交构建的 `v0.1.172-jiyu.5` ARM64 二进制；JIYU 补丁可从官方提交重复应用，主进程只绑定 `127.0.0.1:18080` |
+| 生产底座 | Oracle `jiyu.245334.xyz` / `sub2api.service` | 基于官方 Sub2API `v0.1.172` 固定提交构建的 `v0.1.172-jiyu.31237926226` ARM64 二进制；JIYU 补丁可从官方提交重复应用，主进程只绑定 `127.0.0.1:18080` |
 | 数据库 | PostgreSQL 16 `sub2api` | 独立角色、独立数据库；首次安装不导入 New-API 用户、Key、渠道、兑换码、日志或上游凭据；当前只保留 1 个管理员 |
 | 缓存 | `sub2api-redis.service` | 专用 Redis 7 实例，绑定 `127.0.0.1:16379`，密码只保存在 Oracle `/etc/sub2api/sub2api.env` |
 | 管理脚本 | `scripts/sub2api_oracle_manage.sh` / Oracle `/usr/local/sbin/openclaw-sub2api-manager` | `install-jiyu-build <path>` 用于完整发布；`stage-jiyu-build <path>` 原子暂存已校验二进制，并调度独立 systemd 任务在 WebUI 重启后核对运行哈希和健康状态，失败或 10 分钟未重启会恢复二进制、版本与 PostgreSQL；`enable-web-update <broker> <manifest-url>` 安装固定 root 代理与最小 sudoers |
-| 自动更新 | `.github/workflows/sub2api-jiyu-compat.yml` + `scripts/sub2api_jiyu_update_broker.sh` + `sub2api-update.timer` | CI 从官方稳定标签构建带 JIYU 补丁的 ARM64 兼容包并生成 SHA-256 清单；WebUI 后端只能无参数调用 root 代理下载、校验和暂存。当前生产 `v0.1.172-jiyu.5` 仍保持只检查，待首个兼容包发布后启用 |
+| 自动更新 | `.github/workflows/sub2api-jiyu-compat.yml` + `scripts/sub2api_jiyu_update_broker.sh` + `sub2api-update.timer` | CI 从官方稳定标签构建带 JIYU 补丁的 ARM64 兼容包并生成 SHA-256 清单；WebUI 后端只能无参数调用 root 代理下载、校验和暂存。当前生产 `v0.1.172-jiyu.31237926226` 已启用受管 WebUI 更新；同一官方基础版显示已是最新，下一官方版本由 JIYU 兼容包完成首次真实安装验收 |
 | 自动备份 | `sub2api-backup.timer` / `sub2api-backup.service` | 每日 03:40（Asia/Singapore，随机延迟 15 分钟）备份 PostgreSQL、二进制、版本和 root-only 环境文件；本地 `/var/backups/sub2api` 保留 30 天 |
 | 管理员账号 | `djblack1209@gmail.com` | 当前唯一管理员；密码不写仓库，已存入 macOS 钥匙串服务“CC中转 Sub2API 管理员” |
 | 凭据保管 | Oracle `/etc/sub2api/sub2api.env` + 本机钥匙串 | Oracle env `0600 root-only`；修改管理员密码后同步更新这两处并做真实登录验证 |
@@ -33,6 +33,8 @@
 | 渠道B | 5 / 5 | Kiro `0.16`、Claude 官 Key `1.30`、OpenAI Pro `0.18`、OpenAI Plus `0.13`、Grok `0.08` | 分别为 `0.21`、`1.35`、`0.23`、`0.18`、`0.13` | 5 个分组均满足绝对增加 `0.05x`；实时状态继续由监控真实记录 |
 | 渠道A 生图 | 1 / 1 | `gpt-image-2` 上游标价 `0.05/张` | `0.10/张` | 分组、账号和渠道已启用；真实生成返回上游 `502`，保持故障状态，不伪造可用 |
 | 渠道B 生图 | 1 / 1 | `gpt-image-2` 高质量组 `0.07/张` | `0.12/张` | 分组、账号和渠道已启用；专用 Key 调用返回 `401`，保持故障状态，不伪造可用 |
+
+永久测试账号 `jiyu-e2e-20260808@245334.xyz` 只登记身份和保留策略，不登记密码、Key、Token 或 Cookie。账号 ID 2，状态 active，余额用于小额真实调用；Claude 与 OpenAI Key 分开、可轮换，停用旧 Key 但不删除账号和历史用量。管理员不得把该账号并入清理任务。
 
 文本模型合同为“上游账号倍率 **绝对增加 `0.05x`**”，不是把成本乘以 1.05；生图合同为“上游每张价格 **绝对增加 `0.05`**”。10 个文本分组与 2 个生图分组均启用利润控制，12 个 active 渠道分别只绑定 1 个业务分组并同步模型定价。
 
