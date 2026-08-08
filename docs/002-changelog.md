@@ -24,6 +24,7 @@
 - EndpointPopover 聚焦测试 `2/2`、Vue 类型检查和 Vite 生产构建通过；补丁在干净的官方 `v0.1.172` 固定提交上通过 `git apply --check`。
 - ARM64 二进制构建和生产安装成功，管理脚本状态确认 Sub2API、专用 Redis、更新检查 timer、备份 timer 均 active，内网健康检查通过。
 - 真实 Chrome 重载确认 `v0.1.172-jiyu.5` 和 10 条监控顺序；表头为“渠道”，行值只显示渠道A/渠道B。
+- 推送后 GitHub 默认分支返回 31 个 Dependabot 漏洞的聚合提示，已登记为 HI-997；本轮不盲目升级依赖，等待按运行时/开发时边界分组审计。
 
 ## [2026-08-08] JIYU AI 生产审计、10 路渠道和新手密钥闭环
 > 领域: `frontend` | `ai-pool` | `deploy` | `infra` | `xianyu` | `docs`
