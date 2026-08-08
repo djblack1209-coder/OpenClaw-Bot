@@ -91,8 +91,9 @@ jobs:
           pnpm --dir frontend run typecheck
           pnpm --dir frontend run build
           (cd backend && go test ./internal/service -run 'TestUpdateService' -count=1)
+          (cd backend && go test -tags embed ./internal/web -run 'TestHasEmbeddedFrontend|TestServeEmbeddedFrontend' -count=1)
           echo "v${UPSTREAM_TAG#v}-jiyu.${GITHUB_RUN_ID}" > backend/cmd/server/VERSION
-          (cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w -X main.Version=$(cat cmd/server/VERSION)" -o ../../sub2api-jiyu-linux-arm64 ./cmd/server)
+          (cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags embed -trimpath -ldflags="-s -w -X main.Version=$(cat cmd/server/VERSION)" -o ../../sub2api-jiyu-linux-arm64 ./cmd/server)
 
       - name: Create integrity manifest and release
         if: steps.existing.outputs.skip != 'true'
