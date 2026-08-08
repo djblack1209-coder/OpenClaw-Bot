@@ -203,7 +203,7 @@ Group=sub2api
 WorkingDirectory=/opt/sub2api
 EnvironmentFile=/etc/sub2api/sub2api.env
 ExecStart=/opt/sub2api/sub2api
-# WebUI 的“重启服务”接口会让进程正常退出；必须让 systemd 在正常退出后也拉起新构建，
+# WebUI 的"重启服务"接口会让进程正常退出；必须让 systemd 在正常退出后也拉起新构建，
 # 否则 JIYU 暂存验证任务会在新进程出现前超时并触发不必要的自动回滚。
 Restart=always
 RestartSec=5

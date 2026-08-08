@@ -7,6 +7,7 @@
 ## [2026-08-09 02:18] JIYU WebUI 更新重启根因修复交接
 
 ### 本次完成了什么
+- 修复 `scripts/sub2api_oracle_manage.sh` systemd 模板注释中的中文弯引号；该字符被 Linux ShellCheck 误判为未闭合引号并报 `SC1111`。仅改为 ASCII 引号，未改变生成的 unit、生产配置或业务逻辑。
 - 通过真实 WebUI 点击兼容包更新：CI 构建 `31270629630` 下载和校验成功，接口返回 200；随后点击“立即重启”触发保护性暂存验证。
 - 生产实际回读 `/var/lib/sub2api-ops/jiyu-stage-last-result.json` 为 `rolled_back`，原因是 `sub2api.service` 的 `Restart=on-failure` 不会在重启接口正常退出（码 0）后拉起新进程。旧版本和数据库已自动恢复，公网 `/health` 重新 200。
 - 已将 `scripts/sub2api_oracle_manage.sh` 和 Oracle 生产 unit 改为 `Restart=always`；受控重启确认 PID `1288563→1291998`，`127.0.0.1:18080/health` 通过。
@@ -22,7 +23,7 @@
 - 所有证据继续禁止密码、API Key、Token、Cookie、TOTP secret、卡密和个人邮箱；浏览器只保留充值中心主标签。
 
 ### 当前系统状态
-- 分支只有 `main`，兼容补丁、文档与截图已推送；本地源码已更新为 `Restart=always`，生产 unit 已同步。
+- 分支只有 `main`，兼容补丁、文档与截图已推送；本地源码已更新为 `Restart=always`，生产 unit 已同步。ShellCheck `SC1111` 注释字符修复待本次提交推送后确认远端 `security-gates` 回绿。
 - CI `31271410817` 工件已落地；生产新版本健康，WebUI 更新链路已完成真实验收。
 
 ## [2026-08-09 01:54] JIYU 充值移动端与补号/闲鱼审计交接
