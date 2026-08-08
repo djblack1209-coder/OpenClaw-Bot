@@ -5,6 +5,20 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
+## [2026-08-09] JIYU 运营审计适配自营号池与已移除 webhook
+> 领域: `ai-pool` | `xianyu` | `docs`
+> 影响模块: `生产闭环审计`, `闲鱼运营台只读摘要`, `自营号池合同`
+> 关联问题: HI-1015
+### 变更内容
+- 只读审计将 14 个生产分组准确拆成 12 个用户可售分组和 2 个 Plus/Pro 自营号池，不再把自营池 `2.0x/3.0x` 当作文本用户倍率异常。
+- 无认证访问已移除的旧余额 webhook 返回 404，现与 401/403 一样视为失败关闭；运营台不再把“路由不存在”误报成“公网可写”。
+### 文件变更
+- `scripts/cc_zhongzhuan_readiness_audit.mjs` — 更新分组、倍率和拒绝状态合同。
+- `packages/clawbot/src/xianyu/xianyu_admin.py`、`packages/clawbot/tests/test_api_routes_regression.py` — 运营摘要的失败关闭语义及 404 回归覆盖。
+### 验证
+- 红灯：新增 404 回归断言在旧实现失败；绿灯：聚焦 Python 测试通过。
+- 真实 `node scripts/cc_zhongzhuan_readiness_audit.mjs --mode=read_only --json` 返回 PASS：14 分组、12 账号、12 渠道、10 文本监控、2 条禁用生图监控、所有倍率与公开入口合同通过。
+
 ## [2026-08-09] JIYU 生产服务与真实用量只读复核
 > 领域: `deploy` | `ai-pool` | `docs`
 > 影响模块: `Sub2API 服务`, `Responses WebSocket`, `Cloudflare 源站收口`, `运营健康记录`

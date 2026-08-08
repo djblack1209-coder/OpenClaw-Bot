@@ -223,7 +223,13 @@ def is_image(item):
     name=str(item.get("name") or item.get("group_name") or item.get("channel_name") or "")
     return "生图" in name
 
-image_groups=[item for item in groups if is_image(item)]; text_groups=[item for item in groups if not is_image(item)]
+def is_self_owned_pool(item):
+    name=str(item.get("name") or "")
+    return "自营号池" in name
+
+self_owned_pools=[item for item in groups if is_self_owned_pool(item)]
+image_groups=[item for item in groups if is_image(item)]
+text_groups=[item for item in groups if not is_image(item) and not is_self_owned_pool(item)]
 active_channels=[item for item in channels if item.get("status")=="active"]
 image_channels=[item for item in active_channels if is_image(item)]; text_channels=[item for item in active_channels if not is_image(item)]
 image_monitors=[item for item in monitors if is_image(item)]; text_monitors=[item for item in monitors if not is_image(item)]
@@ -257,23 +263,26 @@ pricing_channel_ids={item.get("channel_id") for item in channel_pricing if item.
 image_pricing_ok=len(image_channels)==2 and len(channel_pricing)==2 and image_channel_ids==pricing_channel_ids and all(item.get("billing_mode")=="image" for item in channel_pricing) and price_matches("渠道A",0.10) and price_matches("渠道B",0.12)
 text_rate_difference_ok=len(text_rates)==10 and all(item.get("difference")==0.05 for item in text_rates)
 image_rate_difference_ok=len(image_rates)==2 and all(item.get("group_rate")==1.0 and item.get("account_rate")==1.0 and item.get("difference")==0.0 for item in image_rates)
+self_owned_pool_rates={str(item.get("name") or ""):float(item.get("rate") or 0) for item in self_owned_pools}
+self_owned_pool_ok=len(self_owned_pools)==2 and all(item.get("status")=="active" and item.get("platform")=="openai" for item in self_owned_pools) and self_owned_pool_rates=={"JIYU OpenAI Plus 自营号池":2.0,"JIYU OpenAI Pro 自营号池":3.0}
 claude_account=next((item for item in accounts if int(item.get("id") or 0)==2),None)
 claude_account_ok=claude_account is not None and claude_account.get("status")=="active" and claude_account.get("schedulable") is True and int(claude_account.get("group_count") or 0)==1 and "Claude" in str(claude_account.get("name") or "") and "渠道A" in str(claude_account.get("name") or "")
 contract={
-  "groups":len(groups),"accounts":len(accounts),"active_channels":len(active_channels),"text_channels":len(text_channels),"image_channels":len(image_channels),
+  "groups":len(groups),"self_owned_pools":len(self_owned_pools),"accounts":len(accounts),"active_channels":len(active_channels),"text_channels":len(text_channels),"image_channels":len(image_channels),
   "enabled_monitors":enabled_text_monitors+enabled_image_monitors,"enabled_text_monitors":enabled_text_monitors,"enabled_image_monitors":enabled_image_monitors,"disabled_image_monitors":disabled_image_monitors,"scheduled_monitors":scheduled_monitors,
   "one_group_per_channel":len(active_channels)==12 and all(int(item.get("group_count") or 0)==1 for item in active_channels),
   "one_group_per_account":len(accounts)==12 and all(int(item.get("group_count") or 0)==1 for item in accounts),
   "monitor_schedule_ok":len(monitors)==12 and scheduled_monitors==12,
   "monitor_state_ok":len(text_monitors)==10 and enabled_text_monitors==10 and len(image_monitors)==2 and enabled_image_monitors==0 and disabled_image_monitors==2,
   "text_rate_difference_ok":text_rate_difference_ok,"image_rate_difference_ok":image_rate_difference_ok,"rate_difference_ok":text_rate_difference_ok and image_rate_difference_ok,
-  "image_pricing_ok":image_pricing_ok,"claude_account_ok":claude_account_ok,
+  "image_pricing_ok":image_pricing_ok,"self_owned_pool_ok":self_owned_pool_ok,"claude_account_ok":claude_account_ok,
   "rate_differences":rates,
 }
-contract["ok"]=contract["groups"]==12 and len(text_groups)==10 and len(image_groups)==2 and contract["accounts"]==12 and contract["active_channels"]==12 and contract["text_channels"]==10 and contract["image_channels"]==2 and contract["one_group_per_channel"] and contract["one_group_per_account"] and contract["monitor_schedule_ok"] and contract["monitor_state_ok"] and contract["rate_difference_ok"] and contract["image_pricing_ok"] and contract["claude_account_ok"]
+contract["ok"]=contract["groups"]==14 and contract["self_owned_pools"]==2 and len(text_groups)==10 and len(image_groups)==2 and contract["accounts"]==12 and contract["active_channels"]==12 and contract["text_channels"]==10 and contract["image_channels"]==2 and contract["one_group_per_channel"] and contract["one_group_per_account"] and contract["monitor_schedule_ok"] and contract["monitor_state_ok"] and contract["rate_difference_ok"] and contract["image_pricing_ok"] and contract["self_owned_pool_ok"] and contract["claude_account_ok"]
 provider_health=[{"monitor_id":item["id"],"status":item.get("latest_status") or "unknown","last_checked_at":item.get("last_checked_at"),"latency_ms":item.get("latency_ms")} for item in monitors]
 public={"home":request("https://jiyu.245334.xyz/"),"models":request("https://jiyu.245334.xyz/v1/models"),"docs_route":request("https://jiyu.245334.xyz/custom/docs"),"docs_content":request("https://jiyu.245334.xyz/api/v1/pages/docs"),"recharge":request("https://jiyu.245334.xyz/custom/recharge-center"),"webhook_no_token":request("https://jiyu.245334.xyz/api/ops/xianyu/paid-order",method="POST",data={"orderId":"jiyu-readonly-audit","paid":True})}
-public["ok"]=public["home"]["http"]==200 and public["home"]["has_jiyu"] and public["models"]["http"]==401 and public["docs_route"]["http"]==200 and public["docs_content"]["http"] in (200,401) and public["recharge"]["http"]==200 and public["webhook_no_token"]["http"]==401
+public["webhook_no_token_rejected"]=public["webhook_no_token"]["http"] in (401,403,404)
+public["ok"]=public["home"]["http"]==200 and public["home"]["has_jiyu"] and public["models"]["http"]==401 and public["docs_route"]["http"]==200 and public["docs_content"]["http"] in (200,401) and public["recharge"]["http"]==200 and public["webhook_no_token_rejected"]
 services={name:service(name) for name in ["sub2api.service","sub2api-redis.service","apache2.service"]}
 services_ok=all(value=="active" for value in services.values())
 result={"services":services,"services_ok":services_ok,"config_contract":contract,"provider_health":provider_health,"brand":{"site_name_ok":db.get("site_name")=="JIYU AI"},"inventory":{"redeem_available":int(db.get("redeem_available") or 0),"active_keys":int(db.get("active_keys") or 0),"usage_logs":int(db.get("usage_logs") or 0)},"public":public}
@@ -317,7 +326,7 @@ if (jsonOnly) {
 } else {
   console.log(`JIYU AI 生产闭环审计 v2: ${ok ? 'PASS' : 'FAIL'} (${result.mode})`);
   console.log(`- 闲鱼软件闭环: ${softwareReady ? 'PASS' : 'FAIL'}`);
-  console.log(`- 生产配置合同: ${checks.oracle.config_contract?.ok ? 'PASS' : 'FAIL'}（分组 ${checks.oracle.config_contract?.groups || 0}/12，渠道 ${checks.oracle.config_contract?.active_channels || 0}/12，文本监控 ${checks.oracle.config_contract?.enabled_text_monitors || 0}/10，生图监控 ${checks.oracle.config_contract?.enabled_image_monitors || 0}/2，按真实异常禁用）`);
+  console.log(`- 生产配置合同: ${checks.oracle.config_contract?.ok ? 'PASS' : 'FAIL'}（可售分组 12 + 自营号池 ${checks.oracle.config_contract?.self_owned_pools || 0}/2，渠道 ${checks.oracle.config_contract?.active_channels || 0}/12，文本监控 ${checks.oracle.config_contract?.enabled_text_monitors || 0}/10，生图监控 ${checks.oracle.config_contract?.enabled_image_monitors || 0}/2，按真实异常禁用）`);
   console.log(`- 监控调度合同: ${checks.oracle.config_contract?.scheduled_monitors || 0}/12（300 秒周期，±30 秒抖动）`);
   console.log(`- 真实上游状态: ${JSON.stringify(checks.oracle.provider_health || [])}`);
   console.log(`- 公开售卖策略: ${result.nextHumanGate}`);
