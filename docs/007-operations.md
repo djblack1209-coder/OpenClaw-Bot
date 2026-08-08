@@ -22,7 +22,7 @@
 
 - 两个上游分别使用 5 个新建 JIYU 专用 Key，不复用历史 Key。日常补号继续进入“账号管理”，日常轮换上游 Key 时保持同名专用用途并在站内执行真实测试。
 - 10 个用户分组统一采用“上游账号倍率 + `0.05x`”绝对加价。修改任一上游倍率后，必须同步修改对应分组并核对差值仍为 `0.0500`；渠道A OpenAI Pro 为 `0.095 → 0.145`，OpenAI Plus 为 `0.06 → 0.11`。
-- 10 个渠道已启用并分别绑定一个分组；10 条连通监控统一每 300 秒执行，随机抖动 ±30 秒。页面固定先显示渠道A五条，再显示渠道B五条，渠道列不显示上游名称；红色/降级表示上游真实波动，不得手工改成绿色。
+- 10 个文本渠道加 2 个生图渠道已启用并分别绑定一个分组；12 条连通监控统一每 300 秒执行，随机抖动 ±30 秒。页面固定先显示渠道A再显示渠道B，渠道列不显示上游名称；红色/降级表示上游真实波动，不得手工改成绿色。
 - 上游安全白名单只新增 `api.aigo0.com`、`www.huyunapi.com`，私网和不安全 HTTP 仍拒绝。
 
 ### 邮箱绑定、验证码与告警
@@ -59,14 +59,14 @@ ssh oracle-arm1 'systemctl list-timers sub2api-update.timer sub2api-backup.timer
 
 `update` 当前默认只检查。发布新的 JIYU 构建必须先从固定官方提交应用 `scripts/sub2api-jiyu-v0.1.172.patch`、完成聚焦验证和 ARM64 构建，再执行 `SUB2API_JIYU_VERSION=<version> openclaw-sub2api-manager install-jiyu-build <path>`。该命令会先备份并在健康失败时回滚；不要直接替换二进制或修改 Apache。
 
-老板要求后续可从 WebUI 直接更新，推荐采用 `docs/053-jiyu-growth-payment-image-update-plan.md` 的方案 A：CI 只发布通过补丁和测试的 JIYU 兼容包，WebUI 只触发 root-only 安装代理，安装前备份、安装后健康检查、失败自动回滚。该架构实施前，页面不得重新放开官方 `/admin/system/update` 直装入口，否则会覆盖双端点、监控排序和 CC Switch 定制。
+WebUI 更新方案 A 已在仓库实现：`.github/workflows/sub2api-jiyu-compat.yml` 只发布通过补丁、类型检查和聚焦测试的 ARM64 兼容包及 SHA-256 清单；`scripts/sub2api_jiyu_update_broker.sh` 不接受任何浏览器参数，只读取 root 管理的清单地址并调用 `stage-jiyu-build`。暂存时会另起独立 systemd 验证任务；管理员点击重启后，该任务核对正在运行的二进制哈希和 `/health`，失败自动恢复二进制、VERSION 与 PostgreSQL，10 分钟未重启也会撤销暂存。生产部署新补丁后，用 `enable-web-update <broker> <manifest-url>` 安装固定 sudoers 和 systemd 环境，再从版本面板点击更新。生产仍运行 `v0.1.172-jiyu.5` 时不得单独解禁官方路径。
 
 ### 生图与 MCP
 
 - Sub2API 已原生提供 `POST /v1/images/generations` 和图片权限/计价能力，不需要另建一套公网生图网关。
-- 两个计划中的上游生图入口必须在用户侧匿名为 `JIYU 生图 · 渠道A`、`JIYU 生图 · 渠道B`，分别使用独立账号、分组、渠道、监控和专用用户 Key。
-- 本机 CC Switch 中两个旧生图 MCP 记录都指向已不存在的脚本，当前不可用；不要向旧条目写入新 Key。新手安装和验证步骤见 `docs/087-jiyu-image-mcp-guide.md`。
-- 当前两个上游的 CC Switch 配置只列出文本模型，生图模型、真实价格和兼容协议尚未核实；未确认前禁止创建生产生图渠道或执行真实付费测试。
+- 两个上游生图入口已在用户侧匿名为 `JIYU 生图 · 渠道A`、`JIYU 生图 · 渠道B`，分别使用独立账号、分组、渠道和监控；两个分组开启生图权限和独立 1x 图片倍率。
+- 本机已用 `scripts/install_jiyu_image_mcp.sh` 将两个失效 MCP 条目替换为 `JIYU AI 生图`，同步到 Claude、Codex 和 OpenCode；Key 只从 macOS 钥匙串服务“JIYU AI 生图 API Key”读取。新手步骤见 `docs/087-jiyu-image-mcp-guide.md`。
+- 生图价格使用上游每张价格绝对增加 `$0.05`。渠道B高画质上游价为 `$0.07/次`，站内为 `$0.12/张`；渠道A请求返回 502、渠道B令牌返回 401，恢复前监控和健康记录必须保持真实异常，不执行连续付费重试。
 
 ### 链动小铺运营边界
 

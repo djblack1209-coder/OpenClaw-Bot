@@ -12,8 +12,8 @@
 | 生产底座 | Oracle `jiyu.245334.xyz` / `sub2api.service` | 基于官方 Sub2API `v0.1.172` 固定提交构建的 `v0.1.172-jiyu.5` ARM64 二进制；JIYU 补丁可从官方提交重复应用，主进程只绑定 `127.0.0.1:18080` |
 | 数据库 | PostgreSQL 16 `sub2api` | 独立角色、独立数据库；首次安装不导入 New-API 用户、Key、渠道、兑换码、日志或上游凭据；当前只保留 1 个管理员 |
 | 缓存 | `sub2api-redis.service` | 专用 Redis 7 实例，绑定 `127.0.0.1:16379`，密码只保存在 Oracle `/etc/sub2api/sub2api.env` |
-| 管理脚本 | `scripts/sub2api_oracle_manage.sh` / Oracle `/usr/local/sbin/openclaw-sub2api-manager` | 新增 `install-jiyu-build <path>`；发布前备份二进制、版本、PostgreSQL、环境、Apache/systemd 和页面资源，健康失败自动回滚。官方二进制更新必须显式 opt-in |
-| 自动更新 | `sub2api-update.timer` / `sub2api-update.service` | 每日 04:20（Asia/Singapore，随机延迟 20 分钟）只检查官方稳定 release 并报告，不自动覆盖定制构建 |
+| 管理脚本 | `scripts/sub2api_oracle_manage.sh` / Oracle `/usr/local/sbin/openclaw-sub2api-manager` | `install-jiyu-build <path>` 用于完整发布；`stage-jiyu-build <path>` 原子暂存已校验二进制，并调度独立 systemd 任务在 WebUI 重启后核对运行哈希和健康状态，失败或 10 分钟未重启会恢复二进制、版本与 PostgreSQL；`enable-web-update <broker> <manifest-url>` 安装固定 root 代理与最小 sudoers |
+| 自动更新 | `.github/workflows/sub2api-jiyu-compat.yml` + `scripts/sub2api_jiyu_update_broker.sh` + `sub2api-update.timer` | CI 从官方稳定标签构建带 JIYU 补丁的 ARM64 兼容包并生成 SHA-256 清单；WebUI 后端只能无参数调用 root 代理下载、校验和暂存。当前生产 `v0.1.172-jiyu.5` 仍保持只检查，待首个兼容包发布后启用 |
 | 自动备份 | `sub2api-backup.timer` / `sub2api-backup.service` | 每日 03:40（Asia/Singapore，随机延迟 15 分钟）备份 PostgreSQL、二进制、版本和 root-only 环境文件；本地 `/var/backups/sub2api` 保留 30 天 |
 | 管理员账号 | `djblack1209@gmail.com` | 当前唯一管理员；密码不写仓库，已存入 macOS 钥匙串服务“CC中转 Sub2API 管理员” |
 | 凭据保管 | Oracle `/etc/sub2api/sub2api.env` + 本机钥匙串 | Oracle env `0600 root-only`；修改管理员密码后同步更新这两处并做真实登录验证 |
@@ -31,13 +31,16 @@
 |---|---:|---|---|---|
 | 渠道A | 5 / 5 | Kiro `0.05`、Claude 官 Key `0.12`、OpenAI Pro `0.095`、OpenAI Plus `0.06`、Grok `0.03` | 分别为 `0.10`、`0.17`、`0.145`、`0.11`、`0.08` | 倍率合同已由数据库联表和创建密钥页面重载核对；真实可用性以监控的正常/降级/错误状态为准 |
 | 渠道B | 5 / 5 | Kiro `0.16`、Claude 官 Key `1.30`、OpenAI Pro `0.18`、OpenAI Plus `0.13`、Grok `0.08` | 分别为 `0.21`、`1.35`、`0.23`、`0.18`、`0.13` | 5 个分组均满足绝对增加 `0.05x`；实时状态继续由监控真实记录 |
+| 渠道A 生图 | 1 / 1 | `gpt-image-2` 上游标价 `0.05/张` | `0.10/张` | 分组、账号和渠道已启用；真实生成返回上游 `502`，保持故障状态，不伪造可用 |
+| 渠道B 生图 | 1 / 1 | `gpt-image-2` 高质量组 `0.07/张` | `0.12/张` | 分组、账号和渠道已启用；专用 Key 调用返回 `401`，保持故障状态，不伪造可用 |
 
-用户倍率合同为“上游账号倍率 **绝对增加 `0.05x`**”，不是把成本乘以 1.05。10 个分组均启用利润控制，10 个 active 渠道分别只绑定 1 个业务分组并同步模型定价。
+文本模型合同为“上游账号倍率 **绝对增加 `0.05x`**”，不是把成本乘以 1.05；生图合同为“上游每张价格 **绝对增加 `0.05`**”。10 个文本分组与 2 个生图分组均启用利润控制，12 个 active 渠道分别只绑定 1 个业务分组并同步模型定价。
 
 | 监控 | 模型 | 周期 | 当前合同 |
 |---|---|---|---|
 | 渠道A Kiro / 官 Key / Plus / Pro / Grok | 按各分组真实可调用模型 | 300 秒，±30 秒抖动 | 5 条均启用；状态如实反映正常、降级或错误，不用静态绿灯覆盖故障 |
 | 渠道B Kiro / 官 Key / Plus / Pro / Grok | 按各分组真实可调用模型 | 300 秒，±30 秒抖动 | 5 条均启用；真实状态持续写入监控历史 |
+| 渠道A 生图 / 渠道B 生图 | `gpt-image-2` | 300 秒，±30 秒抖动 | 2 条均已建立；必须写入生图专用 Key 后才可持续探测，当前上游 502/401 继续如实展示 |
 
 ### JIYU AI 邮箱与条款注册
 
@@ -237,6 +240,19 @@
 
 
 > 最后更新: 2026-08-04 (支付验签 + 实盘卖出复核 + 闲鱼放行 + 认证与调度安全门) | Bot 命令总数 105
+
+---
+
+## JIYU AI 运维与本机 MCP 入口
+
+| 入口 | 命令 | 说明 |
+|---|---|---|
+| 生图 MCP 安装 | `scripts/install_jiyu_image_mcp.sh install` | 安装锁定依赖的 stdio MCP，清理两个失效旧条目，并同步到 CC Switch 的 Claude、Codex、OpenCode |
+| 生图 Key | `scripts/install_jiyu_image_mcp.sh set-key` | 隐藏输入后写入 macOS 钥匙串服务“JIYU AI 生图 API Key”，脚本和 CC Switch 数据库均不保存明文 |
+| 生图 MCP 状态 | `scripts/install_jiyu_image_mcp.sh status` | 只返回安装文件、CC Switch 条目和钥匙串三项布尔状态，不回显 Key |
+| 兼容包暂存 | `scripts/sub2api_oracle_manage.sh stage-jiyu-build <path>` | root 发布内部入口；备份后原子替换磁盘二进制与 VERSION，不直接杀死正在服务的进程，并创建独立验证任务 |
+| 兼容包验证 | `scripts/sub2api_oracle_manage.sh verify-jiyu-stage` | 仅供 systemd 内部调用；重启后校验运行中 `/proc/<pid>/exe` 哈希与 `/health`，失败或超时自动恢复发布前二进制、VERSION 和数据库 |
+| WebUI 更新启用 | `scripts/sub2api_oracle_manage.sh enable-web-update <broker> <manifest-url>` | 安装固定 root 代理、root-only 清单 URL、最小 sudoers 和 systemd 环境；完成健康检查后才放开受管更新接口 |
 
 ---
 
@@ -972,6 +988,10 @@
 
 
 > 最后更新: 2026-08-03 | P0 闭环依赖审计：桌面生产与开发依赖、Python JSON 修复库安全下限收口
+
+| 包/区域 | 版本/动作 | 用途 | 说明 |
+|---|---|---|---|
+| `@modelcontextprotocol/sdk` | `1.30.0`，npm lockfile 固定 | JIYU 生图 stdio MCP | 安装时执行 `npm ci --omit=dev --ignore-scripts`；只暴露单图工具，Key 从环境变量或 macOS 钥匙串读取，不把凭据写入 CC Switch；升级后生产依赖审计为 0 |
 
 
 ## OSS 安全依赖收口 (2026-06-22)

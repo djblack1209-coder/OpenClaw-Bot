@@ -1,3 +1,51 @@
+diff --git a/backend/internal/service/update_service.go b/backend/internal/service/update_service.go
+index 82df3bb..eae4fe6 100644
+--- a/backend/internal/service/update_service.go
++++ b/backend/internal/service/update_service.go
+@@ -12,6 +12,7 @@ import (
+ 	"io"
+ 	"net/url"
+ 	"os"
++	"os/exec"
+ 	"path/filepath"
+ 	"runtime"
+ 	"sort"
+@@ -163,6 +164,11 @@ func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInf
+ // PerformUpdate downloads and applies the update
+ // Uses atomic file replacement pattern for safe in-place updates
+ func (s *UpdateService) PerformUpdate(ctx context.Context) error {
++	// JIYU 构建只允许调用 root 管理的固定代理。浏览器不能传入命令、版本或下载地址。
++	if os.Getenv("SUB2API_JIYU_MANAGED_UPDATE") == "1" {
++		return performJiyuManagedUpdate(ctx)
++	}
++
+ 	info, err := s.CheckUpdate(ctx, true)
+ 	if err != nil {
+ 		return err
+@@ -175,6 +181,23 @@ func (s *UpdateService) PerformUpdate(ctx context.Context) error {
+ 	return s.applyReleaseAssets(ctx, info.ReleaseInfo.Assets)
+ }
+ 
++func performJiyuManagedUpdate(ctx context.Context) error {
++	const helper = "/usr/local/sbin/sub2api-jiyu-update-broker"
++	cmd := exec.CommandContext(ctx, "sudo", "-n", helper)
++	output, err := cmd.CombinedOutput()
++	message := strings.TrimSpace(string(output))
++	if len(message) > 800 {
++		message = message[:800]
++	}
++	if err != nil {
++		if message == "" {
++			message = "JIYU compatibility package is unavailable"
++		}
++		return fmt.Errorf("managed update failed: %s", message)
++	}
++	return nil
++}
++
+ // applyReleaseAssets downloads the platform archive from the given release assets,
+ // verifies its checksum, and atomically swaps the running binary.
+ // Shared by PerformUpdate (latest) and RollbackToVersion (specific older version).
 diff --git a/frontend/src/components/admin/AdminComplianceDialog.vue b/frontend/src/components/admin/AdminComplianceDialog.vue
 index 9982020..a3362b1 100644
 --- a/frontend/src/components/admin/AdminComplianceDialog.vue
@@ -47,15 +95,15 @@ index 14a9e2d..1d45b34 100644
    form.template_id = null
    form.extra_headers = {}
 diff --git a/frontend/src/components/common/VersionBadge.vue b/frontend/src/components/common/VersionBadge.vue
-index 7fd6294..b6938af 100644
+index 7fd6294..43b8d92 100644
 --- a/frontend/src/components/common/VersionBadge.vue
 +++ b/frontend/src/components/common/VersionBadge.vue
-@@ -231,7 +231,33 @@
+@@ -231,7 +231,56 @@
                  </button>
                </div>
  
 -              <!-- Priority 3: Update available for source build - show git pull hint -->
-+              <!-- 优先级 3：JIYU 定制构建只走受控兼容发布流程。 -->
++              <!-- 优先级 3：JIYU 定制构建只安装通过门禁的兼容包。 -->
 +              <div v-else-if="hasUpdate && isJiyuBuild" class="space-y-2">
 +                <div
 +                  class="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800/50 dark:bg-amber-900/20"
@@ -79,13 +127,36 @@ index 7fd6294..b6938af 100644
 +                    </p>
 +                  </div>
 +                </div>
++                <button
++                  @click="handleUpdate"
++                  :disabled="updating"
++                  class="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
++                >
++                  <svg v-if="updating" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
++                    <circle
++                      class="opacity-25"
++                      cx="12"
++                      cy="12"
++                      r="10"
++                      stroke="currentColor"
++                      stroke-width="4"
++                    ></circle>
++                    <path
++                      class="opacity-75"
++                      fill="currentColor"
++                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
++                    ></path>
++                  </svg>
++                  <Icon v-else name="download" size="sm" :stroke-width="2" />
++                  {{ updating ? t('version.updating') : t('version.updateNow') }}
++                </button>
 +              </div>
 +
 +              <!-- 优先级 4：源码构建提示使用 git pull。 -->
                <div v-else-if="hasUpdate && !isReleaseBuild" class="space-y-2">
                  <a
                    v-if="releaseInfo?.html_url && releaseInfo.html_url !== '#'"
-@@ -291,7 +317,7 @@
+@@ -291,7 +340,7 @@
                  </div>
                </div>
  
@@ -94,7 +165,7 @@ index 7fd6294..b6938af 100644
                <div v-else-if="hasUpdate && isReleaseBuild" class="space-y-2">
                  <!-- Update info card -->
                  <div
-@@ -375,7 +401,7 @@
+@@ -375,7 +424,7 @@
                  </a>
  
                  <!-- Version rollback entry -->
@@ -103,7 +174,7 @@ index 7fd6294..b6938af 100644
                    <button
                      @click="toggleRollbackPanel"
                      class="group flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-600 dark:text-dark-500 dark:hover:bg-dark-700/50 dark:hover:text-dark-300"
-@@ -671,9 +697,14 @@ const dropdownRef = ref<HTMLElement | null>(null)
+@@ -671,9 +720,14 @@ const dropdownRef = ref<HTMLElement | null>(null)
  
  // Use store's cached version state
  const loading = computed(() => appStore.versionLoading)
@@ -297,7 +368,7 @@ index c443bfe..6c35003 100644
      // CTA section
      cta: {
 diff --git a/frontend/src/i18n/locales/en/misc.ts b/frontend/src/i18n/locales/en/misc.ts
-index e8f5404..b06c7f7 100644
+index e8f5404..897d378 100644
 --- a/frontend/src/i18n/locales/en/misc.ts
 +++ b/frontend/src/i18n/locales/en/misc.ts
 @@ -35,6 +35,9 @@ export default {
@@ -306,7 +377,7 @@ index e8f5404..b06c7f7 100644
      updateFailed: 'Update Failed',
 +    jiyuUpdatePending: 'JIYU-compatible {version} is pending release',
 +    jiyuUpdateHint:
-+      'Compatibility checks and backup deployment are required. This page will not install the upstream binary over JIYU branding, channels, and key-import customizations.',
++      'Only a verified JIYU compatibility package can be installed. The upstream binary will not overwrite branding, channels, or key-import customizations.',
      restartRequired: 'Please restart the service to apply the update',
      restartNow: 'Restart Now',
      restarting: 'Restarting...',
@@ -403,7 +474,7 @@ index 18a7b25..658e2f0 100644
      // CTA 区块
      cta: {
 diff --git a/frontend/src/i18n/locales/zh/misc.ts b/frontend/src/i18n/locales/zh/misc.ts
-index 6a51408..3d616d9 100644
+index 6a51408..297978e 100644
 --- a/frontend/src/i18n/locales/zh/misc.ts
 +++ b/frontend/src/i18n/locales/zh/misc.ts
 @@ -35,6 +35,8 @@ export default {
@@ -411,7 +482,7 @@ index 6a51408..3d616d9 100644
      updateComplete: '更新完成',
      updateFailed: '更新失败',
 +    jiyuUpdatePending: 'JIYU 兼容版 {version} 待发布',
-+    jiyuUpdateHint: '已进入兼容验证和备份发布流程。为避免覆盖品牌、渠道与密钥导入定制，本页不会直接安装官方二进制。',
++    jiyuUpdateHint: '只安装通过门禁并校验完成的 JIYU 兼容包，不会用官方原版覆盖品牌、渠道和密钥导入定制。',
      restartRequired: '请重启服务以应用更新',
      restartNow: '立即重启',
      restarting: '正在重启...',
@@ -622,7 +693,7 @@ index 3d1593e..9385ee5 100644
                @action="openCreateDialog"
              />
 diff --git a/frontend/src/views/admin/ChannelMonitorView.vue b/frontend/src/views/admin/ChannelMonitorView.vue
-index d58a842..ece2683 100644
+index d58a842..e3e85c7 100644
 --- a/frontend/src/views/admin/ChannelMonitorView.vue
 +++ b/frontend/src/views/admin/ChannelMonitorView.vue
 @@ -27,7 +27,7 @@
@@ -634,7 +705,15 @@ index d58a842..ece2683 100644
              </span>
            </template>
  
-@@ -176,7 +176,7 @@ let searchTimeout: ReturnType<typeof setTimeout> | null = null
+@@ -144,6 +144,7 @@ import MonitorPrimaryModelCell from '@/components/admin/monitor/MonitorPrimaryMo
+ import MonitorActionsCell from '@/components/admin/monitor/MonitorActionsCell.vue'
+ import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
+ import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
++import { compareMonitorDisplayOrder } from '@/utils/channelMonitorDisplayOrder'
+ 
+ const { t } = useI18n()
+ const appStore = useAppStore()
+@@ -176,7 +177,7 @@ let searchTimeout: ReturnType<typeof setTimeout> | null = null
  
  const columns = computed<Column[]>(() => [
    { key: 'name', label: t('admin.channelMonitor.columns.name'), sortable: false },
@@ -643,7 +722,7 @@ index d58a842..ece2683 100644
    { key: 'primary_model', label: t('admin.channelMonitor.columns.primaryModel'), sortable: false },
    { key: 'availability_7d', label: t('admin.channelMonitor.columns.availability7d'), sortable: false },
    { key: 'latency', label: t('admin.channelMonitor.columns.latency'), sortable: false },
-@@ -206,7 +206,7 @@ async function reload() {
+@@ -206,7 +207,7 @@ async function reload() {
  
      const res = await adminAPI.channelMonitor.list(params, { signal: ctrl.signal })
      if (ctrl.signal.aborted || abortController !== ctrl) return
@@ -652,12 +731,10 @@ index d58a842..ece2683 100644
      pagination.total = res.total
    } catch (err: unknown) {
      const e = err as { name?: string; code?: string }
-@@ -220,6 +220,33 @@ async function reload() {
+@@ -220,6 +221,13 @@ async function reload() {
    }
  }
  
-+const monitorProductOrder = ['Claude Kiro', 'Claude 官 Key', 'OpenAI Plus', 'OpenAI Pro', 'Grok']
-+
 +function monitorChannelLabel(monitor: ChannelMonitor): string {
 +  const label = `${monitor.group_name || ''} ${monitor.name || ''}`
 +  if (label.includes('渠道A')) return '渠道A'
@@ -665,27 +742,30 @@ index d58a842..ece2683 100644
 +  return providerLabel(monitor.provider)
 +}
 +
-+function compareMonitorDisplayOrder(left: ChannelMonitor, right: ChannelMonitor): number {
-+  const leftLabel = `${left.group_name || ''} ${left.name || ''}`
-+  const rightLabel = `${right.group_name || ''} ${right.name || ''}`
-+  const channelRank = (label: string) =>
-+    label.includes('渠道A') ? 0 : label.includes('渠道B') ? 1 : 2
-+  const productRank = (label: string) => {
-+    const rank = monitorProductOrder.findIndex((product) => label.includes(product))
-+    return rank === -1 ? monitorProductOrder.length : rank
-+  }
-+
-+  return (
-+    channelRank(leftLabel) - channelRank(rightLabel) ||
-+    productRank(leftLabel) - productRank(rightLabel) ||
-+    leftLabel.localeCompare(rightLabel, 'zh-CN') ||
-+    left.id - right.id
-+  )
-+}
-+
  function handleSearch() {
    if (searchTimeout) clearTimeout(searchTimeout)
    searchTimeout = setTimeout(() => {
+diff --git a/frontend/src/views/user/ChannelStatusView.vue b/frontend/src/views/user/ChannelStatusView.vue
+index 61b4da9..ec8d8f7 100644
+--- a/frontend/src/views/user/ChannelStatusView.vue
++++ b/frontend/src/views/user/ChannelStatusView.vue
+@@ -48,6 +48,7 @@ import MonitorCardGrid from '@/components/user/monitor/MonitorCardGrid.vue'
+ import MonitorDetailDialog from '@/components/user/MonitorDetailDialog.vue'
+ import { DEFAULT_INTERVAL_SECONDS, STATUS_OPERATIONAL } from '@/constants/channelMonitor'
+ import { useAutoRefresh } from '@/composables/useAutoRefresh'
++import { compareMonitorDisplayOrder } from '@/utils/channelMonitorDisplayOrder'
+ 
+ const { t } = useI18n()
+ const appStore = useAppStore()
+@@ -94,7 +95,7 @@ async function reload(silent = false) {
+   try {
+     const res = await listChannelMonitorViews({ signal: ctrl.signal })
+     if (ctrl.signal.aborted || abortController !== ctrl) return
+-    items.value = res.items || []
++    items.value = [...(res.items || [])].sort(compareMonitorDisplayOrder)
+   } catch (err: unknown) {
+     const e = err as { name?: string; code?: string }
+     if (e?.name === 'AbortError' || e?.code === 'ERR_CANCELED') return
 diff --git a/frontend/src/views/user/KeysView.vue b/frontend/src/views/user/KeysView.vue
 index 0237576..34872e2 100644
 --- a/frontend/src/views/user/KeysView.vue
