@@ -80,7 +80,7 @@
 | HI-1015 | `BUG/OPS` | 🟡 一般 | 本地已关闭 | `cc_zhongzhuan_readiness_audit.mjs` 的 Oracle 合同仍写死旧 10×10 口径，会把已闭环的 12 分组/账号/渠道、生图按次计费及两条真实异常停监控误报失败。现已改为 12×12 双轨失败关闭合同：文本倍率差 `0.05x`，生图倍率差 `0` 且按次价格为 `0.10/0.12`，10 条文本监控启用、2 条生图监控禁用、全部 300±30 秒；默认只读实跑 PASS，未改生产状态。 |
 | HI-1016 | `UX/THIRD_PARTY` | 🟡 一般 | 外部待处理 | 链动小铺整店已在 JIYU 的 `390×844` 充值页全宽嵌入且不再白屏，但其自身页面没有可用移动专用路由：顶部导航被压成竖排、商品卡可横向滑动。第三方内容跨域，JIYU 不注入 CSS 或代理改写；保留桌面内嵌和移动端全宽嵌入，后续需链动提供响应式店铺模板或移动入口。 |
 | HI-1017 | `FRONTEND/BUG` | 🟡 一般 | 线上已关闭 | API 密钥页端点说明浮层已在兼容包 `v0.1.172-jiyu.31271410817` 发布并通过 WebUI 更新；真实 Chrome `390×844` 创建密钥弹窗回读 `body.scrollWidth=390`、`documentElement.scrollWidth=390`，截图 `scripts/assets/audit-20260809-create-key-mobile-after-update.jpg`。 |
-| HI-1018 | `DEPLOY/BUG` | 🟠 重要 | 线上已关闭 | 首次兼容修订因 `Restart=on-failure` 在正常退出后不拉起新进程而回滚；已将安装脚本和生产 unit 改为 `Restart=always`。第二次真实 WebUI 更新使用 CI `31271410817` 成功应用，生产 VERSION 回读 `v0.1.172-jiyu.31271410817`、stage 结果 `applied`、健康 200，服务 PID `1294441`。 |
+| HI-1018 | `DEPLOY/BUG` | 🟠 重要 | 线上已关闭 | 首次兼容修订因 `Restart=on-failure` 在正常退出后不拉起新进程而回滚；已将安装脚本和生产 unit 改为 `Restart=always`。第二次真实 WebUI 更新使用 CI `31271410817` 成功应用，生产 VERSION 回读 `v0.1.172-jiyu.31271410817`、stage 结果 `applied`、健康 200，服务 PID `1294441`。随后确认 CI 的 `SC1111` 仅由模板注释中文弯引号触发，已替换为 ASCII 引号；不影响线上运行配置。 |
 
 | 编号 | 分类 | 严重度 | 状态 | 当前结论 |
 |---|---|---|---|---|

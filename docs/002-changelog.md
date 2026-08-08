@@ -12,13 +12,14 @@
 ### 变更内容
 - 根因确认：WebUI 重启接口让进程以退出码 0 正常退出，而生产 unit 使用 `Restart=on-failure`，导致兼容包新进程未启动，独立验证任务超时并自动回滚。
 - 将 `scripts/sub2api_oracle_manage.sh` 的 Sub2API unit 改为 `Restart=always`，并在 Oracle 生产 unit 同步修复；不修改数据库、定价、渠道、支付或上游状态。
+- 修复该 unit 模板注释中的中文弯引号：Linux ShellCheck 将其误判为未闭合引号并报 `SC1111`；仅替换为 ASCII 引号，不改变生成的 systemd 配置或业务逻辑。
 - 首次更新失败后生产已自动回滚到旧构建且健康恢复；随后将服务修复为 `Restart=always`，受控重启验证 PID `1288563→1291998`。
 - 第二次 CI `31271410817` 通过完整门禁并经真实 WebUI“检查并安装→立即重启”完成，生产 VERSION 回读 `v0.1.172-jiyu.31271410817`，stage 结果为 `applied`，健康 200。
 ### 文件变更
 - `scripts/sub2api_oracle_manage.sh` — 让正常退出触发 systemd 自动重启。
 - `docs/009-health.md`、`docs/012-handoff.md`、`docs/002-changelog.md` — 登记真实回滚证据与修复后验收。
 ### 验证
-- `git diff --check`、`node --test scripts/sub2api_ops_scripts.test.mjs`、`make docs-check`。
+- `bash -n scripts/sub2api_oracle_manage.sh`、`shellcheck -x scripts/sub2api_oracle_manage.sh`、`git diff --check`、`node --test scripts/sub2api_ops_scripts.test.mjs`、`make docs-check`。
 - Oracle `systemctl show sub2api.service -p Restart` 返回 `Restart=always`；第二次 WebUI 更新后生产版本为 `v0.1.172-jiyu.31271410817`，stage `applied`，健康检查 200；移动创建密钥截图验证页面宽度保持 390px。
 
 ## [2026-08-09] JIYU 充值审计、补号操作说明与密钥页移动端修复
