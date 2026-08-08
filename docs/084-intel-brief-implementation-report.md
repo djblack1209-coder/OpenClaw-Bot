@@ -14,7 +14,7 @@
 
 我已完成一轮 **不触碰业务代码的 Phase 0 预检**：
 
-- 已确认 `oracle-arm1` 可登录，且现有 Frist/New-API/Apache 服务仍为 active。
+- 已确认 `oracle-arm1` 可登录，且现有 JIYU/New-API/Apache 服务仍为 active。
 - 已在 `oracle-arm1` 的临时目录创建独立验证环境 `/tmp/openclaw-intel-phase0-20260706`，安装并真实调用 `akshare` / `edgartools`；未写入项目目录，未重启服务。
 - 已从 `oracle-arm1` 真实调用 GitHub、EDGAR、AKShare 部分接口、HouseStockWatcher 相关端点、OpenAI/Anthropic/DeepSeek 新闻源候选地址。
 - MediaCrawler、Agent-Reach、Telegram 第 8 Bot、订阅套餐和名人白名单均被人工决策项阻塞，不能继续自动推进。
@@ -31,7 +31,7 @@
 
 | 验证项 | 状态 | Oracle 真实调用证据 | 已验证边界 / 未验证边界 |
 |---|---|---|---|
-| Oracle 目标环境基础状态 | 已验证可访问 | `oracle-arm1` 返回：`host=oracle-arm1`，UTC `2026-07-06T21:32:07Z`，`Python 3.12.3`；`frist-api.service`、`openclaw-newapi.service`、`apache2` 均为 `active` | 只证明该节点可执行 Phase 0 检查；**不等于已确认它就是 Intel Brief 常驻运行环境**。 |
+| Oracle 目标环境基础状态 | 已验证可访问 | `oracle-arm1` 返回：`host=oracle-arm1`，UTC `2026-07-06T21:32:07Z`，`Python 3.12.3`；`sub2api.service`、`openclaw-newapi.service`、`apache2` 均为 `active` | 只证明该节点可执行 Phase 0 检查；**不等于已确认它就是 Intel Brief 常驻运行环境**。 |
 | Oracle Python 依赖现状 | 已验证 | 系统 Python 中：`akshare` 缺失、`edgartools` 缺失、`httpx` 缺失、`pandas` 缺失、`playwright` 缺失、`requests` 已安装 | 说明不能直接在现有系统 Python 中运行 Intel Brief 数据源；需要独立 venv 或项目环境方案。 |
 | 临时依赖安装 | 已验证 | 在 `/tmp/openclaw-intel-phase0-20260706` 安装：`akshare==1.18.64`、`edgartools==5.40.1`，UTC `2026-07-06T21:35:52Z` | 只在临时目录验证安装；未安装到生产项目 venv，未改 systemd。 |
 | GitHub Star / Trending 数据 | 已验证可用 | Oracle 调用 GitHub Search API，UTC `2026-07-06T21:33:49Z`，HTTP 200，样本：`sindresorhus/awesome`、`freeCodeCamp/freeCodeCamp`、`public-apis/public-apis` | GitHub Search API 可用；HTML Trending 解析需要加固，直接 HTML 样本中容易误抓 sponsors 链接。 |

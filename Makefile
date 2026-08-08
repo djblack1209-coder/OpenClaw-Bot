@@ -14,12 +14,11 @@ PYTHON ?= $(shell \
 		echo python3; \
 	fi)
 FRONTEND := apps/openclaw-manager-src
-FRIST_API := apps/frist-api
 SHELLCHECK_FILES := $(filter-out \
 	packages/clawbot/scripts/start_xianyu.sh, \
-	$(wildcard scripts/*.sh packages/clawbot/scripts/*.sh tools/launchagents/*.sh apps/frist-api/deploy/*.sh))
+	$(wildcard scripts/*.sh packages/clawbot/scripts/*.sh tools/launchagents/*.sh))
 
-.PHONY: test lint format typecheck docker clean help ci-local syntax-check docs-check shellcheck gitleaks-check dependency-audit rust-audit security-check clean-install-check supply-chain-check python-lock python-lock-check critical-coverage-check frist-api-test frist-api-dev frist-api-static frist-api-up frist-api-down frist-api-newapi-setup new-api-up new-api-down new-api-check new-api-sync new-api-brand-patch sub2api-check jiyu-sub2-replenish jiyu-sub2-replenish-dry-run cc-seller-chrome cc-seller-bridge cc-seller-auto backup-run backup-schedule-install backup-schedule-status backup-schedule-uninstall backup-restore-drill tauri-rollback-check tauri-rollback
+.PHONY: test lint format typecheck docker clean help ci-local syntax-check docs-check shellcheck gitleaks-check dependency-audit rust-audit security-check clean-install-check supply-chain-check python-lock python-lock-check critical-coverage-check new-api-up new-api-down new-api-check new-api-sync new-api-brand-patch sub2api-check jiyu-sub2-replenish jiyu-sub2-replenish-dry-run cc-seller-chrome cc-seller-bridge cc-seller-auto backup-run backup-schedule-install backup-schedule-status backup-schedule-uninstall backup-restore-drill tauri-rollback-check tauri-rollback
 
 ## ─── 帮助 ───
 help: ## 显示所有可用命令
@@ -57,9 +56,6 @@ lint: ## Ruff 静态检查
 typecheck: ## 前端 TypeScript 类型检查
 	cd $(FRONTEND) && npx tsc --noEmit
 
-frist-api-test: ## 运行 Frist-API 原型测试
-	cd $(FRIST_API) && npm test
-
 docs-check: ## 检查 docs 扁平目录、编号命名和索引完整性
 	bash scripts/check_docs_layout.sh
 
@@ -80,7 +76,6 @@ gitleaks-check: ## 扫描最新提交、受跟踪改动和未跟踪文件中的�
 dependency-audit: ## 审计前端、服务端和 Python 锁定依赖的高危漏洞
 	$(PYTHON) -m pip_audit --version >/dev/null
 	npm audit --prefix $(FRONTEND) --audit-level=high
-	npm audit --prefix $(FRIST_API) --audit-level=high
 	npm audit --prefix $(FRONTEND)/src-tauri/npm-runtime-lock --audit-level=high --omit=dev
 	npm audit --prefix .openclaw/extensions/openclaw-weixin --audit-level=high
 	$(PYTHON) -m pip_audit --disable-pip --no-deps -r $(CLAWBOT)/requirements-lock.txt --vulnerability-service pypi --progress-spinner off --cache-dir /tmp/openclaw-pip-audit-cache --timeout 10
@@ -114,15 +109,6 @@ python-lock-check: ## 验证 requirements 与已提交哈希锁没有漂移
 		cmp -s requirements-lock-macos.txt "$$tmp_macos" || \
 		{ echo 'Python 依赖锁已漂移，请运行 make python-lock 并重新验证'; exit 1; }
 
-frist-api-dev: ## 启动 Frist-API 本地完整链路 (http://127.0.0.1:3180)
-	cd $(FRIST_API) && FRIST_API_EXPOSE_VERIFICATION_CODE=1 FRIST_API_ALLOW_DEMO_RECHARGE=0 npm start
-
-frist-api-static: ## 仅启动 Frist-API 静态网站预览 (无后端链路)
-	cd $(FRIST_API) && npm run static
-
-frist-api-newapi-setup: ## 从本机 New-API SQLite 写入 Frist-API 桥接 .env（不打印密钥）
-	node scripts/setup_local_newapi_bridge.mjs
-
 new-api-up: ## Docker 启动 QuantumNous/new-api（启动前自动备份 data/newapi）
 	@mkdir -p data/backups
 	@if [ -d data/newapi ]; then tar -czf "data/backups/newapi-$$(date +%Y%m%d-%H%M%S).tgz" data/newapi; fi
@@ -130,12 +116,6 @@ new-api-up: ## Docker 启动 QuantumNous/new-api（启动前自动备份 data/ne
 
 new-api-down: ## Docker 停止 QuantumNous/new-api
 	docker compose -f docker-compose.newapi.yml down
-
-frist-api-up: frist-api-newapi-setup ## Docker 启动 Frist-API + QuantumNous/new-api 全链路
-	docker compose -f docker-compose.newapi.yml -f docker-compose.frist-api.yml up -d
-
-frist-api-down: ## Docker 停止 Frist-API + New-API 全链路
-	docker compose -f docker-compose.newapi.yml -f docker-compose.frist-api.yml down
 
 new-api-check: ## 检查 New-API 上游源码和镜像是否同步到最新版
 	scripts/sync_new_api_upstream.sh check
@@ -272,25 +252,22 @@ ci-local: ## 一键本地 CI 验证（含临时目录干净安装）
 	cd $(CLAWBOT) && $(PYTHON) -m py_compile multi_main.py
 	cd $(CLAWBOT) && find src/ -name "*.py" -exec $(PYTHON) -m py_compile {} +
 	@echo ""
-	@echo "══════ [6/11] Frist-API Tests ══════"
-	cd $(FRIST_API) && npm test
-	@echo ""
-	@echo "══════ [7/11] Desktop Security Boundary Tests ══════"
+	@echo "══════ [6/10] Desktop Security Boundary Tests ══════"
 	node --test \
 		$(FRONTEND)/src/lib/security-hardening.static.test.mjs \
 		$(FRONTEND)/src/components/Social/social-growth-feedback.static.test.mjs \
 		scripts/auto_ops_scripts.test.mjs
 	@echo ""
-	@echo "══════ [8/11] Frontend TypeScript Check ══════"
+	@echo "══════ [7/10] Frontend TypeScript Check ══════"
 	cd $(FRONTEND) && npx tsc --noEmit
 	@echo ""
-	@echo "══════ [9/11] Frontend Lint + Production Build ══════"
+	@echo "══════ [8/10] Frontend Lint + Production Build ══════"
 	cd $(FRONTEND) && npm run lint && npm run build
 	@echo ""
-	@echo "══════ [10/11] Desktop Rust Tests + Compile Check ══════"
+	@echo "══════ [9/10] Desktop Rust Tests + Compile Check ══════"
 	cd $(FRONTEND)/src-tauri && cargo test --locked && cargo check --locked
 	@echo ""
-	@echo "══════ [11/11] Docs Governance Check ══════"
+	@echo "══════ [10/10] Docs Governance Check ══════"
 	bash scripts/check_docs_layout.sh
 	@echo ""
 	@echo "✅ 本地 CI 全部通过"

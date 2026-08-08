@@ -276,8 +276,8 @@ def _normalize_cc_item_mapping_item_id(value: str) -> str:
 def _cc_auto_ship_status() -> dict:
     """返回 CC中转自动发货运行配置摘要，不回显 token。"""
     enabled_raw = os.getenv("CC_XIANYU_AUTO_SHIP_ENABLED", "").strip().lower()
-    endpoint = os.getenv("CC_XIANYU_WEBHOOK_URL", "").strip() or os.getenv("FRIST_API_XIANYU_WEBHOOK_URL", "").strip()
-    token = os.getenv("CC_XIANYU_WEBHOOK_TOKEN", "").strip() or os.getenv("FRIST_API_XIANYU_WEBHOOK_TOKEN", "").strip()
+    endpoint = os.getenv("CC_XIANYU_WEBHOOK_URL", "").strip()
+    token = os.getenv("CC_XIANYU_WEBHOOK_TOKEN", "").strip()
     disabled = enabled_raw in {"0", "false", "no", "off"}
     operator_state = get_operator_state()
     paused = bool(operator_state.get("auto_ship_paused"))
@@ -1282,7 +1282,7 @@ def _cc_operator_next_action_summary() -> dict:
             "xianyu_gui": "http://127.0.0.1:18800/",
             "user_site": "https://jiyu.245334.xyz/",
             "jiyu_console": "https://jiyu.245334.xyz/admin/dashboard",
-            "frist_health": "https://frist-api-oracle.245334.xyz/",
+            "jiyu_health": "https://jiyu.245334.xyz/api/health",
         },
         "lock_state": lock.get("state"),
         "loop_stage": loop_watch.get("stage"),
@@ -1509,8 +1509,8 @@ def _cc_real_order_test_pack_summary() -> dict:
             "xianyu_gui": "http://127.0.0.1:18800/",
             "user_site": "https://jiyu.245334.xyz/",
             "jiyu_console": "https://jiyu.245334.xyz/admin/dashboard",
-            "frist_health": "https://frist-api-oracle.245334.xyz/",
-            "ccswitch_entry": "https://frist-api-oracle.245334.xyz/",
+            "jiyu_health": "https://jiyu.245334.xyz/api/health",
+            "ccswitch_entry": "https://jiyu.245334.xyz/",
             "model_gateway": "https://jiyu.245334.xyz/v1",
         },
         "auto_watch": {
@@ -1765,7 +1765,7 @@ def _cc_automation_coverage_summary() -> dict:
             "CC Switch 导入",
             bool(gates.get("ccswitch_import_ready")),
             f"入口HTTP={ccswitch_import.get('page_http', audit.get('ccswitch_entry_http', '未知'))}，导入标记={bool(ccswitch_import.get('has_import_link_marker', audit.get('ccswitch_has_import_link_marker')))}",
-            "修复 Frist 首页 CC Switch 导入入口",
+            "修复 JIYU 首页 CC Switch 导入入口",
         ),
         make_item(
             "model_call",
@@ -1847,9 +1847,6 @@ def _manual_precheck_item(
 
 def _cc_manual_precheck_evidence_summary() -> dict:
     """汇总人工预检问题的只读证据，不发货、不分配卡密、不恢复自动发货。"""
-    index_html = _project_file_text("apps/frist-api/index.html")
-    styles_css = _project_file_text("apps/frist-api/src/styles.css")
-    email_js = _project_file_text("apps/frist-api/server/email.js")
     xianyu_admin_py = _project_file_text("packages/clawbot/src/xianyu/xianyu_admin.py")
     xianyu_live_py = _project_file_text("packages/clawbot/src/xianyu/xianyu_live.py")
     xianyu_apis_py = _project_file_text("packages/clawbot/src/xianyu/xianyu_apis.py")
@@ -1857,32 +1854,6 @@ def _cc_manual_precheck_evidence_summary() -> dict:
     one_shot = operator_state.get("one_shot_delivery") or {}
     canary = operator_state.get("auto_resume_canary") or {}
     lock = _cc_public_sale_lock_summary(refresh=False)
-
-    cf_in_dialog = bool(
-        re.search(
-            r'<div class="auth-dialog"[\s\S]*?<form class="auth-form" data-auth-form data-auth-form-kind="primary">(?:(?!</form>)[\s\S])*data-turnstile-scope="auth"',
-            index_html,
-        )
-    )
-    cf_in_main_card = bool(
-        re.search(
-            r'<div class="clone-login-card">[\s\S]*?<form class="clone-login-form auth-form" data-auth-form data-auth-form-kind="primary">(?:(?!</form>)[\s\S])*data-turnstile-scope="auth"(?:(?!</form>)[\s\S])*data-auth-submit="login"',
-            index_html,
-        )
-    )
-    cf_stable_height = ".turnstile-slot" in styles_css and "min-height: 65px" in styles_css
-
-    email_template_ok = all(
-        token in email_js
-        for token in [
-            "buildAccountCodeEmail",
-            "mail-shell",
-            "brand-card",
-            "security-badge",
-            "font-size:44px",
-            "如果不是你本人操作",
-        ]
-    )
 
     duplicate_guard_ok = all(
         token in (xianyu_admin_py + xianyu_live_py)
@@ -1918,26 +1889,6 @@ def _cc_manual_precheck_evidence_summary() -> dict:
         effective_label = "严格门已通过，自动发货暂停保护"
 
     items = [
-        _manual_precheck_item(
-            "cf_inside_auth_container",
-            "注册/登录 CF 验证在组件容器内",
-            cf_in_dialog and cf_in_main_card and cf_stable_height,
-            "弹窗表单、主登录卡片都包含 auth Turnstile 槽，且 CSS 预留稳定高度"
-            if (cf_in_dialog and cf_in_main_card and cf_stable_height)
-            else "未同时证明弹窗表单、主登录卡片和稳定高度",
-            "检查 apps/frist-api/index.html 与 src/styles.css 的 Turnstile 位置。",
-            "auth",
-        ),
-        _manual_precheck_item(
-            "branded_email_templates",
-            "验证码邮件模板具备品牌卡片质感",
-            email_template_ok,
-            "邮件模板包含 mail-shell、brand-card、security-badge、大号验证码和安全提醒"
-            if email_template_ok
-            else "邮件模板缺少品牌卡片或安全提醒证据",
-            "检查 apps/frist-api/server/email.js。",
-            "auth",
-        ),
         _manual_precheck_item(
             "duplicate_delivery_guard",
             "闲鱼卡密重复发送风险已加锁",
@@ -3204,8 +3155,8 @@ def _resolve_manual_paid_order_plan(ctx, item_id: str, requested_plan: str) -> s
 
 async def _call_cc_manual_paid_order_webhook(payload: dict) -> dict:
     """调用 CC中转低权限发货接口；只在老板人工确认已付款后使用。"""
-    endpoint = os.getenv("CC_XIANYU_WEBHOOK_URL", "").strip() or os.getenv("FRIST_API_XIANYU_WEBHOOK_URL", "").strip()
-    token = os.getenv("CC_XIANYU_WEBHOOK_TOKEN", "").strip() or os.getenv("FRIST_API_XIANYU_WEBHOOK_TOKEN", "").strip()
+    endpoint = os.getenv("CC_XIANYU_WEBHOOK_URL", "").strip()
+    token = os.getenv("CC_XIANYU_WEBHOOK_TOKEN", "").strip()
     if not endpoint or not token:
         raise HTTPException(503, "CC中转发货接口未配置")
     try:
@@ -3228,19 +3179,19 @@ def _cc_xianyu_remap_endpoint() -> tuple[str, str]:
     """解析 CC中转远端订单号接管接口，复用低权限闲鱼 webhook token。"""
     endpoint = (
         os.getenv("CC_XIANYU_REMAP_WEBHOOK_URL", "").strip()
-        or os.getenv("FRIST_API_XIANYU_REMAP_WEBHOOK_URL", "").strip()
+        or os.getenv("JIYU_XIANYU_REMAP_WEBHOOK_URL", "").strip()
     )
     source_endpoint = (
-        os.getenv("CC_XIANYU_WEBHOOK_URL", "").strip() or os.getenv("FRIST_API_XIANYU_WEBHOOK_URL", "").strip()
+        os.getenv("CC_XIANYU_WEBHOOK_URL", "").strip()
     )
-    token = os.getenv("CC_XIANYU_WEBHOOK_TOKEN", "").strip() or os.getenv("FRIST_API_XIANYU_WEBHOOK_TOKEN", "").strip()
+    token = os.getenv("CC_XIANYU_WEBHOOK_TOKEN", "").strip()
     if not endpoint and source_endpoint:
         endpoint = re.sub(r"/paid-order/?$", "/remap-order", source_endpoint.rstrip("/"))
     return endpoint, token
 
 
 async def _call_cc_xianyu_remap_order(old_order_id: str, new_order_id: str) -> dict:
-    """把远端 Frist-API 已发卡记录接管为真实闲鱼订单号，不分配新卡。"""
+    """把远端 JIYU AI 已发卡记录接管为真实闲鱼订单号，不分配新卡。"""
     endpoint, token = _cc_xianyu_remap_endpoint()
     if not endpoint or not token:
         raise HTTPException(503, "CC中转订单接管接口未配置")

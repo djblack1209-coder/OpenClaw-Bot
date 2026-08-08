@@ -190,7 +190,6 @@ PROJECT_ITEMS=(
   "Makefile"
   "docs"
   "scripts"
-  "apps/frist-api"
   "apps/openclaw"
   "apps/openclaw-manager-src/package.json"
   "apps/openclaw-manager-src/package-lock.json"
@@ -209,7 +208,6 @@ PROJECT_ITEMS=(
   "packages/clawbot/config"
   "packages/clawbot/data"
   "packages/clawbot/kiro-gateway/.env"
-  "data/frist-api"
   "data/newapi"
 )
 

@@ -5,6 +5,21 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
+## [2026-08-09] JIYU 模型广场按上游实况对齐并清理旧兼容入口
+> 领域: `ai-pool` | `frontend` | `deploy` | `docs`
+> 影响模块: `Sub2 模型广场`, `渠道模型限制`, `JIYU 兼容补丁`, `品牌清理`
+> 关联问题: HI-1023
+### 变更内容
+- 通过 Sub2 原生“同步上游模型”逐账号核对 12 条 JIYU 渠道，保存“上游当前返回且已有定价”的精确映射；未验证渠道失败关闭，未修改任何价格数值或上游凭据。
+- 启用渠道模型限制；兼容补丁让模型广场把显式映射作为唯一展示白名单，不再由历史定价目录回填未验证模型。
+- 移除仓库中已停用的旧兼容应用、旧部署编排和旧脚本，文档、CI、运维命令统一为 JIYU AI；未保留旧品牌字符串。
+### 文件变更
+- `scripts/sub2api-jiyu-v0.1.172.patch`、`scripts/sub2api-model-align-v0.1.172.patch`、`.github/workflows/sub2api-jiyu-compat.yml`、`.gitattributes` — 上游模型白名单语义、补丁文本检查规则和发布门。
+- `apps/`、`scripts/`、`docs/`、`Makefile`、闲鱼运维模块 — 移除旧兼容入口并统一 JIYU 命名。
+### 验证
+- 官方 v0.1.172 干净源码 `git apply --check`、`go test -tags unit ./internal/service -run '^TestSupportedModels'` 通过。
+- 生产同步结果：12 个账号中 11 个返回清单，1 个返回失败；12 条渠道均已持久化限制状态，未输出凭据。
+
 ## [2026-08-09] JIYU 自营补号池与支付/倍率能力澄清
 > 领域: `backend` | `ai-pool` | `docs` | `xianyu`
 > 影响模块: `本地补号助手`, `Sub2 原生支付`, `上游倍率探测`, `闲鱼本机运营台`
@@ -75,7 +90,7 @@
 - 修复该 unit 模板注释中的中文弯引号：Linux ShellCheck 将其误判为未闭合引号并报 `SC1111`；仅替换为 ASCII 引号，不改变生成的 systemd 配置或业务逻辑。
 - 首次更新失败后生产已自动回滚到旧构建且健康恢复；随后将服务修复为 `Restart=always`，受控重启验证 PID `1288563→1291998`。
 - 第二次 CI `31271410817` 通过完整门禁并经真实 WebUI“检查并安装→立即重启”完成，生产 VERSION 回读 `v0.1.172-jiyu.31271410817`，stage 结果为 `applied`，健康 200。
-- 后续 OpenClaw CI `31272391317` 的 `security-gates` 已通过，包含 `Lint repository shell scripts`，确认 `SC1111` 回归关闭；同一 run 的 Node 18 Frist-API 作业另有失败，待完整 run 结束后读取其日志确认根因，不能由本次 ShellCheck 修复推断因果。
+- 后续 OpenClaw CI `31272391317` 的 `security-gates` 已通过，包含 `Lint repository shell scripts`，确认 `SC1111` 回归关闭；同一 run 的 Node 18 JIYU AI 作业另有失败，待完整 run 结束后读取其日志确认根因，不能由本次 ShellCheck 修复推断因果。
 ### 文件变更
 - `scripts/sub2api_oracle_manage.sh` — 让正常退出触发 systemd 自动重启。
 - `docs/009-health.md`、`docs/012-handoff.md`、`docs/002-changelog.md` — 登记真实回滚证据与修复后验收。
@@ -320,7 +335,7 @@
 - `scripts/sub2api_jiyu_update_broker.sh`、`scripts/sub2api_oracle_manage.sh`、`scripts/sub2api-jiyu-v0.1.172.patch` — 受管更新代理、暂存/启用命令和 WebUI 后端入口。
 - `scripts/jiyu-image-mcp/`、`scripts/install_jiyu_image_mcp.sh` — 锁定依赖的生图 MCP 与 CC Switch/钥匙串安装入口。
 - `packages/clawbot/requirements.txt`、`requirements-lock.txt`、`requirements-lock-macos.txt` — `h2`/`pypdf` 安全版本和双平台哈希同步。
-- `packages/clawbot/src/xianyu/xianyu_admin.py` — 删除未使用的 Frist server 源码读取，不改变预检结果。
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 删除未使用的 JIYU server 源码读取，不改变预检结果。
 - `apps/openclaw-manager-src/package.json`、`package-lock.json` — 桌面构建传递依赖安全 override 与锁文件。
 - `scripts/assets/audit-jiyu-monitor-after-managed-update-20260808.jpg` — 生产发布后渠道排序、产品生态标签和真实健康状态截图。
 - `docs/006-registries.md`、`docs/007-operations.md`、`docs/009-health.md`、`docs/053-jiyu-growth-payment-image-update-plan.md`、`docs/087-jiyu-image-mcp-guide.md`、`docs/012-handoff.md` — 同步合同、操作步骤、风险和交接。
@@ -420,7 +435,7 @@
 - 全新安装没有迁移任何旧用户、API Key、渠道、兑换码、日志或上游凭据；数据库验收为 `users=1`（新管理员）、`accounts=0`、`api_keys=0`、`channels=0`、`usage_logs=0`。
 - 新增官方 release SHA-256 校验、升级前 PostgreSQL 备份、`flock` 并发锁、启动健康检查和失败自动回滚；`sub2api-update.timer` 每日检查，`sub2api-backup.timer` 每日做一致性备份。
 - 删除 Oracle 与腾讯云的旧 New-API SQLite、运行目录、环境密钥、二进制、systemd 服务、Docker 容器/镜像及同名本地备份；旧 R2 加密对象删除 19 个并重新生成不含 `one-api.db` 的加密备份。
-- 删除 Apache 旧 New-API HTML 品牌替换/标题注入，恢复 Sub2API 原生 CSP 页面；Frist-API 兼容服务仍保留，但其 New-API 桥接开关已落为 `0`。
+- 删除 Apache 旧 New-API HTML 品牌替换/标题注入，恢复 Sub2API 原生 CSP 页面；JIYU AI 兼容服务仍保留，但其 New-API 桥接开关已落为 `0`。
 - 将唯一管理员邮箱更新为 `djblack1209@gmail.com`，密码使用 bcrypt 写入数据库并同步 root-only 环境文件与 macOS 钥匙串；更新前已创建 PostgreSQL 备份，旧本机钥匙串账号已删除。
 - 补充小白首次使用说明，明确“补号”入口为“账号管理 → 添加账号”，首次配置顺序为“分组管理 → 账号管理 → API 密钥”。
 ### 文件变更
@@ -442,7 +457,7 @@
 ### 变更内容
 - 线上核验确认 macOS `ai.openclaw.clawbot-agent` 是唯一持续运行的主实例，腾讯云保存的主心跳已约 109 天未更新；旧 `clawbot-failover.timer` 每 30 秒尝试提升备用实例，而备用进程因缺失 Python 模块持续失败并累计大量重启。
 - 在服务器标准备份目录保存 service、timer、故障转移脚本和状态文件后，停用腾讯云 `clawbot.service` 与 `clawbot-failover.timer`，清除失效的提升状态但保留应用数据和回滚材料。
-- 腾讯云 `wechat-receiver`、`openclaw-cloud-control` 与 `sillytavern` 保持运行；本次不触碰 Oracle 上的 New-API/Frist，也不删除任何业务数据。
+- 腾讯云 `wechat-receiver`、`openclaw-cloud-control` 与 `sillytavern` 保持运行；本次不触碰 Oracle 上的 New-API/JIYU，也不删除任何业务数据。
 ### 验证
 - 腾讯云旧 ClawBot 与 failover timer 均为 `inactive/disabled`；Mac 主 LaunchAgent 为 `running`，PID 保持不变且 `last exit code = never exited`。
 - 状态页、EduMath 和 CC 中转公网健康探针均返回 HTTP 200；腾讯云其余三项共享业务仍为 active。
@@ -452,100 +467,100 @@
 
 ## [2026-08-05] 全维度审计闭环：安全、供应链、架构与自动灾备
 > 领域: `backend` | `frontend` | `deploy` | `infra` | `docs` | `xianyu`
-> 影响模块: `HTTP/浏览器安全`, `Frist runtime`, `闲鱼管理面`, `Intel Brief`, `Docker`, `CI`, `本机灾备`, `AI 开发 SOP`
+> 影响模块: `HTTP/浏览器安全`, `JIYU runtime`, `闲鱼管理面`, `Intel Brief`, `Docker`, `CI`, `本机灾备`, `AI 开发 SOP`
 > 关联问题: HI-965, HI-966, HI-967, HI-968, HI-969, HI-970, HI-971, HI-972, HI-973, HI-974, HI-975, HI-976, HI-977, HI-978, HI-979, HI-980, HI-981
 ### 变更内容
 - 使用 mattpocock/skills 的 Wayfinder 目标地图、审计 ticket 和架构深模块原则完成全维度审计；在仓库文档规则下把 Destination / Notes / Decisions / Frontier 合并到 HEALTH，修正 `AGENTS.md` 中不存在或已改名的 Skill 路由。
 - HTTP 客户端逐跳验证 DNS、重定向和固定地址，浏览器主文档/子资源/WebSocket 共用精确主机边界；API 限流只信显式可信代理并限制状态容量，最终日志 record/异常链统一脱敏并以 0700/0600 落盘。
-- Frist 邮箱、重置、2FA、会话指纹和限流失败关闭；闲鱼根 Token 只换取 15 分钟、最多 128 个 HttpOnly 会话，写请求同源校验，页面使用 nonce CSP 和安全 DOM；CLIAnything 远程动态安装固定 403。
-- 闲鱼运行对象先转换为不可变 snapshot，`operations_projection.py` 一次生成售卖、循环观察和买家进度；Frist 原子文件写、串行 mutation 与 AES-256-GCM 字段加密迁入 `runtime-store.js`，两个热点入口分别减少 223 行和 180 行。
+- JIYU 邮箱、重置、2FA、会话指纹和限流失败关闭；闲鱼根 Token 只换取 15 分钟、最多 128 个 HttpOnly 会话，写请求同源校验，页面使用 nonce CSP 和安全 DOM；CLIAnything 远程动态安装固定 403。
+- 闲鱼运行对象先转换为不可变 snapshot，`operations_projection.py` 一次生成售卖、循环观察和买家进度；JIYU 原子文件写、串行 mutation 与 AES-256-GCM 字段加密迁入 `runtime-store.js`，两个热点入口分别减少 223 行和 180 行。
 - 更新 npm 直接/传递依赖、双平台 Python 哈希锁、Docker 固定 digest/amd64/非 root 安装和 RustSec 门；PR CI 覆盖全部目标分支，固定 Action SHA，并执行 ShellCheck、Gitleaks、npm/pip/cargo 与供应链检查。
 - 重建本机灾备：SQLite 在线 `.backup`、包内逐文件 manifest、包外 SHA-256、原子 `.ready`、安全 tar、恢复 dry-run/drill/confirm、GPG 离机密文和数量/天数保留。`ai.openclaw.daily-backup` 已实装为每天 03:30 自动备份后强制恢复演练。
 - 修复 Intel Brief 旧 schema v3 缺 `content_delivery_attempts.event_key` 导致的真实定时任务崩溃；真实库先做 root-only SQLite 备份，再迁移到 v4 并通过 quick_check。为避免提前发送真实消息，LaunchAgent 只重新加载，等待 08:30 自然验证。
 - 修复 Bot 假健康、Tauri 可预测 `/tmp` WhatsApp 脚本和容器内 store 项目根定位；桌面本机进程临时文件改为随机 0700、用后清理，容器完整构建后以非 root 导入冒烟。
 - 修复首次远程 CI 暴露的 Linux 差异：健康脚本 heredoc 改为可移植子 shell，并在审计命令无输出时生成结构化失败 JSON；Node 24 测试夹具对已停止后台巡检的在途原子写执行有限目录清理重试；文档门禁在最小 CI 镜像未安装 `rg` 时自动回退到 `grep`。
 ### 验证
-- 聚焦回归：闲鱼投影/履约/owner/API `208/208`，Intel schema/订阅投递/生产链 `37/37`，Frist `234/234`，自动运维 `21/21`，新增 runtime store `3/3`；Ruff、ShellCheck、Node/Bash 语法和 `git diff --check` 通过。
+- 聚焦回归：闲鱼投影/履约/owner/API `208/208`，Intel schema/订阅投递/生产链 `37/37`，JIYU `234/234`，自动运维 `21/21`，新增 runtime store `3/3`；Ruff、ShellCheck、Node/Bash 语法和 `git diff --check` 通过。
 - 安全门：四套 npm production audit 为 0，Linux/macOS pip-audit 无已知漏洞，RustSec 为 0 vulnerability（17 条目标平台/上游 informational allow warning），35 个仓库 Shell 脚本零告警；Gitleaks 当前树和 859 提交历史均无泄漏。
 - 容器：完整 amd64 镜像从哈希锁构建成功，最终以 `uid=999 gid=999` 运行并完成 `imports=ok` 冒烟；SSRF/浏览器组合回归与真实 `https://example.com` 请求均通过。
 - 实机：`ai.openclaw.daily-backup` 已加载并退出 0；`openeverything-20260805-034824.tgz` 完整 restore drill 通过。Intel 真实数据库备份 SHA-256 为 `db845bc5ce4e380086090eeef38bd5e27f54dbf89af3cb2d59e88cc496f036cf`，迁移后 schema v4 与 quick_check 通过。
-- 跨平台：Linux Node 24 健康脚本聚焦回归、Frist Node 24 后台巡检用例、无 `rg` 文档治理检查和 GitHub PR 五项检查作为推送后发布门，避免 macOS 本机绿灯掩盖 Bash/文件系统差异。
+- 跨平台：Linux Node 24 健康脚本聚焦回归、JIYU Node 24 后台巡检用例、无 `rg` 文档治理检查和 GitHub PR 五项检查作为推送后发布门，避免 macOS 本机绿灯掩盖 Bash/文件系统差异。
 - 最终 `make ci-local`、桌面构建/唯一安装和截图数字集中记录在 `docs/086-release-evidence.md`，避免多处复制漂移。
 ### 文件变更
 - `packages/clawbot/src/http_client.py`、`src/tools/web_tool.py`、`src/api/server.py`、`src/log_config.py`、`src/integrations/cli_anything_bridge.py` 与测试 — SSRF、限流、日志和动态安装边界。
 - `packages/clawbot/src/xianyu/operations_projection.py`、`xianyu_admin.py`、`xianyu_live.py` 与测试 — owner 快照、纯投影和管理会话安全。
 - `packages/clawbot/src/intel/db/store.py` 与测试 — schema v4 真实旧库迁移。
-- `apps/frist-api/server/runtime-store.js`、认证/安全/支付模块与测试 — 深模块、会话、限流和资金链失败关闭。
+- `JIYU AI Sub2API WebUI/server/runtime-store.js`、认证/安全/支付模块与测试 — 深模块、会话、限流和资金链失败关闭。
 - `scripts/local_backup.sh`、`disaster_recovery.sh`、`manage_backup_launchagent.sh`、`auto_health_check.sh`、`auto_ops_scripts.test.mjs`、`Makefile` — 自动备份、恢复演练和健康门。
 - `.github/workflows/`、依赖锁、Docker/Compose、`scripts/check_supply_chain.mjs`、`scripts/check_clean_install.sh` — 可复现构建与安全门。
 - `AGENTS.md`、`docs/001-project-map.md`、`docs/002-changelog.md`、`docs/006-registries.md`、`docs/007-operations.md`、`docs/009-health.md`、`docs/086-release-evidence.md` — 目标、事实源、运维和发布证据。
 
 ## [2026-08-04] 8 分目标复审收口：实盘、履约、写队列与真实回滚
 > 领域: `backend` | `frontend` | `trading` | `xianyu` | `deploy` | `infra` | `docs`
-> 影响模块: `IBKR SELL`, `闲鱼履约`, `owner-loop`, `Frist runtime`, `认证限流`, `Tauri 回滚`, `五维评分`
+> 影响模块: `IBKR SELL`, `闲鱼履约`, `owner-loop`, `JIYU runtime`, `认证限流`, `Tauri 回滚`, `五维评分`
 > 关联问题: HI-817, HI-818, HI-890, HI-959, HI-960, HI-961, HI-962, HI-963, HI-964
 ### 变更内容
 - 实盘 SELL 严格区分 MKT/LMT，限价缺价格不再退化为市价单；下单前串行核对真实多头持仓、未完成卖单和本地保留量，取消、失效、零成交和结果不确定均不再返回成功。
 - 闲鱼只从真实订单/交易 ID 生成履约键；主 webhook、订单轮询复用、浏览器和人工补发统一使用 SQLite 原子领取。发送异常停在 `message_send_uncertain` 并禁止自动重试，暂停分支不能覆盖已发送或不确定终态。
 - `AsyncLoopOwner` 的旧循环关闭只回收本循环任务，不再清空已经重绑的新 owner；闲鱼管理 HTTP/WS 以实际 bind host 和 `prod/production` 统一失败关闭。
-- Frist 普通 runtime `mutate` 强制同步，注册/重置邮件、补货探测、渠道巡检、上游余额和 New-API Token 外部请求移出全局写队列；生产禁止本地旧网关兼容链，密码重置请求增加账号级 3 次/15 分钟限流。
+- JIYU 普通 runtime `mutate` 强制同步，注册/重置邮件、补货探测、渠道巡检、上游余额和 New-API Token 外部请求移出全局写队列；生产禁止本地旧网关兼容链，密码重置请求增加账号级 3 次/15 分钟限流。
 - 桌面版本升至 0.1.1；构建只把 CDHash 不同的签名 App 计为上一版，清单新增源码补丁与 DMG SHA-256。同指纹检查固定拒绝，0.1.1/0.1.0 已真实双向交换后恢复 0.1.1。
 - 五维评分改为每维 10 个二元证据门；历史第三方凭据轮换、Developer ID/公证、当前工作树远端 Linux 产物和巨型热点不再主观加分，明确记为 P2/未通过项。
 ### 验证
 - 交易/API/owner-loop 聚焦回归 `145/145`，闲鱼自动发货与 owner-loop `133/133`，均在 `PYTHONASYNCIODEBUG=1` 和 `RuntimeWarning` 失败门下通过；相关 Ruff、Node 语法和 `git diff --check` 通过。
-- Frist 全量 `228/228`，账号级重置限流、SMTP 队列解耦、补货探测和渠道巡检均有回归。
+- JIYU 全量 `228/228`，账号级重置限流、SMTP 队列解耦、补货探测和渠道巡检均有回归。
 - 运维脚本 `11/11`；两个不同 ad-hoc 签名测试 App 可双向交换，同指纹固定拒绝。真实 `make tauri-build` 生成 `OpenClaw_0.1.1_aarch64.dmg`，0.1.1 `42799197…` 与 0.1.0 `39fb9e44…` 不同，真实回滚后已恢复 0.1.1；最终源码补丁和 DMG SHA-256 由构建后的 root-only 回滚清单记录，避免文档复制值漂移。
 ### 文件变更
 - `packages/clawbot/src/broker_bridge.py`、`src/api/routers/trading.py`、`src/core/loop_owner.py` 与对应测试 — SELL 持仓/状态和旧循环关闭边界。
 - `packages/clawbot/src/xianyu/xianyu_live.py`、`xianyu_context.py`、`xianyu_admin.py` 与对应测试 — 稳定订单身份、原子分配/发送和生产鉴权。
-- `apps/frist-api/server/server.js`、`security.js`、`email.js`、生产环境示例和测试 — 外部 I/O 队列拆分与重置请求限流。
+- `JIYU AI Sub2API WebUI/server/server.js`、`security.js`、`email.js`、生产环境示例和测试 — 外部 I/O 队列拆分与重置请求限流。
 - `scripts/tauri_build_install.sh`、`tauri_rollback.sh`、`auto_ops_scripts.test.mjs`、桌面版本文件 — 真实异版本回滚与发布指纹。
 - `docs/001-project-map.md`、`docs/002-changelog.md`、`docs/006-registries.md`、`docs/007-operations.md`、`docs/009-health.md`、`docs/086-release-evidence.md` — 事实源、P2 残余和二元评分。
 
 ## [2026-08-04] 8 分目标最终收口：失败关闭、供应链与发布证据校准
 > 领域: `backend` | `frontend` | `deploy` | `infra` | `docs`
-> 影响模块: `owner-loop`, `SocialAutopilot`, `Bulkhead`, `闲鱼只读探测`, `Frist 支付`, `MCP Store`, `桌面构建`, `CI`
+> 影响模块: `owner-loop`, `SocialAutopilot`, `Bulkhead`, `闲鱼只读探测`, `JIYU 支付`, `MCP Store`, `桌面构建`, `CI`
 > 关联问题: HI-947, HI-952, HI-954, HI-955, HI-956, HI-957, HI-958
 ### 变更内容
 - owner-loop 提交改为 Future 登记 + owner 线程惰性创建协程；停止/提交竞态失败关闭，`loop.close()` 前取消并排空已启动任务，避免 pending Task 被销毁。
 - Bulkhead 动态重配原位调整同一隔离舱，闲鱼只读扫单明确映射 owner 未就绪/超时为 503/504；SocialAutopilot 关机阶段释放 APScheduler 和循环引用但不篡改持久化 `enabled` 意图。
-- Frist 充值拆为准备事务、事务外渠道请求、成功/失败落库三段；渠道请求有硬超时，金额校验使用订单总额字段，微信回调增加时间戳/平台序列号，重复成功回调不重复追加事件。
+- JIYU 充值拆为准备事务、事务外渠道请求、成功/失败落库三段；渠道请求有硬超时，金额校验使用订单总额字段，微信回调增加时间戳/平台序列号，重复成功回调不重复追加事件。
 - Tauri MCP Store 降级为受管目录只读展示：从唯一 `MANAGED_MCP_PACKAGES` 注册表派生版本和元数据，不读取旧配置、不返回 command/args/env、不提供伪 stdio 启停入口；真实 MCP 会话由 CC Switch/OpenClaw 官方配置链负责。
 - Compose 镜像固定 `tag@sha256`，新增临时目录干净安装门；桌面构建在所有备份就绪前不删除现有 App。
 - 桌面开发工具链安全 override 更新为 `brace-expansion@5.0.9`、`fast-uri@4.1.2`、`hono@4.13.0`、`ip-address@10.4.0`；完整桌面/生产依赖 `npm audit` 重新归零。
 - 忽略闲鱼运营状态文件旁的进程锁临时文件，避免测试或异常退出把本机运行态带入工作树。
 - 文档真实性检查区分仓库事实与明确受 Git 忽略的本机运行资产；干净检出不再因私有 `.env`、生产 SQLite 或历史情报 evidence 缺席而误报，源码、脚本和发布文档路径仍逐项校验。
 ### 验证
-- owner-loop、Brain/EventBus、Social、IBKR、闲鱼和 WebSocket 聚焦回归在 `PYTHONASYNCIODEBUG=1` 下通过；Bulkhead、SocialAutopilot、闲鱼自动发货聚焦回归通过；最终 `make ci-local` 为 Python `2,364` 收集、`2,362` 通过、`2` 预期跳过、`0` 失败，总覆盖率 `44.34%`、关键聚合 `88%`；Frist `226/226`、桌面合同 `27/27`、Rust `44/44`，TypeScript、ESLint、Vite 和文档门全绿。
-- 供应链检查验证 2 个工作流、16 个 Action SHA、354 个 npm 锁定包和 3 个 Compose 文件的 digest；临时目录 npm/Python 哈希锁安装通过；桌面完整/生产、Frist、runtime npm audit 和 Linux/macOS pip-audit 均为 0；Gitleaks 扫描 859 commits、约 55.11 MB 无泄漏。
+- owner-loop、Brain/EventBus、Social、IBKR、闲鱼和 WebSocket 聚焦回归在 `PYTHONASYNCIODEBUG=1` 下通过；Bulkhead、SocialAutopilot、闲鱼自动发货聚焦回归通过；最终 `make ci-local` 为 Python `2,364` 收集、`2,362` 通过、`2` 预期跳过、`0` 失败，总覆盖率 `44.34%`、关键聚合 `88%`；JIYU `226/226`、桌面合同 `27/27`、Rust `44/44`，TypeScript、ESLint、Vite 和文档门全绿。
+- 供应链检查验证 2 个工作流、16 个 Action SHA、354 个 npm 锁定包和 3 个 Compose 文件的 digest；临时目录 npm/Python 哈希锁安装通过；桌面完整/生产、JIYU、runtime npm audit 和 Linux/macOS pip-audit 均为 0；Gitleaks 扫描 859 commits、约 55.11 MB 无泄漏。
 - `make tauri-build` 生成 `OpenClaw.app` 与 `OpenClaw_0.1.0_aarch64.dmg`；严格 ad-hoc 签名、DMG checksum、`rollback_ready=true`、唯一安装和旧 App 删除前备份闸门均通过。原生首屏为 `output/playwright/openclaw-installed-app-final.png`，Vite 桌面/移动验收为 `openclaw-vite-desktop-final.png` / `openclaw-vite-mobile-final.png`。
 ### 文件变更
 - `packages/clawbot/src/core/loop_owner.py`、`resilience.py`、`social_scheduler.py`、`xianyu/xianyu_admin.py` 与对应测试 — 关闭竞态、重配和生命周期边界。
-- `apps/frist-api/server/server.js`、`payments.js`、`shared.js` 与支付测试 — 两阶段充值、超时、金额与回调时效/去重。
+- `JIYU AI Sub2API WebUI/server/server.js`、`payments.js`、`shared.js` 与支付测试 — 两阶段充值、超时、金额与回调时效/去重。
 - `apps/openclaw-manager-src/src-tauri/src/commands/mcp.rs`、`npm_runtime.rs`、Store IPC/UI、供应链脚本和 Compose 文件 — 只读 MCP 目录、唯一注册表和 digest 门。
 - `scripts/tauri_build_install.sh`、`check_clean_install.sh`、`check_docs_layout.sh`、`Makefile`、`docs/` — 构建备份闸门、干净安装、干净检出文档检查和证据口径。
 
 ## [2026-08-04] 8 分目标第三阶段：事件循环、供应链与发布证据收口
 > 领域: `backend` | `frontend` | `deploy` | `infra` | `docs`
-> 影响模块: `Brain/EventBus`, `交易与闲鱼所有者循环`, `Frist 支付与会话`, `Tauri npm/MCP 运行时`, `CI 与覆盖率`, `桌面发布回滚`
+> 影响模块: `Brain/EventBus`, `交易与闲鱼所有者循环`, `JIYU 支付与会话`, `Tauri npm/MCP 运行时`, `CI 与覆盖率`, `桌面发布回滚`
 > 关联问题: HI-942, HI-943, HI-944, HI-945, HI-946, HI-947, HI-948, HI-949, HI-950, HI-951, HI-952, HI-953
 ### 变更内容
 - 把 Brain、EventBus、SocialAutopilot、IBKR、闲鱼实时链、WebSocket 推送、CLI bridge、LiteLLM Router 和 resilience primitive 收口到显式所有者循环；跨线程入口转发，未就绪失败关闭，FastAPI 在交易和调度服务初始化后才监听。
-- Frist 支付回调新增本机商户身份、订单原渠道、状态、金额和平台交易号唯一性五重校验；微信/支付宝下单响应也校验平台签名，缺失、过期、序列号不符或验签失败统一返回 502。微信平台公钥进入可下单就绪门。
-- Frist 将可信代理/限流、会话/CSRF、支付、共享规则和目录规则分别收口到 `security.js`、`auth.js`、`payments.js`、`shared.js` 和 `catalog.js`；删除会丢运行字段的未使用 `store.js`、绕过完整管理员校验的旧接口及弱化的重复安全实现。`server.js` 从审计基线 9,263 行降至 7,795 行；加密占位 API Key 固定拒绝。
+- JIYU 支付回调新增本机商户身份、订单原渠道、状态、金额和平台交易号唯一性五重校验；微信/支付宝下单响应也校验平台签名，缺失、过期、序列号不符或验签失败统一返回 502。微信平台公钥进入可下单就绪门。
+- JIYU 将可信代理/限流、会话/CSRF、支付、共享规则和目录规则分别收口到 `security.js`、`auth.js`、`payments.js`、`shared.js` 和 `catalog.js`；删除会丢运行字段的未使用 `store.js`、绕过完整管理员校验的旧接口及弱化的重复安全实现。`server.js` 从审计基线 9,263 行降至 7,795 行；加密占位 API Key 固定拒绝。
 - 闲鱼补发与浏览器助手统一复用原子领取、发送、不确定态停机和完成落库状态机；发送异常不能自动重试，仍需人工核对。
 - 桌面安装器改用内嵌 npm package-lock：354 个运行包及传递依赖具备 SHA-512，安装执行 `npm ci --ignore-scripts`；MCP 运行时注册表和 Store 目录现在由最终收口条目统一描述。已拒绝含高危项的 OpenClaw 稳定包，精确采用审计为 0 且配置合同冒烟通过的 `2026.7.2-beta.7`。
 - 两个 GitHub 工作流的 16 个 Action 全部固定完整 commit SHA；New-API 同步 checkout 不持久化写凭据。新增 `make supply-chain-check`，同时验证 Action SHA、npm 直接/传递完整性和高危漏洞门。
 - Python 增加 Linux/macOS 双哈希锁与复算门；`aiohttp` 升至 3.14.3、`cryptography` 升至 50.0.0，pip-audit 对完整锁使用无二次解析模式并回到 0 已知漏洞。覆盖率增加总体、高风险聚合及逐文件下限。
 - Scheduler 修复切换请求和异常字段失败关闭，并补 390px 自动图标侧栏；Store 统一读取 Tauri MCP 配置；Assistant 支持真实取消。Tauri 构建保存签名回滚副本、CDHash 清单并提供只读/显式回滚入口。
 ### 验证
-- 该阶段的历史基线为 Python 2,360 个节点、Frist `222/222`、桌面/Social/运维合同 `26/26`、Rust `45/45`；最终收口后的数字以本次 `make ci-local` 输出和 `docs/086-release-evidence.md` 为准，避免把阶段基线误报为当前结果。
-- 支付提供商创建响应聚焦合同 `5/5`；Frist 新增 8 项静态安全合同，覆盖加密占位 Key、危险旧接口和弱安全重复事实源；闲鱼发货与所有者循环聚焦回归全绿。
+- 该阶段的历史基线为 Python 2,360 个节点、JIYU `222/222`、桌面/Social/运维合同 `26/26`、Rust `45/45`；最终收口后的数字以本次 `make ci-local` 输出和 `docs/086-release-evidence.md` 为准，避免把阶段基线误报为当前结果。
+- 支付提供商创建响应聚焦合同 `5/5`；JIYU 新增 8 项静态安全合同，覆盖加密占位 Key、危险旧接口和弱安全重复事实源；闲鱼发货与所有者循环聚焦回归全绿。
 - npm 三组审计均为 0；受管运行时 `354` 包完整性检查、Python 双锁复算与 `pip-audit` 均通过；Gitleaks 扫描 859 个提交、约 55 MB 历史无泄漏。干净 HOME 运行 `OpenClaw 2026.7.2-beta.7`，配置写入/校验、Gateway 帮助和插件枚举均退出 0。
 - `make tauri-build` 生成并安装 `OpenClaw.app` 与 `OpenClaw_0.1.0_aarch64.dmg`；App 严格 ad-hoc 签名、DMG 校验、唯一安装和当前/上一版回滚签名均通过，`rollback_ready=true`。真实安装包首屏截图为 `output/playwright/openclaw-installed-app.png`；Scheduler 与实盘卖出桌面/移动截图同时保留。
 ### 文件变更
 - `packages/clawbot/src/core/loop_owner.py`、`brain.py`、`event_bus.py`、`social_scheduler.py`、`broker_bridge.py`、`xianyu/`、`api/routers/` 与对应测试 — 所有者循环和失败关闭。
-- `apps/frist-api/server/auth.js`、`security.js`、`payments.js`、`shared.js`、`catalog.js`、`server.js`、删除的 `store.js` 与 `tests/` — 安全域拆分、危险重复事实清理和支付全链路负向门。
+- `JIYU AI Sub2API WebUI/server/auth.js`、`security.js`、`payments.js`、`shared.js`、`catalog.js`、`server.js`、删除的 `store.js` 与 `tests/` — 安全域拆分、危险重复事实清理和支付全链路负向门。
 - `apps/openclaw-manager-src/src-tauri/npm-runtime-lock/`、`src/commands/npm_runtime.rs`、`installer.rs`、`mcp.rs` — 受管 npm 完整性锁与本地 MCP 入口。
 - `.github/workflows/`、`Makefile`、`scripts/check_supply_chain.mjs`、`scripts/check_docs_layout.sh`、`packages/clawbot/requirements*.txt` — CI、供应链、文档事实与依赖锁。
 - `apps/openclaw-manager-src/src/components/`、`src/lib/` — 调度、Store、Assistant、交易确认和移动端布局合同。
@@ -553,21 +568,21 @@
 
 ## [2026-08-04] 8 分目标第二阶段：认证与定时任务失败关闭
 > 领域: `backend` | `trading` | `infra` | `docs`
-> 影响模块: `Frist-API 认证限流`, `FastAPI WebSocket`, `管理员控制台`, `交易重挂`, `Intel Brief 调度`
+> 影响模块: `JIYU AI 认证限流`, `FastAPI WebSocket`, `管理员控制台`, `交易重挂`, `Intel Brief 调度`
 > 关联问题: HI-937, HI-938, HI-939, HI-940, HI-941
 ### 变更内容
-- Frist 默认忽略客户端自报的转发头；只有 socket 对端命中显式可信代理名单时才从右向左解析 `X-Forwarded-For`。密码重置确认叠加账号 HMAC 限流，限流表增加过期清理和 10000 桶容量上限，满容量时失败关闭。
+- JIYU 默认忽略客户端自报的转发头；只有 socket 对端命中显式可信代理名单时才从右向左解析 `X-Forwarded-For`。密码重置确认叠加账号 HMAC 限流，限流表增加过期清理和 10000 桶容量上限，满容量时失败关闭。
 - HTTP 与 WebSocket 共用无 Token 本机开发判定；`production`、`prod` 和非本机绑定都拒绝连接，避免实时事件流绕过 HTTP 安全边界。
 - 管理员根令牌从浏览器长期存储改为仅在页面内存使用，管理端按钮和提示明确“本次会话”，刷新或关闭页面自动清空。
 - 隔夜 BUY 重挂默认关闭；只有显式开关与自动交易模式同时启用才允许入队和提交，人工确认模式不继承旧订单授权。
 - Intel Brief 只有 runner 明确返回 `status=success` 才记录当天完成；Telegram 或沙箱投递失败不会再封死当天重试。
 ### 验证
-- Frist 可信代理、账号级重置限流和容量边界在旧代码为 `0/3`，修复后 `3/3`；管理员存储合同旧代码红灯、修复后 `1/1`。
+- JIYU 可信代理、账号级重置限流和容量边界在旧代码为 `0/3`，修复后 `3/3`；管理员存储合同旧代码红灯、修复后 `1/1`。
 - WebSocket/HTTP 无 Token 策略新增 `prod` 和一致性用例，旧代码 `2` 项失败，修复后聚焦用例 `6/6`，Ruff 与 Python 编译通过。
 - 交易重挂新增两项失败关闭用例，旧代码 `2/2` 失败；Intel 失败重试旧代码第二次返回 `skipped`。修复后两份调度测试合计 `46/46`。
-- 最终 `make ci-local` 八阶段退出码 0：Python 全仓跑到 100% 且仅 2 项预期跳过，Frist `206/206`，桌面合同 `22/22`，TypeScript、Rust `34/34` 与文档 `23/23` 全部通过；前端 ESLint 与 Vite 正式构建通过，Gitleaks 对当前差异扫描为 0 泄漏。
+- 最终 `make ci-local` 八阶段退出码 0：Python 全仓跑到 100% 且仅 2 项预期跳过，JIYU `206/206`，桌面合同 `22/22`，TypeScript、Rust `34/34` 与文档 `23/23` 全部通过；前端 ESLint 与 Vite 正式构建通过，Gitleaks 对当前差异扫描为 0 泄漏。
 ### 文件变更
-- `apps/frist-api/server/server.js`、`src/admin.js`、`admin.html`、`deploy/production.env.example`、`tests/server.test.mjs`、`tests/business-flow.test.mjs` — 可信代理、限流容量、账号重置保护和管理员临时令牌。
+- `JIYU AI Sub2API WebUI/server/server.js`、`src/admin.js`、`admin.html`、`deploy/production.env.example`、`tests/server.test.mjs`、`tests/business-flow.test.mjs` — 可信代理、限流容量、账号重置保护和管理员临时令牌。
 - `packages/clawbot/src/api/auth.py`、`tests/test_api_routes_regression.py` — HTTP/WS 统一无 Token 策略。
 - `packages/clawbot/src/trading/_scheduler_tasks.py`、`tests/test_trading_system.py` — 隔夜重挂双重授权门。
 - `packages/clawbot/src/execution/scheduler.py`、`tests/test_intel_scheduler_gate.py` — 成功后才封存当天。
@@ -575,7 +590,7 @@
 
 ## [2026-08-04] 8 分目标第一阶段：支付、实盘卖出与闲鱼放行安全门
 > 领域: `backend` | `frontend` | `trading` | `xianyu` | `docs`
-> 影响模块: `Frist-API 支付`, `Portfolio 实盘卖出`, `CC中转闲鱼运营状态`, `桌面安全回归`
+> 影响模块: `JIYU AI 支付`, `Portfolio 实盘卖出`, `CC中转闲鱼运营状态`, `桌面安全回归`
 > 关联问题: HI-934, HI-935, HI-936
 ### 变更内容
 - 支付宝渠道必须同时配置 App ID、商户私钥和平台公钥才会进入就绪状态；异步通知缺少平台公钥时固定返回 503，不能再绕过签名验证进入入账链路。
@@ -588,9 +603,9 @@
 - 桌面安全合同：旧代码 `7/8`，修复后 `8/8`；`npx tsc --noEmit` 通过。
 - 闲鱼并发红灯在旧代码中观测到一张票被成功消费 5 次；修复后缺失/损坏失败关闭、并发唯一消费及既有单次发卡链路 4 项通过，完整闲鱼自动发货测试文件跑到 100%。
 - Playwright 在 1440×900 和 390×844 验证确认框无溢出/重叠且取消按钮默认聚焦；模拟 HTTP 200 + `success=false` 后页面显示“卖出失败”，未误报成功。截图：`output/playwright/portfolio-sell-confirm-desktop.png`、`portfolio-sell-confirm-mobile.png`。
-- 最终 `make ci-local` 八阶段退出码 0：Python Ruff、全仓测试与语法通过，Frist `202/202`，桌面安全/Social/运维合同 `22/22`，TypeScript、Rust `34/34`、`cargo check --locked` 和 23 份文档治理全部通过；前端 lint 与 Vite 正式构建通过。Git diff 与两个新增文件的 Gitleaks 扫描均为 0 泄漏。
+- 最终 `make ci-local` 八阶段退出码 0：Python Ruff、全仓测试与语法通过，JIYU `202/202`，桌面安全/Social/运维合同 `22/22`，TypeScript、Rust `34/34`、`cargo check --locked` 和 23 份文档治理全部通过；前端 lint 与 Vite 正式构建通过。Git diff 与两个新增文件的 Gitleaks 扫描均为 0 泄漏。
 ### 文件变更
-- `apps/frist-api/server/payments.js`、`tests/payments.test.mjs` — 支付宝就绪与通知验签失败关闭。
+- `JIYU AI Sub2API WebUI/server/payments.js`、`tests/payments.test.mjs` — 支付宝就绪与通知验签失败关闭。
 - `apps/openclaw-manager-src/src/components/Portfolio/index.tsx`、`src/components/ui/confirm-dialog.tsx`、`src/lib/api.ts`、`src/lib/trading-sell.ts`、`src/lib/security-hardening.static.test.mjs` — 卖出复核、同步防重、危险焦点和业务成功校验。
 - `packages/clawbot/src/xianyu/cc_operator_state.py`、`tests/test_xianyu_cc_auto_ship.py` — 运营状态原子持久化、跨进程事务和并发回归。
 - `docs/002-changelog.md`、`docs/006-registries.md`、`docs/009-health.md` — 同步变更、操作入口与风险关闭证据。
@@ -611,7 +626,7 @@
 - 生产菜单只提供每天 08:30 与每周一 08:30；无法由唯一 LaunchAgent 履约的时间会明确拒绝。新增只读运行健康汇总，覆盖数据库、六源、7 日周期/投递、心跳和证据目录门。
 ### 验证
 - Intel Brief 全量：345 项通过；变更文件 Ruff check、Ruff format、Python 编译和 `git diff --check` 全绿。
-- `make ci-local` 八阶段全部通过：Python 全仓 100%、Frist-API 200/200、桌面安全边界 20/20、TypeScript、Rust 34/34、`cargo check --locked` 与 23 份文档治理均为绿色。
+- `make ci-local` 八阶段全部通过：Python 全仓 100%、JIYU AI 200/200、桌面安全边界 20/20、TypeScript、Rust 34/34、`cargo check --locked` 与 23 份文档治理均为绿色。
 - 真实 CC Switch 最小翻译烟测：3 个端点可用，英文句子成功翻译为中文；过程未输出或持久化 API Key。
 - 视觉 QA：390 x 844 同视口实现与参考合并比较，控制台 0 error / 0 warning；详情见 `docs/085-intel-brief-design-qa.md`。
 - 本机生产已迁移到 SQLite V3 和 Asia/Singapore 08:30，listener 以 0600 独占锁单实例运行；真实 Telegram `sendPhoto` 验收成功并种入 1 个 active `file_id`。运行健康无 hard failure，六源和 7 日 SLI 按事实保持 warmup。
@@ -627,7 +642,7 @@
 
 ## [2026-08-03] P0 安全与交易正确性整改闭环
 > 领域: `backend` | `frontend` | `ai-pool` | `deploy` | `infra` | `trading` | `social` | `docs`
-> 影响模块: `Telegram 鉴权`, `Agent 工具`, `OMEGA DAG`, `交易状态机`, `社媒发布门`, `Frist-API/New-API`, `Tauri Manager`, `运行时健康`, `CI`
+> 影响模块: `Telegram 鉴权`, `Agent 工具`, `OMEGA DAG`, `交易状态机`, `社媒发布门`, `JIYU AI/New-API`, `Tauri Manager`, `运行时健康`, `CI`
 > 关联问题: HI-913, HI-914, HI-915, HI-916, HI-917, HI-918, HI-921, HI-922, HI-923, HI-924, HI-925, HI-926, HI-927
 ### 变更内容
 - Telegram 主 Bot、OMEGA Gateway、Inline Query、图片、文档和语音等入口统一改为白名单为空即拒绝；启动配置缺少有效正整数用户 ID 时直接阻止服务启动，环境变量注入部署不再强制依赖磁盘 `.env`。
@@ -635,12 +650,12 @@
 - 自动交易默认关闭，IBKR 预算以配置上限和账户可用资金的较小值为准且同步不清零已花金额；只有确认 `filled_qty > 0` 的真实成交才能建立或减少真实持仓，未决入场/退出进入对账状态，模拟回退不写真实交易记录。
 - OMEGA DAG 深拷贝节点输入和上游结果，把顶层及 `data/result/details` 内的 `success=false`、`ok=false`、错误和未完成状态识别为业务失败；依赖/备选 ID 在执行前校验，fallback 仅在主节点失败后激活，成功后再放行下游。
 - 社媒所有直发入口收口到“草稿审核快照 + 10 分钟一次性确认 + 原子消费”发布门，内容编辑立即撤销旧授权；`publishing/published` 草稿禁止编辑/删除/重审，状态冲突追加外部结果审计，落盘失败时保留不可重发状态并要求人工对账。夜间定时器、平台 helper、DAG 和旧自动发布路径只生成草稿或拒绝直发。
-- Frist-API 为共享 New-API Token 建立本地客户归属，按归属过滤看板和日志并保护更新、删除、导入；修正人民币分与 New-API quota units 混用问题，归属同时记录 `allocatedCents` 和 `upstreamQuotaUnits`。创建 Key 改为“本地额度预留 → 上游零额度暂存 → 本地归属落盘 → 上游激活”，归属写入或激活失败会撤销暂存 Token 并回滚余额。Frist 自身的 `/v1` 桥接现在会在实际网关请求前精确校验 bearer：只有归属用户唯一存在、owner 完整且 active、上游 Token enabled、有限且有剩余额度才放行；未归属、旧字符串、待激活、残缺、孤儿、无限、耗尽或禁用 Token 全部 fail-closed。显式历史归属工具默认 dry-run；`--apply` 必须通过 `--newapi-db` 只读验证有限正额度，并全程持有同目录独占锁，写入前自动备份，拒绝并发、覆盖和自动猜测。Token 删除必须按精确 ID 复验，库存分页或上游失败会让看板显式失败，不再伪装成空账户。会话增加服务端过期、登出、密码变更/重置全会话撤销和 CSRF 恢复。
+- JIYU AI 为共享 New-API Token 建立本地客户归属，按归属过滤看板和日志并保护更新、删除、导入；修正人民币分与 New-API quota units 混用问题，归属同时记录 `allocatedCents` 和 `upstreamQuotaUnits`。创建 Key 改为“本地额度预留 → 上游零额度暂存 → 本地归属落盘 → 上游激活”，归属写入或激活失败会撤销暂存 Token 并回滚余额。JIYU 自身的 `/v1` 桥接现在会在实际网关请求前精确校验 bearer：只有归属用户唯一存在、owner 完整且 active、上游 Token enabled、有限且有剩余额度才放行；未归属、旧字符串、待激活、残缺、孤儿、无限、耗尽或禁用 Token 全部 fail-closed。显式历史归属工具默认 dry-run；`--apply` 必须通过 `--newapi-db` 只读验证有限正额度，并全程持有同目录独占锁，写入前自动备份，拒绝并发、覆盖和自动猜测。Token 删除必须按精确 ID 复验，库存分页或上游失败会让看板显式失败，不再伪装成空账户。会话增加服务端过期、登出、密码变更/重置全会话撤销和 CSRF 恢复。
 - Tauri Manager 移除 WebView 文件权限和 IBKR 自定义 Shell 字段；管理器生成的本地 `gateway.auth.token` 使用强随机字符串，实际 OpenClaw 2026.7.1 支持的 Token/密码/远程 SecretRef 原样保留并交由官方校验。配置和导出在 IPC 边界递归脱敏，保存时递归恢复对象/数组内磁盘原凭据；Provider 更新基于最新对象合并，保留 SecretRef、headers/request 等未建模字段。渠道 `enabled` 可真实持久化，JSON/env 联合读取与写入共用跨实例锁；环境键兼容 dotenv/export 两种格式并消除重复项。单文件使用原子替换，跨文件普通错误会补偿恢复，强制终止边界登记为 HI-922。服务停止仅作用于已登记且身份核验通过的进程，敏感 IPC 不再记录参数或返回值。
-- CI 从“最多允许 15 个失败”改为任一测试失败即阻断，并新增 Frist-API、桌面安全边界、Rust 测试/编译和文档治理门禁；`make ci-local` 同步为 8 阶段本地闭环入口。
+- CI 从“最多允许 15 个失败”改为任一测试失败即阻断，并新增 JIYU AI、桌面安全边界、Rust 测试/编译和文档治理门禁；`make ci-local` 同步为 8 阶段本地闭环入口。
 - Tauri 桌面应用的 `Cargo.lock` 从忽略项改为版本化资产，将兼容范围内的 Rust 栈固定到已通过隔离测试的 Tauri 2.11.x；本地与 GitHub Rust 门禁统一使用 `cargo test --locked` / `cargo check --locked`，干净工作树若出现依赖解析漂移会直接失败。Capability schema 随锁定版本重新生成并纳入同一基线。
 - 首次真实 `make tauri-build` 红灯发现 Rust Tauri 已锁到 `2.11.5`，JavaScript API/CLI 仍为 `2.10.1`，静态编译不会触发 Tauri 的主次版本一致性门。JavaScript API/CLI 已对齐到官方注册表 `2.11.x`，运维合同新增跨语言版本断言。第二次构建进一步发现无 Apple 身份时只有可执行文件 linker 签名、App 资源没有 sealed manifest；按 Tauri 官方 ARM 内测方案配置 `signingIdentity="-"`，并对构建产物和覆盖前临时安装副本强制执行严格 `codesign`，不把 ad-hoc 包冒充 Developer ID/公证发行版。
-- 修复 Frist 在 Node 18 下每个 HTTP 测试夹具等待 5 秒 keep-alive 才关闭的问题：测试回收现在先发起 server close，再主动清理空闲与现存连接；Node 18/24 仍跑同一套 200 项合同，生产服务的优雅关闭逻辑不变。
+- 修复 JIYU 在 Node 18 下每个 HTTP 测试夹具等待 5 秒 keep-alive 才关闭的问题：测试回收现在先发起 server close，再主动清理空闲与现存连接；Node 18/24 仍跑同一套 200 项合同，生产服务的优雅关闭逻辑不变。
 - 修复闲鱼操作台暂停/恢复测试读取本机历史库存缓存的问题：测试现在显式模拟冷缓存、只读刷新后库存就绪、真实小额单严格门未通过三个状态，干净 CI 与开发机得到相同阻断顺序；生产预检逻辑不变。
 - 本机发布重启证实 OpenClaw Weixin 上游通道首次连接可让 Gateway 在 socket 已监听后约 230 秒才进入 `gateway ready`；健康检查在此期间保持失败，超时降级后 `/health` 恢复毫秒级 200。部署验收改以 ready/HTTP 真值等待，不以 PID 或固定短延迟判断成功。
 - 依赖安全门发现并修复生产 PostCSS 路径穿越公告（`8.5.15 → 8.5.25`）及 `json-repair` 资源消耗公告（`0.30.3 → 0.60.1`）；同步更新桌面开发工具链同主版本安全 overrides，使全量 `npm audit` 回到 0；桌面 CI 同时纳入 Social 最终确认静态合同。
@@ -649,22 +664,22 @@
 - Release Gate 2.0 六维评分为架构 8.3、代码质量 8.2、测试工程 8.8、安全 8.6、可靠性 8.3、运维发布 8.4，综合 8.4；六维均达到 8 分。评分只覆盖当前 macOS/Oracle 内测拓扑，不把 Developer ID/公证、Windows 实机或正式公开售卖算作完成。
 ### 文件变更
 - `.github/workflows/ci.yml`, `Makefile` — 收紧远端与本地 CI 门禁。
-- `apps/frist-api/server/`, `apps/frist-api/src/`, `apps/frist-api/tests/`, `apps/frist-api/deploy/production.env.example`, `scripts/frist_api_newapi_ownership_map.mjs`, `docker-compose.frist-api.yml` — 多租户、前后端双单位额度、创建补偿、显式历史归属、会话和回归测试。
+- `JIYU AI Sub2API WebUI/server/`, `JIYU AI Sub2API WebUI/src/`, `JIYU AI Sub2API WebUI/tests/`, `JIYU AI Sub2API WebUI/deploy/production.env.example`, `scripts/jiyu_ai_newapi_ownership_map.mjs`, `docker-compose.jiyu-ai.yml` — 多租户、前后端双单位额度、创建补偿、显式历史归属、会话和回归测试。
 - `apps/openclaw-manager-src/` — Gateway Token、配置原子写入、服务进程所有权、日志、Capability 安全边界、Rust/JavaScript Tauri 版本锁定和 macOS ad-hoc bundle 签名。
 - `apps/openclaw-manager-src/package.json`, `apps/openclaw-manager-src/package-lock.json`, `packages/clawbot/requirements.txt` — 依赖安全下限与锁文件更新。
 - `packages/clawbot/src/`, `packages/clawbot/multi_main.py`, `packages/clawbot/tests/` — Telegram、工具沙箱、交易、DAG、社媒发布门和针对性回归。
 - `scripts/auto_health_check.sh`, `scripts/auto_ops_scripts.test.mjs`, `scripts/tauri_build_install.sh`, `tools/launchagents/` — 运行时真值、可选能力开关、桌面事务安装和冗余清理。
 - `docs/001-project-map.md`, `docs/002-changelog.md`, `docs/004-architecture.md`, `docs/006-registries.md`, `docs/007-operations.md`, `docs/009-health.md` — 同步架构、评分、注册表、风险与上线边界。
 ### 验证
-- 最终 `make ci-local` 退出码 0：Ruff 通过；Python 收集 `2182` 项并跑到 `[100%]`、0 失败、2 项预期跳过；Python 全源码语法通过；Frist-API `200 passed / 0 failed / 0 skipped`；桌面安全/Social/运维合同 `20 passed / 0 failed`；TypeScript 通过；锁定依赖下 Rust `34 passed / 0 failed` 且 `cargo check --locked`、`cargo fmt --check` 通过；`docs-check` 为 22 份文档全部合规。
-- 桌面与 Frist 生产依赖 `npm audit --omit=dev`、项目 Python 3.12 的 `pip-audit` 均为 0 已知漏洞，`pip check` 无依赖冲突。
+- 最终 `make ci-local` 退出码 0：Ruff 通过；Python 收集 `2182` 项并跑到 `[100%]`、0 失败、2 项预期跳过；Python 全源码语法通过；JIYU AI `200 passed / 0 failed / 0 skipped`；桌面安全/Social/运维合同 `20 passed / 0 failed`；TypeScript 通过；锁定依赖下 Rust `34 passed / 0 failed` 且 `cargo check --locked`、`cargo fmt --check` 通过；`docs-check` 为 22 份文档全部合规。
+- 桌面与 JIYU 生产依赖 `npm audit --omit=dev`、项目 Python 3.12 的 `pip-audit` 均为 0 已知漏洞，`pip check` 无依赖冲突。
 - 独立安全复核结论为当前审查范围无剩余 P0/P1。`gitleaks --pre-commit` 无泄漏，CI YAML 可解析，`git diff --check` 通过；Playwright 在标准 Vite 1420 端口验证首屏 0 console error，主界面在无 Token 时按预期 fail-closed，真实桌面实装在部署阶段复验。
 ### 部署与回滚证据
 - 本机五个可选能力已显式关闭，G4F/Kiro/heartbeat 三个失败 LaunchAgent 已卸载；Bot/Gateway 重启后健康检查 `ok=true, release_ready=true`，新日志没有未关闭 session 或 IBKR 重连。Weixin 首连让 Gateway ready 延迟约 230 秒，已登记 HI-926，稳定后 `/health` 为毫秒级 200。
 - `make tauri-build` 最终成功生成并安装唯一 `/Applications/OpenClaw.app`；Bundle ID `com.openclaw.manager`、arm64、ad-hoc sealed resources 和严格 `codesign` 均通过。Computer Use 实机首页非空、已连接、无重叠或凭据显示；本机临时验收截图为 `output/playwright/openclaw-app-deployed.png`，属于可再生成且不纳入 Git 的证据。
-- Oracle 在 `/opt/frist-api/releases/8736484/repo` staging 的 Node 18 全量测试为 `200/200`；回滚包 `/opt/frist-api/backups/release-gate2-20260803T064021Z` 已校验。部署后 Frist/New-API/Apache active，3180/13000/公网均 200，未授权模型入口 401，SQLite 与源码漂移正常，新增 failed unit/错误均为 0；额度 7200、owner 0、历史无限 Token 9/9 保持不变。
+- Oracle 在 `/opt/sub2api/releases/8736484/repo` staging 的 Node 18 全量测试为 `200/200`；回滚包 `/opt/sub2api/backups/release-gate2-20260803T064021Z` 已校验。部署后 JIYU/New-API/Apache active，3180/13000/公网均 200，未授权模型入口 401，SQLite 与源码漂移正常，新增 failed unit/错误均为 0；额度 7200、owner 0、历史无限 Token 9/9 保持不变。
 ### 上线边界
-- 代码已部署到本机 Bot/桌面和 Oracle Frist，但发布口径仍是内部 macOS/Oracle 内测。生产 Token 1–9 仍为 `unlimited_quota=1` 并由主域 New-API 原生用户额度承接；它们没有映射进 Frist，也未禁用或迁移。只有未来先经单独批准把某个 Token 转为明确有限正额度后，才可重新 dry-run/申请 ownership apply。桌面 App 为 ad-hoc 内测签名，不是 Apple Developer ID/公证公开发行版。
+- 代码已部署到本机 Bot/桌面和 Oracle JIYU，但发布口径仍是内部 macOS/Oracle 内测。生产 Token 1–9 仍为 `unlimited_quota=1` 并由主域 New-API 原生用户额度承接；它们没有映射进 JIYU，也未禁用或迁移。只有未来先经单独批准把某个 Token 转为明确有限正额度后，才可重新 dry-run/申请 ownership apply。桌面 App 为 ad-hoc 内测签名，不是 Apple Developer ID/公证公开发行版。
 
 ## [2026-07-08] 微信控制权限医生深度诊断与权限页引导
 > 领域: `infra` | `docs`
@@ -976,7 +991,7 @@
 
 ## [2026-07-08] 人工预检闭环证据接口
 > 领域: `xianyu` | `backend` | `docs`
-> 影响模块: `XianyuAdmin`, `CC中转操作台`, `Frist-API 用户页`
+> 影响模块: `XianyuAdmin`, `CC中转操作台`, `JIYU AI 用户页`
 > 关联问题: HI-cc-manual-precheck-evidence
 ### 变更内容
 - 新增只读接口 `GET /api/cc-manual-precheck-evidence`，把人工预检反馈拆成 6 项可验证证据：注册/登录 CF 位置、邮箱模板质感、闲鱼重复发卡保护、自动发货策略、1 元额度 1:1、真实小额单严格门。
@@ -993,18 +1008,18 @@
 
 ## [2026-07-08] 注册登录 CF 位置与 1 元额度回归守护
 > 领域: `frontend` | `backend` | `docs`
-> 影响模块: `Frist-API 用户页`, `CC中转注册登录`, `CC中转卡密套餐`
+> 影响模块: `JIYU AI 用户页`, `CC中转注册登录`, `CC中转卡密套餐`
 > 关联问题: HI-cc-auth-turnstile-email-price-guard
 ### 变更内容
 - 补强注册/登录页结构测试：Cloudflare Turnstile 不只要存在，还必须位于主登录卡片的登录/注册表单容器内，并在提交按钮上方，防止再次漂到页面底部。
 - 补强本地样式守护：Turnstile 容器必须由本地 CSS 预留稳定高度，避免验证码加载后挤到页面底部或造成跳动。
 - 复验邮件模板与 1 元额度链路：注册验证码/密码重置邮件继续使用卡片化品牌模板；`xianyu-test-1` 继续保持本地 `creditCents=100`，同步到 New-API 兑换额度为 1 元对应 quota，不再按美元汇率变成 7.x 元。
 ### 文件变更
-- `apps/frist-api/tests/business-flow.test.mjs` — 新增主登录卡片内 Turnstile 位置与样式回归断言。
+- `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 新增主登录卡片内 Turnstile 位置与样式回归断言。
 - `docs/002-changelog.md` / `docs/009-health.md` — 同步本轮验证证据。
 ### 验证
-- `cd apps/frist-api && node --test tests/business-flow.test.mjs --test-name-pattern "user-facing HTML exposes production auth|Turnstile"`：`20 passed`。
-- `cd apps/frist-api && node --test tests/server.test.mjs --test-name-pattern "sends registration email codes|keeps Xianyu 1 yuan"`：`114 passed`。
+- `cd JIYU AI Sub2API WebUI && node --test tests/business-flow.test.mjs --test-name-pattern "user-facing HTML exposes production auth|Turnstile"`：`20 passed`。
+- `cd JIYU AI Sub2API WebUI && node --test tests/server.test.mjs --test-name-pattern "sends registration email codes|keeps Xianyu 1 yuan"`：`114 passed`。
 
 ## [2026-07-08] 18800 layui 操作台暂停态收口
 > 领域: `xianyu` | `frontend` | `docs`
@@ -1109,14 +1124,14 @@
 
 ## [2026-07-08] 闲鱼真实小额订单严格门通过与真实订单接管
 > 领域: `xianyu` | `backend` | `deploy` | `docs`
-> 影响模块: `CC中转卖家桥接器`, `XianyuAdmin`, `Frist-API`, `CC中转严格门`
+> 影响模块: `CC中转卖家桥接器`, `XianyuAdmin`, `JIYU AI`, `CC中转严格门`
 > 关联问题: HI-cc-real-order-strict-gate
 ### 变更内容
 - 卖家桥接器新增只读监听闲鱼 `message.headinfo` 网络响应能力：当前聊天页只显示“等待卖家发货”但 DOM 没有订单号时，会刷新并点击左侧已付款会话行，提取真实订单号和商品 ID；不发卡、不点击“去发货”。
 - 新增 `scripts/cc_xianyu_headinfo_parser.mjs`，只在“已付款/待发货/去发货”上下文中提取 `orderId`，并把 `itemId` 单独返回，防止把商品 ID 当真实订单号。
 - 为避免重复发卡，已发出的 `xy_browser_*` 浏览器临时单在后续识别到真实闲鱼订单号时，会接管为 `xy_oid_*`，不会再次分配或发送新卡密；单次放行票会被消费并记录“本次不再发送卡密”。
-- Frist-API 新增低权限 `/api/ops/xianyu/remap-order`，复用闲鱼 webhook token，仅允许把已发卡履约记录从旧订单号改为真实订单号，并同步卡密 `soldOrderId`；不会创建新卡、不会开放管理员能力。
-- 已将 `apps/frist-api/server/server.js` 同步到 Oracle `/opt/frist-api/apps/frist-api/server/server.js`，远端备份后重启 `frist-api.service`，服务为 `active`。
+- JIYU AI 新增低权限 `/api/ops/xianyu/remap-order`，复用闲鱼 webhook token，仅允许把已发卡履约记录从旧订单号改为真实订单号，并同步卡密 `soldOrderId`；不会创建新卡、不会开放管理员能力。
+- 已将 `JIYU AI Sub2API WebUI/server/server.js` 同步到 Oracle `/opt/sub2api/JIYU AI Sub2API WebUI/server/server.js`，远端备份后重启 `sub2api.service`，服务为 `active`。
 - 当前真实订单已从 `xy_browser_*` 安全接管为 `xy_oid_87f...`；同一订单已完成买家兑换、API Key 创建和真实模型调用，正式严格门 `--require-real-order` 返回 PASS。
 - 出于重复发卡事故后的安全边界，`auto_ship_paused=true` 仍保持，公开售卖锁现在只剩“自动发货暂停”人为安全开关；老板确认后可在 18800 操作台一键恢复。
 ### 文件变更
@@ -1124,8 +1139,8 @@
 - `scripts/cc_zhongzhuan_seller_bridge.mjs` — 严格只读扫描通过 CDP Network 捕获 headinfo，回填真实订单号和商品 ID。
 - `packages/clawbot/src/xianyu/xianyu_context.py` — 新增已发卡浏览器临时单接管真实订单号的方法。
 - `packages/clawbot/src/xianyu/xianyu_admin.py` — 手动/浏览器已付款派发在识别真实订单时优先接管旧记录，不再重复发卡。
-- `apps/frist-api/server/server.js` — 新增低权限闲鱼履约订单号接管接口。
-- `apps/frist-api/tests/server.test.mjs` / `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 增加“接管不发新卡”的回归测试。
+- `JIYU AI Sub2API WebUI/server/server.js` — 新增低权限闲鱼履约订单号接管接口。
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` / `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 增加“接管不发新卡”的回归测试。
 ### 验证
 - `node scripts/cc_zhongzhuan_seller_bridge.mjs --scan-only --require-real-order-id --json`：`ok=true`、`strictReadyPages=1`、`orderIdHintPresent=true`、`itemIdHintPresent=true`。
 - `node scripts/cc_zhongzhuan_seller_bridge.mjs --one-shot-override --delivery-only --require-real-order-id --json`：返回 `shipment_already_handled`，未发送新卡密，旧记录接管为 `xy_oid_*`。
@@ -1133,7 +1148,7 @@
 - Oracle 真实调用：同一真实订单对应买家 Key 的 `model_logs_after_redeem` 从 `0` 增加到 `1`，`chat_http=200`。
 - `node scripts/cc_zhongzhuan_readiness_audit.mjs --require-real-order`：`PASS`，`realXianyuOrderProof=PASS`、`oracle=PASS`、`readyOrders=1`。
 - `GET /api/cc-readiness-audit?mode=strict`：`ok=true`、`real_orders=1`、`same_order_ready=1`，严格门摘要已写入本机 18800。
-- `cd apps/frist-api && node --test --test-name-pattern "accepts paid Xianyu orders|remaps a browser Xianyu fulfillment" tests/server.test.mjs`：2 项通过。
+- `cd JIYU AI Sub2API WebUI && node --test --test-name-pattern "accepts paid Xianyu orders|remaps a browser Xianyu fulfillment" tests/server.test.mjs`：2 项通过。
 - `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_manual_paid_order_dispatch_does_not_resend_sent_shipment tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_manual_paid_order_dispatch_adopts_browser_sent_shipment_to_real_order tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_browser_delivery_next_ignores_already_sent_messages -q`：3 项通过。
 
 ## [2026-07-08] 闲鱼当前页真实订单号识别增强
@@ -1287,7 +1302,7 @@
 
 ## [2026-07-08] CC中转真实小额订单预检问题收口
 > 领域: `xianyu` | `frontend` | `backend` | `docs`
-> 影响模块: `Frist-API`, `Chrome Social Pilot`, `CC中转卖家桥接器`, `XianyuAdmin`
+> 影响模块: `JIYU AI`, `Chrome Social Pilot`, `CC中转卖家桥接器`, `XianyuAdmin`
 > 关联问题: HI-cc-real-order-preflight
 ### 变更内容
 - 修复注册/登录弹窗里 Turnstile 验证位置不符合用户习惯的问题：弹窗表单现在自带 `auth-turnstile-slot`，验证码会出现在登录/注册组件容器内，不再掉到页面底部。
@@ -1299,16 +1314,16 @@
 - 多价格商品短期方案收口为“多个商品链接对应多个套餐”，避免普通卖家网页端多规格自动发布不稳定；长期再评估闲鱼开放平台/服务商 SKU 发布能力。
 - 完成用户指定 21 个 GitHub 高 Star 项目调研，新增 `docs/082-open-source-wheel-research.md`，按“直接可用 / 借鉴思路 / 暂不建议”给出接入路线。
 ### 文件变更
-- `apps/frist-api/index.html` — 登录/注册弹窗内新增验证码容器。
-- `apps/frist-api/server/email.js` — 统一事务邮件模板，优化验证码/重置邮件观感。
-- `apps/frist-api/server/server.js` — 闲鱼套餐按人民币售价 1:1 计算到账额度。
+- `JIYU AI Sub2API WebUI/index.html` — 登录/注册弹窗内新增验证码容器。
+- `JIYU AI Sub2API WebUI/server/email.js` — 统一事务邮件模板，优化验证码/重置邮件观感。
+- `JIYU AI Sub2API WebUI/server/server.js` — 闲鱼套餐按人民币售价 1:1 计算到账额度。
 - `packages/openclaw-npm/assets/chrome-extension/social-page-runner.js` / `background.js` — 新增 Enter 发送兜底、重复卡密草稿清理和已处理订单残留草稿清理。
 - `scripts/cc_zhongzhuan_seller_bridge.mjs` — 已处理订单安全跳过并触发残留草稿清理，避免重复填入/发送卡密。
 - `packages/clawbot/src/xianyu/xianyu_admin.py` — 手工已付款订单派发接口增加已发订单幂等保护，浏览器待发送队列只返回待发送/发送失败状态。
-- `apps/frist-api/tests/business-flow.test.mjs` / `apps/frist-api/tests/server.test.mjs` / `packages/openclaw-npm/assets/chrome-extension/test/social-page-runner.test.mjs` / `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 增加对应回归测试。
+- `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` / `JIYU AI Sub2API WebUI/tests/server.test.mjs` / `packages/openclaw-npm/assets/chrome-extension/test/social-page-runner.test.mjs` / `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 增加对应回归测试。
 - `docs/082-open-source-wheel-research.md` / `docs/003-docs-index.md` — 新增开源轮子调研报告并登记索引。
 ### 验证
-- `cd apps/frist-api && node --test tests/server.test.mjs tests/business-flow.test.mjs`：`133 passed / 0 failed`。
+- `cd JIYU AI Sub2API WebUI && node --test tests/server.test.mjs tests/business-flow.test.mjs`：`133 passed / 0 failed`。
 - `cd packages/openclaw-npm/assets/chrome-extension && node --check social-page-runner.js && node --check background.js && node --test test/social-page-runner.test.mjs`：`22 passed / 0 failed`。
 - `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_manual_paid_order_dispatch_does_not_resend_sent_shipment tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_browser_delivery_next_ignores_already_sent_messages tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_browser_delivery_next_reuses_pending_message -q`：`3 passed`。
 - `node --check scripts/cc_zhongzhuan_seller_bridge.mjs`、`python3 -m py_compile packages/clawbot/src/xianyu/xianyu_admin.py`：exit 0。
@@ -1387,7 +1402,7 @@
 ### 验证
 - `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_social_extension_status.py tests/test_api_routes_regression.py -q`：`[100%]`，exit 0。
 - `cd packages/openclaw-npm/assets/chrome-extension && node --test test/popup-static.test.mjs test/social-page-runner.test.mjs`：`47 passed / 0 failed`。
-- `cd apps/frist-api && node --test tests/*.test.mjs`：`185 passed / 0 failed`。
+- `cd JIYU AI Sub2API WebUI && node --test tests/*.test.mjs`：`185 passed / 0 failed`。
 - `node scripts/cc_zhongzhuan_seller_bridge.mjs --once --json`：`ok=true`、`xianyuTabs=1`、`bridgeStatusPosted=true`；当前打开页无已付款信号，`deliveries/confirms` 均安全跳过。
 - `node scripts/cc_zhongzhuan_readiness_audit.mjs --mode=read_only --json`：`ok=true`，库存 `36`、启用兑换码 `36`、启用渠道 `2`、补救队列 `0`。
 - `node scripts/cc_zhongzhuan_readiness_audit.mjs --require-real-order --json`：`ok=false`，原因是尚无新的 `xy_oid_*` 真实闲鱼自动订单；这是正式售卖安全锁，不是系统故障。
@@ -1408,7 +1423,7 @@
 ### 验证
 - `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_social_extension_status.py tests/test_api_routes_regression.py -q`：`[100%]`，exit 0。
 - `cd packages/openclaw-npm/assets/chrome-extension && node --test test/popup-static.test.mjs test/social-page-runner.test.mjs`：`47 passed / 0 failed`。
-- `cd apps/frist-api && node --test tests/*.test.mjs`：`185 passed / 0 failed`。
+- `cd JIYU AI Sub2API WebUI && node --test tests/*.test.mjs`：`185 passed / 0 failed`。
 - `node scripts/cc_zhongzhuan_seller_bridge.mjs --once --json`：`ok=true`、`xianyuTabs=1`，当前无已付款信号，安全跳过。
 - `node scripts/cc_zhongzhuan_readiness_audit.mjs --mode=read_only --json`：`ok=true`；`--require-real-order`：`ok=false`，唯一原因是尚无新的 `xy_oid_*` 真实闲鱼付款自动订单。
 - Oracle runtime 只读核验：`upstreamBalance.level=ok`，warning/critical 阈值为 `50/20` 元；今日自动补库存事件曾创建 `32` 张，后续后台巡检创建 `0` 张，说明安全库存已补齐。
@@ -1427,30 +1442,30 @@
 - `docs/002-changelog.md` / `docs/009-health.md` — 同步当前生产内测口径。
 ### 验证
 - `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_social_extension_status.py tests/test_api_routes_regression.py -q`：`[100%]`，exit 0。
-- `cd apps/frist-api && node --test tests/*.test.mjs`：`185 passed / 0 failed`。
+- `cd JIYU AI Sub2API WebUI && node --test tests/*.test.mjs`：`185 passed / 0 failed`。
 - `cd packages/openclaw-npm/assets/chrome-extension && node --test test/popup-static.test.mjs test/social-page-runner.test.mjs`：`47 passed / 0 failed`。
 - `git diff --check`：exit 0。
 
 ## [2026-07-07] CC中转方案 B 决策确认与套餐默认源收口
 > 领域: `xianyu` | `backend` | `docs`
-> 影响模块: `Frist-API`, `CC中转操作台`, `Chrome Seller Launcher`
+> 影响模块: `JIYU AI`, `CC中转操作台`, `Chrome Seller Launcher`
 > 关联问题: HI-cc-xianyu-auto-ops
 ### 变更内容
 - 老板已确认方案 B：套餐按 `1元测试 / 5 / 15 / 50 / 100 / 500` 六档执行，库存按安全水位自动补，上游余额每天同步一次，低于 50 元提醒、低于 20 元严重提醒。
-- 修正 Frist-API 默认套餐源漂移：`server.js` 已是六档套餐，公共 `shared.js` 仍残留旧 `codex-30-*` 默认值，现已统一为六档，避免桥接/目录默认值和生产套餐不一致。
-- 已把 `shared.js` 单文件同步到 Oracle `/opt/frist-api/apps/frist-api/server/shared.js`，同步前创建远端备份 `/opt/frist-api/backups/shared.js-before-cc-plan-default-20260707T132748Z.bak`，并重启 `frist-api.service`。
+- 修正 JIYU AI 默认套餐源漂移：`server.js` 已是六档套餐，公共 `shared.js` 仍残留旧 `codex-30-*` 默认值，现已统一为六档，避免桥接/目录默认值和生产套餐不一致。
+- 已把 `shared.js` 单文件同步到 Oracle `/opt/sub2api/JIYU AI Sub2API WebUI/server/shared.js`，同步前创建远端备份 `/opt/sub2api/backups/shared.js-before-cc-plan-default-20260707T132748Z.bak`，并重启 `sub2api.service`。
 - 卖家专用 Chrome 启动器保持“准备运行版插件目录 + 打开入口”的定位：Google Chrome 不允许命令行自动加载 unpacked extension，仍需老板在 `chrome://extensions` 手动加载一次 `~/.openclaw/cc-social-pilot-runtime-extension`。
 - 继续保持生产内测口径：普通巡检可绿，正式售卖严格门不放宽，必须等新的 `xy_oid_*` 真实闲鱼付款订单完成买家链路后才允许公开售卖。
 ### 文件变更
-- `apps/frist-api/server/shared.js` — 默认充值套餐统一为 CC中转六档。
+- `JIYU AI Sub2API WebUI/server/shared.js` — 默认充值套餐统一为 CC中转六档。
 - `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步方案 B 已确认口径、插件加载路径和严格门状态。
 ### 验证
-- `node --check scripts/cc_zhongzhuan_launch_seller_chrome.mjs`、`node --check scripts/cc_zhongzhuan_configure_seller_extension.mjs` 与 Frist-API 关键 server 文件语法检查：exit 0。
-- `cd apps/frist-api && node --test tests/*.test.mjs`：`185 passed / 0 failed`。
+- `node --check scripts/cc_zhongzhuan_launch_seller_chrome.mjs`、`node --check scripts/cc_zhongzhuan_configure_seller_extension.mjs` 与 JIYU AI 关键 server 文件语法检查：exit 0。
+- `cd JIYU AI Sub2API WebUI && node --test tests/*.test.mjs`：`185 passed / 0 failed`。
 - `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_social_extension_status.py -q`：跑到 `[100%]`，exit 0。
 - `cd packages/openclaw-npm/assets/chrome-extension && node --test test/popup-static.test.mjs test/social-page-runner.test.mjs`：`47 passed / 0 failed`。
 - `node scripts/cc_zhongzhuan_launch_seller_chrome.mjs --dry-run --json`：`ok=true`，`manualExtensionLoadRequired=true`。
-- Oracle 复验：`frist-api.service` / `openclaw-newapi.service` / `apache2` active，`systemctl --failed` 为 `0 loaded units listed`，公网主站 HTTP 200，未授权 `/v1/models` HTTP 401。
+- Oracle 复验：`sub2api.service` / `openclaw-newapi.service` / `apache2` active，`systemctl --failed` 为 `0 loaded units listed`，公网主站 HTTP 200，未授权 `/v1/models` HTTP 401。
 - `node scripts/cc_zhongzhuan_readiness_audit.mjs --json`：`ok=true`；`--require-real-order`：`ok=false`，正确原因是尚无新的 `xy_oid_*` 真实自动订单。
 
 ## [2026-07-07] CC中转方案 B 浏览器助手加载状态提示修正
@@ -1490,7 +1505,7 @@
 - `python3 -m py_compile packages/clawbot/src/api/rpc.py packages/clawbot/src/xianyu/xianyu_live.py packages/clawbot/src/xianyu/xianyu_admin.py packages/clawbot/src/xianyu/xianyu_context.py packages/clawbot/src/xianyu/xianyu_apis.py`：exit 0。
 - `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_social_extension_status.py -q`：`[100%]`，0 failed。
 - `cd packages/openclaw-npm/assets/chrome-extension && node --check background.js && node --check popup.js && node --check social-page-runner.js && node --test test/popup-static.test.mjs test/social-page-runner.test.mjs`：`47 passed / 0 failed`。
-- `cd apps/frist-api && node --test tests/server.test.mjs --test-name-pattern "auto replenishes Xianyu|starts Xianyu card auto replenishment|syncs New-API upstream balance"`：`112 passed / 0 failed`。
+- `cd JIYU AI Sub2API WebUI && node --test tests/server.test.mjs --test-name-pattern "auto replenishes Xianyu|starts Xianyu card auto replenishment|syncs New-API upstream balance"`：`112 passed / 0 failed`。
 - 本机运行态：`ai.openclaw.xianyu` active，`/api/status` HTTP 200，WebSocket/Cookie 正常，自动发货未暂停，补救队列 0，确认发货/恢复上架队列均为空。
 - 生产内测只读巡检：`node scripts/cc_zhongzhuan_readiness_audit.mjs --json` 返回 `ok=true`；正式售卖严格门 `--require-real-order` 返回 `ok=false`，正确原因是尚未产生新的 `xy_oid_*` 真实闲鱼自动发货订单。
 ### 当前边界
@@ -1501,30 +1516,30 @@
 
 ## [2026-07-07] CC中转方案 B 生产部署与 6 档库存收口
 > 领域: `xianyu` | `backend` | `deploy`
-> 影响模块: `CC中转`, `Frist-API`, `Oracle`, `XianyuAdmin`
+> 影响模块: `CC中转`, `JIYU AI`, `Oracle`, `XianyuAdmin`
 > 关联问题: HI-cc-xianyu-auto-ops
 ### 变更内容
-- 已将本地 Frist-API 方案 B 改动同步到 Oracle 生产内测服务，远端备份后重启 `frist-api.service`，`openclaw-newapi.service` 保持 active。
+- 已将本地 JIYU AI 方案 B 改动同步到 Oracle 生产内测服务，远端备份后重启 `sub2api.service`，`openclaw-newapi.service` 保持 active。
 - 生产套餐从旧 `codex-30-*` 收口为老板确认的 6 档：`1元测试 / 5 / 15 / 50 / 100 / 500`，并执行一次自动补库存，当前 6 档安全库存已补齐。
-- 远端开启 `FRIST_API_CARD_AUTOREPLENISH_ENABLED=1`、`FRIST_API_UPSTREAM_BALANCE_SYNC_ENABLED=1`、`FRIST_API_RATE_MARKUP=0.1` 和 New-API 兑换状态同步；上游余额同步结果为 `level=ok`。
+- 远端开启 `SUB2API_CARD_AUTOREPLENISH_ENABLED=1`、`SUB2API_UPSTREAM_BALANCE_SYNC_ENABLED=1`、`SUB2API_RATE_MARKUP=0.1` 和 New-API 兑换状态同步；上游余额同步结果为 `level=ok`。
 - 本机闲鱼商品映射和默认套餐改为 `xianyu-test-1`，下一笔测试单默认发 1 元测试档。
 - 安全修正：`xy_manual_*` 手工兜底单没有真实闲鱼数字订单号，不再进入浏览器“自动点击闲鱼发货按钮”队列，避免旧兜底单卡队列或误点页面。
 - Docker Compose 补齐方案 B 环境变量透传，避免未来容器化启动时自动补库存/余额同步开关丢失。
 ### 文件变更
-- `docker-compose.frist-api.yml` — 透传自动补库存、上游余额同步、倍率、New-API 兑换状态同步和闲鱼 webhook token。
+- `docker-compose.jiyu-ai.yml` — 透传自动补库存、上游余额同步、倍率、New-API 兑换状态同步和闲鱼 webhook token。
 - `packages/clawbot/src/xianyu/xianyu_admin.py` — 确认发货队列只接收真实数字闲鱼订单号，手工兜底单自动标记 skipped。
 - `packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 增加手工兜底单跳过确认发货队列的回归测试。
 - `docs/002-changelog.md` / `docs/006-registries.md` / `docs/009-health.md` — 同步生产内测状态。
 ### 验证
-- `cd apps/frist-api && node --test tests/server.test.mjs --test-name-pattern "auto replenishes Xianyu|starts Xianyu card auto replenishment|syncs New-API upstream balance"`：`112 passed / 0 failed`。
+- `cd JIYU AI Sub2API WebUI && node --test tests/server.test.mjs --test-name-pattern "auto replenishes Xianyu|starts Xianyu card auto replenishment|syncs New-API upstream balance"`：`112 passed / 0 failed`。
 - `cd packages/openclaw-npm/assets/chrome-extension && node --test test/popup-static.test.mjs test/social-page-runner.test.mjs`：`47 passed / 0 failed`。
 - `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_confirm_shipment_queue_returns_sent_unconfirmed_order tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_confirm_shipment_queue_skips_manual_orders tests/test_xianyu_cc_auto_ship.py::test_xianyu_admin_confirm_shipment_mark_routes_update_status -q`：`3 passed / 0 failed`。
-- Oracle 生产内测 smoke：`https://jiyu.245334.xyz/` HTTP 200，`/v1/models` 无 token HTTP 401，`frist-api.service` / `openclaw-newapi.service` active，6 档库存 `3/10/10/5/3/1` 已补齐，上游余额同步 `level=ok`。
+- Oracle 生产内测 smoke：`https://jiyu.245334.xyz/` HTTP 200，`/v1/models` 无 token HTTP 401，`sub2api.service` / `openclaw-newapi.service` active，6 档库存 `3/10/10/5/3/1` 已补齐，上游余额同步 `level=ok`。
 - 严格巡检：`node scripts/cc_zhongzhuan_readiness_audit.mjs --require-real-order --json` 应继续返回 `ok=false`，直到出现新的 `xy_oid_*` 真实闲鱼付款订单并完成买家兑换、创建 API Key、CC Switch 导入和调模型证据；公网主站、CC Switch 导入入口、兑换/创建 Key/调模型基础证据仍在。
 
 ## [2026-07-07] CC中转方案 B 自动运营闭环增强
 > 领域: `xianyu` | `backend` | `frontend`
-> 影响模块: `CC中转`, `Frist-API`, `Chrome Social Pilot`, `XianyuAdmin`
+> 影响模块: `CC中转`, `JIYU AI`, `Chrome Social Pilot`, `XianyuAdmin`
 > 关联问题: HI-cc-xianyu-auto-ops
 ### 变更内容
 - 按老板确认的方案 B，补齐套餐档位 `1/5/15/50/100/500` 的库存自动补卡，并将自动补卡从管理按钮接入服务后台定时启动。
@@ -1533,14 +1548,14 @@
 - 新增恢复可售兜底：只有商品页明确显示“已下架/已售罄/重新上架”时才点击恢复上架；不改标题、不改价格、不新建商品。
 - `cc_shipments` 增加闲鱼确认发货与恢复上架状态字段，便于补救队列和生产内测追踪。
 ### 文件变更
-- `apps/frist-api/server/server.js` / `apps/frist-api/tests/server.test.mjs` — 自动补卡后台定时、余额同步测试、档位验证。
+- `JIYU AI Sub2API WebUI/server/server.js` / `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 自动补卡后台定时、余额同步测试、档位验证。
 - `packages/clawbot/src/xianyu/xianyu_context.py` / `packages/clawbot/src/xianyu/xianyu_admin.py` — 确认发货、恢复上架队列和回写 API。
 - `packages/openclaw-npm/assets/chrome-extension/background.js` / `social-page-runner.js` / `test/social-page-runner.test.mjs` — 浏览器确认发货与恢复上架页面执行器。
-- `apps/frist-api/deploy/production.env.example` / `packages/clawbot/config/.env.example` / `docs/006-registries.md` — 生产配置和注册表同步。
+- `JIYU AI Sub2API WebUI/deploy/production.env.example` / `packages/clawbot/config/.env.example` / `docs/006-registries.md` — 生产配置和注册表同步。
 ### 验证
 - `cd packages/openclaw-npm/assets/chrome-extension && node --check background.js && node --check popup.js && node --check social-page-runner.js && node --test test/popup-static.test.mjs test/social-page-runner.test.mjs`：`47 passed / 0 failed`。
 - `cd packages/clawbot && .venv312/bin/python -m py_compile src/xianyu/xianyu_context.py src/xianyu/xianyu_admin.py && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_social_extension_status.py -q`：相关 Python 测试通过到 `[100%]`。
-- `cd apps/frist-api && node --test tests/server.test.mjs --test-name-pattern "auto replenishes Xianyu|starts Xianyu card auto replenishment|syncs New-API upstream balance"`：`112 passed / 0 failed`。
+- `cd JIYU AI Sub2API WebUI && node --test tests/server.test.mjs --test-name-pattern "auto replenishes Xianyu|starts Xianyu card auto replenishment|syncs New-API upstream balance"`：`112 passed / 0 failed`。
 
 
 ## [2026-07-07] Intel Brief production-once 入口与 launch package 升级
@@ -2223,7 +2238,7 @@
 > 影响模块: `Readiness Audit`, `XianyuAdmin`, `Public Sale Lock`, `Ops GUI`
 > 关联问题: HI-907
 ### 变更内容
-- 生产闭环只读巡检新增 Frist 公开首页的 CC Switch 导入入口检查：页面必须 HTTP 200，并包含 CC Switch 文案、`ccswitch` 标记和 `data-import-link` 导入按钮标记。
+- 生产闭环只读巡检新增 JIYU 公开首页的 CC Switch 导入入口检查：页面必须 HTTP 200，并包含 CC Switch 文案、`ccswitch` 标记和 `data-import-link` 导入按钮标记。
 - `/api/cc-sale-readiness`、`/api/cc-public-sale-lock` 和本机 GUI 新增 `ccswitch_import` / `ccswitch_import_ready` 门槛；导入入口异常时内测发货和正式售卖都会被上架锁拦住。
 - Chrome 已重新打开可见 `📌 CC中转运营入口` 标签组，包含 7 个运营入口，解决用户看不到书签组的问题；书签文件夹仍保留为长期入口。
 ### 文件变更
@@ -2363,7 +2378,7 @@
 > 影响模块: `XianyuAdmin`, `Ops Links`, `Chrome Bookmarks`
 > 关联问题: HI-907
 ### 变更内容
-- Chrome 已创建可见标签组 `📌 CC中转运营入口`，包含本机运营入口、闲鱼 GUI、用户主站、New-API 后台、Frist 运营台和模型检查入口；同时继续保留 `CC中转运营` 书签文件夹。
+- Chrome 已创建可见标签组 `📌 CC中转运营入口`，包含本机运营入口、闲鱼 GUI、用户主站、New-API 后台、JIYU 运营台和模型检查入口；同时继续保留 `CC中转运营` 书签文件夹。
 - 本机闲鱼管理服务新增后台运营提醒线程：状态变化、WebSocket/Cookie 异常、发货补救队列、低库存、真实单闭环状态变化时弹 macOS 本机通知。
 - 新增 `POST /api/cc-ops-notify/check`，供 `/ops-links` 的“本机提醒”卡片手动发送当前状态提醒；该接口只读，不发货、不分配卡密、不改库存。
 - `/ops-links` 增加“本机提醒”卡片，展示后台值守状态、提醒间隔、低库存阈值和最近提醒摘要。
@@ -2596,7 +2611,7 @@
 > 关联问题: HI-907
 ### 变更内容
 - 本机闲鱼助手 GUI 的“闲鱼商品套餐映射”新增“最近捕获到的闲鱼商品”列表，读取 `/api/items` 缓存商品，点击“填入映射”即可把 `item_id`、标题和价格带入映射表单/商品模板，减少手动查商品 ID。
-- 新增本机运营入口总页 `http://127.0.0.1:18800/ops-links`，集中放用户主站、New-API 后台、Frist 运营台、本机闲鱼 GUI、模型检查和 API 网关 Base URL。
+- 新增本机运营入口总页 `http://127.0.0.1:18800/ops-links`，集中放用户主站、New-API 后台、JIYU 运营台、本机闲鱼 GUI、模型检查和 API 网关 Base URL。
 - Chrome 书签修复脚本把 `CC中转运营` 文件夹升级为 7 个入口，并清理废弃 `file://cc_zhongzhuan_ops_links.html` 链接；真实 Chrome 标签组已打开 `CC中转运营入口` 总页。
 ### 文件变更
 - `packages/clawbot/src/xianyu/xianyu_admin.py` — 新增 `/ops-links` 页面、最近捕获商品渲染和 `fillMappingFromItem()`。
@@ -2683,7 +2698,7 @@
 - `node scripts/cc_zhongzhuan_readiness_audit.mjs` → `PASS`，本机 GUI 显示 `ws=true`、`cookie=true`、`autoShip=true`、`pendingRescue=0`。
 - 本机 `http://127.0.0.1:18800/` 重启后首页包含“闲鱼商品套餐映射”，真实 API 冒烟完成“新增映射 → 查询 → 删除”，测试映射已清理。
 - `make test` → exit 0（全量 pytest 进度到 `[100%]`，仅保留既有 `js2py` deprecation warning）。
-- `cd apps/frist-api && node --test tests/*.test.mjs` → `182 passed / 0 failed`。
+- `cd JIYU AI Sub2API WebUI && node --test tests/*.test.mjs` → `182 passed / 0 failed`。
 
 ## [2026-07-05] 闲鱼助手 GUI 增加一键闭环审计按钮
 > 领域: `xianyu` | `infra` | `docs`
@@ -2706,46 +2721,46 @@
 
 ## [2026-07-05] CC中转补齐 New-API 原生兑换回写与同单严格验收
 > 领域: `backend` | `xianyu` | `infra` | `deploy` | `docs`
-> 影响模块: `Frist-API`, `Readiness Audit`, `XianyuAdmin`
+> 影响模块: `JIYU AI`, `Readiness Audit`, `XianyuAdmin`
 > 关联问题: HI-907
 ### 变更内容
-- Frist-API 新增 New-API 原生兑换状态回写器：服务启动后默认每 60 秒读取 New-API SQLite `redemptions`，用卡密哈希匹配 Frist 兑换卡，自动把已发出的闲鱼卡密和履约记录从 `sold/delivered` 回写为 `redeemed`。
+- JIYU AI 新增 New-API 原生兑换状态回写器：服务启动后默认每 60 秒读取 New-API SQLite `redemptions`，用卡密哈希匹配 JIYU 兑换卡，自动把已发出的闲鱼卡密和履约记录从 `sold/delivered` 回写为 `redeemed`。
 - 新增后台手动同步接口 `/api/admin/redemption-cards/sync-newapi-status`，便于运营台立即刷新兑换状态；同步过程不打印、不落库完整卡密，只保存哈希、预览和 New-API 用户 ID 摘要。
 - 一键审计严格模式升级为“同一真实订单闭环证明”：本机闲鱼助手只提供 `xy_*` 真实订单哈希，Oracle 端用该哈希匹配同一笔履约，再要求对应卡密已兑换、买家有启用 API Key 且兑换后有模型调用日志。
 - 本机闲鱼 GUI 的正式售卖验收门同步增加 `same_xy_order_redeemed` 要求，避免把 webhook 冒烟或无关模型日志误判成正式可售。
-- 已部署到 Oracle `/opt/frist-api/apps/frist-api/server/server.js`，并在 `/etc/frist-api/frist-api.env` 打开 `FRIST_API_NEWAPI_REDEMPTION_STATUS_SYNC_ENABLED=1`。
+- 已部署到 Oracle `/opt/sub2api/JIYU AI Sub2API WebUI/server/server.js`，并在 `/etc/sub2api/jiyu-ai.env` 打开 `SUB2API_NEWAPI_REDEMPTION_STATUS_SYNC_ENABLED=1`。
 ### 文件变更
-- `apps/frist-api/server/server.js` — 新增 New-API 兑换状态同步器、后台手动同步接口和定时任务。
-- `apps/frist-api/tests/server.test.mjs` — 新增“New-API 原生兑换后回写 Frist 闲鱼履约”的回归测试。
-- `apps/frist-api/deploy/production.env.example` — 增加兑换状态同步开关和间隔示例。
+- `JIYU AI Sub2API WebUI/server/server.js` — 新增 New-API 兑换状态同步器、后台手动同步接口和定时任务。
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 新增“New-API 原生兑换后回写 JIYU 闲鱼履约”的回归测试。
+- `JIYU AI Sub2API WebUI/deploy/production.env.example` — 增加兑换状态同步开关和间隔示例。
 - `scripts/cc_zhongzhuan_readiness_audit.mjs` — 严格门增加同一 `xy_*` 订单哈希关联证明。
 - `packages/clawbot/src/xianyu/xianyu_context.py` — GUI 正式售卖验收门增加同单兑换要求。
 - `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步生产闭环和验收口径。
 ### 验证
-- `node --test --test-name-pattern="New-API native redemption status|New-API topup succeeds|newly generated CC cards" apps/frist-api/tests/server.test.mjs` → `3 pass / 0 fail`。
-- `cd apps/frist-api && node --test tests/*.test.mjs` → `182 passed / 0 failed`。
+- `node --test --test-name-pattern="New-API native redemption status|New-API topup succeeds|newly generated CC cards" JIYU AI Sub2API WebUI/tests/server.test.mjs` → `3 pass / 0 fail`。
+- `cd JIYU AI Sub2API WebUI && node --test tests/*.test.mjs` → `182 passed / 0 failed`。
 - `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_api_routes_regression.py -q` → `37 passed / 0 failed`。
-- Oracle 部署后 `systemctl restart frist-api.service && systemctl is-active frist-api.service` → `active`。
+- Oracle 部署后 `systemctl restart sub2api.service && systemctl is-active sub2api.service` → `active`。
 - `node scripts/cc_zhongzhuan_readiness_audit.mjs` → `PASS`；默认模式显示 `同一真实订单闭环证明: localOrderHashes=0, matchedOrders=0, readyOrders=0（默认不强制）`。
 - `node scripts/cc_zhongzhuan_readiness_audit.mjs --webhook-smoke` → `PASS`，`fulfillment=delivered`、`cleanup=true`、`unused_after=5`。
 - `node scripts/cc_zhongzhuan_readiness_audit.mjs --require-real-order` → 预期 `FAIL` 且退出码 `1`，因为当前尚未发布闲鱼商品并跑真实小额订单。
 
 ## [2026-07-05] 闲鱼发货话术补齐买家自助使用步骤
 > 领域: `backend` | `xianyu` | `docs`
-> 影响模块: `Frist-API`, `Xianyu Fulfillment`
+> 影响模块: `JIYU AI`, `Xianyu Fulfillment`
 > 关联问题: HI-907
 ### 变更内容
 - 闲鱼自动发货话术从“兑换入口 + 卡密”补齐为完整买家自助路径：注册/登录、进入兑换码到账、进入 API Key 创建 Key、进入 CC Switch 导入并选择模型测试。
 - 话术仍保持操作说明口径，不新增营销文案，不暴露上游信息，也不把 `/v1` 网关直接写进闲鱼消息。
-- 已将单文件部署到 Oracle `/opt/frist-api/apps/frist-api/server/server.js`，重启 `frist-api.service` 生效。
+- 已将单文件部署到 Oracle `/opt/sub2api/JIYU AI Sub2API WebUI/server/server.js`，重启 `sub2api.service` 生效。
 ### 文件变更
-- `apps/frist-api/server/server.js` — `buildXianyuDeliveryMessage()` 增加买家自助步骤。
-- `apps/frist-api/tests/server.test.mjs` — 覆盖发货话术包含注册/登录、兑换码、API Key、CC Switch 和模型测试，并继续断言不出现 `jiyu.245334.xyz/v1`。
+- `JIYU AI Sub2API WebUI/server/server.js` — `buildXianyuDeliveryMessage()` 增加买家自助步骤。
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 覆盖发货话术包含注册/登录、兑换码、API Key、CC Switch 和模型测试，并继续断言不出现 `jiyu.245334.xyz/v1`。
 - `docs/002-changelog.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步话术变更和生产验证。
 ### 验证
-- `node --check apps/frist-api/server/server.js` → exit 0。
-- `cd apps/frist-api && node --test --test-name-pattern 'marks local CC card and Xianyu fulfillment redeemed|allocates a redemption card for a Xianyu order|low-scope auto-ship webhook' tests/server.test.mjs` → `3 pass / 0 fail`。
-- Oracle 单文件部署后：`node --check /opt/frist-api/apps/frist-api/server/server.js && systemctl restart frist-api.service` → `active`。
+- `node --check JIYU AI Sub2API WebUI/server/server.js` → exit 0。
+- `cd JIYU AI Sub2API WebUI && node --test --test-name-pattern 'marks local CC card and Xianyu fulfillment redeemed|allocates a redemption card for a Xianyu order|low-scope auto-ship webhook' tests/server.test.mjs` → `3 pass / 0 fail`。
+- Oracle 单文件部署后：`node --check /opt/sub2api/JIYU AI Sub2API WebUI/server/server.js && systemctl restart sub2api.service` → `active`。
 - `node scripts/cc_zhongzhuan_readiness_audit.mjs --webhook-smoke` → `PASS`，`fulfillment=delivered`、`cleanup=true`、`unused_after=5`。
 - 生产内网 webhook 话术检查 → `has_register=true`、`has_redeem=true`、`has_api_key=true`、`has_cc_switch=true`、`has_model_test=true`、`leaks_v1=false`、`cleanup=true`、`unused_after=5`。
 
@@ -2871,10 +2886,10 @@
 
 ## [2026-07-05] CC中转书签入口修复与全自动闭环审计脚本复验
 > 领域: `infra` | `xianyu` | `deploy` | `docs`
-> 影响模块: `Chrome Bookmarks`, `Readiness Audit`, `Xianyu Auto Fulfillment`, `Frist-API`
+> 影响模块: `Chrome Bookmarks`, `Readiness Audit`, `Xianyu Auto Fulfillment`, `JIYU AI`
 > 关联问题: HI-907
 ### 变更内容
-- 修复本机 Chrome 入口不可见问题：在 `Default`、`Profile 1`、`Profile 2`、`Profile 3` 真实 Profile 的书签栏写入并去重 `CC中转运营` 文件夹，每个文件夹包含用户主站、New-API 后台、Frist 运营台、`/v1` 网关和 `/v1/models` 检查入口；同时开启书签栏显示，并打开一个普通 Chrome 窗口承载 5 个运营入口。
+- 修复本机 Chrome 入口不可见问题：在 `Default`、`Profile 1`、`Profile 2`、`Profile 3` 真实 Profile 的书签栏写入并去重 `CC中转运营` 文件夹，每个文件夹包含用户主站、New-API 后台、JIYU 运营台、`/v1` 网关和 `/v1/models` 检查入口；同时开启书签栏显示，并打开一个普通 Chrome 窗口承载 5 个运营入口。
 - 修复 `scripts/cc_zhongzhuan_readiness_audit.mjs` 两个审计问题：正确遍历 Chrome `Bookmarks.roots.bookmark_bar`，避免误判书签不存在；替换残留模板变量并给公网审计请求加 UA，避免 Cloudflare 把 Python urllib 默认请求误判为 403。
 - 复跑生产闭环审计：只读模式和 `--webhook-smoke` 模式均通过；带写冒烟会临时分配 1 张卡密、调用低权限闲鱼已付款 webhook、生成发货履约，再清理测试履约并恢复库存。
 ### 文件变更
@@ -2884,13 +2899,13 @@
 - `node scripts/cc_zhongzhuan_readiness_audit.mjs` → `PASS`，Chrome 书签、本机闲鱼助手、本机配置、Oracle 服务/库存/公网安全门均通过；生产库存 `unused=5`、New-API enabled redemptions `5`、channels `3`。
 - `node scripts/cc_zhongzhuan_readiness_audit.mjs --webhook-smoke` → `PASS`，webhook 冒烟 `fulfillment=delivered`、`cleanup=true`、`unused_after=5`。
 - `node --check scripts/cc_zhongzhuan_readiness_audit.mjs && git diff --check` → exit 0。
-- `cd apps/frist-api && node --test tests/*.test.mjs` → `181 passed / 0 failed`。
+- `cd JIYU AI Sub2API WebUI && node --test tests/*.test.mjs` → `181 passed / 0 failed`。
 - `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_auto_shipper.py tests/test_xianyu_cc_auto_ship.py -q` → `20 passed / 0 failed`。
 - `make test` → exit 0，进度到 `[100%]`，仅保留第三方 `js2py` DeprecationWarning。
 
 ## [2026-07-05] CC中转闲鱼全自动发货低权限闭环
 > 领域: `backend` | `xianyu` | `deploy` | `docs`
-> 影响模块: `Frist-API`, `XianyuLive`, `Auto Fulfillment`, `Chrome Bookmarks/Tab Group`
+> 影响模块: `JIYU AI`, `XianyuLive`, `Auto Fulfillment`, `Chrome Bookmarks/Tab Group`
 > 关联问题: HI-907
 ### 变更内容
 - 新增低权限自动发货 webhook：`POST /api/ops/xianyu/paid-order`，只接受 `x-cc-xianyu-token`，不复用管理员令牌；未配置 token 返回 503，无 token 返回 401。
@@ -2901,12 +2916,12 @@
 - 补齐 OpenClaw `XianyuLive` 到 CC中转 webhook 的单元测试，覆盖未配置回退、已付款 payload、发送返回话术、HTTP 失败不发卡、无话术不发卡、CC 失败不回退旧卡券。
 - 闲鱼助手已重启加载最新 CC webhook 配置；同时将 `httpx/httpcore` 日志降到 WARNING，并脱敏本地旧日志中的 Telegram Bot URL，避免第三方通知 token 继续落盘。
 - 修复“买家不聊天直接付款”可能漏发的问题：当闲鱼订单没有最近商品上下文但 CC webhook 已配置时，仍进入 CC中转自动发货，由运营台按默认/任意未售兑换码分配；可选 `CC_XIANYU_DEFAULT_ITEM_ID` 用于指定默认商品映射。
-- 修复 Frist-API webhook 无套餐/无 SKU 订单误判“没有可发货兑换码”的生产 Bug：只有明确传入套餐或额度时才过滤库存，否则从任意未售卡密发货。
+- 修复 JIYU AI webhook 无套餐/无 SKU 订单误判“没有可发货兑换码”的生产 Bug：只有明确传入套餐或额度时才过滤库存，否则从任意未售卡密发货。
 - 生产内测已准备 5 张 `day|quotaUsd=30|source=xianyu` 可售卡密，并同步为 5 条 New-API 启用兑换码；测试冒烟占用已回滚，库存仍为 5。
 ### 文件变更
-- `apps/frist-api/server/server.js` — 新增 `/api/ops/xianyu/paid-order`、低权限 token 校验、已付款订单规范化和自动发卡响应；无套餐订单不再错误过滤到 `balance` 套餐。
-- `apps/frist-api/admin.html` / `apps/frist-api/src/admin.js` / `apps/frist-api/src/styles.css` — 管理台展示全自动接单状态。
-- `apps/frist-api/deploy/production.env.example` — 增加 `FRIST_API_XIANYU_WEBHOOK_TOKEN`。
+- `JIYU AI Sub2API WebUI/server/server.js` — 新增 `/api/ops/xianyu/paid-order`、低权限 token 校验、已付款订单规范化和自动发卡响应；无套餐订单不再错误过滤到 `balance` 套餐。
+- `JIYU AI Sub2API WebUI/admin.html` / `JIYU AI Sub2API WebUI/src/admin.js` / `JIYU AI Sub2API WebUI/src/styles.css` — 管理台展示全自动接单状态。
+- `JIYU AI Sub2API WebUI/deploy/production.env.example` — 增加 `SUB2API_XIANYU_WEBHOOK_TOKEN`。
 - `packages/clawbot/src/xianyu/xianyu_live.py` — 已付款订单自动调用 CC中转 webhook 并发送返回话术。
 - `packages/clawbot/scripts/xianyu_main.py` — 降低第三方 HTTP 客户端日志级别，避免敏感通知 URL 落盘。
 - `packages/clawbot/config/.env.example` — 增加 `CC_XIANYU_*` 自动发货配置项和直接付款兜底商品映射。
@@ -2915,14 +2930,14 @@
 ### 验证
 - 本地新增回归：`node --test --test-name-pattern 'paid-order webhook has no plan id|low-scope auto-ship webhook' tests/server.test.mjs` → `2 pass / 0 fail`。
 - OpenClaw 闲鱼发货回归：`cd packages/clawbot && .venv312/bin/python -m pytest tests/test_auto_shipper.py tests/test_xianyu_cc_auto_ship.py -q` → `20 passed / 0 failed`。
-- Frist-API 全量回归：`cd apps/frist-api && node --test tests/*.test.mjs` → `181 passed / 0 failed`。
+- JIYU AI 全量回归：`cd JIYU AI Sub2API WebUI && node --test tests/*.test.mjs` → `181 passed / 0 failed`。
 - Python 语法：`python3 -m py_compile packages/clawbot/src/xianyu/xianyu_live.py packages/clawbot/scripts/xianyu_main.py packages/clawbot/tests/test_xianyu_cc_auto_ship.py` → exit 0。
 - 本机助手运行态：`ai.openclaw.xianyu` 重启后 PID 存在，日志显示“闲鱼管理面板启动 / Token 刷新成功 / WebSocket 连接注册完成”，本地日志 Telegram Bot URL 泄露计数为 `0`。
 - 项目级回归：`make test` → exit 0，进度跑到 `[100%]`，仅保留第三方 `js2py` DeprecationWarning。
 - 本机助手二次运行态：加载直接付款兜底逻辑后重启 `ai.openclaw.xianyu`，日志显示“Token 刷新成功 / WebSocket 连接注册完成”。
-- Oracle 部署：`frist-api.service` 重启后 `active`，`FRIST_API_XIANYU_WEBHOOK_TOKEN` 已配置且只显示脱敏。
-- 公网安全冒烟：无 token 调用 `https://frist-api-oracle.245334.xyz/api/ops/xianyu/paid-order` 返回 401；带 token 但未付款返回 409。
-- 生产库存：Oracle 真实 runtime `/opt/frist-api/data/frist-api/runtime/runtime.json` 显示 `unused=5`，New-API `redemptions.status=1` 为 `5`，启用渠道为 `3`。
+- Oracle 部署：`sub2api.service` 重启后 `active`，`SUB2API_XIANYU_WEBHOOK_TOKEN` 已配置且只显示脱敏。
+- 公网安全冒烟：无 token 调用 `https://jiyu.245334.xyz/api/ops/xianyu/paid-order` 返回 401；带 token 但未付款返回 409。
+- 生产库存：Oracle 真实 runtime `/opt/sub2api/data/jiyu-ai/runtime/runtime.json` 显示 `unused=5`，New-API `redemptions.status=1` 为 `5`，启用渠道为 `3`。
 - 生产无套餐自动发货冒烟：调用内网 webhook 返回 HTTP 200、`ok=true`、`fulfillmentStatus=delivered`、`cardPlan=day`、`messageGenerated=true`；随后清理测试履约并恢复卡密为 `unused`，`unused_after_cleanup=5`。
 - 生产自动发货 E2E：临时卡密 + 已付款 webhook 返回 HTTP 200、`ok=true`、`fulfillmentStatus=delivered`、`messageGenerated=true`，测试后 runtime 和 New-API redemptions 残留均为 0。
 
@@ -2930,50 +2945,50 @@
 
 ## [2026-07-05] CC中转生产内测闭环与运营台入口复验
 > 领域: `deploy` | `backend` | `xianyu` | `docs`
-> 影响模块: `New-API`, `Frist-API`, `CC Switch`, `Xianyu Fulfillment`, `Oracle Apache`
+> 影响模块: `New-API`, `JIYU AI`, `CC Switch`, `Xianyu Fulfillment`, `Oracle Apache`
 > 关联问题: HI-907
 ### 变更内容
-- 将 `frist-api-oracle.245334.xyz` 从 Frist-API 跳转名单中移除，作为兑换码与闲鱼自动发货助手的公网运营入口；`frist-api.245334.xyz` 继续 301 到用户主站 `jiyu.245334.xyz`。
-- 在 Cloudflare `245334.xyz` 区域新增/确认 `frist-api-oracle.245334.xyz` proxied A 到 Oracle `150.136.73.15`，复用已有覆盖该主机名的 Cloudflare Origin CA 证书；公网访问需要后台入口 Cookie 或入口码，未授权仍不暴露管理台。
-- 修复 Frist-API 在 Cloudflare/Apache 链式代理下 `X-Forwarded-Proto/Host` 逗号列表导致 `new URL()` 崩溃的问题；新增原始 HTTP 回归测试覆盖 origin-form 请求和 chained forwarded headers。
+- 将 `jiyu.245334.xyz` 从 JIYU AI 跳转名单中移除，作为兑换码与闲鱼自动发货助手的公网运营入口；`jiyu.245334.xyz` 继续 301 到用户主站 `jiyu.245334.xyz`。
+- 在 Cloudflare `245334.xyz` 区域新增/确认 `jiyu.245334.xyz` proxied A 到 Oracle `150.136.73.15`，复用已有覆盖该主机名的 Cloudflare Origin CA 证书；公网访问需要后台入口 Cookie 或入口码，未授权仍不暴露管理台。
+- 修复 JIYU AI 在 Cloudflare/Apache 链式代理下 `X-Forwarded-Proto/Host` 逗号列表导致 `new URL()` 崩溃的问题；新增原始 HTTP 回归测试覆盖 origin-form 请求和 chained forwarded headers。
 - 管理台已同步“售卖闭环 / 闲鱼自动发货助手”GUI：生成可售卡密、粘贴已付款订单、分配卡密并复制话术、复制商品模板、刷新渠道与倍率；Plus/RT/补号等非当前售卖主线能力继续折叠在高级区域。
 - 明确闲鱼边界：当前只做“人工确认已付款后一键发货”的安全闭环；自动砍价、批量私信、刷单暂停/隐藏；后续浏览器插件仅可作为已付款订单读取和话术回填助手。
-- 生产 E2E 已覆盖 New-API 原生注册/登录/兑换/API Key/模型调用成功路径（受控临时关闭 Turnstile/邮箱验证后立即恢复）、公网 Turnstile/邮箱验证恢复、Frist 运营台兑换码与闲鱼履约、CC Switch `ccswitch:` 导入链接、Key 删除后网关阻断、渠道检测和倍率。
-- 将 Oracle `/etc/frist-api/frist-api.env` 和生产配置模板显式固定 `FRIST_API_RATE_MARKUP=0.1`，不再只依赖代码默认值；渠道倍率同步确认只在上游倍率基础上加 `0.1`。
+- 生产 E2E 已覆盖 New-API 原生注册/登录/兑换/API Key/模型调用成功路径（受控临时关闭 Turnstile/邮箱验证后立即恢复）、公网 Turnstile/邮箱验证恢复、JIYU 运营台兑换码与闲鱼履约、CC Switch `ccswitch:` 导入链接、Key 删除后网关阻断、渠道检测和倍率。
+- 将 Oracle `/etc/sub2api/jiyu-ai.env` 和生产配置模板显式固定 `SUB2API_RATE_MARKUP=0.1`，不再只依赖代码默认值；渠道倍率同步确认只在上游倍率基础上加 `0.1`。
 ### 文件变更
-- `apps/frist-api/server/server.js` — 规整 chained forwarded headers，避免代理请求触发 URL 解析崩溃。
-- `apps/frist-api/tests/server.test.mjs` — 新增原始 HTTP/代理头回归测试。
-- `apps/frist-api/deploy/production.env.example` — 补充 `FRIST_API_RATE_MARKUP=0.1` 生产模板。
-- Oracle `/etc/frist-api/frist-api.env` — 移除 `frist-api-oracle.245334.xyz` 跳转项，变更前已备份到 `/root/codex-backups/`。
-- Oracle `/opt/frist-api/apps/frist-api/*` — 同步管理台 GUI 和服务端修复。
+- `JIYU AI Sub2API WebUI/server/server.js` — 规整 chained forwarded headers，避免代理请求触发 URL 解析崩溃。
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 新增原始 HTTP/代理头回归测试。
+- `JIYU AI Sub2API WebUI/deploy/production.env.example` — 补充 `SUB2API_RATE_MARKUP=0.1` 生产模板。
+- Oracle `/etc/sub2api/jiyu-ai.env` — 移除 `jiyu.245334.xyz` 跳转项，变更前已备份到 `/root/codex-backups/`。
+- Oracle `/opt/sub2api/JIYU AI Sub2API WebUI/*` — 同步管理台 GUI 和服务端修复。
 - `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `docs/080-new-api-capability-roadmap.md` / `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步入口、验证和运营边界。
 ### 验证
-- 运营入口：`https://frist-api-oracle.245334.xyz/admin.html` 经 Cloudflare 返回 HTTP 200（带后台 Cookie），页面包含 `CC中转`、`闲鱼自动发货助手`、`售卖闭环`、`生成可售卡密`、`复制商品模板`；无入口码/Cookie 时返回 404。 Playwright 截图：`output/playwright/cc-ops-admin-xianyu-20260705.png`。
+- 运营入口：`https://jiyu.245334.xyz/admin.html` 经 Cloudflare 返回 HTTP 200（带后台 Cookie），页面包含 `CC中转`、`闲鱼自动发货助手`、`售卖闭环`、`生成可售卡密`、`复制商品模板`；无入口码/Cookie 时返回 404。 Playwright 截图：`output/playwright/cc-ops-admin-xianyu-20260705.png`。
 - New-API 受控 E2E：`CC_NEWAPI_BASE=http://127.0.0.1:13000 node /tmp/cc-newapi-prod-e2e-v2.mjs` 在临时关闭 Turnstile/邮箱验证后通过，覆盖注册、登录、兑换码到账、API Key 创建/更新/禁用/恢复/删除、`/v1/models`、OpenAI/Claude 真实调用、渠道测试；跑完已恢复 `TurnstileCheckEnabled=true`、`EmailVerificationEnabled=true`，并确认临时用户/Token/兑换码残留为 `0`。
 - 公网安全门：`https://jiyu.245334.xyz/api/status` 显示 `turnstile_check=true`、`email_verification=true`、`hasCcSwitch=true`；无 Turnstile 的注册/登录返回 `success=false` / `Turnstile token 为空`。
-- Frist 生产 E2E：`node /tmp/cc-production-e2e.mjs` 返回 OpenAI/Claude 调用 `200`、卡密同步 New-API、闲鱼履约 `delivered`、readiness `ready=true` 且 `failedChecks=[]`。
+- JIYU 生产 E2E：`node /tmp/cc-production-e2e.mjs` 返回 OpenAI/Claude 调用 `200`、卡密同步 New-API、闲鱼履约 `delivered`、readiness `ready=true` 且 `failedChecks=[]`。
 - CC Switch E2E：`node /tmp/cc-ccswitch-e2e.mjs` 生成 `ccswitch:` provider 导入链接，确认 endpoint 为 `https://jiyu.245334.xyz/v1`、模型 `gpt-5.4-mini`、Key 匹配；同 Key 调模型 `200`，删除后网关 `401`。
 - New-API 原生配置：渠道自动检测每 10 分钟开启，自动禁用/恢复开启，模型请求限流开启；当前 3 个渠道启用，15 个模型倍率写入 `ModelRatio`，典型值为 `gpt-5.4-mini=0.475`、`gpt-5.4=1.35`、`claude-haiku-4-5=0.6`、`claude-sonnet=1.6`。
-- 最终复验（2026-07-05 17:08Z）：`FRIST_API_RATE_MARKUP=0.1` 写入 Oracle 后重启 Frist-API，`node --test tests/*.test.mjs` 为 `179 passed / 0 failed`，生产 E2E 返回 OpenAI/Claude 调用 `200`、闲鱼履约 `delivered`、`rateMarkup=0.1`、`healthy=3`、`readiness.ready=true`。
+- 最终复验（2026-07-05 17:08Z）：`SUB2API_RATE_MARKUP=0.1` 写入 Oracle 后重启 JIYU AI，`node --test tests/*.test.mjs` 为 `179 passed / 0 failed`，生产 E2E 返回 OpenAI/Claude 调用 `200`、闲鱼履约 `delivered`、`rateMarkup=0.1`、`healthy=3`、`readiness.ready=true`。
 
-## [2026-07-05] CC中转复用 Frist 旧配置补齐 New-API 安全入口
+## [2026-07-05] CC中转复用 JIYU 旧配置补齐 New-API 安全入口
 > 领域: `deploy` | `infra` | `docs`
-> 影响模块: `New-API`, `Frist-API`, `Turnstile`, `SMTP`, `Admin 2FA`
+> 影响模块: `New-API`, `JIYU AI`, `Turnstile`, `SMTP`, `Admin 2FA`
 > 关联问题: HI-907
 ### 变更内容
-- 在 Oracle 生产环境只读扫描旧 Frist-API 配置，确认 `/etc/frist-api/frist-api.env` 和兼容 `/opt/frist-api/.env` 已存在 Turnstile、SMTP 和管理员 TOTP 配置；输出只包含存在性、长度和 SHA 指纹，不回显密钥。
-- 复用旧 Frist 配置写入 New-API 原生 `options`：`TurnstileSiteKey`、`TurnstileSecretKey`、`TurnstileCheckEnabled=true`、SMTP 相关配置、`EmailVerificationEnabled=true`。
-- 复用旧 Frist 管理员 TOTP secret，给 New-API 管理员/root 账户启用原生 2FA；当前 `two_fas=2`。
+- 在 Oracle 生产环境只读扫描旧 JIYU AI 配置，确认 `/etc/sub2api/jiyu-ai.env` 和兼容 `/opt/sub2api/.env` 已存在 Turnstile、SMTP 和管理员 TOTP 配置；输出只包含存在性、长度和 SHA 指纹，不回显密钥。
+- 复用旧 JIYU 配置写入 New-API 原生 `options`：`TurnstileSiteKey`、`TurnstileSecretKey`、`TurnstileCheckEnabled=true`、SMTP 相关配置、`EmailVerificationEnabled=true`。
+- 复用旧 JIYU 管理员 TOTP secret，给 New-API 管理员/root 账户启用原生 2FA；当前 `two_fas=2`。
 - 写入前已备份 New-API SQLite: `one-api.db.bak-before-newapi-option-reuse-20260705T155235Z`；写入后重启 `openclaw-newapi.service`。
 - 剩余正式售卖前 P0：模型请求限流、可售兑换码库存、老板真人浏览器 Turnstile 注册/登录/兑换验收。
 ### 文件变更
-- Oracle `/opt/frist-api/data/newapi/one-api.db` — 写入 New-API 原生安全/邮箱/2FA配置，变更前已备份。
-- `docs/080-new-api-capability-roadmap.md` — 将 Turnstile、SMTP/邮箱验证、管理员 2FA 状态从“待启用”更新为“已复用 Frist 配置并启用”。
+- Oracle `/opt/sub2api/data/newapi/one-api.db` — 写入 New-API 原生安全/邮箱/2FA配置，变更前已备份。
+- `docs/080-new-api-capability-roadmap.md` — 将 Turnstile、SMTP/邮箱验证、管理员 2FA 状态从“待启用”更新为“已复用 JIYU 配置并启用”。
 - `docs/009-health.md` — 同步当前生产内测健康状态和剩余 P0 技术债。
 - `docs/002-changelog.md` — 记录本次生产配置复用。
 - `/Users/blackdj/Documents/VPS-Config/docs/05-unified-execution-plan.md` — 同步 VPS-Config 侧源头文档，避免域名/Oracle/安全配置状态漂移。
 ### 验证
-- 旧配置扫描：Frist 生产环境 `turnstile_enabled=True`、`smtp_present=True`、`totp_present=True`，Turnstile 允许域名包含 `jiyu.245334.xyz`。
+- 旧配置扫描：JIYU 生产环境 `turnstile_enabled=True`、`smtp_present=True`、`totp_present=True`，Turnstile 允许域名包含 `jiyu.245334.xyz`。
 - New-API 状态：内网 `/api/status` 返回 `turnstile_check=true`、`email_verification=true`；公网 `/api/status` 同样返回 `turnstile_check=true`、`email_verification=true`。
 - 安全门验证：公网无 Turnstile 的注册/登录请求返回 `success=false`，消息为 `Turnstile token 为空`。
 - SMTP 网络验证：Oracle 到 SMTP 服务器 TLS 握手成功，`cipher_ok=True`；未发送测试邮件，未打印邮箱密码。
@@ -2996,35 +3011,35 @@
 - `docs/002-changelog.md` — 记录本次盘点文档。
 ### 验证
 - 源码盘点：读取 `packages/new-api-upstream/router/api-router.go`、`relay-router.go`、`web/default/src/features/*`、`web/default/src/routes/*`。
-- 生产状态盘点（当时状态，已被上方“复用 Frist 旧配置补齐 New-API 安全入口”覆盖）：`/api/status` 显示 `system_name=CC中转`、`hasCcSwitch=true`、`turnstile_check=false`、`email_verification=false`；SQLite 摘要显示 `enabled_channels=3`、`models_meta=15`、`abilities=22`。
-- 追加只读审计（当时状态，已被上方“复用 Frist 旧配置补齐 New-API 安全入口”覆盖）：`openclaw-newapi.service`、`frist-api.service`、`apache2` 均为 `active`；New-API SQLite 显示 `channels=3`、`models=15`、`abilities=22`、`tokens=6`、`redemptions=2`、`top_ups=4`、`logs=192`、`two_fas=0`、`subscription_plans=0`。
+- 生产状态盘点（当时状态，已被上方“复用 JIYU 旧配置补齐 New-API 安全入口”覆盖）：`/api/status` 显示 `system_name=CC中转`、`hasCcSwitch=true`、`turnstile_check=false`、`email_verification=false`；SQLite 摘要显示 `enabled_channels=3`、`models_meta=15`、`abilities=22`。
+- 追加只读审计（当时状态，已被上方“复用 JIYU 旧配置补齐 New-API 安全入口”覆盖）：`openclaw-newapi.service`、`sub2api.service`、`apache2` 均为 `active`；New-API SQLite 显示 `channels=3`、`models=15`、`abilities=22`、`tokens=6`、`redemptions=2`、`top_ups=4`、`logs=192`、`two_fas=0`、`subscription_plans=0`。
 
 ## [2026-07-05] CC中转公网主入口切到 New-API 成熟面板
 > 领域: `deploy` | `infra` | `docs`
 > 影响模块: `New-API`, `CC中转`, `Oracle Apache`, `Production Beta`
 > 关联问题: HI-907
 ### 变更内容
-- 已把 `https://jiyu.245334.xyz/` 公网主入口从旧 Frist 自研页面切到 `openclaw-newapi.service`，也就是成熟开源 New-API 面板；Frist-API 继续在 `127.0.0.1:3180` 运行，作为 CC Switch/旧桥接能力来源和内部兼容服务。
-- Apache 已备份旧配置后改为：主站 `jiyu.245334.xyz` 反代 `127.0.0.1:13000`；旧 `frist-api.245334.xyz` 继续 301 到主站；`frist-api-oracle.245334.xyz` 仅作为旧 Frist 内部排障别名预留。
+- 已把 `https://jiyu.245334.xyz/` 公网主入口从旧 JIYU 自研页面切到 `openclaw-newapi.service`，也就是成熟开源 New-API 面板；JIYU AI 继续在 `127.0.0.1:3180` 运行，作为 CC Switch/旧桥接能力来源和内部兼容服务。
+- Apache 已备份旧配置后改为：主站 `jiyu.245334.xyz` 反代 `127.0.0.1:13000`；旧 `jiyu.245334.xyz` 继续 301 到主站；`jiyu.245334.xyz` 仅作为旧 JIYU 内部排障别名预留。
 - 为避免官方镜像静态 HTML 首屏残留默认品牌，Apache 仅对 `text/html` 做最小品牌替换和浏览器标题修正；未对 New-API JS 包做中文全局替换，避免影响请求头和业务逻辑。
 - CC Switch 继续走 New-API 原生聊天/客户端入口配置，`/api/status` 的 `chats` 已包含 `CC Switch`，后续再做轻集成，不魔改 New-API 核心。
-- 当前仍按“生产内测，暂未正式售卖”口径运行；当时 New-API 原生 `turnstile_check=false`、`email_verification=false`，后续已在同日复用 Frist 旧配置启用。
+- 当前仍按“生产内测，暂未正式售卖”口径运行；当时 New-API 原生 `turnstile_check=false`、`email_verification=false`，后续已在同日复用 JIYU 旧配置启用。
 ### 文件变更
-- Oracle `/etc/apache2/sites-available/frist-api.conf` — 公网主站反代切到 New-API，保留旧 Frist 内部兼容入口；配置变更前已在服务器同目录生成时间戳备份。
+- Oracle `/etc/apache2/sites-available/jiyu-ai.conf` — 公网主站反代切到 New-API，保留旧 JIYU 内部兼容入口；配置变更前已在服务器同目录生成时间戳备份。
 - `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步 New-API 主入口、验证结果和内测边界。
 ### 验证
 - 内网生产 E2E：`CC_NEWAPI_BASE=http://127.0.0.1:13000 node /tmp/cc-newapi-prod-e2e-v2.mjs` → 原生注册、登录、兑换码创建/兑换到账、API Key 创建/列表/详情/取 Key/更新/禁用/恢复/删除、`/v1/models`、OpenAI `gpt-5.4-mini`、Claude `claude-haiku-4-5-20251001`、渠道刷新均通过，清理后 `users=0/tokens=0/redemptions=0`。
 - 外网生产 E2E：`CC_NEWAPI_BASE=https://jiyu.245334.xyz node /tmp/cc-newapi-prod-e2e-v2.mjs` → 同一套链路全部通过；模型数 `15`，启用渠道 `3`，OpenAI/Claude 真实调用均 `200`，禁用/删除 Key 后 `/v1/models` 均 `401`。
-- 公网冒烟：`https://jiyu.245334.xyz/api/status` 返回 `system_name=CC中转`、`server_address=https://jiyu.245334.xyz`、`setup=true`、`hasCcSwitch=true`；未授权 `/v1/models` 返回 `401`；旧 `https://frist-api.245334.xyz/` 返回 `301` 到主站。
+- 公网冒烟：`https://jiyu.245334.xyz/api/status` 返回 `system_name=CC中转`、`server_address=https://jiyu.245334.xyz`、`setup=true`、`hasCcSwitch=true`；未授权 `/v1/models` 返回 `401`；旧 `https://jiyu.245334.xyz/` 返回 `301` 到主站。
 - 浏览器验证：Playwright 打开首页、登录页、注册页均无前端 error/warning，页面可见 `CC中转`，浏览器标题最终为 `CC中转`；截图 `output/playwright/cc-newapi-public-home-20260705.png`。
-- 服务/数据检查：`frist-api.service`、`openclaw-newapi.service`、`apache2`、`frist-api-r2-backup.timer` 均 `active`；New-API SQLite 查询 `e2e_users=0`、`e2e_tokens=0`、`e2e_redemptions=0`、`enabled_channels=3`、`models=15`；`apache2ctl configtest` 为 `Syntax OK`。
+- 服务/数据检查：`sub2api.service`、`openclaw-newapi.service`、`apache2`、`sub2api-backup.timer` 均 `active`；New-API SQLite 查询 `e2e_users=0`、`e2e_tokens=0`、`e2e_redemptions=0`、`enabled_channels=3`、`models=15`；`apache2ctl configtest` 为 `Syntax OK`。
 
 ## [2026-07-05] CC中转改为 New-API 成熟面板优先底座
 > 领域: `deploy` | `backend` | `docs`
 > 影响模块: `New-API`, `CC中转`, `Local Beta`
 > 关联问题: HI-907
 ### 变更内容
-- 按用户最新要求，停止继续把 Frist-API 自研页面作为主面板优先方向，改为以高星开源项目 `QuantumNous/new-api` 作为成熟面板底座。
+- 按用户最新要求，停止继续把 JIYU AI 自研页面作为主面板优先方向，改为以高星开源项目 `QuantumNous/new-api` 作为成熟面板底座。
 - 本地 `openclaw-newapi` 已保持官方稳定镜像运行，配置项 `SystemName=CC中转`，未新增公告、页脚、免责声明、Logo 或营销文案。
 - 从已验证的 Oracle New-API 数据库只同步渠道、模型和能力表到本地，形成可运行本地底座：3 个启用渠道、15 个启用模型、22 条能力映射。
 - 本地 root 用户已重置为随机强密码，密码只保存到 `/tmp/cc-newapi-admin-password`，不写入仓库。
@@ -3043,68 +3058,68 @@
 
 ## [2026-07-05] CC中转生产内测上游补货与全链路 E2E 闭环
 > 领域: `backend` | `deploy` | `ai-pool` | `docs`
-> 影响模块: `Frist-API`, `New-API Bridge`, `API Key Management`, `Production Beta`
+> 影响模块: `JIYU AI`, `New-API Bridge`, `API Key Management`, `Production Beta`
 > 关联问题: HI-907
 ### 变更内容
 - 对用户提供的 3 条 86Game 上游 Key 做脱敏探测：`/v1/models` 与真实 Chat 调用均通过，未在仓库、日志或文档中回显完整 Key。
 - 已将可用库存接入生产内测：New-API 当前有 3 个可用渠道、15 个模型；OpenAI/Codex 与 Claude 真实模型调用均返回 200；`/api/admin/production-readiness` 返回 `ready=true`。
-- 修复 New-API Token 删除后的测试垃圾残留：New-API 删除接口可能只做软删除或让详情接口查不到但 SQLite `tokens` 表仍残留；Frist-API 现在在配置 `FRIST_API_NEWAPI_SQLITE_DB` 时会对被删 Token 做一次幂等硬删除，避免生产 E2E 临时 Key 越积越多。
+- 修复 New-API Token 删除后的测试垃圾残留：New-API 删除接口可能只做软删除或让详情接口查不到但 SQLite `tokens` 表仍残留；JIYU AI 现在在配置 `SUB2API_NEWAPI_SQLITE_DB` 时会对被删 Token 做一次幂等硬删除，避免生产 E2E 临时 Key 越积越多。
 - 生产内测 E2E 已覆盖：公网首页、Turnstile 安全拦截、登录态 Dashboard、API Key 创建、模型列表、OpenAI/Claude 真实调用、Key 禁用、兑换码生成并同步 New-API、闲鱼发货话术、渠道状态刷新、readiness、测试数据清理。
 - 当前口径保持“生产环境内测，暂未正式售卖”；公网自动化不会绕过 Turnstile，真实注册/登录/兑换的最后一跳仍建议由老板在浏览器点一次人机验证做人工验收。
 ### 文件变更
-- `apps/frist-api/server/newApiBridge.js` — 删除 New-API Token 后按 SQLite 配置做幂等硬删除兜底。
-- `apps/frist-api/tests/server.test.mjs` — 新增 New-API 软删除后 SQLite 残留必须清理的回归测试。
+- `JIYU AI Sub2API WebUI/server/newApiBridge.js` — 删除 New-API Token 后按 SQLite 配置做幂等硬删除兜底。
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 新增 New-API 软删除后 SQLite 残留必须清理的回归测试。
 - `docs/002-changelog.md` / `docs/009-health.md` — 同步生产内测上游恢复、E2E 验证结果和售卖前边界。
 ### 验证
-- 本地语法与全量测试：`cd apps/frist-api && node --check server/newApiBridge.js server/server.js && node --test tests/*.test.mjs` → `177 passed / 0 failed / 0 skipped`。
-- Oracle 部署：`rsync` 同步 `apps/frist-api` 后重启；`frist-api.service`、`openclaw-newapi.service`、`apache2` 均为 `active`。
+- 本地语法与全量测试：`cd JIYU AI Sub2API WebUI && node --check server/newApiBridge.js server/server.js && node --test tests/*.test.mjs` → `177 passed / 0 failed / 0 skipped`。
+- Oracle 部署：`rsync` 同步 `JIYU AI Sub2API WebUI` 后重启；`sub2api.service`、`openclaw-newapi.service`、`apache2` 均为 `active`。
 - 生产 E2E：`node /tmp/cc-production-e2e.mjs` → 首页 200；无 Turnstile 的注册/登录/兑换均被拦截；临时 API Key 创建成功；`/v1/models` 返回 10 个用户可见模型样本；OpenAI `gpt-5.4-mini` 与 Claude `claude-haiku-4-5-20251001` 真实调用均 200；禁用 Key 后网关 401；卡密同步 New-API 成功；闲鱼履约 `delivered`；readiness `ready=true` 且 `failedChecks=[]`。
 - 清理验证：New-API SQLite 查询 `e2e_tokens=0`、`active_e2e_tokens=0`、`e2e_redemptions=0`。
-- 公网冒烟：`https://jiyu.245334.xyz/` → HTTP 200；未授权 `/v1/models` → HTTP 401；旧 `https://frist-api.245334.xyz/` 最终跳转到 `https://jiyu.245334.xyz/`。
+- 公网冒烟：`https://jiyu.245334.xyz/` → HTTP 200；未授权 `/v1/models` → HTTP 401；旧 `https://jiyu.245334.xyz/` 最终跳转到 `https://jiyu.245334.xyz/`。
 
 ## [2026-07-05] CC中转健康上游库存纳入生产就绪门槛
 > 领域: `backend` | `deploy` | `docs`
-> 影响模块: `Frist-API`, `Production Readiness`, `New-API Inventory`
+> 影响模块: `JIYU AI`, `Production Readiness`, `New-API Inventory`
 > 关联问题: HI-907
 ### 变更内容
 - 修正生产内测 readiness 的误导风险：以前只要域名、New-API 数据库、备份、2FA、Turnstile、兑换码和 SLA 事件齐全，即使当前健康上游库存为 0，`/api/admin/production-readiness` 仍可能返回 `ready=true`。
-- 新增 `healthy_upstream_inventory` 检查项：同时统计 Frist 本地健康可路由库存和 New-API SQLite 中可用渠道/模型；两边都为 0 时 readiness 必须返回 `ready=false`。
+- 新增 `healthy_upstream_inventory` 检查项：同时统计 JIYU 本地健康可路由库存和 New-API SQLite 中可用渠道/模型；两边都为 0 时 readiness 必须返回 `ready=false`。
 - 管理端 readiness 响应新增 `upstreamInventory` 摘要，明确展示本地健康库存数、New-API 可用渠道数、模型数和 SQLite 可读状态。
 - 当前 Oracle 生产内测环境按新规则应保持 `ready=false`，直到补入真实健康上游并完成模型调用复验；这能防止“站点安全项全绿但没有货也开卖”的误判。
 ### 文件变更
-- `apps/frist-api/server/server.js` — production readiness 增加健康上游库存门槛和 New-API SQLite 只读库存统计。
-- `apps/frist-api/tests/server.test.mjs` — 新增无健康上游时 readiness 必须阻断的回归测试，以及兼容当前 New-API SQLite schema 的库存统计测试。
+- `JIYU AI Sub2API WebUI/server/server.js` — production readiness 增加健康上游库存门槛和 New-API SQLite 只读库存统计。
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 新增无健康上游时 readiness 必须阻断的回归测试，以及兼容当前 New-API SQLite schema 的库存统计测试。
 - `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步 8 项 readiness 检查与当前不可售判断。
 ### 验证
-- TDD 失败复现：`cd apps/frist-api && node --test --test-name-pattern 'keeps production readiness blocked' tests/server.test.mjs` 修复前为 `true !== false`。
+- TDD 失败复现：`cd JIYU AI Sub2API WebUI && node --test --test-name-pattern 'keeps production readiness blocked' tests/server.test.mjs` 修复前为 `true !== false`。
 - 单点验证：同一命令修复后通过。
-- 本地全量验证：`cd apps/frist-api && node --check server/server.js server/newApiBridge.js && node --test tests/*.test.mjs` → `176 passed / 0 failed / 0 skipped`。
+- 本地全量验证：`cd JIYU AI Sub2API WebUI && node --check server/server.js server/newApiBridge.js && node --test tests/*.test.mjs` → `176 passed / 0 failed / 0 skipped`。
 
 ## [2026-07-05] CC中转 New-API Key 禁用生产修复与售卖前复验
 > 领域: `backend` | `deploy` | `docs`
-> 影响模块: `Frist-API`, `New-API Bridge`, `API Key Management`, `Production Beta`
+> 影响模块: `JIYU AI`, `New-API Bridge`, `API Key Management`, `Production Beta`
 > 关联问题: HI-907
 ### 变更内容
 - 生产内测复验发现 New-API 创建的 API Key 可创建、可删除，但“禁用”只返回 200，New-API SQLite `tokens.status` 仍保持 `1`，禁用后 Key 仍可访问网关。
 - 根因定位为 QuantumNous/new-api 的普通 `PUT /api/token/` 不更新 `status` 字段，官方前端启停 Key 使用的是 `PUT /api/token/?status_only=true`。
-- Frist-API New-API 桥接层已改为：名称/额度等元数据走普通 PUT，启用/禁用走 `status_only=true`，随后重新读取 Token 最新状态再返回给前端。
-- 已同步到 Oracle 生产内测环境并重启 `frist-api.service`；生产复验显示 API Key 禁用后数据库 `status=2`，禁用 Key 访问 `/v1/models` 返回 401，删除后 `deleted_at` 正常写入。
-- 继续确认当前不是正式售卖状态：New-API `channels=0/models=0`，Frist 本地库存仅有 `failed/exhausted`，可售健康上游仍为 0；`/Users/blackdj/Documents/VPS-Config` 未发现可导入的明文 AI 上游，Oracle 旧 healthy runtime 虽有 2 条历史记录但 `enc:v1` 字段无法用现存历史数据密钥解开，不能直接恢复售卖库存。
+- JIYU AI New-API 桥接层已改为：名称/额度等元数据走普通 PUT，启用/禁用走 `status_only=true`，随后重新读取 Token 最新状态再返回给前端。
+- 已同步到 Oracle 生产内测环境并重启 `sub2api.service`；生产复验显示 API Key 禁用后数据库 `status=2`，禁用 Key 访问 `/v1/models` 返回 401，删除后 `deleted_at` 正常写入。
+- 继续确认当前不是正式售卖状态：New-API `channels=0/models=0`，JIYU 本地库存仅有 `failed/exhausted`，可售健康上游仍为 0；`/Users/blackdj/Documents/VPS-Config` 未发现可导入的明文 AI 上游，Oracle 旧 healthy runtime 虽有 2 条历史记录但 `enc:v1` 字段无法用现存历史数据密钥解开，不能直接恢复售卖库存。
 ### 文件变更
-- `apps/frist-api/server/newApiBridge.js` — API Key 启用/禁用改用 New-API `status_only=true` 状态接口。
-- `apps/frist-api/tests/server.test.mjs` — New-API 业务端到端测试增加 `status_only=true` 断言，并用可变 Token 状态验证禁用返回。
+- `JIYU AI Sub2API WebUI/server/newApiBridge.js` — API Key 启用/禁用改用 New-API `status_only=true` 状态接口。
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — New-API 业务端到端测试增加 `status_only=true` 断言，并用可变 Token 状态验证禁用返回。
 - `docs/002-changelog.md` / `docs/009-health.md` — 登记生产复验结果和正式售卖阻塞项。
 ### 验证
-- TDD 失败复现：`cd apps/frist-api && node --test --test-name-pattern 'uses New-API business endpoints' tests/server.test.mjs` 修复前为 `500 !== 200`，原因是请求未携带 `status_only=true`。
+- TDD 失败复现：`cd JIYU AI Sub2API WebUI && node --test --test-name-pattern 'uses New-API business endpoints' tests/server.test.mjs` 修复前为 `500 !== 200`，原因是请求未携带 `status_only=true`。
 - 单点修复验证：同一命令修复后通过。
-- 本地全量验证：`cd apps/frist-api && node --check server/newApiBridge.js server/server.js && node --test tests/*.test.mjs` → `174 passed / 0 failed / 0 skipped`；`git diff --check` → exit 0。
+- 本地全量验证：`cd JIYU AI Sub2API WebUI && node --check server/newApiBridge.js server/server.js && node --test tests/*.test.mjs` → `174 passed / 0 failed / 0 skipped`；`git diff --check` → exit 0。
 - 生产闭环复验：管理员 2FA/readiness 200 且 `7/7`；临时卡密生成同步 New-API `synced=1`，闲鱼履约 `delivered/sold`，测试卡/测试用户/测试兑换码均清理；临时 API Key 创建 200、禁用 200 且 New-API DB `status=2`、禁用后 `/v1/models` 401、删除 200。
-- 公网复验：`https://jiyu.245334.xyz/` HTTP 200，标题 `CC中转`，页面包含“生产环境内测/暂未正式售卖”；无 Turnstile 的注册/登录/兑换均 HTTP 400；旧 `frist-api.245334.xyz` 最终跳转到主入口；Oracle 四个关键服务 active，failed units 为 0。
-- 上游恢复排查：VPS-Config 仅找到路由/审计记录，未找到可导入明文上游；Oracle 旧 runtime 2 条 healthy 记录为旧 `enc:v1`，现存 `FRIST_API_DATA_ENCRYPTION_KEY` 历史值可解字段数均为 0。
+- 公网复验：`https://jiyu.245334.xyz/` HTTP 200，标题 `CC中转`，页面包含“生产环境内测/暂未正式售卖”；无 Turnstile 的注册/登录/兑换均 HTTP 400；旧 `jiyu.245334.xyz` 最终跳转到主入口；Oracle 四个关键服务 active，failed units 为 0。
+- 上游恢复排查：VPS-Config 仅找到路由/审计记录，未找到可导入明文上游；Oracle 旧 runtime 2 条 healthy 记录为旧 `enc:v1`，现存 `SUB2API_DATA_ENCRYPTION_KEY` 历史值可解字段数均为 0。
 
 ## [2026-07-05] CC中转生产内测品牌收口与售卖前验收
 > 领域: `frontend` | `backend` | `deploy` | `docs` | `xianyu`
-> 影响模块: `Frist-API`, `CC中转`, `Redemption Cards`, `Production Beta`
+> 影响模块: `JIYU AI`, `CC中转`, `Redemption Cards`, `Production Beta`
 > 关联问题: HI-906
 ### 变更内容
 - 将生产内测可见品牌从「极域 JiYu」收口为「CC中转」，域名暂不变，继续使用 `https://jiyu.245334.xyz/` 作为生产内测入口。
@@ -3112,46 +3127,46 @@
 - 新生成卡密默认前缀改为 `CC`，新增 `CC-DAY-001` / `CC-MONTH-001` / `CC-BOOST-100` 测试兼容码；历史 `JIYU-*` 仅保留为兼容别名，避免旧测试卡密失效。
 - 生产 readiness 的兑换码闭环说明从“售卖兑换码”改为“生产内测人工发放 + 站内核销”，避免在正式开卖前误导。
 - 修复 New-API 生产桥接下的两个售卖前断点：后台生成/闲鱼发货的 CC 卡密经 New-API 到账后会同步回写本地卡密和履约状态；New-API 创建的用户 API Key 访问 `GET /v1/models` 时改为代理到 New-API，避免客户端拉模型列表时 401。
-- 生产 Oracle 环境修正 New-API access token、`FRIST_API_NEWAPI_GATEWAY_ENABLED=1` 和 `FRIST_API_NEWAPI_GATEWAY_BASE_URL=http://127.0.0.1:13000/v1`；同时确认 New-API `channels=0/models=0`、Frist 本地库存 `0` 个健康 Key，当前仍是生产内测，不能正式售卖。
+- 生产 Oracle 环境修正 New-API access token、`SUB2API_NEWAPI_GATEWAY_ENABLED=1` 和 `SUB2API_NEWAPI_GATEWAY_BASE_URL=http://127.0.0.1:13000/v1`；同时确认 New-API `channels=0/models=0`、JIYU 本地库存 `0` 个健康 Key，当前仍是生产内测，不能正式售卖。
 ### 文件变更
-- `apps/frist-api/index.html` / `admin.html` / `src/styles.css` — CC中转品牌和生产内测提示。
-- `apps/frist-api/server/server.js` / `server/shared.js` / `src/businessFlow.js` — 默认 CC 卡密前缀、CC 测试兑换码、内测 readiness、New-API 兑换回写和 `/v1/models` 代理。
-- `apps/frist-api/server/newApiBridge.js` — GET/HEAD 代理请求不携带 body，兼容 `GET /v1/models`。
-- `apps/frist-api/assets/*.svg` / `favicon.svg` / `deploy/*` — 静态资产、部署示例品牌和 Oracle New-API 网关地址同步。
+- `JIYU AI Sub2API WebUI/index.html` / `admin.html` / `src/styles.css` — CC中转品牌和生产内测提示。
+- `JIYU AI Sub2API WebUI/server/server.js` / `server/shared.js` / `src/businessFlow.js` — 默认 CC 卡密前缀、CC 测试兑换码、内测 readiness、New-API 兑换回写和 `/v1/models` 代理。
+- `JIYU AI Sub2API WebUI/server/newApiBridge.js` — GET/HEAD 代理请求不携带 body，兼容 `GET /v1/models`。
+- `JIYU AI Sub2API WebUI/assets/*.svg` / `favicon.svg` / `deploy/*` — 静态资产、部署示例品牌和 Oracle New-API 网关地址同步。
 - `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `docs/051-jiyu-brand-production-plan.md` — 文档改为 CC中转生产内测口径。
 ### 验证
 - TDD 失败复现：`node --test --test-name-pattern 'marks local CC card|uses New-API business endpoints' tests/server.test.mjs` 修复前分别暴露“本地履约未回写”和 `GET /v1/models` 401。
-- 语法检查：`cd apps/frist-api && node --check server/server.js src/app.js src/admin.js src/core.js src/businessFlow.js server/shared.js server/catalog.js server/email.js server/newApiBridge.js server/payments.js src/serverClient.js` → exit 0。
-- Frist-API 全量测试：`cd apps/frist-api && node --test tests/*.test.mjs` → `174 passed / 0 failed / 0 skipped`。
+- 语法检查：`cd JIYU AI Sub2API WebUI && node --check server/server.js src/app.js src/admin.js src/core.js src/businessFlow.js server/shared.js server/catalog.js server/email.js server/newApiBridge.js server/payments.js src/serverClient.js` → exit 0。
+- JIYU AI 全量测试：`cd JIYU AI Sub2API WebUI && node --test tests/*.test.mjs` → `174 passed / 0 failed / 0 skipped`。
 - 格式检查：`git diff --check` → exit 0。
 - Oracle 生产烟测：管理员 2FA/readiness 返回 `ready=true`；卡密生成同步 New-API 成功并完成闲鱼履约分配，测试卡已禁用且 New-API 兑换行已删除；临时测试用户创建 API Key、禁用、删除均返回 200；`GET /v1/models` 经配置修复后返回 200 但模型数为 0，暴露“上游渠道为空”阻塞项。
 
 
 ## [2026-07-04] 极域 JiYu 生产强制模式与安全闭环验收
 > 领域: `backend` | `deploy` | `infra` | `docs`
-> 影响模块: `Frist-API`, `JiYu Production`, `Turnstile`, `Admin 2FA`, `R2 Backup`
+> 影响模块: `JIYU AI`, `JiYu Production`, `Turnstile`, `Admin 2FA`, `R2 Backup`
 > 关联问题: HI-905
 
 ### 变更内容
-- 生产环境正式开启 `FRIST_API_PUBLIC_MODE=1` 与 `FRIST_API_ENFORCE_PRODUCTION_READINESS=1`，关闭临时公网 HTTP 例外和验证码答案回显。
+- 生产环境正式开启 `SUB2API_PUBLIC_MODE=1` 与 `SUB2API_ENFORCE_PRODUCTION_READINESS=1`，关闭临时公网 HTTP 例外和验证码答案回显。
 - Cloudflare Turnstile 已保护注册、登录、兑换三个高风险入口；不带 token 的公网请求会返回“请先完成人机验证”。
 - 管理端启用 TOTP 二次验证，TOTP secret 和数据加密 key 仅保存在 Oracle root-only 环境文件/安全文件中，未写入仓库或终端输出。
-- 触发一次 R2 备份并完成恢复演练：备份包 `frist-api-20260705T000508Z.tar.gz` 解包后 `runtime.json` 可读、`one-api.db` `pragma integrity_check` 为 `ok`，并登记到 `/api/admin/backups/status`。
+- 触发一次 R2 备份并完成恢复演练：备份包 `jiyu-ai-20260705T000508Z.tar.gz` 解包后 `runtime.json` 可读、`one-api.db` `pragma integrity_check` 为 `ok`，并登记到 `/api/admin/backups/status`。
 - 修复生产发现的历史 runtime 加密兼容问题：旧数据已带 `__encryption` 标记但旧加密 key 不可恢复时，无法解密的 `enc:v1:` 敏感字段会被隔离为“需重新生成”，不再让管理接口整体 500。
 - `/api/admin/production-readiness` 已返回 `ready=true`，7 个检查项（固定品牌域名、New-API 数据库、备份监控、管理员 2FA、Turnstile、兑换码收款闭环、渠道 SLA）全部通过。
 
 ### 文件变更
-- `apps/frist-api/server/server.js` — runtime 旧加密字段隔离兼容，避免生产新 key 启用后整站 500。
-- `apps/frist-api/tests/server.test.mjs` — 新增带 `__encryption` 标记的旧加密 runtime 回归测试。
+- `JIYU AI Sub2API WebUI/server/server.js` — runtime 旧加密字段隔离兼容，避免生产新 key 启用后整站 500。
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 新增带 `__encryption` 标记的旧加密 runtime 回归测试。
 - `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `docs/051-jiyu-brand-production-plan.md` — 同步生产强制模式、2FA、备份恢复演练和 readiness 结果。
 
 ### 验证
-- 新增失败复现：`cd apps/frist-api && node --test --test-name-pattern 'marked encrypted runtime fields' tests/server.test.mjs` 修复前为 `500 !== 200`，修复后通过。
-- 语法检查：`cd apps/frist-api && node --check server/server.js src/app.js src/serverClient.js` → exit 0。
-- Frist-API 全量测试：`cd apps/frist-api && node --test tests/*.test.mjs` → `172 passed / 0 failed / 0 skipped`。
+- 新增失败复现：`cd JIYU AI Sub2API WebUI && node --test --test-name-pattern 'marked encrypted runtime fields' tests/server.test.mjs` 修复前为 `500 !== 200`，修复后通过。
+- 语法检查：`cd JIYU AI Sub2API WebUI && node --check server/server.js src/app.js src/serverClient.js` → exit 0。
+- JIYU AI 全量测试：`cd JIYU AI Sub2API WebUI && node --test tests/*.test.mjs` → `172 passed / 0 failed / 0 skipped`。
 - 格式检查：`git diff --check` → exit 0。
-- Oracle 服务：`frist-api.service`、`openclaw-newapi.service`、`apache2.service`、`frist-api-r2-backup.timer` → 全部 `active`；`systemctl --failed` → `0`。
-- 公网冒烟：`https://jiyu.245334.xyz/` → HTTP 200；`/api/frist/dashboard` → HTTP 200；未授权 `/v1/models` → HTTP 401；旧 `https://frist-api.245334.xyz/` 最终跳转 `https://jiyu.245334.xyz/`。
+- Oracle 服务：`sub2api.service`、`openclaw-newapi.service`、`apache2.service`、`sub2api-backup.timer` → 全部 `active`；`systemctl --failed` → `0`。
+- 公网冒烟：`https://jiyu.245334.xyz/` → HTTP 200；`/api/frist/dashboard` → HTTP 200；未授权 `/v1/models` → HTTP 401；旧 `https://jiyu.245334.xyz/` 最终跳转 `https://jiyu.245334.xyz/`。
 - Turnstile 防护：不带 Turnstile token 的 `register/login/redeem` → HTTP 400，错误文案为“请先完成人机验证”。
 - 生产 readiness：`/api/admin/production-readiness` → `ready=true`；备份登记时间 `2026-07-05T00:05:09.000Z`，SLA 探测事件 `21` 条。
 - 浏览器验收：Playwright 打开线上首页，标题 `极域 JiYu`，截图保存为 `output/playwright/jiyu-production-home-20260704.png`；控制台噪音来自 Cloudflare Turnstile PAT/预加载挑战，不是本站脚本错误。
@@ -3159,42 +3174,42 @@
 
 ## [2026-07-04] 极域 JiYu Cloudflare 子域名与 Oracle 生产闭环
 > 领域: `deploy` | `infra` | `docs`
-> 影响模块: `JiYu Domain`, `Cloudflare DNS`, `Oracle ARM`, `Frist-API`
+> 影响模块: `JiYu Domain`, `Cloudflare DNS`, `Oracle ARM`, `JIYU AI`
 > 关联问题: HI-904, TD-007
 
 ### 变更内容
 - 按“优先用 xyz 或免费域名”的上线要求，确定当前正式入口为 `https://jiyu.245334.xyz/`，不等待新域名购买。
 - 在 Cloudflare `245334.xyz` 区域新增 `jiyu.245334.xyz` proxied A 记录，指向 Oracle ARM `150.136.73.15`。
-- 在 Oracle 安装覆盖 `jiyu.245334.xyz`、`frist-api.245334.xyz`、`frist-api-oracle.245334.xyz` 的 Cloudflare Origin CA 证书，并让 Apache 以 JiYu 主机名反代到 `127.0.0.1:3180`。
-- 生产环境变量切到 `FRIST_API_PUBLIC_GATEWAY_BASE_URL=https://jiyu.245334.xyz/v1`、`FRIST_API_CANONICAL_HOST=jiyu.245334.xyz`；旧 `frist-api.245334.xyz` 保留为 301 跳转和冷回滚排障别名。
+- 在 Oracle 安装覆盖 `jiyu.245334.xyz`、`jiyu.245334.xyz`、`jiyu.245334.xyz` 的 Cloudflare Origin CA 证书，并让 Apache 以 JiYu 主机名反代到 `127.0.0.1:3180`。
+- 生产环境变量切到 `SUB2API_PUBLIC_GATEWAY_BASE_URL=https://jiyu.245334.xyz/v1`、`SUB2API_CANONICAL_HOST=jiyu.245334.xyz`；旧 `jiyu.245334.xyz` 保留为 301 跳转和冷回滚排障别名。
 - 仓库默认生产模板、Nginx 示例、测试断言和运维文档从未购买的 `jiyu.gg` 收口到当前真实可用的 `jiyu.245334.xyz`；后续若购买独立品牌域名，再按同一流程替换。
 - 同步 `/Users/blackdj/Documents/VPS-Config` 的公开路由、Cloudflare 资产和业务故障切换契约，登记 JiYu 子域名、证书、回滚路径和健康门槛。
 
 ### 文件变更
-- `apps/frist-api/server/server.js` / `src/app.js` / `index.html` — 默认 JiYu 公网入口改为 `jiyu.245334.xyz`。
-- `apps/frist-api/deploy/production.env.example` / `deploy/nginx.conf` — 生产环境变量和反代示例改为当前真实域名。
-- `apps/frist-api/tests/*.test.mjs` — 更新品牌域名、跳转和生产边界断言。
+- `JIYU AI Sub2API WebUI/server/server.js` / `src/app.js` / `index.html` — 默认 JiYu 公网入口改为 `jiyu.245334.xyz`。
+- `JIYU AI Sub2API WebUI/deploy/production.env.example` / `deploy/nginx.conf` — 生产环境变量和反代示例改为当前真实域名。
+- `JIYU AI Sub2API WebUI/tests/*.test.mjs` — 更新品牌域名、跳转和生产边界断言。
 - `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` / `docs/051-jiyu-brand-production-plan.md` — 登记当前生产入口、验证步骤和后续独立域名替换边界。
 - `/Users/blackdj/Documents/VPS-Config/config/domain-routing.public.json` / `config/cloudflare-assets.public.json` / `config/business-failover.public.json` — 登记 Cloudflare DNS、Oracle 入口和回滚说明。
 
 ### 验证
-- 语法检查：`cd apps/frist-api && node --check server/server.js src/app.js src/admin.js src/core.js src/businessFlow.js server/shared.js server/catalog.js server/email.js` → exit 0。
-- Frist-API 全量测试：`cd apps/frist-api && node --test tests/*.test.mjs` → `166 passed / 0 failed / 0 skipped`。
+- 语法检查：`cd JIYU AI Sub2API WebUI && node --check server/server.js src/app.js src/admin.js src/core.js src/businessFlow.js server/shared.js server/catalog.js server/email.js` → exit 0。
+- JIYU AI 全量测试：`cd JIYU AI Sub2API WebUI && node --test tests/*.test.mjs` → `166 passed / 0 failed / 0 skipped`。
 - 配置格式：`python3 -m json.tool` 校验 VPS-Config 三个公开 JSON（`domain-routing.public.json`、`cloudflare-assets.public.json`、`business-failover.public.json`）→ exit 0。
 - 格式检查：`git diff --check` → exit 0。
-- 公网冒烟：`https://jiyu.245334.xyz/` → HTTP 200 且页面包含 `极域 JiYu`；`/api/frist/dashboard` → HTTP 200；未授权 `/v1/models` → HTTP 401；`https://frist-api.245334.xyz/` 最终跳转到 `https://jiyu.245334.xyz/`。
-- Oracle 同步：已用 `rsync` 增量同步 `apps/frist-api` 到 `/opt/frist-api/apps/frist-api/`，排除 `node_modules/`、`data/`、`.env`、`.playwright-cli/`；同步前远端备份到 `/root/codex-backups/*-jiyu-app-before-domain-template-sync/`。
-- Oracle 服务：`frist-api.service`、`openclaw-newapi.service`、`apache2`、`frist-api-r2-backup.timer` → 全部 `active`；`systemctl --failed` → `0 loaded units listed`。
-- 重启后复验：JiYu 首页 HTTP 200，页面不再包含 `jiyu.gg`；Dashboard HTTP 200；未授权 `/v1/models` HTTP 401；旧 Frist 域名最终跳转到 JiYu 主站。
+- 公网冒烟：`https://jiyu.245334.xyz/` → HTTP 200 且页面包含 `极域 JiYu`；`/api/frist/dashboard` → HTTP 200；未授权 `/v1/models` → HTTP 401；`https://jiyu.245334.xyz/` 最终跳转到 `https://jiyu.245334.xyz/`。
+- Oracle 同步：已用 `rsync` 增量同步 `JIYU AI Sub2API WebUI` 到 `/opt/sub2api/JIYU AI Sub2API WebUI/`，排除 `node_modules/`、`data/`、`.env`、`.playwright-cli/`；同步前远端备份到 `/root/codex-backups/*-jiyu-app-before-domain-template-sync/`。
+- Oracle 服务：`sub2api.service`、`openclaw-newapi.service`、`apache2`、`sub2api-backup.timer` → 全部 `active`；`systemctl --failed` → `0 loaded units listed`。
+- 重启后复验：JiYu 首页 HTTP 200，页面不再包含 `jiyu.gg`；Dashboard HTTP 200；未授权 `/v1/models` HTTP 401；旧 JIYU 域名最终跳转到 JiYu 主站。
 
 
 ## [2026-07-04] 极域 JiYu 品牌重塑与兑换码生产安全收口
 > 领域: `frontend` | `backend` | `deploy` | `docs` | `xianyu`
-> 影响模块: `Frist-API`, `JiYu Brand`, `Redemption Cards`, `Xianyu Fulfillment`, `Production Config`
+> 影响模块: `JIYU AI`, `JiYu Brand`, `Redemption Cards`, `Xianyu Fulfillment`, `Production Config`
 > 关联问题: HI-904
 
 ### 变更内容
-- 将 Frist-API 对外品牌升级为「极域 JiYu」：用户端、管理端、CC Switch 导入名、邮件模板、默认网关示例和生产配置模板统一使用 JiYu 品牌与 `jiyu.245334.xyz`。
+- 将 JIYU AI 对外品牌升级为「极域 JiYu」：用户端、管理端、CC Switch 导入名、邮件模板、默认网关示例和生产配置模板统一使用 JiYu 品牌与 `jiyu.245334.xyz`。
 - 新增原创 JiYu SVG 资产：favicon、Logo、闲鱼头像、闲鱼横幅；主色统一为 `#7F77DD` 紫色浅色商业后台。
 - 用户可见文案新增服务说明、服务条款、售后/退款规则、隐私说明四个页面，并从首页、兑换页和页脚直达；禁用“官方合作/官方授权/平台直营/第三方”等高风险表述。
 - 模型价格展示从“官方价格”改成“参考标价”，默认示例卡密从 `FRIST-*` 改为 `JIYU-*`，避免用户误解为厂商直营或旧品牌残留。
@@ -3202,137 +3217,137 @@
 - 兑换码安全升级：新生成卡密只在创建响应/导出文本里出现明文，运行数据改存 `codeHash + codeCipher + codePreview`；闲鱼履约话术按需解密生成，不长期保存完整卡密话术。
 - 兑换接口新增 IP + 登录账号双维度频率限制，降低暴力猜码风险；测试覆盖同 IP 和同账号换 IP 两种枚举场景。
 - 生产模板改为 `jiyu.245334.xyz` 唯一品牌入口，旧数字域名和历史测试域名只作为跳转/排障来源。
-- 快速开源复用检查未发现 86GameStore 本身公开仓库；MIT 卡密商城 `34892002/edgeKey` 为 Cloudflare Workers/Vike 技术栈，和当前已打通的 JiYu/Frist-API 链路不一致，本轮不迁移，避免推倒重来。
+- 快速开源复用检查未发现 86GameStore 本身公开仓库；MIT 卡密商城 `34892002/edgeKey` 为 Cloudflare Workers/Vike 技术栈，和当前已打通的 JiYu/JIYU AI 链路不一致，本轮不迁移，避免推倒重来。
 
 ### 文件变更
-- `apps/frist-api/index.html` / `admin.html` / `src/styles.css` / `src/app.js` / `src/core.js` — JiYu 品牌、紫色视觉、合规页面和导入文案。
-- `apps/frist-api/server/server.js` / `server/email.js` / `server/payments.js` / `server/newApiBridge.js` — JiYu 默认品牌、卡密哈希/加密、兑换限流和邮件文案。
-- `apps/frist-api/assets/*.svg` / `favicon.svg` — JiYu Logo、闲鱼头像、闲鱼横幅和 favicon。
-- `apps/frist-api/deploy/production.env.example` / `deploy/nginx.conf` / `deploy/smoke-test.sh` — `jiyu.245334.xyz` 生产入口、旧域名跳转和 smoke 文案。
-- `apps/frist-api/tests/*.test.mjs` — 更新品牌断言、卡密不明文落库、闲鱼履约不保存完整卡密话术和兑换限流回归。
+- `JIYU AI Sub2API WebUI/index.html` / `admin.html` / `src/styles.css` / `src/app.js` / `src/core.js` — JiYu 品牌、紫色视觉、合规页面和导入文案。
+- `JIYU AI Sub2API WebUI/server/server.js` / `server/email.js` / `server/payments.js` / `server/newApiBridge.js` — JiYu 默认品牌、卡密哈希/加密、兑换限流和邮件文案。
+- `JIYU AI Sub2API WebUI/assets/*.svg` / `favicon.svg` — JiYu Logo、闲鱼头像、闲鱼横幅和 favicon。
+- `JIYU AI Sub2API WebUI/deploy/production.env.example` / `deploy/nginx.conf` / `deploy/smoke-test.sh` — `jiyu.245334.xyz` 生产入口、旧域名跳转和 smoke 文案。
+- `JIYU AI Sub2API WebUI/tests/*.test.mjs` — 更新品牌断言、卡密不明文落库、闲鱼履约不保存完整卡密话术和兑换限流回归。
 - `docs/051-jiyu-brand-production-plan.md` / `docs/003-docs-index.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 登记 JiYu 生产上线方案、配置项和健康状态。
 
 ### 验证
-- 语法检查：`cd apps/frist-api && node --check server/server.js src/app.js src/admin.js src/core.js src/businessFlow.js server/shared.js server/catalog.js server/email.js` → exit 0。
-- Frist-API 全量测试：`cd apps/frist-api && node --test tests/*.test.mjs` → `166 passed / 0 failed / 0 skipped`。
+- 语法检查：`cd JIYU AI Sub2API WebUI && node --check server/server.js src/app.js src/admin.js src/core.js src/businessFlow.js server/shared.js server/catalog.js server/email.js` → exit 0。
+- JIYU AI 全量测试：`cd JIYU AI Sub2API WebUI && node --test tests/*.test.mjs` → `166 passed / 0 failed / 0 skipped`。
 - 格式检查：`git diff --check` → exit 0。
 
-## [2026-07-04] QuantumNous/new-api 本机直连栈与 Frist-API 全面桥接
+## [2026-07-04] QuantumNous/new-api 本机直连栈与 JIYU AI 全面桥接
 > 领域: `backend` | `infra` | `docs`
-> 影响模块: `QuantumNous/new-api`, `Frist-API`, `New-API Bridge`, `Docker Compose`, `Makefile`
+> 影响模块: `QuantumNous/new-api`, `JIYU AI`, `New-API Bridge`, `Docker Compose`, `Makefile`
 > 关联问题: HI-903
 
 ### 变更内容
 - 将本机 New-API 运行栈收敛为固定上游 `QuantumNous/new-api` release：submodule `packages/new-api-upstream` 和 Docker 镜像均固定在 `v1.0.0-rc.4`，避免 `latest` 自动升级影响数据。
-- 新增一键本机启动路径：`make new-api-up` 先备份 `data/newapi` 再启动 New-API；`make frist-api-newapi-setup` 从本机 SQLite 读取已生成 access token 并写入 `.env`，不在终端打印密钥；`make frist-api-up` 同时启动 New-API 与 Frist-API。
-- Frist-API Docker 内部默认通过 `http://new-api:3000` 和 `http://new-api:3000/v1` 访问 New-API，宿主机调试继续用 `http://127.0.0.1:3000`。
-- Frist-API 服务端 New-API 适配器已覆盖原 Frist 用户侧核心业务：看板、API Key 创建/改名/删除、日志/用量、兑换码核销、订阅/充值/邀请读取，以及可选 `/v1` 网关代理。
-- 保留 Frist-API 自研差异能力：86GameStore 风格工作台、CC Switch/Codex/OpenCode/Claude/Gemini/Hermes 导入、兑换码售卖、闲鱼发货履约、补号助手、余额预警和 JSON 兜底。
+- 新增一键本机启动路径：`make new-api-up` 先备份 `data/newapi` 再启动 New-API；`make jiyu-ai-newapi-setup` 从本机 SQLite 读取已生成 access token 并写入 `.env`，不在终端打印密钥；`make jiyu-ai-up` 同时启动 New-API 与 JIYU AI。
+- JIYU AI Docker 内部默认通过 `http://new-api:3000` 和 `http://new-api:3000/v1` 访问 New-API，宿主机调试继续用 `http://127.0.0.1:3000`。
+- JIYU AI 服务端 New-API 适配器已覆盖原 JIYU 用户侧核心业务：看板、API Key 创建/改名/删除、日志/用量、兑换码核销、订阅/充值/邀请读取，以及可选 `/v1` 网关代理。
+- 保留 JIYU AI 自研差异能力：86GameStore 风格工作台、CC Switch/Codex/OpenCode/Claude/Gemini/Hermes 导入、兑换码售卖、闲鱼发货履约、补号助手、余额预警和 JSON 兜底。
 
 ### 文件变更
-- `Makefile` — 新增 `new-api-up`、`new-api-down`、`frist-api-newapi-setup`，并让 `frist-api-up/down` 管理 New-API + Frist-API 全链路。
-- `docker-compose.frist-api.yml` / `docker-compose.newapi.yml` — 固定 New-API 镜像与 Docker 内部服务地址，Frist-API 默认桥接 `new-api` 服务名。
+- `Makefile` — 新增 `new-api-up`、`new-api-down`、`jiyu-ai-newapi-setup`，并让 `jiyu-ai-up/down` 管理 New-API + JIYU AI 全链路。
+- `docker-compose.jiyu-ai.yml` / `docker-compose.newapi.yml` — 固定 New-API 镜像与 Docker 内部服务地址，JIYU AI 默认桥接 `new-api` 服务名。
 - `scripts/setup_local_newapi_bridge.mjs` — 从 `data/newapi/one-api.db` 读取可用用户 access token，写入本机 `.env` 且不回显密钥。
-- `apps/frist-api/server/newApiBridge.js` / `apps/frist-api/server/server.js` — 接管 New-API 用户看板、Token、用量、兑换和可选网关代理。
-- `apps/frist-api/tests/new-api-adapter.test.mjs` / `apps/frist-api/tests/server.test.mjs` — 覆盖 New-API 业务桥接、wildcard 模型限制、网关代理和生产边界。
+- `JIYU AI Sub2API WebUI/server/newApiBridge.js` / `JIYU AI Sub2API WebUI/server/server.js` — 接管 New-API 用户看板、Token、用量、兑换和可选网关代理。
+- `JIYU AI Sub2API WebUI/tests/new-api-adapter.test.mjs` / `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 覆盖 New-API 业务桥接、wildcard 模型限制、网关代理和生产边界。
 - `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 登记本机 New-API 直连启动、环境变量、验证结果和运维边界。
 
 ### 验证
-- 语法检查：`node --check scripts/setup_local_newapi_bridge.mjs apps/frist-api/server/server.js apps/frist-api/server/newApiBridge.js` → exit 0。
-- Frist-API 全量测试：`cd apps/frist-api && node --test tests/*.test.mjs` → `165 passed / 0 failed / 0 skipped`。
-- 本机容器：`openclaw-newapi` 使用 `calciumion/new-api:v1.0.0-rc.4` 监听 `127.0.0.1:3000`，`frist-api-server` 监听 `127.0.0.1:3180`，两个容器均 healthy。
+- 语法检查：`node --check scripts/setup_local_newapi_bridge.mjs JIYU AI Sub2API WebUI/server/server.js JIYU AI Sub2API WebUI/server/newApiBridge.js` → exit 0。
+- JIYU AI 全量测试：`cd JIYU AI Sub2API WebUI && node --test tests/*.test.mjs` → `165 passed / 0 failed / 0 skipped`。
+- 本机容器：`openclaw-newapi` 使用 `calciumion/new-api:v1.0.0-rc.4` 监听 `127.0.0.1:3000`，`jiyu-ai-server` 监听 `127.0.0.1:3180`，两个容器均 healthy。
 - 接口冒烟：`curl http://127.0.0.1:3000/api/status` 返回 `success=true`、`version=v1.0.0-rc.4`、`setup=true`；`curl http://127.0.0.1:3180/api/frist/dashboard` 返回 HTTP 200，游客态 `5` 个充值套餐且不暴露渠道细节。
-- 浏览器审计：Playwright 打开 `http://127.0.0.1:3180/`，页面标题 `Frist-API`，控制台 `0 error / 0 warning`；截图为 `output/playwright/frist-api-newapi-login-20260704.png`。
+- 浏览器审计：Playwright 打开 `http://127.0.0.1:3180/`，页面标题 `JIYU AI`，控制台 `0 error / 0 warning`；截图为 `output/playwright/jiyu-ai-newapi-login-20260704.png`。
 
-## [2026-07-04] Frist-API 86GameStore 风格后台与兑换/闲鱼履约闭环
+## [2026-07-04] JIYU AI 86GameStore 风格后台与兑换/闲鱼履约闭环
 > 领域: `frontend` | `backend` | `xianyu` | `docs`
-> 影响模块: `Frist-API`, `86GameStore Downstream`, `Redemption Cards`, `Upstream Channel Sync`, `Xianyu Fulfillment`, `CC Switch`
+> 影响模块: `JIYU AI`, `86GameStore Downstream`, `Redemption Cards`, `Upstream Channel Sync`, `Xianyu Fulfillment`, `CC Switch`
 > 关联问题: HI-902
 
 ### 变更内容
 - 追加按 GitHub 高星克隆方案复核后的高保真外壳：参考 `abi/screenshot-to-code` 的截图转代码工作流，并借鉴 `ColorlibHQ/AdminLTE` 的后台左侧导航骨架；未复制上游私有源码，只复刻公开登录页结构和管理后台信息架构。
-- 将 Frist-API 未登录首屏改为更接近 86GameStore 公开登录页的蓝紫渐变、居中白色登录卡、Logo/副标题、邮箱/密码、忘记密码、注册入口和条款提示；登录后仍进入 Frist 工作台。
-- 将 Frist-API 用户端和管理端切到 86GameStore 风格浅色后台骨架：左侧工作台导航、白底卡片、青绿色主色，并保留 CC Switch、API Key、测试、使用记录、可用渠道、兑换码和套餐订阅入口。
+- 将 JIYU AI 未登录首屏改为更接近 86GameStore 公开登录页的蓝紫渐变、居中白色登录卡、Logo/副标题、邮箱/密码、忘记密码、注册入口和条款提示；登录后仍进入 JIYU 工作台。
+- 将 JIYU AI 用户端和管理端切到 86GameStore 风格浅色后台骨架：左侧工作台导航、白底卡片、青绿色主色，并保留 CC Switch、API Key、测试、使用记录、可用渠道、兑换码和套餐订阅入口。
 - 打通兑换码售卖链路：管理端可批量生成卡密，卡密支持 `unused/sold/redeemed/disabled` 状态，用户端兑换后自动到账并防重复兑换。
 - 新增 86GameStore 上游渠道同步接口和管理区块：只保存脱敏渠道状态、模型、延迟和倍率；默认下游售卖倍率在上游倍率基础上 `+0.1`，例如 Plus `0.18 → 0.28`，并修复刷新后倍率回退的问题。
 - 新增闲鱼自动发货雏形：后台输入闲鱼订单号和商品套餐后自动分配未售出卡密、标记已发货并生成发货话术；买家完成兑换后履约记录自动标记已兑换。
-- 补充本轮产品规格文档，明确当前可实现的是“第三方平台卖兑换码 + Frist-API 核销到账 + 后台履约提醒”，真实闲鱼下单检测仍需后续用户授权登录态后接入。
+- 补充本轮产品规格文档，明确当前可实现的是“第三方平台卖兑换码 + JIYU AI 核销到账 + 后台履约提醒”，真实闲鱼下单检测仍需后续用户授权登录态后接入。
 
 ### 文件变更
-- `apps/frist-api/index.html` / `apps/frist-api/admin.html` / `apps/frist-api/src/styles.css` — 86GameStore 公开登录页风格复刻、AdminLTE 式管理端左侧导航、兑换/渠道/闲鱼管理区块和 CC Switch 新皮肤防溢出样式。
-- `apps/frist-api/src/app.js` — 增加登录态数据属性和登录表单镜像同步，保证未登录登录页与原账户弹窗共用同一套登录/注册逻辑。
-- `apps/frist-api/src/core.js` / `apps/frist-api/server/server.js` — 上游渠道倍率加价、脱敏同步、兑换码状态、闲鱼履约分配和兑换反写逻辑。
-- `apps/frist-api/src/admin.js` — 管理端接入渠道同步、卡密生成、闲鱼履约和新状态展示。
-- `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/server.test.mjs` / `apps/frist-api/tests/business-flow.test.mjs` — 补齐倍率、渠道同步、兑换/闲鱼闭环和新皮肤回归。
-- `docs/050-frist-api-86game-clone-commerce-plan.md` / `docs/003-docs-index.md` — 新增并注册本轮产品规格。
+- `JIYU AI Sub2API WebUI/index.html` / `JIYU AI Sub2API WebUI/admin.html` / `JIYU AI Sub2API WebUI/src/styles.css` — 86GameStore 公开登录页风格复刻、AdminLTE 式管理端左侧导航、兑换/渠道/闲鱼管理区块和 CC Switch 新皮肤防溢出样式。
+- `JIYU AI Sub2API WebUI/src/app.js` — 增加登录态数据属性和登录表单镜像同步，保证未登录登录页与原账户弹窗共用同一套登录/注册逻辑。
+- `JIYU AI Sub2API WebUI/src/core.js` / `JIYU AI Sub2API WebUI/server/server.js` — 上游渠道倍率加价、脱敏同步、兑换码状态、闲鱼履约分配和兑换反写逻辑。
+- `JIYU AI Sub2API WebUI/src/admin.js` — 管理端接入渠道同步、卡密生成、闲鱼履约和新状态展示。
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` / `JIYU AI Sub2API WebUI/tests/server.test.mjs` / `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 补齐倍率、渠道同步、兑换/闲鱼闭环和新皮肤回归。
+- `docs/051-jiyu-brand-production-plan.md` / `docs/003-docs-index.md` — 新增并注册本轮产品规格。
 - `docs/002-changelog.md` / `docs/009-health.md` — 同步本轮交付和验证状态。
 
 ### 验证
-- 语法检查：`cd apps/frist-api && node --check src/admin.js && node --check src/app.js && node --check src/core.js && node --check server/server.js` → exit 0。
-- Frist-API 全量测试：`cd apps/frist-api && node --test tests/*.test.mjs` → `165 passed / 0 failed / 0 skipped`。
-- 本地浏览器审计：`FRIST_API_PORT=3186 ... npm start` 后，Playwright 打开 `http://127.0.0.1:3186/` 和 `http://127.0.0.1:3186/admin.html?code=local-audit`；用户页控制台 `Errors: 0, Warnings: 0`，管理页预置本地令牌后控制台 `Errors: 0, Warnings: 0`。
-- 截图证据：`output/playwright/frist-api-clone-login-20260704.png`、`output/playwright/frist-api-admin-clone-shell-20260704.png`；上一轮工作台截图仍保留在 `output/playwright/frist-api-user-dashboard.png`、`output/playwright/frist-api-admin-clean-authenticated.png`。
+- 语法检查：`cd JIYU AI Sub2API WebUI && node --check src/admin.js && node --check src/app.js && node --check src/core.js && node --check server/server.js` → exit 0。
+- JIYU AI 全量测试：`cd JIYU AI Sub2API WebUI && node --test tests/*.test.mjs` → `165 passed / 0 failed / 0 skipped`。
+- 本地浏览器审计：`SUB2API_PORT=3186 ... npm start` 后，Playwright 打开 `http://127.0.0.1:3186/` 和 `http://127.0.0.1:3186/admin.html?code=local-audit`；用户页控制台 `Errors: 0, Warnings: 0`，管理页预置本地令牌后控制台 `Errors: 0, Warnings: 0`。
+- 截图证据：`output/playwright/jiyu-ai-clone-login-20260704.png`、`output/playwright/jiyu-ai-admin-clone-shell-20260704.png`；上一轮工作台截图仍保留在 `output/playwright/jiyu-ai-user-dashboard.png`、`output/playwright/jiyu-ai-admin-clean-authenticated.png`。
 
-## [2026-07-03] Frist-API Oracle 生产迁移与域名/R2 收口
+## [2026-07-03] JIYU AI Oracle 生产迁移与域名/R2 收口
 > 领域: `backend` | `deploy` | `infra` | `docs`
-> 影响模块: `Frist-API`, `New-API Bridge`, `Oracle ARM`, `Cloudflare DNS`, `R2 Backup`, `GitHub Actions`
+> 影响模块: `JIYU AI`, `New-API Bridge`, `Oracle ARM`, `Cloudflare DNS`, `R2 Backup`, `GitHub Actions`
 > 关联问题: TD-006, TD-007, TD-014, TD-015, HI-856, HI-857
 
 ### 变更内容
-- 按 Carven 授权执行生产 New-API 迁移：用户、余额/订单、兑换码和日志已写入生产 New-API 数据库，Frist-API 生产环境启用 New-API adapter，并保留带时间戳回滚目录。
+- 按 Carven 授权执行生产 New-API 迁移：用户、余额/订单、兑换码和日志已写入生产 New-API 数据库，JIYU AI 生产环境启用 New-API adapter，并保留带时间戳回滚目录。
 - 对历史 `enc:v1:` 用户 Key 采取安全跳过策略：旧数据加密密钥未能在本地、VPS-Config 或服务器常规备份中找到，不能把密文伪造成可用 Key；前端/服务端会把这类 Key 标记为需重新生成。
-- 复用 VPS-Config 的 Cloudflare/R2 资产并完成 Oracle ARM 切流：`frist-api.245334.xyz` 的 Cloudflare proxied A 已切到 Oracle ARM `150.136.73.15`，源站由 Apache + Cloudflare Origin CA 反代到 Frist-API `127.0.0.1:3180`；New-API 以 ARM64 二进制 systemd 运行在 `127.0.0.1:13000`；R2 备份脚本、root-only env、systemd timer 已在 Oracle 启用并完成手动上传验证。
+- 复用 VPS-Config 的 Cloudflare/R2 资产并完成 Oracle ARM 切流：`jiyu.245334.xyz` 的 Cloudflare proxied A 已切到 Oracle ARM `150.136.73.15`，源站由 Apache + Cloudflare Origin CA 反代到 JIYU AI `127.0.0.1:3180`；New-API 以 ARM64 二进制 systemd 运行在 `127.0.0.1:13000`；R2 备份脚本、root-only env、systemd timer 已在 Oracle 启用并完成手动上传验证。
 - 修正生产 SMTP 边界并完成落地：代码和文档只登记变量名，不写入聊天里出现过的 SMTP 密码；密码通过本机隐藏输入框写入 Oracle root-only 环境文件，Gmail 465/TLS 生产测试邮件返回 `smtp_test=sent`。
 - 补齐提交前门禁：根目录 `.venv312` 软链加入忽略规则，避免误把本机 Python 环境提交；Python 依赖审计改用项目 Python 3.12 环境，避免系统 Python 3.9 误判 `requests>=2.33.0` 不可解析；gitleaks 历史误报通过指纹 allowlist 收口。
 
 ### 文件变更
 - `docs/002-changelog.md` — 记录生产迁移、R2、Cloudflare 和 SMTP 安全边界。
-- `docs/006-registries.md` — 更新 Frist-API 网关地址、New-API 迁移入口和回滚目录状态。
+- `docs/006-registries.md` — 更新 JIYU AI 网关地址、New-API 迁移入口和回滚目录状态。
 - `docs/007-operations.md` — 更新生产入口、New-API 已迁移、R2 已启用、SMTP 隐藏输入落地和 Cloudflare proxied A 方案。
 - `docs/009-health.md` — 更新 TD-006 / TD-007 和当前系统状态。
 - `.gitignore` — 忽略根目录 `.venv312` 虚拟环境软链。
 - `.gitleaksignore` — 只忽略两个历史误报指纹，保留默认 secret 扫描规则。
 
 ### 验证
-- New-API 数据迁移：`/opt/frist-api` apply 结果为 `migrated_users=19`、`tokens=1`、`frist_topups=4`、`redemptions=2`、`logs=162`；New-API 迁移回滚目录 `/opt/frist-api/backups/newapi-migration-20260703T005433Z`。
-- Oracle 生产健康：`ssh oracle-arm1 systemctl is-active frist-api.service openclaw-newapi.service apache2 frist-api-r2-backup.timer` → 4 个 `active`；`systemctl --failed` → `0 loaded units listed`；Oracle 本机 `127.0.0.1:3180/api/frist/dashboard` → HTTP 200，`127.0.0.1:13000/api/status` → HTTP 200。
-- 公网入口：`curl https://frist-api.245334.xyz/api/frist/dashboard` 连续 3 次 → `200/200/200`，耗时约 `0.65s`；未授权 `curl https://frist-api.245334.xyz/v1/models` 连续 3 次 → `401/401/401`。最新外网压测 Dashboard `100/100` 为 HTTP 200（p50 `0.648s` / p95 `0.792s`），未授权 models `50/50` 为 HTTP 401（p50 `0.670s` / p95 `0.758s`）。
-- R2 备份：Oracle `frist-api-r2-backup.timer` 为 active，最近手动备份日志包含 `backup_ok ... http=200`；旧腾讯云 `frist-api-r2-backup.timer` 已 disabled/inactive，避免双源备份漂移。
-- 腾讯冷回滚：`root@101.43.41.96 docker ps -a` 显示旧 `frist-api-server` 与 `openclaw-newapi` 已停止，`/opt/frist-api` 与备份目录保留；旧 `http://frist-api.101-43-41-96.nip.io` 当前不作为生产入口。
-- DNS/HTTPS：`frist-api.245334.xyz` 通过 Cloudflare proxied A 对外返回 Cloudflare Anycast IP，源站记录已在 VPS-Config 登记为 Oracle `150.136.73.15`；公网 HTTPS Dashboard 冒烟 HTTP 200。
-- SMTP：Oracle `/etc/frist-api/frist-api.env` 与兼容 `/opt/frist-api/.env` 已设置 Gmail SMTP，Frist-API 重启后 active；生产测试邮件返回 `smtp_test=sent`。
+- New-API 数据迁移：`/opt/sub2api` apply 结果为 `migrated_users=19`、`tokens=1`、`frist_topups=4`、`redemptions=2`、`logs=162`；New-API 迁移回滚目录 `/opt/sub2api/backups/newapi-migration-20260703T005433Z`。
+- Oracle 生产健康：`ssh oracle-arm1 systemctl is-active sub2api.service openclaw-newapi.service apache2 sub2api-backup.timer` → 4 个 `active`；`systemctl --failed` → `0 loaded units listed`；Oracle 本机 `127.0.0.1:3180/api/frist/dashboard` → HTTP 200，`127.0.0.1:13000/api/status` → HTTP 200。
+- 公网入口：`curl https://jiyu.245334.xyz/api/frist/dashboard` 连续 3 次 → `200/200/200`，耗时约 `0.65s`；未授权 `curl https://jiyu.245334.xyz/v1/models` 连续 3 次 → `401/401/401`。最新外网压测 Dashboard `100/100` 为 HTTP 200（p50 `0.648s` / p95 `0.792s`），未授权 models `50/50` 为 HTTP 401（p50 `0.670s` / p95 `0.758s`）。
+- R2 备份：Oracle `sub2api-backup.timer` 为 active，最近手动备份日志包含 `backup_ok ... http=200`；旧腾讯云 `sub2api-backup.timer` 已 disabled/inactive，避免双源备份漂移。
+- 腾讯冷回滚：`root@101.43.41.96 docker ps -a` 显示旧 `jiyu-ai-server` 与 `openclaw-newapi` 已停止，`/opt/sub2api` 与备份目录保留；旧 `http://jiyu.245334.xyz` 当前不作为生产入口。
+- DNS/HTTPS：`jiyu.245334.xyz` 通过 Cloudflare proxied A 对外返回 Cloudflare Anycast IP，源站记录已在 VPS-Config 登记为 Oracle `150.136.73.15`；公网 HTTPS Dashboard 冒烟 HTTP 200。
+- SMTP：Oracle `/etc/sub2api/jiyu-ai.env` 与兼容 `/opt/sub2api/.env` 已设置 Gmail SMTP，JIYU AI 重启后 active；生产测试邮件返回 `smtp_test=sent`。
 - 依赖安全：`.venv312/bin/python -m pip_audit -r packages/clawbot/requirements.txt -r packages/clawbot/requirements-dev.txt --vulnerability-service pypi --progress-spinner off --cache-dir /tmp/openclaw-pip-audit-cache --timeout 10` → `No known vulnerabilities found`；`.venv312/bin/python -m pip check` → `No broken requirements found`；可提交文件 gitleaks 与 `gitleaks git . --redact --log-level error` 均返回 0。
 
-## [2026-07-02] OpenClaw Bot / Frist-API 全面收口
+## [2026-07-02] OpenClaw Bot / JIYU AI 全面收口
 > 领域: `backend` | `frontend` | `ai-pool` | `infra` | `docs` | `social` | `xianyu`
-> 影响模块: `Frist-API`, `AI Pool`, `New-API Bridge`, `ClawBot`, `WeChat Bridge`, `Social Guardrails`, `GitHub Actions`, `Docs`
+> 影响模块: `JIYU AI`, `AI Pool`, `New-API Bridge`, `ClawBot`, `WeChat Bridge`, `Social Guardrails`, `GitHub Actions`, `Docs`
 > 关联问题: HI-812, HI-817, HI-818, HI-856, HI-857, HI-887, HI-890, HI-896, TD-001, TD-002, TD-003, TD-004, TD-005, TD-006, TD-007, TD-008, TD-014, TD-015, TD-016, TD-017
 
 ### 变更内容
 - AI_POOL 收口：余额站/86GameStore 类渠道新增日消费限额、慢线阈值、成本敏感标记、当日消费超剩余额且慢线自动熔断、真实调用 503/401 自动降级、清理会话粘滞和一次性告警，避免面板继续展示失效渠道。
-- Frist-API 模型目录收口：客户可见模型只来自健康上游 `/v1/models` 或真实探测，硬编码目录只用于后台审计排序；New-API wildcard-only token 不再膨胀成客户可见模型。
-- Frist-API 生产边界按最新运营决策改为“固定 HTTPS + New-API + 管理员 2FA + 兑换码收款闭环 + 备份/SLA”，微信/支付宝/Stripe 自动支付保留为未来备用，不再作为当前上线硬门槛。
+- JIYU AI 模型目录收口：客户可见模型只来自健康上游 `/v1/models` 或真实探测，硬编码目录只用于后台审计排序；New-API wildcard-only token 不再膨胀成客户可见模型。
+- JIYU AI 生产边界按最新运营决策改为“固定 HTTPS + New-API + 管理员 2FA + 兑换码收款闭环 + 备份/SLA”，微信/支付宝/Stripe 自动支付保留为未来备用，不再作为当前上线硬门槛。
 - New-API 迁移脚本新增 dry-run/package/rollback：生成 runtime 备份、幂等迁移计划和回滚脚本；`--apply` 仍阻塞在人工确认执行窗口，不直接写生产库。
 - ClawBot 后端收口：`/cli` 正式注册；微信编号命令可接内部只读 API 的全部映射到真实 GET 路由，交易/发文/发货/导出等高风险入口明确转人工确认；iLink token 失效时给出重新扫码提示和一次性告警。
-- Frist-API 架构收口：已把邮件发送、SMTP DNS 轮询、注册/重置/余额预警邮件模板和邮箱归一化抽到 `server/email.js`，`server.js` 从 7881 行降到 7247 行；核心网关/账号路由仍保留在主入口，避免本轮为追求拆分引入生产行为风险。
+- JIYU AI 架构收口：已把邮件发送、SMTP DNS 轮询、注册/重置/余额预警邮件模板和邮箱归一化抽到 `server/email.js`，`server.js` 从 7881 行降到 7247 行；核心网关/账号路由仍保留在主入口，避免本轮为追求拆分引入生产行为风险。
 - 依赖和安全门禁收口：升级 Python 依赖安全下限，默认移出高风险/冲突可选依赖并保持 graceful degradation；CI 新增 Gitleaks、npm audit high、pip-audit 门禁，并升级 `actions/cache@v6`、`actions/setup-python@v6`、`astral-sh/setup-uv@v8.2.0`。
 - 社媒边界保持克制：只做工程质量和文档收口，继续保持待审草稿、只读采集、人工最终确认；没有恢复自动发布、评论、关注、私信、点赞或推广。
-- 运维文档同步：域名/Cloudflare/R2 改为复用 `/Users/blackdj/Documents/VPS-Config` 既有资产；收款主路径改为闲鱼等第三方平台售卖兑换码 + Frist-API 核销；AGPL 源码入口已在 Frist-API 页脚暴露现有 GitHub 仓库链接。
+- 运维文档同步：域名/Cloudflare/R2 改为复用 `/Users/blackdj/Documents/VPS-Config` 既有资产；收款主路径改为闲鱼等第三方平台售卖兑换码 + JIYU AI 核销；AGPL 源码入口已在 JIYU AI 页脚暴露现有 GitHub 仓库链接。
 
 ### 文件变更
 - `.github/workflows/ci.yml` — 增加 secret/audit 安全门禁并升级 GitHub Actions 运行时。
-- `apps/frist-api/server/server.js` / `apps/frist-api/server/email.js` / `apps/frist-api/server/shared.js` / `apps/frist-api/server/catalog.js` / `apps/frist-api/server/newApiBridge.js` — AI_POOL 熔断、模型目录、New-API 桥接、邮件模块拆分和生产边界收口。
-- `apps/frist-api/src/core.js` / `apps/frist-api/src/app.js` / `apps/frist-api/index.html` / `apps/frist-api/src/styles.css` — 客户可见模型、AGPL 源码入口和前端状态文案同步。
-- `scripts/frist_api_newapi_migration_dry_run.mjs` / `apps/frist-api/tests/migration.test.mjs` — New-API 迁移演练、备份和回滚包。
+- `JIYU AI Sub2API WebUI/server/server.js` / `JIYU AI Sub2API WebUI/server/email.js` / `JIYU AI Sub2API WebUI/server/shared.js` / `JIYU AI Sub2API WebUI/server/catalog.js` / `JIYU AI Sub2API WebUI/server/newApiBridge.js` — AI_POOL 熔断、模型目录、New-API 桥接、邮件模块拆分和生产边界收口。
+- `JIYU AI Sub2API WebUI/src/core.js` / `JIYU AI Sub2API WebUI/src/app.js` / `JIYU AI Sub2API WebUI/index.html` / `JIYU AI Sub2API WebUI/src/styles.css` — 客户可见模型、AGPL 源码入口和前端状态文案同步。
+- `scripts/jiyu_ai_newapi_migration_dry_run.mjs` / `JIYU AI Sub2API WebUI/tests/migration.test.mjs` — New-API 迁移演练、备份和回滚包。
 - `packages/clawbot/src/bot/multi_bot.py` / `packages/clawbot/src/bot/cmd_cli_mixin.py` — `/cli` 正式注册。
 - `packages/clawbot/src/api/routers/wechat.py` / `packages/clawbot/src/wechat_bridge.py` — 微信编号命令真实 API 映射、危险动作转人工、iLink 失效提示和告警。
 - `packages/clawbot/requirements.txt` / `packages/clawbot/pytest.ini` — 依赖安全下限和第三方 warning 隔离。
 - `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 注册表、运维和健康状态同步。
 
 ### 验证
-- Frist-API：`cd apps/frist-api && node --test tests/core.test.mjs tests/server.test.mjs tests/migration.test.mjs tests/new-api-adapter.test.mjs tests/business-flow.test.mjs` → `161 passed / 0 failed / 0 skipped`；拆分邮件模块后 `tests/server.test.mjs` 单跑 → `92 passed / 0 failed`。
+- JIYU AI：`cd JIYU AI Sub2API WebUI && node --test tests/core.test.mjs tests/server.test.mjs tests/migration.test.mjs tests/new-api-adapter.test.mjs tests/business-flow.test.mjs` → `161 passed / 0 failed / 0 skipped`；拆分邮件模块后 `tests/server.test.mjs` 单跑 → `92 passed / 0 failed`。
 - 后端：`cd packages/clawbot && .venv312/bin/python -m pytest tests/ -o addopts='' --tb=short` → `1606 passed / 2 skipped / 0 failed`。
-- 质量门禁：`make lint` → `All checks passed!`；桌面端 `npx tsc --noEmit && npm run lint && npm run build` → exit 0；`npm audit --audit-level=high --omit=dev`（桌面端、Frist-API）均 `found 0 vulnerabilities`；`pip check` → `No broken requirements found`；`pip-audit` → `No known vulnerabilities found`；tracked-tree `gitleaks detect --redact --no-git` → `no leaks found`；社媒真实浏览器 smoke → X/小红书/闲鱼 `buttonClicks=0`、`auto_publish_enabled=false`、`external_actions_locked=true`；`git diff --check` → exit 0。
+- 质量门禁：`make lint` → `All checks passed!`；桌面端 `npx tsc --noEmit && npm run lint && npm run build` → exit 0；`npm audit --audit-level=high --omit=dev`（桌面端、JIYU AI）均 `found 0 vulnerabilities`；`pip check` → `No broken requirements found`；`pip-audit` → `No known vulnerabilities found`；tracked-tree `gitleaks detect --redact --no-git` → `no leaks found`；社媒真实浏览器 smoke → X/小红书/闲鱼 `buttonClicks=0`、`auto_publish_enabled=false`、`external_actions_locked=true`；`git diff --check` → exit 0。
 
 
 ## [2026-07-02] 社媒运营插件排程与增长复盘收口
@@ -3510,9 +3525,9 @@
 - `gh repo view djblack1209-coder/OpenClaw-Bot --json nameWithOwner,description,isPrivate,repositoryTopics,hasIssuesEnabled,hasDiscussionsEnabled` → 仓库公开、Issues/Discussions 已开启，topics 已包含 `ai-agents`、`telegram-bot`、`fastapi`、`tauri`、`react`、`llm-routing`、`open-source`、`automation`。
 - `gh api repos/djblack1209-coder/OpenClaw-Bot --jq '{security_and_analysis:.security_and_analysis}'` → `secret_scanning=enabled`、`secret_scanning_push_protection=enabled`。
 
-## [2026-05-09] Frist-API 319px 移动端批注修复
+## [2026-05-09] JIYU AI 319px 移动端批注修复
 > 领域: `frontend` | `deploy` | `docs`
-> 影响模块: `Frist-API`, `User Console`, `CC Switch`, `Tencent Cloud`, `docs`
+> 影响模块: `JIYU AI`, `User Console`, `CC Switch`, `Tencent Cloud`, `docs`
 > 关联问题: HI-901
 
 ### 变更内容
@@ -3522,38 +3537,38 @@
 - 收口语言切换行为：按钮继续切换 `html.lang` 和偏好状态，但明确提示“仅切换语言偏好”，不再让用户误以为已完成全站中英文翻译。
 - 修复 CC Switch 319px 比例和裁切：目标按钮改为两列，导入说明、用量查询、模型导出和代码片段统一 `min-width: 0` / `overflow-wrap: anywhere`，避免教程和模型列表横向撑破屏幕。
 - 已用 319×718 浏览器回测 Dashboard 与 CC Switch：本地 `scrollWidth=319`，顶栏账户按钮宽度 173px，CC Switch 主内容宽 281px、用量说明宽 235px，无横向溢出。
-- 已同步部署到腾讯云 `/opt/frist-api`，部署前备份为 `/opt/frist-api/backups/frist-api-mobile-319-20260509-045253-before-f2d6eda.tgz`；远端 `node --check` 和批注聚焦测试 57/57 通过，`frist-api-server` 重启后 healthy，公网首页 200、Dashboard 200、未授权 `/v1/models` 401，公网 319×718 Dashboard/CC Switch 复验 `scrollWidth=319`。
+- 已同步部署到腾讯云 `/opt/sub2api`，部署前备份为 `/opt/sub2api/backups/jiyu-ai-mobile-319-20260509-045253-before-f2d6eda.tgz`；远端 `node --check` 和批注聚焦测试 57/57 通过，`jiyu-ai-server` 重启后 healthy，公网首页 200、Dashboard 200、未授权 `/v1/models` 401，公网 319×718 Dashboard/CC Switch 复验 `scrollWidth=319`。
 
 ### 文件变更
-- `apps/frist-api/index.html` — 增加语言状态辅助文本、Dashboard 卡片说明文案，并更新资源版本。
-- `apps/frist-api/src/app.js` — 丰富消耗、异常、通道空状态，语言切换改为诚实提示偏好状态。
-- `apps/frist-api/src/styles.css` — 增加 319px 移动端护栏，修复顶栏、折叠菜单箭头、空饼图和 CC Switch 横向裁切。
-- `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/business-flow.test.mjs` — 增加 319px 顶栏、箭头、空态、语言状态和 CC Switch 宽度回归断言。
+- `JIYU AI Sub2API WebUI/index.html` — 增加语言状态辅助文本、Dashboard 卡片说明文案，并更新资源版本。
+- `JIYU AI Sub2API WebUI/src/app.js` — 丰富消耗、异常、通道空状态，语言切换改为诚实提示偏好状态。
+- `JIYU AI Sub2API WebUI/src/styles.css` — 增加 319px 移动端护栏，修复顶栏、折叠菜单箭头、空饼图和 CC Switch 横向裁切。
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` / `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 增加 319px 顶栏、箭头、空态、语言状态和 CC Switch 宽度回归断言。
 - `docs/002-changelog.md` / `docs/006-registries.md` / `docs/009-health.md` — 同步本轮移动端批注修复和登记 HI-901。
 
-## [2026-05-09] Frist-API 工作台批注修复
+## [2026-05-09] JIYU AI 工作台批注修复
 > 领域: `frontend` | `deploy` | `docs`
-> 影响模块: `Frist-API`, `User Console`, `Tencent Cloud`, `docs`
+> 影响模块: `JIYU AI`, `User Console`, `Tencent Cloud`, `docs`
 > 关联问题: HI-900
 
 ### 变更内容
-- 恢复用户端原抽象品牌 Logo：顶部不再显示单字母 `F` 占位，改回红白斜切品牌标，防止 Tabcode 皮肤覆盖 Frist-API 识别。
+- 恢复用户端原抽象品牌 Logo：顶部不再显示单字母 `F` 占位，改回红白斜切品牌标，防止 Tabcode 皮肤覆盖 JIYU AI 识别。
 - 修复 Token 趋势图交互：折线图增加透明热区、键盘聚焦点位和 `data-trend-tooltip` 数据浮层，鼠标移入图表即可看到日期与 Token 数值。
 - 收口工作台布局：左侧导航固定为同一个工作台栏，`API Key`、趋势、记录、模型、资料和 CC Switch 等页面都在右侧 `workspace-content` 内切换，不再像单独页面脱离导航。
 - 降低当前导航项视觉噪音：首页选中态从蓝色大背景改为细线和文字提示，保留 `aria-current="page"` 给辅助技术识别。
 - 补充回归护栏：测试锁定 Logo 不可退回 `F` 字母、工作台内容必须在右侧区域切换、趋势图必须具备 hover 数据钩子。
-- 已同步部署到腾讯云 `/opt/frist-api`，部署前备份为 `/opt/frist-api/backups/frist-api-workbench-comments-20260509-035316-before-385bfce.tgz`；远端容器 `frist-api-server` 重启后 healthy，公网首页 200、Dashboard 200、未授权 `/v1/models` 401。
+- 已同步部署到腾讯云 `/opt/sub2api`，部署前备份为 `/opt/sub2api/backups/jiyu-ai-workbench-comments-20260509-035316-before-385bfce.tgz`；远端容器 `jiyu-ai-server` 重启后 healthy，公网首页 200、Dashboard 200、未授权 `/v1/models` 401。
 
 ### 文件变更
-- `apps/frist-api/index.html` — 恢复品牌标结构，新增 `workspace-content` 右侧内容容器，并更新资源版本。
-- `apps/frist-api/src/app.js` — 新增趋势图 hover/键盘聚焦数据点和浮层渲染。
-- `apps/frist-api/src/styles.css` — 固定工作台左侧导航、恢复红白斜切 Logo、移除当前项大块背景、补趋势图热区与浮层样式。
-- `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/business-flow.test.mjs` — 增加批注回归断言。
+- `JIYU AI Sub2API WebUI/index.html` — 恢复品牌标结构，新增 `workspace-content` 右侧内容容器，并更新资源版本。
+- `JIYU AI Sub2API WebUI/src/app.js` — 新增趋势图 hover/键盘聚焦数据点和浮层渲染。
+- `JIYU AI Sub2API WebUI/src/styles.css` — 固定工作台左侧导航、恢复红白斜切 Logo、移除当前项大块背景、补趋势图热区与浮层样式。
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` / `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 增加批注回归断言。
 - `docs/002-changelog.md` / `docs/006-registries.md` / `docs/009-health.md` — 同步本轮批注修复和登记 HI-900。
 
-## [2026-05-09] Frist-API 移动端管理员入口补齐与上游 Key 自动巡检
+## [2026-05-09] JIYU AI 移动端管理员入口补齐与上游 Key 自动巡检
 > 领域: `frontend` | `backend` | `ai-pool` | `infra` | `docs`
-> 影响模块: `Frist-API`, `User Console`, `Gateway Monitor`, `Alerting`, `docs`
+> 影响模块: `JIYU AI`, `User Console`, `Gateway Monitor`, `Alerting`, `docs`
 > 关联问题: HI-896, HI-899, TD-013
 
 ### 变更内容
@@ -3564,15 +3579,15 @@
 - 巡检过程会保留可用通道并更新路由字段与延迟数据，用户侧继续按健康库存自动切换，不暴露上游密钥和号商细节。
 
 ### 文件变更
-- `apps/frist-api/index.html` / `apps/frist-api/src/app.js` / `apps/frist-api/src/styles.css` — 新增移动端管理员快捷入口与交互样式。
-- `apps/frist-api/server/server.js` — 新增后台 60 秒巡检、Key 异常一次性告警、运行时告警去重存储和 Telegram/Webhook 通知。
-- `apps/frist-api/tests/server.test.mjs` / `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/business-flow.test.mjs` — 新增巡检降级回归与移动端快捷入口断言。
-- `apps/frist-api/deploy/production.env.example` / `docker-compose.frist-api.yml` — 新增通道巡检与 Key 告警环境变量透传。
+- `JIYU AI Sub2API WebUI/index.html` / `JIYU AI Sub2API WebUI/src/app.js` / `JIYU AI Sub2API WebUI/src/styles.css` — 新增移动端管理员快捷入口与交互样式。
+- `JIYU AI Sub2API WebUI/server/server.js` — 新增后台 60 秒巡检、Key 异常一次性告警、运行时告警去重存储和 Telegram/Webhook 通知。
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` / `JIYU AI Sub2API WebUI/tests/core.test.mjs` / `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 新增巡检降级回归与移动端快捷入口断言。
+- `JIYU AI Sub2API WebUI/deploy/production.env.example` / `docker-compose.jiyu-ai.yml` — 新增通道巡检与 Key 告警环境变量透传。
 - `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步本轮功能、运维配置和风险状态。
 
-## [2026-05-09] Frist-API 移动端导航和卡商通道展示修复
+## [2026-05-09] JIYU AI 移动端导航和卡商通道展示修复
 > 领域: `frontend` | `backend` | `ai-pool` | `docs`
-> 影响模块: `Frist-API`, `User Console`, `Channel Monitor`, `docs`
+> 影响模块: `JIYU AI`, `User Console`, `Channel Monitor`, `docs`
 > 关联问题: HI-898
 
 ### 变更内容
@@ -3583,23 +3598,23 @@
 - 固定监控刷新口径为 60 秒，并在通道聚合里保留 healthy/down/slow 统计，支持同一卡商下快线、慢线、断线的自动降级状态。
 
 ### 文件变更
-- `apps/frist-api/index.html` / `apps/frist-api/src/styles.css` / `apps/frist-api/src/app.js` — 移动端 Logo、状态灯、折叠菜单和通道卡 UI 修复。
-- `apps/frist-api/server/server.js` / `apps/frist-api/server/catalog.js` / `apps/frist-api/src/serverClient.js` / `apps/frist-api/src/newApiClient.js` / `apps/frist-api/src/core.js` — 卡商号池聚合、60 秒刷新、无真实延迟空态和模型目录可用性保护。
-- `apps/frist-api/src/admin.js` / `apps/frist-api/src/businessFlow.js` — 未提供真实延迟时不再写入默认假延迟。
-- `apps/frist-api/tests/*.test.mjs` — 增加移动端折叠导航、卡商通道、无假延迟、模型目录和自动降级回归。
+- `JIYU AI Sub2API WebUI/index.html` / `JIYU AI Sub2API WebUI/src/styles.css` / `JIYU AI Sub2API WebUI/src/app.js` — 移动端 Logo、状态灯、折叠菜单和通道卡 UI 修复。
+- `JIYU AI Sub2API WebUI/server/server.js` / `JIYU AI Sub2API WebUI/server/catalog.js` / `JIYU AI Sub2API WebUI/src/serverClient.js` / `JIYU AI Sub2API WebUI/src/newApiClient.js` / `JIYU AI Sub2API WebUI/src/core.js` — 卡商号池聚合、60 秒刷新、无真实延迟空态和模型目录可用性保护。
+- `JIYU AI Sub2API WebUI/src/admin.js` / `JIYU AI Sub2API WebUI/src/businessFlow.js` — 未提供真实延迟时不再写入默认假延迟。
+- `JIYU AI Sub2API WebUI/tests/*.test.mjs` — 增加移动端折叠导航、卡商通道、无假延迟、模型目录和自动降级回归。
 - `docs/002-changelog.md` / `docs/006-registries.md` / `docs/009-health.md` — 同步本轮批注修复、验证证据和剩余生产风险。
 
 ## [2026-05-09] 本地冗余清理与文档状态收口
 > 领域: `infra` | `docs`
-> 影响模块: `Workspace`, `Frist-API`, `ClawBot`, `docs`
+> 影响模块: `Workspace`, `JIYU AI`, `ClawBot`, `docs`
 > 关联问题: HI-897
 
 ### 变更内容
-- 清理本地可重建冗余：移除源码树中的 `.DS_Store`、`.playwright-mcp`、`.pytest_cache`、`__pycache__`、`.ruff_cache`、Playwright/Expect 调试产物、Frist-API 历史审计截图、根目录临时截图和 ClawBot 本地旧日志。
-- 明确保留边界：未删除 `.env`、`.openclaw/` 运行身份与会话、Frist-API runtime 数据、ClawBot `data/`、桌面端 `node_modules`、Python `.venv312`、腾讯云生产备份和共享服务器其他项目，避免清理动作造成运行状态丢失。
+- 清理本地可重建冗余：移除源码树中的 `.DS_Store`、`.playwright-mcp`、`.pytest_cache`、`__pycache__`、`.ruff_cache`、Playwright/Expect 调试产物、JIYU AI 历史审计截图、根目录临时截图和 ClawBot 本地旧日志。
+- 明确保留边界：未删除 `.env`、`.openclaw/` 运行身份与会话、JIYU AI runtime 数据、ClawBot `data/`、桌面端 `node_modules`、Python `.venv312`、腾讯云生产备份和共享服务器其他项目，避免清理动作造成运行状态丢失。
 - 复核 `.gitignore` 已覆盖 `.DS_Store`、`__pycache__/`、`.pytest_cache`、`.playwright-mcp/`、`.playwright-cli/`、根目录截图、日志和密钥扫描报告；本轮不需要新增忽略规则。
 - 同步文档状态：健康页新增 `HI-897`，登记本轮冗余清理范围、保留原因和验证口径；项目全景图更新时间，避免入口文档继续停留在 2026-04 的旧审计状态。
-- 清理后复验：`git diff --check` 通过；`make new-api-check` 显示 GitHub 最新、本地源码和 Compose 镜像均为 `v1.0.0-rc.4`；公网首页 200、Dashboard 200、未授权 `/v1/models` 401、裸域名最终跳转到唯一 Frist-API 入口；浏览器只读复核页面标题 `Frist-API`，控制台 0 error/0 warning；复核产生的 `.playwright-mcp` 临时快照已二次清理。
+- 清理后复验：`git diff --check` 通过；`make new-api-check` 显示 GitHub 最新、本地源码和 Compose 镜像均为 `v1.0.0-rc.4`；公网首页 200、Dashboard 200、未授权 `/v1/models` 401、裸域名最终跳转到唯一 JIYU AI 入口；浏览器只读复核页面标题 `JIYU AI`，控制台 0 error/0 warning；复核产生的 `.playwright-mcp` 临时快照已二次清理。
 
 ### 文件变更
 - `docs/002-changelog.md` — 新增本轮冗余清理和文档状态收口记录。
@@ -3608,18 +3623,18 @@
 
 ## [2026-05-09] New-API 生产启动与 CC Switch 连通复核
 > 领域: `infra` | `ai-pool` | `deploy` | `docs`
-> 影响模块: `New-API`, `Frist-API`, `CC Switch`, `Tencent Cloud`, `docs`
+> 影响模块: `New-API`, `JIYU AI`, `CC Switch`, `Tencent Cloud`, `docs`
 > 关联问题: HI-895, HI-896
 
 ### 变更内容
-- 继续处理腾讯云 New-API 升级遗留项：本轮重新备份 `/opt/frist-api/data/newapi`、`.env` 和 compose 后，成功拉取 `calciumion/new-api:v1.0.0-rc.4`，解除上一轮 Docker Hub 超时阻塞。
+- 继续处理腾讯云 New-API 升级遗留项：本轮重新备份 `/opt/sub2api/data/newapi`、`.env` 和 compose 后，成功拉取 `calciumion/new-api:v1.0.0-rc.4`，解除上一轮 Docker Hub 超时阻塞。
 - 定位启动失败根因并修复部署方式：共享服务器已有 `/opt/ccgame/server/src/app.js` 长期监听 `127.0.0.1:3000`，因此将 `docker-compose.newapi.yml` 的宿主机端口改为 `NEWAPI_HOST_PORT` 可配置；腾讯云设置 `NEWAPI_HOST_PORT=13000`，容器内部仍为 `3000`，不停止无关项目。
 - 定位第二个启动失败根因并修复远端数据权限：`data/newapi` 来自旧 UID 501，New-API 在安全加固 `cap_drop: ALL` 下无法创建 `/data/logs`；已把远端 `data/newapi` 调整为 `root:root`、目录 `750`、数据库文件 `640`，保留安全加固而非放宽容器权限。
 - 复验 New-API 运行态：`openclaw-newapi` 运行 `v1.0.0-rc.4`，`127.0.0.1:13000->3000/tcp`，健康状态 `healthy`；`/api/status` 返回 `success=true`、`version=v1.0.0-rc.4`、`setup=true`。
-- 使用浏览器复核公网 `#switch`：页面标题 `Frist-API`，控制台 0 error/0 warning，Dashboard 请求 200；未登录状态下页面不生成带 Key 的 provider 导入链接，保留 21 个模型展示和独立 MCP deep link，符合“登录并创建 Key 后生成用量脚本”的边界。
-- 用运行数据生成脱敏 CC Switch provider 链接样本，确认 `resource=provider`、`app=codex`、`endpoint=http://frist-api.101-43-41-96.nip.io/v1`、默认模型 `gpt-5.5`、`usageScript` 指向 `/api/frist/key-usage` 且包含 Authorization；未出现旧的大块 `config/settings_config/availableModels` 参数。
+- 使用浏览器复核公网 `#switch`：页面标题 `JIYU AI`，控制台 0 error/0 warning，Dashboard 请求 200；未登录状态下页面不生成带 Key 的 provider 导入链接，保留 21 个模型展示和独立 MCP deep link，符合“登录并创建 Key 后生成用量脚本”的边界。
+- 用运行数据生成脱敏 CC Switch provider 链接样本，确认 `resource=provider`、`app=codex`、`endpoint=http://jiyu.245334.xyz/v1`、默认模型 `gpt-5.5`、`usageScript` 指向 `/api/frist/key-usage` 且包含 Authorization；未出现旧的大块 `config/settings_config/availableModels` 参数。
 - 受控临时 Key 连通性复核：`/v1/models` 返回 200 且 21 个模型，用量接口返回 200 且 `ok=true/valid=true`；真实 `chat/completions` 返回 503，追踪到唯一 healthy 上游在测试请求后返回 401 并触发 `credential_failed upstream_http_401`，说明当前上游库存 Key 无法形成完整聊天闭环。已从测试前备份恢复 runtime，临时测试用户/Key 清零，唯一 healthy 通道状态恢复。
-- 公网冒烟最终结果：首页 200、Dashboard 200、未授权 `/v1/models` 401、裸域名 301；本地 Frist-API 3180 为 200，New-API 13000 为 200。
+- 公网冒烟最终结果：首页 200、Dashboard 200、未授权 `/v1/models` 401、裸域名 301；本地 JIYU AI 3180 为 200，New-API 13000 为 200。
 
 ### 文件变更
 - `docker-compose.newapi.yml` — New-API 宿主机端口改为 `NEWAPI_HOST_PORT` 可配置，默认仍为 `3000`。
@@ -3635,7 +3650,7 @@
 - 本轮继续审计时发现直接运行 `pytest packages/clawbot/tests/ ...` 会命中本机 Python 3.9 的用户级 `pytest`，而项目代码和 CI 要求 Python 3.12；这会产生 `str | None` 类型语法错误，属于审计入口误用，不是业务代码回归。
 - 已将 AGENTS/SOP 和快速导航里的后端测试命令收口为 `make test` 或 `.venv312/bin/python -m pytest`，确保本地审计与 GitHub Actions 的 Python 3.12 基线一致。
 - 复验实际证据：`make test` 使用 `packages/clawbot/.venv312/bin/python` 执行并通过；GitHub `OpenClaw CI` run `25590993947` 两个 job 均成功；`New-API Scheduled Sync` run `25589650518` 成功；`make new-api-check` 显示本地源码和 Compose 镜像均为 `v1.0.0-rc.4`。
-- 远端复核发现腾讯云 `/opt/frist-api/docker-compose.newapi.yml` 仍停留在 `calciumion/new-api:v1.0.0-rc.2`，已先备份 `data/newapi` 和旧 compose 到 `backups/newapi-runtime-20260508223247-before-rc4.tgz`，再同步 compose 到 `v1.0.0-rc.4` 并通过 `docker compose config` 校验；实际启动受 Docker Hub 访问超时阻塞，New-API 容器未启动，现有 `frist-api-server` 仍 healthy 且公网首页/看板 200。
+- 远端复核发现腾讯云 `/opt/sub2api/docker-compose.newapi.yml` 仍停留在 `calciumion/new-api:v1.0.0-rc.2`，已先备份 `data/newapi` 和旧 compose 到 `backups/newapi-runtime-20260508223247-before-rc4.tgz`，再同步 compose 到 `v1.0.0-rc.4` 并通过 `docker compose config` 校验；实际启动受 Docker Hub 访问超时阻塞，New-API 容器未启动，现有 `jiyu-ai-server` 仍 healthy 且公网首页/看板 200。
 
 ### 文件变更
 - `AGENTS.md` / `docs/001-project-map.md` / `docs/005-quickstart.md` — 统一后端测试入口，避免系统 Python 误用旧测试工具。
@@ -3643,19 +3658,19 @@
 
 ## [2026-05-08] 浏览器审计收尾与 CI 运行时升级
 > 领域: `frontend` | `infra` | `ai-pool` | `docs`
-> 影响模块: `Frist-API`, `OpenClaw CI`, `New-API`, `docs`
+> 影响模块: `JIYU AI`, `OpenClaw CI`, `New-API`, `docs`
 > 关联问题: HI-886, HI-891, HI-892, TD-015
 
 ### 变更内容
-- 使用内置浏览器审计公网 `http://frist-api.101-43-41-96.nip.io/`：首页 200、标题为 `Frist-API`、控制台无 error/warn；窄屏用户端可正常进入首页和 CC Switch，CC Switch 会切成带“首页”返回按钮的详情页。
+- 使用内置浏览器审计公网 `http://jiyu.245334.xyz/`：首页 200、标题为 `JIYU AI`、控制台无 error/warn；窄屏用户端可正常进入首页和 CC Switch，CC Switch 会切成带“首页”返回按钮的详情页。
 - 发现无障碍噪音：隐藏视图中的多个 `.back-home::before` 文本箭头会在浏览器快照里聚合为 `← ← ←`；已改为纯 CSS 边框箭头，保留视觉箭头但不再暴露额外文本。
 - 复审发现账户弹窗密码输入框缺少真实 `form` 语义，浏览器会给出密码管理器结构提示；已按登录/注册、改密码、重置密码、身份码激活拆成独立表单，补齐 `autocomplete`，并让回车提交走原处理逻辑。
 - 清理 GitHub Actions Node 20 运行时预警：`OpenClaw CI` 升级 `actions/checkout@v6`、`actions/setup-node@v6`，前端 typecheck 改用 Node.js 24。
 - 合并 New-API 自动同步 PR #1：submodule 和 Compose 镜像已同步到 `v1.0.0-rc.4`；本地复验 `docker compose -f docker-compose.newapi.yml config` 通过。正式生产部署仍需先备份 `data/newapi` 并保留回滚窗口。
 
 ### 文件变更
-- `apps/frist-api/index.html` / `apps/frist-api/src/app.js` / `apps/frist-api/src/styles.css` — 返回首页按钮箭头改为非文本 CSS 图形；账户弹窗改为按动作拆分的真实表单并保留原视觉布局，消除隐藏视图可访问性噪音和密码管理器结构提示。
-- `apps/frist-api/tests/business-flow.test.mjs` — 增加账户表单语义、自动填充和回车提交回归断言。
+- `JIYU AI Sub2API WebUI/index.html` / `JIYU AI Sub2API WebUI/src/app.js` / `JIYU AI Sub2API WebUI/src/styles.css` — 返回首页按钮箭头改为非文本 CSS 图形；账户弹窗改为按动作拆分的真实表单并保留原视觉布局，消除隐藏视图可访问性噪音和密码管理器结构提示。
+- `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 增加账户表单语义、自动填充和回车提交回归断言。
 - `.github/workflows/ci.yml` — 升级 checkout/setup-node action 和 Node.js 版本，消除 Node 20 Actions 预警。
 - `docker-compose.newapi.yml` / `packages/new-api-upstream` — 经 PR #1 合并同步 New-API 到 `v1.0.0-rc.4`。
 - `docs/002-changelog.md` / `docs/009-health.md` — 记录浏览器审计、CI 清理和 New-API 合并状态。
@@ -3688,7 +3703,7 @@
 - 桌面端 `NewsFeed` 和 `WorldMonitor` 移除用 `textarea.innerHTML` 解码外部新闻文本的实现，改为共享 `decodeHtmlEntities()`，避免把外部文本交给 HTML 解析器。
 - 闲鱼管理页内嵌前端补 `escapeHtml()`，对 dashboard、系统状态、最近对话、最近订单等接口返回字段写入 `innerHTML` 前统一转义，并增加页面安全回归。
 - 已将闲鱼管理页同一安全修复单文件部署到腾讯云 `/home/clawbot/clawbot/src/xianyu/xianyu_admin.py`；部署前远端备份为 `/home/clawbot/clawbot/backups/xianyu_admin_20260508155652_before_escape.py`，远端 `py_compile` 通过，`clawbot.service` 重启后为 active。
-- 验证证据：后端全量 pytest 退出码 0，当前 pytest nodeids 为 1495；`test_api_routes_regression.py` 12/12 通过；Frist-API `npm test` 153/153 通过且 `npm audit --audit-level=moderate` 0 漏洞；桌面端 `npx tsc --noEmit` 通过；`git diff --check` 和 Frist-API JS 语法检查通过；`gitleaks git --log-opts='HEAD~2..HEAD' --redact` 0 泄漏；公网 Frist-API 首页 200、Dashboard 200、未授权 `/v1/models` 401、裸域名 301。
+- 验证证据：后端全量 pytest 退出码 0，当前 pytest nodeids 为 1495；`test_api_routes_regression.py` 12/12 通过；JIYU AI `npm test` 153/153 通过且 `npm audit --audit-level=moderate` 0 漏洞；桌面端 `npx tsc --noEmit` 通过；`git diff --check` 和 JIYU AI JS 语法检查通过；`gitleaks git --log-opts='HEAD~2..HEAD' --redact` 0 泄漏；公网 JIYU AI 首页 200、Dashboard 200、未授权 `/v1/models` 401、裸域名 301。
 - 保留真实遗留风险：New-API 本地/镜像仍为 `v1.0.0-rc.2`，GitHub live 最新为 `v1.0.0-rc.4`；用户在对话中暴露了服务器 root 密码，必须轮换；86GameStore 余额/消费/延迟风险仍需运营限额和慢线治理。
 
 ### 文件变更
@@ -3700,43 +3715,43 @@
 
 ## [2026-05-08] 全量测试审计和 Store 路由恢复
 > 领域: `backend` | `frontend` | `ai-pool` | `infra` | `docs`
-> 影响模块: `APIServer`, `Store Router`, `Frist-API`, `New-API`, `docs`
+> 影响模块: `APIServer`, `Store Router`, `JIYU AI`, `New-API`, `docs`
 > 关联问题: HI-885, HI-886, HI-887, HI-888
 
 ### 变更内容
-- 先按用户要求提交工作区 checkpoint：`60709ea chore: checkpoint frist api recovery state`，再进行全量测试和审计。
+- 先按用户要求提交工作区 checkpoint：`60709ea chore: checkpoint legacy recovery state`，再进行全量测试和审计。
 - 后端全量测试发现 `src.api.routers.store` 缺失导致 APIServer 初始化失败；恢复 `/api/v1/store/catalog` 和 `/api/v1/store/categories` 最小兼容路由后，`pytest packages/clawbot/tests/ --tb=short -x` 通过 `1491 passed, 2 skipped`。
-- 为 Frist-API 生成 `package-lock.json`，补齐 `npm audit` 可审计基线；`npm test` 通过 `153/153`，`npm audit --audit-level=moderate` 为 0 漏洞，JS 语法检查通过。
-- 桌面端 `npx tsc --noEmit` 通过；公网冒烟确认 Frist-API 首页 200、Dashboard 200、未授权 `/v1/models` 401。
+- 为 JIYU AI 生成 `package-lock.json`，补齐 `npm audit` 可审计基线；`npm test` 通过 `153/153`，`npm audit --audit-level=moderate` 为 0 漏洞，JS 语法检查通过。
+- 桌面端 `npx tsc --noEmit` 通过；公网冒烟确认 JIYU AI 首页 200、Dashboard 200、未授权 `/v1/models` 401。
 - 生产审计登记：New-API 本地 `v1.0.0-rc.2` 落后于上游 `v1.0.0-rc.4`；86GameStore 面板显示余额 `$35.70`、今日实际消费 `$38.1537`、平均响应 `16.11s`，不属于完美生产态。
 - 调整运维文档环境变量示例写法，消除 `gitleaks` 对当前 HEAD 的 `generic-api-key` 误报。
 
 ### 文件变更
 - `packages/clawbot/src/api/routers/store.py` — 恢复统一插件商店 API 路由。
-- `apps/frist-api/package-lock.json` — 固定 Frist-API npm 审计基线。
+- `JIYU AI Sub2API WebUI/package-lock.json` — 固定 JIYU AI npm 审计基线。
 - `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步测试证据、问题清单、注册表和安全扫描记录。
 
-## [2026-05-08] Frist-API 登录恢复和公网配置修复
+## [2026-05-08] JIYU AI 登录恢复和公网配置修复
 > 领域: `backend` | `frontend` | `deploy` | `docs`
-> 影响模块: `Frist-API`, `User Console`, `Admin`, `Tencent Cloud`, `docs`
+> 影响模块: `JIYU AI`, `User Console`, `Admin`, `Tencent Cloud`, `docs`
 > 关联问题: HI-884
 
 ### 变更内容
 - 修复登录失败反馈：前端不再把服务端 401 “邮箱或密码不正确”统一翻译成“后端暂不可用”，找回密码和重置密码也展示真实反馈。
 - 新增管理员账号恢复接口 `POST /api/admin/customers/password`，用于 SMTP 未配置或用户无法收邮件时由管理员重置客户密码；响应和审计不回显明文密码。
-- 新增独立 `FRIST_API_PASSWORD_HASH_SECRET` 和 `FRIST_API_LEGACY_PASSWORD_HASH_SECRETS`，避免公网修复会话密钥时让旧用户密码全部失效；旧哈希登录成功后自动迁移。
+- 新增独立 `SUB2API_PASSWORD_HASH_SECRET` 和 `SUB2API_LEGACY_PASSWORD_HASH_SECRETS`，避免公网修复会话密钥时让旧用户密码全部失效；旧哈希登录成功后自动迁移。
 - 生产排查确认公网 `/api/frist/dashboard`、注册、登录和 Cookie 看板链路可用；腾讯云已替换默认管理令牌、开启 CSRF 并保留旧密码兼容。历史 runtime 已有 `enc:v1` 字段但缺原始加密密钥，暂不启用新的随机数据加密密钥，避免看板 500；后续需做一次性 runtime 明文迁移或找回原密钥后再启用公开模式数据加密。
 
 ### 文件变更
-- `apps/frist-api/src/app.js` — 登录和找回密码反馈改为显示服务端真实错误。
-- `apps/frist-api/server/server.js` / `apps/frist-api/admin.html` / `apps/frist-api/src/admin.js` — 增加管理员密码恢复接口和管理端入口。
-- `docker-compose.frist-api.yml` / `apps/frist-api/deploy/production.env.example` — 透传独立密码哈希密钥和历史兼容密钥。
-- `apps/frist-api/tests/business-flow.test.mjs` / `apps/frist-api/tests/server.test.mjs` — 覆盖错误反馈和管理员恢复账号回归。
+- `JIYU AI Sub2API WebUI/src/app.js` — 登录和找回密码反馈改为显示服务端真实错误。
+- `JIYU AI Sub2API WebUI/server/server.js` / `JIYU AI Sub2API WebUI/admin.html` / `JIYU AI Sub2API WebUI/src/admin.js` — 增加管理员密码恢复接口和管理端入口。
+- `docker-compose.jiyu-ai.yml` / `JIYU AI Sub2API WebUI/deploy/production.env.example` — 透传独立密码哈希密钥和历史兼容密钥。
+- `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` / `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 覆盖错误反馈和管理员恢复账号回归。
 - `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步本轮登录恢复、接口注册、运维配置、生产兼容模式和健康记录。
 
-## [2026-05-08] Frist-API 用户端视觉 QA 批注修复
+## [2026-05-08] JIYU AI 用户端视觉 QA 批注修复
 > 领域: `frontend` | `backend` | `docs`
-> 影响模块: `Frist-API`, `User Console`, `CC Switch`, `Gateway Dashboard`, `docs`
+> 影响模块: `JIYU AI`, `User Console`, `CC Switch`, `Gateway Dashboard`, `docs`
 > 关联问题: HI-883
 
 ### 变更内容
@@ -3748,33 +3763,33 @@
 - 测试台参考 OpenAI Web 端重排为模型选择侧栏、对话区和底部输入框；资料页重做为头像/昵称/邮箱可编辑布局，登录注册弹窗也同步调整。
 
 ### 文件变更
-- `apps/frist-api/index.html` / `apps/frist-api/src/app.js` / `apps/frist-api/src/styles.css` — 用户端导航、顶部、趋势图、CC Switch、测试台、资料页和登录弹窗视觉修复
-- `apps/frist-api/src/core.js` / `apps/frist-api/server/server.js` / `apps/frist-api/src/serverClient.js` — 用户友好模型名、游客安静看板和导入配置展示边界
-- `apps/frist-api/tests/business-flow.test.mjs` / `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/server.test.mjs` — 覆盖隐藏入口、去重目标、复制框、资料编辑、语言切换、游客 `channelChecks` 空态和登录态 SLA
+- `JIYU AI Sub2API WebUI/index.html` / `JIYU AI Sub2API WebUI/src/app.js` / `JIYU AI Sub2API WebUI/src/styles.css` — 用户端导航、顶部、趋势图、CC Switch、测试台、资料页和登录弹窗视觉修复
+- `JIYU AI Sub2API WebUI/src/core.js` / `JIYU AI Sub2API WebUI/server/server.js` / `JIYU AI Sub2API WebUI/src/serverClient.js` — 用户友好模型名、游客安静看板和导入配置展示边界
+- `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` / `JIYU AI Sub2API WebUI/tests/core.test.mjs` / `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 覆盖隐藏入口、去重目标、复制框、资料编辑、语言切换、游客 `channelChecks` 空态和登录态 SLA
 - `docs/002-changelog.md` / `docs/006-registries.md` / `docs/009-health.md` — 同步本轮视觉 QA 和入口注册表
 
-## [2026-05-07] Frist-API New-API 生产边界硬门槛
+## [2026-05-07] JIYU AI New-API 生产边界硬门槛
 > 领域: `backend` | `frontend` | `deploy` | `docs`
-> 影响模块: `Frist-API`, `Admin`, `Gateway`, `New-API`, `docs`
+> 影响模块: `JIYU AI`, `Admin`, `Gateway`, `New-API`, `docs`
 > 关联问题: HI-882
 
 ### 变更内容
-- 新增生产强制边界开关 `FRIST_API_ENFORCE_PRODUCTION_READINESS`：正式模式会检查固定 HTTPS 品牌域名、New-API 数据库、管理员 2FA、真实支付商户、备份监控和渠道 SLA 状态，缺核心项时阻止启动。
-- 管理端新增 TOTP 2FA 验证入口和 `/api/admin/2fa/verify`；启用 `FRIST_API_REQUIRE_ADMIN_2FA=1` 后，管理 API 必须先通过二次验证。
+- 新增生产强制边界开关 `SUB2API_ENFORCE_PRODUCTION_READINESS`：正式模式会检查固定 HTTPS 品牌域名、New-API 数据库、管理员 2FA、真实支付商户、备份监控和渠道 SLA 状态，缺核心项时阻止启动。
+- 管理端新增 TOTP 2FA 验证入口和 `/api/admin/2fa/verify`；启用 `SUB2API_REQUIRE_ADMIN_2FA=1` 后，管理 API 必须先通过二次验证。
 - 新增 `/api/admin/production-readiness` 和 `/api/admin/backups/status`，用于登记备份/恢复演练并在管理端展示生产边界状态。
 - 渠道健康从“当前库存快照”升级为可持久化 SLA 事件：成功、慢线、失败和额度耗尽会写入 `channelProbeEvents`，Dashboard 返回 7/15/30 天窗口摘要。
-- 生产环境模板和 Compose 透传 `FRIST_API_REQUIRE_NEWAPI_DATABASE`、管理员 2FA、备份新鲜度、SLA 保留天数等变量。
+- 生产环境模板和 Compose 透传 `SUB2API_REQUIRE_NEWAPI_DATABASE`、管理员 2FA、备份新鲜度、SLA 保留天数等变量。
 
 ### 文件变更
-- `apps/frist-api/server/server.js` — 生产硬门槛、TOTP 管理员 2FA、备份状态、SLA 事件和 readiness API
-- `apps/frist-api/admin.html` / `apps/frist-api/src/admin.js` / `apps/frist-api/src/styles.css` — 管理端 2FA 输入和生产检查面板
-- `apps/frist-api/tests/server.test.mjs` — 覆盖生产边界、管理员 2FA、备份状态和真实 SLA 事件
-- `apps/frist-api/deploy/production.env.example` / `docker-compose.frist-api.yml` — 登记生产变量和强制边界开关
+- `JIYU AI Sub2API WebUI/server/server.js` — 生产硬门槛、TOTP 管理员 2FA、备份状态、SLA 事件和 readiness API
+- `JIYU AI Sub2API WebUI/admin.html` / `JIYU AI Sub2API WebUI/src/admin.js` / `JIYU AI Sub2API WebUI/src/styles.css` — 管理端 2FA 输入和生产检查面板
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 覆盖生产边界、管理员 2FA、备份状态和真实 SLA 事件
+- `JIYU AI Sub2API WebUI/deploy/production.env.example` / `docker-compose.jiyu-ai.yml` — 登记生产变量和强制边界开关
 - `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步生产边界、环境变量和剩余外部操作
 
-## [2026-05-07] Frist-API 用户与管理闭环实机验收
+## [2026-05-07] JIYU AI 用户与管理闭环实机验收
 > 领域: `backend` | `frontend` | `ai-pool` | `docs`
-> 影响模块: `Frist-API`, `CC Switch`, `User Console`, `Admin`, `Gateway`, `docs`
+> 影响模块: `JIYU AI`, `CC Switch`, `User Console`, `Admin`, `Gateway`, `docs`
 > 关联问题: HI-881
 
 ### 变更内容
@@ -3785,15 +3800,15 @@
 - 修复异常消耗回归用例的阈值样本：模拟 usage 调整为真实会触发“今日消耗偏高”的大额调用，避免把业务规则放宽成假通过。
 
 ### 文件变更
-- `apps/frist-api/index.html` / `apps/frist-api/src/app.js` / `apps/frist-api/src/serverClient.js` / `apps/frist-api/src/styles.css` — 用户侧 OpenAI 命名、导入后检测闭环和异常消耗卡片
-- `apps/frist-api/admin.html` / `apps/frist-api/src/admin.js` / `apps/frist-api/src/styles.css` — 管理端号池小白流程、库存诊断和状态展示
-- `apps/frist-api/server/server.js` / `apps/frist-api/server/newApiBridge.js` — Dashboard 和 New-API 桥接层输出轻量异常消耗摘要
-- `apps/frist-api/tests/business-flow.test.mjs` / `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/new-api-adapter.test.mjs` / `apps/frist-api/tests/server.test.mjs` — 覆盖导入检测、管理诊断、异常消耗和阈值回归
+- `JIYU AI Sub2API WebUI/index.html` / `JIYU AI Sub2API WebUI/src/app.js` / `JIYU AI Sub2API WebUI/src/serverClient.js` / `JIYU AI Sub2API WebUI/src/styles.css` — 用户侧 OpenAI 命名、导入后检测闭环和异常消耗卡片
+- `JIYU AI Sub2API WebUI/admin.html` / `JIYU AI Sub2API WebUI/src/admin.js` / `JIYU AI Sub2API WebUI/src/styles.css` — 管理端号池小白流程、库存诊断和状态展示
+- `JIYU AI Sub2API WebUI/server/server.js` / `JIYU AI Sub2API WebUI/server/newApiBridge.js` — Dashboard 和 New-API 桥接层输出轻量异常消耗摘要
+- `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` / `JIYU AI Sub2API WebUI/tests/core.test.mjs` / `JIYU AI Sub2API WebUI/tests/new-api-adapter.test.mjs` / `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 覆盖导入检测、管理诊断、异常消耗和阈值回归
 - `docs/006-registries.md` / `docs/009-health.md` — 登记本轮闭环能力和剩余生产边界
 
-## [2026-05-06] Frist-API CC Switch 小白满血导入收尾
+## [2026-05-06] JIYU AI CC Switch 小白满血导入收尾
 > 领域: `backend` | `frontend` | `docs`
-> 影响模块: `Frist-API`, `CC Switch`, `Claude`, `Codex`, `OpenCode`, `OpenClaw`, `Hermes`, `docs`
+> 影响模块: `JIYU AI`, `CC Switch`, `Claude`, `Codex`, `OpenCode`, `OpenClaw`, `Hermes`, `docs`
 > 关联问题: HI-880
 
 ### 变更内容
@@ -3805,15 +3820,15 @@
 - 页面新增更直白的完整 Workflow：登录创建 Key、一键导入供应商、确认默认模型、测试用量查询、导入 MCP 增强包、复制终端测试命令；手动用户仍可复制 JSON/TOML、OpenCode provider 片段、用量脚本和 CLI 测试命令。
 
 ### 文件变更
-- `apps/frist-api/src/core.js` — 增加服务端显式默认模型选项、全客户端 MCP deep link、Codex-only TOML MCP 内联和 CC Switch MCP 支持范围
-- `apps/frist-api/server/server.js` — `/api/frist/import-url` 对服务端确认模型启用显式默认，避免导入链接和返回字段不一致
-- `apps/frist-api/index.html` / `apps/frist-api/src/app.js` / `apps/frist-api/src/styles.css` — CC Switch 小白 Workflow、MCP 增强包、Prompt/Skill 边界和手动配置展示
-- `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/business-flow.test.mjs` / `apps/frist-api/tests/server.test.mjs` — 覆盖全客户端 MCP deep link、OpenClaw MCP 边界和用户选择模型一致性
+- `JIYU AI Sub2API WebUI/src/core.js` — 增加服务端显式默认模型选项、全客户端 MCP deep link、Codex-only TOML MCP 内联和 CC Switch MCP 支持范围
+- `JIYU AI Sub2API WebUI/server/server.js` — `/api/frist/import-url` 对服务端确认模型启用显式默认，避免导入链接和返回字段不一致
+- `JIYU AI Sub2API WebUI/index.html` / `JIYU AI Sub2API WebUI/src/app.js` / `JIYU AI Sub2API WebUI/src/styles.css` — CC Switch 小白 Workflow、MCP 增强包、Prompt/Skill 边界和手动配置展示
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` / `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` / `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 覆盖全客户端 MCP deep link、OpenClaw MCP 边界和用户选择模型一致性
 - `docs/006-registries.md` / `docs/009-health.md` — 登记 CC Switch 满血导入边界和本轮收尾状态
 
-## [2026-05-06] Frist-API 86GameStore 号源接入与查询失败修复
+## [2026-05-06] JIYU AI 86GameStore 号源接入与查询失败修复
 > 领域: `backend` | `frontend` | `ai-pool` | `docs`
-> 影响模块: `Frist-API`, `Gateway`, `CC Switch`, `Claude CLI`, `Codex CLI`, `docs`
+> 影响模块: `JIYU AI`, `Gateway`, `CC Switch`, `Claude CLI`, `Codex CLI`, `docs`
 > 关联问题: HI-879
 
 ### 变更内容
@@ -3822,58 +3837,58 @@
 - 严格补号探测新增原生 Claude Messages 探测；对象形式补号 Key 未填 `modelGroup` 时继承补号单模型组；同一个上游 Key 作为 Claude/OpenAI 两组库存时按 `baseUrl + modelGroup + rawKey` 分开保存，避免后写覆盖先写。
 - 本地 runtime 已接入 86GameStore 授权上游：Claude 组 `claude-sonnet-4-5-c`、`claude-opus-4-6-c` 为 healthy；OpenAI 组 `gpt-5.4-mini`、`gpt-5.3-codex`、`gpt-5.4`、`gpt-5.5` 为 healthy。真实上游 Key 只在 ignored runtime 中以 `enc:v1:` AES-GCM 形式保存。
 - 实测用户闭环：注册/登录、管理员入账、创建 Claude/OpenAI 用户 Key、`/v1/models`、导出 Claude/Codex CC Switch 链接、`/api/frist/key-usage`、Claude `/v1/messages`、Codex `/v1/responses` 均成功，真实请求返回 `pong` 并写入使用记录。
-- 实测 CLI 闭环：Claude CLI 使用临时 settings 指向本地 Frist-API，`claude-sonnet-4-5-c` 返回 `pong`；Codex CLI 使用临时 `CODEX_HOME` provider，`gpt-5.4-mini` 返回 `pong`。测试未覆盖或改写用户原有 Claude/Codex 配置。
+- 实测 CLI 闭环：Claude CLI 使用临时 settings 指向本地 JIYU AI，`claude-sonnet-4-5-c` 返回 `pong`；Codex CLI 使用临时 `CODEX_HOME` provider，`gpt-5.4-mini` 返回 `pong`。测试未覆盖或改写用户原有 Claude/Codex 配置。
 - 前端顶部连接状态修复为 Dashboard 成功后显示“已连接”，失败时显示“后端暂不可用”；浏览器刷新后确认不再长期停在“连接中”。
 
 ### 文件变更
-- `apps/frist-api/src/core.js` — CC Switch 用量脚本字段类型修复、导出按模型组选择匹配用户 Key
-- `apps/frist-api/server/server.js` — Claude 原生 Messages 路由和严格探测、同 Key 多模型组库存隔离、补号模型组继承、探测超时默认 8 秒
-- `apps/frist-api/src/serverClient.js` / `apps/frist-api/src/app.js` — 用户端连接状态成功/失败反馈收敛
-- `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/server.test.mjs` — 补 CC Switch 用量脚本、Claude 原生路由、原生探测、共享 Key 分组隔离、导出选 Key 和连接状态回归
-- `apps/frist-api/deploy/production.env.example` / `docs/006-registries.md` / `docs/009-health.md` — 登记 8 秒探测超时、86GameStore 授权上游和本轮实测状态
+- `JIYU AI Sub2API WebUI/src/core.js` — CC Switch 用量脚本字段类型修复、导出按模型组选择匹配用户 Key
+- `JIYU AI Sub2API WebUI/server/server.js` — Claude 原生 Messages 路由和严格探测、同 Key 多模型组库存隔离、补号模型组继承、探测超时默认 8 秒
+- `JIYU AI Sub2API WebUI/src/serverClient.js` / `JIYU AI Sub2API WebUI/src/app.js` — 用户端连接状态成功/失败反馈收敛
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` / `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 补 CC Switch 用量脚本、Claude 原生路由、原生探测、共享 Key 分组隔离、导出选 Key 和连接状态回归
+- `JIYU AI Sub2API WebUI/deploy/production.env.example` / `docs/006-registries.md` / `docs/009-health.md` — 登记 8 秒探测超时、86GameStore 授权上游和本轮实测状态
 
-## [2026-05-06] Frist-API 渠道状态监视器增强
+## [2026-05-06] JIYU AI 渠道状态监视器增强
 > 领域: `backend` | `frontend` | `docs`
-> 影响模块: `Frist-API`, `User Console`, `Channel Monitor`, `docs`
+> 影响模块: `JIYU AI`, `User Console`, `Channel Monitor`, `docs`
 > 关联问题: HI-878
 
 ### 变更内容
 - 参考 86GameStore `/monitor` 的用户侧监控形态，确认其公开页采用 `/channel-monitors`、7/15/30 天窗口、主模型延迟、endpoint ping、最近 60 点状态条和 30/60/120 秒自动刷新；本项目先按现有 runtime 库存能力落地“当前库存快照”，不伪造真实 7/15/30 天时间序列。
-- Frist-API Dashboard 的 `channelChecks` 增加 `healthyCount`、`totalCount`、`downCount`、`slowCount`、`availability7d`、`availabilityWindow`、`successLabel`、`latencyLabel`、`averageLatencyMs`、`monitorIntervalSeconds`、`monitorStatus` 和 60 点 `history`，响应仍只暴露 `/v1`，不返回上游地址、上游 Key 或号商字段。
+- JIYU AI Dashboard 的 `channelChecks` 增加 `healthyCount`、`totalCount`、`downCount`、`slowCount`、`availability7d`、`availabilityWindow`、`successLabel`、`latencyLabel`、`averageLatencyMs`、`monitorIntervalSeconds`、`monitorStatus` 和 60 点 `history`，响应仍只暴露 `/v1`，不返回上游地址、上游 Key 或号商字段。
 - 用户首页“通道”和趋势页“服务可用性”补齐状态标签、可用率、最低/平均延迟、最近检测、60 秒刷新口径和状态条；降级线路会用慢/失败状态点标记。
 - 补充服务端、浏览器归一化和用户页面 wiring 回归，覆盖聚合监控字段、降级状态、当前快照口径和敏感字段不泄露。
 
 ### 文件变更
-- `apps/frist-api/server/server.js` / `apps/frist-api/server/catalog.js` — 渠道监控聚合字段从单纯 healthy/total 扩展为可用率、降级、慢线、平均延迟和 60 点状态条
-- `apps/frist-api/src/serverClient.js` / `apps/frist-api/src/core.js` — 浏览器归一化和安全摘要支持新监控字段
-- `apps/frist-api/src/app.js` / `apps/frist-api/src/styles.css` — 用户侧通道摘要和服务卡增加状态标签、指标格和历史条
-- `apps/frist-api/tests/server.test.mjs` / `apps/frist-api/tests/new-api-adapter.test.mjs` / `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/business-flow.test.mjs` — 覆盖监控字段、降级状态、脱敏边界和页面钩子
+- `JIYU AI Sub2API WebUI/server/server.js` / `JIYU AI Sub2API WebUI/server/catalog.js` — 渠道监控聚合字段从单纯 healthy/total 扩展为可用率、降级、慢线、平均延迟和 60 点状态条
+- `JIYU AI Sub2API WebUI/src/serverClient.js` / `JIYU AI Sub2API WebUI/src/core.js` — 浏览器归一化和安全摘要支持新监控字段
+- `JIYU AI Sub2API WebUI/src/app.js` / `JIYU AI Sub2API WebUI/src/styles.css` — 用户侧通道摘要和服务卡增加状态标签、指标格和历史条
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` / `JIYU AI Sub2API WebUI/tests/new-api-adapter.test.mjs` / `JIYU AI Sub2API WebUI/tests/core.test.mjs` / `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 覆盖监控字段、降级状态、脱敏边界和页面钩子
 - `docs/006-registries.md` / `docs/009-health.md` — 登记渠道监控口径和剩余真实时间序列技术债
 
-## [2026-05-06] Frist-API CC Switch 用量查询一键导入与 CLI 实测闭环
+## [2026-05-06] JIYU AI CC Switch 用量查询一键导入与 CLI 实测闭环
 > 领域: `backend` | `frontend` | `docs`
-> 影响模块: `Frist-API`, `CC Switch`, `New-API Bridge`, `User Console`, `docs`
+> 影响模块: `JIYU AI`, `CC Switch`, `New-API Bridge`, `User Console`, `docs`
 > 关联问题: HI-877
 
 ### 变更内容
 - 核对 CC Switch 官方 Deep Link 协议和本机 CC Switch 3.14.1 行为，确认当前 provider deep link 消费 `resource/app/name/homepage/endpoint/apiKey/model/*Model/notes/usage*` 字段；导入链接已收敛为官方短字段，不再塞旧 `config`、`availableModels` 等大块配置。
 - `usageScript` 改为 Base64URL 编码，匹配 CC Switch 当前 `usage_script` 解码逻辑；语雀公开可读摘要中的“右侧用量查询、填入秘钥和 API”步骤已落到页面教程。
-- CC Switch 导入链接现在同步写入自定义用量查询脚本，默认 15 分钟自动查询；脚本调用 Frist-API 自己的 `/api/frist/key-usage`，返回余额、已用额度、总额度、今日/本月消费、请求量、Token、延迟和成功率。
+- CC Switch 导入链接现在同步写入自定义用量查询脚本，默认 15 分钟自动查询；脚本调用 JIYU AI 自己的 `/api/frist/key-usage`，返回余额、已用额度、总额度、今日/本月消费、请求量、Token、延迟和成功率。
 - 新增 `/api/frist/key-usage` 只读接口，用户 Key 通过 Bearer 或 `x-api-key` 鉴权；响应只返回脱敏统计，不返回用户完整 Key、上游 rawKey、供应商地址或号商信息。
 - 修复 New-API 桥接层 `buildKeyUsage` 参数名遮蔽内部请求函数导致 500 的回归，并覆盖 New-API Token 查询、Dashboard、导入和网关代理闭环。
-- DeepSeek 等模型组继续把模型请求地址导向官方兼容端点，但用量查询地址固定从 Frist-API 公开网关地址派生，避免余额脚本误打到 `api.deepseek.com`。
-- 实机闭环：使用临时 Frist API 和本地受控上游生成真实 `fk-live-*` Key，CC Switch 日志确认收到并解析 `resource=provider/app=claude/name=Frist-API` deep link；因当前 CC Switch 窗口无可访问确认按钮，按官方导入结构等价写入临时 provider 后，`claude --bare --no-session-persistence --model claude-sonnet-4-5-c` 返回 `Frist API CLI OK`。测试后已恢复用户原 CC Switch/Claude 配置。
+- DeepSeek 等模型组继续把模型请求地址导向官方兼容端点，但用量查询地址固定从 JIYU AI 公开网关地址派生，避免余额脚本误打到 `api.deepseek.com`。
+- 实机闭环：使用临时 JIYU API 和本地受控上游生成真实 `fk-live-*` Key，CC Switch 日志确认收到并解析 `resource=provider/app=claude/name=JIYU AI` deep link；因当前 CC Switch 窗口无可访问确认按钮，按官方导入结构等价写入临时 provider 后，`claude --bare --no-session-persistence --model claude-sonnet-4-5-c` 返回 `JIYU API CLI OK`。测试后已恢复用户原 CC Switch/Claude 配置。
 
 ### 文件变更
-- `apps/frist-api/src/core.js` — CC Switch 导入新增用量查询脚本、Base64URL 编码、短 deep link 字段和 Frist/API 上游地址解耦
-- `apps/frist-api/server/server.js` / `apps/frist-api/server/newApiBridge.js` — 新增用户 Key 用量查询接口并修复 New-API 桥接回归
-- `apps/frist-api/index.html` / `apps/frist-api/src/app.js` / `apps/frist-api/src/styles.css` — CC Switch 页面补“用量查询、启用、测试脚本、自动查询间隔”教程和状态文案
-- `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/server.test.mjs` / `apps/frist-api/tests/business-flow.test.mjs` — 覆盖 deep link 用量字段、短链接契约、OpenCode 配置、New-API 用量接口和教程文案
+- `JIYU AI Sub2API WebUI/src/core.js` — CC Switch 导入新增用量查询脚本、Base64URL 编码、短 deep link 字段和 JIYU/API 上游地址解耦
+- `JIYU AI Sub2API WebUI/server/server.js` / `JIYU AI Sub2API WebUI/server/newApiBridge.js` — 新增用户 Key 用量查询接口并修复 New-API 桥接回归
+- `JIYU AI Sub2API WebUI/index.html` / `JIYU AI Sub2API WebUI/src/app.js` / `JIYU AI Sub2API WebUI/src/styles.css` — CC Switch 页面补“用量查询、启用、测试脚本、自动查询间隔”教程和状态文案
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` / `JIYU AI Sub2API WebUI/tests/server.test.mjs` / `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 覆盖 deep link 用量字段、短链接契约、OpenCode 配置、New-API 用量接口和教程文案
 - `docs/006-registries.md` / `docs/009-health.md` — 登记新接口、教程闭环和剩余真实客户端验收边界
 
-## [2026-05-06] Frist-API 上线前安全闭环修复
+## [2026-05-06] JIYU AI 上线前安全闭环修复
 > 领域: `backend` | `frontend` | `deploy` | `docs`
-> 影响模块: `Frist-API`, `Gateway`, `Runtime Store`, `Payments`, `User Console`, `docs`
+> 影响模块: `JIYU AI`, `Gateway`, `Runtime Store`, `Payments`, `User Console`, `docs`
 > 关联问题: HI-876
 
 ### 变更内容
@@ -3881,19 +3896,19 @@
 - Cookie 登录态的非幂等接口增加 CSRF Token 校验；注册/登录返回 CSRF Token 并设置 `frist_csrf` Cookie，浏览器客户端自动带 `x-csrf-token`。
 - 微信/支付宝回调入账前校验实付金额和订单金额；少付通知拒绝入账，重复通知仍按订单号幂等处理。
 - 管理端补号 URL 增加 SSRF 防护，默认拒绝 localhost、私网、link-local 和云 metadata 地址，测试环境可显式注入解析器。
-- runtime 写入改为临时文件 fsync 后 rename，写入失败发出 `FRIST_API_RUNTIME_WRITE_FAILED` warning；共享脱敏和 CORS 头同步支持 `fk-live-*` 与 `x-csrf-token`。
-- 生产模板补齐 `FRIST_API_REQUIRE_CSRF`、`FRIST_API_ALLOW_PRIVATE_UPSTREAM_URLS`，公网网关示例恢复为 HTTPS 占位域名，避免生产硬门槛被 HTTP 示例误导。
+- runtime 写入改为临时文件 fsync 后 rename，写入失败发出 `SUB2API_RUNTIME_WRITE_FAILED` warning；共享脱敏和 CORS 头同步支持 `fk-live-*` 与 `x-csrf-token`。
+- 生产模板补齐 `SUB2API_REQUIRE_CSRF`、`SUB2API_ALLOW_PRIVATE_UPSTREAM_URLS`，公网网关示例恢复为 HTTPS 占位域名，避免生产硬门槛被 HTTP 示例误导。
 
 ### 文件变更
-- `apps/frist-api/server/server.js` / `apps/frist-api/server/shared.js` / `apps/frist-api/server/newApiBridge.js` — Key 生成和脱敏、CSRF、SSRF、金额校验、runtime 原子写和 CORS 头
-- `apps/frist-api/src/serverClient.js` / `apps/frist-api/src/app.js` / `apps/frist-api/src/newApiClient.js` — 浏览器 CSRF 头、创建后一次性显示 Key、刷新后不依赖明文 Key
-- `apps/frist-api/tests/server.test.mjs` / `apps/frist-api/tests/business-flow.test.mjs` — 覆盖 `fk-live-*`、CSRF、少付回调、SSRF 阻断和用户侧不泄露明文 Key
-- `apps/frist-api/deploy/production.env.example` / `docker-compose.frist-api.yml` — 登记生产 CSRF 和 SSRF 开关，修正公网 HTTPS 示例
+- `JIYU AI Sub2API WebUI/server/server.js` / `JIYU AI Sub2API WebUI/server/shared.js` / `JIYU AI Sub2API WebUI/server/newApiBridge.js` — Key 生成和脱敏、CSRF、SSRF、金额校验、runtime 原子写和 CORS 头
+- `JIYU AI Sub2API WebUI/src/serverClient.js` / `JIYU AI Sub2API WebUI/src/app.js` / `JIYU AI Sub2API WebUI/src/newApiClient.js` — 浏览器 CSRF 头、创建后一次性显示 Key、刷新后不依赖明文 Key
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` / `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 覆盖 `fk-live-*`、CSRF、少付回调、SSRF 阻断和用户侧不泄露明文 Key
+- `JIYU AI Sub2API WebUI/deploy/production.env.example` / `docker-compose.jiyu-ai.yml` — 登记生产 CSRF 和 SSRF 开关，修正公网 HTTPS 示例
 - `docs/006-registries.md` / `docs/009-health.md` — 同步生产变量和上线前剩余风险
 
-## [2026-05-05] Frist-API 用户端深色体验和官方计价修复
+## [2026-05-05] JIYU AI 用户端深色体验和官方计价修复
 > 领域: `frontend` | `backend` | `ai-pool` | `deploy` | `docs`
-> 影响模块: `Frist-API`, `User Console`, `Gateway Billing`, `docs`
+> 影响模块: `JIYU AI`, `User Console`, `Gateway Billing`, `docs`
 > 关联问题: HI-875
 
 ### 变更内容
@@ -3903,69 +3918,69 @@
 - 模型价目表按官方输入、缓存输入/缓存读写、输出口径统一展示；覆盖 OpenAI、Claude、DeepSeek、Gemini 和图片模型。
 - 账单页前置展开兑换码，预警邮箱只遮罩展示；邀请改为“消费才返利”，返利上限为受邀方首次充值金额 5%；资料页支持修改昵称和邮箱。
 - 深色控制台逐页补齐对比度护栏，修复 API 页面布局闭合标签，消费后自动刷新余额。
-- 已部署到腾讯云 `/opt/frist-api`，远端应用备份为 `backups/frist-api-app-20260505-211636-before-ux-deploy.tgz`，运行数据备份为 `backups/frist-api-runtime-20260505-211636-before-ux-deploy.tgz`；`frist-api-server` 为 healthy，公网首页和看板均返回 200，裸域名返回 301 到品牌入口，未授权 `/v1/models` 保持 401。
+- 已部署到腾讯云 `/opt/sub2api`，远端应用备份为 `backups/jiyu-ai-app-20260505-211636-before-ux-deploy.tgz`，运行数据备份为 `backups/jiyu-ai-runtime-20260505-211636-before-ux-deploy.tgz`；`jiyu-ai-server` 为 healthy，公网首页和看板均返回 200，裸域名返回 301 到品牌入口，未授权 `/v1/models` 保持 401。
 
 ### 文件变更
-- `apps/frist-api/index.html` / `apps/frist-api/src/styles.css` — 深色控制台、兑换码前置、API 页面布局和对比度修复
-- `apps/frist-api/src/app.js` / `apps/frist-api/src/serverClient.js` — 日志降噪、测试页降噪、余额刷新、反馈动效、资料/邀请/预警展示
-- `apps/frist-api/server/server.js` / `apps/frist-api/server/shared.js` — Key 展示、记录字段、价目表、消费扣费和余额刷新数据
-- `apps/frist-api/deploy/smoke-test.sh` — 冒烟脚本兼容中文管理工作台和可关闭验证码场景
-- `apps/frist-api/tests/*.test.mjs` — 覆盖 Key 前缀、日志/记录、官方价格、深色 UI 入口和自动测试
+- `JIYU AI Sub2API WebUI/index.html` / `JIYU AI Sub2API WebUI/src/styles.css` — 深色控制台、兑换码前置、API 页面布局和对比度修复
+- `JIYU AI Sub2API WebUI/src/app.js` / `JIYU AI Sub2API WebUI/src/serverClient.js` — 日志降噪、测试页降噪、余额刷新、反馈动效、资料/邀请/预警展示
+- `JIYU AI Sub2API WebUI/server/server.js` / `JIYU AI Sub2API WebUI/server/shared.js` — Key 展示、记录字段、价目表、消费扣费和余额刷新数据
+- `JIYU AI Sub2API WebUI/deploy/smoke-test.sh` — 冒烟脚本兼容中文管理工作台和可关闭验证码场景
+- `JIYU AI Sub2API WebUI/tests/*.test.mjs` — 覆盖 Key 前缀、日志/记录、官方价格、深色 UI 入口和自动测试
 - `docs/002-changelog.md` / `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步本轮修复
 
-## [2026-05-05] Frist-API inroi 授权上游号池检测
+## [2026-05-05] JIYU AI inroi 授权上游号池检测
 > 领域: `ai-pool` | `deploy` | `docs`
-> 影响模块: `Frist-API`, `AI Pool`, `Admin`, `docs`
+> 影响模块: `JIYU AI`, `AI Pool`, `Admin`, `docs`
 > 关联问题: HI-874
 
 ### 变更内容
-- 核对 `https://www.inroi.shop/v1` 是上游请求地址，不是 Frist-API 对外入口；Frist-API 公网入口仍按 `frist-api.101-43-41-96.nip.io` 收口，裸域名只做 301。
+- 核对 `https://www.inroi.shop/v1` 是上游请求地址，不是 JIYU AI 对外入口；JIYU AI 公网入口仍按 `jiyu.245334.xyz` 收口，裸域名只做 301。
 - 远端管理接口检测到同一 Key 的旧根地址记录 `https://www.inroi.shop` 已是 `exhausted/enabled=false`，不可路由；正确请求地址 `https://www.inroi.shop/v1` 已加入号池并处于 `healthy/enabled=true`。
 - 已实测 inroi 上游 `/v1/models` 返回 21 个模型，`gpt-5.4-mini` Chat Completions 返回 200；真实 Key 只通过服务器管理 API 写入远端加密 runtime，不进入 Git 或文档正文。
 
 ### 文件变更
 - `docs/006-registries.md` / `docs/009-health.md` — 同步 inroi 授权上游检测状态
 
-## [2026-05-05] Frist-API 公网入口收口
+## [2026-05-05] JIYU AI 公网入口收口
 > 领域: `backend` | `deploy` | `docs`
-> 影响模块: `Frist-API`, `Nginx`, `Public Gateway`, `docs`
+> 影响模块: `JIYU AI`, `Nginx`, `Public Gateway`, `docs`
 > 关联问题: HI-873
 
 ### 变更内容
-- 将 Frist-API 唯一内容入口统一为 `frist-api.101-43-41-96.nip.io`，避免 `101-43-41-96.nip.io` 被误认为第二个网站。
-- Nginx 配置改为品牌域名反代到 Frist-API 服务，裸域名只返回 301 到品牌域名。
+- 将 JIYU AI 唯一内容入口统一为 `jiyu.245334.xyz`，避免 `101-43-41-96.nip.io` 被误认为第二个网站。
+- Nginx 配置改为品牌域名反代到 JIYU AI 服务，裸域名只返回 301 到品牌域名。
 - Node 服务增加应用层兜底跳转，绕过 Nginx 或未来反代配置变更时也不会直接渲染裸域名页面。
-- 生产环境模板新增 `FRIST_API_CANONICAL_HOST` 和 `FRIST_API_REDIRECT_HOSTS`，导出和邮件公网地址统一到品牌域名。
+- 生产环境模板新增 `SUB2API_CANONICAL_HOST` 和 `SUB2API_REDIRECT_HOSTS`，导出和邮件公网地址统一到品牌域名。
 - Docker Compose 透传 canonical/redirect 环境变量，确保公网容器重启后仍按唯一入口策略运行。
 
 ### 文件变更
-- `apps/frist-api/server/server.js` — 增加 canonical host 和裸域名 301 兜底
-- `docker-compose.frist-api.yml` / `apps/frist-api/deploy/nginx.conf` / `apps/frist-api/deploy/production.env.example` — 收口公网入口和环境变量模板
-- `apps/frist-api/tests/server.test.mjs` — 覆盖裸域名 301 和品牌域名正常服务
+- `JIYU AI Sub2API WebUI/server/server.js` — 增加 canonical host 和裸域名 301 兜底
+- `docker-compose.jiyu-ai.yml` / `JIYU AI Sub2API WebUI/deploy/nginx.conf` / `JIYU AI Sub2API WebUI/deploy/production.env.example` — 收口公网入口和环境变量模板
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 覆盖裸域名 301 和品牌域名正常服务
 - `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步唯一入口、运维步骤和健康状态
 
-## [2026-05-05] Frist-API CC Switch 导出模型与品牌标复原
+## [2026-05-05] JIYU AI CC Switch 导出模型与品牌标复原
 > 领域: `frontend` | `backend` | `docs`
-> 影响模块: `Frist-API`, `CC Switch`, `New-API Bridge`, `docs`
+> 影响模块: `JIYU AI`, `CC Switch`, `New-API Bridge`, `docs`
 > 关联问题: HI-872
 
 ### 变更内容
 - 修复用户在 `#switch` 页面看不到 `gpt-5.4`、`gpt-5.4-mini`、`gpt-image-2`、`gpt-5.3-codex` 的问题：OpenAI 家族导出清单现在会补齐官方完整模型集，不再被部分上游库存或桥接层裁掉。
 - CC Switch 导出预览和 New-API 桥接层都改用同一套可见模型展开逻辑，保证 `/api/frist/import-url`、`ccswitch://` 和手动配置看到的是同一份完整模型表。
-- 恢复 Frist-API 品牌标识为原黑红白 logo，Tabcode 皮肤只保留布局和对比度，不再把品牌标改成灰白抽象块。
+- 恢复 JIYU AI 品牌标识为原黑红白 logo，Tabcode 皮肤只保留布局和对比度，不再把品牌标改成灰白抽象块。
 - 给导出模型 chip 和相关回归补上测试门槛，防止以后再把核心模型藏掉。
 
 ### 文件变更
-- `apps/frist-api/src/core.js` — 增加 OpenAI 官方模型族展开和统一可见模型归一化
-- `apps/frist-api/src/app.js` — CC Switch 导出清单改为强制显示完整模型集
-- `apps/frist-api/server/newApiBridge.js` / `apps/frist-api/server/server.js` — 桥接层与服务端导出链路同步完整模型集
-- `apps/frist-api/src/styles.css` — 恢复品牌标视觉并强化导出 chip 可读性
-- `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/server.test.mjs` — 补回归
+- `JIYU AI Sub2API WebUI/src/core.js` — 增加 OpenAI 官方模型族展开和统一可见模型归一化
+- `JIYU AI Sub2API WebUI/src/app.js` — CC Switch 导出清单改为强制显示完整模型集
+- `JIYU AI Sub2API WebUI/server/newApiBridge.js` / `JIYU AI Sub2API WebUI/server/server.js` — 桥接层与服务端导出链路同步完整模型集
+- `JIYU AI Sub2API WebUI/src/styles.css` — 恢复品牌标视觉并强化导出 chip 可读性
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` / `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 补回归
 - `docs/002-changelog.md` / `docs/009-health.md` — 记录本轮修复
 
-## [2026-05-05] Frist-API Tabcode 皮肤对比度修复
+## [2026-05-05] JIYU AI Tabcode 皮肤对比度修复
 > 领域: `frontend` | `docs`
-> 影响模块: `Frist-API`, `User Console`, `Admin`, `CC Switch`, `docs`
+> 影响模块: `JIYU AI`, `User Console`, `Admin`, `CC Switch`, `docs`
 > 关联问题: HI-871
 
 ### 变更内容
@@ -3975,14 +3990,14 @@
 - 浏览器实测用户端 6 个主路由和管理端可见交互元素低对比扫描均为 0；桌面和 390px 移动端截图已验证。
 
 ### 文件变更
-- `apps/frist-api/index.html` / `apps/frist-api/admin.html` — 更新 CSS/JS 资源版本号
-- `apps/frist-api/src/styles.css` — 增加 Tabcode 对比度护栏和可读性颜色修复
-- `apps/frist-api/tests/core.test.mjs` — 补充对比度护栏和资源版本回归断言
+- `JIYU AI Sub2API WebUI/index.html` / `JIYU AI Sub2API WebUI/admin.html` — 更新 CSS/JS 资源版本号
+- `JIYU AI Sub2API WebUI/src/styles.css` — 增加 Tabcode 对比度护栏和可读性颜色修复
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` — 补充对比度护栏和资源版本回归断言
 - `docs/002-changelog.md` / `docs/009-health.md` — 记录本轮 UI 修复
 
-## [2026-05-05] Frist-API CC Switch 导出和运行遗留项收尾
+## [2026-05-05] JIYU AI CC Switch 导出和运行遗留项收尾
 > 领域: `backend` | `frontend` | `ai-pool` | `docs`
-> 影响模块: `Frist-API`, `CC Switch`, `Admin`, `Runtime Store`, `docs`
+> 影响模块: `JIYU AI`, `CC Switch`, `Admin`, `Runtime Store`, `docs`
 > 关联问题: HI-870
 
 ### 变更内容
@@ -3992,15 +4007,15 @@
 - 管理 API 认证失败会写入脱敏审计事件；runtime 写入失败会发出 Node warning，不再静默吞掉；CLI 启动增加 SIGTERM/SIGINT 优雅关闭。
 
 ### 文件变更
-- `apps/frist-api/src/core.js` — 增加 CC Switch `settingsConfig/settings_config` 和 New-API 基础字段兼容
-- `apps/frist-api/index.html` / `apps/frist-api/src/app.js` / `apps/frist-api/src/styles.css` — 增加 CC Switch 协议降级反馈和自动复制
-- `apps/frist-api/server/server.js` — 增加管理失败审计、runtime 写入告警和优雅关闭
-- `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/server.test.mjs` — 补齐 CC Switch 导出契约、管理失败审计和运行遗留项回归
+- `JIYU AI Sub2API WebUI/src/core.js` — 增加 CC Switch `settingsConfig/settings_config` 和 New-API 基础字段兼容
+- `JIYU AI Sub2API WebUI/index.html` / `JIYU AI Sub2API WebUI/src/app.js` / `JIYU AI Sub2API WebUI/src/styles.css` — 增加 CC Switch 协议降级反馈和自动复制
+- `JIYU AI Sub2API WebUI/server/server.js` — 增加管理失败审计、runtime 写入告警和优雅关闭
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` / `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 补齐 CC Switch 导出契约、管理失败审计和运行遗留项回归
 - `docs/006-registries.md` / `docs/009-health.md` — 同步入口和健康状态
 
-## [2026-05-05] Frist-API Plus 金额审计修复
+## [2026-05-05] JIYU AI Plus 金额审计修复
 > 领域: `backend` | `ai-pool` | `docs`
-> 影响模块: `Frist-API`, `Admin`, `Plus Ledger`, `docs`
+> 影响模块: `JIYU AI`, `Admin`, `Plus Ledger`, `docs`
 > 关联问题: HI-869
 
 ### 变更内容
@@ -4009,46 +4024,46 @@
 - 回归测试补充异常金额输入断言，确保 Plus 敏感字段仍脱敏且金额字段稳定返回数字。
 
 ### 文件变更
-- `apps/frist-api/server/server.js` — Plus 台账金额改用有限数字归一化
-- `apps/frist-api/tests/server.test.mjs` — 补充异常 TRY 金额回归覆盖
+- `JIYU AI Sub2API WebUI/server/server.js` — Plus 台账金额改用有限数字归一化
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 补充异常 TRY 金额回归覆盖
 - `docs/002-changelog.md` / `docs/009-health.md` — 记录本轮审计修复
 
-## [2026-05-05] Frist-API Tabcode Console 设计吸收
+## [2026-05-05] JIYU AI Tabcode Console 设计吸收
 > 领域: `frontend` | `docs`
-> 影响模块: `Frist-API`, `User Console`, `Admin`, `docs`
+> 影响模块: `JIYU AI`, `User Console`, `Admin`, `docs`
 > 关联问题: HI-868
 
 ### 变更内容
-- 参考本地 Tabcode Dashboard 克隆，把 Frist-API 用户端和管理端切换为 `tabcode-console`：54px 白色顶栏、160px 灰色侧栏、灰色工作区、14px 白色卡片、轻阴影和黑色主按钮。
+- 参考本地 Tabcode Dashboard 克隆，把 JIYU AI 用户端和管理端切换为 `tabcode-console`：54px 白色顶栏、160px 灰色侧栏、灰色工作区、14px 白色卡片、轻阴影和黑色主按钮。
 - 移除上一版设计皮肤入口和 CSS 残留，图表配色从蓝色体系改为中性黑灰加状态色，登录弹窗改为 Tabcode 两栏桌面布局并保留移动端可滚动关闭。
 - 管理端仅替换视觉壳，不删管理功能；New-API/价格/入账/卡密/Plus/RT/接入/订单/库存/审计等原有入口继续保留。
 - 性能优化继续保留 `content-visibility`、隐藏面板跳过渲染、搜索防抖、模型目录缓存和测试台局部渲染，避免控制台高频切换时反复重绘。
 
 ### 文件变更
-- `apps/frist-api/index.html` / `apps/frist-api/admin.html` — 设计系统标记和静态资源版本切到 Tabcode Console
-- `apps/frist-api/src/styles.css` — 删除旧设计皮肤，新增 Tabcode Console token、布局、卡片、表格、弹窗和移动端规则
-- `apps/frist-api/src/app.js` — 图表颜色切到中性控制台色系
-- `apps/frist-api/tests/core.test.mjs` — 回归断言切到 Tabcode Console 视觉 token 和旧皮肤移除
+- `JIYU AI Sub2API WebUI/index.html` / `JIYU AI Sub2API WebUI/admin.html` — 设计系统标记和静态资源版本切到 Tabcode Console
+- `JIYU AI Sub2API WebUI/src/styles.css` — 删除旧设计皮肤，新增 Tabcode Console token、布局、卡片、表格、弹窗和移动端规则
+- `JIYU AI Sub2API WebUI/src/app.js` — 图表颜色切到中性控制台色系
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` — 回归断言切到 Tabcode Console 视觉 token 和旧皮肤移除
 - `docs/006-registries.md` / `docs/009-health.md` — 同步设计系统登记和健康状态
 
-## [2026-05-05] Frist-API Refero Apple UI 降噪
+## [2026-05-05] JIYU AI Refero Apple UI 降噪
 > 领域: `frontend` | `docs`
-> 影响模块: `Frist-API`, `User Console`, `Admin`, `docs`
+> 影响模块: `JIYU AI`, `User Console`, `Admin`, `docs`
 > 关联问题: HI-867
 
 ### 变更内容
-- 参考 Refero Styles 的 Apple 高热样式，把 Frist-API 用户端和管理端从深色 Hyperstudio 壳切到浅色 Apple 控制台：`#f5f5f7` 画布、白色面板、`#0071e3` 主操作、弱边界和短状态动效。
+- 参考 Refero Styles 的 Apple 高热样式，把 JIYU AI 用户端和管理端从深色 Hyperstudio 壳切到浅色 Apple 控制台：`#f5f5f7` 画布、白色面板、`#0071e3` 主操作、弱边界和短状态动效。
 - 用户端以“前端入口”为准做降噪：首屏指标压到余额、Key、今日和成功率四项；导航把“仪表盘/广场/教程”等长标签改为“首页/测试/配置”，状态空态改为“无记录/未检测/离线”等短标签。
 - 管理端保留价格、入账、卡密、Plus、RT、接入、订单、库存和审计等原有管理项，只压缩提示文案；New-API 管理侧能力没有减少。
 - 性能上减少不必要渲染：模型目录缓存、测试台日志/图片签名复用、搜索输入防抖、面板 `content-visibility` 和克制状态动效，避免全量 DOM 反复重绘。
 
 ### 文件变更
-- `apps/frist-api/index.html` — 精简用户端导航、状态、导入流程和兑换/邀请文案
-- `apps/frist-api/admin.html` — 精简管理端说明文案，保留原管理区块和 RT JSON/TXT 入口
-- `apps/frist-api/src/app.js` — 缩短空态/反馈文案，保留测试台和模型目录渲染缓存
-- `apps/frist-api/src/admin.js` — 缩短管理端反馈和空态文案
-- `apps/frist-api/src/styles.css` — 增加 Refero Apple final layer、状态微动效和 `content-visibility` 渲染优化
-- `apps/frist-api/tests/core.test.mjs` — 回归断言切到 Refero Apple 视觉 token 与四指标首屏
+- `JIYU AI Sub2API WebUI/index.html` — 精简用户端导航、状态、导入流程和兑换/邀请文案
+- `JIYU AI Sub2API WebUI/admin.html` — 精简管理端说明文案，保留原管理区块和 RT JSON/TXT 入口
+- `JIYU AI Sub2API WebUI/src/app.js` — 缩短空态/反馈文案，保留测试台和模型目录渲染缓存
+- `JIYU AI Sub2API WebUI/src/admin.js` — 缩短管理端反馈和空态文案
+- `JIYU AI Sub2API WebUI/src/styles.css` — 增加 Refero Apple final layer、状态微动效和 `content-visibility` 渲染优化
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` — 回归断言切到 Refero Apple 视觉 token 与四指标首屏
 - `docs/006-registries.md` / `docs/009-health.md` — 同步入口命名和健康状态
 
 ## [2026-05-04] Open Design 本机配置接入
@@ -4067,27 +4082,27 @@
 - `~/.codex/skills/open-design/SKILL.md` — 新增 Open Design 使用工作流
 - `~/.codex/skills/open-design/references/local-setup.md` — 记录本机路径、端口、启动命令和验证命令
 
-## [2026-05-04] Frist-API RT JSON 批量导入管理
+## [2026-05-04] JIYU AI RT JSON 批量导入管理
 > 领域: `backend` | `frontend` | `ai-pool` | `docs`
-> 影响模块: `Frist-API`, `Admin`, `New-API`, `AI Pool`, `docs`
+> 影响模块: `JIYU AI`, `Admin`, `New-API`, `AI Pool`, `docs`
 > 关联问题: HI-866
 
 ### 变更内容
-- 参考 New-API Codex OAuth 与 Grok 给出的 RT JSON 格式，在 Frist-API 管理端新增 Refresh Token 账号池，支持 JSON 数组、单个 JSON 对象和 TXT 每行一个 RT 的导入方式。
+- 参考 New-API Codex OAuth 与 Grok 给出的 RT JSON 格式，在 JIYU AI 管理端新增 Refresh Token 账号池，支持 JSON 数组、单个 JSON 对象和 TXT 每行一个 RT 的导入方式。
 - 管理侧是在原有 New-API/补号/价格/卡密/Plus/审计内容上增量增加，原有管理入口不减少；RT 默认只作为后台台账和刷新准备，不直接进入用户 `/v1` 路由库存。
 - 后端新增 `/api/admin/rt-accounts` 和 `/api/admin/rt-accounts/import`，导入后只返回脱敏邮箱、账号 ID、RT 预览和指纹；`refreshToken` 纳入 runtime AES-GCM 加密字段。
 - 回归覆盖 JSON/TXT 导入、重复 RT 更新、明文 RT/账号 ID 不出现在管理响应和落盘文件、RT 台账不污染可售上游 Key 库存。
-- 验证结果: `node --check apps/frist-api/server/server.js apps/frist-api/src/admin.js` 通过；聚焦 `node --test tests/business-flow.test.mjs tests/server.test.mjs` 为 85/85 通过；Frist-API 全量 `npm test` 为 125/125 通过；`git diff --check` 通过。
+- 验证结果: `node --check JIYU AI Sub2API WebUI/server/server.js JIYU AI Sub2API WebUI/src/admin.js` 通过；聚焦 `node --test tests/business-flow.test.mjs tests/server.test.mjs` 为 85/85 通过；JIYU AI 全量 `npm test` 为 125/125 通过；`git diff --check` 通过。
 
 ### 文件变更
-- `apps/frist-api/server/server.js` — 新增 RT 台账模型、导入解析、管理 API、脱敏展示、摘要和加密字段
-- `apps/frist-api/admin.html` / `apps/frist-api/src/admin.js` / `apps/frist-api/src/styles.css` — 新增管理端 RT 导入区块、摘要和脱敏列表
-- `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/server.test.mjs` — 覆盖用户端隔离和 RT 导入安全边界
+- `JIYU AI Sub2API WebUI/server/server.js` — 新增 RT 台账模型、导入解析、管理 API、脱敏展示、摘要和加密字段
+- `JIYU AI Sub2API WebUI/admin.html` / `JIYU AI Sub2API WebUI/src/admin.js` / `JIYU AI Sub2API WebUI/src/styles.css` — 新增管理端 RT 导入区块、摘要和脱敏列表
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` / `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 覆盖用户端隔离和 RT 导入安全边界
 - `docs/006-registries.md` / `docs/009-health.md` — 同步管理入口和健康状态
 
-## [2026-05-04] Frist-API Plus 自用账号台账入口
+## [2026-05-04] JIYU AI Plus 自用账号台账入口
 > 领域: `backend` | `frontend` | `ai-pool` | `docs`
-> 影响模块: `Frist-API`, `Admin`, `AI Pool`, `docs`
+> 影响模块: `JIYU AI`, `Admin`, `AI Pool`, `docs`
 > 关联问题: HI-865
 
 ### 变更内容
@@ -4097,14 +4112,14 @@
 - 回归覆盖 Plus 台账不会泄露邮箱明文/密码备注、不会生成可路由库存，避免把 Plus 账号误当作售卖 API 号源。
 
 ### 文件变更
-- `apps/frist-api/server/server.js` — 新增 Plus 账号台账模型、管理 API、脱敏展示、到期摘要和加密字段
-- `apps/frist-api/admin.html` / `apps/frist-api/src/admin.js` / `apps/frist-api/src/styles.css` — 新增管理端 Plus 台账入口、表单、摘要和列表样式
-- `apps/frist-api/tests/business-flow.test.mjs` / `apps/frist-api/tests/server.test.mjs` — 覆盖管理端入口和 Plus 台账安全边界
+- `JIYU AI Sub2API WebUI/server/server.js` — 新增 Plus 账号台账模型、管理 API、脱敏展示、到期摘要和加密字段
+- `JIYU AI Sub2API WebUI/admin.html` / `JIYU AI Sub2API WebUI/src/admin.js` / `JIYU AI Sub2API WebUI/src/styles.css` — 新增管理端 Plus 台账入口、表单、摘要和列表样式
+- `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` / `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 覆盖管理端入口和 Plus 台账安全边界
 - `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步入口、运营规则和健康状态
 
-## [2026-05-04] Frist-API 兑换码售卖主链路
+## [2026-05-04] JIYU AI 兑换码售卖主链路
 > 领域: `backend` | `frontend` | `docs`
-> 影响模块: `Frist-API`, `Billing`, `Redeem`, `Admin`, `docs`
+> 影响模块: `JIYU AI`, `Billing`, `Redeem`, `Admin`, `docs`
 > 关联问题: HI-864
 
 ### 变更内容
@@ -4112,141 +4127,141 @@
 - 管理端新增兑换卡批量生成、批次导出、卡密状态展示，生成内容可直接给闲鱼自动发货或客服系统使用。
 - 后端新增运行数据里的 `redemptionCards` 库存，兑换码一次性核销，成功后绑定用户并标记已兑换；旧测试兑换码继续兼容。
 - 用户端充值页改为购买兑换码引导，独立兑换码页突出自动到账，并预留闲鱼商品链接位置。
-- 已部署到腾讯云 `/opt/frist-api`，远端应用备份为 `backups/frist-api-app-20260504-152551-before-redemption-codes.tgz`，运行数据备份为 `backups/runtime-20260504-152551-before-redemption-codes.json`；公网首页 200，游客看板返回 5 个套餐和 11 个模型，未授权 `/v1/models` 为 401，容器为 healthy，远端真实生成/兑换/重复兑换拒绝闭环通过。
-- 验证结果: `node --check apps/frist-api/server/server.js apps/frist-api/src/admin.js apps/frist-api/src/app.js` 通过；Frist-API `npm test` 为 123/123 通过；聚焦 `node --test tests/core.test.mjs tests/business-flow.test.mjs tests/server.test.mjs` 为 114/114 通过；`git diff --check` 通过。
+- 已部署到腾讯云 `/opt/sub2api`，远端应用备份为 `backups/jiyu-ai-app-20260504-152551-before-redemption-codes.tgz`，运行数据备份为 `backups/runtime-20260504-152551-before-redemption-codes.json`；公网首页 200，游客看板返回 5 个套餐和 11 个模型，未授权 `/v1/models` 为 401，容器为 healthy，远端真实生成/兑换/重复兑换拒绝闭环通过。
+- 验证结果: `node --check JIYU AI Sub2API WebUI/server/server.js JIYU AI Sub2API WebUI/src/admin.js JIYU AI Sub2API WebUI/src/app.js` 通过；JIYU AI `npm test` 为 123/123 通过；聚焦 `node --test tests/core.test.mjs tests/business-flow.test.mjs tests/server.test.mjs` 为 114/114 通过；`git diff --check` 通过。
 
 ### 文件变更
-- `apps/frist-api/server/server.js` — 新增兑换卡生成接口、卡密库存、一次性核销和管理端脱敏展示
-- `apps/frist-api/admin.html` / `apps/frist-api/src/admin.js` — 新增卡密生成、复制导出和卡密状态列表
-- `apps/frist-api/index.html` / `apps/frist-api/src/app.js` / `apps/frist-api/src/styles.css` — 充值页和兑换页改为闲鱼兑换码主路径并预留购买链接
-- `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/business-flow.test.mjs` / `apps/frist-api/tests/server.test.mjs` — 覆盖用户端入口、管理端钩子和卡密一次性兑换
+- `JIYU AI Sub2API WebUI/server/server.js` — 新增兑换卡生成接口、卡密库存、一次性核销和管理端脱敏展示
+- `JIYU AI Sub2API WebUI/admin.html` / `JIYU AI Sub2API WebUI/src/admin.js` — 新增卡密生成、复制导出和卡密状态列表
+- `JIYU AI Sub2API WebUI/index.html` / `JIYU AI Sub2API WebUI/src/app.js` / `JIYU AI Sub2API WebUI/src/styles.css` — 充值页和兑换页改为闲鱼兑换码主路径并预留购买链接
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` / `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` / `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 覆盖用户端入口、管理端钩子和卡密一次性兑换
 - `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步兑换码售卖 SOP 和健康状态
 
-## [2026-05-04] Frist-API 支付回调、邮箱找回和运行数据加密
+## [2026-05-04] JIYU AI 支付回调、邮箱找回和运行数据加密
 > 领域: `backend` | `frontend` | `deploy` | `docs`
-> 影响模块: `Frist-API`, `Payments`, `Auth`, `New-API Migration`, `docs`
+> 影响模块: `JIYU AI`, `Payments`, `Auth`, `New-API Migration`, `docs`
 > 关联问题: HI-850, HI-853, HI-859, HI-863
 
 ### 变更内容
 - 注册流程接入 SMTP 验证码邮件，继续保留公开模式不回显验证码；新增忘记密码请求和确认接口，验证码过期后不可复用。
 - 充值链路新增微信支付 Native 和支付宝当面付预创建下单；微信/支付宝异步通知完成验签、解密和按订单号幂等入账，重复回调不会重复加钱。
 - 充值页补充人工确认、微信 Native、支付宝当面付三种支付方式选择；接口未配置时会明确提示，不会误导用户已经自动入账。
-- Frist-API runtime JSON 增加 AES-256-GCM 字段加密，保护用户 `fk-live-*` Key 和上游 `rawKey`，兼容旧明文文件读取并在保存时迁移为密文。
+- JIYU AI runtime JSON 增加 AES-256-GCM 字段加密，保护用户 `fk-live-*` Key 和上游 `rawKey`，兼容旧明文文件读取并在保存时迁移为密文。
 - 新增 New-API 迁移 dry-run 脚本，先只输出用户、Token、订单、日志和风险提示，不默认写入生产 New-API。
-- 免费域名公网实测后，将过渡入口从被腾讯 DNSPod 拦截的 `sslip.io` 切到当前可用的 `frist-api.101-43-41-96.nip.io`；Let’s Encrypt 验证被 connection reset 拦住，HTTPS 仍建议后续走自有域名或 Cloudflare Tunnel。
+- 免费域名公网实测后，将过渡入口从被腾讯 DNSPod 拦截的 `sslip.io` 切到当前可用的 `jiyu.245334.xyz`；Let’s Encrypt 验证被 connection reset 拦住，HTTPS 仍建议后续走自有域名或 Cloudflare Tunnel。
 - Docker Compose 和生产环境模板新增邮箱找回、运行数据加密、微信支付、支付宝支付相关环境变量。
-- 验证结果: `node --check apps/frist-api/server/server.js apps/frist-api/server/payments.js apps/frist-api/src/app.js apps/frist-api/src/serverClient.js scripts/frist_api_newapi_migration_dry_run.mjs` 通过；Frist-API `npm test` 为 123/123 通过；`git diff --check` 通过；New-API 迁移 dry-run 空数据验证通过。
+- 验证结果: `node --check JIYU AI Sub2API WebUI/server/server.js JIYU AI Sub2API WebUI/server/payments.js JIYU AI Sub2API WebUI/src/app.js JIYU AI Sub2API WebUI/src/serverClient.js scripts/jiyu_ai_newapi_migration_dry_run.mjs` 通过；JIYU AI `npm test` 为 123/123 通过；`git diff --check` 通过；New-API 迁移 dry-run 空数据验证通过。
 
 ### 文件变更
-- `apps/frist-api/server/server.js` / `apps/frist-api/server/payments.js` — 接入支付下单、回调验签/解密、幂等入账、邮箱验证码/找回密码和 runtime 字段加密
-- `apps/frist-api/index.html` / `apps/frist-api/src/app.js` / `apps/frist-api/src/serverClient.js` / `apps/frist-api/src/styles.css` — 补齐忘记密码入口、支付方式选择和支付反馈
-- `apps/frist-api/tests/server.test.mjs` / `apps/frist-api/tests/core.test.mjs` — 覆盖邮箱、支付、幂等、加密、公开模式配置和前端入口
-- `scripts/frist_api_newapi_migration_dry_run.mjs` — 新增 New-API 迁移演练报告脚本
-- `docker-compose.frist-api.yml` / `apps/frist-api/deploy/production.env.example` — 登记新增生产环境变量
+- `JIYU AI Sub2API WebUI/server/server.js` / `JIYU AI Sub2API WebUI/server/payments.js` — 接入支付下单、回调验签/解密、幂等入账、邮箱验证码/找回密码和 runtime 字段加密
+- `JIYU AI Sub2API WebUI/index.html` / `JIYU AI Sub2API WebUI/src/app.js` / `JIYU AI Sub2API WebUI/src/serverClient.js` / `JIYU AI Sub2API WebUI/src/styles.css` — 补齐忘记密码入口、支付方式选择和支付反馈
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` / `JIYU AI Sub2API WebUI/tests/core.test.mjs` — 覆盖邮箱、支付、幂等、加密、公开模式配置和前端入口
+- `scripts/jiyu_ai_newapi_migration_dry_run.mjs` — 新增 New-API 迁移演练报告脚本
+- `docker-compose.jiyu-ai.yml` / `JIYU AI Sub2API WebUI/deploy/production.env.example` — 登记新增生产环境变量
 - `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步新接口、支付回调、域名方案和剩余运维风险
 
-## [2026-05-04] Frist-API 仓库清理与离线恢复体验
+## [2026-05-04] JIYU AI 仓库清理与离线恢复体验
 > 领域: `frontend` | `docs`
-> 影响模块: `Frist-API`, `docs`
+> 影响模块: `JIYU AI`, `docs`
 > 关联问题: HI-862
 
 ### 变更内容
 - 补齐后端不可用时的用户恢复路径：工作台显示“后端暂不可用”恢复条，说明当前为空数据模式，并提供一键重新连接按钮。
 - 重新连接按钮复用现有 Dashboard 加载链路，成功后自动隐藏恢复条，失败时保留明确错误提示。
-- 同步 Frist-API Web 操作注册表、快速启动文档和 HEALTH，并修正系统健康摘要接口的新版文档路径，避免文档和接口仍指向已删除的旧编号文件。
+- 同步 JIYU AI Web 操作注册表、快速启动文档和 HEALTH，并修正系统健康摘要接口的新版文档路径，避免文档和接口仍指向已删除的旧编号文件。
 
 ### 文件变更
-- `apps/frist-api/index.html` — 增加后端恢复提示和重新连接入口
-- `apps/frist-api/src/app.js` — 增加离线恢复条渲染和重试逻辑
-- `apps/frist-api/src/styles.css` — 增加恢复提示的桌面/移动样式
-- `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/business-flow.test.mjs` — 增加离线恢复体验回归钩子
+- `JIYU AI Sub2API WebUI/index.html` — 增加后端恢复提示和重新连接入口
+- `JIYU AI Sub2API WebUI/src/app.js` — 增加离线恢复条渲染和重试逻辑
+- `JIYU AI Sub2API WebUI/src/styles.css` — 增加恢复提示的桌面/移动样式
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` / `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 增加离线恢复体验回归钩子
 - `packages/clawbot/src/api/routers/system.py` — 健康摘要读取新版 `docs/009-health.md`
 - `docs/005-quickstart.md` / `docs/006-registries.md` / `docs/009-health.md` — 同步操作入口、文档路径和健康状态
 
-## [2026-05-04] Frist-API DeepSeek 官方模型对齐
+## [2026-05-04] JIYU AI DeepSeek 官方模型对齐
 > 领域: `frontend` | `backend` | `ai-pool` | `docs`
-> 影响模块: `Frist-API`, `CC Switch`, `Codex`, `DeepSeek`, `docs`
+> 影响模块: `JIYU AI`, `CC Switch`, `Codex`, `DeepSeek`, `docs`
 > 关联问题: HI-858, HI-861
 
 ### 变更内容
 - 用 DeepSeek 官方 live 文档重新核对 Codex DeepSeek 导入逻辑：官方 OpenAI 兼容入口继续可使用 `https://api.deepseek.com/v1`，但默认模型已不应继续锁定旧 `deepseek-chat`。
 - 将 DeepSeek 新导入默认模型改为 `deepseek-v4-flash`，并把 `deepseek-v4-pro` 加入 DeepSeek 模型清单；`deepseek-chat` / `deepseek-reasoner` 继续保留为旧配置兼容，避免已有导入立刻失效。
 - 同步 Workbench 模型目录、CC Switch 指引、New-API 桥接默认模型和服务端默认目录，避免前端、后端、桥接层显示不同模型。
-- 已部署到腾讯云 `/opt/frist-api`，远端应用备份为 `backups/frist-api-app-20260504-104527-before-deepseek-v4.tgz`；公网首页 200，游客看板 200，模型目录包含 `deepseek-v4-flash`，未授权 `/v1/models` 仍为 401，容器为 healthy。
-- 验证结果: `node --check src/core.js src/app.js src/admin.js server/server.js server/shared.js server/newApiBridge.js` 通过；聚焦 `node --test tests/core.test.mjs tests/server.test.mjs` 为 90/90 通过；Frist-API `npm test` 为 118/118 通过；`make new-api-check` 确认 New-API 仍同步到 GitHub latest `v1.0.0-rc.2`。
+- 已部署到腾讯云 `/opt/sub2api`，远端应用备份为 `backups/jiyu-ai-app-20260504-104527-before-deepseek-v4.tgz`；公网首页 200，游客看板 200，模型目录包含 `deepseek-v4-flash`，未授权 `/v1/models` 仍为 401，容器为 healthy。
+- 验证结果: `node --check src/core.js src/app.js src/admin.js server/server.js server/shared.js server/newApiBridge.js` 通过；聚焦 `node --test tests/core.test.mjs tests/server.test.mjs` 为 90/90 通过；JIYU AI `npm test` 为 118/118 通过；`make new-api-check` 确认 New-API 仍同步到 GitHub latest `v1.0.0-rc.2`。
 
 ### 文件变更
-- `apps/frist-api/src/core.js` — DeepSeek 默认模型和强度排序改为 v4 优先，保留旧模型兼容
-- `apps/frist-api/src/app.js` / `apps/frist-api/index.html` — 同步前端模型目录和 Codex DeepSeek 指引
-- `apps/frist-api/server/server.js` / `apps/frist-api/server/shared.js` / `apps/frist-api/server/newApiBridge.js` — 同步服务端目录、探测候选和 New-API 桥接默认模型
-- `apps/frist-api/tests/core.test.mjs` / `apps/frist-api/tests/server.test.mjs` — 覆盖新默认模型和旧模型兼容
+- `JIYU AI Sub2API WebUI/src/core.js` — DeepSeek 默认模型和强度排序改为 v4 优先，保留旧模型兼容
+- `JIYU AI Sub2API WebUI/src/app.js` / `JIYU AI Sub2API WebUI/index.html` — 同步前端模型目录和 Codex DeepSeek 指引
+- `JIYU AI Sub2API WebUI/server/server.js` / `JIYU AI Sub2API WebUI/server/shared.js` / `JIYU AI Sub2API WebUI/server/newApiBridge.js` — 同步服务端目录、探测候选和 New-API 桥接默认模型
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` / `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 覆盖新默认模型和旧模型兼容
 - `docs/009-health.md` / `docs/007-operations.md` — 同步审计结论和仍需真实 DeepSeek Key 实测的闭环项
 
-## [2026-05-04] Frist-API 用户体验与安全审计修复
+## [2026-05-04] JIYU AI 用户体验与安全审计修复
 > 领域: `backend` | `frontend` | `docs`
-> 影响模块: `Frist-API`, `Auth`, `Workbench UI`, `docs`
+> 影响模块: `JIYU AI`, `Auth`, `Workbench UI`, `docs`
 > 关联问题: HI-850, HI-851, HI-852, HI-860
 
 ### 变更内容
-- 明确本轮审计范围为 `apps/frist-api` 模块、New-API 同步桥接、部署配置和用户实际路径；不将其描述为 OpenEverything 全仓所有模块审计。
-- 将 Frist-API 新注册和改密密码从 SHA-256 迁移为 Node 内置 PBKDF2-SHA256 慢哈希；历史 SHA-256 用户登录成功后自动升级哈希，不新增依赖、不要求一次性数据库迁移。
+- 明确本轮审计范围为 `JIYU AI Sub2API WebUI` 模块、New-API 同步桥接、部署配置和用户实际路径；不将其描述为 OpenEverything 全仓所有模块审计。
+- 将 JIYU AI 新注册和改密密码从 SHA-256 迁移为 Node 内置 PBKDF2-SHA256 慢哈希；历史 SHA-256 用户登录成功后自动升级哈希，不新增依赖、不要求一次性数据库迁移。
 - HTTPS 公网网关或反向代理 HTTPS 请求下，注册和登录 Session Cookie 自动增加 `Secure`，继续保留 `HttpOnly` 和 `SameSite=Lax`。
 - 删除未使用的旧 SHA-256 密码哈希导出，减少后续维护时误用旧逻辑的风险。
 - 补齐用户端和管理端动态 `innerHTML` 字段转义，覆盖管理端库存摘要/审计日志、用户端 API Key 属性、充值套餐、导入目标、进度条百分比等位置。
 - 使用 GitHub live API 和 `make new-api-check` 确认 New-API 当前 latest release、本地 submodule 和 Compose 镜像均为 `v1.0.0-rc.2`。
-- 验证结果: Frist-API `npm test` 116/116 通过；聚焦回归 `node --test tests/business-flow.test.mjs tests/server.test.mjs` 79/79 通过；语法检查和 `git diff --check` 通过；公网游客看板返回 11 个模型目录、9 个渠道检查并包含 DeepSeek。
+- 验证结果: JIYU AI `npm test` 116/116 通过；聚焦回归 `node --test tests/business-flow.test.mjs tests/server.test.mjs` 79/79 通过；语法检查和 `git diff --check` 通过；公网游客看板返回 11 个模型目录、9 个渠道检查并包含 DeepSeek。
 
 ### 文件变更
-- `apps/frist-api/server/server.js` — 增加 PBKDF2 密码哈希、旧哈希登录迁移和 HTTPS `Secure` Cookie
-- `apps/frist-api/server/shared.js` — 移除未使用的旧 SHA-256 密码哈希导出
-- `apps/frist-api/src/app.js` — 补齐动态 HTML 转义和百分比钳制
-- `apps/frist-api/src/admin.js` — 补齐管理端库存摘要与审计日志转义
-- `apps/frist-api/tests/business-flow.test.mjs` / `apps/frist-api/tests/server.test.mjs` — 增加密码哈希迁移、Cookie Secure 和 HTML 转义回归
+- `JIYU AI Sub2API WebUI/server/server.js` — 增加 PBKDF2 密码哈希、旧哈希登录迁移和 HTTPS `Secure` Cookie
+- `JIYU AI Sub2API WebUI/server/shared.js` — 移除未使用的旧 SHA-256 密码哈希导出
+- `JIYU AI Sub2API WebUI/src/app.js` — 补齐动态 HTML 转义和百分比钳制
+- `JIYU AI Sub2API WebUI/src/admin.js` — 补齐管理端库存摘要与审计日志转义
+- `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` / `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 增加密码哈希迁移、Cookie Secure 和 HTML 转义回归
 - `docs/009-health.md` — 同步已修复问题和仍需闭环的架构缺口
 
-## [2026-05-04] Frist-API 模型测试台按 New-API 控制台逻辑重构
+## [2026-05-04] JIYU AI 模型测试台按 New-API 控制台逻辑重构
 > 领域: `frontend` | `docs`
-> 影响模块: `Frist-API`, `Playground`, `Model Catalog`, `docs`
+> 影响模块: `JIYU AI`, `Playground`, `Model Catalog`, `docs`
 > 关联问题: HI-858
 
 ### 变更内容
-- 参考 New-API 的 Playground、模型目录和使用记录页面组织方式，把 Frist-API 广场从单一下拉聊天框改为“模型浏览器 + 当前模型详情 + 连通诊断 + 测试台”。
+- 参考 New-API 的 Playground、模型目录和使用记录页面组织方式，把 JIYU AI 广场从单一下拉聊天框改为“模型浏览器 + 当前模型详情 + 连通诊断 + 测试台”。
 - 模型选择恢复搜索、分组筛选、可用状态、供应商、端点类型和计费信息展示，避免用户误以为只剩少量模型。
 - 模型广场增加搜索框和一键跳转测试台，模型卡片可直接选择测试或复制模型名。
-- 保留 Refero 深色工作台视觉和 Frist-API 的 CC Switch / Codex / DeepSeek 特色，不改网关计费、路由和 New-API 桥接业务逻辑。
-- 已部署到腾讯云 `/opt/frist-api`，远端应用备份为 `backups/frist-api-app-20260504-090503.tgz`；公网模型测试台返回 12 行模型入口，游客看板返回 11 个模型目录和 9 个服务检查，未授权 `/v1/models` 仍为 401。
-- 验证结果: `node --check apps/frist-api/src/app.js apps/frist-api/src/admin.js apps/frist-api/server/server.js` 通过；Frist-API `npm test` 114/114 通过；`git diff --check` 通过；Playwright 桌面/390px 移动端截图无横向溢出。
+- 保留 Refero 深色工作台视觉和 JIYU AI 的 CC Switch / Codex / DeepSeek 特色，不改网关计费、路由和 New-API 桥接业务逻辑。
+- 已部署到腾讯云 `/opt/sub2api`，远端应用备份为 `backups/jiyu-ai-app-20260504-090503.tgz`；公网模型测试台返回 12 行模型入口，游客看板返回 11 个模型目录和 9 个服务检查，未授权 `/v1/models` 仍为 401。
+- 验证结果: `node --check JIYU AI Sub2API WebUI/src/app.js JIYU AI Sub2API WebUI/src/admin.js JIYU AI Sub2API WebUI/server/server.js` 通过；JIYU AI `npm test` 114/114 通过；`git diff --check` 通过；Playwright 桌面/390px 移动端截图无横向溢出。
 
 ### 文件变更
-- `apps/frist-api/index.html` — 重构广场布局，新增模型浏览器、诊断区、快捷提示和模型目录搜索
-- `apps/frist-api/src/app.js` — 增加模型筛选、选择、状态摘要和测试台诊断渲染
-- `apps/frist-api/src/styles.css` — 增加测试台、模型行、当前模型面板和响应式样式
-- `apps/frist-api/tests/business-flow.test.mjs` / `apps/frist-api/tests/core.test.mjs` — 覆盖 New-API 风格模型选择和测试台 UI 钩子
+- `JIYU AI Sub2API WebUI/index.html` — 重构广场布局，新增模型浏览器、诊断区、快捷提示和模型目录搜索
+- `JIYU AI Sub2API WebUI/src/app.js` — 增加模型筛选、选择、状态摘要和测试台诊断渲染
+- `JIYU AI Sub2API WebUI/src/styles.css` — 增加测试台、模型行、当前模型面板和响应式样式
+- `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` / `JIYU AI Sub2API WebUI/tests/core.test.mjs` — 覆盖 New-API 风格模型选择和测试台 UI 钩子
 
-## [2026-05-04] Frist-API Refero 风格控制台 UI 改造
+## [2026-05-04] JIYU AI Refero 风格控制台 UI 改造
 > 领域: `frontend` | `docs`
-> 影响模块: `Frist-API`, `Workbench UI`, `docs`
+> 影响模块: `JIYU AI`, `Workbench UI`, `docs`
 > 关联问题: HI-858
 
 ### 变更内容
-- 借鉴 Refero Hyperstudio 风格，把 Frist-API 用户端和管理端统一为深色控制台视觉：黑色画布、琥珀重点、绿色可用状态、8px 圆角和更克制的层级阴影。
+- 借鉴 Refero Hyperstudio 风格，把 JIYU AI 用户端和管理端统一为深色控制台视觉：黑色画布、琥珀重点、绿色可用状态、8px 圆角和更克制的层级阴影。
 - 保留现有前端路由和业务逻辑，仅通过 `data-design-system="refero-hyperstudio"`、CSS token 和可复用组件类调整整体 UI 壳。
 - 首页模型消耗、渠道连通、最近日志、模型目录、使用记录和 API Key 列表增加生产可用空态；数据加载阶段增加骨架行和 `aria-busy`。
 - 使用记录页额外增加表格外独立空态，避免小屏首次访问时只看到横向滚动表格里的截断提示。
 - 静态预览或后端返回非 JSON 时，不再把 `Unexpected token` 这类技术错误直接暴露给用户，统一提示后端暂不可用并保留空数据壳。
 - 工作台导航增加 `aria-current="page"`，Token 趋势条增加 `role="img"` 与描述标签，继续保留跳转主内容和可见焦点态。
-- 验证结果: `node --check apps/frist-api/src/app.js` 通过；Frist-API `npm test` 114/114 通过。
+- 验证结果: `node --check JIYU AI Sub2API WebUI/src/app.js` 通过；JIYU AI `npm test` 114/114 通过。
 
 ### 文件变更
-- `apps/frist-api/index.html` / `apps/frist-api/admin.html` — 接入 Refero 风格设计系统标记、缓存版本和初始加载语义
-- `apps/frist-api/src/styles.css` — 新增深色控制台设计 token、按钮/卡片/表格/图表/空态/骨架屏可复用样式
-- `apps/frist-api/src/app.js` — 增加加载态、空态、当前页无障碍状态和图表可访问标签
-- `apps/frist-api/tests/core.test.mjs` — 增加 Refero 风格、加载态和可访问性回归钩子
-- `docs/006-registries.md` / `docs/009-health.md` — 同步 Frist-API UI 状态和入口说明
+- `JIYU AI Sub2API WebUI/index.html` / `JIYU AI Sub2API WebUI/admin.html` — 接入 Refero 风格设计系统标记、缓存版本和初始加载语义
+- `JIYU AI Sub2API WebUI/src/styles.css` — 新增深色控制台设计 token、按钮/卡片/表格/图表/空态/骨架屏可复用样式
+- `JIYU AI Sub2API WebUI/src/app.js` — 增加加载态、空态、当前页无障碍状态和图表可访问标签
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` — 增加 Refero 风格、加载态和可访问性回归钩子
+- `docs/006-registries.md` / `docs/009-health.md` — 同步 JIYU AI UI 状态和入口说明
 
-## [2026-05-03] Frist-API 登录验证码与 CC Switch 体验修正
+## [2026-05-03] JIYU AI 登录验证码与 CC Switch 体验修正
 > 领域: `frontend` | `backend` | `docs`
-> 影响模块: `Frist-API`, `CC Switch`, `Playground`, `docs`
+> 影响模块: `JIYU AI`, `CC Switch`, `Playground`, `docs`
 > 关联问题: HI-855, HI-858
 
 ### 变更内容
@@ -4256,43 +4271,43 @@
 - 工作台左侧导航移除数字编号，只保留清晰页面名称。
 - 广场输入框支持 Enter 直接发送，Shift+Enter 保留换行。
 - CC Switch 页面压缩冗余文字，突出 Claude 不带 `/v1`、Codex 必须带 `/v1` 等关键点，并把流程图里的 Codex 终端配置改为可复制。
-- 腾讯云 `/opt/frist-api` 已部署本轮改动，远端代码备份为 `backups/frist-api-app-20260504-073450.tgz`，运行数据备份为 `backups/runtime-20260504-073450.json`；目标测试账号总可用额度已校准为 `$1000.00`。
-- 验证结果: 本地 Frist-API `npm test` 114/114 通过；语法检查和 `git diff --check` 通过；Playwright 桌面/移动检查登录验证码、注册挑战、CC Switch 页面和移动端横向溢出通过；远端本机/公网首页 200，验证码接口正常，未授权 `/v1/models` 401，容器 `healthy`。
+- 腾讯云 `/opt/sub2api` 已部署本轮改动，远端代码备份为 `backups/jiyu-ai-app-20260504-073450.tgz`，运行数据备份为 `backups/runtime-20260504-073450.json`；目标测试账号总可用额度已校准为 `$1000.00`。
+- 验证结果: 本地 JIYU AI `npm test` 114/114 通过；语法检查和 `git diff --check` 通过；Playwright 桌面/移动检查登录验证码、注册挑战、CC Switch 页面和移动端横向溢出通过；远端本机/公网首页 200，验证码接口正常，未授权 `/v1/models` 401，容器 `healthy`。
 
 ### 文件变更
-- `apps/frist-api/server/server.js` — 调整登录/注册验证码策略并增强验证码挑战
-- `apps/frist-api/index.html` — 移除侧栏编号，重构 CC Switch 教程重点和可复制终端块
-- `apps/frist-api/src/app.js` — 登录免验证码、注册专用验证码、广场 Enter 发送和流程图复制交互
-- `apps/frist-api/src/styles.css` — 优化 CC Switch 布局密度、重点标红和导航样式
-- `apps/frist-api/tests/*.mjs` — 覆盖注册验证码、登录免验证码、侧栏编号移除、广场 Enter 发送和 CC Switch 可复制终端
-- `docker-compose.frist-api.yml` / `apps/frist-api/deploy/production.env.example` — 登记验证码错误次数配置
+- `JIYU AI Sub2API WebUI/server/server.js` — 调整登录/注册验证码策略并增强验证码挑战
+- `JIYU AI Sub2API WebUI/index.html` — 移除侧栏编号，重构 CC Switch 教程重点和可复制终端块
+- `JIYU AI Sub2API WebUI/src/app.js` — 登录免验证码、注册专用验证码、广场 Enter 发送和流程图复制交互
+- `JIYU AI Sub2API WebUI/src/styles.css` — 优化 CC Switch 布局密度、重点标红和导航样式
+- `JIYU AI Sub2API WebUI/tests/*.mjs` — 覆盖注册验证码、登录免验证码、侧栏编号移除、广场 Enter 发送和 CC Switch 可复制终端
+- `docker-compose.jiyu-ai.yml` / `JIYU AI Sub2API WebUI/deploy/production.env.example` — 登记验证码错误次数配置
 - `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步入口、生产配置和健康状态
 
-## [2026-05-03] Frist-API 接入 New-API 业务桥接与定时同步
+## [2026-05-03] JIYU AI 接入 New-API 业务桥接与定时同步
 > 领域: `backend` | `infra` | `docs`
-> 影响模块: `Frist-API`, `New-API`, `CC Switch`, `Docker Compose`, `GitHub Actions`, `docs`
+> 影响模块: `JIYU AI`, `New-API`, `CC Switch`, `Docker Compose`, `GitHub Actions`, `docs`
 > 关联问题: HI-859
 
 ### 变更内容
 - 新增 GitHub Actions 定时同步任务，每天检查 `QuantumNous/new-api` 最新非草稿 release；若 submodule 或 compose 镜像落后，自动执行 `make new-api-sync` 并创建同步 PR。
-- 新增 Frist-API 服务端 New-API 桥接层，启用后由 New-API 承接用户看板、API Key 创建/禁用/删除、兑换码、使用日志、订阅/充值/邀请读取和可选 `/v1` 网关代理。
-- 保留 Frist-API 自研账号壳、Workbench UI、CC Switch/Codex/OpenCode/OpenClaw/Hermes 导入、DeepSeek 官方 API 配置、余额预警、补号助手和本地 JSON 兜底；New-API 未启用或不可用时仍走原逻辑。
-- Docker Compose 和生产环境模板新增 `FRIST_API_NEWAPI_*` 配置，真实 token、用户 ID 和服务器密钥只允许放服务器环境变量，不写入仓库。
+- 新增 JIYU AI 服务端 New-API 桥接层，启用后由 New-API 承接用户看板、API Key 创建/禁用/删除、兑换码、使用日志、订阅/充值/邀请读取和可选 `/v1` 网关代理。
+- 保留 JIYU AI 自研账号壳、Workbench UI、CC Switch/Codex/OpenCode/OpenClaw/Hermes 导入、DeepSeek 官方 API 配置、余额预警、补号助手和本地 JSON 兜底；New-API 未启用或不可用时仍走原逻辑。
+- Docker Compose 和生产环境模板新增 `SUB2API_NEWAPI_*` 配置，真实 token、用户 ID 和服务器密钥只允许放服务器环境变量，不写入仓库。
 - Codex + DeepSeek 闭环继续保持官方 OpenAI 兼容端点 `https://api.deepseek.com/v1`，测试覆盖 CC Switch 导入配置、`auth.json`、`config.toml` 和 `/v1/responses` 网关代理。
-- 验证结果: Frist-API `npm test` 113/113 通过；聚焦 New-API/Codex 回归 5/5 通过；`make new-api-check` 确认当前仍为最新 `v1.0.0-rc.2`；`docker compose -f docker-compose.newapi.yml config` 通过。
+- 验证结果: JIYU AI `npm test` 113/113 通过；聚焦 New-API/Codex 回归 5/5 通过；`make new-api-check` 确认当前仍为最新 `v1.0.0-rc.2`；`docker compose -f docker-compose.newapi.yml config` 通过。
 
 ### 文件变更
 - 当时的 New-API Scheduled Sync workflow — 新增 New-API 定时同步 PR 自动化；该 workflow 后续随 Sub2API 切换删除
-- `apps/frist-api/server/newApiBridge.js` — 新增 New-API 业务桥接层
-- `apps/frist-api/server/server.js` — 接入桥接层，保留本地业务逻辑兜底
-- `apps/frist-api/tests/server.test.mjs` — 覆盖 New-API dashboard/token/import/gateway 闭环
-- `docker-compose.frist-api.yml` — 透传 `FRIST_API_NEWAPI_*` 环境变量
-- `apps/frist-api/deploy/production.env.example` — 登记 New-API 生产配置模板
+- `JIYU AI Sub2API WebUI/server/newApiBridge.js` — 新增 New-API 业务桥接层
+- `JIYU AI Sub2API WebUI/server/server.js` — 接入桥接层，保留本地业务逻辑兜底
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 覆盖 New-API dashboard/token/import/gateway 闭环
+- `docker-compose.jiyu-ai.yml` — 透传 `SUB2API_NEWAPI_*` 环境变量
+- `JIYU AI Sub2API WebUI/deploy/production.env.example` — 登记 New-API 生产配置模板
 - `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步注册表、运维 SOP 和系统状态
 
 ## [2026-05-03] New-API 最新版升级与 Git 同步机制
 > 领域: `backend` | `infra` | `docs`
-> 影响模块: `New-API`, `Frist-API`, `ClawBot API`, `Docker Compose`, `docs`
+> 影响模块: `New-API`, `JIYU AI`, `ClawBot API`, `Docker Compose`, `docs`
 > 关联问题: HI-859
 
 ### 变更内容
@@ -4302,7 +4317,7 @@
 - 新增 `make new-api-check` / `make new-api-sync` 统一入口，避免手工改镜像版本或直接复制上游代码。
 - 扩展 ClawBot `newapi.py` 代理端点，新增 API Key 搜索/创建/编辑/禁用、使用日志、Token 趋势、订阅、兑换码、价格、充值配置和邀请返利接口代理；业务逻辑仍由 New-API 上游服务执行。
 - New-API v1 后台接口需要 `New-Api-User` 头，代理层新增 `NEWAPI_ADMIN_USER_ID` 环境变量并同步测试，避免只配 access token 后认证失败。
-- 研究结论: Frist-API 业务替换应采用“Frist-API 保留品牌壳 + New-API 内网服务承接账号/Key/渠道/计费/日志/订阅/兑换/支付”的代理与数据迁移方案，不再从旧本地 New-API 代码直接迁移。
+- 研究结论: JIYU AI 业务替换应采用“JIYU AI 保留品牌壳 + New-API 内网服务承接账号/Key/渠道/计费/日志/订阅/兑换/支付”的代理与数据迁移方案，不再从旧本地 New-API 代码直接迁移。
 
 ### 文件变更
 - `.gitmodules` / `packages/new-api-upstream` — 新增 New-API 上游 submodule，固定到 `v1.0.0-rc.2`
@@ -4314,30 +4329,30 @@
 - `packages/clawbot/config/.env.example` — 登记 `NEWAPI_ADMIN_USER_ID`
 - `docs/006-registries.md` / `docs/007-operations.md` / `docs/009-health.md` — 同步注册表、升级 SOP 和当前状态
 
-## [2026-05-03] Frist-API Workbench 腾讯云部署与 New-API 上游检查
+## [2026-05-03] JIYU AI Workbench 腾讯云部署与 New-API 上游检查
 > 领域: `frontend` | `infra` | `docs`
-> 影响模块: `Frist-API`, `Docker Compose`, `New-API`, `docs`
+> 影响模块: `JIYU AI`, `Docker Compose`, `New-API`, `docs`
 > 关联问题: HI-858, HI-859
 
 ### 变更内容
-- 已将 Frist-API Workbench UI 外壳、使用记录、美元展示、扩展 CC Switch 导入和 Codex DeepSeek 配置同步部署到腾讯云 `/opt/frist-api`。
+- 已将 JIYU AI Workbench UI 外壳、使用记录、美元展示、扩展 CC Switch 导入和 Codex DeepSeek 配置同步部署到腾讯云 `/opt/sub2api`。
 - 部署前已备份远端应用代码，运行数据、远端 `.env` 和真实密钥未同步、未覆盖。
-- `docker-compose.frist-api.yml` 补齐余额预警 SMTP 环境变量透传，避免生产容器读取不到服务器环境配置。
-- 远端 `frist-api-server` 已重新创建并恢复 `healthy` 状态，公网首页、游客看板、验证码、隐藏管理页和未授权模型接口冒烟通过。
+- `docker-compose.jiyu-ai.yml` 补齐余额预警 SMTP 环境变量透传，避免生产容器读取不到服务器环境配置。
+- 远端 `jiyu-ai-server` 已重新创建并恢复 `healthy` 状态，公网首页、游客看板、验证码、隐藏管理页和未授权模型接口冒烟通过。
 - 按用户要求暂停从旧本地 New-API 逻辑迁移，改为先检查 GitHub 上游；当前最新 New-API 为 `v1.0.0-rc.2`，本地 `docker-compose.newapi.yml` 仍固定在旧版 `calciumion/new-api:v0.12.6`，后续应先做数据备份和升级演练。
 
 ### 文件变更
-- `docker-compose.frist-api.yml` — 透传 `FRIST_API_SMTP_*` 和 `FRIST_API_BALANCE_ALERT_FROM_NAME`
+- `docker-compose.jiyu-ai.yml` — 透传 `SUB2API_SMTP_*` 和 `SUB2API_BALANCE_ALERT_FROM_NAME`
 - `docs/002-changelog.md` — 记录部署、验证和 New-API 上游检查结果
-- `docs/009-health.md` — 同步 Frist-API 服务器部署和 New-API 版本状态
+- `docs/009-health.md` — 同步 JIYU AI 服务器部署和 New-API 版本状态
 
-## [2026-05-03] Frist-API Workbench UI 外壳与美元计价
+## [2026-05-03] JIYU AI Workbench UI 外壳与美元计价
 > 领域: `frontend` | `backend` | `ai-pool` | `docs`
-> 影响模块: `Frist-API`, `CC Switch`, `New-API Adapter`, `docs`
+> 影响模块: `JIYU AI`, `CC Switch`, `New-API Adapter`, `docs`
 > 关联问题: HI-858, HI-859
 
 ### 变更内容
-- 用户端改成工作台式控制台外壳，保留顶部唯一 Frist-API Logo，移除侧栏重复品牌块。
+- 用户端改成工作台式控制台外壳，保留顶部唯一 JIYU AI Logo，移除侧栏重复品牌块。
 - 仪表盘补齐今日请求、今日消费、今日 Token、累计 Token、累计消费、平均响应、性能指标和模型连通指标卡。
 - 首页新增模型消耗圆形占比、Token 使用趋势、最近使用日志和服务可用性区块。
 - API 管理新增“搜索名称或 key”、API 端点展示，以及禁用、编辑、删除、复制等图标化操作。
@@ -4345,29 +4360,29 @@
 - CC Switch 导入范围扩展并校验 Claude、Codex、Gemini、OpenCode、OpenClaw、Hermes、Harmes；Codex + DeepSeek 输出官方 OpenAI 兼容端点 `https://api.deepseek.com/v1`，真实 DeepSeek Key 未写入仓库。
 - 用户侧余额、消费、模型价格、New-API 归一化数据和余额预警展示统一改为美元；充值仍按人民币生成美元额度。
 - 已接入 New-API dashboard/token/usage/channel 的用户侧适配与脱敏归一化；完整 New-API 业务逻辑替换仍登记为架构迁移待办。
-- 验证结果: Frist-API 语法检查通过；聚焦回归 3/3 通过；全量 `npm test` 112/112 通过；Playwright 已补桌面和移动截图。
+- 验证结果: JIYU AI 语法检查通过；聚焦回归 3/3 通过；全量 `npm test` 112/112 通过；Playwright 已补桌面和移动截图。
 
 ### 文件变更
-- `apps/frist-api/index.html` — 重做用户工作台外壳、新增页面和仪表盘区块
-- `apps/frist-api/src/app.js` — 接入新路由、指标渲染、API 搜索、使用记录、CC Switch DeepSeek 流程
-- `apps/frist-api/src/styles.css` — 新增工作台、指标卡、图表、记录表和新增页面响应式样式
-- `apps/frist-api/src/core.js` — 扩展 CC Switch 客户端、DeepSeek 官方端点和导入配置
-- `apps/frist-api/src/serverClient.js` — 归一化仪表盘、记录、日志和美元展示数据
-- `apps/frist-api/src/businessFlow.js` — 同步业务流中的美元额度和导入状态
-- `apps/frist-api/src/newApiClient.js` — 将 New-API 用户、Token、Usage、Channel 数据归一化到用户端美元展示
-- `apps/frist-api/server/server.js` / `apps/frist-api/server/shared.js` — 输出新仪表盘字段、使用记录、最近日志和 DeepSeek 模型目录
-- `apps/frist-api/tests/*.test.mjs` — 覆盖新外壳、API 搜索、使用记录、美元计价、CC Switch 导入和 DeepSeek Key 不落库
-- `docs/006-registries.md` — 登记新增 Frist-API Web 操作入口
+- `JIYU AI Sub2API WebUI/index.html` — 重做用户工作台外壳、新增页面和仪表盘区块
+- `JIYU AI Sub2API WebUI/src/app.js` — 接入新路由、指标渲染、API 搜索、使用记录、CC Switch DeepSeek 流程
+- `JIYU AI Sub2API WebUI/src/styles.css` — 新增工作台、指标卡、图表、记录表和新增页面响应式样式
+- `JIYU AI Sub2API WebUI/src/core.js` — 扩展 CC Switch 客户端、DeepSeek 官方端点和导入配置
+- `JIYU AI Sub2API WebUI/src/serverClient.js` — 归一化仪表盘、记录、日志和美元展示数据
+- `JIYU AI Sub2API WebUI/src/businessFlow.js` — 同步业务流中的美元额度和导入状态
+- `JIYU AI Sub2API WebUI/src/newApiClient.js` — 将 New-API 用户、Token、Usage、Channel 数据归一化到用户端美元展示
+- `JIYU AI Sub2API WebUI/server/server.js` / `JIYU AI Sub2API WebUI/server/shared.js` — 输出新仪表盘字段、使用记录、最近日志和 DeepSeek 模型目录
+- `JIYU AI Sub2API WebUI/tests/*.test.mjs` — 覆盖新外壳、API 搜索、使用记录、美元计价、CC Switch 导入和 DeepSeek Key 不落库
+- `docs/006-registries.md` — 登记新增 JIYU AI Web 操作入口
 - `docs/009-health.md` — 登记 UI 壳完成与 New-API 完整替换剩余架构迁移
 - `docs/002-changelog.md` — 记录本次变更
 
-## [2026-05-03] Frist-API 端到端全量审计
+## [2026-05-03] JIYU AI 端到端全量审计
 > 领域: `backend` | `frontend` | `docs`
-> 影响模块: `Frist-API`
+> 影响模块: `JIYU AI`
 > 关联问题: HI-850 ~ HI-857, TD-009 ~ TD-012
 
 ### 变更内容
-- 对 apps/frist-api 模块执行全量端到端审计：源码审查、测试验证、安全扫描、UX 断点分析
+- 对 JIYU AI Sub2API WebUI 模块执行全量端到端审计：源码审查、测试验证、安全扫描、UX 断点分析
 - 测试结果：108/108 全量通过，0 失败
 - 发现并登记 8 个新问题（3 安全 + 2 UX + 3 架构）和 4 个技术债
 - 安全发现：runtime.json 明文存 Key、SHA-256 密码哈希过弱、Session Cookie 缺 Secure 标记、算术验证码可绕过
@@ -4377,27 +4392,27 @@
 ### 文件变更
 - `docs/009-health.md` — 新增 HI-850~857 和 TD-009~012
 > 领域: `backend` | `frontend` | `docs`
-> 影响模块: `Frist-API`, `Billing`, `SMTP`, `docs`
+> 影响模块: `JIYU AI`, `Billing`, `SMTP`, `docs`
 > 关联问题: HI-848
 
 ### 变更内容
 - 用户账单页新增余额预警卡片，可自定义启用状态、人民币阈值和通知邮箱，并可手动发送测试邮件。
 - 网关扣费后检测余额是否从阈值上方跌到阈值以下，只发送一次品牌化低余额邮件，避免重复刷屏。
 - 后端新增 SMTP 发送器和 HTML/Text 双格式邮件模板，支持 Gmail/企业邮箱应用专用密码通过服务器环境变量配置。
-- 腾讯云实测发现 Gmail IPv6 SMTP 可用、IPv4 465 超时；已补 Node SMTP DNS 地址轮询和 `FRIST_API_SMTP_FAMILY`，避免默认地址选择卡死自动邮件。
+- 腾讯云实测发现 Gmail IPv6 SMTP 可用、IPv4 465 超时；已补 Node SMTP DNS 地址轮询和 `SUB2API_SMTP_FAMILY`，避免默认地址选择卡死自动邮件。
 - 余额预警邮件模板升级为现代事务邮件样式：首屏突出当前余额/预警阈值，补齐事件摘要、CTA、暗黑模式和移动端可读性。
 - 运维与注册表同步登记余额预警按钮、接口和 SMTP 环境变量；真实邮箱密码不落盘。
-- 验证结果: Frist-API 本地回归测试当前 108/108 通过；本机到 Gmail SMTP 的 TLS/SMTP greeting 阶段不稳定，腾讯云服务器已通过 Gmail 587 STARTTLS 发出新版模板测试邮件，IPv4 465 超时仍保留为已知网络限制。
+- 验证结果: JIYU AI 本地回归测试当前 108/108 通过；本机到 Gmail SMTP 的 TLS/SMTP greeting 阶段不稳定，腾讯云服务器已通过 Gmail 587 STARTTLS 发出新版模板测试邮件，IPv4 465 超时仍保留为已知网络限制。
 
 ### 文件变更
-- `apps/frist-api/server/server.js` — 新增余额预警 API、扣费触发逻辑、SMTP 发送器和邮件模板
-- `apps/frist-api/index.html` — 在账单页新增余额预警设置卡片
-- `apps/frist-api/src/app.js` — 接入余额预警保存、测试邮件和页面渲染
-- `apps/frist-api/src/serverClient.js` — 增加余额预警接口客户端和 Dashboard 归一化
-- `apps/frist-api/src/styles.css` — 增加余额预警卡片和移动端样式
-- `apps/frist-api/tests/server.test.mjs` — 覆盖配置保存、跨阈值发信和重复通知抑制
-- `apps/frist-api/tests/business-flow.test.mjs` — 覆盖账单页预警控件接线
-- `apps/frist-api/deploy/production.env.example` — 增加 SMTP 环境变量示例
+- `JIYU AI Sub2API WebUI/server/server.js` — 新增余额预警 API、扣费触发逻辑、SMTP 发送器和邮件模板
+- `JIYU AI Sub2API WebUI/index.html` — 在账单页新增余额预警设置卡片
+- `JIYU AI Sub2API WebUI/src/app.js` — 接入余额预警保存、测试邮件和页面渲染
+- `JIYU AI Sub2API WebUI/src/serverClient.js` — 增加余额预警接口客户端和 Dashboard 归一化
+- `JIYU AI Sub2API WebUI/src/styles.css` — 增加余额预警卡片和移动端样式
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 覆盖配置保存、跨阈值发信和重复通知抑制
+- `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 覆盖账单页预警控件接线
+- `JIYU AI Sub2API WebUI/deploy/production.env.example` — 增加 SMTP 环境变量示例
 - `docs/006-registries.md` — 登记余额预警 Web 操作入口和 SMTP 环境变量
 - `docs/007-operations.md` — 补充余额预警邮件配置和测试流程
 - `docs/009-health.md` — 登记 HI-848/HI-849 并调整剩余 SMTP 技术债
@@ -4449,53 +4464,53 @@
 - `apps/openclaw/usecases/` — 清空（内容已迁移到 docs/050-059/062/065）
 - `packages/clawbot/docs/` — 清空（仅保留空目录）
 
-## [2026-05-03] Frist-API 新余额站公网真测与图片广场优化
+## [2026-05-03] JIYU AI 新余额站公网真测与图片广场优化
 > 领域: `frontend` | `ai-pool` | `deploy` | `docs`
-> 影响模块: `Frist-API`, `Playground`, `Gateway`, `docs`
+> 影响模块: `JIYU AI`, `Playground`, `Gateway`, `docs`
 > 关联问题: HI-845
 
 ### 变更内容
 - 上游切换: 接入新的授权余额站 `/v1` 上游，并保留 CPA JSON/chong 仅作为人工风控备用入口。
 - 公网实测: 通过裸 IP 网关完成 `/v1/models`、`gpt-5.5` Chat Completions 和 `gpt-image-2` Images 真请求，图片响应返回有效 1024x1024 PNG。
 - 广场优化: 用户端广场生图默认带 `quality: low`、`output_format: png` 和 `n: 1`，让低带宽服务器上的图片连通测试更稳定。
-- 验证结果: Frist-API 本地回归保持 104 条通过，腾讯云容器 `frist-api-server` 处于 healthy 状态。
+- 验证结果: JIYU AI 本地回归保持 104 条通过，腾讯云容器 `jiyu-ai-server` 处于 healthy 状态。
 
 ### 文件变更
-- `apps/frist-api/src/app.js` — 广场图片请求默认使用轻量 PNG 参数
-- `apps/frist-api/tests/business-flow.test.mjs` — 覆盖广场图片请求参数接线
+- `JIYU AI Sub2API WebUI/src/app.js` — 广场图片请求默认使用轻量 PNG 参数
+- `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 覆盖广场图片请求参数接线
 - `docs/002-changelog.md` — 记录新余额站公网真测和广场优化
-- `docs/025-frist-api-quickstart.md` — 同步图片广场实测口径
+- `docs/025-jiyu-ai-quickstart.md` — 同步图片广场实测口径
 - `docs/060-health.md` — 登记 HI-845
 
-## [2026-05-03] Frist-API 余额站上游与工作台首页适配
+## [2026-05-03] JIYU AI 余额站上游与工作台首页适配
 > 领域: `backend` | `frontend` | `ai-pool` | `deploy` | `docs`
-> 影响模块: `Frist-API`, `Gateway`, `Replenishment`, `Workbench`, `docs`
+> 影响模块: `JIYU AI`, `Gateway`, `Replenishment`, `Workbench`, `docs`
 > 关联问题: HI-844
 
 ### 变更内容
 - 上游策略: 适配授权余额站模式，管理员补号可以直接录入供应商根地址；当根地址返回网站 HTML 壳时，补号探测会自动尝试同域 `/v1` OpenAI 兼容路径。
 - 探测校验: Chat Completions、Responses 和 Images 的 2xx 响应都要符合对应 OpenAI 兼容 JSON 结构，避免把网页、余额页或错误页误判为健康接口。
 - 额度判断: 2xx HTML 文本不再参与余额不足判断，避免供应商 Dashboard 文案里的 balance 字样误触发 `quota_failed`。
-- 公开部署: Docker Compose 透传 `FRIST_API_ALLOW_INSECURE_PUBLIC_HTTP`，便于无域名裸 IP 阶段按显式开关完成公网验收。
+- 公开部署: Docker Compose 透传 `SUB2API_ALLOW_INSECURE_PUBLIC_HTTP`，便于无域名裸 IP 阶段按显式开关完成公网验收。
 - 用户界面: 首页从营销 Hero 改为控制台工作台布局，参考余额站后台的信息密度，新增紧凑左侧导航、顶部操作区和余额/API Key/消耗/模型连通四个核心状态卡。
 - 验证准备: 新增根地址 HTML 自动切 `/v1` 的回归测试，保障 `gpt-5.5`、`gpt-image-2` 这类余额站模型进入广场实测前先通过真实 API 路径。
 
 ### 文件变更
-- `apps/frist-api/server/server.js` — 增加根地址与 `/v1` 候选路由探测、响应结构校验和 2xx 额度判断保护
-- `apps/frist-api/tests/server.test.mjs` — 覆盖供应商根地址返回 HTML 时自动路由到 `/v1`
-- `apps/frist-api/index.html` — 首页改为工作台控制台布局
-- `apps/frist-api/src/styles.css` — 新增工作台、左侧 rail、控制台指标卡和响应式样式
-- `apps/frist-api/tests/core.test.mjs` — 更新首页布局边界测试
-- `docker-compose.frist-api.yml` — 透传无域名 HTTP 验收开关
-- `apps/frist-api/deploy/production.env.example` — 补充生产环境变量示例
-- `docs/024-frist-api-operator-runbook.md` — 增加授权余额站接入和根地址 `/v1` 自动探测说明
-- `docs/025-frist-api-quickstart.md` — 同步工作台首页、余额站探测和测试覆盖说明
+- `JIYU AI Sub2API WebUI/server/server.js` — 增加根地址与 `/v1` 候选路由探测、响应结构校验和 2xx 额度判断保护
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 覆盖供应商根地址返回 HTML 时自动路由到 `/v1`
+- `JIYU AI Sub2API WebUI/index.html` — 首页改为工作台控制台布局
+- `JIYU AI Sub2API WebUI/src/styles.css` — 新增工作台、左侧 rail、控制台指标卡和响应式样式
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` — 更新首页布局边界测试
+- `docker-compose.jiyu-ai.yml` — 透传无域名 HTTP 验收开关
+- `JIYU AI Sub2API WebUI/deploy/production.env.example` — 补充生产环境变量示例
+- `docs/024-jiyu-ai-operator-runbook.md` — 增加授权余额站接入和根地址 `/v1` 自动探测说明
+- `docs/025-jiyu-ai-quickstart.md` — 同步工作台首页、余额站探测和测试覆盖说明
 - `docs/031-command-registry.md` — 登记工作台 rail 和控制台主区入口
 - `docs/060-health.md` — 登记 HI-844
 
-## [2026-05-03] Frist-API 上游失效库存落盘
+## [2026-05-03] JIYU AI 上游失效库存落盘
 > 领域: `backend` | `ai-pool` | `docs`
-> 影响模块: `Frist-API`, `Gateway`, `Inventory`, `docs`
+> 影响模块: `JIYU AI`, `Gateway`, `Inventory`, `docs`
 > 关联问题: HI-843
 
 ### 变更内容
@@ -4505,15 +4520,15 @@
 - 验证结果: 新增所有候选上游被拒绝时的回归测试，确认 503 后库存状态会落盘且模型清单下线。
 
 ### 文件变更
-- `apps/frist-api/server/server.js` — 将全候选失败路径改为可落盘的 503 网关响应
-- `apps/frist-api/tests/server.test.mjs` — 覆盖所有上游被禁用时的库存持久化和模型下线行为
+- `JIYU AI Sub2API WebUI/server/server.js` — 将全候选失败路径改为可落盘的 503 网关响应
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 覆盖所有上游被禁用时的库存持久化和模型下线行为
 - `docs/002-changelog.md` — 记录公网实测暴露的问题与修复
-- `docs/025-frist-api-quickstart.md` — 同步回归测试数量
+- `docs/025-jiyu-ai-quickstart.md` — 同步回归测试数量
 - `docs/060-health.md` — 登记 HI-843
 
-## [2026-05-03] Frist-API 备用渠道人工风控入口
+## [2026-05-03] JIYU AI 备用渠道人工风控入口
 > 领域: `backend` | `frontend` | `ai-pool` | `docs`
-> 影响模块: `Frist-API`, `Admin`, `Gateway`, `Replenishment`, `docs`
+> 影响模块: `JIYU AI`, `Admin`, `Gateway`, `Replenishment`, `docs`
 > 关联问题: HI-842
 
 ### 变更内容
@@ -4522,71 +4537,71 @@
 - 路由保护: `/v1/models`、用户导入模型清单、广场和实际网关调用只使用已放行库存；隔离或禁止状态不会访问上游。
 - JSON 入口: 管理端 Key 列表支持粘贴 JSON 数组，便于人工导入已合规确认的 API 兼容凭证；不实现 OAuth Token 抓取、批量刷新或绕过风控逻辑。
 - 隐私边界: 用户端 Dashboard 不暴露 `cpa_json_backup`、`chong_backup`、风险备注或上游来源字段。
-- 验证结果: Frist-API `npm test` 扩展到 102 条，覆盖备用渠道隔离、人工放行、图片生成和广场连通入口。
+- 验证结果: JIYU AI `npm test` 扩展到 102 条，覆盖备用渠道隔离、人工放行、图片生成和广场连通入口。
 
 ### 文件变更
-- `apps/frist-api/server/server.js` — 增加渠道类型、风险状态、人工确认字段和路由过滤
-- `apps/frist-api/admin.html` — 管理端新增备用渠道类型、风险状态、人工确认和风险备注入口
-- `apps/frist-api/src/admin.js` — 提交/展示备用渠道风险字段，并支持 JSON 数组粘贴
-- `apps/frist-api/src/businessFlow.js` — 业务流补齐备用渠道隔离/放行规则
-- `apps/frist-api/tests/server.test.mjs` — 覆盖 CPA JSON 隔离和 chong 人工放行后的路由行为
-- `apps/frist-api/tests/business-flow.test.mjs` — 覆盖管理端入口接线和备用渠道状态机
-- `docs/024-frist-api-operator-runbook.md` — 增加备用渠道人工风控操作边界
-- `docs/025-frist-api-quickstart.md` — 同步管理端备用渠道和测试覆盖说明
+- `JIYU AI Sub2API WebUI/server/server.js` — 增加渠道类型、风险状态、人工确认字段和路由过滤
+- `JIYU AI Sub2API WebUI/admin.html` — 管理端新增备用渠道类型、风险状态、人工确认和风险备注入口
+- `JIYU AI Sub2API WebUI/src/admin.js` — 提交/展示备用渠道风险字段，并支持 JSON 数组粘贴
+- `JIYU AI Sub2API WebUI/src/businessFlow.js` — 业务流补齐备用渠道隔离/放行规则
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 覆盖 CPA JSON 隔离和 chong 人工放行后的路由行为
+- `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 覆盖管理端入口接线和备用渠道状态机
+- `docs/024-jiyu-ai-operator-runbook.md` — 增加备用渠道人工风控操作边界
+- `docs/025-jiyu-ai-quickstart.md` — 同步管理端备用渠道和测试覆盖说明
 - `docs/031-command-registry.md` — 登记备用渠道风险字段入口
 - `docs/060-health.md` — 登记 HI-842
 
-## [2026-05-03] Frist-API 广场 5.5/image2 连通修复
+## [2026-05-03] JIYU AI 广场 5.5/image2 连通修复
 > 领域: `backend` | `frontend` | `ai-pool` | `docs`
-> 影响模块: `Frist-API`, `Gateway`, `Playground`, `Replenishment`, `docs`
+> 影响模块: `JIYU AI`, `Gateway`, `Playground`, `Replenishment`, `docs`
 > 关联问题: HI-841
 
 ### 变更内容
-- 方案收口: 保留 Frist-API 商业展示层 + New-API 内网路由层的解耦思路，但明确生产库存只接授权供应商、自有额度或明确可转售额度，不把批量 OAuth Session / 来路不明 JSON 号源当生产方案。
+- 方案收口: 保留 JIYU AI 商业展示层 + New-API 内网路由层的解耦思路，但明确生产库存只接授权供应商、自有额度或明确可转售额度，不把批量 OAuth Session / 来路不明 JSON 号源当生产方案。
 - 模型别名: 将广场和补号里常见的 `5.5`、`gpt5.5`、`gpt-55` 统一清洗为 `gpt-5.5`，将 `image2`、`gpt-image2`、`gpt_image_2` 统一清洗为 `gpt-image-2`。
 - 图片探测: 补号严格探测遇到图片模型时直接请求 `/images/generations`，避免用 `/chat/completions` 或 `/responses` 误判 `image2` 库存不可用。
 - 广场实测: 用户广场新增“实测连通”按钮和状态摘要，能直接展示当前模型的成功/失败、耗时和返回结果；图片模型会展示生成结果。
 - 管理摘要: 管理端脱敏库存返回 `lastProbeStatus` / `lastProbeReason`，便于确认图片库存是 `image_probe_ok` 而不是信任写入。
-- 验证结果: 新增回归覆盖 `5.5` / `image2` 别名、图片模型补号探测和广场实测入口；Frist-API 测试集扩展到 100 条。
+- 验证结果: 新增回归覆盖 `5.5` / `image2` 别名、图片模型补号探测和广场实测入口；JIYU AI 测试集扩展到 100 条。
 
 ### 文件变更
-- `apps/frist-api/src/core.js` — 增加 `5.5` / `image2` 等广场常用别名归一化
-- `apps/frist-api/server/server.js` — 新增图片模型探测路径、图片默认候选模型和脱敏探测状态返回
-- `apps/frist-api/src/app.js` — 新增广场连通实测状态、按钮逻辑和耗时摘要
-- `apps/frist-api/index.html` — 新增广场连通实测按钮和状态展示位置
-- `apps/frist-api/src/styles.css` — 新增广场实测状态样式
-- `apps/frist-api/tests/core.test.mjs` — 覆盖广场模型别名清洗
-- `apps/frist-api/tests/server.test.mjs` — 覆盖 `image2` 网关归一化和图片模型补号探测
-- `apps/frist-api/tests/business-flow.test.mjs` — 覆盖广场连通实测入口接线
-- `docs/024-frist-api-operator-runbook.md` — 明确授权库存边界和图片模型探测规则
-- `docs/025-frist-api-quickstart.md` — 同步广场实测、别名和图片探测说明
+- `JIYU AI Sub2API WebUI/src/core.js` — 增加 `5.5` / `image2` 等广场常用别名归一化
+- `JIYU AI Sub2API WebUI/server/server.js` — 新增图片模型探测路径、图片默认候选模型和脱敏探测状态返回
+- `JIYU AI Sub2API WebUI/src/app.js` — 新增广场连通实测状态、按钮逻辑和耗时摘要
+- `JIYU AI Sub2API WebUI/index.html` — 新增广场连通实测按钮和状态展示位置
+- `JIYU AI Sub2API WebUI/src/styles.css` — 新增广场实测状态样式
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` — 覆盖广场模型别名清洗
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 覆盖 `image2` 网关归一化和图片模型补号探测
+- `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 覆盖广场连通实测入口接线
+- `docs/024-jiyu-ai-operator-runbook.md` — 明确授权库存边界和图片模型探测规则
+- `docs/025-jiyu-ai-quickstart.md` — 同步广场实测、别名和图片探测说明
 - `docs/031-command-registry.md` — 登记广场连通实测入口
 - `docs/060-health.md` — 登记 HI-841 修复状态
 
 ## [2026-05-03] 项目文档和冗余产物清理
 > 领域: `docs` | `infra`
-> 影响模块: `docs`, `Frist-API`, `workspace-cleanup`
+> 影响模块: `docs`, `JIYU AI`, `workspace-cleanup`
 > 关联问题: HI-840
 
 ### 变更内容
 - 文档压缩: 主项目 `docs/` Markdown 从 37 个压缩到 19 个，保留核心入口、操作指南、注册表、SOP 和状态文档。
-- 过时报告清理: 删除 5 月前审计/设计/归档报告、散落的 Bot 模型旧审计，以及 Frist-API 历史截图和散落测试截图。
-- Frist-API 文档收口: 腾讯云部署和公网验收要点合并进 `docs/024-frist-api-operator-runbook.md` / `docs/025-frist-api-quickstart.md`，不再单独维护临时部署报告。
+- 过时报告清理: 删除 5 月前审计/设计/归档报告、散落的 Bot 模型旧审计，以及 JIYU AI 历史截图和散落测试截图。
+- JIYU AI 文档收口: 腾讯云部署和公网验收要点合并进 `docs/024-jiyu-ai-operator-runbook.md` / `docs/025-jiyu-ai-quickstart.md`，不再单独维护临时部署报告。
 - 本地冗余清理: 清理可重建构建产物、缓存、浏览器模型缓存、运行日志和本地开发虚拟环境；仓库体积从约 2.4GB 降到约 196MB，保留业务数据库、测试、Bot 人设、Skill 文件和第三方包文档。
 - 服务器清理: 只清腾讯云上的日志、缓存、临时文件、构建缓存和 Docker 非运行对象；系统日志从 264MB 降到 176MB，不删除共享服务器的业务项目、数据库、测试代码、运行虚拟环境、浏览器登录态或 Docker 业务卷。
-- 验证结果: `apps/frist-api` 执行 `npm test`，99 passed, 0 failed；`docs/` 根目录保持 19 个 Markdown。
+- 验证结果: `JIYU AI Sub2API WebUI` 执行 `npm test`，99 passed, 0 failed；`docs/` 根目录保持 19 个 Markdown。
 
 ### 文件变更
 - `docs/003-docs-index.md` — 重写为 19 个核心文档索引
-- `docs/024-frist-api-operator-runbook.md` — 合并腾讯云部署和公网验收操作要点
-- `docs/025-frist-api-quickstart.md` — 保留当前入口和本地/容器运行说明
+- `docs/024-jiyu-ai-operator-runbook.md` — 合并腾讯云部署和公网验收操作要点
+- `docs/025-jiyu-ai-quickstart.md` — 保留当前入口和本地/容器运行说明
 - `docs/060-health.md` — 登记本次冗余清理
-- `README.md` — 移除旧审计入口，指向当前 Frist-API 文档
+- `README.md` — 移除旧审计入口，指向当前 JIYU AI 文档
 - `apps/openclaw/BOT_MODEL_AUDIT.md` — 删除 2026-03 旧 Bot 模型审计报告
 
-## [2026-05-02] Frist-API OpenCode 外网阻塞修复
+## [2026-05-02] JIYU AI OpenCode 外网阻塞修复
 > 领域: `backend` | `frontend` | `ai-pool` | `deploy` | `docs`
-> 影响模块: `Frist-API`, `CC Switch`, `OpenCode`, `Gateway`, `docs`
+> 影响模块: `JIYU AI`, `CC Switch`, `OpenCode`, `Gateway`, `docs`
 > 关联问题: HI-839, HI-833, HI-836
 
 ### 变更内容
@@ -4596,23 +4611,23 @@
 - Chat Completions 降级: 上游 Chat Completions 返回 404 或不支持时，自动把请求转换到 Responses，再把 Responses 响应转回 Chat Completions，修复 `Route /openai/chat/completions not found`。
 - 模型清单补齐: OpenCode/Codex 导入 URL、base64 配置和前端模型清单同步补 `gpt-5.4-mini`、`gpt-5.3-codex` 等兼容字段，避免外部 GUI 只显示默认 `gpt-5.5`。
 - OpenCode 桌面导入: `ccswitch://` 的 OpenCode `config.models` 改为 OpenCode/CC Switch 实际读取的模型对象映射，修复桌面端导入后编辑框仍只有 `gpt-5.5` 的问题。
-- 公网验证: 腾讯云 `/opt/frist-api` 已同步并重启，`frist-api-server` healthy；公网 `gpt-5.5` Chat/Responses、OpenCode 前缀 Chat、`gpt-5.4` Responses 和 OpenCode 导入模型清单均返回成功。
+- 公网验证: 腾讯云 `/opt/sub2api` 已同步并重启，`jiyu-ai-server` healthy；公网 `gpt-5.5` Chat/Responses、OpenCode 前缀 Chat、`gpt-5.4` Responses 和 OpenCode 导入模型清单均返回成功。
 
 ### 文件变更
-- `apps/frist-api/server/server.js` — 新增 OpenCode 前缀路由、Chat Completions→Responses 降级、Responses→Chat Completions 响应转换和 Codex 模型排序
-- `apps/frist-api/index.html` — 将一键导入主操作和导出模型清单前置到长教程之前
-- `apps/frist-api/src/styles.css` — 增加一键导入主操作区域样式
-- `apps/frist-api/src/app.js` — 补齐 `gpt-5.3-codex` 前端模型强度排序
-- `apps/frist-api/src/core.js` — 补齐 `gpt-5.3-codex` 导入配置模型强度排序，并按 OpenCode 真实配置格式输出完整 `models` 映射
-- `apps/frist-api/tests/core.test.mjs` — 覆盖 OpenCode 桌面导入配置的完整模型映射
-- `apps/frist-api/tests/server.test.mjs` — 覆盖 Chat Completions 降级、OpenCode 前缀路由和完整模型清单导出
-- `apps/frist-api/tests/business-flow.test.mjs` — 覆盖一键导入主操作必须位于长教程之前
-- `docs/060-health.md` — 登记 HI-839 并更新 Frist-API 当前状态
+- `JIYU AI Sub2API WebUI/server/server.js` — 新增 OpenCode 前缀路由、Chat Completions→Responses 降级、Responses→Chat Completions 响应转换和 Codex 模型排序
+- `JIYU AI Sub2API WebUI/index.html` — 将一键导入主操作和导出模型清单前置到长教程之前
+- `JIYU AI Sub2API WebUI/src/styles.css` — 增加一键导入主操作区域样式
+- `JIYU AI Sub2API WebUI/src/app.js` — 补齐 `gpt-5.3-codex` 前端模型强度排序
+- `JIYU AI Sub2API WebUI/src/core.js` — 补齐 `gpt-5.3-codex` 导入配置模型强度排序，并按 OpenCode 真实配置格式输出完整 `models` 映射
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` — 覆盖 OpenCode 桌面导入配置的完整模型映射
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 覆盖 Chat Completions 降级、OpenCode 前缀路由和完整模型清单导出
+- `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 覆盖一键导入主操作必须位于长教程之前
+- `docs/060-health.md` — 登记 HI-839 并更新 JIYU AI 当前状态
 - `docs/002-changelog.md` — 记录本次外网阻塞修复和验证结果
 
-## [2026-05-02] Frist-API 用户闭环断点修复与价格管理
+## [2026-05-02] JIYU AI 用户闭环断点修复与价格管理
 > 领域: `frontend` | `backend` | `ai-pool` | `deploy` | `docs`
-> 影响模块: `Frist-API`, `Admin`, `CC Switch`, `Pricing`, `docs`
+> 影响模块: `JIYU AI`, `Admin`, `CC Switch`, `Pricing`, `docs`
 > 关联问题: HI-838, TD-006, TD-008
 
 ### 变更内容
@@ -4627,70 +4642,70 @@
 - 文档治理: 主项目 `docs/` 目录统一迁移到根目录编号命名，清理子目录层级，并同步代码、测试和 SOP 中的文档路径。
 
 ### 文件变更
-- `apps/frist-api/server/server.js` — 新增价格管理 API、模型名清洗、真实空态数据、登录/Key 错误反馈和渠道连通性聚合
-- `apps/frist-api/src/app.js` — 接入登录/注册/Key/连通性显式反馈，移除 mock 兜底并刷新价格/模型/导入状态
-- `apps/frist-api/src/core.js` — 新增官方模型名归一化和跨客户端导入模型清单清洗
-- `apps/frist-api/src/serverClient.js` — 补齐价格、登录、Key 和 dashboard 请求归一化
-- `apps/frist-api/src/businessFlow.js` — 业务流去除演示数据依赖并同步价格配置
-- `apps/frist-api/src/admin.js` — 管理端新增套餐与模型价格读取/保存
-- `apps/frist-api/src/newApiClient.js` — 移除本地 demo store fallback
-- `apps/frist-api/src/data.js` — 删除网页 mock 数据源
-- `apps/frist-api/index.html` — 用户端补齐反馈容器、渠道连通性区域和真实空态
-- `apps/frist-api/admin.html` — 管理端新增价格管理区
-- `apps/frist-api/src/styles.css` — 增加反馈状态、连通性摘要和价格管理样式
-- `apps/frist-api/tests/*.mjs` — 覆盖登录反馈、Key 创建反馈、价格管理、模型清洗、mock 移除和网关计费
-- `docs/024-frist-api-operator-runbook.md` — 补齐价格管理、测试额度和支付人工操作指南
-- `docs/060-health.md` — 登记 HI-838 并更新 Frist-API 当前状态
+- `JIYU AI Sub2API WebUI/server/server.js` — 新增价格管理 API、模型名清洗、真实空态数据、登录/Key 错误反馈和渠道连通性聚合
+- `JIYU AI Sub2API WebUI/src/app.js` — 接入登录/注册/Key/连通性显式反馈，移除 mock 兜底并刷新价格/模型/导入状态
+- `JIYU AI Sub2API WebUI/src/core.js` — 新增官方模型名归一化和跨客户端导入模型清单清洗
+- `JIYU AI Sub2API WebUI/src/serverClient.js` — 补齐价格、登录、Key 和 dashboard 请求归一化
+- `JIYU AI Sub2API WebUI/src/businessFlow.js` — 业务流去除演示数据依赖并同步价格配置
+- `JIYU AI Sub2API WebUI/src/admin.js` — 管理端新增套餐与模型价格读取/保存
+- `JIYU AI Sub2API WebUI/src/newApiClient.js` — 移除本地 demo store fallback
+- `JIYU AI Sub2API WebUI/src/data.js` — 删除网页 mock 数据源
+- `JIYU AI Sub2API WebUI/index.html` — 用户端补齐反馈容器、渠道连通性区域和真实空态
+- `JIYU AI Sub2API WebUI/admin.html` — 管理端新增价格管理区
+- `JIYU AI Sub2API WebUI/src/styles.css` — 增加反馈状态、连通性摘要和价格管理样式
+- `JIYU AI Sub2API WebUI/tests/*.mjs` — 覆盖登录反馈、Key 创建反馈、价格管理、模型清洗、mock 移除和网关计费
+- `docs/024-jiyu-ai-operator-runbook.md` — 补齐价格管理、测试额度和支付人工操作指南
+- `docs/060-health.md` — 登记 HI-838 并更新 JIYU AI 当前状态
 - `docs/002-changelog.md` — 记录本次用户闭环和价格管理收口
 
-## [2026-05-02] Frist-API 跨模型导入实操流程图
+## [2026-05-02] JIYU AI 跨模型导入实操流程图
 > 领域: `frontend` | `ai-pool` | `docs`
-> 影响模块: `Frist-API`, `CC Switch`, `Claude Code`, `Codex`, `Payments`
+> 影响模块: `JIYU AI`, `CC Switch`, `Claude Code`, `Codex`, `Payments`
 > 关联问题: HI-837, HI-836
 
 ### 变更内容
 - Claude Code 实操引导: CC Switch 页新增“ChatGPT / OpenAI 模型导入 Claude Code”流程图，按真实 Claude 菜单标出左上角 `Developer`、`Configure Third-Party Inference...`、`Gateway base URL`、`Gateway API key`、`Gateway auth scheme`、`Model list` 和 `Skip login-mode chooser`。
 - Codex 实操引导: 新增“Claude 模型导入 Codex”流程图，标出本站 CC Switch 目标选择、模型家族选择、一键导入、Codex `API 请求地址`、`auth.json`、`wire_api = "responses"`、默认 Claude 模型和 MCP 段。
-- 动态字段: 流程图中的 Frist-API 地址、Claude/Codex 地址、默认 OpenAI 模型、默认 Claude 模型会按当前站点和用户可用模型自动刷新。
+- 动态字段: 流程图中的 JIYU AI 地址、Claude/Codex 地址、默认 OpenAI 模型、默认 Claude 模型会按当前站点和用户可用模型自动刷新。
 - 运营手册: 补齐个人微信/支付宝收款码试运营步骤、60 刀日卡测试额度折算说明、支付宝当面付和微信支付 Native 的小白级开通步骤，并加入对应官方接口文档入口。
 - 测试额度: 已通过后台人工入账路径给测试账号加入 60 刀等值日卡额度，用于实测 API 聚合、模型切换和上下文粘滞。
 
 ### 文件变更
-- `apps/frist-api/index.html` — 新增两张跨模型导入实操流程图和逐步字段说明
-- `apps/frist-api/src/app.js` — 接入流程图动态字段刷新和当前场景高亮
-- `apps/frist-api/src/styles.css` — 新增仿真实操窗口、菜单、设置页、Codex 配置页和响应式样式
-- `apps/frist-api/tests/business-flow.test.mjs` — 覆盖流程图关键文案、字段和 MCP/Responses 配置提示
-- `docs/024-frist-api-operator-runbook.md` — 扩写个人码收款、测试额度、支付宝/微信支付操作指南
-- `docs/060-health.md` — 登记 HI-837 并更新 Frist-API 当前状态
+- `JIYU AI Sub2API WebUI/index.html` — 新增两张跨模型导入实操流程图和逐步字段说明
+- `JIYU AI Sub2API WebUI/src/app.js` — 接入流程图动态字段刷新和当前场景高亮
+- `JIYU AI Sub2API WebUI/src/styles.css` — 新增仿真实操窗口、菜单、设置页、Codex 配置页和响应式样式
+- `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 覆盖流程图关键文案、字段和 MCP/Responses 配置提示
+- `docs/024-jiyu-ai-operator-runbook.md` — 扩写个人码收款、测试额度、支付宝/微信支付操作指南
+- `docs/060-health.md` — 登记 HI-837 并更新 JIYU AI 当前状态
 - `docs/002-changelog.md` — 记录本次导入引导和支付手册改动
 
-## [2026-05-02] Frist-API Codex MCP 默认增强
+## [2026-05-02] JIYU AI Codex MCP 默认增强
 > 领域: `frontend` | `ai-pool` | `docs`
-> 影响模块: `Frist-API`, `CC Switch`, `Codex`, `MCP`
+> 影响模块: `JIYU AI`, `CC Switch`, `Codex`, `MCP`
 > 关联问题: HI-836
 
 ### 变更内容
 - Codex 最强默认配置: Codex 目标导出的 `config.toml` 现在默认写入 Playwright、Superpowers 和 open-computer-use MCP，继续保留 Responses、1M 上下文、90 万压缩阈值、xhigh 推理和工具搜索。
 - CC Switch 兼容: 导入链接的隐藏配置同步携带 `mcpServers` / `mcp_servers` 元数据；如果 CC Switch 支持 MCP 字段，可以直接消费，若只写入 `config.toml` 也能保留 MCP 段。
 - 用户引导: Codex 导入说明新增 MCP 和 Computer Use 权限提示，明确 CC Switch 能写配置，但首次使用桌面电脑操作能力仍需本机系统授权。
-- 部署验证: 已同步到腾讯云 `/opt/frist-api`，容器 `frist-api-server` 为 healthy；公网 `/` 和 `/api/frist/dashboard` 返回 200，未授权 `/v1/models` 返回 401，普通 `/admin.html` 返回 404，冒烟脚本通过。
+- 部署验证: 已同步到腾讯云 `/opt/sub2api`，容器 `jiyu-ai-server` 为 healthy；公网 `/` 和 `/api/frist/dashboard` 返回 200，未授权 `/v1/models` 返回 401，普通 `/admin.html` 返回 404，冒烟脚本通过。
 
 ### 文件变更
-- `apps/frist-api/src/core.js` — 为 Codex 生成默认 MCP TOML 和导入元数据
-- `apps/frist-api/src/app.js` — CC Switch 页新增 Codex 最强开发配置和 MCP 权限提示
-- `apps/frist-api/tests/core.test.mjs` — 覆盖 Codex MCP TOML 和 CC Switch 元数据
-- `apps/frist-api/tests/business-flow.test.mjs` — 覆盖用户页 MCP 引导文案
-- `docs/024-frist-api-operator-runbook.md` — 增加 Codex MCP 默认增强和验收项
-- `docs/025-frist-api-quickstart.md` — 增加 Codex MCP 配置说明
+- `JIYU AI Sub2API WebUI/src/core.js` — 为 Codex 生成默认 MCP TOML 和导入元数据
+- `JIYU AI Sub2API WebUI/src/app.js` — CC Switch 页新增 Codex 最强开发配置和 MCP 权限提示
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` — 覆盖 Codex MCP TOML 和 CC Switch 元数据
+- `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 覆盖用户页 MCP 引导文案
+- `docs/024-jiyu-ai-operator-runbook.md` — 增加 Codex MCP 默认增强和验收项
+- `docs/025-jiyu-ai-quickstart.md` — 增加 Codex MCP 配置说明
 - `docs/002-changelog.md` — 记录本次 MCP 默认增强
 
-## [2026-05-02] Frist-API CC Switch 跨模型家族一键导入
+## [2026-05-02] JIYU AI CC Switch 跨模型家族一键导入
 > 领域: `backend` | `frontend` | `ai-pool` | `docs`
-> 影响模块: `Frist-API`, `CC Switch`, `Claude Code`, `Codex`, `Payments`
+> 影响模块: `JIYU AI`, `CC Switch`, `Claude Code`, `Codex`, `Payments`
 > 关联问题: HI-836
 
 ### 变更内容
-- Claude Code 导入: CC Switch 的 Claude 目标现在导出 `anthropic-messages` 配置，自动写入 `ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_BASE_URL`、默认模型、Tool Search 和团队模式字段，支持把 ChatGPT/OpenAI 模型通过 Frist-API 路由给 Claude Code 使用。
+- Claude Code 导入: CC Switch 的 Claude 目标现在导出 `anthropic-messages` 配置，自动写入 `ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_BASE_URL`、默认模型、Tool Search 和团队模式字段，支持把 ChatGPT/OpenAI 模型通过 JIYU AI 路由给 Claude Code 使用。
 - Codex 导入: Codex 目标继续导出 Responses provider 配置，并标记 Claude 模型跨家族导入；网关在上游不支持 Responses 时自动降级到 Chat Completions，保证 Claude 模型也能被 Codex 调用。
 - 网关适配: 新增 `/v1/messages` 和根路径 `/messages` 的 Anthropic Messages 入口，接收 Claude Code 请求后转换为 OpenAI 兼容上游请求，再转回 Anthropic 响应。
 - 用户引导: CC Switch 页面新增“目标客户端 + 模型家族”双选择、Claude 开发者模式/第三方 API 步骤说明、Codex + Claude 导入说明和对应样式。
@@ -4698,21 +4713,21 @@
 - 回归测试: `npm test` 当前为 90/90 通过，覆盖 Claude Code Anthropic Messages、Codex Responses fallback、跨模型家族导入 UI 和支付人工操作清单。
 
 ### 文件变更
-- `apps/frist-api/src/core.js` — 调整五客户端导入配置，新增 Claude Code JSON、Anthropic 格式字段和跨家族导入标记
-- `apps/frist-api/server/server.js` — 新增 Anthropic Messages 网关入口、Responses 到 Chat Completions 降级和认证头兼容
-- `apps/frist-api/index.html` — CC Switch 页面新增模型家族选择和跨家族导入引导
-- `apps/frist-api/src/app.js` — 接入模型家族切换、跨导入文案和手动配置同步刷新
-- `apps/frist-api/src/styles.css` — 增加导入家族选择和跨导入引导样式
-- `apps/frist-api/tests/core.test.mjs` — 覆盖 Claude Code 使用 ChatGPT 模型、Codex 使用 Claude 模型的导入配置
-- `apps/frist-api/tests/server.test.mjs` — 覆盖 `/v1/messages` 和 Responses fallback 网关链路
-- `apps/frist-api/tests/business-flow.test.mjs` — 覆盖用户页跨家族导入引导和支付最后一公里文档
-- `docs/024-frist-api-operator-runbook.md` — 补齐收款二维码、支付宝当面付、微信支付 Native 和密钥操作指南
-- `docs/060-health.md` — 登记 HI-836 并更新 Frist-API 测试状态
+- `JIYU AI Sub2API WebUI/src/core.js` — 调整五客户端导入配置，新增 Claude Code JSON、Anthropic 格式字段和跨家族导入标记
+- `JIYU AI Sub2API WebUI/server/server.js` — 新增 Anthropic Messages 网关入口、Responses 到 Chat Completions 降级和认证头兼容
+- `JIYU AI Sub2API WebUI/index.html` — CC Switch 页面新增模型家族选择和跨家族导入引导
+- `JIYU AI Sub2API WebUI/src/app.js` — 接入模型家族切换、跨导入文案和手动配置同步刷新
+- `JIYU AI Sub2API WebUI/src/styles.css` — 增加导入家族选择和跨导入引导样式
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` — 覆盖 Claude Code 使用 ChatGPT 模型、Codex 使用 Claude 模型的导入配置
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 覆盖 `/v1/messages` 和 Responses fallback 网关链路
+- `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 覆盖用户页跨家族导入引导和支付最后一公里文档
+- `docs/024-jiyu-ai-operator-runbook.md` — 补齐收款二维码、支付宝当面付、微信支付 Native 和密钥操作指南
+- `docs/060-health.md` — 登记 HI-836 并更新 JIYU AI 测试状态
 - `docs/002-changelog.md` — 记录本次 CC Switch 跨模型家族适配
 
-## [2026-05-02] Frist-API 首屏焦点流与品牌标识重做
+## [2026-05-02] JIYU AI 首屏焦点流与品牌标识重做
 > 领域: `frontend` | `docs`
-> 影响模块: `Frist-API`, `docs`
+> 影响模块: `JIYU AI`, `docs`
 > 关联问题: HI-835, HI-828, HI-833
 
 ### 变更内容
@@ -4723,35 +4738,35 @@
 - 回归测试: 更新前端结构测试，覆盖新的 hero-flow 与 hero-aside 钩子以及主路径优先级。
 
 ### 文件变更
-- `apps/frist-api/index.html` — 调整首屏结构、品牌文案和快捷入口排序
-- `apps/frist-api/src/styles.css` — 重做品牌标识、首屏双栏布局、任务轨道和响应式断点
-- `apps/frist-api/tests/core.test.mjs` — 补充首屏焦点流与品牌回归断言
+- `JIYU AI Sub2API WebUI/index.html` — 调整首屏结构、品牌文案和快捷入口排序
+- `JIYU AI Sub2API WebUI/src/styles.css` — 重做品牌标识、首屏双栏布局、任务轨道和响应式断点
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` — 补充首屏焦点流与品牌回归断言
 - `docs/060-health.md` — 登记 HI-835 用户体验优化记录
 - `docs/002-changelog.md` — 记录本次首屏视觉优化
 
-## [2026-05-02] Frist-API 生产入口恢复与商业化审计
+## [2026-05-02] JIYU AI 生产入口恢复与商业化审计
 > 领域: `deploy` | `infra` | `docs` | `ai-pool`
-> 影响模块: `Frist-API`, `Tencent Cloud`, `Nginx`, `docs`
+> 影响模块: `JIYU AI`, `Tencent Cloud`, `Nginx`, `docs`
 > 关联问题: HI-834, TD-006, TD-007, TD-008
 
 ### 变更内容
-- 线上恢复: 复现裸 IP 入口 `ERR_CONNECTION_REFUSED`，确认 Frist-API 容器健康但只绑定本地端口，Nginx 未监听 Frist-API 测试端口；已同步服务器代码和 Compose 文件，并在 Nginx 增加独立测试端口反代。
-- 多项目保护: 保留服务器 80/443 现有默认项目，不抢占裸 IP 根路由；Frist-API 在无固定域名阶段通过独立测试端口和 Tunnel 验收。
+- 线上恢复: 复现裸 IP 入口 `ERR_CONNECTION_REFUSED`，确认 JIYU AI 容器健康但只绑定本地端口，Nginx 未监听 JIYU AI 测试端口；已同步服务器代码和 Compose 文件，并在 Nginx 增加独立测试端口反代。
+- 多项目保护: 保留服务器 80/443 现有默认项目，不抢占裸 IP 根路由；JIYU AI 在无固定域名阶段通过独立测试端口和 Tunnel 验收。
 - 商业化审计: 新增生产就绪报告，按架构、组件结构、数据流、API 设计、数据库模式、缓存策略、性能瓶颈、清洁架构拆分和人工开通清单审计当前状态。
 - 运营手册: 扩写人工收款、支付平台、固定域名、SMTP、Turnstile、备份、告警、合规和模型列表规则，明确哪些事项必须由业务方在后台开通。
 - 模型风险登记: 明确生产模型列表不能靠硬编码宣传，必须由上游 `/v1/models`、真实探测和官方目录校验共同决定；默认最强模型只能从用户真实可用列表中选择。
 - 验证结果: 公网测试入口 `/` 和 `/api/frist/dashboard` 返回 `200 OK`；未授权 `/v1/models` 返回 `401`；公网冒烟脚本通过。
 
 ### 文件变更
-- `docs/080-frist-api-production-readiness-2026-05-02.md` — 新增生产就绪审计、架构和商业化缺口报告
-- `docs/024-frist-api-operator-runbook.md` — 扩写人工开通、支付、域名、邮箱、防刷、模型列表和生产验收清单
-- `docs/026-frist-api-tencent-deploy.md` — 补充裸 IP 拒绝连接排查流程和多项目服务器反代边界
-- `docs/060-health.md` — 登记 HI-834 和 TD-008，并更新 Frist-API 当前生产化状态
+- `docs/080-jiyu-ai-production-readiness-2026-05-02.md` — 新增生产就绪审计、架构和商业化缺口报告
+- `docs/024-jiyu-ai-operator-runbook.md` — 扩写人工开通、支付、域名、邮箱、防刷、模型列表和生产验收清单
+- `docs/026-jiyu-ai-tencent-deploy.md` — 补充裸 IP 拒绝连接排查流程和多项目服务器反代边界
+- `docs/060-health.md` — 登记 HI-834 和 TD-008，并更新 JIYU AI 当前生产化状态
 - `docs/002-changelog.md` — 记录本次线上入口恢复和商业化审计
 
-## [2026-05-02] Frist-API 导出模型清单可见化
+## [2026-05-02] JIYU AI 导出模型清单可见化
 > 领域: `frontend` | `backend` | `ai-pool` | `docs`
-> 影响模块: `Frist-API`, `CC Switch`, `Codex`, `OpenCode`
+> 影响模块: `JIYU AI`, `CC Switch`, `Codex`, `OpenCode`
 > 关联问题: HI-833
 
 ### 变更内容
@@ -4759,23 +4774,23 @@
 - 兼容字段补强: 导入 URL 和 base64 配置同时输出 `models`、`availableModels`、`available_models`、`modelList`、`model_list`、`supportedModels`、`defaultModel` 和 `default_model`，降低外部 GUI 只读取某个字段时只显示单模型的风险。
 - 目标切换同步: 在 CC Switch 页切换 Codex/OpenCode/OpenClaw/Hermes 或模型分组后，同步刷新导入链接、手动配置和模型清单，避免链接已变但配置区域仍是旧目标。
 - 官方命名排序: 补充 `gpt-5.4-nano` 的官方模型排序兜底；实际导出仍以用户库存和模型目录里的真实可用模型为准，不凭空展示未供给模型。
-- 回归测试: Frist-API 当前 `make frist-api-test` 为 84/84 通过，新增覆盖 Codex/OpenCode 全模型导出、兼容字段和用户页模型清单。
+- 回归测试: JIYU AI 当前 `make jiyu-ai-test` 为 84/84 通过，新增覆盖 Codex/OpenCode 全模型导出、兼容字段和用户页模型清单。
 
 ### 文件变更
-- `apps/frist-api/index.html` — CC Switch 页新增默认模型、可用模型数量和模型列表展示区域，并更新前端资源版本
-- `apps/frist-api/src/app.js` — 增加导出模型清单渲染，目标/分组切换时同步刷新配置
-- `apps/frist-api/src/styles.css` — 增加导出模型清单和默认模型标签样式
-- `apps/frist-api/src/core.js` — 补齐导入 URL 与 provider 配置里的模型列表兼容字段
-- `apps/frist-api/server/server.js` — 导入 URL 接口同步返回默认模型和完整可用模型列表
-- `apps/frist-api/tests/core.test.mjs` — 覆盖 Codex/OpenCode 全模型导出和兼容字段
-- `apps/frist-api/tests/business-flow.test.mjs` — 覆盖用户页模型清单和配置同步接线
-- `apps/frist-api/tests/server.test.mjs` — 覆盖服务端 Codex/OpenCode 导出同一份完整模型列表
+- `JIYU AI Sub2API WebUI/index.html` — CC Switch 页新增默认模型、可用模型数量和模型列表展示区域，并更新前端资源版本
+- `JIYU AI Sub2API WebUI/src/app.js` — 增加导出模型清单渲染，目标/分组切换时同步刷新配置
+- `JIYU AI Sub2API WebUI/src/styles.css` — 增加导出模型清单和默认模型标签样式
+- `JIYU AI Sub2API WebUI/src/core.js` — 补齐导入 URL 与 provider 配置里的模型列表兼容字段
+- `JIYU AI Sub2API WebUI/server/server.js` — 导入 URL 接口同步返回默认模型和完整可用模型列表
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` — 覆盖 Codex/OpenCode 全模型导出和兼容字段
+- `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 覆盖用户页模型清单和配置同步接线
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 覆盖服务端 Codex/OpenCode 导出同一份完整模型列表
 - `docs/060-health.md` — 登记 HI-833
 - `docs/031-command-registry.md` — 登记导出模型清单入口
 
-## [2026-05-02] Frist-API 用户端完整度补强
+## [2026-05-02] JIYU AI 用户端完整度补强
 > 领域: `frontend` | `backend` | `ai-pool` | `docs`
-> 影响模块: `Frist-API`, `CC Switch`, `docs`
+> 影响模块: `JIYU AI`, `CC Switch`, `docs`
 > 关联问题: HI-832
 
 ### 变更内容
@@ -4785,57 +4800,57 @@
 - API Key 管理: 用户侧支持 Key 改名、删除和单 Key 状态展示，服务端新增 `PATCH /api/frist/token/:id` 改名和 `DELETE /api/frist/token/:id` 删除。
 - CC Switch 导入: 导出配置改为默认最强模型 `gpt-5.5`，同时列出用户可用模型；若库存包含 `gpt-5.5-pro` 等官方 Pro 档，会自动把 Pro 档排到默认模型；OpenCode/Codex/Hermes 走 Responses 兼容格式并默认开启流式、图片、工具搜索等能力。
 - 使用教程: 教程页补齐 OpenCode、Hermes 和 Harmes 入口，手动配置同步输出默认模型、模型列表和功能开关。
-- 回归测试: Frist-API 当前 `make frist-api-test` 为 83/83 通过，新增覆盖账户弹窗语义、返回按钮、广场删除/清空、API Key 改名/删除、OpenCode 模型导出和官方 Pro 模型优先级。
+- 回归测试: JIYU AI 当前 `make jiyu-ai-test` 为 83/83 通过，新增覆盖账户弹窗语义、返回按钮、广场删除/清空、API Key 改名/删除、OpenCode 模型导出和官方 Pro 模型优先级。
 
 ### 文件变更
-- `apps/frist-api/index.html` — 重做账户弹窗结构，补齐返回首页、广场清空、教程目标和 API Key 操作入口
-- `apps/frist-api/src/app.js` — 接入账户模式切换、消息删除/清空、Key 改名/删除、默认最强模型和教程配置刷新
-- `apps/frist-api/src/styles.css` — 增加账户弹窗、返回按钮、消息删除、Key 名称输入和危险操作样式
-- `apps/frist-api/src/core.js` — 导出默认模型、可用模型列表、Responses 配置、功能开关和 Hermes/Harmes 别名
-- `apps/frist-api/src/businessFlow.js` — 本地 fallback 支持 Key 改名/删除并保留真实 Key 供导入配置使用
-- `apps/frist-api/src/serverClient.js` — 增加用户 Key 改名和删除 HTTP 客户端
-- `apps/frist-api/server/server.js` — 增加 Key 改名/删除接口，导入 URL 使用用户可用模型列表和最强默认模型
-- `apps/frist-api/src/data.js` — 补齐默认模型目录
-- `apps/frist-api/tests/business-flow.test.mjs` — 覆盖账户弹窗、返回入口、广场删除/清空、API Key 操作和教程目标
-- `apps/frist-api/tests/core.test.mjs` — 覆盖 OpenCode 导出全模型列表并默认最强模型
-- `apps/frist-api/tests/server.test.mjs` — 覆盖 API Key 改名和删除 HTTP 链路
+- `JIYU AI Sub2API WebUI/index.html` — 重做账户弹窗结构，补齐返回首页、广场清空、教程目标和 API Key 操作入口
+- `JIYU AI Sub2API WebUI/src/app.js` — 接入账户模式切换、消息删除/清空、Key 改名/删除、默认最强模型和教程配置刷新
+- `JIYU AI Sub2API WebUI/src/styles.css` — 增加账户弹窗、返回按钮、消息删除、Key 名称输入和危险操作样式
+- `JIYU AI Sub2API WebUI/src/core.js` — 导出默认模型、可用模型列表、Responses 配置、功能开关和 Hermes/Harmes 别名
+- `JIYU AI Sub2API WebUI/src/businessFlow.js` — 本地 fallback 支持 Key 改名/删除并保留真实 Key 供导入配置使用
+- `JIYU AI Sub2API WebUI/src/serverClient.js` — 增加用户 Key 改名和删除 HTTP 客户端
+- `JIYU AI Sub2API WebUI/server/server.js` — 增加 Key 改名/删除接口，导入 URL 使用用户可用模型列表和最强默认模型
+- `JIYU AI Sub2API WebUI/src/data.js` — 补齐默认模型目录
+- `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 覆盖账户弹窗、返回入口、广场删除/清空、API Key 操作和教程目标
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` — 覆盖 OpenCode 导出全模型列表并默认最强模型
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 覆盖 API Key 改名和删除 HTTP 链路
 - `docs/031-command-registry.md` — 登记本轮新增用户侧操作入口
 - `docs/060-health.md` — 登记 HI-832
 
-## [2026-05-02] Frist-API 一次性管理员身份码
+## [2026-05-02] JIYU AI 一次性管理员身份码
 > 领域: `backend` | `frontend` | `deploy` | `docs`
-> 影响模块: `Frist-API`, `Admin`, `docs`
+> 影响模块: `JIYU AI`, `Admin`, `docs`
 > 关联问题: HI-831
 
 ### 变更内容
 - 管理员激活: 登录后的用户可在右上角账户区域输入一次性身份码，把当前账号升级为管理员；身份码成功使用后自动作废。
 - 管理入口: 账号升级后显示运营入口，可直接进入独立管理页；普通用户仍不会看到库存、补号和管理工作台。
 - 管理鉴权: 管理 API 现在支持管理员登录态，也保留强随机管理员令牌作为后备方式，避免用户把账号密码交给开发者手动升级。
-- 部署配置: Docker 和生产环境模板新增 `FRIST_API_ADMIN_CLAIM_CODES`，支持逗号分隔的一批一次性身份码。
+- 部署配置: Docker 和生产环境模板新增 `SUB2API_ADMIN_CLAIM_CODES`，支持逗号分隔的一批一次性身份码。
 - 操作说明: 补充管理员首登、人工入账、支付接口、固定域名、SMTP 和 Turnstile 的人工操作清单。
-- 验证结果: 身份码链路已通过红绿回归，当前 Frist-API 测试扩展到 79 条。
+- 验证结果: 身份码链路已通过红绿回归，当前 JIYU AI 测试扩展到 79 条。
 
 ### 文件变更
-- `apps/frist-api/server/server.js` — 增加一次性管理员身份码校验、管理员登录态鉴权和静态管理页登录态放行
-- `apps/frist-api/index.html` — 在账户区域加入身份码输入和管理员可见运营入口
-- `apps/frist-api/src/app.js` — 接入身份码激活、管理员入口显示和前端状态刷新
-- `apps/frist-api/src/admin.js` — 管理页支持用管理员登录态访问管理 API，管理员令牌降级为后备方式
-- `apps/frist-api/src/serverClient.js` — 增加身份码激活接口和管理员字段归一化
-- `apps/frist-api/src/businessFlow.js` — 同步用户状态中的管理员标记
-- `apps/frist-api/src/styles.css` — 增加身份码行和运营入口样式
-- `apps/frist-api/tests/server.test.mjs` — 覆盖身份码只能使用一次、管理员登录态可访问管理 API
-- `apps/frist-api/tests/business-flow.test.mjs` — 覆盖用户页身份码接线且不暴露管理令牌输入框
-- `docker-compose.frist-api.yml` — 增加 `FRIST_API_ADMIN_CLAIM_CODES`
-- `apps/frist-api/deploy/production.env.example` — 增加一次性管理员身份码配置
-- `docs/025-frist-api-quickstart.md` — 同步管理员首登链路和测试范围
-- `docs/026-frist-api-tencent-deploy.md` — 同步腾讯云部署安全边界和上线检查
-- `docs/024-frist-api-operator-runbook.md` — 新增必须人工操作的支付、域名、邮箱和验证码清单
+- `JIYU AI Sub2API WebUI/server/server.js` — 增加一次性管理员身份码校验、管理员登录态鉴权和静态管理页登录态放行
+- `JIYU AI Sub2API WebUI/index.html` — 在账户区域加入身份码输入和管理员可见运营入口
+- `JIYU AI Sub2API WebUI/src/app.js` — 接入身份码激活、管理员入口显示和前端状态刷新
+- `JIYU AI Sub2API WebUI/src/admin.js` — 管理页支持用管理员登录态访问管理 API，管理员令牌降级为后备方式
+- `JIYU AI Sub2API WebUI/src/serverClient.js` — 增加身份码激活接口和管理员字段归一化
+- `JIYU AI Sub2API WebUI/src/businessFlow.js` — 同步用户状态中的管理员标记
+- `JIYU AI Sub2API WebUI/src/styles.css` — 增加身份码行和运营入口样式
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 覆盖身份码只能使用一次、管理员登录态可访问管理 API
+- `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 覆盖用户页身份码接线且不暴露管理令牌输入框
+- `docker-compose.jiyu-ai.yml` — 增加 `SUB2API_ADMIN_CLAIM_CODES`
+- `JIYU AI Sub2API WebUI/deploy/production.env.example` — 增加一次性管理员身份码配置
+- `docs/025-jiyu-ai-quickstart.md` — 同步管理员首登链路和测试范围
+- `docs/026-jiyu-ai-tencent-deploy.md` — 同步腾讯云部署安全边界和上线检查
+- `docs/024-jiyu-ai-operator-runbook.md` — 新增必须人工操作的支付、域名、邮箱和验证码清单
 - `docs/031-command-registry.md` — 登记身份码和运营入口选择器
 - `docs/060-health.md` — 登记 HI-831
 
-## [2026-05-02] Frist-API 用户广场与数据教程页
+## [2026-05-02] JIYU AI 用户广场与数据教程页
 > 领域: `frontend` | `backend` | `ai-pool` | `docs`
-> 影响模块: `Frist-API`, `CC Switch`, `docs`
+> 影响模块: `JIYU AI`, `CC Switch`, `docs`
 > 关联问题: HI-830
 
 ### 变更内容
@@ -4844,63 +4859,63 @@
 - 模型广场: 新增客户安全模型目录，展示模型家族、用途、上下文和计价，不泄露上游号商、请求地址或原始 Key。
 - 使用教程: 新增 Codex、Claude、OpenClaw 的配置页，输出 JSON/TOML 配置和 macOS/Windows 一键配置命令。
 - 网关链路: `/v1/images/generations` 纳入同一套用户 Key、日卡库存、上游路由和故障切换链路，方便网页广场直接测试生图模型。
-- 公网入口: 已同步部署到腾讯云 Frist-API 容器，并通过 Cloudflare Quick Tunnel 提供可信 HTTPS 外网入口，当前用户端和 `/v1` 网关都走同一公开域名。
+- 公网入口: 已同步部署到腾讯云 JIYU AI 容器，并通过 Cloudflare Quick Tunnel 提供可信 HTTPS 外网入口，当前用户端和 `/v1` 网关都走同一公开域名。
 - 证书验证: 当前 HTTPS 入口证书由 Google Trust Services 签发给 `trycloudflare.com`，可满足今晚外部实测；长期生产仍需绑定自有固定域名。
 - 移动端修复: 小屏下页面标题和操作控件改为纵向排布，避免“广场”等标题被按钮或选择器挤压。
 - 冒烟脚本: 公网检查改为落盘再 grep，避免 `curl | grep -q` 的断管噪音污染交付日志。
 - 验证结果: `npm test` 当前 78/78 通过；`node --check` 覆盖用户端、核心配置、浏览器客户端和轻量后端；`git diff --check` 无空白错误；敏感词扫描无命中。
 
 ### 文件变更
-- `apps/frist-api/index.html` — 增加广场、数据看板、模型广场和使用教程四个用户页面
-- `apps/frist-api/src/app.js` — 接入模型选择、对话/生图测试、数据看板、模型目录和配置教程渲染
-- `apps/frist-api/src/core.js` — 生成 macOS/Windows 一键配置命令并保持 Frist-API 品牌清洗
-- `apps/frist-api/server/server.js` — 增加客户安全模型目录和图片生成网关路由
-- `apps/frist-api/src/styles.css` — 补齐新页面视觉层次、移动端标题布局和轻量动效
-- `apps/frist-api/deploy/smoke-test.sh` — 稳定公网冒烟检查输出，覆盖用户端、验证码、隐藏管理入口和模型目录
-- `apps/frist-api/tests/core.test.mjs` — 覆盖一键配置命令不泄露上游字段
-- `apps/frist-api/tests/business-flow.test.mjs` — 覆盖广场、数据看板、模型广场和教程页接线
-- `apps/frist-api/tests/server.test.mjs` — 覆盖客户安全模型目录和图片生成路由
-- `docs/025-frist-api-quickstart.md` — 同步用户组件、网关路由和测试覆盖
-- `docs/026-frist-api-tencent-deploy.md` — 同步 Quick Tunnel HTTPS 入口、动态域名直签限制和长期域名方案
+- `JIYU AI Sub2API WebUI/index.html` — 增加广场、数据看板、模型广场和使用教程四个用户页面
+- `JIYU AI Sub2API WebUI/src/app.js` — 接入模型选择、对话/生图测试、数据看板、模型目录和配置教程渲染
+- `JIYU AI Sub2API WebUI/src/core.js` — 生成 macOS/Windows 一键配置命令并保持 JIYU AI 品牌清洗
+- `JIYU AI Sub2API WebUI/server/server.js` — 增加客户安全模型目录和图片生成网关路由
+- `JIYU AI Sub2API WebUI/src/styles.css` — 补齐新页面视觉层次、移动端标题布局和轻量动效
+- `JIYU AI Sub2API WebUI/deploy/smoke-test.sh` — 稳定公网冒烟检查输出，覆盖用户端、验证码、隐藏管理入口和模型目录
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` — 覆盖一键配置命令不泄露上游字段
+- `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 覆盖广场、数据看板、模型广场和教程页接线
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 覆盖客户安全模型目录和图片生成路由
+- `docs/025-jiyu-ai-quickstart.md` — 同步用户组件、网关路由和测试覆盖
+- `docs/026-jiyu-ai-tencent-deploy.md` — 同步 Quick Tunnel HTTPS 入口、动态域名直签限制和长期域名方案
 - `docs/031-command-registry.md` — 登记新增用户页面操作入口
-- `docs/060-health.md` — 更新 Frist-API 测试数和 HI-830
+- `docs/060-health.md` — 更新 JIYU AI 测试数和 HI-830
 - `docs/002-changelog.md` — 记录本次用户组件补齐
 
-## [2026-05-02] Frist-API 公开可测链路与隐藏管理入口
+## [2026-05-02] JIYU AI 公开可测链路与隐藏管理入口
 > 领域: `backend` | `frontend` | `ai-pool` | `deploy` | `docs`
-> 影响模块: `Frist-API`, `CC Switch`, `Tencent Cloud`, `docs`
+> 影响模块: `JIYU AI`, `CC Switch`, `Tencent Cloud`, `docs`
 > 关联问题: HI-829
 
 ### 变更内容
-- 公开入口: Frist-API 已同步到腾讯云 `5566` 临时公网端口，用户端可直接进行注册、登录、创建 Key、充值申请和 CC Switch 导入实测。
+- 公开入口: JIYU AI 已同步到腾讯云 `5566` 临时公网端口，用户端可直接进行注册、登录、创建 Key、充值申请和 CC Switch 导入实测。
 - 防刷门槛: 用户注册和登录接入轻量验证码挑战与 IP 频率限制，公开模式继续关闭验证码回显和演示充值。
 - 管理入口: `/admin.html` 默认返回 404，必须带独立隐藏入口码后才加载静态管理页；管理 API 仍要求管理员令牌。
-- 上游清洗: 补号订单文本会归一化请求地址、卡类型、额度、到期时间、认证字段、额外请求头和模型分组；用户侧导入只暴露 Frist-API 供应商标识、官网入口、用户 Key 和公开网关地址。
+- 上游清洗: 补号订单文本会归一化请求地址、卡类型、额度、到期时间、认证字段、额外请求头和模型分组；用户侧导入只暴露 JIYU AI 供应商标识、官网入口、用户 Key 和公开网关地址。
 - 兼容导入: CC Switch 导入继续覆盖 Claude、Codex、OpenCode、OpenClaw、Hermes，并输出 `auth.json`、`config.toml`、Responses 接口格式、上下文/压缩、`setCacheKey` 和工具搜索配置。
 - 中转策略: 网关按小时卡、日卡、月卡、不限时、默认池顺序消耗库存；同一会话通过 `x-frist-session-id` 或 `metadata.frist_session_id` 粘滞到健康上游，异常时带完整请求体切换。
-- 库存告警: 低库存阈值通知钩子已接入 `FRIST_API_LOW_INVENTORY_WEBHOOK`，后续可接 OpenClaw 的 Telegram/微信通知入口。
+- 库存告警: 低库存阈值通知钩子已接入 `SUB2API_LOW_INVENTORY_WEBHOOK`，后续可接 OpenClaw 的 Telegram/微信通知入口。
 - 验证结果: `npm test` 当前 74/74 通过；公网 `challenge` 可用、游客 Dashboard 零消耗、普通 `/admin.html` 返回 404。
 
 ### 文件变更
-- `apps/frist-api/server/server.js` — 增加验证码/限流、隐藏管理页入口、上游字段清洗、低库存通知、会话粘滞和库存优先级链路
-- `apps/frist-api/src/core.js` — 统一生成 Frist-API 品牌 CC Switch 导入配置，避免上游供应商信息泄露到用户端
-- `apps/frist-api/src/app.js` — 右上角账户菜单接入验证码挑战和用户链路低密度展示
-- `apps/frist-api/src/serverClient.js` — 接入 `/api/frist/challenge` 并提交验证码字段
-- `apps/frist-api/tests/business-flow.test.mjs` — 覆盖订单文本清洗、日卡/小时卡优先级、用户/管理端解耦和验证码接线
-- `apps/frist-api/tests/server.test.mjs` — 覆盖注册验证码、限流、隐藏管理页、模型分组、认证字段、日卡轮转、会话粘滞、流式透传和低库存通知
-- `docker-compose.frist-api.yml` — 暴露隐藏管理入口码、验证码、限流和低库存 Webhook 环境变量
-- `apps/frist-api/deploy/production.env.example` — 同步公开部署安全环境变量
-- `apps/frist-api/deploy/smoke-test.sh` — 冒烟检查新增验证码和隐藏管理入口验证
-- `docs/025-frist-api-quickstart.md` — 更新当前用户/管理/网关完整链路
-- `docs/026-frist-api-tencent-deploy.md` — 更新腾讯云公开验收与隐藏管理入口说明
-- `docs/081-frist-api-public-snapshot-2026-05-02.md` — 归档公网用户端浏览器快照，避免根目录散落文档
-- `docs/060-health.md` — 更新 Frist-API 当前测试数和 HI-829
+- `JIYU AI Sub2API WebUI/server/server.js` — 增加验证码/限流、隐藏管理页入口、上游字段清洗、低库存通知、会话粘滞和库存优先级链路
+- `JIYU AI Sub2API WebUI/src/core.js` — 统一生成 JIYU AI 品牌 CC Switch 导入配置，避免上游供应商信息泄露到用户端
+- `JIYU AI Sub2API WebUI/src/app.js` — 右上角账户菜单接入验证码挑战和用户链路低密度展示
+- `JIYU AI Sub2API WebUI/src/serverClient.js` — 接入 `/api/frist/challenge` 并提交验证码字段
+- `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 覆盖订单文本清洗、日卡/小时卡优先级、用户/管理端解耦和验证码接线
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 覆盖注册验证码、限流、隐藏管理页、模型分组、认证字段、日卡轮转、会话粘滞、流式透传和低库存通知
+- `docker-compose.jiyu-ai.yml` — 暴露隐藏管理入口码、验证码、限流和低库存 Webhook 环境变量
+- `JIYU AI Sub2API WebUI/deploy/production.env.example` — 同步公开部署安全环境变量
+- `JIYU AI Sub2API WebUI/deploy/smoke-test.sh` — 冒烟检查新增验证码和隐藏管理入口验证
+- `docs/025-jiyu-ai-quickstart.md` — 更新当前用户/管理/网关完整链路
+- `docs/026-jiyu-ai-tencent-deploy.md` — 更新腾讯云公开验收与隐藏管理入口说明
+- `docs/081-jiyu-ai-public-snapshot-2026-05-02.md` — 归档公网用户端浏览器快照，避免根目录散落文档
+- `docs/060-health.md` — 更新 JIYU AI 当前测试数和 HI-829
 - `docs/061-handoff.md` — 更新当前交接状态
 - `docs/002-changelog.md` — 记录本次公开可测链路收口
 
-## [2026-05-02] Frist-API 用户端降噪与五客户端导入配置
+## [2026-05-02] JIYU AI 用户端降噪与五客户端导入配置
 > 领域: `frontend` | `docs`
-> 影响模块: `Frist-API`, `CC Switch`, `docs`
+> 影响模块: `JIYU AI`, `CC Switch`, `docs`
 > 关联问题: HI-828
 
 ### 变更内容
@@ -4910,48 +4925,48 @@
 - 游客页: 未登录状态不再用演示模型消耗填空，余额、消耗和调用统计保持 0，避免客户误以为已有历史账单。
 - 导入配置: CC Switch 导入参数扩展为 Claude、Codex、OpenCode、OpenClaw、Hermes 五个客户端，导入链接带 provider、请求地址、模型、auth.json 和 config.toml。
 - 解耦边界: 注册/登录收进右上角账户菜单，API 页面只保留创建 Key、开关 Key 和请求地址；补号、价格解析、号源库存继续只在 `/admin.html`。
-- 回归测试: Frist-API 测试扩展到 60 条，覆盖用户端禁用词、无 sticky/无 sidebar、游客零消耗、首屏低密度、五客户端导入、日卡切换、流式透传和公开模式硬门槛。
+- 回归测试: JIYU AI 测试扩展到 60 条，覆盖用户端禁用词、无 sticky/无 sidebar、游客零消耗、首屏低密度、五客户端导入、日卡切换、流式透传和公开模式硬门槛。
 
 ### 文件变更
-- `apps/frist-api/index.html` — 简化用户端首页、账户入口、API/充值/导入页面和公开初始状态
-- `apps/frist-api/src/app.js` — 接入低密度首页渲染、右上角账户菜单、充值计划和服务端导入链接刷新
-- `apps/frist-api/src/serverClient.js` — 游客 Dashboard 归一化为零余额、零消耗和零调用
-- `apps/frist-api/server/server.js` — 游客 Dashboard 补齐零消耗字段
-- `apps/frist-api/src/core.js` — 扩展五客户端 CC Switch 导入配置和 Codex/OpenCode 手动配置生成
-- `apps/frist-api/src/data.js` — 简化充值档位和默认导入目标
-- `apps/frist-api/src/styles.css` — 移除 sticky/侧栏样式，调整低密度首屏和充值三列布局
-- `apps/frist-api/tests/core.test.mjs` — 增加用户端降噪、首屏默认值和五客户端导入回归测试
-- `apps/frist-api/tests/business-flow.test.mjs` — 同步用户/管理端解耦和导入配置测试
-- `apps/frist-api/tests/new-api-adapter.test.mjs` — 增加游客零消耗归一化回归测试
-- `apps/frist-api/tests/server.test.mjs` — 增加游客 Dashboard 零消耗回归测试
-- `docs/025-frist-api-quickstart.md` — 同步当前公开用户链路和低密度页面结构
-- `docs/031-command-registry.md` — 同步 Frist-API 当前真实 Web 操作入口
-- `docs/054-2026-05-01-frist-api-mvp-design.md` — 更新 UI 方向和当前实现边界
-- `docs/060-health.md` — 更新 Frist-API 测试数和 HI-828
+- `JIYU AI Sub2API WebUI/index.html` — 简化用户端首页、账户入口、API/充值/导入页面和公开初始状态
+- `JIYU AI Sub2API WebUI/src/app.js` — 接入低密度首页渲染、右上角账户菜单、充值计划和服务端导入链接刷新
+- `JIYU AI Sub2API WebUI/src/serverClient.js` — 游客 Dashboard 归一化为零余额、零消耗和零调用
+- `JIYU AI Sub2API WebUI/server/server.js` — 游客 Dashboard 补齐零消耗字段
+- `JIYU AI Sub2API WebUI/src/core.js` — 扩展五客户端 CC Switch 导入配置和 Codex/OpenCode 手动配置生成
+- `JIYU AI Sub2API WebUI/src/data.js` — 简化充值档位和默认导入目标
+- `JIYU AI Sub2API WebUI/src/styles.css` — 移除 sticky/侧栏样式，调整低密度首屏和充值三列布局
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` — 增加用户端降噪、首屏默认值和五客户端导入回归测试
+- `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 同步用户/管理端解耦和导入配置测试
+- `JIYU AI Sub2API WebUI/tests/new-api-adapter.test.mjs` — 增加游客零消耗归一化回归测试
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 增加游客 Dashboard 零消耗回归测试
+- `docs/025-jiyu-ai-quickstart.md` — 同步当前公开用户链路和低密度页面结构
+- `docs/031-command-registry.md` — 同步 JIYU AI 当前真实 Web 操作入口
+- `docs/054-2026-05-01-jiyu-ai-mvp-design.md` — 更新 UI 方向和当前实现边界
+- `docs/060-health.md` — 更新 JIYU AI 测试数和 HI-828
 - `docs/061-handoff.md` — 写入当前公网同步交接
 - `docs/002-changelog.md` — 记录本次用户端降噪
 
-## [2026-05-01] Frist-API 腾讯云公网验收部署
+## [2026-05-01] JIYU AI 腾讯云公网验收部署
 > 领域: `deploy` | `infra` | `docs`
-> 影响模块: `Frist-API`, `Docker`, `Tencent Cloud`
+> 影响模块: `JIYU AI`, `Docker`, `Tencent Cloud`
 > 关联问题: HI-827
 
 ### 变更内容
-- 公网验收: 将 Frist-API 部署到腾讯云小服务器，临时开放 `5566` 端口供陌生用户访问和业务链路实测。
+- 公网验收: 将 JIYU AI 部署到腾讯云小服务器，临时开放 `5566` 端口供陌生用户访问和业务链路实测。
 - 安全配置: 服务器端生成强随机管理员令牌和会话密钥，生产模式关闭演示充值和验证码回显；临时公网 HTTP 仅用于无域名阶段验收。
 - 健康检查: Docker 健康检查从 `localhost` 改为 `127.0.0.1`，避免 Alpine 先解析 IPv6 `::1` 导致服务可访问但容器误报 `unhealthy`。
-- 验证结果: 本机外网访问用户端和管理端均返回 `200 OK`，服务器 Docker 状态为 `healthy`，Frist-API 回归测试维持 52/52 通过。
+- 验证结果: 本机外网访问用户端和管理端均返回 `200 OK`，服务器 Docker 状态为 `healthy`，JIYU AI 回归测试维持 52/52 通过。
 
 ### 文件变更
-- `docker-compose.frist-api.yml` — 修正容器健康检查地址为 IPv4 loopback
-- `docs/025-frist-api-quickstart.md` — 同步临时公网验收和健康检查说明
-- `docs/026-frist-api-tencent-deploy.md` — 同步腾讯云临时验收端口和健康检查注意事项
-- `docs/060-health.md` — 更新 Frist-API 公网验收状态
+- `docker-compose.jiyu-ai.yml` — 修正容器健康检查地址为 IPv4 loopback
+- `docs/025-jiyu-ai-quickstart.md` — 同步临时公网验收和健康检查说明
+- `docs/026-jiyu-ai-tencent-deploy.md` — 同步腾讯云临时验收端口和健康检查注意事项
+- `docs/060-health.md` — 更新 JIYU AI 公网验收状态
 - `docs/002-changelog.md` — 记录本次公网部署
 
-## [2026-05-01] Frist-API 公开网关生产化加固
+## [2026-05-01] JIYU AI 公开网关生产化加固
 > 领域: `backend` | `deploy` | `docs`
-> 影响模块: `Frist-API`, `Docker`, `docs`
+> 影响模块: `JIYU AI`, `Docker`, `docs`
 > 关联问题: HI-827
 
 ### 变更内容
@@ -4959,24 +4974,24 @@
 - 故障切换: 上游余额不足、5xx 或网络失败时会清掉当前会话粘滞记录，切换到备用 Key，并完整保留原始 `messages`、`tools`、`metadata` 等请求体。
 - 流式透传: `stream: true` 改为边读边转发上游 SSE 数据，不再把流式响应缓冲到结束后一次性返回。
 - 计费策略: 流式请求按预估消耗先扣费，非流式请求继续优先按上游 `usage` 精确扣费。
-- 生产硬门槛: `NODE_ENV=production` 或 `FRIST_API_PUBLIC_MODE=1` 时，默认管理员令牌、默认会话密钥、验证码回显、演示充值或本地 HTTP 网关地址会直接拒绝启动。
-- 临时公网验收: 增加 `FRIST_API_ALLOW_INSECURE_PUBLIC_HTTP=1` 显式开关，允许无域名阶段用公网 IP 做短期验收；正式付费用户仍要求 HTTPS 域名。
-- 回归测试: Frist-API 测试扩展到 52 条，覆盖会话粘滞、上下文保留、流式首包透传和公开模式安全配置。
+- 生产硬门槛: `NODE_ENV=production` 或 `SUB2API_PUBLIC_MODE=1` 时，默认管理员令牌、默认会话密钥、验证码回显、演示充值或本地 HTTP 网关地址会直接拒绝启动。
+- 临时公网验收: 增加 `SUB2API_ALLOW_INSECURE_PUBLIC_HTTP=1` 显式开关，允许无域名阶段用公网 IP 做短期验收；正式付费用户仍要求 HTTPS 域名。
+- 回归测试: JIYU AI 测试扩展到 52 条，覆盖会话粘滞、上下文保留、流式首包透传和公开模式安全配置。
 
 ### 文件变更
-- `apps/frist-api/server/server.js` — 增加网关会话粘滞、流式透传、故障切换粘滞清理和公开模式配置校验
-- `apps/frist-api/tests/server.test.mjs` — 增加公开网关生产化回归测试
-- `apps/frist-api/deploy/production.env.example` — 增加生产模式和公开模式环境变量
-- `docker-compose.frist-api.yml` — 暴露 `NODE_ENV` 和 `FRIST_API_PUBLIC_MODE` 配置
-- `docs/025-frist-api-quickstart.md` — 同步会话粘滞、流式透传、公开模式硬门槛和测试覆盖
-- `docs/026-frist-api-tencent-deploy.md` — 同步服务器上线检查项
-- `docs/060-health.md` — 更新 Frist-API 当前状态和 HI-827
+- `JIYU AI Sub2API WebUI/server/server.js` — 增加网关会话粘滞、流式透传、故障切换粘滞清理和公开模式配置校验
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 增加公开网关生产化回归测试
+- `JIYU AI Sub2API WebUI/deploy/production.env.example` — 增加生产模式和公开模式环境变量
+- `docker-compose.jiyu-ai.yml` — 暴露 `NODE_ENV` 和 `SUB2API_PUBLIC_MODE` 配置
+- `docs/025-jiyu-ai-quickstart.md` — 同步会话粘滞、流式透传、公开模式硬门槛和测试覆盖
+- `docs/026-jiyu-ai-tencent-deploy.md` — 同步服务器上线检查项
+- `docs/060-health.md` — 更新 JIYU AI 当前状态和 HI-827
 - `docs/002-changelog.md` — 记录本次公开网关生产化加固
 
-## [2026-05-01] Frist-API 用户端商业化 UI 重构
+## [2026-05-01] JIYU AI 用户端商业化 UI 重构
 > 领域: `frontend` | `docs`
-> 影响模块: `Frist-API`, `CC Switch`, `docs`
-> 关联问题: Frist-API-MVP
+> 影响模块: `JIYU AI`, `CC Switch`, `docs`
+> 关联问题: JIYU AI-MVP
 
 ### 变更内容
 - 用户首页: 从高密度数据控制台改成商业化客户首页，首屏只固定展示今日费用、今日剩余额度和线路状态 3 个核心指标。
@@ -4985,22 +5000,22 @@
 - 渐进披露: 首页新增状态轮播、三步快捷入口、Claude/OpenAI 快速连通性和可展开模型消耗明细，减少一屏堆满信息。
 - 动效: 增加首屏进入动画、轮播切换、轻微浮动和按钮按压反馈，并保留 `prefers-reduced-motion` 降级。
 - 解耦边界: 用户端继续不出现补号、号商、价格解析和管理端入口；管理端 `/admin.html` 不改动。
-- 回归测试: Frist-API 测试扩展到 48 条，新增客户首页降噪结构、导航可点击契约和动效钩子测试。
+- 回归测试: JIYU AI 测试扩展到 48 条，新增客户首页降噪结构、导航可点击契约和动效钩子测试。
 
 ### 文件变更
-- `apps/frist-api/index.html` — 重构用户端首页、Logo、导航隔断、轮播、核心指标和渐进展开区
-- `apps/frist-api/src/app.js` — 增加首页轮播、自动切换和明细展开交互
-- `apps/frist-api/src/styles.css` — 重做用户端视觉层次、玻璃/拟物面板、动画和响应式样式
-- `apps/frist-api/tests/core.test.mjs` — 增加用户端商业化 UI 边界测试
-- `docs/025-frist-api-quickstart.md` — 同步新用户端结构、截图和测试覆盖
+- `JIYU AI Sub2API WebUI/index.html` — 重构用户端首页、Logo、导航隔断、轮播、核心指标和渐进展开区
+- `JIYU AI Sub2API WebUI/src/app.js` — 增加首页轮播、自动切换和明细展开交互
+- `JIYU AI Sub2API WebUI/src/styles.css` — 重做用户端视觉层次、玻璃/拟物面板、动画和响应式样式
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` — 增加用户端商业化 UI 边界测试
+- `docs/025-jiyu-ai-quickstart.md` — 同步新用户端结构、截图和测试覆盖
 - `docs/031-command-registry.md` — 登记新增轮播和展开交互入口
-- `docs/060-health.md` — 更新 Frist-API 测试数
+- `docs/060-health.md` — 更新 JIYU AI 测试数
 - `docs/002-changelog.md` — 记录本次用户端 UI 重构
 
-## [2026-05-01] Frist-API 公开能用链路打通
+## [2026-05-01] JIYU AI 公开能用链路打通
 > 领域: `frontend` | `backend` | `ai-pool` | `deploy` | `docs`
-> 影响模块: `Frist-API`, `CC Switch`, `Docker`, `docs`
-> 关联问题: Frist-API-MVP
+> 影响模块: `JIYU AI`, `CC Switch`, `Docker`, `docs`
+> 关联问题: JIYU AI-MVP
 
 ### 变更内容
 - 补号助手: 新增代理请求地址，补号时会对直连和代理做低成本聊天探测，自动选择成功率更高且延迟更低的路径。
@@ -5009,26 +5024,26 @@
 - 价格扣费: 管理端粘贴价格文本后，上游返回 `usage` 时会按输入/输出 token 和销售价扣用户套餐、加油包和上游库存。
 - 日卡切换: Key 额度不足、上游余额不足、上游 5xx 或网络失败时继续自动摘除并切同池健康 Key；日卡套餐过期会清空套餐额度并切回默认套餐。
 - 管理端解耦: 代理路径和库存标签只在 `/admin.html` 展示，用户端继续只保留模型消耗、Claude/OpenAI 连通性、API、充值和 CC Switch 导入。
-- 回归测试: Frist-API 测试扩展到 45 条，覆盖代理/直连择优、fallback 模型探测和按真实 usage 扣费。
+- 回归测试: JIYU AI 测试扩展到 45 条，覆盖代理/直连择优、fallback 模型探测和按真实 usage 扣费。
 
 ### 文件变更
-- `apps/frist-api/server/server.js` — 增加代理路径择优、fallback 模型探测、`routeBaseUrl` 转发和按上游 usage 计费
-- `apps/frist-api/admin.html` — 增加代理请求地址输入
-- `apps/frist-api/src/admin.js` — 管理端提交代理地址并展示直连/代理库存标签
-- `apps/frist-api/tests/server.test.mjs` — 增加代理转发、fallback 探测和 usage 扣费回归测试
-- `apps/frist-api/tests/business-flow.test.mjs` — 锁定代理字段只存在于管理端
-- `docs/025-frist-api-quickstart.md` — 同步公开能用链路
-- `docs/026-frist-api-tencent-deploy.md` — 同步弱服务器上线检查
-- `docs/054-2026-05-01-frist-api-mvp-design.md` — 同步当前实现边界和交接提示
+- `JIYU AI Sub2API WebUI/server/server.js` — 增加代理路径择优、fallback 模型探测、`routeBaseUrl` 转发和按上游 usage 计费
+- `JIYU AI Sub2API WebUI/admin.html` — 增加代理请求地址输入
+- `JIYU AI Sub2API WebUI/src/admin.js` — 管理端提交代理地址并展示直连/代理库存标签
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 增加代理转发、fallback 探测和 usage 扣费回归测试
+- `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 锁定代理字段只存在于管理端
+- `docs/025-jiyu-ai-quickstart.md` — 同步公开能用链路
+- `docs/026-jiyu-ai-tencent-deploy.md` — 同步弱服务器上线检查
+- `docs/054-2026-05-01-jiyu-ai-mvp-design.md` — 同步当前实现边界和交接提示
 - `docs/031-command-registry.md` — 登记管理端代理地址入口
-- `docs/060-health.md` — 更新 Frist-API 测试数和已修复技术债
+- `docs/060-health.md` — 更新 JIYU AI 测试数和已修复技术债
 - `docs/061-handoff.md` — 写入本轮交接状态
 - `docs/002-changelog.md` — 记录本次公开能用链路打通
 
-## [2026-05-01] Frist-API 公开试用业务安全加固
+## [2026-05-01] JIYU AI 公开试用业务安全加固
 > 领域: `frontend` | `backend` | `ai-pool` | `deploy` | `docs`
-> 影响模块: `Frist-API`, `CC Switch`, `Docker`, `docs`
-> 关联问题: Frist-API-MVP
+> 影响模块: `JIYU AI`, `CC Switch`, `Docker`, `docs`
+> 关联问题: JIYU AI-MVP
 
 ### 变更内容
 - 充值链路: 公开环境默认不再允许用户自助点击按钮直接增加余额；用户侧改为生成待处理充值单，管理端按邮箱人工确认入账。
@@ -5038,30 +5053,30 @@
 - 补号探测: 同一请求地址先做一次模型列表探测，再逐个 Key 做最低成本聊天健康检查，减少重复探测。
 - 用户连通性: 用户侧模型连通性按模型聚合显示可用线路数量，不再把每枚上游 Key 当成一张客户状态卡。
 - 部署: Docker 和生产环境模板默认关闭演示充值，避免公开部署时误开放免费额度。
-- 回归测试: Frist-API 测试扩展到 42 条，覆盖待处理充值单、管理员入账、一次性兑换码、日卡过期、模型聚合连通性和补号低成本探测。
+- 回归测试: JIYU AI 测试扩展到 42 条，覆盖待处理充值单、管理员入账、一次性兑换码、日卡过期、模型聚合连通性和补号低成本探测。
 
 ### 文件变更
-- `apps/frist-api/server/server.js` — 增加待处理充值单、管理员人工入账、兑换码防复用、套餐过期、低成本探测和模型聚合健康摘要
-- `apps/frist-api/index.html` — 将用户充值文案改为充值申请
-- `apps/frist-api/admin.html` — 增加人工入账表单
-- `apps/frist-api/src/app.js` — 用户侧充值按钮改为提交待处理充值单
-- `apps/frist-api/src/admin.js` — 接入管理员人工入账接口
-- `apps/frist-api/tests/server.test.mjs` — 扩展公开业务链路回归测试
-- `apps/frist-api/tests/business-flow.test.mjs` — 锁定管理端人工入账入口和用户端解耦
-- `apps/frist-api/deploy/production.env.example` — 增加演示充值关闭开关
-- `Makefile` — 本地 Frist-API 开发启动默认回显验证码、关闭演示充值
-- `docker-compose.frist-api.yml` — 生产默认关闭演示充值
-- `docs/025-frist-api-quickstart.md` — 同步公开试用充值和补号规则
-- `docs/026-frist-api-tencent-deploy.md` — 同步上线前检查
-- `docs/031-command-registry.md` — 登记 Frist-API 管理端人工入账入口
-- `docs/060-health.md` — 更新 Frist-API 当前状态
-- `docs/061-handoff.md` — 更新 Frist-API 交接状态
+- `JIYU AI Sub2API WebUI/server/server.js` — 增加待处理充值单、管理员人工入账、兑换码防复用、套餐过期、低成本探测和模型聚合健康摘要
+- `JIYU AI Sub2API WebUI/index.html` — 将用户充值文案改为充值申请
+- `JIYU AI Sub2API WebUI/admin.html` — 增加人工入账表单
+- `JIYU AI Sub2API WebUI/src/app.js` — 用户侧充值按钮改为提交待处理充值单
+- `JIYU AI Sub2API WebUI/src/admin.js` — 接入管理员人工入账接口
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 扩展公开业务链路回归测试
+- `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 锁定管理端人工入账入口和用户端解耦
+- `JIYU AI Sub2API WebUI/deploy/production.env.example` — 增加演示充值关闭开关
+- `Makefile` — 本地 JIYU AI 开发启动默认回显验证码、关闭演示充值
+- `docker-compose.jiyu-ai.yml` — 生产默认关闭演示充值
+- `docs/025-jiyu-ai-quickstart.md` — 同步公开试用充值和补号规则
+- `docs/026-jiyu-ai-tencent-deploy.md` — 同步上线前检查
+- `docs/031-command-registry.md` — 登记 JIYU AI 管理端人工入账入口
+- `docs/060-health.md` — 更新 JIYU AI 当前状态
+- `docs/061-handoff.md` — 更新 JIYU AI 交接状态
 - `docs/002-changelog.md` — 记录本次公开试用业务安全加固
 
-## [2026-05-01] Frist-API 公开能用链路加固
+## [2026-05-01] JIYU AI 公开能用链路加固
 > 领域: `frontend` | `backend` | `ai-pool` | `deploy` | `docs`
-> 影响模块: `Frist-API`, `CC Switch`, `Docker`, `docs`
-> 关联问题: Frist-API-MVP
+> 影响模块: `JIYU AI`, `CC Switch`, `Docker`, `docs`
+> 关联问题: JIYU AI-MVP
 
 ### 变更内容
 - 用户链路: 新增邮箱密码登录，重复注册会被拦截，用户端不再预填演示密码。
@@ -5074,31 +5089,31 @@
 - 回归测试: 扩展服务端和页面链路测试，覆盖登录、真实扣费、余额拦截、坏 Key 过滤、故障切换和补货恢复。
 
 ### 文件变更
-- `apps/frist-api/server/server.js` — 增加登录、真实扣费、补号探测、库存恢复、故障切换和审计事件
-- `apps/frist-api/src/serverClient.js` — 增加用户端登录接口
-- `apps/frist-api/index.html` — 增加登录按钮并移除演示密码预填
-- `apps/frist-api/src/app.js` — 接入登录流程
-- `apps/frist-api/admin.html` — 增加探测模式和审计区域
-- `apps/frist-api/src/admin.js` — 发送探测模式并渲染补号审计
-- `apps/frist-api/src/styles.css` — 增加管理端审计列表样式
-- `apps/frist-api/tests/server.test.mjs` — 扩展公开可用后端链路测试
-- `apps/frist-api/tests/business-flow.test.mjs` — 扩展用户端/管理端页面接线测试
-- `apps/frist-api/deploy/production.env.example` — 新增生产环境变量模板
-- `apps/frist-api/deploy/smoke-test.sh` — 新增部署冒烟检查脚本
-- `docker-compose.frist-api.yml` — 补充公开网关地址和探测超时环境变量
-- `docs/025-frist-api-quickstart.md` — 同步公开试用链路和部署边界
-- `docs/026-frist-api-tencent-deploy.md` — 新增腾讯云小服务器部署准备说明
-- `docs/113-frist-api-public-usable-user-2026-05-01.png` — 保存用户端浏览器验证截图
-- `docs/112-frist-api-public-usable-admin-2026-05-01.png` — 保存管理端浏览器验证截图
-- `docs/054-2026-05-01-frist-api-mvp-design.md` — 更新当前公开试用后端边界
-- `docs/060-health.md` — 更新 Frist-API 当前状态
-- `docs/061-handoff.md` — 更新 Frist-API 交接状态
+- `JIYU AI Sub2API WebUI/server/server.js` — 增加登录、真实扣费、补号探测、库存恢复、故障切换和审计事件
+- `JIYU AI Sub2API WebUI/src/serverClient.js` — 增加用户端登录接口
+- `JIYU AI Sub2API WebUI/index.html` — 增加登录按钮并移除演示密码预填
+- `JIYU AI Sub2API WebUI/src/app.js` — 接入登录流程
+- `JIYU AI Sub2API WebUI/admin.html` — 增加探测模式和审计区域
+- `JIYU AI Sub2API WebUI/src/admin.js` — 发送探测模式并渲染补号审计
+- `JIYU AI Sub2API WebUI/src/styles.css` — 增加管理端审计列表样式
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 扩展公开可用后端链路测试
+- `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 扩展用户端/管理端页面接线测试
+- `JIYU AI Sub2API WebUI/deploy/production.env.example` — 新增生产环境变量模板
+- `JIYU AI Sub2API WebUI/deploy/smoke-test.sh` — 新增部署冒烟检查脚本
+- `docker-compose.jiyu-ai.yml` — 补充公开网关地址和探测超时环境变量
+- `docs/025-jiyu-ai-quickstart.md` — 同步公开试用链路和部署边界
+- `docs/026-jiyu-ai-tencent-deploy.md` — 新增腾讯云小服务器部署准备说明
+- `docs/113-jiyu-ai-public-usable-user-2026-05-01.png` — 保存用户端浏览器验证截图
+- `docs/112-jiyu-ai-public-usable-admin-2026-05-01.png` — 保存管理端浏览器验证截图
+- `docs/054-2026-05-01-jiyu-ai-mvp-design.md` — 更新当前公开试用后端边界
+- `docs/060-health.md` — 更新 JIYU AI 当前状态
+- `docs/061-handoff.md` — 更新 JIYU AI 交接状态
 - `docs/002-changelog.md` — 记录本次公开可用链路加固
 
-## [2026-05-01] Frist-API 公开试用链路后端
+## [2026-05-01] JIYU AI 公开试用链路后端
 > 领域: `frontend` | `backend` | `ai-pool` | `deploy` | `docs`
-> 影响模块: `Frist-API`, `CC Switch`, `Makefile`, `Docker`, `docs`
-> 关联问题: Frist-API-MVP
+> 影响模块: `JIYU AI`, `CC Switch`, `Makefile`, `Docker`, `docs`
+> 关联问题: JIYU AI-MVP
 
 ### 变更内容
 - 轻量后端: 新增 Node HTTP 服务，跑通用户注册、邮箱验证、充值、兑换码、创建 Key、Key 开关、Dashboard 和 CC Switch 导入接口。
@@ -5106,39 +5121,39 @@
 - 日卡切换: 日卡池 Key 额度不足会自动跳过；上游返回余额不足时自动标记当前 Key 耗尽并重试同池下一枚健康 Key。
 - 管理端: 新增独立 `/admin.html` 补号工作台，支持管理员令牌、请求地址、池子、模型、Key 列表、价格文本和脱敏库存查看。
 - 用户端接线: 用户页面优先调用轻量后端，失败时保留演示数据兜底；用户端继续不展示补号、号源和价格解析入口。
-- 部署: `make frist-api-dev` 改为启动完整链路；Docker 原型改为 256MB Node 服务，适配弱服务器小范围试用。
+- 部署: `make jiyu-ai-dev` 改为启动完整链路；Docker 原型改为 256MB Node 服务，适配弱服务器小范围试用。
 - 回归测试: 新增服务端链路和管理端解耦测试，覆盖注册到导入、补号写入、上游脱敏和日卡自动切换。
 
 ### 文件变更
-- `apps/frist-api/server/server.js` — 新增轻量 Frist-API HTTP 后端和 `/v1` 中转网关
-- `apps/frist-api/src/serverClient.js` — 新增用户端浏览器 API 客户端和 Dashboard 归一化
-- `apps/frist-api/src/app.js` — 用户端业务按钮优先调用真实后端，失败时回退演示状态
-- `apps/frist-api/admin.html` — 新增独立管理端补号工作台
-- `apps/frist-api/src/admin.js` — 新增管理端补号和库存查看逻辑
-- `apps/frist-api/src/styles.css` — 新增管理端布局和响应式样式
-- `apps/frist-api/tests/server.test.mjs` — 新增服务端完整链路测试
-- `apps/frist-api/tests/business-flow.test.mjs` — 新增管理端独立页面边界测试
-- `apps/frist-api/package.json` — 默认启动轻量后端，保留静态预览命令
-- `.gitignore` — 忽略 Frist-API 本地运行数据，避免误提交用户 Key 或上游 Key
-- `Makefile` — `frist-api-dev` 改为完整链路启动，新增 `frist-api-static`
-- `docker-compose.frist-api.yml` — 改为轻量 Node 服务和 JSON 运行数据卷
-- `docs/025-frist-api-quickstart.md` — 更新本地启动、管理端和公开试用边界
-- `docs/054-2026-05-01-frist-api-mvp-design.md` — 补充公开试用后端实现边界
-- `docs/114-frist-api-public-user-2026-05-01.png` — 保存用户端浏览器验证截图
-- `docs/111-frist-api-public-admin-2026-05-01.png` — 保存管理端浏览器验证截图
-- `docs/001-project-map.md` — 更新 Frist-API 项目登记
-- `docs/031-command-registry.md` — 登记 Frist-API Web 操作入口
-- `docs/060-health.md` — 登记并关闭 Frist-API 首页 403 回归
-- `docs/061-handoff.md` — 更新 Frist-API 交接状态
+- `JIYU AI Sub2API WebUI/server/server.js` — 新增轻量 JIYU AI HTTP 后端和 `/v1` 中转网关
+- `JIYU AI Sub2API WebUI/src/serverClient.js` — 新增用户端浏览器 API 客户端和 Dashboard 归一化
+- `JIYU AI Sub2API WebUI/src/app.js` — 用户端业务按钮优先调用真实后端，失败时回退演示状态
+- `JIYU AI Sub2API WebUI/admin.html` — 新增独立管理端补号工作台
+- `JIYU AI Sub2API WebUI/src/admin.js` — 新增管理端补号和库存查看逻辑
+- `JIYU AI Sub2API WebUI/src/styles.css` — 新增管理端布局和响应式样式
+- `JIYU AI Sub2API WebUI/tests/server.test.mjs` — 新增服务端完整链路测试
+- `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 新增管理端独立页面边界测试
+- `JIYU AI Sub2API WebUI/package.json` — 默认启动轻量后端，保留静态预览命令
+- `.gitignore` — 忽略 JIYU AI 本地运行数据，避免误提交用户 Key 或上游 Key
+- `Makefile` — `jiyu-ai-dev` 改为完整链路启动，新增 `jiyu-ai-static`
+- `docker-compose.jiyu-ai.yml` — 改为轻量 Node 服务和 JSON 运行数据卷
+- `docs/025-jiyu-ai-quickstart.md` — 更新本地启动、管理端和公开试用边界
+- `docs/054-2026-05-01-jiyu-ai-mvp-design.md` — 补充公开试用后端实现边界
+- `docs/114-jiyu-ai-public-user-2026-05-01.png` — 保存用户端浏览器验证截图
+- `docs/111-jiyu-ai-public-admin-2026-05-01.png` — 保存管理端浏览器验证截图
+- `docs/001-project-map.md` — 更新 JIYU AI 项目登记
+- `docs/031-command-registry.md` — 登记 JIYU AI Web 操作入口
+- `docs/060-health.md` — 登记并关闭 JIYU AI 首页 403 回归
+- `docs/061-handoff.md` — 更新 JIYU AI 交接状态
 - `docs/002-changelog.md` — 记录本次公开试用链路落地
 
-## [2026-05-01] Frist-API 完整业务链路 MVP
+## [2026-05-01] JIYU AI 完整业务链路 MVP
 > 领域: `frontend` | `ai-pool` | `docs`
-> 影响模块: `Frist-API`, `CC Switch`, `docs`
-> 关联问题: Frist-API-MVP
+> 影响模块: `JIYU AI`, `CC Switch`, `docs`
+> 关联问题: JIYU AI-MVP
 
 ### 变更内容
-- 业务链路: 新增 Frist-API 用户业务状态机，跑通注册、邮箱验证、充值、兑换码、创建 Key、开启/关闭 Key 和 CC Switch 导入。
+- 业务链路: 新增 JIYU AI 用户业务状态机，跑通注册、邮箱验证、充值、兑换码、创建 Key、开启/关闭 Key 和 CC Switch 导入。
 - 用户页面: 在 API 管理页加入最小账户注册与邮箱验证入口，让网页端也能串起“注册 -> 充值 -> 创建 Key -> 导入”的闭环。
 - Key 管理: API Key 列表改为按每个 Key 自己的启停状态渲染，避免多个 Key 时被全局状态误导。
 - 管理链路: 新增补号报告、价格草稿、号源档案写入和日卡额度不足自动切换的可测试核心逻辑，仍保持管理端内容不进入用户页。
@@ -5146,48 +5161,48 @@
 - 文档: 更新快速启动、MVP 设计和会话交接，明确当前为本地模拟业务状态，真实写接口下一步接入 New-API fork。
 
 ### 文件变更
-- `apps/frist-api/src/businessFlow.js` — 新增 Frist-API 用户与补号业务状态机
-- `apps/frist-api/src/app.js` — 接入注册、验证、充值、兑换码、创建 Key、Key 开关、连通性刷新和 CC Switch 导入
-- `apps/frist-api/index.html` — 新增用户侧注册与邮箱验证入口
-- `apps/frist-api/src/styles.css` — 新增账户链路表单样式
-- `apps/frist-api/tests/business-flow.test.mjs` — 新增完整业务链路回归测试
-- `docs/025-frist-api-quickstart.md` — 同步当前业务闭环和验证方式
-- `docs/054-2026-05-01-frist-api-mvp-design.md` — 记录当前业务链路实现边界
-- `docs/061-handoff.md` — 更新 Frist-API 交接状态
+- `JIYU AI Sub2API WebUI/src/businessFlow.js` — 新增 JIYU AI 用户与补号业务状态机
+- `JIYU AI Sub2API WebUI/src/app.js` — 接入注册、验证、充值、兑换码、创建 Key、Key 开关、连通性刷新和 CC Switch 导入
+- `JIYU AI Sub2API WebUI/index.html` — 新增用户侧注册与邮箱验证入口
+- `JIYU AI Sub2API WebUI/src/styles.css` — 新增账户链路表单样式
+- `JIYU AI Sub2API WebUI/tests/business-flow.test.mjs` — 新增完整业务链路回归测试
+- `docs/025-jiyu-ai-quickstart.md` — 同步当前业务闭环和验证方式
+- `docs/054-2026-05-01-jiyu-ai-mvp-design.md` — 记录当前业务链路实现边界
+- `docs/061-handoff.md` — 更新 JIYU AI 交接状态
 - `docs/002-changelog.md` — 记录本次业务链路落地
 
-## [2026-05-01] Frist-API 接入 New-API 前端适配层
+## [2026-05-01] JIYU AI 接入 New-API 前端适配层
 > 领域: `frontend` | `ai-pool` | `docs`
-> 影响模块: `Frist-API`, `New-API`, `docs`
-> 关联问题: Frist-API-MVP
+> 影响模块: `JIYU AI`, `New-API`, `docs`
+> 关联问题: JIYU AI-MVP
 
 ### 变更内容
-- 数据接线: 新增 New-API 会话客户端和 Frist-API 数据仓库，用户控制台优先读取 New-API，接口不可用时回退演示数据。
+- 数据接线: 新增 New-API 会话客户端和 JIYU AI 数据仓库，用户控制台优先读取 New-API，接口不可用时回退演示数据。
 - 归一化: 支持 New-API 用户余额、Token、用量日志和脱敏连通性快照转换为客户侧展示字段。
 - 安全边界: 前端不发送管理员密钥，不暴露上游 Key、渠道 ID、号商地址等管理端字段。
 - 页面接线: `app.js` 从硬编码演示数组改为通过数据仓库渲染，保留本地静态预览能力。
-- Docker: 为 Frist-API 站点增加 Nginx 代理配置，同域 `/api/` 和 `/v1/` 转发到 New-API 容器。
+- Docker: 为 JIYU AI 站点增加 Nginx 代理配置，同域 `/api/` 和 `/v1/` 转发到 New-API 容器。
 - 测试: 新增 New-API 适配器测试，覆盖响应包装、缺失接口回退、Token 脱敏、用量分组和页面接线。
 - 文档: 更新快速启动和 MVP 方案，明确下一步要在 New-API fork 中补齐用户安全接口。
 
 ### 文件变更
-- `apps/frist-api/src/newApiClient.js` — 新增 New-API 会话客户端、数据仓库和归一化函数
-- `apps/frist-api/src/app.js` — 页面改为优先读取数据仓库并保留演示数据兜底
-- `apps/frist-api/deploy/nginx.conf` — 新增 Docker 站点代理配置
-- `apps/frist-api/tests/new-api-adapter.test.mjs` — 新增 New-API 适配层回归测试
-- `docker-compose.frist-api.yml` — 挂载 Frist-API Nginx 代理配置
-- `docs/025-frist-api-quickstart.md` — 说明当前数据接入方式和下一步
-- `docs/054-2026-05-01-frist-api-mvp-design.md` — 同步当前前端适配边界
-- `docs/061-handoff.md` — 更新 Frist-API 交接状态
+- `JIYU AI Sub2API WebUI/src/newApiClient.js` — 新增 New-API 会话客户端、数据仓库和归一化函数
+- `JIYU AI Sub2API WebUI/src/app.js` — 页面改为优先读取数据仓库并保留演示数据兜底
+- `JIYU AI Sub2API WebUI/deploy/nginx.conf` — 新增 Docker 站点代理配置
+- `JIYU AI Sub2API WebUI/tests/new-api-adapter.test.mjs` — 新增 New-API 适配层回归测试
+- `docker-compose.jiyu-ai.yml` — 挂载 JIYU AI Nginx 代理配置
+- `docs/025-jiyu-ai-quickstart.md` — 说明当前数据接入方式和下一步
+- `docs/054-2026-05-01-jiyu-ai-mvp-design.md` — 同步当前前端适配边界
+- `docs/061-handoff.md` — 更新 JIYU AI 交接状态
 - `docs/002-changelog.md` — 记录本次适配层接入
 
-## [2026-05-01] Frist-API 参考 Tabcode 的用户控制台迭代
+## [2026-05-01] JIYU AI 参考 Tabcode 的用户控制台迭代
 > 领域: `frontend` | `docs`
-> 影响模块: `Frist-API`, `CC Switch`, `docs`
-> 关联问题: Frist-API-MVP
+> 影响模块: `JIYU AI`, `CC Switch`, `docs`
+> 关联问题: JIYU AI-MVP
 
 ### 变更内容
-- UI: 登录参考 `tabcode.cc/dashboard` 后，将 Frist-API 从单页堆叠改为分区式客户控制台，默认只展示仪表板。
+- UI: 登录参考 `tabcode.cc/dashboard` 后，将 JIYU AI 从单页堆叠改为分区式客户控制台，默认只展示仪表板。
 - 信息架构: 借鉴客户侧分组导航，拆成控制台、API 与用量、模型与渠道、充值与订购、支持，继续保持管理端完全不暴露。
 - 连通性: 将 Claude / OpenAI 状态卡升级为对话延迟、端点 Ping、官方状态、7 天可用性和历史状态条。
 - 降噪: 合并重复的“使用统计”导航入口，并将慢速状态文案从“拥堵”调整为“可用较慢”。
@@ -5196,73 +5211,73 @@
 - 文档: 更新快速启动指南，说明新的分区式用户端结构。
 
 ### 文件变更
-- `apps/frist-api/index.html` — 改为分区式用户控制台
-- `apps/frist-api/src/core.js` — 调整客户侧连通性状态文案
-- `apps/frist-api/src/app.js` — 增加 hash 视图路由、API/充值/状态卡渲染
-- `apps/frist-api/src/data.js` — 补充 API Key、充值、帮助、渠道可用性模拟数据
-- `apps/frist-api/src/styles.css` — 重做分区控制台、状态卡和移动端样式
-- `apps/frist-api/favicon.svg` — 更新抽象品牌图标
-- `apps/frist-api/tests/core.test.mjs` — 增加分区导航和连通性字段测试
-- `docs/025-frist-api-quickstart.md` — 同步当前可见能力
+- `JIYU AI Sub2API WebUI/index.html` — 改为分区式用户控制台
+- `JIYU AI Sub2API WebUI/src/core.js` — 调整客户侧连通性状态文案
+- `JIYU AI Sub2API WebUI/src/app.js` — 增加 hash 视图路由、API/充值/状态卡渲染
+- `JIYU AI Sub2API WebUI/src/data.js` — 补充 API Key、充值、帮助、渠道可用性模拟数据
+- `JIYU AI Sub2API WebUI/src/styles.css` — 重做分区控制台、状态卡和移动端样式
+- `JIYU AI Sub2API WebUI/favicon.svg` — 更新抽象品牌图标
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` — 增加分区导航和连通性字段测试
+- `docs/025-jiyu-ai-quickstart.md` — 同步当前可见能力
 - `docs/002-changelog.md` — 记录本次参考站迭代
 
-## [2026-05-01] Frist-API 用户端 UI 解耦重构
+## [2026-05-01] JIYU AI 用户端 UI 解耦重构
 > 领域: `frontend` | `docs`
-> 影响模块: `Frist-API`, `CC Switch`, `docs`
-> 关联问题: Frist-API-MVP
+> 影响模块: `JIYU AI`, `CC Switch`, `docs`
+> 关联问题: JIYU AI-MVP
 
 ### 变更内容
-- UI: 按用户反馈重构 Frist-API 为纯用户控制台，移除首屏中的管理端、补号助手、价格解析和号源归类信息。
+- UI: 按用户反馈重构 JIYU AI 为纯用户控制台，移除首屏中的管理端、补号助手、价格解析和号源归类信息。
 - 信息架构: 用户端只保留模型消耗、Claude/OpenAI 渠道连通性、API 管理、充值入口和 CC Switch 导入。
-- 品牌: 重做 Frist-API 抽象 Logo 和 favicon，使用黑白基础与红色识别点，降低视觉噪音。
+- 品牌: 重做 JIYU AI 抽象 Logo 和 favicon，使用黑白基础与红色识别点，降低视觉噪音。
 - 测试: 新增用户端边界测试，确保管理端内容不会再次出现在用户页面。
 - 文档: 更新快速启动指南，说明用户端与管理端分离。
 
 ### 文件变更
-- `apps/frist-api/index.html` — 重构用户端页面结构
-- `apps/frist-api/src/app.js` — 重写用户端渲染逻辑
-- `apps/frist-api/src/data.js` — 调整用户端模拟数据
-- `apps/frist-api/src/styles.css` — 重做用户端视觉和响应式样式
-- `apps/frist-api/favicon.svg` — 更新抽象品牌图标
-- `apps/frist-api/tests/core.test.mjs` — 增加用户端/管理端解耦测试
-- `docs/025-frist-api-quickstart.md` — 同步用户端范围说明
+- `JIYU AI Sub2API WebUI/index.html` — 重构用户端页面结构
+- `JIYU AI Sub2API WebUI/src/app.js` — 重写用户端渲染逻辑
+- `JIYU AI Sub2API WebUI/src/data.js` — 调整用户端模拟数据
+- `JIYU AI Sub2API WebUI/src/styles.css` — 重做用户端视觉和响应式样式
+- `JIYU AI Sub2API WebUI/favicon.svg` — 更新抽象品牌图标
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` — 增加用户端/管理端解耦测试
+- `docs/025-jiyu-ai-quickstart.md` — 同步用户端范围说明
 - `docs/002-changelog.md` — 记录本次 UI 解耦重构
 
-## [2026-05-01] Frist-API 网站雏形落地
+## [2026-05-01] JIYU AI 网站雏形落地
 > 领域: `frontend` | `ai-pool` | `deploy` | `docs`
-> 影响模块: `Frist-API`, `CC Switch`, `New-API`, `Makefile`, `docs`
-> 关联问题: Frist-API-MVP
+> 影响模块: `JIYU AI`, `CC Switch`, `New-API`, `Makefile`, `docs`
+> 关联问题: JIYU AI-MVP
 
 ### 变更内容
-- 网站: 新增 `apps/frist-api/` 独立静态网站雏形，首屏覆盖账单卡、API Key、五目标 CC Switch 导入、模型连通性、补号助手和价格解析。
+- 网站: 新增 `JIYU AI Sub2API WebUI/` 独立静态网站雏形，首屏覆盖账单卡、API Key、五目标 CC Switch 导入、模型连通性、补号助手和价格解析。
 - 逻辑: 新增可测试核心逻辑，覆盖请求地址归一化、CC Switch 导入链接、价格解析、直连/代理推荐、日卡 Key 自动切换和用户侧模型健康摘要。
-- 部署: 新增 `docker-compose.frist-api.yml`，本地同时启动 Frist-API 网站和 New-API 核心原型。
-- 命令: Makefile 增加 `frist-api-test`、`frist-api-dev`、`frist-api-up`、`frist-api-down`。
-- 文档: 新增快速启动指南，并在项目地图登记 Frist-API 原型位置。
+- 部署: 新增 `docker-compose.jiyu-ai.yml`，本地同时启动 JIYU AI 网站和 New-API 核心原型。
+- 命令: Makefile 增加 `jiyu-ai-test`、`jiyu-ai-dev`、`jiyu-ai-up`、`jiyu-ai-down`。
+- 文档: 新增快速启动指南，并在项目地图登记 JIYU AI 原型位置。
 
 ### 文件变更
-- `apps/frist-api/index.html` — Frist-API 网站雏形页面
-- `apps/frist-api/favicon.svg` — Frist-API 网站图标
-- `apps/frist-api/src/core.js` — 核心业务逻辑
-- `apps/frist-api/src/app.js` — 页面交互和模拟数据绑定
-- `apps/frist-api/src/data.js` — 首屏模拟数据
-- `apps/frist-api/src/styles.css` — 黑白账单控制台样式
-- `apps/frist-api/tests/core.test.mjs` — 核心逻辑回归测试
-- `apps/frist-api/package.json` — 本地测试和预览脚本
-- `docker-compose.frist-api.yml` — Frist-API 原型 Docker 入口
-- `Makefile` — 增加 Frist-API 本地命令
-- `docs/025-frist-api-quickstart.md` — 新增快速启动指南
-- `docs/001-project-map.md` — 登记 Frist-API 应用位置
+- `JIYU AI Sub2API WebUI/index.html` — JIYU AI 网站雏形页面
+- `JIYU AI Sub2API WebUI/favicon.svg` — JIYU AI 网站图标
+- `JIYU AI Sub2API WebUI/src/core.js` — 核心业务逻辑
+- `JIYU AI Sub2API WebUI/src/app.js` — 页面交互和模拟数据绑定
+- `JIYU AI Sub2API WebUI/src/data.js` — 首屏模拟数据
+- `JIYU AI Sub2API WebUI/src/styles.css` — 黑白账单控制台样式
+- `JIYU AI Sub2API WebUI/tests/core.test.mjs` — 核心逻辑回归测试
+- `JIYU AI Sub2API WebUI/package.json` — 本地测试和预览脚本
+- `docker-compose.jiyu-ai.yml` — JIYU AI 原型 Docker 入口
+- `Makefile` — 增加 JIYU AI 本地命令
+- `docs/025-jiyu-ai-quickstart.md` — 新增快速启动指南
+- `docs/001-project-map.md` — 登记 JIYU AI 应用位置
 - `docs/002-changelog.md` — 记录本次网站雏形落地
 
-## [2026-05-01] Frist-API 盈利中转站 MVP 设计落地
+## [2026-05-01] JIYU AI 盈利中转站 MVP 设计落地
 > 领域: `docs` | `ai-pool`
-> 影响模块: `Frist-API`, `New-API`, `docs/specs`, `handoff`
-> 关联问题: Frist-API-MVP
+> 影响模块: `JIYU AI`, `New-API`, `docs/specs`, `handoff`
+> 关联问题: JIYU AI-MVP
 
 ### 变更内容
-- 方案: 将公开收费 API 中转站命名为 `Frist-API`，定位为独立网站和盈利渠道，不改 OpenClaw APP 现有 New API 内部管理页面。
-- 架构: 明确 Frist-API 只做中转、鉴权、计费、日志和号源管理，不使用本机硬件做模型推理，适配弱服务器部署。
+- 方案: 将公开收费 API 中转站命名为 `JIYU AI`，定位为独立网站和盈利渠道，不改 OpenClaw APP 现有 New API 内部管理页面。
+- 架构: 明确 JIYU AI 只做中转、鉴权、计费、日志和号源管理，不使用本机硬件做模型推理，适配弱服务器部署。
 - 用户端: 固化注册、充值、创建 Key、开启/关闭 Key、选择导入位置、CC Switch 导入的完整流程，导入目标覆盖 Claude、Codex、OpenCode、OpenClaw、Hermes。
 - 管理端: 设计按请求地址归类的补号助手，支持模型列表缓存、Key 低成本检测、上游不支持模型列表时的降级探测。
 - 价格: 设计粘贴式价格解析流程，支持币种/计费单位识别、美元/人民币换算、利润倍率、安全垫和人工确认。
@@ -5271,8 +5286,8 @@
 - 交接: 写入可直接交给下一位执行者的提示词，包含实现边界、优先级和验证要求。
 
 ### 文件变更
-- `docs/054-2026-05-01-frist-api-mvp-design.md` — 新增 Frist-API MVP 设计文档和交接提示词
-- `docs/061-handoff.md` — 写入本轮 Frist-API 交接摘要
+- `docs/054-2026-05-01-jiyu-ai-mvp-design.md` — 新增 JIYU AI MVP 设计文档和交接提示词
+- `docs/061-handoff.md` — 写入本轮 JIYU AI 交接摘要
 - `docs/002-changelog.md` — 记录本次方案文档落地
 
 ## [2026-05-01] 质量优化: API 边界异常链路清理
@@ -5621,7 +5636,7 @@
 - `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py::test_detects_paid_status_from_xianyu_system_chat_title tests/test_xianyu_cc_auto_ship.py::test_paid_text_in_normal_chat_content_does_not_trigger tests/test_xianyu_cc_auto_ship.py::test_decode_sync_payload_accepts_plain_json_system_card tests/test_xianyu_cc_auto_ship.py::test_plain_json_paid_system_card_starts_auto_ship tests/test_xianyu_cc_auto_ship.py::test_paid_order_uses_message_item_id_before_recent_item -q`：`5 passed`。
 - 根目录 `make test`：后端全量 pytest 到 `[100%]`，exit code `0`。
 - `cd packages/openclaw-npm/assets/chrome-extension && node --check background.js && node --check popup.js && node --check social-page-runner.js && node --test test/social-page-runner.test.mjs test/popup-static.test.mjs`：`43 passed / 0 failed`。
-- `cd apps/frist-api && node --test tests/*.test.mjs`：`182 passed / 0 failed`。
+- `cd JIYU AI Sub2API WebUI && node --test tests/*.test.mjs`：`182 passed / 0 failed`。
 - `node scripts/cc_zhongzhuan_readiness_audit.mjs --mode=read_only --json` 仍正确返回 `ok=false`，原因是当前真实内测单 `pendingRescue=1` 尚未发到买家聊天，不允许误报闭环。
 
 ### 文件变更
@@ -6271,7 +6286,7 @@
 ### 验证
 - `bash -n scripts/check_docs_layout.sh`：通过。
 - `make docs-check`：`22 个文档，目录扁平、命名合规、索引完整`。
-- `cd apps/frist-api && npm test`：`187 passed / 0 failed`。
+- `cd JIYU AI Sub2API WebUI && npm test`：`187 passed / 0 failed`。
 - `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_intel_brief_dry_run.py tests/test_intel_delivery_sandbox.py tests/test_intel_subscription_filtered_delivery.py tests/test_intel_telegram_menu_handlers.py tests/test_intel_wechat_bridge_runtime_acceptance.py tests/test_wechat_numbered_commands.py tests/test_social_extension_status.py -q --maxfail=5`：`96 passed`。
 - `make ci-local`：Ruff、Python 全量测试、Python 语法、前端 TypeScript、docs-check 全部通过。
 
@@ -6292,7 +6307,7 @@
 - `docs/002-changelog.md` / `docs/006-registries.md` / `docs/009-health.md` — 登记维护基线和后续升级方式。
 ### 验证
 - `make ci-local`：Ruff、Python 全量测试、Python 语法、前端 TypeScript、docs-check 全部通过。
-- `cd apps/frist-api && npm test`：`187 passed / 0 failed`。
+- `cd JIYU AI Sub2API WebUI && npm test`：`187 passed / 0 failed`。
 - `node --test scripts/*.test.mjs`：`8 passed / 0 failed`。
 - `node --test packages/openclaw-npm/assets/chrome-extension/test/*.test.mjs`：`85 passed / 0 failed`。
 - `bash -n scripts/apply_new_api_brand_patch.sh scripts/sync_new_api_upstream.sh scripts/check_docs_layout.sh`：通过。

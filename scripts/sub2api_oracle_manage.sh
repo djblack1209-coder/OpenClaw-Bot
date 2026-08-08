@@ -20,7 +20,7 @@ readonly UPDATE_SERVICE="sub2api-update.service"
 readonly UPDATE_TIMER="sub2api-update.timer"
 readonly BACKUP_SERVICE="sub2api-backup.service"
 readonly BACKUP_TIMER="sub2api-backup.timer"
-readonly APACHE_SITE="/etc/apache2/sites-available/frist-api.conf"
+readonly APACHE_SITE="/etc/apache2/sites-available/jiyu-ai.conf"
 readonly APACHE_ROLLBACK_FILE="${STATE_DIR}/apache-before-sub2api.conf"
 readonly UPDATE_STATE_FILE="${STATE_DIR}/upstream-release.json"
 readonly NEWAPI_SERVICE="openclaw-newapi.service"
@@ -1272,7 +1272,7 @@ backup_legacy_newapi() {
   timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
   archive="${BACKUP_ROOT}/legacy-newapi-before-cutover-${timestamp}.tar.gz"
   local candidates=(
-    opt/frist-api/data/newapi
+    opt/sub2api/data/newapi
     etc/systemd/system/openclaw-newapi.service
     usr/local/bin/openclaw-newapi
   )
@@ -1450,12 +1450,12 @@ scrub_newapi_env_file() {
   [[ -f "$env_path" ]] || return 0
   local cleaned_env
   cleaned_env="$(mktemp)"
-  awk '!/^FRIST_API_NEWAPI_/ && !/^FRIST_API_REQUIRE_NEWAPI_DATABASE=/' \
+  awk '!/^SUB2API_NEWAPI_/ && !/^SUB2API_REQUIRE_NEWAPI_DATABASE=/' \
     "$env_path" >"$cleaned_env"
   cat >>"$cleaned_env" <<'EOF'
-FRIST_API_NEWAPI_ENABLED=0
-FRIST_API_NEWAPI_GATEWAY_ENABLED=0
-FRIST_API_REQUIRE_NEWAPI_DATABASE=0
+SUB2API_NEWAPI_ENABLED=0
+SUB2API_NEWAPI_GATEWAY_ENABLED=0
+SUB2API_REQUIRE_NEWAPI_DATABASE=0
 EOF
   install -m 0600 -o root -g root "$cleaned_env" "$env_path"
   rm -f "$cleaned_env"
@@ -1477,13 +1477,13 @@ purge_newapi() {
   fi
 
   # 先移除单独保存的密钥和数据库文件，再删除空目录及普通运行文件。
-  if [[ -f /etc/frist-api/newapi.env ]]; then
-    shred -u -- /etc/frist-api/newapi.env
+  if [[ -f /etc/sub2api/newapi.env ]]; then
+    shred -u -- /etc/sub2api/newapi.env
   fi
-  if [[ -d /opt/frist-api/data/newapi ]]; then
-    find /opt/frist-api/data/newapi -xdev -type f -exec shred -u -- {} +
-    find /opt/frist-api/data/newapi -xdev -depth -mindepth 1 -delete
-    rmdir /opt/frist-api/data/newapi
+  if [[ -d /opt/sub2api/data/newapi ]]; then
+    find /opt/sub2api/data/newapi -xdev -type f -exec shred -u -- {} +
+    find /opt/sub2api/data/newapi -xdev -depth -mindepth 1 -delete
+    rmdir /opt/sub2api/data/newapi
   fi
   if [[ -f /usr/local/bin/openclaw-newapi ]]; then
     unlink /usr/local/bin/openclaw-newapi
@@ -1491,17 +1491,17 @@ purge_newapi() {
 
   rm -f "/etc/systemd/system/${NEWAPI_SERVICE}"
   find /etc/systemd/system -maxdepth 3 -type l -name "$NEWAPI_SERVICE" -delete
-  if [[ -d /opt/frist-api/backups ]]; then
+  if [[ -d /opt/sub2api/backups ]]; then
     local legacy_path
     local legacy_paths=()
     while IFS= read -r -d '' legacy_path; do
       legacy_paths+=("$legacy_path")
     done < <(
-      find /opt/frist-api/backups -depth \
+      find /opt/sub2api/backups -depth \
         \( -iname '*newapi*' -o -iname '*new-api*' \) -print0
     )
     for legacy_path in "${legacy_paths[@]}"; do
-      [[ "$legacy_path" == /opt/frist-api/backups/* ]] || fail "拒绝删除备份根目录外的路径。"
+      [[ "$legacy_path" == /opt/sub2api/backups/* ]] || fail "拒绝删除备份根目录外的路径。"
       if [[ -d "$legacy_path" ]]; then
         find "$legacy_path" -xdev -depth -delete
       elif [[ -f "$legacy_path" ]]; then
@@ -1514,11 +1514,11 @@ purge_newapi() {
   find "$BACKUP_ROOT" -maxdepth 1 -type f -name 'legacy-newapi-before-cutover-*.tar.gz' -delete
   rm -f "$APACHE_ROLLBACK_FILE"
 
-  scrub_newapi_env_file /etc/frist-api/frist-api.env
-  scrub_newapi_env_file /opt/frist-api/.env
+  scrub_newapi_env_file /etc/sub2api/sub2api.env
+  scrub_newapi_env_file /opt/sub2api/.env
 
   systemctl daemon-reload
-  [[ ! -e /opt/frist-api/data/newapi ]] || fail "旧 New-API 数据目录仍存在。"
+  [[ ! -e /opt/sub2api/data/newapi ]] || fail "旧 New-API 数据目录仍存在。"
   [[ ! -e /usr/local/bin/openclaw-newapi ]] || fail "旧 New-API 二进制仍存在。"
   [[ ! -e "/etc/systemd/system/${NEWAPI_SERVICE}" ]] || fail "旧 New-API 服务定义仍存在。"
   verify_public_health || fail "清理后 Sub2API 公网健康检查失败。"

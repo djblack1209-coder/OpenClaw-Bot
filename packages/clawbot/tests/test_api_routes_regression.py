@@ -696,7 +696,7 @@ def test_xianyu_admin_page_opens_without_token_but_api_requires_token(monkeypatc
     assert "http://127.0.0.1:18800/" in ops_links.text
     assert "/v1 是程序接口，不是人工页面" in ops_links.text
     assert "https://jiyu.245334.xyz/admin.html" not in ops_links.text
-    assert "https://frist-api-oracle.245334.xyz/admin.html" not in ops_links.text
+    assert "https://jiyu.245334.xyz/admin.html" not in ops_links.text
 
     no_token = client.get("/api/status")
     assert no_token.status_code == 401
@@ -944,7 +944,7 @@ def test_xianyu_admin_resends_cc_shipment(monkeypatch):
 def test_xianyu_admin_status_reports_cc_auto_ship_summary(monkeypatch):
     monkeypatch.setattr("src.api.auth._API_TOKEN", "unit-secret")
     monkeypatch.setenv("CC_XIANYU_AUTO_SHIP_ENABLED", "1")
-    monkeypatch.setenv("CC_XIANYU_WEBHOOK_URL", "https://frist-api-oracle.245334.xyz/api/ops/xianyu/paid-order")
+    monkeypatch.setenv("CC_XIANYU_WEBHOOK_URL", "https://jiyu-ai-oracle.245334.xyz/api/ops/xianyu/paid-order")
     monkeypatch.setenv("CC_XIANYU_WEBHOOK_TOKEN", "secret-token")
     monkeypatch.setenv("CC_XIANYU_AUTO_SHIP_DELAY_SECONDS", "0")
     monkeypatch.setenv("CC_XIANYU_DEFAULT_PLAN_ID", "day|quotaUsd=30|source=xianyu")
@@ -995,7 +995,7 @@ def test_xianyu_admin_status_reports_cc_auto_ship_summary(monkeypatch):
 
 def test_xianyu_admin_sale_readiness_and_product_template(monkeypatch):
     monkeypatch.setenv("CC_XIANYU_AUTO_SHIP_ENABLED", "1")
-    monkeypatch.setenv("CC_XIANYU_WEBHOOK_URL", "https://frist-api-oracle.245334.xyz/api/ops/xianyu/paid-order")
+    monkeypatch.setenv("CC_XIANYU_WEBHOOK_URL", "https://jiyu-ai-oracle.245334.xyz/api/ops/xianyu/paid-order")
     monkeypatch.setenv("CC_XIANYU_WEBHOOK_TOKEN", "secret-token")
     monkeypatch.setenv("CC_XIANYU_DEFAULT_PLAN_ID", "day|quotaUsd=30|source=xianyu")
 
@@ -1178,8 +1178,6 @@ def test_xianyu_admin_sale_readiness_and_product_template(monkeypatch):
         "does_not_click_xianyu_ship": True,
         "does_not_resume_auto_ship": True,
     }
-    assert any(item["key"] == "cf_inside_auth_container" and item["ok"] is True for item in precheck_body["items"])
-    assert any(item["key"] == "branded_email_templates" and item["ok"] is True for item in precheck_body["items"])
     assert any(item["key"] == "duplicate_delivery_guard" and item["ok"] is True for item in precheck_body["items"])
     assert any(item["key"] == "xianyu_auto_ship_strategy" and item["ok"] is True for item in precheck_body["items"])
     assert any(item["key"] == "strict_real_order_chain" for item in precheck_body["items"])
@@ -1271,7 +1269,7 @@ def test_xianyu_resume_preflight_refreshes_inventory_when_cache_cold(monkeypatch
 def test_xianyu_operator_mode_can_pause_auto_ship(monkeypatch):
     """暂停后只在库存证据刷新且严格门未通过时拒绝恢复。"""
     monkeypatch.setenv("CC_XIANYU_AUTO_SHIP_ENABLED", "1")
-    monkeypatch.setenv("CC_XIANYU_WEBHOOK_URL", "https://frist-api-oracle.245334.xyz/api/ops/xianyu/paid-order")
+    monkeypatch.setenv("CC_XIANYU_WEBHOOK_URL", "https://jiyu-ai-oracle.245334.xyz/api/ops/xianyu/paid-order")
     monkeypatch.setenv("CC_XIANYU_WEBHOOK_TOKEN", "secret-token")
     monkeypatch.setenv("CC_XIANYU_DEFAULT_PLAN_ID", "day|quotaUsd=30|source=xianyu")
 
@@ -1714,7 +1712,7 @@ def test_xianyu_operator_next_action_treats_pause_after_strict_gate_as_resume_pr
 
 def test_xianyu_operator_next_action_waits_for_inventory_evidence(monkeypatch):
     monkeypatch.setenv("CC_XIANYU_AUTO_SHIP_ENABLED", "1")
-    monkeypatch.setenv("CC_XIANYU_WEBHOOK_URL", "https://frist-api-oracle.245334.xyz/api/ops/xianyu/paid-order")
+    monkeypatch.setenv("CC_XIANYU_WEBHOOK_URL", "https://jiyu-ai-oracle.245334.xyz/api/ops/xianyu/paid-order")
     monkeypatch.setenv("CC_XIANYU_WEBHOOK_TOKEN", "secret-token")
 
     class _Live:

@@ -72,7 +72,6 @@ async function createBackupSandbox() {
   for (const directory of [
     scriptsDir,
     join(project, 'docs'),
-    join(project, 'apps', 'frist-api', 'data'),
     join(project, 'apps', 'openclaw'),
     join(project, 'apps', 'openclaw-manager-src', 'src'),
     join(project, 'packages', 'clawbot', 'src'),
@@ -80,7 +79,6 @@ async function createBackupSandbox() {
     join(project, 'packages', 'clawbot', 'tests'),
     join(project, 'packages', 'clawbot', 'config'),
     join(project, 'packages', 'clawbot', 'data'),
-    join(project, 'data', 'frist-api'),
     join(project, 'data', 'newapi'),
     join(home, '.openclaw', 'state'),
     backupDir,
@@ -99,7 +97,6 @@ async function createBackupSandbox() {
   await writeFile(join(project, '.env'), 'ROOT_SECRET=fixture\n', 'utf8');
   await writeFile(join(project, 'packages', 'clawbot', 'config', '.env'), 'BOT_SECRET=fixture\n', 'utf8');
   await writeFile(join(project, 'packages', 'clawbot', 'config', '.env.example'), 'BOT_SECRET=\n', 'utf8');
-  await writeFile(join(project, 'apps', 'frist-api', 'data', 'runtime.json'), '{"ok":true}\n', 'utf8');
   const openclawConfig = join(home, '.openclaw', 'openclaw.json');
   await writeFile(openclawConfig, '{"gateway":"fixture"}\n', 'utf8');
   if (process.platform === 'darwin') {

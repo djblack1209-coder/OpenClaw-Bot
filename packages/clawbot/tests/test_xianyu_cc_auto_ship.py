@@ -75,8 +75,6 @@ def clean_cc_xianyu_env(monkeypatch, tmp_path):
         "CC_XIANYU_OPS_NOTIFY_SCAN_SECONDS",
         "CC_XIANYU_LOW_INVENTORY_THRESHOLD",
         "CC_XIANYU_OPS_NOTIFY_DRY_RUN",
-        "FRIST_API_XIANYU_WEBHOOK_URL",
-        "FRIST_API_XIANYU_WEBHOOK_TOKEN",
     ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("CC_OPERATOR_STATE_FILE", str(tmp_path / "cc-operator-state.json"))

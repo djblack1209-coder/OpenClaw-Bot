@@ -71,7 +71,9 @@ jobs:
         run: |
           git clone --depth 1 --branch "$UPSTREAM_TAG" https://github.com/Wei-Shaw/sub2api.git upstream
           cp scripts/sub2api-jiyu-v0.1.172.patch upstream/
+          cp scripts/sub2api-model-align-v0.1.172.patch upstream/
           git -C upstream apply sub2api-jiyu-v0.1.172.patch
+          git -C upstream apply sub2api-model-align-v0.1.172.patch
 
       - name: Setup Node and pnpm
         if: steps.existing.outputs.skip != 'true'
@@ -105,6 +107,7 @@ jobs:
           pnpm --dir frontend run typecheck
           pnpm --dir frontend run build
           (cd backend && go test -tags unit ./internal/service -run '^TestUpdateService' -count=1)
+          (cd backend && go test -tags unit ./internal/service -run '^TestSupportedModels' -count=1)
           (cd backend && go test -tags embed ./internal/web -run '^(TestHasEmbeddedFrontend|TestNewFrontendServer)$' -count=1)
           (cd backend && go test -tags embed ./internal/web -run '^TestServeEmbeddedFrontend$/^serves_index_html_for_root$' -count=1)
           echo "v${UPSTREAM_TAG#v}-jiyu.${GITHUB_RUN_ID}" > backend/cmd/server/VERSION

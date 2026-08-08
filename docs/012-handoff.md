@@ -4,6 +4,26 @@
 
 ---
 
+## [2026-08-09 06:00] JIYU 模型广场真实上游对齐与旧兼容入口清理
+
+### 本次完成了什么
+- 通过 Sub2 原生账号模型同步逐条读取 12 个渠道的上游模型清单；11 条返回成功，1 条生图渠道未返回清单。
+- 对 12 条渠道保存“上游清单与已有定价的交集”映射并启用模型限制；价格、账号凭据、分组倍率和上游线路均未改动。
+- 兼容补丁新增受限渠道模型广场语义和 `TestSupportedModels` 聚焦门；仓库已移除停用的旧兼容应用、编排与脚本，文档和 CI 统一使用 JIYU AI。
+
+### 未完成的工作
+- 兼容包需通过本仓库 CI 构建，并由生产 WebUI 的“检查并安装 → 立即重启”安装；安装后需回读 `/model-plaza` 与 `/v1/models`，确认页面模型数不超过实测交集。
+- 上游未返回清单的生图渠道保持失败关闭；这不是本轮要处理的上游可用性问题。
+
+### 需要注意的坑
+- 新账号或轮换账号后必须先在账号管理点击“同步上游模型”，不要复制另一条渠道的模型列表；同步失败时不要手工填静态模型名。
+- 任何生产证据仍禁止密码、API Key、Token、Cookie、TOTP secret、卡密或原始号源。
+
+### 当前系统状态
+- 本地补丁已在官方 v0.1.172 干净源码通过 `git apply --check` 和受限模型聚焦测试；生产数据库限制映射已保存。
+- Telegram 已完成“中文菜单 → 模拟发货格式 → 解析 → dry-run 补号 → 删除临时材料”闭环，输出未回显敏感字段。
+- 浏览器后续只保留必要的 JIYU 标签，完成截图后关闭；分支为 `main`，本轮文件待提交。
+
 ## [2026-08-09 04:20] JIYU 自营池模板倍率与 Telegram 远程补号
 
 ### 本次完成了什么
@@ -43,7 +63,7 @@
 - 账号/分组和 WS mode 的业务配置继续通过 WebUI 管理，不能直接改数据库；任何付费复测只跑单组最小样本，不做循环。
 
 ### 当前系统状态
-- 本地 `node scripts/cc_zhongzhuan_readiness_audit.mjs --mode=read_only --json` PASS；Oracle manager `status` PASS，Sub2API/Redis/Frist/Apache active，Responses WebSocket 代理通过；本次 `NRestarts=1` 为 systemd 历史累计重启计数，服务当前 `active/running` 且 `ExecMainStatus=0`，不代表当前故障。
+- 本地 `node scripts/cc_zhongzhuan_readiness_audit.mjs --mode=read_only --json` PASS；Oracle manager `status` PASS，Sub2API/Redis/JIYU/Apache active，Responses WebSocket 代理通过；本次 `NRestarts=1` 为 systemd 历史累计重启计数，服务当前 `active/running` 且 `ExecMainStatus=0`，不代表当前故障。
 - 工作树仅含本次文档更新，分支保持 `main`；未读取、输出或写入密码、API Key、Token、Cookie、TOTP secret 或卡密。
 
 ---
@@ -90,24 +110,3 @@
 ### 当前系统状态
 - 当前工作树含兼容补丁、文档与审计截图；已完成 `git apply --check`、实际应用补丁和 `node --test scripts/sub2api_ops_scripts.test.mjs`（4/4）。
 - 当时生产运行版本为 `v0.1.172-jiyu.31265860057`；充值页本轮网络错误与运行时异常为 0。系统设置首次加载偏慢且浏览器保留 CSP report-only 噪声，未假定为已解决。
-
-## [2026-08-09 01:02] JIYU 生产只读审计合同交接
-
-### 本次完成了什么
-- 修复 `cc_zhongzhuan_readiness_audit.mjs` 仍写死旧 10×10 合同的问题；Oracle 只读审计现按 12 个分组、12 个账号、12 条启用渠道和 12 条监控失败关闭校验，`schema_version` 保持 2。
-- 文本与生图合同已分开：10 个文本组要求账号/分组倍率差 `0.05x`；2 个生图组要求账号和分组均为 `1.0x`，渠道A/B按次价格分别为 `0.10/0.12`。
-- 监控要求 10 条文本启用、2 条生图因真实异常禁用，12 条都保留 300±30 秒；渠道A Claude 账号 #2 必须 active、可调度且单分组。
-
-### 未完成的工作
-- 历史真实闲鱼订单严格门已经 PASS；链动首笔 ¥1 购买、自动发货和站内兑换仍须操作时单独确认，不能用闲鱼历史订单代替。本轮没有修改生产、定价、数据库、支付、开放注册或上游线路。
-- 生图上游异常仍如实保留，两条监控继续禁用；上游真实状态不由本轮处理。
-
-### 需要注意的坑
-- 不能再把“启用监控数”直接等同于“监控总数”：当前正确合同是文本 10/10 启用、生图 0/2 启用且 2/2 明确禁用。
-- 共享 80 端口仍同时承载 `naive-iad` vhost 和 active `naive-cert-renew.timer`；不得以 JIYU 名义修改或关闭。
-
-### 当前系统状态
-- 默认只读审计真实 PASS：分组 12/12、渠道 12/12、文本监控 10/10、生图监控 0/2，调度 12/12。
-- 严格只读审计同样 PASS；现场回读为可用兑换码 7、自动发货未暂停、历史真实闲鱼订单 1 单、补救队列 0。
-- 历史发布窗口（2026-08-08 16:06:55 UTC 起）回读 `sub2api.service` 的 `NRestarts=0`；精确 fatal/panic 与 JSON/键值 5xx 日志匹配均为 0，公网 `/health` 连续 5/5 为 200。
-- 账号 #2 回读为 active、可调度、单分组；未读取、输出或写入密码、API Key、Token、Cookie、TOTP secret 或卡密。

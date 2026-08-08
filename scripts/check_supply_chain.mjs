@@ -5,7 +5,7 @@ import { join } from 'node:path';
 const root = new URL('../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
 
-for (const composeFile of ['docker-compose.yml', 'docker-compose.frist-api.yml', 'docker-compose.newapi.yml']) {
+for (const composeFile of ['docker-compose.yml', 'docker-compose.newapi.yml']) {
   const compose = read(composeFile);
   for (const match of compose.matchAll(/^\s*image:\s*([^\s#]+)/gm)) {
     assert.match(

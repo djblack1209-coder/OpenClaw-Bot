@@ -153,8 +153,8 @@ make test  # 自动使用 packages/clawbot/.venv312/bin/python，避免系统 py
 
 | 热点 | 稳定职责边界 | 聚焦验证 |
 |------|--------------|----------|
-| `apps/frist-api/server/server.js` | 只保留 HTTP 分派和组合；认证、会话、支付、安全策略优先下沉到 `server/` 领域模块 | `make frist-api-test` |
-| `apps/frist-api/src/app.js` / `styles.css` | 保持现有 DOM 协议；页面状态、渲染器、事件和对应样式按同一功能域成组迁移 | `cd apps/frist-api && npm test` |
+| `packages/clawbot/src/sub2_replenish/runner.py` / `sub2_client.py` | JIYU AI 自营号池补号、倍率模板和密钥清理保持在同一领域边界 | `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_sub2_replenish_helper.py tests/test_jiyu_replenish_telegram.py -q` |
+| `packages/clawbot/src/xianyu/xianyu_admin.py` / `xianyu_live.py` | 管理 API 不直接跨事件循环操作 WebSocket、API 客户端或健康任务；统一走 Xianyu 所有者循环 | `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_xianyu_loop_boundary.py -q` |
 | `packages/clawbot/src/xianyu/xianyu_admin.py` / `xianyu_live.py` | 管理 API 不直接跨事件循环操作 WebSocket、API 客户端或健康任务；统一走 Xianyu 所有者循环 | `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_xianyu_cc_auto_ship.py tests/test_xianyu_loop_boundary.py -q` |
 | `packages/clawbot/src/api/rpc.py` | 保持兼容门面；新增领域实现优先放入独立模块，避免继续扩大聚合类 | `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_api_routes_regression.py tests/test_async_call_contracts.py -q` |
 | `packages/clawbot/src/core/brain.py` / `event_bus.py` / `multi_main.py` | Brain、EventBus 和有状态异步客户端只归主事件循环所有；API 线程只能通过所有者边界调用 | `cd packages/clawbot && PYTHONASYNCIODEBUG=1 .venv312/bin/python -m pytest tests/test_brain.py tests/test_brain_event_loop_boundary.py -q` |

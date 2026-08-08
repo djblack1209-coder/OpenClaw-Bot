@@ -127,7 +127,7 @@ def _project_sale_readiness(snapshot: Mapping[str, object]) -> dict[str, object]
         "operator_addresses": {
             "user_site": "https://jiyu.245334.xyz/",
             "jiyu_console": "https://jiyu.245334.xyz/admin/dashboard",
-            "frist_health": "https://frist-api-oracle.245334.xyz/",
+            "jiyu_health": "https://jiyu.245334.xyz/api/health",
             "xianyu_gui": "http://127.0.0.1:18800/",
         },
         "manual_chats": manual_chats,

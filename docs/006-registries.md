@@ -17,7 +17,7 @@
 | 自动备份 | `sub2api-backup.timer` / `sub2api-backup.service` | 每日 03:40（Asia/Singapore，随机延迟 15 分钟）备份 PostgreSQL、二进制、版本和 root-only 环境文件；本地 `/var/backups/sub2api` 保留 30 天 |
 | 管理员账号 | `djblack1209@gmail.com` | 当前唯一管理员；密码不写仓库，已存入 macOS 钥匙串服务“CC中转 Sub2API 管理员” |
 | 凭据保管 | Oracle `/etc/sub2api/sub2api.env` + 本机钥匙串 | Oracle env `0600 root-only`；修改管理员密码后同步更新这两处并做真实登录验证 |
-| 旧底座清理 | Oracle、腾讯云、R2 | Oracle/Tencent 旧 New-API 数据目录、SQLite/容器/镜像、systemd 服务和同名本地备份已删除；旧 R2 加密对象已删除并重建为只含 Frist runtime/application.env 的新备份 |
+| 旧底座清理 | Oracle、腾讯云、R2 | Oracle/Tencent 旧 New-API 数据目录、SQLite/容器/镜像、systemd 服务和同名本地备份已删除；旧 R2 加密对象已删除并重建为只含 JIYU runtime/application.env 的新备份 |
 | 图形 Logo | `scripts/assets/jiyu-ai-logo-email.png` / `/api/v1/pages/docs/images/jiyu-ai-logo.png` | 512×512 PNG，源自选定的 2K JY 标志；站内继续使用 2K 等比图形，验证码、通知邮箱和运维告警模板通过同域公开 PNG 加载 |
 | 文档入口 | `/custom/docs` / `md:docs` | 左侧“文档”提供 CC Switch v3.19.2 三平台下载和全部官方版本入口；四个入口使用桌面四列、窄屏两列的同宽网格。创建密钥时按 Claude/OpenAI 展示根端点或 `/v1`，并默认在创建后立即导入 CC Switch |
 | 定制补丁 | `scripts/sub2api-jiyu-v0.1.172.patch` | 固定应用到官方 `v0.1.172` 提交；覆盖品牌隐私、账号列表供货域名隐藏、标题/版本徽标、创建密钥端点引导、CC Switch、充值中心固定公开嵌入和公告空状态 |
@@ -62,7 +62,7 @@
 | 类型 | 唯一事实源 / 入口 | 当前合同 |
 |---|---|---|
 | 目标驱动审计 | `docs/009-health.md` 顶部 Destination / Notes / Decisions / Frontier | 复用 mattpocock `wayfinder` + `to-tickets` 结构；不创建被仓库规则禁止的 `CONTEXT.md` 或 docs 子目录。 |
-| Frist runtime store | `apps/frist-api/server/runtime-store.js` | 原子 0600 写入、串行 mutation、同步 mutator 门和 AES-256-GCM 字段加密唯一归属；`server.js` 只注入 runtime 数据规范化函数。 |
+| JIYU 数据层 | Sub2API PostgreSQL + 专用 Redis | 用户、渠道、倍率、监控、订阅、用量和更新状态以生产数据库与服务 API 为唯一事实源；仓库不再复制旧 Node runtime。 |
 | 闲鱼运营投影 | `packages/clawbot/src/xianyu/operations_projection.py` | 唯一公开接口 `project_operations(snapshot)`；只接受普通快照，一次生成 sale readiness、loop watch、buyer progress，运行对象固定拒绝。 |
 | Intel Brief schema | `packages/clawbot/src/intel/db/store.py` / schema v4 | 旧 `content_delivery_attempts` 原子重建为稳定 `event_key` 去重结构；旧记录按 content item event key 迁移，真实库迁移前必须 SQLite `.backup`。 |
 | 本机每日备份 | `make backup-run` / `backup-schedule-install` / `backup-schedule-status` / `backup-schedule-uninstall` / `backup-restore-drill` | `ai.openclaw.daily-backup` 默认 03:30 运行；备份成功后必须 restore drill，失败返回非 0。已有备份不随卸载删除。 |
@@ -77,11 +77,11 @@
 | 桌面 npm 运行时 | `apps/openclaw-manager-src/src-tauri/npm-runtime-lock/package.json` + `package-lock.json` | OpenClaw 固定 `2026.7.2-beta.7`；9 个直接运行包、354 个含传递依赖的 SHA-512 图；只允许 `npm ci --omit=dev --ignore-scripts`。MCP 与供应链检查均从该 manifest 读取精确版本，不保留第二份版本字符串。 |
 | Tauri 运行时管理 | `src-tauri/src/commands/npm_runtime.rs` | 清单内嵌进签名 App，安装目录为 `~/.openclaw/manager-npm-runtime`；锁漂移或入口缺失会清理不完整目录并失败关闭。 |
 | MCP Store 目录 | `src-tauri/src/commands/mcp.rs` + `src-tauri/src/commands/npm_runtime.rs` | 从唯一类型化 `MANAGED_MCP_PACKAGES` 展示 8 个受管运行包及锁定版本；只读 DTO 不含 command/args/env，桌面端不伪装 stdio 启停。真实 MCP 会话由 CC Switch/OpenClaw 官方配置链建立。 |
-| Frist 支付超时 | `apps/frist-api/server/payments.js` / `FRIST_API_PAYMENT_REQUEST_TIMEOUT_MS` | 微信/支付宝外部请求默认 15 秒、范围 100-120000ms；超时返回 504，支付写队列不被外部网络阻塞。 |
+| JIYU 支付超时 | Sub2API 原生支付设置 / `SUB2API_PAYMENT_REQUEST_TIMEOUT_MS` | 外部支付请求必须有有限超时；未配置真实商户凭据时保持关闭，不把失败提示伪装成余额到账。 |
 | Python 平台锁 | `packages/clawbot/requirements-lock.txt` / `requirements-lock-macos.txt` | Linux x86_64 与 macOS arm64 Python 3.12 全量哈希锁；`aiohttp>=3.14.3`、`cryptography>=50.0.0`。 |
 | 异步所有权 | `packages/clawbot/src/core/loop_owner.py` | Brain/EventBus、券商、闲鱼、WebSocket、CLI 和可复用 async primitive 通过所有者循环调用；未绑定不得跨线程偷建。 |
 | 主动任务域 | `packages/clawbot/src/core/proactive_periodic.py` | 主动检查的周期任务从核心引擎拆出，由主循环创建与取消。 |
-| Frist 安全域 | `apps/frist-api/server/security.js`、`auth.js`、`payments.js`、`runtime-store.js`、`shared.js`、`catalog.js` | 可信代理/限流、会话/CSRF、商户支付、原子持久化/字段加密、共享合同和目录合同分别单一归属；未使用且会丢字段的旧 `store.js` 已删除。 |
+| JIYU 安全域 | Sub2API 原生认证、Cloudflare WAF、站内内容预拦截 | 注册/登录限流、人机验证、DDoS 缓解和敏感字段脱敏由生产边界统一负责。 |
 | 质量命令 | `make python-lock-check` / `make security-check` / `make supply-chain-check` / `make test-cov` / `make docs-check` | 分别验证双平台锁、密钥/依赖/Rust/Shell 安全门、Action+npm 完整性、总体/关键覆盖率、文档结构与事实。 |
 | 桌面回滚 | `make tauri-rollback-check` / `make tauri-rollback` | 前者只读核验上一版签名/CDHash；后者必须显式确认并执行事务交换。 |
 
@@ -118,8 +118,8 @@
 | 16 | Zhipu 智谱 | 付费 | 1 | OCR专用 | `ZHIPU_API_KEY` |
 | 17 | Sambanova | 免费 | 1 | ~10RPM (DeepSeek-R1) | `SAMBANOVA_API_KEY` |
 | 18 | GitHub Models | 免费 | 1 | ~15RPM | `GITHUB_MODELS_TOKEN` |
-| 19 | inroi 授权上游 | 付费授权余额站 | 1 | 请求地址为 `https://www.inroi.shop/v1`；已验证 `/v1/models` 21 个模型和 `gpt-5.4-mini` Chat Completions；真实 Key 仅在服务器 runtime 加密号池保存 | Frist-API 管理端号池 |
-| 20 | 86GameStore 授权上游 | 付费授权余额站 | 1 | 请求地址为 `https://api.86gamestore.com`；本地 Frist-API runtime 已按 Claude/OpenAI 两个模型组分开保存并探测 healthy，Claude 组覆盖 `claude-sonnet-4-5-c`、`claude-opus-4-6-c`，OpenAI 组覆盖 `gpt-5.4-mini`、`gpt-5.3-codex`、`gpt-5.4`、`gpt-5.5`；真实 Key 仅在 ignored runtime 中以 `enc:v1:` 保存 | Frist-API 管理端号池 |
+| 19 | inroi 授权上游 | 付费授权余额站 | 1 | 请求地址为 `https://www.inroi.shop/v1`；已验证 `/v1/models` 21 个模型和 `gpt-5.4-mini` Chat Completions；真实 Key 仅在服务器 runtime 加密号池保存 | JIYU AI 管理端号池 |
+| 20 | 86GameStore 授权上游 | 付费授权余额站 | 1 | 请求地址为 `https://api.86gamestore.com`；本地 JIYU AI runtime 已按 Claude/OpenAI 两个模型组分开保存并探测 healthy，Claude 组覆盖 `claude-sonnet-4-5-c`、`claude-opus-4-6-c`，OpenAI 组覆盖 `gpt-5.4-mini`、`gpt-5.3-codex`、`gpt-5.4`、`gpt-5.5`；真实 Key 仅在 ignored runtime 中以 `enc:v1:` 保存 | JIYU AI 管理端号池 |
 
 ## 非 LLM API
 
@@ -265,14 +265,14 @@
 
 ---
 
-## 0. Frist-API Web 操作入口
+## 0. JIYU AI Web 操作入口
 
 | 入口 | 选择器 / 路径 | 说明 |
 |------|---------------|------|
-| 账户菜单 | `data-auth-toggle` / `data-auth-panel` | Frist-API 用户端右上角注册和登录入口 |
+| 账户菜单 | `data-auth-toggle` / `data-auth-panel` | JIYU AI 用户端右上角注册和登录入口 |
 | 中英文切换 | `data-language-toggle` / `data-language-status` | 用户端顶栏语言偏好入口；当前只切换 `html.lang` 和偏好提示，完整英文界面未接入时会明确提示“仅切换语言偏好” |
-| 用户注册 | `data-register-account` / `/api/frist/challenge` | Frist-API 用户端注册入口，注册专用验证码挑战，公开页不回显答案 |
-| 用户登录 | `data-login-account` | Frist-API 用户端邮箱密码登录入口，不再要求每次登录填写验证码 |
+| 用户注册 | `data-register-account` / `/api/frist/challenge` | JIYU AI 用户端注册入口，注册专用验证码挑战，公开页不回显答案 |
+| 用户登录 | `data-login-account` | JIYU AI 用户端邮箱密码登录入口，不再要求每次登录填写验证码 |
 | 忘记密码 | `data-password-reset-request` / `/api/frist/password-reset/request` | 登录前按邮箱发送重置验证码，SMTP 未配置时返回明确反馈 |
 | 重置密码 | `data-password-reset-confirm` / `/api/frist/password-reset/confirm` | 用户输入重置验证码和新密码后完成 PBKDF2 密码更新 |
 | 管理员身份码 | `data-owner-claim-code` / `data-owner-claim` | 登录后用一次性身份码把当前账号升级为管理员 |
@@ -289,7 +289,7 @@
 | 余额预警设置 | `data-balance-alert-card` / `data-balance-alert-enabled` / `data-balance-alert-threshold` / `data-balance-alert-email` | 用户在账单页自定义低余额提醒阈值和收件邮箱 |
 | 余额预警保存 | `data-balance-alert-save` | 保存当前用户的余额预警配置 |
 | 余额预警测试邮件 | `data-balance-alert-test` / `data-balance-alert-feedback` | 发送一封品牌化余额预警测试邮件，验证 SMTP 配置 |
-| Tabcode Console 风格系统 | `data-design-system="tabcode-console"` / `.brand-mark` | Frist-API 用户端和管理端吸收 Tabcode 控制台视觉；用户端 Logo 保留红白斜切抽象品牌标，不再退回单字母占位 |
+| Tabcode Console 风格系统 | `data-design-system="tabcode-console"` / `.brand-mark` | JIYU AI 用户端和管理端吸收 Tabcode 控制台视觉；用户端 Logo 保留红白斜切抽象品牌标，不再退回单字母占位 |
 | 工作台导航 | `data-workspace-layout` / `data-workspace-rail` / `data-workspace-content` / `data-console-board` / `aria-current="page"` | 用户端固定左侧工作台导航，所有 hash 页面在右侧内容区切换；当前项只用细线和文字提示；移动端折叠菜单箭头固定在按钮内部，319px 视口不溢出 |
 | 首页核心指标 | `data-focus-metrics` / `data-today-calls` / `data-today-cost` / `data-average-latency` / `data-success-rate` | 首屏只展示余额、Key、今日请求/消费和成功率，减少解释性文字 |
 | 加载与空态 | `aria-busy` / `skeleton-row` / `empty-row--stack` / `table-empty` / `panel-caption` | 用户端加载、无数据和表格空状态统一反馈；Dashboard 消耗、异常、通道卡在无真实数据时说明统计口径、异常含义和下一步动作 |
@@ -339,9 +339,9 @@
 | GUI 一键闭环审计 | `127.0.0.1:18800/api/cc-readiness-audit?mode=read_only|strict` | 本机受 `X-API-Token` 保护的只读审计接口；GUI 按钮可运行生产内测巡检或正式售卖严格门，不开放 `--webhook-smoke` 写入冒烟按钮；strict 结果会保存脱敏摘要到 `cc_strict_audits` |
 | CC中转状态中心 | `127.0.0.1:18800/ops-links` | 本机免 token 打开的老板日常入口；Apple 风格暗色状态中心只展示一个结论、闭环圆环、自动发货、库存与渠道、买家链路和下一步。输入本机 `OPENCLAW_API_TOKEN` 后只读读取 `/api/cc-ops-snapshot` 与 `/api/cc-operator-mode`，不提供发货/分配卡密/冒烟写入按钮；工程详情默认折叠，`/v1`、`/v1/models` 和旧 `/admin.html` 不再作为人类入口收藏 |
 | CC中转操作台 | `127.0.0.1:18800/` | 本机免 token 打开页面、API 受 `X-API-Token` 保护；Apple 风格深色状态面板 + 本机 `layui@2.13.8` 组件层（`/static/layui/...`，不走 CDN），首屏 6 张老板状态卡只回答：当前能不能卖、自动发货是否开着、库存是否够、上游余额是否够、是否有待处理订单、是否需要介入/是否有正式售卖资格。红/黄告警会通过 `top-alerts` 置顶，并给“怎么办/只读检查/只放行一次”按钮；恢复常驻自动发货前可点“恢复前安全检查”，恢复按钮也会二次确认并由后端预检兜底；恢复成功提示会说明“第 1 单发卡成功后会自动暂停”；商品绑定、漏单兜底、补救队列、只读巡检和高级排障默认折叠；补救队列使用 `layui-table`，确认/提示使用 layui layer；旧 `message_sent` 补救单待点击闲鱼发货时提示打开对应已付款页面，不要求重新下单 |
-| New-API 兑换状态回写 | `/api/admin/redemption-cards/sync-newapi-status` / `FRIST_API_NEWAPI_REDEMPTION_STATUS_SYNC_ENABLED` | Frist-API 默认每 60 秒读取 New-API SQLite 兑换表，按卡密哈希把已发出的闲鱼卡密和履约状态回写为 `redeemed`；后台接口可手动触发，过程不输出完整卡密 |
-| 闲鱼兑换码库存自动补 | `/api/admin/redemption-cards/autoreplenish` / `FRIST_API_CARD_AUTOREPLENISH_ENABLED` | Frist-API 生产可按安全库存自动生成 `1/5/15/50/100/500` 元套餐兑换码，默认日上限 50 张；服务启动后会按 `FRIST_API_CARD_AUTOREPLENISH_INTERVAL_MS` 定时执行，仍受每日上限和套餐安全库存约束 |
-| New-API 上游余额同步 | `/api/admin/upstream-balance` / `/api/admin/upstream-balance/sync` / `FRIST_API_UPSTREAM_BALANCE_SYNC_ENABLED` | Frist-API 可每日同步 New-API 上游余额，低于 50 元 warning、低于 20 元 critical；结果只给管理端展示或告警，不向用户暴露上游 token |
+| New-API 兑换状态回写 | `/api/admin/redemption-cards/sync-newapi-status` / `SUB2API_NEWAPI_REDEMPTION_STATUS_SYNC_ENABLED` | JIYU AI 默认每 60 秒读取 New-API SQLite 兑换表，按卡密哈希把已发出的闲鱼卡密和履约状态回写为 `redeemed`；后台接口可手动触发，过程不输出完整卡密 |
+| 闲鱼兑换码库存自动补 | `/api/admin/redemption-cards/autoreplenish` / `SUB2API_CARD_AUTOREPLENISH_ENABLED` | JIYU AI 生产可按安全库存自动生成 `1/5/15/50/100/500` 元套餐兑换码，默认日上限 50 张；服务启动后会按 `SUB2API_CARD_AUTOREPLENISH_INTERVAL_MS` 定时执行，仍受每日上限和套餐安全库存约束 |
+| New-API 上游余额同步 | `/api/admin/upstream-balance` / `/api/admin/upstream-balance/sync` / `SUB2API_UPSTREAM_BALANCE_SYNC_ENABLED` | JIYU AI 可每日同步 New-API 上游余额，低于 50 元 warning、低于 20 元 critical；结果只给管理端展示或告警，不向用户暴露上游 token |
 | 导出模型清单 | `data-export-default-model` / `data-export-model-count` / `data-export-models` | 在 CC Switch 页展示默认模型、可用模型数量和完整模型列表 |
 | CC Switch MCP 增强 | `data-open-ccswitch-mcp` / `data-copy-ccswitch-mcp` / `data-ccswitch-mcp-link` | 生成单独的 `resource=mcp` deep link，默认 apps 为 `claude,codex,gemini,opencode,hermes`，载入 Playwright、Superpowers 和 open-computer-use；OpenClaw 供应商可导入，但当前 CC Switch 会忽略 OpenClaw MCP |
 | 手动配置复制 | `copy-code-box` / `data-copy-auth-json` / `data-copy-config-toml` / `data-copy-usage-script` / `data-copy-test-command` | 复制 Claude/Codex/OpenCode 等客户端 JSON/TOML、CC Switch 用量脚本和不污染用户本机配置的临时 CLI 连通测试命令；复制按钮已改为代码框内图标按钮 |
@@ -363,13 +363,13 @@
 | 教程配置复制 | `data-copy-guide-json` / `data-copy-guide-toml` | 复制教程页 JSON/TOML 配置 |
 | 管理端人工入账 | `/admin.html` + `data-admin-credit` | 管理员按用户邮箱确认人工充值入账 |
 | 管理端卡密生成 | `/admin.html` + `data-admin-redemption-cards` / `data-admin-card-create` / `/api/admin/redemption-cards` | 按套餐批量生成一次性兑换码；新卡密落库为 `codeHash + codeCipher + codePreview`，明文只在创建响应和导出文本中出现 |
-| 闲鱼自动发货助手 | `/admin.html` + `data-xianyu-*` / `/api/admin/xianyu/fulfillments` / `/api/ops/xianyu/remap-order` | 运营入口 `https://frist-api-oracle.245334.xyz/admin.html`；粘贴已付款订单后一键分配未售卡密、生成发货话术并标记 `sold/delivered`，买家兑换后回写 `redeemed`；低权限 `remap-order` 仅用于把已发卡浏览器临时单接管为真实闲鱼订单号，不分配新卡 |
+| 闲鱼自动发货助手 | `/admin.html` + `data-xianyu-*` / `/api/admin/xianyu/fulfillments` / `/api/ops/xianyu/remap-order` | 运营入口 `https://jiyu.245334.xyz/admin.html`；粘贴已付款订单后一键分配未售卡密、生成发货话术并标记 `sold/delivered`，买家兑换后回写 `redeemed`；低权限 `remap-order` 仅用于把已发卡浏览器临时单接管为真实闲鱼订单号，不分配新卡 |
 | 管理端账号恢复 | `/admin.html` + `data-admin-password-reset` / `/api/admin/customers/password` | SMTP 不可用或用户无法收信时，由管理员重置客户密码；响应和审计不回显明文密码 |
-| CC中转品牌资产 | `apps/frist-api/favicon.svg` / `assets/jiyu-logo.svg` / `assets/jiyu-xianyu-avatar.svg` / `assets/jiyu-xianyu-banner.svg` | 原创紫色品牌图形、站点 favicon 和店铺素材；主色 `#7F77DD` |
+| JIYU AI 品牌资产 | `scripts/assets/jiyu-ai-logo-email.png` / `/api/v1/pages/docs/images/jiyu-ai-logo.png` | JY 图形 Logo、站点 favicon、邮件和链动小铺商品统一使用；用户侧不展示其他品牌。 |
 | CC中转合规页面 | `/index.html#about` / `#terms` / `#refund` / `#privacy` | 服务说明、服务条款、售后规则、隐私说明；从首页、兑换页和页脚可达 |
 | 管理端 Plus 账号台账 | `/admin.html` + `data-admin-plus-accounts` / `data-admin-plus-save` / `data-admin-plus-edit` / `/api/admin/plus-accounts` | 登记和更新自用 ChatGPT Plus 账号、Apple ID、到期、TRY 余额、设备/Profile 和合规状态；不进入用户 `/v1` 路由 |
 | 管理端 RT JSON 导入 | `/admin.html` + `data-admin-rt-accounts` / `data-admin-rt-import` / `/api/admin/rt-accounts/import` | 支持 JSON 数组、单个对象和 TXT 行导入 `refresh_token`、邮箱和账号 ID；只做脱敏台账和刷新准备，不减少 New-API 原有管理能力且不进入用户 `/v1` 路由 |
-| 管理员 2FA | `/api/admin/2fa/verify` + `data-admin-2fa-code` | 管理端 TOTP 二次验证；启用 `FRIST_API_REQUIRE_ADMIN_2FA=1` 后，管理 API 除 2FA 验证入口外都必须带有效二次验证会话 |
+| 管理员 2FA | `/api/admin/2fa/verify` + `data-admin-2fa-code` | 管理端 TOTP 二次验证；启用 `SUB2API_REQUIRE_ADMIN_2FA=1` 后，管理 API 除 2FA 验证入口外都必须带有效二次验证会话 |
 | 生产边界检查 | `/api/admin/production-readiness` + `data-admin-readiness` | 汇总固定品牌域名 `jiyu.245334.xyz`、New-API 数据库、健康上游库存、备份监控、管理员 2FA、Turnstile、兑换码收款闭环和长期渠道 SLA 状态；自动支付商户仅作备用；健康上游库存为 0 时必须 `ready=false` |
 | 备份状态登记 | `/api/admin/backups/status` | 记录最近备份、恢复演练、备份目标、校验值和状态，供生产强制检查使用 |
 | 管理端补号 | `/admin.html` + `data-admin-replenish` | 独立管理端写入号源库存，不出现在用户端 |
@@ -386,63 +386,63 @@
 
 ---
 
-### 0.1 Frist-API 生产环境变量登记
+### 0.1 JIYU AI 生产环境变量登记
 
 | 环境变量 | 用途 | 备注 |
 |----------|------|------|
-| `FRIST_API_SMTP_HOST` | 余额预警 SMTP 主机 | Gmail 可用 `smtp.gmail.com` |
-| `FRIST_API_SMTP_PORT` | 余额预警 SMTP 端口 | TLS 通常用 `465` |
-| `FRIST_API_SMTP_SECURE` | 是否使用 TLS | `1` 表示 TLS，`0` 表示明文连接 |
-| `FRIST_API_SMTP_FAMILY` | SMTP 地址族选择 | 默认 `auto`，可用 `6` 强制 IPv6、`4` 强制 IPv4 |
-| `FRIST_API_SMTP_USER` | SMTP 登录用户名 | 只放服务器环境变量 |
-| `FRIST_API_SMTP_PASSWORD` | SMTP 应用专用密码 | 禁止提交到 Git 或写进文档正文 |
-| `FRIST_API_SMTP_FROM` | 余额预警发件邮箱 | 默认可与用户名一致 |
-| `FRIST_API_BALANCE_ALERT_FROM_NAME` | 余额预警发件人名称 | Oracle 生产当前为 `CC-Billing`，避免 shell source 类脚本误把空格拆成命令 |
-| `FRIST_API_PASSWORD_HASH_SECRET` | CC中转用户密码哈希密钥 | 生产必须为强随机值；和会话密钥分离，便于轮换登录会话而不锁死旧账号 |
-| `FRIST_API_LEGACY_PASSWORD_HASH_SECRETS` | 历史密码哈希密钥兼容列表 | 逗号分隔；更换密码哈希密钥后临时保留旧值，用户下次登录成功后自动迁移 |
-| `FRIST_API_REQUIRE_CAPTCHA` | 是否启用注册验证码挑战 | `1` 启用；登录不再要求验证码 |
-| `FRIST_API_CAPTCHA_MAX_ATTEMPTS` | 单个验证码最大错误次数 | 默认 `3`，超过后需刷新挑战 |
-| `FRIST_API_PASSWORD_RESET_TTL_MS` | 忘记密码验证码有效期 | 默认 `900000`，即 15 分钟 |
-| `FRIST_API_PASSWORD_RESET_REQUEST_RATE_LIMIT_MAX` | 同一账号在窗口内允许的重置邮件请求数 | 默认 `3`；账号键使用服务端密钥 HMAC，达到上限后不再投递邮件 |
-| `FRIST_API_PASSWORD_RESET_REQUEST_RATE_LIMIT_WINDOW_MS` | 账号级重置邮件请求窗口 | 默认 `900000`，即 15 分钟 |
-| `FRIST_API_PASSWORD_RESET_CONFIRM_RATE_LIMIT_MAX` | 同一账号在窗口内允许的重置确认尝试数 | 默认 `5`；账号键使用服务端密钥 HMAC，不在内存键中保存明文邮箱 |
-| `FRIST_API_PASSWORD_RESET_CONFIRM_RATE_LIMIT_WINDOW_MS` | 账号级重置确认限流窗口 | 默认 `900000`，即 15 分钟 |
-| `FRIST_API_RATE_LIMIT_MAX_ENTRIES` | 进程内限流桶容量上限 | 默认 `10000`；先清理过期桶，仍满则拒绝新桶，不淘汰现有封禁 |
-| `FRIST_API_TRUSTED_PROXY_IPS` | Node 直连可信反向代理 IP 白名单 | 默认空并忽略全部转发头；Oracle 的本机 Nginx 反代应显式填实际对端 IP（通常 `127.0.0.1`），不得填公网客户端或不受控代理 |
-| `FRIST_API_REDEEM_RATE_LIMIT_MAX` | 兑换接口限流次数 | 默认 `12`；按 IP 和登录账号分别计数，防暴力猜卡密 |
-| `FRIST_API_REDEEM_RATE_LIMIT_WINDOW_MS` | 兑换接口限流窗口 | 默认 `60000`，即 1 分钟 |
-| `FRIST_API_DATA_ENCRYPTION_KEY` | runtime 敏感字段加密密钥 | 公开模式必填；用于加密用户 Key 和上游 rawKey；旧 key 不可恢复的历史 `enc:v1:` 字段会被隔离并提示重新生成 |
-| `FRIST_API_PUBLIC_GATEWAY_BASE_URL` | 用户导出和邮件使用的公网 `/v1` 网关地址 | 当前 CC中转生产内测值为 `https://jiyu.245334.xyz/v1`；旧数字域名和 nip.io 只保留跳转/冷回滚排障，不是当前用户导出入口；`https://www.inroi.shop/v1` 是上游请求地址，不是用户导出入口 |
-| `FRIST_API_REQUIRE_CSRF` | Cookie 登录态非幂等接口 CSRF 校验开关 | 生产建议 `1`；公开模式和 `NODE_ENV=production` 会自动启用 |
-| `FRIST_API_SESSION_TTL_MS` | 客户服务端会话有效期 | 默认 `604800000`（7 天），最短 5 分钟、最长 30 天；过期会话和旧版无 TTL 会话均要求重新登录 |
-| `FRIST_API_REQUIRE_ADMIN_2FA` | 是否强制管理端 TOTP 二次验证 | 生产强制模式必须为 `1`；Oracle 生产已开启 |
-| `FRIST_API_ADMIN_TOTP_SECRETS` | 管理员 TOTP Base32 Secret 列表 | 逗号分隔；只放服务器环境变量或 root-only 安全文件，不写文档正文 |
-| `FRIST_API_ADMIN_2FA_SESSION_TTL_MS` | 管理员 2FA 会话有效期 | 默认 `3600000`，即 1 小时 |
-| `FRIST_API_ALLOW_PRIVATE_UPSTREAM_URLS` | 是否允许管理端补号 URL 指向私网/本机地址 | 生产必须保持 `0`，只用于本地私网测试 |
-| `FRIST_API_CANONICAL_HOST` | CC中转唯一内容入口域名 | 当前生产内测为 `jiyu.245334.xyz`；旧 `245334.xyz`、`frist-api.245334.xyz` 和 nip.io 只保留跳转/冷回滚排障语境，不作为生产兜底入口 |
-| `FRIST_API_REDIRECT_HOSTS` | 需要跳转到唯一入口的旧/裸域名 | Oracle 用户入口以 `jiyu.245334.xyz` 为主；`frist-api.245334.xyz`、裸域和 nip.io 跳转到主站；`frist-api-oracle.245334.xyz` 不在跳转名单内，专用于 Frist 运营台/自动发货助手 |
-| `FRIST_API_ENFORCE_PRODUCTION_READINESS` | 是否强制生产边界检查 | Oracle 生产已为 `1`；缺固定 HTTPS 品牌域名、New-API 数据库、2FA、兑换码/备份等运营闭环会启动失败；自动支付商户不是当前硬门槛 |
-| `FRIST_API_ALLOW_INSECURE_PUBLIC_HTTP` | 是否允许临时公网 HTTP 网关 | Oracle 生产已为 `0`；只有冷回滚排障才临时打开 |
-| `FRIST_API_BACKUP_STATUS_MAX_AGE_HOURS` | 备份新鲜度上限 | 默认 `26` 小时，超过视为备份监控未闭环 |
-| `FRIST_API_SLA_RETENTION_DAYS` | 渠道 SLA 探测事件保留天数 | 默认 `30` 天 |
-| `FRIST_API_CHANNEL_MONITOR_ENABLED` | 是否启用后台 60 秒通道巡检 | `1` 启用；无人调用时也会巡检健康库存 |
-| `FRIST_API_CHANNEL_MONITOR_INTERVAL_MS` | 后台通道巡检间隔毫秒 | 默认 `60000` |
-| `FRIST_API_CHANNEL_MONITOR_BATCH_SIZE` | 每轮巡检最多探测的 Key 数量 | 默认 `4`，防止一次性压测所有库存 |
-| `FRIST_API_CHANNEL_MONITOR_COOLDOWN_MS` | 同一 Key 自动巡检最小间隔毫秒 | 默认 `55000`，避免短时间重复探测 |
-| `FRIST_API_RATE_MARKUP` | 上游倍率同步后的固定加价 | 生产内测显式固定为 `0.1`；同步到 New-API 模型倍率时只在上游倍率基础上加 `0.1`，其余保持上游一致 |
-| `FRIST_API_XIANYU_WEBHOOK_TOKEN` | 闲鱼全自动发货低权限 webhook token | 只允许调用 `/api/ops/xianyu/paid-order` 发起已付款订单发卡，以及 `/api/ops/xianyu/remap-order` 接管已发卡订单号；不具备管理员权限；禁止写入文档正文或聊天 |
-| `FRIST_API_CARD_AUTOREPLENISH_ENABLED` | Frist-API 是否启用兑换码库存自动补 | 生产内测建议 `1`；只补到安全库存，受每日上限限制 |
-| `FRIST_API_CARD_AUTOREPLENISH_INTERVAL_MS` | 兑换码库存自动补扫描间隔 | 默认 `86400000`，即每天一次；启动服务时会先跑一次 |
-| `FRIST_API_CARD_AUTOREPLENISH_DAILY_CAP` | 自动补兑换码每日上限 | 默认 `50`，防止异常循环大量发码 |
-| `FRIST_API_CARD_AUTOREPLENISH_SAFETY_STOCK` | 自动补兑换码安全库存 JSON/配置 | 留空使用默认档位：1元测试3张、5/15元各10张、50元5张、100元3张、500元1张 |
-| `FRIST_API_UPSTREAM_BALANCE_SYNC_ENABLED` | 是否启用上游余额定时同步 | 生产内测建议 `1`；只读同步 New-API 余额用于运营预警 |
-| `FRIST_API_UPSTREAM_BALANCE_SYNC_INTERVAL_MS` | 上游余额同步间隔 | 默认 `86400000`，即每天一次；启动服务时会先跑一次 |
-| `FRIST_API_UPSTREAM_BALANCE_WARNING_CNY` | 上游余额 warning 阈值 | 默认 `50` 元 |
-| `FRIST_API_UPSTREAM_BALANCE_CRITICAL_CNY` | 上游余额 critical 阈值 | 默认 `20` 元 |
-| `FRIST_API_UPSTREAM_BALANCE_STALE_HOURS` | 上游余额数据过期小时数 | 默认 `26` 小时，超过视为状态过期 |
-| `FRIST_API_UPSTREAM_BALANCE_WEBHOOK` | 上游余额预警 webhook | 可选；用于余额低于阈值时提醒老板充值 |
+| `SUB2API_SMTP_HOST` | 余额预警 SMTP 主机 | Gmail 可用 `smtp.gmail.com` |
+| `SUB2API_SMTP_PORT` | 余额预警 SMTP 端口 | TLS 通常用 `465` |
+| `SUB2API_SMTP_SECURE` | 是否使用 TLS | `1` 表示 TLS，`0` 表示明文连接 |
+| `SUB2API_SMTP_FAMILY` | SMTP 地址族选择 | 默认 `auto`，可用 `6` 强制 IPv6、`4` 强制 IPv4 |
+| `SUB2API_SMTP_USER` | SMTP 登录用户名 | 只放服务器环境变量 |
+| `SUB2API_SMTP_PASSWORD` | SMTP 应用专用密码 | 禁止提交到 Git 或写进文档正文 |
+| `SUB2API_SMTP_FROM` | 余额预警发件邮箱 | 默认可与用户名一致 |
+| `SUB2API_BALANCE_ALERT_FROM_NAME` | 余额预警发件人名称 | Oracle 生产当前为 `CC-Billing`，避免 shell source 类脚本误把空格拆成命令 |
+| `SUB2API_PASSWORD_HASH_SECRET` | CC中转用户密码哈希密钥 | 生产必须为强随机值；和会话密钥分离，便于轮换登录会话而不锁死旧账号 |
+| `SUB2API_LEGACY_PASSWORD_HASH_SECRETS` | 历史密码哈希密钥兼容列表 | 逗号分隔；更换密码哈希密钥后临时保留旧值，用户下次登录成功后自动迁移 |
+| `SUB2API_REQUIRE_CAPTCHA` | 是否启用注册验证码挑战 | `1` 启用；登录不再要求验证码 |
+| `SUB2API_CAPTCHA_MAX_ATTEMPTS` | 单个验证码最大错误次数 | 默认 `3`，超过后需刷新挑战 |
+| `SUB2API_PASSWORD_RESET_TTL_MS` | 忘记密码验证码有效期 | 默认 `900000`，即 15 分钟 |
+| `SUB2API_PASSWORD_RESET_REQUEST_RATE_LIMIT_MAX` | 同一账号在窗口内允许的重置邮件请求数 | 默认 `3`；账号键使用服务端密钥 HMAC，达到上限后不再投递邮件 |
+| `SUB2API_PASSWORD_RESET_REQUEST_RATE_LIMIT_WINDOW_MS` | 账号级重置邮件请求窗口 | 默认 `900000`，即 15 分钟 |
+| `SUB2API_PASSWORD_RESET_CONFIRM_RATE_LIMIT_MAX` | 同一账号在窗口内允许的重置确认尝试数 | 默认 `5`；账号键使用服务端密钥 HMAC，不在内存键中保存明文邮箱 |
+| `SUB2API_PASSWORD_RESET_CONFIRM_RATE_LIMIT_WINDOW_MS` | 账号级重置确认限流窗口 | 默认 `900000`，即 15 分钟 |
+| `SUB2API_RATE_LIMIT_MAX_ENTRIES` | 进程内限流桶容量上限 | 默认 `10000`；先清理过期桶，仍满则拒绝新桶，不淘汰现有封禁 |
+| `SUB2API_TRUSTED_PROXY_IPS` | Node 直连可信反向代理 IP 白名单 | 默认空并忽略全部转发头；Oracle 的本机 Nginx 反代应显式填实际对端 IP（通常 `127.0.0.1`），不得填公网客户端或不受控代理 |
+| `SUB2API_REDEEM_RATE_LIMIT_MAX` | 兑换接口限流次数 | 默认 `12`；按 IP 和登录账号分别计数，防暴力猜卡密 |
+| `SUB2API_REDEEM_RATE_LIMIT_WINDOW_MS` | 兑换接口限流窗口 | 默认 `60000`，即 1 分钟 |
+| `SUB2API_DATA_ENCRYPTION_KEY` | runtime 敏感字段加密密钥 | 公开模式必填；用于加密用户 Key 和上游 rawKey；旧 key 不可恢复的历史 `enc:v1:` 字段会被隔离并提示重新生成 |
+| `SUB2API_PUBLIC_GATEWAY_BASE_URL` | 用户导出和邮件使用的公网 `/v1` 网关地址 | 当前 CC中转生产内测值为 `https://jiyu.245334.xyz/v1`；旧数字域名和 nip.io 只保留跳转/冷回滚排障，不是当前用户导出入口；`https://www.inroi.shop/v1` 是上游请求地址，不是用户导出入口 |
+| `SUB2API_REQUIRE_CSRF` | Cookie 登录态非幂等接口 CSRF 校验开关 | 生产建议 `1`；公开模式和 `NODE_ENV=production` 会自动启用 |
+| `SUB2API_SESSION_TTL_MS` | 客户服务端会话有效期 | 默认 `604800000`（7 天），最短 5 分钟、最长 30 天；过期会话和旧版无 TTL 会话均要求重新登录 |
+| `SUB2API_REQUIRE_ADMIN_2FA` | 是否强制管理端 TOTP 二次验证 | 生产强制模式必须为 `1`；Oracle 生产已开启 |
+| `SUB2API_ADMIN_TOTP_SECRETS` | 管理员 TOTP Base32 Secret 列表 | 逗号分隔；只放服务器环境变量或 root-only 安全文件，不写文档正文 |
+| `SUB2API_ADMIN_2FA_SESSION_TTL_MS` | 管理员 2FA 会话有效期 | 默认 `3600000`，即 1 小时 |
+| `SUB2API_ALLOW_PRIVATE_UPSTREAM_URLS` | 是否允许管理端补号 URL 指向私网/本机地址 | 生产必须保持 `0`，只用于本地私网测试 |
+| `SUB2API_CANONICAL_HOST` | CC中转唯一内容入口域名 | 当前生产内测为 `jiyu.245334.xyz`；旧 `245334.xyz`、`jiyu.245334.xyz` 和 nip.io 只保留跳转/冷回滚排障语境，不作为生产兜底入口 |
+| `SUB2API_REDIRECT_HOSTS` | 需要跳转到唯一入口的旧/裸域名 | Oracle 用户入口以 `jiyu.245334.xyz` 为主；`jiyu.245334.xyz`、裸域和 nip.io 跳转到主站；`jiyu.245334.xyz` 不在跳转名单内，专用于 JIYU 运营台/自动发货助手 |
+| `SUB2API_ENFORCE_PRODUCTION_READINESS` | 是否强制生产边界检查 | Oracle 生产已为 `1`；缺固定 HTTPS 品牌域名、New-API 数据库、2FA、兑换码/备份等运营闭环会启动失败；自动支付商户不是当前硬门槛 |
+| `SUB2API_ALLOW_INSECURE_PUBLIC_HTTP` | 是否允许临时公网 HTTP 网关 | Oracle 生产已为 `0`；只有冷回滚排障才临时打开 |
+| `SUB2API_BACKUP_STATUS_MAX_AGE_HOURS` | 备份新鲜度上限 | 默认 `26` 小时，超过视为备份监控未闭环 |
+| `SUB2API_SLA_RETENTION_DAYS` | 渠道 SLA 探测事件保留天数 | 默认 `30` 天 |
+| `SUB2API_CHANNEL_MONITOR_ENABLED` | 是否启用后台 60 秒通道巡检 | `1` 启用；无人调用时也会巡检健康库存 |
+| `SUB2API_CHANNEL_MONITOR_INTERVAL_MS` | 后台通道巡检间隔毫秒 | 默认 `60000` |
+| `SUB2API_CHANNEL_MONITOR_BATCH_SIZE` | 每轮巡检最多探测的 Key 数量 | 默认 `4`，防止一次性压测所有库存 |
+| `SUB2API_CHANNEL_MONITOR_COOLDOWN_MS` | 同一 Key 自动巡检最小间隔毫秒 | 默认 `55000`，避免短时间重复探测 |
+| `SUB2API_RATE_MARKUP` | 上游倍率同步后的固定加价 | 生产内测显式固定为 `0.1`；同步到 New-API 模型倍率时只在上游倍率基础上加 `0.1`，其余保持上游一致 |
+| `SUB2API_XIANYU_WEBHOOK_TOKEN` | 闲鱼全自动发货低权限 webhook token | 只允许调用 `/api/ops/xianyu/paid-order` 发起已付款订单发卡，以及 `/api/ops/xianyu/remap-order` 接管已发卡订单号；不具备管理员权限；禁止写入文档正文或聊天 |
+| `SUB2API_CARD_AUTOREPLENISH_ENABLED` | JIYU AI 是否启用兑换码库存自动补 | 生产内测建议 `1`；只补到安全库存，受每日上限限制 |
+| `SUB2API_CARD_AUTOREPLENISH_INTERVAL_MS` | 兑换码库存自动补扫描间隔 | 默认 `86400000`，即每天一次；启动服务时会先跑一次 |
+| `SUB2API_CARD_AUTOREPLENISH_DAILY_CAP` | 自动补兑换码每日上限 | 默认 `50`，防止异常循环大量发码 |
+| `SUB2API_CARD_AUTOREPLENISH_SAFETY_STOCK` | 自动补兑换码安全库存 JSON/配置 | 留空使用默认档位：1元测试3张、5/15元各10张、50元5张、100元3张、500元1张 |
+| `SUB2API_UPSTREAM_BALANCE_SYNC_ENABLED` | 是否启用上游余额定时同步 | 生产内测建议 `1`；只读同步 New-API 余额用于运营预警 |
+| `SUB2API_UPSTREAM_BALANCE_SYNC_INTERVAL_MS` | 上游余额同步间隔 | 默认 `86400000`，即每天一次；启动服务时会先跑一次 |
+| `SUB2API_UPSTREAM_BALANCE_WARNING_CNY` | 上游余额 warning 阈值 | 默认 `50` 元 |
+| `SUB2API_UPSTREAM_BALANCE_CRITICAL_CNY` | 上游余额 critical 阈值 | 默认 `20` 元 |
+| `SUB2API_UPSTREAM_BALANCE_STALE_HOURS` | 上游余额数据过期小时数 | 默认 `26` 小时，超过视为状态过期 |
+| `SUB2API_UPSTREAM_BALANCE_WEBHOOK` | 上游余额预警 webhook | 可选；用于余额低于阈值时提醒老板充值 |
 | `CC_XIANYU_AUTO_SHIP_ENABLED` | OpenClaw 闲鱼助手是否启用 CC中转自动发货 | `1` 启用；`0/false/no/off` 禁用并回退旧本地 AutoShipper |
-| `CC_XIANYU_WEBHOOK_URL` | OpenClaw 调用 CC中转自动发货 webhook 的地址 | 当前生产内测指向 `https://frist-api-oracle.245334.xyz/api/ops/xianyu/paid-order`；本机会自动推导同域 `/api/ops/xianyu/remap-order` 用于真实订单号接管 |
+| `CC_XIANYU_WEBHOOK_URL` | OpenClaw 调用 CC中转自动发货 webhook 的地址 | 当前生产内测指向 `https://jiyu.245334.xyz/api/ops/xianyu/paid-order`；本机会自动推导同域 `/api/ops/xianyu/remap-order` 用于真实订单号接管 |
 | `CC_XIANYU_WEBHOOK_TOKEN` | OpenClaw 调用 CC中转 webhook 的低权限 token | 只用于已付款订单发卡；禁止打印完整值，生产变更后需重启 `ai.openclaw.xianyu` |
 | `CC_XIANYU_AUTO_SHIP_PAUSED` | 自动发货运行时暂停的环境兜底 | 可选；`1/true/yes/on` 时启动后默认暂停。日常暂停/恢复优先使用本机操作台 `/api/cc-operator-mode`，不会要求老板改环境变量 |
 | `CC_OPERATOR_STATE_FILE` | 本机操作台状态文件路径 | 可选；默认 `.openclaw/cc-zhongzhuan-operator-state.json`，测试用例用该变量隔离暂停状态 |
@@ -467,40 +467,40 @@
 | `CC_XIANYU_OPS_NOTIFY_SCAN_SECONDS` | 本机运营提醒扫描间隔 | 默认 `30` 秒，最小 `10` 秒；只判断是否需要提醒 |
 | `CC_XIANYU_LOW_INVENTORY_THRESHOLD` | 兑换码低库存提醒阈值 | 默认 `2`；未售卡密数量小于等于阈值时提醒补货 |
 | `cc_strict_audits` | 本机 SQLite 严格门审计摘要表 | 保存 `ok/exit_code/real_orders/same_order_ready/same_order_matched` 等脱敏证据，供 GUI/后台在重启后恢复最近严格门状态；不保存卡密、Token、API Key 或原始 stdout/stderr；严格门通过后会用订单哈希把 `cc_shipments.buyer_chain_status` 回写为 `verified` |
-| `FRIST_API_KEY_ALERT_WEBHOOK` | Key 认证/额度异常告警 Webhook | 可选；未配置 Telegram 时可走通用告警 Webhook |
-| `FRIST_API_GATEWAY_DAILY_SPEND_LIMIT_CENTS` | 上游 Key 默认日消费限额 | 可选；余额站库存可单 Key 覆盖，超过后自动熔断并切备用健康渠道 |
-| `FRIST_API_GATEWAY_SLOW_LATENCY_MS` | 慢线上游降级阈值 | 默认 `5000`；当余额站当日消费已超过剩余额度且响应慢，会自动下线该 Key |
-| `FRIST_API_TELEGRAM_BOT_TOKEN` | Telegram Bot Token | 可选；配置后自动发送一次性补号提醒 |
-| `FRIST_API_TELEGRAM_CHAT_ID` | Telegram 接收群/用户 ID | 与 Bot Token 搭配，用于接收 Key 异常提醒 |
-| `FRIST_API_PAYMENT_ENABLED` | 是否启用真实支付接口 | 总开关；未启用时仍可人工确认 |
-| `FRIST_API_WECHAT_PAY_ENABLED` | 是否启用微信 Native 支付 | 需要商户平台、AppID、商户号和 APIv3 配置 |
-| `FRIST_API_WECHAT_PAY_APPID` | 微信支付 AppID | 由微信支付商户平台绑定的应用提供 |
-| `FRIST_API_WECHAT_PAY_MCH_ID` | 微信支付商户号 | 微信支付商户平台提供 |
-| `FRIST_API_WECHAT_PAY_SERIAL_NO` | 微信商户 API 证书序列号 | 用于 APIv3 请求签名 |
-| `FRIST_API_WECHAT_PAY_PRIVATE_KEY` | 微信商户私钥 PEM | 只放服务器环境变量或安全文件注入 |
-| `FRIST_API_WECHAT_PAY_PUBLIC_KEY` | 微信支付平台公钥 PEM | 用于下单原始应答和回调验签 |
-| `FRIST_API_WECHAT_PAY_PLATFORM_SERIAL_NO` | 微信平台证书序列号或支付公钥 ID | 必须与应答头 `Wechatpay-Serial` 精确匹配 |
-| `FRIST_API_WECHAT_PAY_API_V3_KEY` | 微信支付 APIv3 密钥 | 32 字节，用于回调资源解密 |
-| `FRIST_API_WECHAT_PAY_NOTIFY_URL` | 微信支付回调 URL | 默认可由公开入口推导为 `/api/frist/payments/wechat/notify` |
-| `FRIST_API_ALIPAY_ENABLED` | 是否启用支付宝当面付 | 需要支付宝开放平台应用和当面付产品 |
-| `FRIST_API_ALIPAY_APP_ID` | 支付宝应用 AppID | 支付宝开放平台提供 |
-| `FRIST_API_ALIPAY_PRIVATE_KEY` | 支付宝应用私钥 PEM | 只放服务器环境变量或安全文件注入 |
-| `FRIST_API_ALIPAY_PUBLIC_KEY` | 支付宝平台公钥 PEM | 用于下单响应与异步通知验签 |
-| `FRIST_API_ALIPAY_NOTIFY_URL` | 支付宝回调 URL | 默认可由公开入口推导为 `/api/frist/payments/alipay/notify` |
-| `FRIST_API_NEWAPI_ENABLED` | 是否启用 Frist-API 服务端 New-API 业务桥接 | `1` 启用；未启用时继续走本地 JSON 自研逻辑 |
-| `FRIST_API_REQUIRE_NEWAPI_DATABASE` | 是否把 New-API 数据库作为生产必备持久化层 | 生产强制模式必须为 `1`，用于防止继续把 JSON runtime 当生产数据库 |
-| `FRIST_API_NEWAPI_BASE_URL` | New-API 内网 API 地址 | Oracle 生产为 `http://127.0.0.1:13000`；Docker/本地开发可用 `http://openclaw-newapi:3000`，不要暴露公网管理口 |
-| `FRIST_API_NEWAPI_ACCESS_TOKEN` | New-API 用户 access token | 只放服务器环境变量，禁止写入仓库 |
-| `FRIST_API_NEWAPI_USER_ID` | access token 所属 New-API 用户 ID | v1 会校验 `New-Api-User` 头 |
-| `FRIST_API_NEWAPI_DEFAULT_GROUP` | New-API 新建 Token 默认分组 | 默认 `default` |
-| `FRIST_API_NEWAPI_DEFAULT_TOKEN_QUOTA` | 单次从客户本地已购余额划转到 New-API Key 的本地人民币分上限 | 生产必须在 systemd 实际读取的 `/etc/frist-api/frist-api.env` 显式配置正整数，例如 `7200` 表示 72 元；`0` 或缺失会拒绝创建。服务端取“客户可用人民币分、配置上限”的较小值，再按 `500000 New-API units / 元` 换算；归属记录同时保存 `allocatedCents` 与 `upstreamQuotaUnits`，忽略客户端自报额度 |
-| `FRIST_API_NEWAPI_REQUEST_TIMEOUT_MS` | Frist 调用 New-API 管理接口的响应头超时 | 默认 `15000` 毫秒，下限 1000；超时返回 504，流式网关在收到响应头后继续按流传输 |
-| `FRIST_API_NEWAPI_GATEWAY_ENABLED` | 是否让 Frist-API `/v1` 代理 New-API 网关 | `1` 启用；仅作用于 Frist 3180 桥接面。代理前精确查 bearer，仅允许唯一有效本地用户的完整 active owner，以及 enabled、`unlimited_quota=false`、剩余额度为正的上游 Token；不改变 Apache 主域直连 New-API 的产品拓扑 |
-| `FRIST_API_NEWAPI_GATEWAY_BASE_URL` | New-API 网关地址 | Oracle 生产为 `http://127.0.0.1:13000/v1`；Docker/本地开发通常为 `http://openclaw-newapi:3000/v1` |
-| `FRIST_API_NEWAPI_REDEMPTION_STATUS_SYNC_ENABLED` | 是否自动回写 New-API 原生兑换状态 | 生产为 `1`；服务端按卡密哈希把 New-API 已兑换记录同步回 Frist 闲鱼履约 |
-| `FRIST_API_NEWAPI_REDEMPTION_STATUS_SYNC_INTERVAL_MS` | New-API 兑换状态回写间隔 | 默认 `60000` 毫秒；正式售卖期保持开启 |
-| `FRIST_API_DOCKER_NEWAPI_BASE_URL` | Docker Compose 内部 New-API API 地址 | 本机 `make frist-api-up` 默认 `http://new-api:3000`；只用于容器网络，不暴露公网 |
-| `FRIST_API_DOCKER_NEWAPI_GATEWAY_BASE_URL` | Docker Compose 内部 New-API 网关地址 | 本机 `make frist-api-up` 默认 `http://new-api:3000/v1`；宿主机调试仍用 `FRIST_API_NEWAPI_GATEWAY_BASE_URL` |
+| `SUB2API_KEY_ALERT_WEBHOOK` | Key 认证/额度异常告警 Webhook | 可选；未配置 Telegram 时可走通用告警 Webhook |
+| `SUB2API_GATEWAY_DAILY_SPEND_LIMIT_CENTS` | 上游 Key 默认日消费限额 | 可选；余额站库存可单 Key 覆盖，超过后自动熔断并切备用健康渠道 |
+| `SUB2API_GATEWAY_SLOW_LATENCY_MS` | 慢线上游降级阈值 | 默认 `5000`；当余额站当日消费已超过剩余额度且响应慢，会自动下线该 Key |
+| `SUB2API_TELEGRAM_BOT_TOKEN` | Telegram Bot Token | 可选；配置后自动发送一次性补号提醒 |
+| `SUB2API_TELEGRAM_CHAT_ID` | Telegram 接收群/用户 ID | 与 Bot Token 搭配，用于接收 Key 异常提醒 |
+| `SUB2API_PAYMENT_ENABLED` | 是否启用真实支付接口 | 总开关；未启用时仍可人工确认 |
+| `SUB2API_WECHAT_PAY_ENABLED` | 是否启用微信 Native 支付 | 需要商户平台、AppID、商户号和 APIv3 配置 |
+| `SUB2API_WECHAT_PAY_APPID` | 微信支付 AppID | 由微信支付商户平台绑定的应用提供 |
+| `SUB2API_WECHAT_PAY_MCH_ID` | 微信支付商户号 | 微信支付商户平台提供 |
+| `SUB2API_WECHAT_PAY_SERIAL_NO` | 微信商户 API 证书序列号 | 用于 APIv3 请求签名 |
+| `SUB2API_WECHAT_PAY_PRIVATE_KEY` | 微信商户私钥 PEM | 只放服务器环境变量或安全文件注入 |
+| `SUB2API_WECHAT_PAY_PUBLIC_KEY` | 微信支付平台公钥 PEM | 用于下单原始应答和回调验签 |
+| `SUB2API_WECHAT_PAY_PLATFORM_SERIAL_NO` | 微信平台证书序列号或支付公钥 ID | 必须与应答头 `Wechatpay-Serial` 精确匹配 |
+| `SUB2API_WECHAT_PAY_API_V3_KEY` | 微信支付 APIv3 密钥 | 32 字节，用于回调资源解密 |
+| `SUB2API_WECHAT_PAY_NOTIFY_URL` | 微信支付回调 URL | 默认可由公开入口推导为 `/api/frist/payments/wechat/notify` |
+| `SUB2API_ALIPAY_ENABLED` | 是否启用支付宝当面付 | 需要支付宝开放平台应用和当面付产品 |
+| `SUB2API_ALIPAY_APP_ID` | 支付宝应用 AppID | 支付宝开放平台提供 |
+| `SUB2API_ALIPAY_PRIVATE_KEY` | 支付宝应用私钥 PEM | 只放服务器环境变量或安全文件注入 |
+| `SUB2API_ALIPAY_PUBLIC_KEY` | 支付宝平台公钥 PEM | 用于下单响应与异步通知验签 |
+| `SUB2API_ALIPAY_NOTIFY_URL` | 支付宝回调 URL | 默认可由公开入口推导为 `/api/frist/payments/alipay/notify` |
+| `SUB2API_NEWAPI_ENABLED` | 是否启用 JIYU AI 服务端 New-API 业务桥接 | `1` 启用；未启用时继续走本地 JSON 自研逻辑 |
+| `SUB2API_REQUIRE_NEWAPI_DATABASE` | 是否把 New-API 数据库作为生产必备持久化层 | 生产强制模式必须为 `1`，用于防止继续把 JSON runtime 当生产数据库 |
+| `SUB2API_NEWAPI_BASE_URL` | New-API 内网 API 地址 | Oracle 生产为 `http://127.0.0.1:13000`；Docker/本地开发可用 `http://sub2api.service:3000`，不要暴露公网管理口 |
+| `SUB2API_NEWAPI_ACCESS_TOKEN` | New-API 用户 access token | 只放服务器环境变量，禁止写入仓库 |
+| `SUB2API_NEWAPI_USER_ID` | access token 所属 New-API 用户 ID | v1 会校验 `New-Api-User` 头 |
+| `SUB2API_NEWAPI_DEFAULT_GROUP` | New-API 新建 Token 默认分组 | 默认 `default` |
+| `SUB2API_NEWAPI_DEFAULT_TOKEN_QUOTA` | 旧兼容层配置（已停用） | 当前生产不读取该变量；新密钥额度由 Sub2API 管理端和用户余额合同控制。 |
+| `SUB2API_NEWAPI_REQUEST_TIMEOUT_MS` | JIYU 调用 New-API 管理接口的响应头超时 | 默认 `15000` 毫秒，下限 1000；超时返回 504，流式网关在收到响应头后继续按流传输 |
+| `SUB2API_NEWAPI_GATEWAY_ENABLED` | 是否让 JIYU AI `/v1` 代理 New-API 网关 | `1` 启用；仅作用于 JIYU 3180 桥接面。代理前精确查 bearer，仅允许唯一有效本地用户的完整 active owner，以及 enabled、`unlimited_quota=false`、剩余额度为正的上游 Token；不改变 Apache 主域直连 New-API 的产品拓扑 |
+| `SUB2API_NEWAPI_GATEWAY_BASE_URL` | New-API 网关地址 | Oracle 生产为 `http://127.0.0.1:13000/v1`；Docker/本地开发通常为 `http://sub2api.service:3000/v1` |
+| `SUB2API_NEWAPI_REDEMPTION_STATUS_SYNC_ENABLED` | 是否自动回写 New-API 原生兑换状态 | 生产为 `1`；服务端按卡密哈希把 New-API 已兑换记录同步回 JIYU 闲鱼履约 |
+| `SUB2API_NEWAPI_REDEMPTION_STATUS_SYNC_INTERVAL_MS` | New-API 兑换状态回写间隔 | 默认 `60000` 毫秒；正式售卖期保持开启 |
+| `SUB2API_DOCKER_NEWAPI_BASE_URL` | 旧兼容层配置（已停用） | 当前生产不读取该变量。 |
+| `SUB2API_DOCKER_NEWAPI_GATEWAY_BASE_URL` | 旧兼容层配置（已停用） | 当前生产不读取该变量。 |
 | `MITMDUMP_BIN` | mitmdump 可执行文件 | 可指向 `~/.openclaw/tools/mitmproxy-local-venv/bin/mitmdump` 这类独立工具 venv，避免污染项目虚拟环境 |
 
 ---
@@ -515,12 +515,9 @@
 | 同步升级 | `new-api-sync` | `make new-api-sync` | 更新 submodule 到最新 release，并同步 compose 镜像 tag |
 | 同步脚本 | `sync_new_api_upstream.sh` | `scripts/sync_new_api_upstream.sh` | 支持 `check` / `update`；`check` 发现落后返回非 0，适合 CI/定时任务 |
 | 品牌补丁 | `new-api-brand-patch` / `apply_new_api_brand_patch.sh` | `make new-api-brand-patch` | `scripts/patches/new-api-cc-brand.patch` 是 CC中转品牌修改的可维护基线；submodule 保持上游干净状态，升级后先检查兼容，再按需应用补丁 |
-| 本机启动 | `new-api-up` / `frist-api-up` | `Makefile` | `make new-api-up` 先备份 `data/newapi` 再启动 QuantumNous/new-api；`make frist-api-up` 先运行本机桥接配置，再同时启动 New-API 与 Frist-API |
-| 本机桥接配置 | `setup_local_newapi_bridge.mjs` | `scripts/setup_local_newapi_bridge.mjs` | 从 `data/newapi/one-api.db` 读取已生成 access token 用户，写入 `.env` 的 Frist-API/New-API 桥接变量；密钥不打印到终端 |
+| 本机运维 | `sub2api-check` / `jiyu-sub2-replenish` / `jiyu-sub2-replenish-dry-run` | `Makefile` | 分别检查生产脚本、启动本地补号助手和执行不登录上游的解析演练。 |
 | New-API 冷回滚同步 | `make new-api-check` / `make new-api-sync` | 人工显式执行 | 自动创建分支的定时 workflow 已随生产切换到 Sub2API 删除；旧底座研究不得自动恢复服务或生产数据库 |
-| Frist-API 桥接 | `newApiBridge.js` | `apps/frist-api/server/newApiBridge.js` | 通过共享 New-API 管理账号承接看板、Token、日志、兑换和可选网关代理；本地 runtime 保存 `token_id → customer_id` 归属，看板/日志/更新/删除/导入按归属过滤。创建 Key 先持久化人民币分预留，再创建零额度上游 Token；只有归属落盘后才激活换算后的 New-API units，失败会撤销暂存 Token 并回滚余额。Frist `/v1` 也按 owner 完整性、唯一用户、active 状态和上游 finite/enabled/正余额共同鉴权；历史无归属或无限 Token 默认隔离。Oracle Frist 调用 `127.0.0.1:13000`，Apache 主域仍直接代理 New-API |
-| 迁移/回滚 | `frist_api_newapi_migration_dry_run.mjs` | `scripts/frist_api_newapi_migration_dry_run.mjs` | 默认只读 Frist-API runtime；`--package` 生成带时间戳的 runtime 备份、幂等迁移计划和回滚脚本；2026-07-03 已授权并执行生产 `--apply`，回滚目录在服务器 `/opt/frist-api/backups/newapi-migration-20260703T005433Z` |
-| 历史 Token 归属映射 | `frist_api_newapi_ownership_map.mjs` | `scripts/frist_api_newapi_ownership_map.mjs` | 只接受显式 `--token-id + --user-id + --reason`，默认 dry-run；`--apply` 还必须提供 `--newapi-db`，用 `sqlite3 -readonly` 验证目标 Token 为 `unlimited_quota=0` 且有限额度为正。从读取到备份、原子写入全程持有同目录独占锁，已有锁、未知用户和已有归属一律拒绝，不按邮箱、名称或顺序自动猜测。生产 Token 1–9 当前全是无限 Token，全部不映射进 Frist，也不禁用/迁移，客户改为重建有限 Key |
+| JIYU AI 网关 | `https://jiyu.245334.xyz/v1` | Sub2API 原生 OpenAI/Claude 兼容网关；用户密钥、端点、计费和用量均由 Sub2API 管理，生产不再运行旧桥接进程。 |
 | Chrome 运营书签修复 | `cc_zhongzhuan_chrome_bookmarks.mjs` | `scripts/cc_zhongzhuan_chrome_bookmarks.mjs` | 修复/重建本机 Chrome 各 Profile 的 `CC中转运营` 书签文件夹，只写入 2 个老板可点入口：本机操作台、用户主站；`/ops-links` 保留兼容但不再默认收藏。写入前在 Chrome Profile 目录生成 `.codex-backup-*` 备份；加 `--open-window` 可直接打开 2 个运营入口窗口；2026-07-07 复验 `Default/Profile 1/Profile 2/Profile 3` 均为 2 个入口且 `chromeBookmarks.ok=true` |
 | CC中转卖家 Chromium 启动器 | `cc-seller-chrome` / `cc_zhongzhuan_launch_seller_chrome.mjs` | `make cc-seller-chrome` / `scripts/cc_zhongzhuan_launch_seller_chrome.mjs` | 准备卖家专用 Profile `~/.openclaw/cc-zhongzhuan-seller-chromium-v2`、运行版插件目录 `~/.openclaw/cc-social-pilot-runtime-extension` 和本机 `runtime-config.json`，打开本机操作台、用户主站与闲鱼。优先使用 Playwright Chromium 自动加载插件并带 Local Network Access 兼容参数；若 Chromium 缓存缺失，则降级到普通 Google Chrome 并提示安装 Chromium |
 | CC中转卖家本机桥接器 | `cc-seller-bridge` / `cc_zhongzhuan_seller_bridge.mjs` | `make cc-seller-bridge` / `scripts/cc_zhongzhuan_seller_bridge.mjs` | 本机 DevTools 桥接器，读取 18800 队列并注入闲鱼页面执行器，负责付款页发卡、点击发送、确认发货和恢复可售巡检；`--scan-only --require-real-order-id` 会只读捕获闲鱼 `message.headinfo` 真实订单号/商品 ID；`--one-shot-override` 会强制 delivery-only/只跑一次/只允许 1 个闲鱼页，并且优先把已发 `xy_browser_*` 临时单接管为 `xy_oid_*`，不重复发卡；不建议在重复发卡事故未完全验收前恢复 `ai.openclaw.cc-seller-bridge` 常驻 LaunchAgent |
@@ -530,9 +527,9 @@
 | 本机自动健康与灾备脚本 | `auto_health_check.sh` / `auto_recovery.sh` / `local_backup.sh` / `disaster_recovery.sh` / `manage_backup_launchagent.sh` | `scripts/` | 健康检查验证五个常驻核心服务、Intel/备份定时任务、真实端点和 36 小时备份新鲜度；可选能力按 ENABLED 区分禁用与故障。备份包含恢复所需私有配置但以 0700/0600 留在本机，排除构建缓存/日志；离机只发布 GPG 密文。恢复默认预演，只有显式 `--confirm` 才覆盖文件。 |
 | 桌面事务构建安装 | `tauri-build` / `tauri_build_install.sh` | `make tauri-build` / `scripts/tauri_build_install.sh` | 唯一允许的 macOS 打包入口；构建前备份并清理三个历史 App 名称，失败自动恢复，成功只安装 `/Applications/OpenClaw.app`。禁止直接执行 `tauri build` |
 | 文档治理检查 | `docs-check` / `check_docs_layout.sh` | `make docs-check` | 检查项目根目录散落文档、`docs/` 子目录、非 `XXX-kebab-case.md` 命名、索引漏登记和索引陈旧引用；已纳入 `make ci-local` |
-| 本地完整门禁 | `ci-local` | `make ci-local` | 依次执行依赖锁与安全门、干净安装、Ruff、Python 全量/覆盖率/语法、Frist-API 全量、桌面安全边界、TypeScript/ESLint/Vite、Tauri Rust 和文档治理；任一失败立即返回非 0。 |
-| Oracle 生产运行 | `openclaw-newapi.service` / `frist-api.service` | Oracle ARM `/opt/frist-api` | New-API v1.0.0-rc.4 ARM64 release 二进制监听 `127.0.0.1:13000`，Apache/Cloudflare 公开 `jiyu.245334.xyz`；Frist-API 监听 `127.0.0.1:3180`，通过 `frist-api-oracle.245334.xyz` 提供兑换码/闲鱼运营台；旧 `frist-api.245334.xyz` 仅跳转到主站 |
-| 腾讯冷回滚 | `frist-api-server` / `openclaw-newapi` | 腾讯云 `/opt/frist-api` | 旧 Docker 容器已停止、R2 timer 已禁用，仅保留数据和备份；回滚时先恢复容器/timer，再把 Cloudflare A 记录切回 `101.43.41.96` |
+| 本地完整门禁 | `ci-local` | `make ci-local` | 依次执行依赖锁与安全门、干净安装、Ruff、Python 全量/覆盖率/语法、JIYU AI 全量、桌面安全边界、TypeScript/ESLint/Vite、Tauri Rust 和文档治理；任一失败立即返回非 0。 |
+| Oracle 生产运行 | `sub2api.service.service` / `sub2api.service` | Oracle ARM `/opt/sub2api` | New-API v1.0.0-rc.4 ARM64 release 二进制监听 `127.0.0.1:13000`，Apache/Cloudflare 公开 `jiyu.245334.xyz`；JIYU AI 监听 `127.0.0.1:3180`，通过 `jiyu.245334.xyz` 提供兑换码/闲鱼运营台；旧 `jiyu.245334.xyz` 仅跳转到主站 |
+| 腾讯冷回滚 | `sub2api.service` | 腾讯云旧实例 | 旧容器和定时器均已停用；恢复前必须重新完成单主写入和真实健康验收。 |
 
 | 环境变量 | 用途 | 备注 |
 |----------|------|------|

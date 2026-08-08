@@ -20,7 +20,6 @@ install_node_lock() {
 }
 
 echo "══════ 临时目录 npm 锁安装 ══════"
-install_node_lock "$ROOT_DIR/apps/frist-api"
 install_node_lock "$ROOT_DIR/apps/openclaw-manager-src"
 
 case "$(uname -s)" in

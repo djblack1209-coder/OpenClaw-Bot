@@ -1,7 +1,7 @@
 # 全维度审计与软件闭环发布证据
 
 > 日期: 2026-08-08
-> 范围: 当前工作树、macOS arm64 桌面版 0.1.1、本机 OpenClaw 运行服务、Oracle Frist/JIYU 生产内测拓扑
+> 范围: 当前工作树、macOS arm64 桌面版 0.1.1、本机 OpenClaw 运行服务、Oracle JIYU/JIYU 生产内测拓扑
 > 规则: 只把可重复命令、自动化合同或真实运行结果计为完成；账号、凭据、真实资金和不可逆生产操作不以模拟结果冒充。
 
 ## JIYU 永久测试用户与安全回归
@@ -33,10 +33,10 @@
 
 | 验证面 | 末次结果 | 关键边界 |
 |---|---|---|
-| 全量 CI | `make ci-local` 11/11 退出 0 | 同一入口覆盖依赖、安全、Ruff、Python、前端、Frist、桌面合同、Rust、文档和供应链 |
+| 全量 CI | `make ci-local` 11/11 退出 0 | 同一入口覆盖依赖、安全、Ruff、Python、前端、JIYU、桌面合同、Rust、文档和供应链 |
 | Python | 2,407 项收集；2,405 通过、2 项预期跳过、0 失败 | 总覆盖率 45%；高风险关键聚合覆盖率 88% |
 | 高风险聚焦 | 闲鱼/owner/API `208/208`；Intel `37/37`；自动运维 `21/21` | 事件循环所有权、幂等履约、旧库迁移和灾备均有直接回归 |
-| Frist | `234/234` | 认证、限流、支付、runtime store、并发写入和失败关闭 |
+| JIYU | `234/234` | 认证、限流、支付、runtime store、并发写入和失败关闭 |
 | 桌面合同 | `39/39` | 本机进程白名单、临时文件、备份/恢复、构建与回滚合同 |
 | 前端 | TypeScript、ESLint、Vite build 全部退出 0 | Vite 转换 2,526 modules |
 | Rust | `47/47`，`cargo check --locked` 通过 | Tauri 显式命令白名单和本机参数边界 |
@@ -48,7 +48,7 @@
 |---|---|
 | ShellCheck | 仓库 35 个 Shell 脚本零告警 |
 | Gitleaks | 859 个提交历史、当前 diff 和未跟踪文件均未发现泄漏 |
-| npm audit | 桌面完整/生产、Frist、受管 runtime 四套 production 审计均为 0 |
+| npm audit | 桌面完整/生产、JIYU、受管 runtime 四套 production 审计均为 0 |
 | pip-audit | Linux/macOS 两份哈希锁均无已知漏洞 |
 | RustSec | 0 vulnerability；17 条仅为已登记的目标平台/上游 informational warning |
 | 供应链 | 2 个工作流、16 个固定 Action SHA、354 个 npm 锁包、Compose 镜像 digest 全部通过静态门 |
@@ -59,7 +59,7 @@
 
 | 热点 | 审计前 | 当前事实 | 决策 |
 |---|---:|---:|---|
-| `apps/frist-api/server/server.js` | 8,123 行 | 7,943 行；新增 214 行 `runtime-store.js` 深模块 | 原子写、串行 mutation、敏感字段加密已下沉；入口继续只做组合 |
+| `Sub2API/server/server.js` | 8,123 行 | 7,943 行；新增 214 行 `runtime-store.js` 深模块 | 原子写、串行 mutation、敏感字段加密已下沉；入口继续只做组合 |
 | `xianyu_admin.py` | 5,780 行 | 5,557 行；新增 300 行 `operations_projection.py` | owner-loop 只导出不可变快照，运营视图统一纯投影 |
 | `api/rpc.py` | 4,440 行 | 4,440 行 | 冻结为兼容门面；新行为只能进入领域 router/module，避免高风险大重写 |
 
