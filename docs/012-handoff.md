@@ -10,18 +10,20 @@
 - 通过真实 WebUI 点击兼容包更新：CI 构建 `31270629630` 下载和校验成功，接口返回 200；随后点击“立即重启”触发保护性暂存验证。
 - 生产实际回读 `/var/lib/sub2api-ops/jiyu-stage-last-result.json` 为 `rolled_back`，原因是 `sub2api.service` 的 `Restart=on-failure` 不会在重启接口正常退出（码 0）后拉起新进程。旧版本和数据库已自动恢复，公网 `/health` 重新 200。
 - 已将 `scripts/sub2api_oracle_manage.sh` 和 Oracle 生产 unit 改为 `Restart=always`；受控重启确认 PID `1288563→1291998`，`127.0.0.1:18080/health` 通过。
+- 重新触发 CI `31271410817` 后，真实 WebUI“检查并安装→立即重启”成功应用，生产 VERSION 回读 `v0.1.172-jiyu.31271410817`，stage 结果 `applied`，健康 200。
+- 更新后移动端创建密钥页 `390×844` 回读 `body/documentElement.scrollWidth=390`，证据为 `scripts/assets/audit-20260809-create-key-mobile-after-update.jpg`。
 
 ### 未完成的工作
-- 兼容包 `v0.1.172-jiyu.31270629630` 没有安装到生产，当前仍是旧修订；下一次 CI 修订必须通过 WebUI “检查并安装→立即重启→版本回读”闭环后，才能关闭 HI-1018。
+- WebUI 更新链路本轮已闭环；后续同上游修订沿用“检查并安装→立即重启→版本回读”验收门即可。
 - 链动小铺实际购买、卖家 2FA/CAPTCHA 人工挑战和第三方店铺移动布局仍按 HI-987/HI-1012/HI-1016 处理。
 
 ### 需要注意的坑
-- 不要重复点击同一失败构建；新构建验收前先观察 stage result、运行版本、PID 和 `/health`，避免把自动回滚误判成成功。
+- 任何新构建都先观察 stage result、运行版本、PID 和 `/health`，避免把自动回滚误判成成功。
 - 所有证据继续禁止密码、API Key、Token、Cookie、TOTP secret、卡密和个人邮箱；浏览器只保留充值中心主标签。
 
 ### 当前系统状态
 - 分支只有 `main`，兼容补丁、文档与截图已推送；本地源码已更新为 `Restart=always`，生产 unit 已同步。
-- CI `31270629630` 工件已发布但未落地；生产旧版本健康，下一次更新验收是唯一待闭环的部署项。
+- CI `31271410817` 工件已落地；生产新版本健康，WebUI 更新链路已完成真实验收。
 
 ## [2026-08-09 01:54] JIYU 充值移动端与补号/闲鱼审计交接
 
@@ -110,25 +112,3 @@
 - 生产 `v0.1.172-jiyu.31250692935`、Sub2API、PostgreSQL 和公网健康正常；Claude 账号 #2 为正常且调度开启。
 - 七档链动商品均销售中、库存各 1 张；充值中心 7 个链接与兑换入口可见，最终截图已保存。
 - 工作树待完成聚焦验证、文档门、提交和推送；Chrome 只保留 JIYU 充值中心与链动商品列表用于交接。
-
-## [2026-08-08 19:10] JIYU 443、PostgreSQL 与链动保证金交接
-
-### 本次完成了什么
-- Oracle 443 已仅允许 Cloudflare 官方 CIDR、loopback 和 Tailscale；应用时保留 5 分钟自动回滚，三个独立外部 VPS 直连源站均超时后才取消。共享 80、SSH、Tailscale 未改；生产同时存在 `naive-iad` vhost 与 active `naive-cert-renew.timer`，续期依赖尚未证明可安全移除。
-- 修复 PostgreSQL 重启风险：Headscale 故障转移脚本不再每两分钟把 `/var/log` 改成 0700；管理器把文件权限、服务和 SQL 预检接到备份、发布与 WebUI 更新路径。手动运行污染源任务后预检仍通过。
-- 生产合同复核为 12 个分组、12 个 active 渠道；10 个文本倍率差均为 `0.0500`，10 条文本监控为 300±30 秒且启用，2 条图片监控保持禁用，图片价格为 0.10/0.12 每张。
-- 链动小铺七档标题、统一 Logo、详情和兑换步骤已保存；一枚未售临时兑换码已删除并重建，全程未输出或截图明文。
-
-### 未完成的工作
-- 链动保证金账户最低要求 ¥100，当前余额 0；库存导入、商品上架、充值中心回填和 ¥1 实单均被平台硬门阻塞。老板需在已保留的钱包页面完成真实充值，最终付款前仍需确认。
-- 渠道A Claude Messages、生图 502/401、Turnstile 开放注册前验收继续保持原边界；未改上游线路、未付费探测。
-
-### 需要注意的坑
-- 不要直接对 `/var/log` 使用 `install -d -m 700`；会把 postgres 的 named ACL mask 清零。所有 Sub2API 发布前先跑 `postgres-preflight`。
-- Cloudflare CIDR 更新必须走 `cloudflare-origin-443`，先保留自动回滚；没有外部直连阻断证据不得执行确认命令。
-- 链动商品库存未导入前不能把公开链接放进充值中心；已生成但未售的兑换码不得输出、截图或写入文件。
-
-### 当前系统状态
-- `v0.1.172-jiyu.31250692935`、Sub2API、Redis、PostgreSQL、Apache、Cloudflare 443 策略、更新/备份 timer 均 active；内网健康和 Responses WebSocket 代理通过。
-- 公网主站首页/健康为 200，旧入口为 301，运营入口未授权为预期 404。源站直连 443 已关闭；共享 80 同时承载 `naive-iad` vhost 与 active `naive-cert-renew.timer`，JIYU 80 仅返回 301。
-- 链动浏览器停在保证金钱包页；七档商品仍下架、零库存，充值中心继续只显示预留页。

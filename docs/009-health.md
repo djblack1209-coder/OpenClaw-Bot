@@ -79,8 +79,8 @@
 | HI-1014 | `AI_POOL/ARCH_LIMIT` | 🟠 重要 | 原生探测已核对，自动写回禁用 | Sub2 `v0.1.172` 原生 upstream billing probe 全局已启用，当前周期 30 分钟，最低支持 5 分钟；12 个账号的 rate sync 均保持关闭。渠道A的 probe resolved 值会与已存账号倍率漂移，而原生自动写回只修改 `accounts.rate_multiplier`，不会同步维持“用户分组倍率 = 账号倍率 + `0.05x`”合同。直接启用会破坏定价一致性，因此在业务确认定价策略及账号/分组联动方案前禁止开启；本轮未修改倍率、分组、账号或线路。 |
 | HI-1015 | `BUG/OPS` | 🟡 一般 | 本地已关闭 | `cc_zhongzhuan_readiness_audit.mjs` 的 Oracle 合同仍写死旧 10×10 口径，会把已闭环的 12 分组/账号/渠道、生图按次计费及两条真实异常停监控误报失败。现已改为 12×12 双轨失败关闭合同：文本倍率差 `0.05x`，生图倍率差 `0` 且按次价格为 `0.10/0.12`，10 条文本监控启用、2 条生图监控禁用、全部 300±30 秒；默认只读实跑 PASS，未改生产状态。 |
 | HI-1016 | `UX/THIRD_PARTY` | 🟡 一般 | 外部待处理 | 链动小铺整店已在 JIYU 的 `390×844` 充值页全宽嵌入且不再白屏，但其自身页面没有可用移动专用路由：顶部导航被压成竖排、商品卡可横向滑动。第三方内容跨域，JIYU 不注入 CSS 或代理改写；保留桌面内嵌和移动端全宽嵌入，后续需链动提供响应式店铺模板或移动入口。 |
-| HI-1017 | `FRONTEND/BUG` | 🟡 一般 | 待兼容包发布 | API 密钥页的端点说明浮层在 `390px` 下默认隐藏仍会把文档流扩到 `441px`。兼容补丁已将浮层限制为视口宽度并在窄屏右对齐，桌面恢复居中；待不可变兼容包 CI、受管 WebUI 更新和双视口重载后关闭。 |
-| HI-1018 | `DEPLOY/BUG` | 🟠 重要 | 已修复，待下一次 WebUI 更新验收 | 2026-08-09 真实点击 WebUI 更新已完成下载、校验并返回 200，但重启接口让 Sub2API 正常退出；生产 `sub2api.service` 原为 `Restart=on-failure`，新进程未拉起，独立暂存验证按保护逻辑回滚。证据：`/var/lib/sub2api-ops/jiyu-stage-last-result.json` 为 `rolled_back`，版本为 `v0.1.172-jiyu.31270629630`；journal 明确记录回滚前没有新服务进程，回滚后 `1288563` 才启动。已将安装脚本和生产 unit 改为 `Restart=always`，受控重启验证 PID `1288563→1291998` 且 `127.0.0.1:18080/health` 恢复 200。下一次兼容修订必须再次通过 WebUI 点击、重启、运行哈希和版本回读，才能关闭本项。 |
+| HI-1017 | `FRONTEND/BUG` | 🟡 一般 | 线上已关闭 | API 密钥页端点说明浮层已在兼容包 `v0.1.172-jiyu.31271410817` 发布并通过 WebUI 更新；真实 Chrome `390×844` 创建密钥弹窗回读 `body.scrollWidth=390`、`documentElement.scrollWidth=390`，截图 `scripts/assets/audit-20260809-create-key-mobile-after-update.jpg`。 |
+| HI-1018 | `DEPLOY/BUG` | 🟠 重要 | 线上已关闭 | 首次兼容修订因 `Restart=on-failure` 在正常退出后不拉起新进程而回滚；已将安装脚本和生产 unit 改为 `Restart=always`。第二次真实 WebUI 更新使用 CI `31271410817` 成功应用，生产 VERSION 回读 `v0.1.172-jiyu.31271410817`、stage 结果 `applied`、健康 200，服务 PID `1294441`。 |
 
 | 编号 | 分类 | 严重度 | 状态 | 当前结论 |
 |---|---|---|---|---|

@@ -5,20 +5,21 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
-## [2026-08-09] 修复 JIYU WebUI 更新后的正常退出不重启
+## [2026-08-09] 修复并验收 JIYU WebUI 更新重启链路
 > 领域: `deploy` | `infra` | `docs`
 > 影响模块: `Sub2API systemd`, `JIYU WebUI 更新`, `健康与交接`
 > 关联问题: HI-1018
 ### 变更内容
 - 根因确认：WebUI 重启接口让进程以退出码 0 正常退出，而生产 unit 使用 `Restart=on-failure`，导致兼容包新进程未启动，独立验证任务超时并自动回滚。
 - 将 `scripts/sub2api_oracle_manage.sh` 的 Sub2API unit 改为 `Restart=always`，并在 Oracle 生产 unit 同步修复；不修改数据库、定价、渠道、支付或上游状态。
-- 首次更新失败后生产已自动回滚到旧构建且健康恢复；受控重启验证新 PID `1288563→1291998`，本机 `/health` 返回 200。
+- 首次更新失败后生产已自动回滚到旧构建且健康恢复；随后将服务修复为 `Restart=always`，受控重启验证 PID `1288563→1291998`。
+- 第二次 CI `31271410817` 通过完整门禁并经真实 WebUI“检查并安装→立即重启”完成，生产 VERSION 回读 `v0.1.172-jiyu.31271410817`，stage 结果为 `applied`，健康 200。
 ### 文件变更
 - `scripts/sub2api_oracle_manage.sh` — 让正常退出触发 systemd 自动重启。
-- `docs/009-health.md`、`docs/012-handoff.md`、`docs/002-changelog.md` — 登记真实回滚证据与下一次验收门。
+- `docs/009-health.md`、`docs/012-handoff.md`、`docs/002-changelog.md` — 登记真实回滚证据与修复后验收。
 ### 验证
 - `git diff --check`、`node --test scripts/sub2api_ops_scripts.test.mjs`、`make docs-check`。
-- Oracle `systemctl show sub2api.service -p Restart` 返回 `Restart=always`；受控重启后健康检查 200。下一次 WebUI 兼容包更新仍需真实验收，不能把本次回滚误报为已安装新版本。
+- Oracle `systemctl show sub2api.service -p Restart` 返回 `Restart=always`；第二次 WebUI 更新后生产版本为 `v0.1.172-jiyu.31271410817`，stage `applied`，健康检查 200；移动创建密钥截图验证页面宽度保持 390px。
 
 ## [2026-08-09] JIYU 充值审计、补号操作说明与密钥页移动端修复
 > 领域: `frontend` | `ai-pool` | `xianyu` | `docs`
@@ -27,13 +28,14 @@
 ### 变更内容
 - 生产 WebUI 复核确认充值中心固定嵌入 `https://pay.ldxp.cn/shop/ZCUGEDMV`：外层在 `1440×1000` 与 `390×844` 均无白屏，移动端为顶栏下全宽 `390×780`；第三方店铺自身未响应式适配的问题单列登记，不跨域注入或代理改写。
 - 补充本地补号助手的四步操作和 2FA 边界：Sub2 原生不能解析卖家 `邮箱----密码----totp_secret`，助手在本机以 PyOTP 自动填写；CAPTCHA、短信、实体手机号和风控仍暂停人工，绝不绕过或落盘秘密。
-- 修复 API 端点说明浮层在窄屏下的隐藏横向溢出：限制为视口内宽度并窄屏右对齐，桌面仍居中；补丁已在官方 `v0.1.172` 干净源码完成应用校验，待兼容包发布后通过 WebUI 安装。
+- 修复 API 端点说明浮层在窄屏下的隐藏横向溢出：限制为视口内宽度并窄屏右对齐，桌面仍居中；补丁已在官方 `v0.1.172` 干净源码完成应用校验，并随 CI `31271410817` 通过 WebUI 安装。
 - 将闲鱼重型助手选型调整为“部分替换”：优先试运行轻一些的 `GuDong2003/xianyu-auto-reply-fix` 作为独立运营工作台，OpenClaw 保留库存、自动发货、补救队列和严格门真值；不复制 AGPL 源码，不绕过平台挑战。
 - 通过系统设置把登录/注册副标题由通用网关文案改为 `JIYU AI API 服务`，保存后重载回读一致。
 ### 文件变更
 - `scripts/sub2api-jiyu-v0.1.172.patch` — 限制端点浮层在移动端不制造横向滚动。
 - `docs/007-operations.md`、`docs/082-open-source-wheel-research.md` — 同步补号操作边界和闲鱼候选对比结论。
-- `docs/009-health.md`、`docs/012-handoff.md` — 登记外部移动端限制、待发布补丁与现场状态。
+- `docs/009-health.md`、`docs/012-handoff.md` — 登记外部移动端限制、已发布补丁与现场状态。
+- `scripts/assets/audit-20260809-create-key-mobile-after-update.jpg` — 新版本 `390×844` 创建密钥弹窗证据。
 - `docs/002-changelog.md` — 记录本次变更。
 ### 验证
 - 官方 `v0.1.172` 干净源码执行 `git apply --check` 和实际应用补丁均通过；`node --test scripts/sub2api_ops_scripts.test.mjs` 为 `4 passed`。
