@@ -15,11 +15,12 @@
 - 修复该 unit 模板注释中的中文弯引号：Linux ShellCheck 将其误判为未闭合引号并报 `SC1111`；仅替换为 ASCII 引号，不改变生成的 systemd 配置或业务逻辑。
 - 首次更新失败后生产已自动回滚到旧构建且健康恢复；随后将服务修复为 `Restart=always`，受控重启验证 PID `1288563→1291998`。
 - 第二次 CI `31271410817` 通过完整门禁并经真实 WebUI“检查并安装→立即重启”完成，生产 VERSION 回读 `v0.1.172-jiyu.31271410817`，stage 结果为 `applied`，健康 200。
+- 后续 OpenClaw CI `31272391317` 的 `security-gates` 已通过，包含 `Lint repository shell scripts`，确认 `SC1111` 回归关闭；同一 run 的 Node 18 Frist-API 作业另有失败，待完整 run 结束后读取其日志确认根因，不能由本次 ShellCheck 修复推断因果。
 ### 文件变更
 - `scripts/sub2api_oracle_manage.sh` — 让正常退出触发 systemd 自动重启。
 - `docs/009-health.md`、`docs/012-handoff.md`、`docs/002-changelog.md` — 登记真实回滚证据与修复后验收。
 ### 验证
-- `bash -n scripts/sub2api_oracle_manage.sh`、`shellcheck -x scripts/sub2api_oracle_manage.sh`、`git diff --check`、`node --test scripts/sub2api_ops_scripts.test.mjs`、`make docs-check`。
+- `bash -n scripts/sub2api_oracle_manage.sh`、`shellcheck -x scripts/sub2api_oracle_manage.sh`、`git diff --check`、`node --test scripts/sub2api_ops_scripts.test.mjs`、`make docs-check`；远端 `security-gates`（`31272391317`）通过。
 - Oracle `systemctl show sub2api.service -p Restart` 返回 `Restart=always`；第二次 WebUI 更新后生产版本为 `v0.1.172-jiyu.31271410817`，stage `applied`，健康检查 200；移动创建密钥截图验证页面宽度保持 390px。
 
 ## [2026-08-09] JIYU 充值审计、补号操作说明与密钥页移动端修复
