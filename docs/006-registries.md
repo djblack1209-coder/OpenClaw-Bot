@@ -9,11 +9,11 @@
 | 类型 | 唯一事实源 / 入口 | 当前合同 |
 |---|---|---|
 | 对外品牌 | `JIYU AI` / `Unified AI API Gateway` | 通过 Sub2API OEM `site_name`、`site_subtitle` 保存到 PostgreSQL；登录页、首页、侧边栏和浏览器标题统一读取该设置 |
-| 生产底座 | Oracle `jiyu.245334.xyz` / `sub2api.service` | 基于官方 Sub2API `v0.1.172` 固定提交构建的 `v0.1.172-jiyu.31260440018` ARM64 二进制；JIYU 补丁可从官方提交重复应用，主进程只绑定 `127.0.0.1:18080` |
+| 生产底座 | Oracle `jiyu.245334.xyz` / `sub2api.service` | 基于官方 Sub2API `v0.1.172` 固定提交构建的 `v0.1.172-jiyu.31261229885` ARM64 二进制；JIYU 补丁可从官方提交重复应用，主进程只绑定 `127.0.0.1:18080` |
 | 数据库 | PostgreSQL 16 `sub2api` | 独立角色、独立数据库；首次安装不导入 New-API 用户、Key、渠道、兑换码、日志或上游凭据；当前只保留 1 个管理员 |
 | 缓存 | `sub2api-redis.service` | 专用 Redis 7 实例，绑定 `127.0.0.1:16379`，密码只保存在 Oracle `/etc/sub2api/sub2api.env` |
 | 管理脚本 | `scripts/sub2api_oracle_manage.sh` / Oracle `/usr/local/sbin/openclaw-sub2api-manager` | `install-jiyu-build <path>` 用于完整发布；`stage-jiyu-build <path>` 原子暂存已校验二进制，并调度独立 systemd 任务在 WebUI 重启后核对运行哈希和健康状态；`recharge-center` 原子维护最小回退页和精确 `frame-src`；`enable-web-update <broker> <manifest-url>` 安装固定 root 更新代理 |
-| 自动更新 | `.github/workflows/sub2api-jiyu-compat.yml` + `scripts/sub2api_jiyu_update_broker.sh` + `sub2api-update.timer` | CI 从官方稳定标签构建带 JIYU 补丁的 ARM64 兼容包并生成 SHA-256 清单；定时任务跳过已适配基础版，手动同版本修订发布为不可变 `-r<run_id>` 标签，旧工件不覆盖。WebUI 后端只能无参数调用 root 代理下载、校验和暂存。当前生产 `v0.1.172-jiyu.31260440018` 已启用受管 WebUI 更新 |
+| 自动更新 | `.github/workflows/sub2api-jiyu-compat.yml` + `scripts/sub2api_jiyu_update_broker.sh` + `sub2api-update.timer` | CI 从官方稳定标签构建带 JIYU 补丁的 ARM64 兼容包并生成 SHA-256 清单；定时任务跳过已适配基础版，手动同版本修订发布为不可变 `-r<run_id>` 标签，旧工件不覆盖。WebUI 后端只能无参数调用 root 代理下载、校验和暂存。当前生产 `v0.1.172-jiyu.31261229885` 已启用受管 WebUI 更新 |
 | 自动备份 | `sub2api-backup.timer` / `sub2api-backup.service` | 每日 03:40（Asia/Singapore，随机延迟 15 分钟）备份 PostgreSQL、二进制、版本和 root-only 环境文件；本地 `/var/backups/sub2api` 保留 30 天 |
 | 管理员账号 | `djblack1209@gmail.com` | 当前唯一管理员；密码不写仓库，已存入 macOS 钥匙串服务“CC中转 Sub2API 管理员” |
 | 凭据保管 | Oracle `/etc/sub2api/sub2api.env` + 本机钥匙串 | Oracle env `0600 root-only`；修改管理员密码后同步更新这两处并做真实登录验证 |
