@@ -876,6 +876,27 @@ def test_xianyu_admin_runs_readonly_cc_readiness_audit(monkeypatch, tmp_path):
     assert "--webhook-smoke" not in calls[1]
 
 
+def test_xianyu_admin_treats_missing_legacy_webhook_as_publicly_locked():
+    """旧 webhook 已移除时，404 也必须代表公网不能写入余额。"""
+    summary = xianyu_admin._summarize_cc_readiness_payload(
+        {
+            "checks": {
+                "oracle": {
+                    "public": {
+                        "home": {"http": 200},
+                        "models": {"http": 401},
+                        "webhook_no_token": {"http": 404},
+                        "docs_route": {"http": 200},
+                    }
+                }
+            }
+        }
+    )
+
+    assert summary["buyer_self_service_ok"] is True
+    assert summary["webhook_public_locked"] is True
+
+
 def test_xianyu_admin_lists_and_resolves_cc_shipments(monkeypatch):
     class _Context:
         def __init__(self):

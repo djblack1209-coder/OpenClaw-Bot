@@ -1115,7 +1115,7 @@ def _summarize_cc_readiness_payload(payload: dict) -> dict:
         "local_gui": bool(gui.get("ok")),
         "oracle": bool(oracle.get("ok")),
         "buyer_self_service_ok": public_main_http == 200 and public_models_no_auth_http == 401,
-        "webhook_public_locked": public_webhook_no_token_http == 401,
+        "webhook_public_locked": public_webhook_no_token_http in {401, 403, 404},
         "public_main_http": public_main_http,
         "public_models_no_auth_http": public_models_no_auth_http,
         "public_webhook_no_token_http": public_webhook_no_token_http,
