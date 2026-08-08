@@ -59,7 +59,7 @@ ssh oracle-arm1 'systemctl list-timers sub2api-update.timer sub2api-backup.timer
 
 `update` 当前默认只检查。发布新的 JIYU 构建必须先从固定官方提交应用 `scripts/sub2api-jiyu-v0.1.172.patch`、完成聚焦验证和 ARM64 构建，再执行 `SUB2API_JIYU_VERSION=<version> openclaw-sub2api-manager install-jiyu-build <path>`。该命令会先备份并在健康失败时回滚；不要直接替换二进制或修改 Apache。
 
-WebUI 更新方案 A 已在仓库实现：`.github/workflows/sub2api-jiyu-compat.yml` 只发布通过补丁、类型检查和聚焦测试的 ARM64 兼容包及 SHA-256 清单；`scripts/sub2api_jiyu_update_broker.sh` 不接受任何浏览器参数，只读取 root 管理的清单地址并调用 `stage-jiyu-build`。暂存时会另起独立 systemd 验证任务；管理员点击重启后，该任务核对正在运行的二进制哈希和 `/health`，失败自动恢复二进制、VERSION 与 PostgreSQL，10 分钟未重启也会撤销暂存。生产部署新补丁后，用 `enable-web-update <broker> <manifest-url>` 安装固定 sudoers 和 systemd 环境，再从版本面板点击更新。生产仍运行 `v0.1.172-jiyu.5` 时不得单独解禁官方路径。
+WebUI 更新方案 A 已在仓库实现：`.github/workflows/sub2api-jiyu-compat.yml` 只发布通过补丁、类型检查、嵌入式前端根页和聚焦测试的 ARM64 兼容包及 SHA-256 清单；不可变版本包位于 `jiyu-vX.Y.Z`，`jiyu-latest` 只移动清单且清单仍引用不可变工件。`scripts/sub2api_jiyu_update_broker.sh` 不接受任何浏览器参数，只读取 root 管理的 `https://github.com/djblack1209-coder/OpenClaw-Bot/releases/download/jiyu-latest/jiyu-update-manifest.json` 并调用 `stage-jiyu-build`。暂存时会另起独立 systemd 验证任务；管理员点击重启后，该任务核对正在运行的二进制哈希和 `/health`，失败自动恢复二进制、VERSION 与 PostgreSQL，10 分钟未重启也会撤销暂存。生产部署新补丁后，用 `enable-web-update <broker> <manifest-url>` 安装固定 sudoers 和 systemd 环境，再从版本面板点击更新。生产仍运行 `v0.1.172-jiyu.5` 时不得单独解禁官方路径。
 
 ### 生图与 MCP
 
