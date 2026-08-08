@@ -5,7 +5,7 @@
 
 ## 2026-08-09 当前主站：JIYU AI（Sub2API 底座）
 
-当前用户主站 `https://jiyu.245334.xyz` 的对外品牌为 `JIYU AI`，运行基于官方 Sub2API `v0.1.172` 固定提交构建的 `v0.1.172-jiyu.31265860057`。JIYU 改动以仓库补丁固化，WebUI 只安装通过聚焦门和完整性清单的 JIYU 兼容包，不会用官方原版覆盖定制。
+当前用户主站 `https://jiyu.245334.xyz` 的对外品牌为 `JIYU AI`，运行基于官方 Sub2API `v0.1.172` 固定提交构建的 `v0.1.172-jiyu.31271410817`。JIYU 改动以仓库补丁固化，WebUI 只安装通过聚焦门和完整性清单的 JIYU 兼容包，不会用官方原版覆盖定制。
 
 ### Sub2 账号补号助手
 
@@ -63,10 +63,12 @@ Sub2 `v0.1.172` 原生账号导入只接收已经生成的 Codex `auth.json`、a
 ### 永久测试账号与真实客户端基线（2026-08-08）
 
 - 永久测试账号为 `jiyu-e2e-20260808@245334.xyz`（用户 ID 2），必须保留；密码和两个活动 Key 分别存入 macOS 钥匙串，不得输出、截图或写入仓库。旧 OpenAI Key 已轮换并停用，历史用量保留用于对账。
-- Claude Code 使用 `ANTHROPIC_BASE_URL=https://jiyu.245334.xyz` 和独立 Claude Key。渠道B连续两次成功；服务端成功样本为输入 327、输出 101、首 Token 3155 ms、总时长 7430 ms、站内计费 `$0.002496`。短单轮提示没有可复用缓存块，缓存为 0 属预期；渠道A对应分组当前 0 个可调度账号，真实返回 503，禁止继续对外显示为可用。
+- Claude Code 使用 `ANTHROPIC_BASE_URL=https://jiyu.245334.xyz` 和独立 Claude Key。渠道B连续两次成功；服务端成功样本为输入 327、输出 101、首 Token 3155 ms、总时长 7430 ms、站内计费 `$0.002496`。短单轮提示没有可复用缓存块，缓存为 0 属预期。2026-08-09 Oracle 只读回读确认渠道A Claude 官 Key 账号 #2 为 `anthropic/apikey`、`active=true`、可调度且恰好绑定 1 个分组；对应渠道也为 active 且恰好绑定 1 个分组，最近监控状态为 `operational`，不再存在“空分组/503”软件侧证据。
 - OpenAI Responses 使用 `https://jiyu.245334.xyz/v1` 和独立 OpenAI Key。最近成功样本为非缓存输入 550、缓存读取 3840、输出 6，缓存占总输入 `87.47%`，HTTP 客户端首包 5889 ms、总时长 6150 ms，服务端处理 4609 ms，站内计费 `$0.004850`、上游实际成本 `$0.0011155`。
 - Codex `0.147.0` 默认 Responses WebSocket。Apache upgrade 代理和 Sub2API 官方模式路由均已启用，四个 OpenAI 文本 API Key 账号在 WebUI 使用 `HTTP 桥接（http_bridge）`，两个生图账号保持关闭。最小 WS 样本客户端首输出 4287 ms、总时长 4524 ms，缓存 3840/4395；真实 Codex 服务端首 Token 2482 ms、总时长 2964 ms，记录为 `openai_ws_mode=true`。
 - 本轮账号共有 10 条真实计费记录；内容拦截 403 后记录数不增加，证明预拦截请求没有进入上游或扣费。每次体验回归只跑一组最小真实请求，不循环消耗余额。
+
+2026-08-09 只读 WS/渠道复核：Apache `/v1/responses` upgrade 规则位于通用根代理之前，公网近期 Codex 访问出现 `101`；Sub2API 全局 `GATEWAY_OPENAI_WS_MODE_ROUTER_V2_ENABLED=true`，四个 OpenAI 文本账号账号级 `http_bridge=true`，两个生图账号保持 `off=false`。生产用量表中 Responses 记录 6 条、WS 记录 2 条，最新 WS 样本计费 `$0.087439`、缓存读取 1408、首 Token 2482 ms、总时长 2964 ms；本轮未发起新的付费请求。
 
 Apache 规则必须位于通用根代理之前；未来重装或配置漂移后执行：
 
