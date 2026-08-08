@@ -309,7 +309,7 @@ const result = {
   software_ready: softwareReady,
   mode: requireRealOrder ? 'read-only+require-real-order' : 'read-only',
   checks,
-  nextHumanGate: '保持闲鱼助手暂停；完成 JIYU 商品、库存和付款闭环后再单独恢复公开售卖。',
+  nextHumanGate: '闲鱼历史真实订单严格门已通过；链动首笔 ¥1 购买、自动发货与站内兑换仍须操作时确认，不能用闲鱼历史订单替代。',
 };
 
 if (jsonOnly) {

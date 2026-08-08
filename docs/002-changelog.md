@@ -14,12 +14,13 @@
 - 分开校验 10 个文本组与 2 个生图组：文本账号/分组倍率差必须为 `0.05x`；生图账号和分组倍率均为 `1.0x`，并要求按次计费为渠道A `0.10/张`、渠道B `0.12/张`。
 - 监控合同要求 10 条文本监控启用、2 条生图监控因真实异常禁用，全部保留 300 秒周期和 ±30 秒抖动；账号 #2 必须为渠道A Claude、active、可调度且只属于一个组。任一缺行、重复行或值漂移均失败关闭。
 - 保持审计输出 `schema_version=2`，人类摘要明确显示“分组 12/12、渠道 12/12、文本监控 10/10、生图监控 0/2”；没有修改生产、定价、数据库、支付、开放注册、上游线路或共享 80 端口边界。
+- 同步现场运营真值：可用兑换码为 7，自动发货未暂停，历史真实闲鱼订单 1 单、补救队列 0，`--require-real-order` 严格门已 PASS；该历史闲鱼证据不能替代链动首笔 ¥1 购买、自动发货与站内兑换验收，链动实单仍须操作时确认。
 ### 文件变更
 - `scripts/cc_zhongzhuan_readiness_audit.mjs` — 更新 Oracle 查询、双轨合同和 CLI 摘要。
 - `docs/006-registries.md`、`docs/009-health.md`、`docs/012-handoff.md` — 同步命令合同、问题闭环、稳定性与交接事实。
 - `docs/002-changelog.md` — 记录本次只读审计修复。
 ### 验证
-- `node --check scripts/cc_zhongzhuan_readiness_audit.mjs` 通过；默认只读审计真实返回 PASS，生产合同为 12/12、12/12、10/10、0/2，调度为 12/12。
+- `node --check scripts/cc_zhongzhuan_readiness_audit.mjs` 通过；默认与 `--require-real-order --json` 两种只读审计均真实返回 PASS，生产合同为 12/12、12/12、10/10、0/2，调度为 12/12。
 - 发布时间仍为 2026-08-08 16:06:55 UTC，`sub2api.service` 的 `NRestarts=0`；精确 fatal/panic 与 JSON/键值 5xx 日志匹配均为 0，公网 `/health` 连续 5/5 为 200，账号 #2 回读为 active、可调度、单分组。
 
 ## [2026-08-09] JIYU 生产事实与倍率探测边界同步
