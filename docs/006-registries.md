@@ -993,6 +993,7 @@
 |---|---|---|---|
 | `@modelcontextprotocol/sdk` | `1.30.0`，npm lockfile 固定 | JIYU 生图 stdio MCP | 安装时执行 `npm ci --omit=dev --ignore-scripts`；只暴露单图工具，Key 从环境变量或 macOS 钥匙串读取，不把凭据写入 CC Switch；升级后生产依赖审计为 0 |
 | `h2` / `hpack` / `pypdf` | `4.4.1` / `4.2.0` / `6.15.0`，Linux 与 macOS 哈希锁同步 | ClawBot HTTP/2 与 PDF 解析 | 合并 Dependabot 安全更新并补齐 `h2` 必需的 `hpack>=4.2`；`pypdf` 直接依赖下限同步为 `>=6.15.0,<7.0.0`，不改变业务接口 |
+| `js-yaml` / `nanoid` | `4.3.1` / `3.3.17` override | OpenClaw Manager 前端构建 | 修复 GitHub 主 CI 新识别的两个高危公告；只提升传递依赖，不升级 Tauri、React 或业务组件 |
 
 
 ## OSS 安全依赖收口 (2026-06-22)

@@ -77,9 +77,10 @@
     "fast-uri": "4.1.2",
     "hono": "4.13.0",
     "ip-address": "10.4.0",
-    "js-yaml": "4.3.0",
+    "js-yaml": "4.3.1",
     "lodash": "4.18.1",
     "minimatch": "10.2.6",
+    "nanoid": "3.3.17",
     "path-to-regexp": "8.4.2",
     "picomatch": "4.0.4",
     "qs": "6.15.2"
