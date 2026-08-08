@@ -10,6 +10,14 @@ readonly LOCK_FILE="/run/lock/sub2api-jiyu-web-update.lock"
 readonly MAX_MANIFEST_BYTES=65536
 readonly MAX_ARTIFACT_BYTES=536870912
 
+manifest_file=""
+artifact_file=""
+
+cleanup() {
+  [[ -z "$manifest_file" ]] || rm -f -- "$manifest_file"
+  [[ -z "$artifact_file" ]] || rm -f -- "$artifact_file"
+}
+
 fail() {
   printf 'JIYU 兼容包更新失败：%s\n' "$*" >&2
   exit 1
@@ -62,7 +70,7 @@ main() {
   exec 9>"$LOCK_FILE"
   flock -n 9 || fail "已有更新任务正在执行"
 
-  local manifest_url manifest_file artifact_file
+  local manifest_url
   local version upstream_version platform arch artifact_url expected_sha expected_size
   manifest_url="$(read_config_value MANIFEST_URL)"
   [[ -n "$manifest_url" ]] || fail "MANIFEST_URL 尚未配置"
@@ -70,7 +78,7 @@ main() {
 
   manifest_file="$(mktemp)"
   artifact_file="$(mktemp)"
-  trap 'rm -f "$manifest_file" "$artifact_file"' EXIT
+  trap cleanup EXIT
   curl -fsSL --proto '=https' --proto-redir '=https' --max-filesize "$MAX_MANIFEST_BYTES" \
     --connect-timeout 10 --max-time 60 -o "$manifest_file" "$manifest_url"
   [[ "$(wc -c <"$manifest_file" | tr -d ' ')" -le "$MAX_MANIFEST_BYTES" ]] || \

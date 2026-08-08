@@ -6,6 +6,7 @@ import { test } from 'node:test';
 
 const manager = 'scripts/sub2api_oracle_manage.sh';
 const broker = 'scripts/sub2api_jiyu_update_broker.sh';
+const compatibilityWorkflow = '.github/workflows/sub2api-jiyu-compat.yml';
 const brandLogo = 'scripts/assets/jiyu-ai-logo-email.png';
 
 test('Sub2API 管理入口可执行且 Bash 语法有效', async () => {
@@ -38,6 +39,7 @@ test('生产更新改为只检查，完整备份覆盖品牌与页面', async ()
 test('充值页无 CSP iframe，WebUI 更新只能进入固定 root 代理', async () => {
   const content = await readFile(manager, 'utf8');
   const brokerContent = await readFile(broker, 'utf8');
+  const workflowContent = await readFile(compatibilityWorkflow, 'utf8');
   assert.doesNotMatch(content, /<iframe/i);
   assert.doesNotMatch(content, /window\.html/);
   assert.match(content, /LocationMatch "\^\/api\/v1\/admin\/system\/\(update\|rollback\)\$"/);
@@ -48,7 +50,10 @@ test('充值页无 CSP iframe，WebUI 更新只能进入固定 root 代理', asy
   assert.match(brokerContent, /sha256sum/);
   assert.match(brokerContent, /MAX_ARTIFACT_BYTES/);
   assert.match(brokerContent, /兼容包大小不一致/);
+  assert.match(brokerContent, /trap cleanup EXIT/);
   assert.doesNotMatch(brokerContent, /eval |bash -c|sh -c/);
+  assert.match(workflowContent, /go test -tags embed \.\/internal\/web/);
+  assert.match(workflowContent, /go build -tags embed/);
 });
 
 test('JIYU 图形 Logo 是 512 像素 PNG', async () => {
