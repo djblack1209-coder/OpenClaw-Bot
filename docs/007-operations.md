@@ -85,7 +85,7 @@ ssh oracle-arm1 '/usr/local/sbin/openclaw-sub2api-manager status'
 - Turnstile 当前关闭。正式开放注册前必须先创建 JIYU 专用 widget，再以桌面/手机真实注册、验证码、失败和无障碍流程验收；不得直接复用历史 New-API 口径声称已开启。
 - JIYU 443 使用 Cloudflare Origin CA，并已通过 `jiyu-cloudflare-origin.service` 收口：服务从 Cloudflare 官方地址页下载并校验 CIDR，nftables 只允许 Cloudflare、loopback 和 Tailscale 访问 443。应用命令先安排 5 分钟自动回滚；必须从独立外部主机确认直连源站超时后，才能执行确认命令取消回滚。
 - 2026-08-08 验收：三个 HTTPS vhost 经 Cloudflare 分别返回 200/301/预期未授权 404；三个独立外部 VPS 直连源站 443 均超时。SSH、Tailscale 未改。
-- 共享 80 端口承载与 JIYU 无关的 `naive-iad` 服务入口，并非 ACME 依赖；JIYU 自身 HTTP 只返回 301。不得把迁移 DNS-01 写成共享 80 收口的前置条件，也不得为完成 JIYU 443 闭环而修改或关闭共享 80。
+- 共享 80 端口同时承载 `naive-iad` vhost，并存在 active `naive-cert-renew.timer`；其续期依赖尚未证明可安全移除。JIYU 自身 HTTP 只返回 301，443 已闭环；不得为完成 JIYU 闭环而修改或关闭共享 80。
 
 ### 邮箱绑定、验证码与告警
 
