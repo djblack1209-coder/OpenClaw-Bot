@@ -1850,7 +1850,6 @@ def _cc_manual_precheck_evidence_summary() -> dict:
     index_html = _project_file_text("apps/frist-api/index.html")
     styles_css = _project_file_text("apps/frist-api/src/styles.css")
     email_js = _project_file_text("apps/frist-api/server/email.js")
-    frist_server_js = _project_file_text("apps/frist-api/server/server.js")
     xianyu_admin_py = _project_file_text("packages/clawbot/src/xianyu/xianyu_admin.py")
     xianyu_live_py = _project_file_text("packages/clawbot/src/xianyu/xianyu_live.py")
     xianyu_apis_py = _project_file_text("packages/clawbot/src/xianyu/xianyu_apis.py")

@@ -526,6 +526,27 @@ index 50789b5..97f9ff0 100644
      expect(params.get('model')).toBe(OPENAI_CC_SWITCH_CODEX_MODEL)
      expect(atob(params.get('usageScript') || '')).toBe(baseInput.usageScript)
    })
+diff --git a/frontend/src/utils/__tests__/channelMonitorDisplayOrder.spec.ts b/frontend/src/utils/__tests__/channelMonitorDisplayOrder.spec.ts
+new file mode 100644
+index 0000000..6c290b7
+--- /dev/null
++++ b/frontend/src/utils/__tests__/channelMonitorDisplayOrder.spec.ts
+@@ -0,0 +1,15 @@
++import { describe, expect, it } from 'vitest'
++import { compareMonitorDisplayOrder } from '@/utils/channelMonitorDisplayOrder'
++
++describe('compareMonitorDisplayOrder', () => {
++  it('keeps every channel A monitor before channel B and places image last in each channel', () => {
++    const monitors = [
++      { id: 4, name: 'JIYU 生图 · 渠道B', group_name: 'JIYU 生图 · 渠道B' },
++      { id: 3, name: 'JIYU 渠道A · OpenAI Pro', group_name: 'JIYU 渠道A · OpenAI Pro' },
++      { id: 2, name: 'JIYU 渠道B · Claude Kiro', group_name: 'JIYU 渠道B · Claude Kiro' },
++      { id: 1, name: 'JIYU 生图 · 渠道A', group_name: 'JIYU 生图 · 渠道A' },
++    ]
++
++    expect([...monitors].sort(compareMonitorDisplayOrder).map((item) => item.id)).toEqual([3, 1, 2, 4])
++  })
++})
 diff --git a/frontend/src/utils/ccswitchImport.ts b/frontend/src/utils/ccswitchImport.ts
 index d7858ea..7f291e2 100644
 --- a/frontend/src/utils/ccswitchImport.ts
@@ -539,6 +560,51 @@ index d7858ea..7f291e2 100644
          model: OPENAI_CC_SWITCH_CODEX_MODEL
        }
      case 'gemini':
+diff --git a/frontend/src/utils/channelMonitorDisplayOrder.ts b/frontend/src/utils/channelMonitorDisplayOrder.ts
+new file mode 100644
+index 0000000..7c35f18
+--- /dev/null
++++ b/frontend/src/utils/channelMonitorDisplayOrder.ts
+@@ -0,0 +1,39 @@
++const MONITOR_PRODUCT_ORDER = [
++  'Claude Kiro',
++  'Claude 官 Key',
++  'OpenAI Plus',
++  'OpenAI Pro',
++  'Grok',
++  '生图',
++]
++
++interface MonitorDisplayItem {
++  id: number
++  name: string
++  group_name?: string | null
++}
++
++function monitorLabel(item: MonitorDisplayItem): string {
++  return `${item.group_name || ''} ${item.name || ''}`
++}
++
++export function compareMonitorDisplayOrder(
++  left: MonitorDisplayItem,
++  right: MonitorDisplayItem,
++): number {
++  const leftLabel = monitorLabel(left)
++  const rightLabel = monitorLabel(right)
++  const channelRank = (label: string) =>
++    label.includes('渠道A') ? 0 : label.includes('渠道B') ? 1 : 2
++  const productRank = (label: string) => {
++    const rank = MONITOR_PRODUCT_ORDER.findIndex((product) => label.includes(product))
++    return rank === -1 ? MONITOR_PRODUCT_ORDER.length : rank
++  }
++
++  return (
++    channelRank(leftLabel) - channelRank(rightLabel) ||
++    productRank(leftLabel) - productRank(rightLabel) ||
++    leftLabel.localeCompare(rightLabel, 'zh-CN') ||
++    left.id - right.id
++  )
++}
 diff --git a/frontend/src/views/HomeView.vue b/frontend/src/views/HomeView.vue
 index ddb3e87..754835f 100644
 --- a/frontend/src/views/HomeView.vue

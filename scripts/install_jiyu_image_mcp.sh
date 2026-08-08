@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR
 readonly SOURCE_DIR="${SCRIPT_DIR}/jiyu-image-mcp"
 readonly INSTALL_DIR="${HOME}/.local/share/jiyu-image-mcp"
 readonly CC_SWITCH_DB="${HOME}/.cc-switch/cc-switch.db"
