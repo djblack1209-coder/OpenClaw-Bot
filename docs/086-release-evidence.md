@@ -17,8 +17,11 @@
 | 账号列表品牌隐私 | 成功 | 生产 `v0.1.172-jiyu.31250692935` 重载后 12 个账号名称均为普通文本，供货域名链接为 0；Anthropic/OpenAI/Grok 生态标签保留，前后截图已入仓库。 |
 | JIYU 同版兼容更新 | 成功 | systemd Unix 激活套接字保留应用 `NoNewPrivileges`；兼容包 CI `31250692935` 成功。生产真实 WebUI 最新版检查返回 HTTP 200/“已是最新版本”，耗时 302 ms，PID `1125212` 不变、无暂存文件。 |
 | Apache 525 恢复 | 部署完成 | 全部 JIYU Apache 修改入口已统一执行配置校验、graceful reload、公网 HTTPS 复核，失败自动 full restart 并再次复核；生产管理器已安装，真实 happy path 与公网健康 5/5 为 200。为避免主动制造 525，full restart 分支以静态合同覆盖。 |
+| Cloudflare 源站 443 | 成功 | 官方 CIDR 独立 nftables 表 active；三个独立外部 VPS 直连源站均超时，Cloudflare 公网首页/健康为 200，80 与 ACME timer 保持可用。 |
+| PostgreSQL 预检 | 成功 | 修复 Headscale 日志初始化每两分钟清空 postgres ACL mask 的根因；故障转移任务手动运行后 ACL、SQL、Sub2API 健康和 WebSocket 代理均通过。 |
+| 链动小铺 | 外部资金阻塞 | 七档资料与统一 Logo 已保存，未售临时码已轮换；平台保证金最低 ¥100、当前余额 0，未导入库存、未上架、未回填充值链接、未付款。 |
 
-永久测试账号为用户 ID 2，必须保留；密码、API Key、Token 和 Cookie 只在钥匙串或服务器私有配置中，不出现在本报告。Codex WS 调度已关闭；渠道A Claude 上游协议和源站 443 公网绕过仍是未关闭 P1，验收方案见 `docs/009-health.md` HI-1001、HI-1005。
+永久测试账号为用户 ID 2，必须保留；密码、API Key、Token 和 Cookie 只在钥匙串或服务器私有配置中，不出现在本报告。Codex WS 调度与源站 443 绕过已关闭；渠道A Claude 上游协议仍是未关闭 P1，链动保证金属于真实资金阻塞，见 `docs/009-health.md` HI-1001、HI-987。
 
 ## 结论
 

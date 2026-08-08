@@ -35,6 +35,10 @@ readonly JIYU_UPDATE_SOCKET_UNIT="/etc/systemd/system/sub2api-jiyu-update.socket
 readonly JIYU_UPDATE_SERVICE_UNIT="/etc/systemd/system/sub2api-jiyu-update@.service"
 readonly JIYU_STAGE_STATE_FILE="${STATE_DIR}/jiyu-stage-pending"
 readonly JIYU_STAGE_RESULT_FILE="${STATE_DIR}/jiyu-stage-last-result.json"
+readonly CLOUDFLARE_ORIGIN_NFT="${CONFIG_DIR}/jiyu-cloudflare-origin.nft"
+readonly CLOUDFLARE_ORIGIN_SERVICE="jiyu-cloudflare-origin.service"
+readonly CLOUDFLARE_ORIGIN_UNIT="/etc/systemd/system/${CLOUDFLARE_ORIGIN_SERVICE}"
+readonly CLOUDFLARE_ROLLBACK_UNIT="jiyu-cloudflare-origin-rollback"
 readonly SITE_BRAND_NAME="${SUB2API_SITE_NAME:-JIYU AI}"
 readonly SITE_BRAND_SUBTITLE="${SUB2API_SITE_SUBTITLE:-Unified AI API Gateway}"
 readonly RECHARGE_PAGE_SLUG="recharge-center"
@@ -282,14 +286,49 @@ postgresql_cluster_unit() {
   fail "找不到监听 5432 的 PostgreSQL 实例。"
 }
 
+prepare_postgresql_runtime() {
+  local pg_ctl
+  pg_ctl="$(pg_config --bindir)/pg_ctl"
+  [[ -x "$pg_ctl" ]] || fail "PostgreSQL pg_ctl 不可执行: ${pg_ctl}"
+
+  # PostgreSQL 只获得 /var/log 的穿越权限，不能读取其他日志目录内容。
+  chmod 1777 /dev/shm
+  setfacl -m u:postgres:--x,m::--x /var/log
+  runuser -u postgres -- test -x /var/log || fail "postgres 无法穿越 /var/log。"
+  runuser -u postgres -- test -w /var/log/postgresql || fail "postgres 无法写入日志目录。"
+  runuser -u postgres -- test -w /var/log/postgresql/postgresql-16-main.log || \
+    fail "postgres 无法写入当前集群日志。"
+}
+
+postgresql_preflight() {
+  local postgresql_unit pg_ctl
+  postgresql_unit="$(postgresql_cluster_unit)"
+  pg_ctl="$(pg_config --bindir)/pg_ctl"
+  [[ -x "$pg_ctl" ]] || fail "PostgreSQL pg_ctl 不可执行: ${pg_ctl}"
+  [[ "$(stat -c '%a' /dev/shm)" == "1777" ]] || fail "/dev/shm 权限不是 1777。"
+  runuser -u postgres -- test -x /var/log || fail "postgres 无法穿越 /var/log。"
+  runuser -u postgres -- test -w /var/log/postgresql || fail "postgres 无法写入日志目录。"
+  runuser -u postgres -- test -w /var/log/postgresql/postgresql-16-main.log || \
+    fail "postgres 无法写入当前集群日志。"
+  systemctl is-active --quiet "$postgresql_unit" || fail "PostgreSQL 服务未运行。"
+  runuser -u postgres -- psql -v ON_ERROR_STOP=1 -d sub2api -Atc 'SELECT 1' | grep -qx '1' || \
+    fail "PostgreSQL sub2api 数据库连通性检查失败。"
+}
+
+harden_postgresql_runtime() {
+  require_root
+  require_linux
+  prepare_postgresql_runtime
+  systemctl start "$(postgresql_cluster_unit)"
+  postgresql_preflight
+  log "PostgreSQL 运行权限和数据库连通性检查通过。"
+}
+
 configure_postgresql() {
   local database_password="$1"
   local postgresql_unit
   postgresql_unit="$(postgresql_cluster_unit)"
-  # 服务器收紧了 /var/log 权限，只给 postgres 增加穿越权限，不开放目录列表。
-  if ! runuser -u postgres -- test -x /var/log; then
-    setfacl -m u:postgres:--x /var/log
-  fi
+  prepare_postgresql_runtime
   systemctl enable --now "$postgresql_unit"
 
   if runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='sub2api'" | grep -qx '1'; then
@@ -725,6 +764,7 @@ SQL
 
 backup_database() {
   local destination="$1"
+  postgresql_preflight
   install -d -m 0700 -o root -g root "$destination"
   runuser -u postgres -- pg_dump --format=custom sub2api >"${destination}/sub2api.dump"
   cp -a "${INSTALL_DIR}/sub2api" "${INSTALL_DIR}/VERSION" "$ENV_FILE" \
@@ -779,6 +819,7 @@ update_sub2api() {
     fail "当前运行 JIYU 品牌构建；官方二进制只能先进入构建和验收流程，不能直接覆盖生产。"
   exec 9>"$LOCK_FILE"
   flock -n 9 || fail "已有 Sub2API 升级任务正在运行。"
+  postgresql_preflight
 
   [[ -x "${INSTALL_DIR}/sub2api" && -f "${INSTALL_DIR}/VERSION" ]] || \
     fail "未检测到可升级的 Sub2API。"
@@ -832,6 +873,7 @@ install_jiyu_build() {
 
   exec 9>"$LOCK_FILE"
   flock -n 9 || fail "已有 Sub2API 发布任务正在运行。"
+  postgresql_preflight
 
   local timestamp backup_dir
   timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -874,6 +916,7 @@ stage_jiyu_build() {
 
   exec 9>"$LOCK_FILE"
   flock -n 9 || fail "已有 Sub2API 发布任务正在运行。"
+  postgresql_preflight
 
   local timestamp backup_dir staged_binary staged_version expected_sha old_pid state_file
   timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -956,7 +999,7 @@ verify_staged_jiyu_build() {
     fi
     if [[ "$current_pid" -gt 0 && -r "/proc/${current_pid}/exe" ]]; then
       live_sha="$(sha256sum "/proc/${current_pid}/exe" 2>/dev/null | awk '{print $1}' || true)"
-      if [[ "$live_sha" == "$expected_sha" ]] && wait_for_health 45; then
+      if [[ "$live_sha" == "$expected_sha" ]] && postgresql_preflight && wait_for_health 45; then
         rm -f "$JIYU_STAGE_STATE_FILE"
         write_jiyu_stage_result applied "$version" "运行哈希与健康检查通过"
         log "JIYU 构建 ${version} 已由独立验证任务确认生效。"
@@ -1049,6 +1092,7 @@ enable_managed_web_updates() {
   local manifest_url="${3:-}"
   [[ -f "$broker_source" ]] || fail "请提供更新代理脚本路径。"
   [[ "$manifest_url" =~ ^https:// ]] || fail "兼容包清单必须使用 HTTPS。"
+  postgresql_preflight
 
   install -m 0755 -o root -g root "$broker_source" "$JIYU_UPDATE_BROKER_PATH"
   install -d -m 0750 -o root -g sub2api "$CONFIG_DIR"
@@ -1376,6 +1420,130 @@ purge_newapi() {
   log "Oracle 上的旧 New-API 数据、密钥、二进制、服务定义和同名本地备份已清理。"
 }
 
+write_cloudflare_origin_policy() {
+  local temporary_dir="$1"
+  local ipv4_file="${temporary_dir}/ips-v4"
+  local ipv6_file="${temporary_dir}/ips-v6"
+  curl -fsSL --retry 3 --retry-all-errors https://www.cloudflare.com/ips-v4 -o "$ipv4_file"
+  curl -fsSL --retry 3 --retry-all-errors https://www.cloudflare.com/ips-v6 -o "$ipv6_file"
+
+  python3 - "$ipv4_file" "$ipv6_file" <<'PY'
+import ipaddress
+import pathlib
+import sys
+
+for path_value, version, minimum in ((sys.argv[1], 4, 15), (sys.argv[2], 6, 7)):
+    path = pathlib.Path(path_value)
+    networks = []
+    for line in path.read_text(encoding="ascii").splitlines():
+        value = line.strip()
+        if not value:
+            continue
+        network = ipaddress.ip_network(value, strict=True)
+        if network.version != version:
+            raise SystemExit(f"Cloudflare IPv{version} 列表包含错误地址族")
+        networks.append(str(network))
+    if len(networks) < minimum or len(networks) != len(set(networks)):
+        raise SystemExit(f"Cloudflare IPv{version} 列表数量或唯一性异常")
+    path.write_text("\n".join(networks) + "\n", encoding="ascii")
+PY
+
+  local ipv4_elements ipv6_elements temporary_policy
+  ipv4_elements="$(paste -sd, "$ipv4_file")"
+  ipv6_elements="$(paste -sd, "$ipv6_file")"
+  temporary_policy="${temporary_dir}/jiyu-cloudflare-origin.nft"
+  cat >"$temporary_policy" <<NFT
+table inet jiyu_cloudflare_origin {
+  set cloudflare_v4 {
+    type ipv4_addr
+    flags interval
+    elements = { ${ipv4_elements} }
+  }
+
+  set cloudflare_v6 {
+    type ipv6_addr
+    flags interval
+    elements = { ${ipv6_elements} }
+  }
+
+  chain input {
+    type filter hook input priority -190; policy accept;
+    iifname "lo" tcp dport 443 accept
+    iifname "tailscale0" tcp dport 443 accept
+    ip saddr @cloudflare_v4 tcp dport 443 accept
+    ip6 saddr @cloudflare_v6 tcp dport 443 accept
+    tcp dport 443 drop
+  }
+}
+NFT
+  nft -c -f "$temporary_policy"
+  install -d -m 0750 -o root -g root "$CONFIG_DIR"
+  install -m 0600 -o root -g root "$temporary_policy" "$CLOUDFLARE_ORIGIN_NFT"
+}
+
+apply_cloudflare_origin_443() {
+  require_root
+  require_linux
+  require_command curl
+  require_command nft
+  require_command python3
+  require_command systemd-run
+
+  local temporary_dir
+  temporary_dir="$(mktemp -d)"
+  write_cloudflare_origin_policy "$temporary_dir"
+  rm -rf "$temporary_dir"
+
+  cat >"$CLOUDFLARE_ORIGIN_UNIT" <<UNIT
+[Unit]
+Description=Allow public HTTPS only from Cloudflare for JIYU vhosts
+After=network-pre.target
+Before=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=-/usr/sbin/nft delete table inet jiyu_cloudflare_origin
+ExecStart=/usr/sbin/nft -f ${CLOUDFLARE_ORIGIN_NFT}
+ExecStop=-/usr/sbin/nft delete table inet jiyu_cloudflare_origin
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  chmod 0644 "$CLOUDFLARE_ORIGIN_UNIT"
+  systemctl daemon-reload
+  systemctl enable "$CLOUDFLARE_ORIGIN_SERVICE" >/dev/null
+  systemctl stop "${CLOUDFLARE_ROLLBACK_UNIT}.timer" >/dev/null 2>&1 || true
+  systemd-run --unit="$CLOUDFLARE_ROLLBACK_UNIT" --on-active=5m \
+    --property=Type=oneshot --collect \
+    /usr/bin/systemctl disable --now "$CLOUDFLARE_ORIGIN_SERVICE" >/dev/null
+  systemctl restart "$CLOUDFLARE_ORIGIN_SERVICE"
+  systemctl is-active --quiet "$CLOUDFLARE_ORIGIN_SERVICE" || \
+    fail "Cloudflare 443 源站策略未能启动，自动回滚仍保持生效。"
+  verify_public_health || fail "Cloudflare 443 策略应用后公网健康失败，等待自动回滚。"
+  log "443 已仅允许 Cloudflare、loopback 和 Tailscale；5 分钟自动回滚已启动，外部验收后必须执行确认命令。"
+}
+
+confirm_cloudflare_origin_443() {
+  require_root
+  require_linux
+  systemctl is-active --quiet "$CLOUDFLARE_ORIGIN_SERVICE" || fail "Cloudflare 443 源站策略未运行。"
+  nft list table inet jiyu_cloudflare_origin >/dev/null || fail "Cloudflare 443 nftables 表不存在。"
+  verify_public_health || fail "公网健康检查失败，拒绝取消自动回滚。"
+  systemctl stop "${CLOUDFLARE_ROLLBACK_UNIT}.timer" >/dev/null 2>&1 || true
+  systemctl reset-failed "${CLOUDFLARE_ROLLBACK_UNIT}.service" >/dev/null 2>&1 || true
+  log "Cloudflare 443 源站策略已确认，自动回滚计时器已取消。"
+}
+
+rollback_cloudflare_origin_443() {
+  require_root
+  require_linux
+  systemctl stop "${CLOUDFLARE_ROLLBACK_UNIT}.timer" >/dev/null 2>&1 || true
+  systemctl disable --now "$CLOUDFLARE_ORIGIN_SERVICE" >/dev/null 2>&1 || true
+  nft delete table inet jiyu_cloudflare_origin >/dev/null 2>&1 || true
+  log "Cloudflare 443 源站策略已撤销，443 恢复由原有防火墙规则管理。"
+}
+
 show_status() {
   local installed_version="未安装"
   if [[ -f "${INSTALL_DIR}/VERSION" ]]; then
@@ -1386,6 +1554,9 @@ show_status() {
   log "专用 Redis: $(systemctl is-active "$REDIS_SERVICE" 2>/dev/null || true)"
   log "自动更新定时器: $(systemctl is-active "$UPDATE_TIMER" 2>/dev/null || true)"
   log "每日备份定时器: $(systemctl is-active "$BACKUP_TIMER" 2>/dev/null || true)"
+  log "Cloudflare 443 源站策略: $(systemctl is-active "$CLOUDFLARE_ORIGIN_SERVICE" 2>/dev/null || true)"
+  postgresql_preflight
+  log "PostgreSQL 预检: 通过"
   if curl -fsS --max-time 3 "$HEALTH_URL" >/dev/null 2>&1; then
     log "内网健康检查: 通过"
   else
@@ -1422,6 +1593,10 @@ usage() {
   docs-page           重新应用文档入口和 CC Switch 下载、导入说明
   upstream-allowlist    重新应用两个指定上游的安全域名白名单
   harden-apache      禁止浏览器直接更新或回滚生产二进制
+  postgres-preflight 修复 PostgreSQL 最小运行权限并验证数据库连通性
+  cloudflare-origin-443  仅允许 Cloudflare、loopback、Tailscale 访问 443，并启动 5 分钟回滚
+  confirm-cloudflare-origin-443  外部验收后取消 443 自动回滚
+  rollback-cloudflare-origin-443  撤销 443 Cloudflare 源站策略
   responses-websocket  修复 Codex Responses WebSocket 的 Apache 代理顺序
   openai-ws-http-bridge  启用 API Key 账号的官方 HTTP 桥接模式路由
   openai-ws-legacy       关闭模式路由，回滚到旧版账号传输判定
@@ -1483,6 +1658,18 @@ main() {
       ;;
     harden-apache)
       harden_apache_admin_updates
+      ;;
+    postgres-preflight)
+      harden_postgresql_runtime
+      ;;
+    cloudflare-origin-443)
+      apply_cloudflare_origin_443
+      ;;
+    confirm-cloudflare-origin-443)
+      confirm_cloudflare_origin_443
+      ;;
+    rollback-cloudflare-origin-443)
+      rollback_cloudflare_origin_443
       ;;
     responses-websocket)
       repair_apache_responses_websocket_proxy
