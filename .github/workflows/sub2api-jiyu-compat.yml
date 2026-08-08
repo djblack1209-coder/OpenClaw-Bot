@@ -1,0 +1,119 @@
+name: JIYU Sub2API compatibility package
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_tag:
+        description: Official Sub2API tag to adapt, for example v0.1.173
+        required: false
+        type: string
+  schedule:
+    - cron: '17 2 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout JIYU repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Resolve official tag
+        id: release
+        env:
+          INPUT_TAG: ${{ inputs.upstream_tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$INPUT_TAG"
+          if [ -z "$tag" ]; then
+            tag="$(gh api repos/Wei-Shaw/sub2api/releases/latest --jq .tag_name)"
+          fi
+          case "$tag" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "invalid upstream tag" >&2; exit 1 ;;
+          esac
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Stop when this tag was already adapted
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: jiyu-${{ steps.release.outputs.tag }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "${RELEASE_TAG} already exists"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Clone official source at the resolved tag
+        if: steps.existing.outputs.skip != 'true'
+        env:
+          UPSTREAM_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          git clone --depth 1 --branch "$UPSTREAM_TAG" https://github.com/Wei-Shaw/sub2api.git upstream
+          cp scripts/sub2api-jiyu-v0.1.172.patch upstream/
+          git -C upstream apply sub2api-jiyu-v0.1.172.patch
+
+      - name: Setup Node and pnpm
+        if: steps.existing.outputs.skip != 'true'
+        uses: pnpm/action-setup@7088e561eb65bb68695d245aa206f005ef30921d # v4.1.0
+        with:
+          version: 9
+
+      - name: Setup runtimes
+        if: steps.existing.outputs.skip != 'true'
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '20'
+          cache: pnpm
+          cache-dependency-path: upstream/frontend/pnpm-lock.yaml
+
+      - name: Setup Go
+        if: steps.existing.outputs.skip != 'true'
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version-file: upstream/backend/go.mod
+          cache-dependency-path: upstream/backend/go.sum
+
+      - name: Build and run focused gates
+        if: steps.existing.outputs.skip != 'true'
+        env:
+          UPSTREAM_TAG: ${{ steps.release.outputs.tag }}
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          pnpm --dir frontend install --frozen-lockfile
+          pnpm --dir frontend run typecheck
+          pnpm --dir frontend run build
+          (cd backend && go test ./internal/service -run 'TestUpdateService' -count=1)
+          echo "v${UPSTREAM_TAG#v}-jiyu.${GITHUB_RUN_NUMBER}" > backend/cmd/server/VERSION
+          (cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w -X main.Version=$(cat cmd/server/VERSION)" -o ../../sub2api-jiyu-linux-arm64 ./cmd/server)
+
+      - name: Create integrity manifest and release
+        if: steps.existing.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          version="v${UPSTREAM_TAG#v}-jiyu.${GITHUB_RUN_NUMBER}"
+          release_tag="jiyu-${UPSTREAM_TAG}"
+          sha256="$(sha256sum sub2api-jiyu-linux-arm64 | awk '{print $1}')"
+          size="$(wc -c < sub2api-jiyu-linux-arm64 | tr -d ' ')"
+          artifact_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${release_tag}/sub2api-jiyu-linux-arm64"
+          jq -n \
+            --arg version "$version" \
+            --arg upstream_version "$UPSTREAM_TAG" \
+            --arg artifact_url "$artifact_url" \
+            --arg sha256 "$sha256" \
+            --argjson size "$size" \
+            '{schema_version:1,version:$version,upstream_version:$upstream_version,platform:"linux",arch:"arm64",artifact_url:$artifact_url,sha256:$sha256,size:$size}' \
+            > jiyu-update-manifest.json
+          gh release create "$release_tag" sub2api-jiyu-linux-arm64 jiyu-update-manifest.json \
+            --title "JIYU compatibility package ${UPSTREAM_TAG}" \
+            --notes "Built from ${UPSTREAM_TAG} with the reviewed JIYU patch; install only through the root broker."

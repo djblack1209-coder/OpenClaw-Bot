@@ -27,6 +27,12 @@ readonly NEWAPI_SERVICE="openclaw-newapi.service"
 readonly DOMAIN="${SUB2API_PUBLIC_DOMAIN:-jiyu.245334.xyz}"
 readonly HEALTH_URL="http://127.0.0.1:18080/health"
 readonly LOCK_FILE="/run/lock/sub2api-update.lock"
+readonly JIYU_UPDATE_BROKER_PATH="/usr/local/sbin/sub2api-jiyu-update-broker"
+readonly JIYU_UPDATE_CONFIG="${CONFIG_DIR}/jiyu-update.conf"
+readonly JIYU_UPDATE_SUDOERS="/etc/sudoers.d/sub2api-jiyu-update"
+readonly JIYU_UPDATE_DROPIN="/etc/systemd/system/${SUB2API_SERVICE}.d/jiyu-update.conf"
+readonly JIYU_STAGE_STATE_FILE="${STATE_DIR}/jiyu-stage-pending"
+readonly JIYU_STAGE_RESULT_FILE="${STATE_DIR}/jiyu-stage-last-result.json"
 readonly SITE_BRAND_NAME="${SUB2API_SITE_NAME:-JIYU AI}"
 readonly SITE_BRAND_SUBTITLE="${SUB2API_SITE_SUBTITLE:-Unified AI API Gateway}"
 readonly RECHARGE_PAGE_SLUG="recharge-center"
@@ -815,6 +821,129 @@ install_jiyu_build() {
   show_status
 }
 
+stage_jiyu_build() {
+  require_root
+  require_linux
+  require_command flock
+  require_command systemd-run
+  local candidate="${2:-}"
+  local version="${SUB2API_JIYU_VERSION:-}"
+  [[ -n "$candidate" && -f "$candidate" && -x "$candidate" ]] || \
+    fail "请提供已验证且可执行的 JIYU Linux 二进制路径。"
+  validate_jiyu_version "$version"
+  file "$candidate" | grep -Eq 'ELF 64-bit.*(ARM aarch64|x86-64)' || \
+    fail "JIYU 二进制不是受支持的 Linux ELF。"
+
+  exec 9>"$LOCK_FILE"
+  flock -n 9 || fail "已有 Sub2API 发布任务正在运行。"
+
+  local timestamp backup_dir staged_binary staged_version expected_sha old_pid state_file
+  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  backup_dir="${BACKUP_ROOT}/jiyu-stage-${version}-${timestamp}"
+  backup_database "$backup_dir"
+  staged_binary="${INSTALL_DIR}/.sub2api-jiyu-stage"
+  staged_version="${INSTALL_DIR}/.VERSION-jiyu-stage"
+
+  install -m 0755 -o sub2api -g sub2api "$candidate" "$staged_binary"
+  printf '%s\n' "$version" >"$staged_version"
+  chown sub2api:sub2api "$staged_version"
+  expected_sha="$(sha256sum "$staged_binary" | awk '{print $1}')"
+  old_pid="$(systemctl show --property MainPID --value "$SUB2API_SERVICE")"
+  [[ "$old_pid" =~ ^[0-9]+$ ]] || old_pid=0
+  install -d -m 0700 -o root -g root "$STATE_DIR"
+  state_file="$(mktemp)"
+  printf 'VERSION=%s\nBACKUP_DIR=%s\nEXPECTED_SHA=%s\nOLD_PID=%s\n' \
+    "$version" "$backup_dir" "$expected_sha" "$old_pid" >"$state_file"
+  install -m 0600 -o root -g root "$state_file" "$JIYU_STAGE_STATE_FILE"
+  rm -f "$state_file"
+  mv -f "$staged_binary" "${INSTALL_DIR}/sub2api"
+  mv -f "$staged_version" "${INSTALL_DIR}/VERSION"
+  if ! systemd-run \
+    --unit="sub2api-jiyu-stage-verify-${timestamp,,}" \
+    --on-active=5s \
+    --property=Type=oneshot \
+    --collect \
+    "$MANAGER_PATH" verify-jiyu-stage >/dev/null; then
+    install -m 0755 -o sub2api -g sub2api "${backup_dir}/sub2api" "${INSTALL_DIR}/sub2api"
+    install -m 0644 -o sub2api -g sub2api "${backup_dir}/VERSION" "${INSTALL_DIR}/VERSION"
+    rm -f "$JIYU_STAGE_STATE_FILE"
+    fail "无法启动独立验证任务，已撤销暂存。"
+  fi
+  log "JIYU 构建 ${version} 已原子暂存；WebUI 重启后将独立核对运行哈希和健康状态，失败自动回滚。"
+}
+
+write_jiyu_stage_result() {
+  local status="$1"
+  local version="$2"
+  local message="$3"
+  local temporary_file
+  temporary_file="$(mktemp)"
+  jq -n \
+    --arg status "$status" \
+    --arg version "$version" \
+    --arg message "$message" \
+    --arg checked_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{status:$status,version:$version,message:$message,checked_at:$checked_at}' \
+    >"$temporary_file"
+  install -m 0600 -o root -g root "$temporary_file" "$JIYU_STAGE_RESULT_FILE"
+  rm -f "$temporary_file"
+}
+
+verify_staged_jiyu_build() {
+  require_root
+  require_linux
+  require_command jq
+  require_command sha256sum
+  [[ -f "$JIYU_STAGE_STATE_FILE" ]] || fail "没有等待验证的 JIYU 暂存构建。"
+
+  local version backup_dir expected_sha old_pid
+  version="$(sed -n 's/^VERSION=//p' "$JIYU_STAGE_STATE_FILE" | tail -n 1)"
+  backup_dir="$(sed -n 's/^BACKUP_DIR=//p' "$JIYU_STAGE_STATE_FILE" | tail -n 1)"
+  expected_sha="$(sed -n 's/^EXPECTED_SHA=//p' "$JIYU_STAGE_STATE_FILE" | tail -n 1)"
+  old_pid="$(sed -n 's/^OLD_PID=//p' "$JIYU_STAGE_STATE_FILE" | tail -n 1)"
+  validate_jiyu_version "$version"
+  [[ "$backup_dir" =~ ^${BACKUP_ROOT}/jiyu-stage-v[0-9]+\.[0-9]+\.[0-9]+-jiyu\.[0-9]+-[0-9]{8}T[0-9]{6}Z$ ]] || \
+    fail "暂存备份目录非法。"
+  [[ "$expected_sha" =~ ^[a-f0-9]{64}$ ]] || fail "暂存二进制哈希非法。"
+  [[ "$old_pid" =~ ^[0-9]+$ ]] || fail "暂存进程编号非法。"
+  [[ -x "${backup_dir}/sub2api" && -f "${backup_dir}/VERSION" && -f "${backup_dir}/sub2api.dump" ]] || \
+    fail "暂存回滚材料不完整。"
+
+  local attempt current_pid live_sha restart_seen=false post_restart_attempts=0
+  for ((attempt = 1; attempt <= 120; attempt += 1)); do
+    current_pid="$(systemctl show --property MainPID --value "$SUB2API_SERVICE" 2>/dev/null || printf '0')"
+    [[ "$current_pid" =~ ^[0-9]+$ ]] || current_pid=0
+    if [[ "$current_pid" != "$old_pid" ]]; then
+      restart_seen=true
+    fi
+    if [[ "$current_pid" -gt 0 && -r "/proc/${current_pid}/exe" ]]; then
+      live_sha="$(sha256sum "/proc/${current_pid}/exe" 2>/dev/null | awk '{print $1}' || true)"
+      if [[ "$live_sha" == "$expected_sha" ]] && wait_for_health 45; then
+        rm -f "$JIYU_STAGE_STATE_FILE"
+        write_jiyu_stage_result applied "$version" "运行哈希与健康检查通过"
+        log "JIYU 构建 ${version} 已由独立验证任务确认生效。"
+        return 0
+      fi
+    fi
+    if [[ "$restart_seen" == true ]]; then
+      post_restart_attempts=$((post_restart_attempts + 1))
+      [[ "$post_restart_attempts" -lt 18 ]] || break
+    fi
+    sleep 5
+  done
+
+  log "JIYU 构建 ${version} 未在时限内通过运行验证，正在自动回滚。"
+  systemctl stop "$SUB2API_SERVICE" || true
+  install -m 0755 -o sub2api -g sub2api "${backup_dir}/sub2api" "${INSTALL_DIR}/sub2api"
+  install -m 0644 -o sub2api -g sub2api "${backup_dir}/VERSION" "${INSTALL_DIR}/VERSION"
+  restore_database "${backup_dir}/sub2api.dump"
+  systemctl start "$SUB2API_SERVICE"
+  wait_for_health 90 || fail "暂存构建自动回滚后健康检查仍失败，需要人工查看 journalctl。"
+  rm -f "$JIYU_STAGE_STATE_FILE"
+  write_jiyu_stage_result rolled_back "$version" "新构建未通过运行哈希或健康检查，已恢复发布前版本和数据库"
+  log "JIYU 构建 ${version} 已自动回滚，生产服务恢复健康。"
+}
+
 check_update() {
   require_linux
   [[ -f "${INSTALL_DIR}/VERSION" ]] || fail "未检测到 Sub2API VERSION 文件。"
@@ -873,6 +1002,41 @@ APACHE
   apache2ctl configtest
   systemctl reload apache2.service
   log "已禁止浏览器直接更新或回滚生产二进制。"
+}
+
+enable_managed_web_updates() {
+  require_root
+  require_linux
+  require_command visudo
+  local broker_source="${2:-}"
+  local manifest_url="${3:-}"
+  [[ -f "$broker_source" ]] || fail "请提供更新代理脚本路径。"
+  [[ "$manifest_url" =~ ^https:// ]] || fail "兼容包清单必须使用 HTTPS。"
+
+  install -m 0755 -o root -g root "$broker_source" "$JIYU_UPDATE_BROKER_PATH"
+  install -d -m 0750 -o root -g sub2api "$CONFIG_DIR"
+  printf 'MANIFEST_URL=%s\n' "$manifest_url" >"$JIYU_UPDATE_CONFIG"
+  chown root:sub2api "$JIYU_UPDATE_CONFIG"
+  chmod 0640 "$JIYU_UPDATE_CONFIG"
+  printf 'sub2api ALL=(root) NOPASSWD: %s\n' "$JIYU_UPDATE_BROKER_PATH" >"$JIYU_UPDATE_SUDOERS"
+  chmod 0440 "$JIYU_UPDATE_SUDOERS"
+  visudo -cf "$JIYU_UPDATE_SUDOERS" >/dev/null
+
+  install -d -m 0755 "$(dirname "$JIYU_UPDATE_DROPIN")"
+  cat >"$JIYU_UPDATE_DROPIN" <<'SYSTEMD'
+[Service]
+Environment=SUB2API_JIYU_MANAGED_UPDATE=1
+SYSTEMD
+
+  if [[ -f "$APACHE_SITE" ]]; then
+    sed -i '/# JIYU-BLOCK-UPSTREAM-SELF-UPDATE:/,/^<\/LocationMatch>$/d' "$APACHE_SITE"
+    apache2ctl configtest
+    systemctl reload apache2.service
+  fi
+  systemctl daemon-reload
+  systemctl restart "$SUB2API_SERVICE"
+  wait_for_health 90 || fail "启用 WebUI 更新后服务健康检查失败。"
+  log "WebUI 已启用受限 JIYU 兼容包更新；浏览器不能向 root 代理传入命令或下载地址。"
 }
 
 backup_legacy_newapi() {
@@ -1095,6 +1259,9 @@ usage() {
   check-upstream     记录官方最新版，只告警不覆盖 JIYU 品牌构建
   update             仅在显式授权环境变量开启后执行官方二进制升级
   install-jiyu-build <path>  备份后发布已验证的 JIYU Linux 二进制，失败自动回滚
+  stage-jiyu-build <path>    校验、备份并原子暂存 JIYU 二进制，重启后独立验证并自动回滚
+  verify-jiyu-stage          内部入口：核对暂存构建运行哈希与健康状态
+  enable-web-update <broker> <manifest-url>  启用 WebUI 受限兼容包更新
   backup             立即生成数据库、页面、品牌、配置和二进制一致性备份
   brand              重新应用 JIYU AI 网站名称、副标题和 JY Logo
   brand-asset        重新发布邮件和文档使用的 JIYU AI 图形 Logo
@@ -1130,6 +1297,15 @@ main() {
       ;;
     install-jiyu-build)
       install_jiyu_build "$@"
+      ;;
+    stage-jiyu-build)
+      stage_jiyu_build "$@"
+      ;;
+    verify-jiyu-stage)
+      verify_staged_jiyu_build "$@"
+      ;;
+    enable-web-update)
+      enable_managed_web_updates "$@"
       ;;
     backup)
       daily_backup

@@ -5,6 +5,26 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
+## [2026-08-08] JIYU 生图渠道、受管 WebUI 更新与 CC Switch MCP
+> 领域: `frontend` | `backend` | `ai-pool` | `deploy` | `infra` | `docs`
+> 影响模块: `Sub2API`, `Images API`, `CC Switch`, `GitHub Actions`, `JIYU update`
+> 关联问题: HI-985, HI-994, HI-995, HI-996, HI-998
+### 变更内容
+- 生产建立渠道A/渠道B各一套 `gpt-image-2` 专用分组、账号、渠道和 300±30 秒监控；按老板确认的“上游每张价格绝对增加 `0.05`”执行，渠道A为 `0.05 → 0.10/张`，渠道B高质量组为 `0.07 → 0.12/张`。
+- 修复用户“渠道状态”仍混排的问题：管理表和用户卡片改为复用同一比较器，固定渠道A全部产品后接渠道B，生图排在各渠道文本产品之后。
+- 真实调用保留失败事实：渠道A返回上游 502，渠道B专用 Key 返回 401；未生成图片、未伪造绿色状态，也未把不可用能力公开为已闭环。
+- 新增锁定官方 MCP SDK `1.30.0` 的本机生图服务和一键安装器，替换 CC Switch 两个失效旧条目；Key 只从环境变量或 macOS 钥匙串读取，付费 POST 不自动重试，生产依赖审计为 0。
+- 将 WebUI 更新方案实现为 GitHub Actions 兼容包、SHA-256/大小清单、固定域名 root-only 代理和原子暂存；另起 systemd 任务在重启后验证运行哈希与健康状态，失败或 10 分钟未重启会恢复二进制、VERSION 与 PostgreSQL。保留旧版本安全失败关闭，待首个发布包与新后端部署后再启用。
+### 文件变更
+- `.github/workflows/sub2api-jiyu-compat.yml` — 从官方标签应用 JIYU 补丁、跑聚焦门、构建 ARM64 包并发布校验清单。
+- `scripts/sub2api_jiyu_update_broker.sh`、`scripts/sub2api_oracle_manage.sh`、`scripts/sub2api-jiyu-v0.1.172.patch` — 受管更新代理、暂存/启用命令和 WebUI 后端入口。
+- `scripts/jiyu-image-mcp/`、`scripts/install_jiyu_image_mcp.sh` — 锁定依赖的生图 MCP 与 CC Switch/钥匙串安装入口。
+- `docs/006-registries.md`、`docs/007-operations.md`、`docs/009-health.md`、`docs/053-jiyu-growth-payment-image-update-plan.md`、`docs/087-jiyu-image-mcp-guide.md`、`docs/012-handoff.md` — 同步合同、操作步骤、风险和交接。
+### 验证
+- JIYU 补丁在官方 `v0.1.172` 干净提交上通过 `git apply --check`；上游更新服务 unit 用例 `1/1`、排序/端点/CC Switch 前端用例 `13/13`、Vue 类型检查、运维脚本合同 `4/4`、工作流 YAML 与文档门均通过。
+- 生图 MCP `tools/list` 仅返回 `generate_image`，缺少钥匙串 Key 时明确失败关闭；SDK `1.30.0` 锁文件生产依赖审计为 `0 vulnerabilities`。
+- 真实 Chrome 重新加载确认两个生图分组、账号、渠道与 300±30 秒监控已保存，渠道B价格为 `0.12/张`；上游 502/401 继续作为未解决风险，不用重复付费请求伪造成功。
+
 ## [2026-08-08] JIYU 双端点、监控排序和生图 MCP 方案
 > 领域: `frontend` | `ai-pool` | `deploy` | `docs`
 > 影响模块: `Sub2API`, `channel monitor`, `API keys`, `CC Switch`, `JIYU update`
