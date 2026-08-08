@@ -51,17 +51,13 @@
 <body>
 <main>
   <h1>JIYU Sub2 补号助手</h1>
-  <p>直接粘贴卖家完整发货内容。支持分隔行、邮箱/密码/2FA 标签块和 JSON；解析后只显示掩码邮箱，2FA 验证码只在本机生成。</p>
+  <p>直接粘贴自有账号的完整发货内容。支持分隔行、邮箱/密码/2FA 标签块和 JSON；助手会识别 Plus/Pro 后导入对应自营号池，解析后只显示掩码邮箱，2FA 验证码只在本机生成。</p>
   <div class="notice" id="notice">遇到 CAPTCHA、短信、实体手机号或风控时，助手会暂停并保留隔离登录窗口，完成后自动继续。商品要求绑定海外实体手机号的步骤不能全自动。</div>
   <section class="panel">
     <label for="payload"><strong>卖家发货原文</strong></label>
     <textarea id="payload" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="email----password----totp_secret&#10;&#10;或直接粘贴带邮箱、密码、2FA/TOTP 标签的发货内容"></textarea>
     <div class="actions">
-      <label for="target-channel"><strong>目标渠道</strong></label>
-      <select id="target-channel" aria-label="目标渠道">
-        <option value="A" selected>渠道A</option>
-        <option value="B">渠道B</option>
-      </select>
+      <span class="pool-label"><strong>入库位置</strong> JIYU Plus/Pro 自营号池</span>
       <button id="parse" type="button">解析并检查</button>
       <button id="start" type="button" disabled>开始串行补号</button>
       <button id="stop" class="danger" type="button" disabled>停止并清除内存凭据</button>

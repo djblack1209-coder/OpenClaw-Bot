@@ -200,8 +200,8 @@ def find_duplicate_account(accounts: list[dict[str, Any]], token_info: dict[str,
     return None
 
 
-def matching_plan_groups(groups: list[dict[str, Any]], plan_type: str, target_channel: str) -> list[dict[str, Any]]:
-    """按 OAuth 计划和批次渠道匹配唯一启用的 JIYU OpenAI 分组。"""
+def matching_plan_groups(groups: list[dict[str, Any]], plan_type: str) -> list[dict[str, Any]]:
+    """按 OAuth 计划匹配唯一启用的 JIYU OpenAI 自营号池。"""
     normalized_plan = plan_type.strip().lower()
     plan = "plus" if "plus" in normalized_plan else "pro" if "pro" in normalized_plan else ""
     if not plan:
@@ -215,15 +215,15 @@ def matching_plan_groups(groups: list[dict[str, Any]], plan_type: str, target_ch
             and name.startswith("JIYU")
             and "openai" in name.casefold()
             and plan in name.casefold()
-            and f"渠道{target_channel}" in name
+            and "自营号池" in name
             and isinstance(group.get("id"), int)
         ):
             matches.append({"id": group["id"], "name": name})
     return matches
 
 
-def manual_openai_group_options(groups: list[dict[str, Any]], target_channel: str) -> list[dict[str, Any]]:
-    """计划未知时只提供批次目标渠道内的 Plus/Pro 分组。"""
+def manual_openai_group_options(groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """计划未知时只提供 Plus/Pro 自营号池分组。"""
     options: list[dict[str, Any]] = []
     for group in groups:
         name = str(group.get("name") or "")
@@ -233,7 +233,7 @@ def manual_openai_group_options(groups: list[dict[str, Any]], target_channel: st
             and group.get("status") == "active"
             and name.startswith("JIYU")
             and "openai" in normalized
-            and f"渠道{target_channel}" in name
+            and "自营号池" in name
             and ("plus" in normalized or "pro" in normalized)
             and isinstance(group.get("id"), int)
         ):
