@@ -31,6 +31,8 @@ readonly JIYU_UPDATE_BROKER_PATH="/usr/local/sbin/sub2api-jiyu-update-broker"
 readonly JIYU_UPDATE_CONFIG="${CONFIG_DIR}/jiyu-update.conf"
 readonly JIYU_UPDATE_SUDOERS="/etc/sudoers.d/sub2api-jiyu-update"
 readonly JIYU_UPDATE_DROPIN="/etc/systemd/system/${SUB2API_SERVICE}.d/jiyu-update.conf"
+readonly JIYU_UPDATE_SOCKET_UNIT="/etc/systemd/system/sub2api-jiyu-update.socket"
+readonly JIYU_UPDATE_SERVICE_UNIT="/etc/systemd/system/sub2api-jiyu-update@.service"
 readonly JIYU_STAGE_STATE_FILE="${STATE_DIR}/jiyu-stage-pending"
 readonly JIYU_STAGE_RESULT_FILE="${STATE_DIR}/jiyu-stage-last-result.json"
 readonly SITE_BRAND_NAME="${SUB2API_SITE_NAME:-JIYU AI}"
@@ -1043,7 +1045,6 @@ APACHE
 enable_managed_web_updates() {
   require_root
   require_linux
-  require_command visudo
   local broker_source="${2:-}"
   local manifest_url="${3:-}"
   [[ -f "$broker_source" ]] || fail "请提供更新代理脚本路径。"
@@ -1052,11 +1053,50 @@ enable_managed_web_updates() {
   install -m 0755 -o root -g root "$broker_source" "$JIYU_UPDATE_BROKER_PATH"
   install -d -m 0750 -o root -g sub2api "$CONFIG_DIR"
   printf 'MANIFEST_URL=%s\n' "$manifest_url" >"$JIYU_UPDATE_CONFIG"
-  chown root:sub2api "$JIYU_UPDATE_CONFIG"
-  chmod 0640 "$JIYU_UPDATE_CONFIG"
-  printf 'sub2api ALL=(root) NOPASSWD: %s\n' "$JIYU_UPDATE_BROKER_PATH" >"$JIYU_UPDATE_SUDOERS"
-  chmod 0440 "$JIYU_UPDATE_SUDOERS"
-  visudo -cf "$JIYU_UPDATE_SUDOERS" >/dev/null
+  chown root:root "$JIYU_UPDATE_CONFIG"
+  chmod 0600 "$JIYU_UPDATE_CONFIG"
+  rm -f "$JIYU_UPDATE_SUDOERS"
+
+  cat >"$JIYU_UPDATE_SOCKET_UNIT" <<'SYSTEMD_SOCKET'
+[Unit]
+Description=JIYU managed update activation socket
+
+[Socket]
+ListenStream=/run/sub2api-jiyu-update.sock
+SocketUser=root
+SocketGroup=sub2api
+SocketMode=0660
+DirectoryMode=0755
+Accept=yes
+MaxConnections=1
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target
+SYSTEMD_SOCKET
+
+  cat >"$JIYU_UPDATE_SERVICE_UNIT" <<'SYSTEMD_SERVICE'
+[Unit]
+Description=JIYU managed update request
+After=network-online.target
+
+[Service]
+Type=exec
+User=root
+Group=root
+ExecStart=/usr/local/sbin/sub2api-jiyu-update-broker
+StandardInput=socket
+StandardOutput=socket
+StandardError=socket
+TimeoutStartSec=20min
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=full
+ReadWritePaths=/opt/sub2api /var/backups/sub2api /var/lib/sub2api-ops /run/lock
+SYSTEMD_SERVICE
+
+  chmod 0644 "$JIYU_UPDATE_SOCKET_UNIT" "$JIYU_UPDATE_SERVICE_UNIT"
 
   install -d -m 0755 "$(dirname "$JIYU_UPDATE_DROPIN")"
   cat >"$JIYU_UPDATE_DROPIN" <<'SYSTEMD'
@@ -1070,6 +1110,9 @@ SYSTEMD
     reload_apache_with_recovery || fail "启用 WebUI 更新时 Apache 未能恢复公网服务。"
   fi
   systemctl daemon-reload
+  systemctl enable sub2api-jiyu-update.socket >/dev/null
+  systemctl restart sub2api-jiyu-update.socket
+  systemctl is-active --quiet sub2api-jiyu-update.socket || fail "JIYU 更新套接字未能启动。"
   systemctl restart "$SUB2API_SERVICE"
   wait_for_health 90 || fail "启用 WebUI 更新后服务健康检查失败。"
   log "WebUI 已启用受限 JIYU 兼容包更新；浏览器不能向 root 代理传入命令或下载地址。"

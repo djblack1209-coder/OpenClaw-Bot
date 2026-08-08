@@ -4,9 +4,9 @@ index 82df3bb..eae4fe6 100644
 +++ b/backend/internal/service/update_service.go
 @@ -12,6 +12,7 @@ import (
  	"io"
++	"net"
  	"net/url"
  	"os"
-+	"os/exec"
  	"path/filepath"
  	"runtime"
  	"sort"
@@ -22,28 +22,49 @@ index 82df3bb..eae4fe6 100644
  	info, err := s.CheckUpdate(ctx, true)
  	if err != nil {
  		return err
-@@ -175,6 +181,26 @@ func (s *UpdateService) PerformUpdate(ctx context.Context) error {
+@@ -175,6 +181,47 @@ func (s *UpdateService) PerformUpdate(ctx context.Context) error {
  	return s.applyReleaseAssets(ctx, info.ReleaseInfo.Assets)
  }
  
 +func performJiyuManagedUpdate(ctx context.Context) error {
-+	const helper = "/usr/local/sbin/sub2api-jiyu-update-broker"
-+	cmd := exec.CommandContext(ctx, "sudo", "-n", helper)
-+	output, err := cmd.CombinedOutput()
-+	message := strings.TrimSpace(string(output))
-+	if len(message) > 800 {
-+		message = message[:800]
-+	}
++	const socketPath = "/run/sub2api-jiyu-update.sock"
++	const maxOutputBytes = 4096
++	dialer := net.Dialer{}
++	conn, err := dialer.DialContext(ctx, "unix", socketPath)
 +	if err != nil {
-+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 3 {
-+			return ErrNoUpdateAvailable
-+		}
-+		if message == "" {
-+			message = "JIYU compatibility package is unavailable"
-+		}
-+		return fmt.Errorf("managed update failed: %s", message)
++		return fmt.Errorf("managed update service unavailable: %w", err)
 +	}
-+	return nil
++	defer conn.Close()
++	if err := conn.SetDeadline(time.Now().Add(15 * time.Minute)); err != nil {
++		return fmt.Errorf("managed update deadline failed: %w", err)
++	}
++	output, err := io.ReadAll(io.LimitReader(conn, maxOutputBytes+1))
++	if err != nil {
++		return fmt.Errorf("managed update response failed: %w", err)
++	}
++	if len(output) > maxOutputBytes {
++		return fmt.Errorf("managed update response exceeded safety limit")
++	}
++	message := strings.TrimSpace(string(output))
++	parts := strings.SplitN(message, "\n", 2)
++	status := parts[0]
++	details := ""
++	if len(parts) == 2 {
++		details = strings.TrimSpace(parts[1])
++	}
++	switch status {
++	case "JIYU_UPDATE_STATUS=noop":
++		return ErrNoUpdateAvailable
++	case "JIYU_UPDATE_STATUS=staged":
++		return nil
++	case "JIYU_UPDATE_STATUS=error":
++		if details == "" {
++			details = "JIYU compatibility package is unavailable"
++		}
++		return fmt.Errorf("managed update failed: %s", details)
++	default:
++		return fmt.Errorf("managed update returned an invalid response")
++	}
 +}
 +
  // applyReleaseAssets downloads the platform archive from the given release assets,

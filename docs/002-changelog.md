@@ -11,16 +11,16 @@
 > 关联问题: HI-1007, HI-1008, HI-1009
 ### 变更内容
 - JIYU 构建的版本面板始终提供“检查并安装”入口，不再依赖官方基础版的 `hasUpdate`；代理按完整 JIYU 构建号比较，使同一官方版本下的新修订可安装，已是最新时安全返回无更新。
-- 后端把代理的“已是最新”退出码映射到官方 `ErrNoUpdateAvailable`，沿用现有 HTTP 200 无操作响应，不把正常检查误报为更新失败。
+- 生产真实点击发现 `sub2api.service` 的 `NoNewPrivileges` 会按设计阻止旧实现调用 `sudo`；更新边界改为 root 管理、`sub2api` 组只可连接的 systemd Unix 激活套接字。后端只识别 `noop`、`staged`、`error` 三种固定状态，`noop` 映射到官方 `ErrNoUpdateAvailable`，不恢复提权能力，也不接受浏览器传入命令、版本或下载地址。
 - 把本项目全部 Apache 配置维护入口收口到同一恢复函数：先 `configtest`，再 graceful reload 并复核公网 HTTPS；失败时自动 full restart 后再次复核。旧 New-API 回滚继续使用自己的 `/api/status` 验收地址。
 - 没有修改官方更新实现、定价、渠道、分组、数据库结构或上游线路。
 ### 文件变更
 - `scripts/sub2api-jiyu-v0.1.172.patch`、`scripts/sub2api_jiyu_update_broker.sh` — JIYU 更新入口、完整构建号比较和安全无操作语义。
-- `scripts/sub2api_oracle_manage.sh`、`scripts/sub2api_ops_scripts.test.mjs` — Apache reload 自动恢复与原有 4 项聚焦合同。
+- `scripts/sub2api_oracle_manage.sh`、`scripts/sub2api_ops_scripts.test.mjs` — Apache reload 自动恢复、按需更新套接字和原有 4 项聚焦合同。
 - `docs/002-changelog.md`、`docs/007-operations.md`、`docs/009-health.md`、`docs/012-handoff.md`、`docs/086-release-evidence.md` — 同步故障根因、操作合同和待发布验收项。
 ### 验证
 - 旧提交红灯为 `2 passed / 2 failed`，当前代码绿灯为 `4 passed / 0 failed`；Bash 语法和 diff 检查通过。
-- 生产变更前基线为 `v0.1.172-jiyu.31237926226`，Sub2API、Redis、Apache active，Apache `Syntax OK`，公网 `/health` 连续 `5/5` 返回 200；兼容包 CI 与生产更新结果将在受管发布后回填。
+- 第一版兼容包 CI `31249771695` 成功，生产已更新为 `v0.1.172-jiyu.31249771695`，账号页 12 个名称不再含供货域名链接且 Anthropic/OpenAI/Grok 标签保留；真实点击同时暴露并推动套接字修复。非特权生产预演已返回 `JIYU_UPDATE_STATUS=noop`，新二进制 CI 与最终 WebUI 验收将在受管发布后回填。
 
 ## [2026-08-08] JIYU Codex WebSocket 桥接与源站收口取证
 > 领域: `backend` | `ai-pool` | `deploy` | `infra` | `docs`

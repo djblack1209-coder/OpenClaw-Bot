@@ -54,7 +54,8 @@ test('充值页无 CSP iframe，WebUI 更新只能进入固定 root 代理', asy
   assert.doesNotMatch(content, /window\.html/);
   assert.match(content, /LocationMatch "\^\/api\/v1\/admin\/system\/\(update\|rollback\)\$"/);
   assert.match(content, /Require all denied/);
-  assert.match(content, /sub2api ALL=\(root\) NOPASSWD/);
+  assert.match(content, /ListenStream=\/run\/sub2api-jiyu-update\.sock/);
+  assert.doesNotMatch(content, /sub2api ALL=\(root\) NOPASSWD/);
   assert.match(content, /SUB2API_JIYU_MANAGED_UPDATE=1/);
   assert.match(content, /JIYU-RESPONSES-WEBSOCKET/);
   assert.match(content, /upgrade=websocket retry=0 timeout=120/);
@@ -70,7 +71,12 @@ test('充值页无 CSP iframe，WebUI 更新只能进入固定 root 代理', asy
   assert.match(brokerContent, /兼容包大小不一致/);
   assert.match(brokerContent, /trap cleanup EXIT/);
   assert.match(brokerContent, /\[\[ "\$current" == "\$version" \]\]/);
-  assert.match(brokerContent, /return 3/);
+  assert.match(brokerContent, /JIYU_UPDATE_STATUS=noop/);
+  assert.match(brokerContent, /JIYU_UPDATE_STATUS=staged/);
+  assert.match(brokerContent, /stage_output=.*stage-jiyu-build/);
+  assert.ok(
+    brokerContent.indexOf('stage_output=') < brokerContent.indexOf("printf 'JIYU_UPDATE_STATUS=staged"),
+  );
   assert.doesNotMatch(brokerContent, /current_base/);
   assert.doesNotMatch(brokerContent, /eval |bash -c|sh -c/);
   assert.match(workflowContent, /go test -tags embed \.\/internal\/web/);
@@ -84,7 +90,11 @@ test('充值页无 CSP iframe，WebUI 更新只能进入固定 root 代理', asy
   assert.doesNotMatch(patchContent, /^\+.*accountHomepageUrl/m);
   assert.doesNotMatch(patchContent, /^\+.*:href="accountHomepageUrl/m);
   assert.match(patchContent, /v-else-if="isJiyuBuild"/);
-  assert.match(patchContent, /ExitCode\(\) == 3/);
+  assert.match(patchContent, /DialContext\(ctx, "unix", socketPath\)/);
+  assert.match(patchContent, /JIYU_UPDATE_STATUS=noop/);
+  assert.doesNotMatch(patchContent, /exec\.CommandContext|sudo/);
+  assert.match(content, /StandardInput=socket/);
+  assert.match(content, /NoNewPrivileges=yes/);
 });
 
 test('JIYU 图形 Logo 是 512 像素 PNG', async () => {
