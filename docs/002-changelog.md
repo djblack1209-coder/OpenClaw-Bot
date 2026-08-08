@@ -10,7 +10,7 @@
 > 影响模块: `充值中心`, `security.csp.policy`, `CC Switch 下载区`, `Sub2API 运维脚本`
 > 关联问题: HI-987, HI-991, HI-992
 ### 变更内容
-- JIYU 前端补丁为 `recharge-center` 新增专用公开嵌入分支，固定只使用 `https://pay.ldxp.cn/shop/ZCUGEDMV`，绕开 Markdown 卡片、目录、通用 `buildEmbeddedUrl` 和认证参数拼接；iframe 抵消主内容区内边距并按 `100dvh` 适配移动端，保留 44px 新窗口图标兜底。
+- JIYU 前端补丁为 `recharge-center` 新增专用公开嵌入分支，固定只使用 `https://pay.ldxp.cn/shop/ZCUGEDMV`，绕开 Markdown 卡片、目录、通用 `buildEmbeddedUrl` 和认证参数拼接；iframe 抵消主内容区内边距并按 `100dvh` 适配移动端。44px 新窗口图标仅在桌面显示，窄屏隐藏以免遮住第三方店铺导航。
 - 受管重建命令通过 Sub2API 原生 `security.csp.policy` 配置，只把精确来源 `https://pay.ldxp.cn` 去重加入 `frame-src`；其他 CSP 指令保持原值，重复执行不会追加重复来源。
 - 文档页四个 CC Switch 下载入口改为响应式同宽网格：桌面四列、窄屏两列，统一最小高度、内部对齐和文字换行，不增加前端依赖。
 ### 文件变更
