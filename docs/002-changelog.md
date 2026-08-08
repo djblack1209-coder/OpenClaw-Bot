@@ -8,7 +8,7 @@
 ## [2026-08-08] JIYU 生图渠道、受管 WebUI 更新与 CC Switch MCP
 > 领域: `frontend` | `backend` | `ai-pool` | `deploy` | `infra` | `docs`
 > 影响模块: `Sub2API`, `Images API`, `CC Switch`, `GitHub Actions`, `JIYU update`
-> 关联问题: HI-985, HI-994, HI-995, HI-996, HI-998
+> 关联问题: HI-985, HI-994, HI-995, HI-996, HI-998, HI-999
 ### 变更内容
 - 生产建立渠道A/渠道B各一套 `gpt-image-2` 专用分组、账号、渠道和 300±30 秒监控；按老板确认的“上游每张价格绝对增加 `0.05`”执行，渠道A为 `0.05 → 0.10/张`，渠道B高质量组为 `0.07 → 0.12/张`。
 - 修复用户“渠道状态”仍混排的问题：管理表和用户卡片改为复用同一比较器，固定渠道A全部产品后接渠道B，生图排在各渠道文本产品之后。
@@ -16,12 +16,14 @@
 - 新增锁定官方 MCP SDK `1.30.0` 的本机生图服务和一键安装器，替换 CC Switch 两个失效旧条目；Key 只从环境变量或 macOS 钥匙串读取，付费 POST 不自动重试，生产依赖审计为 0。
 - 将 WebUI 更新方案实现为 GitHub Actions 兼容包、SHA-256/大小清单、固定域名 root-only 代理和原子暂存；另起 systemd 任务在重启后验证运行哈希与健康状态，失败或 10 分钟未重启会恢复二进制、VERSION 与 PostgreSQL。保留旧版本安全失败关闭，待首个发布包与新后端部署后再启用。
 - 合并 Dependabot 的 `h2 4.4.1` 与 `pypdf 6.15.0` 双平台哈希锁更新，并补齐 `hpack 4.2.0` 兼容约束；删除会持续创建旧 New-API 同步分支的定时工作流，冷回滚研究仍可显式运行 `make new-api-sync`，生产继续只使用 Sub2API。
+- 修复首轮 CI 发现的三个确定性问题：补丁纳入共享排序器新文件，生图安装器消除 ShellCheck `SC2155`，闲鱼人工预检删除未使用文件读取以消除 Ruff `F841`。
 ### 文件变更
 - `.github/workflows/sub2api-jiyu-compat.yml` — 从官方标签应用 JIYU 补丁、跑聚焦门、构建 ARM64 包并发布校验清单。
 - New-API Scheduled Sync workflow — 删除已与 Sub2API 生产架构冲突的自动分支生成任务。
 - `scripts/sub2api_jiyu_update_broker.sh`、`scripts/sub2api_oracle_manage.sh`、`scripts/sub2api-jiyu-v0.1.172.patch` — 受管更新代理、暂存/启用命令和 WebUI 后端入口。
 - `scripts/jiyu-image-mcp/`、`scripts/install_jiyu_image_mcp.sh` — 锁定依赖的生图 MCP 与 CC Switch/钥匙串安装入口。
 - `packages/clawbot/requirements.txt`、`requirements-lock.txt`、`requirements-lock-macos.txt` — `h2`/`pypdf` 安全版本和双平台哈希同步。
+- `packages/clawbot/src/xianyu/xianyu_admin.py` — 删除未使用的 Frist server 源码读取，不改变预检结果。
 - `docs/006-registries.md`、`docs/007-operations.md`、`docs/009-health.md`、`docs/053-jiyu-growth-payment-image-update-plan.md`、`docs/087-jiyu-image-mcp-guide.md`、`docs/012-handoff.md` — 同步合同、操作步骤、风险和交接。
 ### 验证
 - JIYU 补丁在官方 `v0.1.172` 干净提交上通过 `git apply --check`；上游更新服务 unit 用例 `1/1`、排序/端点/CC Switch 前端用例 `13/13`、Vue 类型检查、运维脚本合同 `4/4`、工作流 YAML 与文档门均通过。
