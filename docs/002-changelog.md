@@ -8,7 +8,7 @@
 ## [2026-08-08] JIYU 移动充值满屏与卖家原文一键补号
 > 领域: `frontend` | `backend` | `ai-pool` | `xianyu` | `docs`
 > 影响模块: `充值中心`, `packages/clawbot/src/sub2_replenish`, `闲鱼独立服务选型`
-> 关联问题: HI-987, HI-1012
+> 关联问题: HI-987, HI-991, HI-1012, HI-1013
 ### 变更内容
 - 移动端充值专用 shell 改为固定在 64px JIYU 顶栏下，使用 `100vw × (100dvh - 64px)` 覆盖视口，消除外层内容滚动区留下的约 8px；桌面现有布局不变，不向链动小铺传 user_id/token/cookie/auth 参数，也不跨域修改链动内部页面。
 - 本地补号助手兼容精确分隔行、邮箱/密码/2FA/TOTP/密钥标签块和 JSON 对象/数组；模糊文本、手机号、冲突字段和不完整账号失败关闭，错误/日志/响应不回显原始秘密。
@@ -18,11 +18,15 @@
 - `scripts/sub2api-jiyu-v0.1.172.patch`、`scripts/sub2api_ops_scripts.test.mjs` — 移动端 fixed 满屏合同。
 - `packages/clawbot/src/sub2_replenish/`、`packages/clawbot/tests/test_sub2_replenish_helper.py` — 三类解析、批次渠道和 OTP 安全边界。
 - `docs/006-registries.md`、`docs/007-operations.md`、`docs/009-health.md`、`docs/082-open-source-wheel-research.md` — 同步操作、注册表、风险与闲鱼选型。
+- `scripts/assets/audit-jiyu-recharge-shop-final-mobile-20260808.png`、`scripts/assets/audit-jiyu-recharge-shop-final-desktop-20260808.png` — 生产充值中心最终双视口证据。
 ### 验证
 - `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_sub2_replenish_helper.py -q`：`11 passed`；Ruff 与 Python 编译通过。
 - `node --test scripts/sub2api_ops_scripts.test.mjs`：`4 passed`；`git apply --numstat` 确认补丁结构有效。
 - 官方 `v0.1.172` 干净源码应用补丁后，前端类型检查、生产构建、两组嵌入 Web Go 聚焦测试和 Linux ARM64 构建通过。
 - 本地 dry-run 在 `390×844` 依次完成分隔行、标签块、JSON 数组和批次渠道B，最终页面只显示掩码邮箱；Console 0 error/0 warning，截图为 `scripts/assets/audit-jiyu-sub2-replenish-dry-run-mobile-20260808.png`。
+- GitHub Actions `31265860057` 成功发布不可变兼容包 `jiyu-v0.1.172-r31265860057`；受管更新链完成下载校验、暂存、重启后运行哈希与健康验证，生产版本为 `v0.1.172-jiyu.31265860057`，没有触发回滚。
+- 生产管理器确认 Sub2API、Redis、更新/备份 timer、Cloudflare 443 策略均 active，PostgreSQL、内网健康和 Responses WebSocket 通过；公网 `/health` 连续 `5/5` 返回 200，充值页返回 200。
+- 真实 Chrome 干净重载验收：`390×844` 下 iframe 为 `x=0,y=64,w=390,h=780`，`1440×1000` 下保持 `1176×936`；固定来源为 `https://pay.ldxp.cn/shop/ZCUGEDMV`、查询参数为空，两端新增 Console 警告/错误与失败网络请求均为 0。
 
 ## [2026-08-08] JIYU Sub2 本地补号助手（OAuth + 本地 2FA）
 > 领域: `backend` | `ai-pool` | `security` | `docs`
