@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import json
 import re
 import secrets
 from dataclasses import dataclass, field
@@ -14,6 +15,10 @@ import pyotp
 MAX_INPUT_BYTES = 512 * 1024
 MAX_ACCOUNTS = 100
 _EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+_LABEL_PATTERN = re.compile(
+    r"^(邮箱|email|e-mail|密码|password|pass|2fa(?:\s*密钥)?|totp(?:_secret|\s*密钥)?|密钥|secret)\s*[:：=]\s*(.+)$",
+    re.IGNORECASE,
+)
 _TERMINAL_STATUSES = {"success", "duplicate", "skipped", "stopped", "dry_run"}
 
 
@@ -131,39 +136,154 @@ def _normalize_totp_secret(value: str) -> str:
     return normalized
 
 
+def _credential_from_values(
+    email: object,
+    password: object,
+    totp_secret: object,
+    *,
+    location: str,
+) -> SellerCredential:
+    """统一校验三种输入格式，错误只描述位置而不回显原值。"""
+    if not isinstance(email, str) or not _EMAIL_PATTERN.fullmatch(email.strip()) or len(email.strip()) > 254:
+        raise InputFormatError(f"{location}邮箱格式不正确")
+    if not isinstance(password, str) or not password or len(password) > 1024:
+        raise InputFormatError(f"{location}密码为空或过长")
+    if not isinstance(totp_secret, str):
+        raise InputFormatError(f"{location}缺少有效的 2FA/TOTP 密钥")
+    return SellerCredential(
+        email=email.strip(),
+        password=password,
+        totp_secret=_normalize_totp_secret(totp_secret),
+    )
+
+
+def _parse_delimited_payload(raw: str) -> list[SellerCredential]:
+    lines = [line.strip() for line in raw.splitlines() if line.strip()]
+    records: list[SellerCredential] = []
+    for line_number, line in enumerate(lines, start=1):
+        parts = line.split("----")
+        if len(parts) != 3:
+            raise InputFormatError(f"第 {line_number} 行必须恰好包含两个 ---- 分隔符")
+        records.append(
+            _credential_from_values(
+                *(part.strip() for part in parts),
+                location=f"第 {line_number} 行",
+            )
+        )
+    return records
+
+
+def _parse_json_payload(raw: str) -> list[SellerCredential]:
+    try:
+        payload = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise InputFormatError("JSON 发货内容格式不正确") from exc
+    items = payload if isinstance(payload, list) else [payload]
+    if not items or not all(isinstance(item, dict) for item in items):
+        raise InputFormatError("JSON 必须是账号对象或账号对象数组")
+
+    records: list[SellerCredential] = []
+    for index, item in enumerate(items, start=1):
+        normalized = {str(key).strip().casefold(): value for key, value in item.items()}
+        secret_values = [
+            normalized[key]
+            for key in ("totp_secret", "totp", "secret")
+            if key in normalized and normalized[key] not in (None, "")
+        ]
+        if len({str(value) for value in secret_values}) > 1:
+            raise InputFormatError(f"第 {index} 个 JSON 账号包含冲突的 2FA/TOTP 密钥字段")
+        records.append(
+            _credential_from_values(
+                normalized.get("email"),
+                normalized.get("password"),
+                secret_values[0] if secret_values else None,
+                location=f"第 {index} 个 JSON 账号",
+            )
+        )
+    return records
+
+
+def _parse_labeled_payload(raw: str) -> list[SellerCredential]:
+    field_names = {
+        "邮箱": "email",
+        "email": "email",
+        "e-mail": "email",
+        "密码": "password",
+        "password": "password",
+        "pass": "password",
+        "2fa": "totp_secret",
+        "2fa密钥": "totp_secret",
+        "totp": "totp_secret",
+        "totp_secret": "totp_secret",
+        "totp密钥": "totp_secret",
+        "密钥": "totp_secret",
+        "secret": "totp_secret",
+    }
+    records: list[SellerCredential] = []
+    current: dict[str, str] = {}
+    account_index = 1
+    for line_number, raw_line in enumerate(raw.splitlines(), start=1):
+        line = raw_line.strip()
+        if not line:
+            continue
+        match = _LABEL_PATTERN.fullmatch(line)
+        if match is None:
+            raise InputFormatError(f"第 {line_number} 行不是可识别的邮箱、密码或 2FA/TOTP 标签")
+        label = re.sub(r"\s+", "", match.group(1).casefold())
+        field_name = field_names[label]
+        if field_name in current:
+            if set(current) != {"email", "password", "totp_secret"}:
+                raise InputFormatError(f"第 {line_number} 行在当前账号完成前重复了字段")
+            records.append(
+                _credential_from_values(
+                    current["email"],
+                    current["password"],
+                    current["totp_secret"],
+                    location=f"第 {account_index} 个标签账号",
+                )
+            )
+            account_index += 1
+            current = {}
+        current[field_name] = match.group(2).strip()
+    if current:
+        if set(current) != {"email", "password", "totp_secret"}:
+            raise InputFormatError(f"第 {account_index} 个标签账号字段不完整")
+        records.append(
+            _credential_from_values(
+                current["email"],
+                current["password"],
+                current["totp_secret"],
+                location=f"第 {account_index} 个标签账号",
+            )
+        )
+    return records
+
+
 def parse_seller_payload(raw: str) -> list[SellerCredential]:
-    """解析固定的 email----password----totp_secret 批量格式。"""
+    """严格解析分隔行、带标签多行块或 JSON 账号对象/数组。"""
     if not isinstance(raw, str) or not raw.strip():
         raise InputFormatError("请粘贴卖家发货原文")
     if len(raw.encode("utf-8")) > MAX_INPUT_BYTES:
         raise InputFormatError("原文过大，单批最多 512 KiB")
 
-    lines = [line.strip() for line in raw.splitlines() if line.strip()]
-    if len(lines) > MAX_ACCOUNTS:
+    stripped = raw.strip()
+    if stripped.startswith(("{", "[")):
+        records = _parse_json_payload(stripped)
+    elif "----" in stripped:
+        records = _parse_delimited_payload(stripped)
+    else:
+        records = _parse_labeled_payload(stripped)
+    if not records:
+        raise InputFormatError("没有找到完整账号")
+    if len(records) > MAX_ACCOUNTS:
         raise InputFormatError("单批最多 100 个账号")
 
-    records: list[SellerCredential] = []
     seen_emails: set[str] = set()
-    for line_number, line in enumerate(lines, start=1):
-        parts = line.split("----")
-        if len(parts) != 3:
-            raise InputFormatError(f"第 {line_number} 行必须恰好包含两个 ---- 分隔符")
-        email, password, totp_secret = (part.strip() for part in parts)
-        if not _EMAIL_PATTERN.fullmatch(email) or len(email) > 254:
-            raise InputFormatError(f"第 {line_number} 行邮箱格式不正确")
-        if not password or len(password) > 1024:
-            raise InputFormatError(f"第 {line_number} 行密码为空或过长")
-        email_key = email.casefold()
+    for index, record in enumerate(records, start=1):
+        email_key = record.email.casefold()
         if email_key in seen_emails:
-            raise InputFormatError(f"第 {line_number} 行邮箱在本批次重复")
+            raise InputFormatError(f"第 {index} 个账号邮箱在本批次重复")
         seen_emails.add(email_key)
-        records.append(
-            SellerCredential(
-                email=email,
-                password=password,
-                totp_secret=_normalize_totp_secret(totp_secret),
-            )
-        )
     return records
 
 

@@ -5,6 +5,25 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
+## [2026-08-08] JIYU 移动充值满屏与卖家原文一键补号
+> 领域: `frontend` | `backend` | `ai-pool` | `xianyu` | `docs`
+> 影响模块: `充值中心`, `packages/clawbot/src/sub2_replenish`, `闲鱼独立服务选型`
+> 关联问题: HI-987, HI-1012
+### 变更内容
+- 移动端充值专用 shell 改为固定在 64px JIYU 顶栏下，使用 `100vw × (100dvh - 64px)` 覆盖视口，消除外层内容滚动区留下的约 8px；桌面现有布局不变，不向链动小铺传 user_id/token/cookie/auth 参数，也不跨域修改链动内部页面。
+- 本地补号助手兼容精确分隔行、邮箱/密码/2FA/TOTP/密钥标签块和 JSON 对象/数组；模糊文本、手机号、冲突字段和不完整账号失败关闭，错误/日志/响应不回显原始秘密。
+- 增加批次级渠道A/B选择（默认A）；OAuth 元数据识别 Plus/Pro 后自动选择该渠道目标组，只有计划无法识别或目标组不存在/不唯一时人工核对。OTP 自动填写只匹配明确 one-time-code/OTP/TOTP/MFA/verification code 语义，不再匹配任意 numeric 输入。
+- 明确 Sub2 原生只接收已经生成的 auth/token 凭据，本地 PyOTP 负责 2FA；禁止把 secret 上传外部 2FA 网站。`zhinianboke/xianyu-auto-reply` 选为独立 AGPL 服务候选，因国内 VPS 磁盘余量和 Oracle 海外出口风控，本轮不虚假部署。
+### 文件变更
+- `scripts/sub2api-jiyu-v0.1.172.patch`、`scripts/sub2api_ops_scripts.test.mjs` — 移动端 fixed 满屏合同。
+- `packages/clawbot/src/sub2_replenish/`、`packages/clawbot/tests/test_sub2_replenish_helper.py` — 三类解析、批次渠道和 OTP 安全边界。
+- `docs/006-registries.md`、`docs/007-operations.md`、`docs/009-health.md`、`docs/082-open-source-wheel-research.md` — 同步操作、注册表、风险与闲鱼选型。
+### 验证
+- `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_sub2_replenish_helper.py -q`：`11 passed`；Ruff 与 Python 编译通过。
+- `node --test scripts/sub2api_ops_scripts.test.mjs`：`4 passed`；`git apply --numstat` 确认补丁结构有效。
+- 官方 `v0.1.172` 干净源码应用补丁后，前端类型检查、生产构建、两组嵌入 Web Go 聚焦测试和 Linux ARM64 构建通过。
+- 本地 dry-run 在 `390×844` 依次完成分隔行、标签块、JSON 数组和批次渠道B，最终页面只显示掩码邮箱；Console 0 error/0 warning，截图为 `scripts/assets/audit-jiyu-sub2-replenish-dry-run-mobile-20260808.png`。
+
 ## [2026-08-08] JIYU Sub2 本地补号助手（OAuth + 本地 2FA）
 > 领域: `backend` | `ai-pool` | `security` | `docs`
 > 影响模块: `packages/clawbot/src/sub2_replenish`, `Makefile`, `Sub2 原生账号接口`
