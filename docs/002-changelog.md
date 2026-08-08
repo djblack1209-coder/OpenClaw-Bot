@@ -19,6 +19,7 @@
 ### 验证
 - 官方 v0.1.172 干净源码 `git apply --check`、`go test -tags unit ./internal/service -run '^TestSupportedModels'` 通过。
 - 生产同步结果：12 个账号中 11 个返回清单，1 个返回失败；12 条渠道均已持久化限制状态，未输出凭据。
+- GitHub Actions `31278104138` 通过兼容包门禁并由生产 WebUI 完成“检查并安装 → 重启”；线上 VERSION 回读 `v0.1.172-jiyu.31278104138`，模型广场接口与页面回读 11 个受限分组，模型分组数量为 `1/9/8/1/8/9/6/6/7/1/7`，页面 Console 警告/错误为 0。验收截图：`scripts/assets/audit-20260809-model-plaza-after-align.jpg`。
 
 ## [2026-08-09] JIYU 自营补号池与支付/倍率能力澄清
 > 领域: `backend` | `ai-pool` | `docs` | `xianyu`
