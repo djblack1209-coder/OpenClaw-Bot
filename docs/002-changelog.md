@@ -11,7 +11,7 @@
 > 关联问题: HI-1002, HI-1005, HI-1006, HI-1014
 ### 变更内容
 - 将 JIYU 当前生产版本统一为 `v0.1.172-jiyu.31265860057`，同步 Codex Responses WebSocket、Origin CA 与 443 源站收口已闭环的真实状态。
-- 纠正共享 80 端口口径：该端口承载与 JIYU 无关的 `naive-iad` 服务入口，并非 ACME 依赖；JIYU 自身 HTTP 只返回 301，不把 DNS-01 或关闭共享 80 列为 JIYU 443 闭环后续任务。
+- 保守收口共享 80 端口口径：生产同时存在 `naive-iad` vhost 与 active `naive-cert-renew.timer`，续期依赖尚未证明可安全移除；JIYU 自身 HTTP 只返回 301、443 已闭环，因此不得以 JIYU 名义修改或关闭共享 80。
 - 登记 Sub2 原生 upstream billing probe 的 30 分钟全局周期、5 分钟最小周期和 12 个账号 rate sync 全部关闭状态；原生写回只更新账号倍率，不能自动维持分组 `+0.05x` 合同，等待定价业务确认前禁止启用。
 - 新增 2026-08-09 交接并只保留最近 5 条，记录最终提交、充值满屏、补号助手、浏览器关闭、零新增付费调用及剩余真实边界。
 ### 文件变更
@@ -116,7 +116,7 @@
 - `docs/002-changelog.md`、`docs/007-operations.md`、`docs/009-health.md`、`docs/012-handoff.md`、`docs/086-release-evidence.md` — 同步生产事实、外部阻塞和验收证据。
 ### 验证
 - `bash -n`、ShellCheck、现有 Sub2API 运维合同 `4/4`、`git diff --check` 通过。
-- 公网 `jiyu` 首页/健康为 200，旧入口为 301，未授权运营入口为预期 404；三个独立外部 VPS 直连源站 443 均超时。共享 80 TCP 可达，2026-08-09 已确认其承载 `naive-iad` 服务入口而非 JIYU 或 ACME 依赖。
+- 公网 `jiyu` 首页/健康为 200，旧入口为 301，未授权运营入口为预期 404；三个独立外部 VPS 直连源站 443 均超时。共享 80 TCP 可达，同时存在 `naive-iad` vhost 与 active `naive-cert-renew.timer`，续期依赖尚未证明可安全移除。
 - 生产管理器状态确认 Sub2API、Redis、PostgreSQL、Cloudflare 443 策略、更新/备份 timer 均 active，内网健康和 Responses WebSocket 代理通过。
 
 ## [2026-08-08] JIYU 同版兼容更新入口与 Apache 525 自动恢复
@@ -148,7 +148,7 @@
 - 管理脚本新增桥接启用和旧模式回滚入口，新安装默认启用模式路由；全局配置、账号配置和生产重载均有独立复核。
 - 原始 Responses WebSocket 完成模型输出，真实 Codex `0.147.0` 调用成功且站内记录为 WS 模式；永久测试账号累计 10 条用量，继续保留。
 - 明确渠道A Claude 根因为上游分组拒绝 `/v1/messages`，继续保持错误与停调度，不用假绿掩盖。
-- 复核源站共享业务后把防火墙方案修正为只收口 JIYU 443；共享 80 保持不变。2026-08-09 已确认 80 承载 `naive-iad` 服务入口而非 ACME 依赖，JIYU 自身 80 仅返回 301，不以 JIYU 闭环名义修改共享 80。
+- 复核源站共享业务后把防火墙方案修正为只收口 JIYU 443；共享 80 保持不变。生产同时存在 `naive-iad` vhost 与 active `naive-cert-renew.timer`，续期依赖尚未证明可安全移除；JIYU 自身 80 仅返回 301，不以 JIYU 闭环名义修改共享 80。
 - 修复管理端账号列表隐私残留：账号名称不再链接或悬浮显示真实供货 `base_url`；编辑表单和 Anthropic/OpenAI/Grok 协议生态标签继续保留。
 - 修复兼容包同版本修订会被已有发布错误跳过：定时任务继续去重，手动修订改为独立不可变 `-r<run_id>` 标签，`jiyu-latest` 只移动清单，不覆盖旧二进制。
 ### 文件变更

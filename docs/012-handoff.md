@@ -19,7 +19,7 @@
 
 ### 需要注意的坑
 - 密码、API Key、Token、Cookie、TOTP secret 和卡密正文不得输出、截图或写入仓库；真实补号遇到人工挑战时只能由资产所有者在本机窗口完成。
-- JIYU 443 使用 Origin CA 与 nftables，只允许 Cloudflare、loopback 和 Tailscale。共享 80 承载与 JIYU 无关的 `naive-iad` 服务入口，JIYU 80 只返回 301；不要以 JIYU 收口名义关闭共享 80。
+- JIYU 443 使用 Origin CA 与 nftables，只允许 Cloudflare、loopback 和 Tailscale。共享 80 同时承载 `naive-iad` vhost 与 active `naive-cert-renew.timer`，续期依赖尚未证明可安全移除；JIYU 80 只返回 301，不得以 JIYU 收口名义关闭共享 80。
 - 不得直接开启 rate sync：渠道A probe resolved 值会与存储倍率漂移，且原生写回不联动用户分组，会破坏“账号倍率 + `0.05x`”合同。
 
 ### 当前系统状态
@@ -53,7 +53,7 @@
 ## [2026-08-08 19:10] JIYU 443、PostgreSQL 与链动保证金交接
 
 ### 本次完成了什么
-- Oracle 443 已仅允许 Cloudflare 官方 CIDR、loopback 和 Tailscale；应用时保留 5 分钟自动回滚，三个独立外部 VPS 直连源站均超时后才取消。共享 80、SSH、Tailscale 未改；后续已确认 80 承载 `naive-iad` 服务入口而非 ACME 依赖。
+- Oracle 443 已仅允许 Cloudflare 官方 CIDR、loopback 和 Tailscale；应用时保留 5 分钟自动回滚，三个独立外部 VPS 直连源站均超时后才取消。共享 80、SSH、Tailscale 未改；生产同时存在 `naive-iad` vhost 与 active `naive-cert-renew.timer`，续期依赖尚未证明可安全移除。
 - 修复 PostgreSQL 重启风险：Headscale 故障转移脚本不再每两分钟把 `/var/log` 改成 0700；管理器把文件权限、服务和 SQL 预检接到备份、发布与 WebUI 更新路径。手动运行污染源任务后预检仍通过。
 - 生产合同复核为 12 个分组、12 个 active 渠道；10 个文本倍率差均为 `0.0500`，10 条文本监控为 300±30 秒且启用，2 条图片监控保持禁用，图片价格为 0.10/0.12 每张。
 - 链动小铺七档标题、统一 Logo、详情和兑换步骤已保存；一枚未售临时兑换码已删除并重建，全程未输出或截图明文。
@@ -69,7 +69,7 @@
 
 ### 当前系统状态
 - `v0.1.172-jiyu.31250692935`、Sub2API、Redis、PostgreSQL、Apache、Cloudflare 443 策略、更新/备份 timer 均 active；内网健康和 Responses WebSocket 代理通过。
-- 公网主站首页/健康为 200，旧入口为 301，运营入口未授权为预期 404。源站直连 443 已关闭；共享 80 承载 `naive-iad` 服务入口，JIYU 80 仅返回 301。
+- 公网主站首页/健康为 200，旧入口为 301，运营入口未授权为预期 404。源站直连 443 已关闭；共享 80 同时承载 `naive-iad` vhost 与 active `naive-cert-renew.timer`，JIYU 80 仅返回 301。
 - 链动浏览器停在保证金钱包页；七档商品仍下架、零库存，充值中心继续只显示预留页。
 
 ## [2026-08-08 17:10] JIYU 同版更新入口与 Apache 525 收口
@@ -101,13 +101,13 @@
 
 ### 未完成的工作
 - 渠道A Claude 需上游恢复 Messages 协议，或经业务确认后临时隐藏公开分组；未擅自改线路或用户可见行为。
-- 源站第一阶段只应把 443 收口到 Cloudflare CIDR；当时尚未确认共享 80 的真实归属，后续已确认其承载 `naive-iad` 服务入口而非 ACME 依赖，JIYU 80 仅返回 301。
+- 源站第一阶段只应把 443 收口到 Cloudflare CIDR；共享 80 同时承载 `naive-iad` vhost 与 active `naive-cert-renew.timer`，续期依赖尚未证明可安全移除，JIYU 80 仅返回 301。
 - 生图 502/401、链动小铺合规、Turnstile 开放注册前验收继续保持原阻塞条件。
 
 ### 需要注意的坑
 - 永久测试用户和 10 条真实用量不得删除；任何密码、Key、Token、Cookie 不得输出、截图或入仓库。
 - Codex CLI 本次总墙钟时间包含本机技能/MCP 初始化，服务端真实处理只有 2964 ms；不要把本机启动噪声误判为 JIYU 转发延迟。
-- 不能直接封共享主机端口；443 变更必须先安排自动回滚并验证三个 HTTPS vhost，80 则不得以 JIYU 收口名义修改 `naive-iad` 服务入口。
+- 不能直接封共享主机端口；443 变更必须先安排自动回滚并验证三个 HTTPS vhost。共享 80 的续期依赖尚未证明可安全移除，不得以 JIYU 收口名义修改或关闭。
 
 ### 当前系统状态
 - 生产 `v0.1.172-jiyu.31237926226`；Sub2API、Redis、Apache active，四个文本账号 WS HTTP bridge 生效。
