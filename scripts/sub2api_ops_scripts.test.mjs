@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
-import { access, readFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 
 const manager = 'scripts/sub2api_oracle_manage.sh';
@@ -54,6 +56,69 @@ test('生产更新改为只检查，完整备份覆盖品牌与页面', async ()
   assert.match(regionPatchContent, /backend\/internal\/handler\/available_channel_handler\.go/);
   assert.match(regionPatchContent, /backend\/internal\/handler\/model_plaza_handler\.go/);
   assert.match(regionPatchContent, /norm\.NFKC\.String/);
+});
+
+test('地域可信头只安装到 JIYU HTTPS VirtualHost', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'sub2api-region-headers-'));
+  const source = join(directory, 'site.conf');
+  const destination = join(directory, 'rewritten.conf');
+  const secondDestination = join(directory, 'rewritten-again.conf');
+  const fixture = `<VirtualHost *:80>
+    ServerName example.test
+    # JIYU-REGION-TRUST-BOUNDARY: misplaced legacy block
+    SetEnvIf CF-IPCountry "^([A-Z]{2})$" JIYU_CF_COUNTRY=$1
+    RequestHeader unset X-JIYU-Country
+    RequestHeader set X-JIYU-Country "%{JIYU_CF_COUNTRY}e" env=JIYU_CF_COUNTRY
+    RequestHeader unset CF-IPCountry
+</VirtualHost>
+<VirtualHost *:443>
+    ServerName example.test
+    ProxyPass / http://127.0.0.1:18080/
+</VirtualHost>
+<VirtualHost *:443>
+    ServerName legacy.example.test
+</VirtualHost>
+`;
+  try {
+    await writeFile(source, fixture);
+    const rewrite = spawnSync(
+      'bash',
+      [
+        '-c',
+        `source <(sed '$d' "$1"); rewrite_jiyu_region_headers "$2" "$3" example.test`,
+        'bash',
+        manager,
+        source,
+        destination,
+      ],
+      { encoding: 'utf8' },
+    );
+    assert.equal(rewrite.status, 0, rewrite.stderr);
+    const output = await readFile(destination, 'utf8');
+    const httpEnd = output.indexOf('</VirtualHost>');
+    const targetStart = output.indexOf('<VirtualHost *:443>');
+    const targetEnd = output.indexOf('</VirtualHost>', targetStart);
+    const marker = output.indexOf('JIYU-REGION-TRUST-BOUNDARY-BEGIN');
+    assert.equal((output.match(/JIYU-REGION-TRUST-BOUNDARY-BEGIN/g) || []).length, 1);
+    assert.ok(marker > targetStart && marker < targetEnd);
+    assert.ok(marker > httpEnd);
+    const secondRewrite = spawnSync(
+      'bash',
+      [
+        '-c',
+        `source <(sed '$d' "$1"); rewrite_jiyu_region_headers "$2" "$3" example.test`,
+        'bash',
+        manager,
+        destination,
+        secondDestination,
+      ],
+      { encoding: 'utf8' },
+    );
+    assert.equal(secondRewrite.status, 0, secondRewrite.stderr);
+    assert.equal(await readFile(secondDestination, 'utf8'), output);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test('充值页只使用固定公开整店且 WebUI 更新只能进入固定 root 代理', async () => {
