@@ -47,7 +47,7 @@ readonly CHAIN_STORE_URL="${CHAIN_STORE_ORIGIN}/shop/ZCUGEDMV"
 readonly DOCS_PAGE_SLUG="docs"
 readonly BRAND_LOGO_SOURCE="${SUB2API_BRAND_LOGO_SOURCE:-/usr/local/share/jiyu-ai/jiyu-ai-logo.png}"
 readonly BRAND_LOGO_PUBLIC_PATH="/api/v1/pages/${DOCS_PAGE_SLUG}/images/jiyu-ai-logo.png"
-readonly UPSTREAM_ALLOWLIST_HOSTS="api.openai.com,api.anthropic.com,api.kimi.com,api.moonshot.ai,api.moonshot.cn,open.bigmodel.cn,api.minimaxi.com,generativelanguage.googleapis.com,cloudcode-pa.googleapis.com,*.openai.azure.com,api.aigo0.com,www.huyunapi.com"
+readonly UPSTREAM_ALLOWLIST_HOSTS="api.openai.com,api.anthropic.com,api.deepseek.com,api.kimi.com,api.moonshot.ai,api.moonshot.cn,api.siliconflow.cn,open.bigmodel.cn,api.minimaxi.com,generativelanguage.googleapis.com,cloudcode-pa.googleapis.com,*.openai.azure.com,api.aigo0.com,www.huyunapi.com"
 readonly PRICING_FALLBACK_URL="https://raw.githubusercontent.com/Wei-Shaw/model-price-repo/main/model_prices_and_context_window.json"
 readonly PRICING_FALLBACK_HASH_URL="https://raw.githubusercontent.com/Wei-Shaw/model-price-repo/main/model_prices_and_context_window.sha256"
 readonly PRICING_FALLBACK_DIR="${INSTALL_DIR}/resources/model-pricing"
@@ -421,8 +421,10 @@ apply_upstream_allowlist() {
   require_linux
   [[ -f "$ENV_FILE" ]] || fail "找不到 Sub2API 环境配置: ${ENV_FILE}"
 
-  local temporary_file
+  local temporary_file env_backup
   temporary_file="$(mktemp)"
+  env_backup="$(mktemp "${STATE_DIR}/upstream-allowlist-env.XXXXXXXX")"
+  cp -a "$ENV_FILE" "$env_backup"
   awk -v hosts="$UPSTREAM_ALLOWLIST_HOSTS" '
     BEGIN { replaced = 0 }
     /^SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS=/ {
@@ -438,9 +440,65 @@ apply_upstream_allowlist() {
   chown root:root "$temporary_file"
   chmod 0600 "$temporary_file"
   mv -f "$temporary_file" "$ENV_FILE"
-  systemctl restart "$SUB2API_SERVICE"
-  wait_for_health 90 || fail "应用上游域名白名单后健康检查失败。"
-  log "上游域名白名单已收紧为官方默认域名及 api.aigo0.com、www.huyunapi.com。"
+  if ! systemctl restart "$SUB2API_SERVICE" || ! wait_for_health 90; then
+    cp -a "$env_backup" "$ENV_FILE"
+    systemctl restart "$SUB2API_SERVICE" || true
+    if ! wait_for_health 90; then
+      fail "上游域名白名单应用失败，且回滚后健康检查仍未恢复；恢复副本保留在受限状态目录。"
+    fi
+    rm -f "$env_backup"
+    fail "上游域名白名单应用失败，已恢复原配置。"
+  fi
+  rm -f "$env_backup"
+  log "上游域名白名单已更新为当前生产账号使用的受信官方域名。"
+}
+
+set_jiyu_region_enforcement() {
+  require_root
+  require_linux
+  [[ -f "$ENV_FILE" ]] || fail "找不到 Sub2API 环境配置: ${ENV_FILE}"
+
+  local mode="$1" enabled temporary_file env_backup
+  case "$mode" in
+    enable) enabled=1 ;;
+    disable) enabled=0 ;;
+    *) fail "地域强制模式只能是 enable 或 disable。" ;;
+  esac
+
+  temporary_file="$(mktemp)"
+  env_backup="$(mktemp "${STATE_DIR}/region-enforcement-env.XXXXXXXX")"
+  cp -a "$ENV_FILE" "$env_backup"
+  awk -v enabled="$enabled" '
+    BEGIN { replaced = 0 }
+    /^SUB2API_JIYU_REGION_ENFORCEMENT=/ {
+      print "SUB2API_JIYU_REGION_ENFORCEMENT=" enabled
+      replaced = 1
+      next
+    }
+    { print }
+    END {
+      if (!replaced) print "SUB2API_JIYU_REGION_ENFORCEMENT=" enabled
+    }
+  ' "$ENV_FILE" >"$temporary_file"
+  chown root:root "$temporary_file"
+  chmod 0600 "$temporary_file"
+  mv -f "$temporary_file" "$ENV_FILE"
+
+  if ! systemctl restart "$SUB2API_SERVICE" || ! wait_for_health 90; then
+    cp -a "$env_backup" "$ENV_FILE"
+    systemctl restart "$SUB2API_SERVICE" || true
+    if ! wait_for_health 90; then
+      fail "地域强制配置应用失败，且回滚后健康检查仍未恢复；恢复副本保留在受限状态目录。"
+    fi
+    rm -f "$env_backup"
+    fail "地域强制配置应用失败，已恢复原配置。"
+  fi
+  rm -f "$env_backup"
+  if [[ "$enabled" == "1" ]]; then
+    log "JIYU 地域强制已启用。"
+  else
+    log "JIYU 地域强制已关闭。"
+  fi
 }
 
 set_openai_ws_mode_router() {
@@ -1854,7 +1912,8 @@ usage() {
   docs-page           重新应用文档入口和 CC Switch 下载、导入说明
   terms-page          更新登录条款中的地区展示规则（保留其余条款文本）
   region-headers      加固 Cloudflare 地域头的 Apache 信任边界（不启用地域强制）
-  upstream-allowlist    重新应用两个指定上游的安全域名白名单
+  region-enforcement <enable|disable>  原子切换 JIYU 地域强制，失败自动回滚
+  upstream-allowlist    重新应用当前生产账号的受信官方域名白名单
   harden-apache      禁止浏览器直接更新或回滚生产二进制
   postgres-preflight 修复 PostgreSQL 最小运行权限并验证数据库连通性
   cloudflare-origin-443  仅允许 Cloudflare、loopback、Tailscale 访问 443，并启动 5 分钟回滚
@@ -1924,6 +1983,9 @@ main() {
       ;;
     region-headers)
       ensure_jiyu_region_headers
+      ;;
+    region-enforcement)
+      set_jiyu_region_enforcement "${2:-}"
       ;;
     upstream-allowlist)
       apply_upstream_allowlist
