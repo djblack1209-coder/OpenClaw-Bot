@@ -1359,40 +1359,85 @@ APACHE
   log "已禁止浏览器直接更新或回滚生产二进制。"
 }
 
+rewrite_jiyu_region_headers() {
+  local source_file="$1"
+  local destination_file="$2"
+  local canonical_host="$3"
+
+  awk -v domain="$canonical_host" '
+    function emit_region_block() {
+      print "    # JIYU-REGION-TRUST-BOUNDARY-BEGIN: 只信任 Cloudflare 注入的两位国家码。"
+      print "    SetEnvIf CF-IPCountry \"^([A-Z]{2})$\" JIYU_CF_COUNTRY=$1"
+      print "    RequestHeader unset X-JIYU-Country"
+      print "    RequestHeader set X-JIYU-Country \"%{JIYU_CF_COUNTRY}e\" env=JIYU_CF_COUNTRY"
+      print "    RequestHeader unset CF-IPCountry"
+      print "    # JIYU-REGION-TRUST-BOUNDARY-END"
+      print ""
+    }
+
+    /# JIYU-REGION-TRUST-BOUNDARY-BEGIN:/ { skipping_managed = 1; next }
+    skipping_managed {
+      if (/# JIYU-REGION-TRUST-BOUNDARY-END/) {
+        skipping_managed = 0
+        skip_managed_blank = 1
+      }
+      next
+    }
+    skip_managed_blank && /^[[:space:]]*$/ { skip_managed_blank = 0; next }
+    skip_managed_blank { skip_managed_blank = 0 }
+    /# JIYU-REGION-TRUST-BOUNDARY:/ { legacy_lines = 4; next }
+    legacy_lines > 0 {
+      legacy_lines--
+      if (legacy_lines == 0) skip_legacy_blank = 1
+      next
+    }
+    skip_legacy_blank && /^[[:space:]]*$/ { skip_legacy_blank = 0; next }
+    skip_legacy_blank { skip_legacy_blank = 0 }
+
+    /^[[:space:]]*<VirtualHost[[:space:]]+[^>]*\*:443[^>]*>/ {
+      in_https_vhost = 1
+      server_name = ""
+    }
+    in_https_vhost && /^[[:space:]]*ServerName[[:space:]]+/ {
+      server_name = $2
+    }
+    in_https_vhost && /^[[:space:]]*<\/VirtualHost>/ {
+      if (server_name == domain) {
+        emit_region_block()
+        inserted++
+      }
+      in_https_vhost = 0
+      server_name = ""
+    }
+    { print }
+    END { if (inserted != 1) exit 42 }
+  ' "$source_file" >"$destination_file"
+}
+
 ensure_jiyu_region_headers() {
   require_root
   require_linux
   require_command apache2ctl
   [[ -f "$APACHE_SITE" ]] || fail "找不到 Apache 站点配置: ${APACHE_SITE}"
-  if grep -q 'JIYU-REGION-TRUST-BOUNDARY' "$APACHE_SITE"; then
-    log "Apache 地域可信头边界已存在。"
-    return 0
-  fi
 
   local temporary_file temporary_backup timestamp backup_dir
   temporary_file="$(mktemp)"
+  if ! rewrite_jiyu_region_headers "$APACHE_SITE" "$temporary_file" "$DOMAIN"; then
+    rm -f "$temporary_file"
+    fail "无法唯一定位 ${DOMAIN} 的 HTTPS VirtualHost，拒绝写入地域头规则。"
+  fi
+  if cmp -s "$APACHE_SITE" "$temporary_file"; then
+    rm -f "$temporary_file"
+    log "Apache 地域可信头边界已位于目标 HTTPS VirtualHost。"
+    return 0
+  fi
+
   temporary_backup="${STATE_DIR}/apache-before-region-headers.conf"
   timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
   backup_dir="${BACKUP_ROOT}/region-headers-${timestamp}"
   backup_database "$backup_dir"
   install -d -m 0700 -o root -g root "$STATE_DIR"
   cp -a "$APACHE_SITE" "$temporary_backup"
-  if ! awk '
-    !inserted && /^[[:space:]]*<\/VirtualHost>/ {
-      print "    # JIYU-REGION-TRUST-BOUNDARY: 只信任 Cloudflare 注入的两位国家码。"
-      print "    SetEnvIf CF-IPCountry \"^([A-Z]{2})$\" JIYU_CF_COUNTRY=$1"
-      print "    RequestHeader unset X-JIYU-Country"
-      print "    RequestHeader set X-JIYU-Country \"%{JIYU_CF_COUNTRY}e\" env=JIYU_CF_COUNTRY"
-      print "    RequestHeader unset CF-IPCountry"
-      print ""
-      inserted = 1
-    }
-    { print }
-    END { if (!inserted) exit 42 }
-  ' "$APACHE_SITE" >"$temporary_file"; then
-    rm -f "$temporary_file"
-    fail "无法定位 Apache VirtualHost，拒绝写入地域头规则。"
-  fi
   cat "$temporary_file" >"$APACHE_SITE"
   rm -f "$temporary_file"
   if ! apache2ctl configtest || ! reload_apache_with_recovery; then
@@ -1400,7 +1445,7 @@ ensure_jiyu_region_headers() {
     reload_apache_with_recovery || true
     fail "Apache 地域头规则校验或重载失败，已恢复原配置。"
   fi
-  log "Apache 已剥离客户端伪造地域头，并仅转发可信 CF-IPCountry；地域强制开关仍按国内渠道就绪状态控制。"
+  log "Apache 已在目标 HTTPS VirtualHost 剥离客户端伪造地域头，并仅转发可信 CF-IPCountry。"
 }
 
 enable_managed_web_updates() {
