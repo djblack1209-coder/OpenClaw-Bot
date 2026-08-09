@@ -205,4 +205,5 @@ if [[ "$FAILED" -ne 0 ]]; then
 fi
 
 DOC_COUNT="$(find "$DOCS_DIR" -maxdepth 1 -type f -name '*.md' | wc -l | tr -d ' ')"
-printf '✅ docs-check 通过：%s 个文档，目录扁平、命名合规、索引完整、关键事实可验证。\n' "$DOC_COUNT"
+[[ -f "$CURRENT_BASELINE" ]] && DOC_COUNT=$((DOC_COUNT + 1))
+printf '✅ docs-check 通过：%s 个文档，唯一当前基线、命名合规、索引完整、关键事实可验证。\n' "$DOC_COUNT"

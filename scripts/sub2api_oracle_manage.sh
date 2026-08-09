@@ -1301,6 +1301,50 @@ APACHE
   log "已禁止浏览器直接更新或回滚生产二进制。"
 }
 
+ensure_jiyu_region_headers() {
+  require_root
+  require_linux
+  require_command apache2ctl
+  [[ -f "$APACHE_SITE" ]] || fail "找不到 Apache 站点配置: ${APACHE_SITE}"
+  if grep -q 'JIYU-REGION-TRUST-BOUNDARY' "$APACHE_SITE"; then
+    log "Apache 地域可信头边界已存在。"
+    return 0
+  fi
+
+  local temporary_file temporary_backup timestamp backup_dir
+  temporary_file="$(mktemp)"
+  temporary_backup="${STATE_DIR}/apache-before-region-headers.conf"
+  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  backup_dir="${BACKUP_ROOT}/region-headers-${timestamp}"
+  backup_database "$backup_dir"
+  install -d -m 0700 -o root -g root "$STATE_DIR"
+  cp -a "$APACHE_SITE" "$temporary_backup"
+  if ! awk '
+    !inserted && /^[[:space:]]*<\/VirtualHost>/ {
+      print "    # JIYU-REGION-TRUST-BOUNDARY: 只信任 Cloudflare 注入的两位国家码。"
+      print "    SetEnvIf CF-IPCountry \"^([A-Z]{2})$\" JIYU_CF_COUNTRY=$1"
+      print "    RequestHeader unset X-JIYU-Country"
+      print "    RequestHeader set X-JIYU-Country \"%{JIYU_CF_COUNTRY}e\" env=JIYU_CF_COUNTRY"
+      print "    RequestHeader unset CF-IPCountry"
+      print ""
+      inserted = 1
+    }
+    { print }
+    END { if (!inserted) exit 42 }
+  ' "$APACHE_SITE" >"$temporary_file"; then
+    rm -f "$temporary_file"
+    fail "无法定位 Apache VirtualHost，拒绝写入地域头规则。"
+  fi
+  cat "$temporary_file" >"$APACHE_SITE"
+  rm -f "$temporary_file"
+  if ! apache2ctl configtest || ! reload_apache_with_recovery; then
+    cp -a "$temporary_backup" "$APACHE_SITE"
+    reload_apache_with_recovery || true
+    fail "Apache 地域头规则校验或重载失败，已恢复原配置。"
+  fi
+  log "Apache 已剥离客户端伪造地域头，并仅转发可信 CF-IPCountry；地域强制开关仍按国内渠道就绪状态控制。"
+}
+
 enable_managed_web_updates() {
   require_root
   require_linux
@@ -1809,6 +1853,7 @@ usage() {
   recharge-center     重新应用充值中心固定公开店铺和精确 CSP
   docs-page           重新应用文档入口和 CC Switch 下载、导入说明
   terms-page          更新登录条款中的地区展示规则（保留其余条款文本）
+  region-headers      加固 Cloudflare 地域头的 Apache 信任边界（不启用地域强制）
   upstream-allowlist    重新应用两个指定上游的安全域名白名单
   harden-apache      禁止浏览器直接更新或回滚生产二进制
   postgres-preflight 修复 PostgreSQL 最小运行权限并验证数据库连通性
@@ -1876,6 +1921,9 @@ main() {
       ;;
     terms-page)
       apply_terms_page
+      ;;
+    region-headers)
+      ensure_jiyu_region_headers
       ;;
     upstream-allowlist)
       apply_upstream_allowlist
