@@ -7,6 +7,7 @@ FRONTEND_DIR="$ROOT_DIR/apps/openclaw-manager-src"
 BUNDLE_DIR="$FRONTEND_DIR/src-tauri/target/release/bundle/macos"
 BUNDLE_APP="$BUNDLE_DIR/OpenClaw.app"
 INSTALL_DIR="${OPENCLAW_INSTALL_DIR:-/Applications}"
+TAURI_BUNDLE_TARGETS="${OPENCLAW_TAURI_BUNDLES:-all}"
 INSTALL_APP="$INSTALL_DIR/OpenClaw.app"
 INSTALL_TMP="$INSTALL_DIR/.OpenClaw.app.install-$$"
 INSTALL_PREVIOUS="$INSTALL_DIR/.OpenClaw.app.previous-$$"
@@ -22,6 +23,14 @@ BACKUP_READY=0
 INSTALL_SWAP_STARTED=0
 LEGACY_CLEANUP_STARTED=0
 OLD_APP_NAMES=("OpenEverything.app" "OpenClaw.app" "OpenClaw-Gateway.app")
+
+case "$TAURI_BUNDLE_TARGETS" in
+  all|app|dmg) ;;
+  *)
+    echo "不支持的 Tauri bundle 目标: $TAURI_BUNDLE_TARGETS（可选 all、app、dmg）" >&2
+    exit 2
+    ;;
+esac
 
 cdhash_for() {
   codesign -dvvv "$1" 2>&1 | awk -F= '/^CDHash=/{print $2; exit}'
@@ -121,7 +130,11 @@ BACKUP_READY=1
 rm -rf "$BUNDLE_APP"
 
 echo "══════ 构建 Tauri 桌面端 ══════"
-(cd "$FRONTEND_DIR" && npm run tauri:build)
+if [[ "$TAURI_BUNDLE_TARGETS" == "all" ]]; then
+  (cd "$FRONTEND_DIR" && npm run tauri:build)
+else
+  (cd "$FRONTEND_DIR" && npm run tauri:build -- --bundles "$TAURI_BUNDLE_TARGETS")
+fi
 [[ -d "$BUNDLE_APP" ]] || {
   echo "构建未生成 OpenClaw.app" >&2
   exit 1
@@ -144,7 +157,10 @@ INSTALL_SWAP_STARTED=1
 codesign --verify --deep --strict --verbose=2 "$INSTALL_APP"
 
 installed_cdhash="$(cdhash_for "$INSTALL_APP")"
-dmg_path="$(find "$FRONTEND_DIR/src-tauri/target/release/bundle/dmg" -maxdepth 1 -type f -name '*.dmg' -print 2>/dev/null | LC_ALL=C sort | tail -n 1)"
+dmg_path=""
+if [[ "$TAURI_BUNDLE_TARGETS" != "app" ]]; then
+  dmg_path="$(find "$FRONTEND_DIR/src-tauri/target/release/bundle/dmg" -maxdepth 1 -type f -name '*.dmg' -print 2>/dev/null | LC_ALL=C sort | tail -n 1)"
+fi
 dmg_sha256=""
 if [[ -n "$dmg_path" && -f "$dmg_path" ]]; then
   dmg_sha256="$(shasum -a 256 "$dmg_path" | awk '{print $1}')"
