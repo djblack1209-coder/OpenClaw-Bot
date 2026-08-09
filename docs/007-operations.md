@@ -93,9 +93,9 @@ ssh oracle-arm1 '/usr/local/sbin/openclaw-sub2api-manager status'
 
 ### 风控、反注册机与 Cloudflare（2026-08-08）
 
-- Sub2API 风控和会话级阻断已启用；内容审核使用 `pre_block + keyword_only`，7 条中英文高置信系统提示词窃取短语命中时返回 403，10 次命中进入自动封禁统计。没有外接内容审核 API，因此不会额外外传提示词或增加模型前置网络耗时。
+- Sub2API 风控和会话级阻断已启用；内容审核使用 `pre_block + keyword_only`，29 条中英文高置信规则覆盖提示词注入、系统提示词窃取、Unicode 全角绕过和敏感信息泄漏，命中时返回 403，10 次命中进入自动封禁统计。没有外接内容审核 API，因此不会额外外传提示词或增加模型前置网络耗时。
 - 真实验证：正常提示返回 200；精确恶意短语在约 840 ms 内返回 `content_policy_violation`，无上游调用和计费。关键词规则只覆盖确定性短语，不等价于语义级防提示注入，新增规则前必须复核误伤。
-- 开放注册保持关闭、邮箱验证保持开启。源站 Redis 限流为注册 5 次/分钟、登录 20 次/分钟、验证码 5 次/分钟；Cloudflare 对同一主机再叠加注册/验证码 5 次/60 秒并封禁 600 秒、登录/2FA 20 次/60 秒并封禁 300 秒。
+- 开放注册与邮箱验证均已开启。源站 Redis 限流为注册 5 次/分钟、登录 20 次/分钟、验证码 5 次/分钟；Cloudflare 对同一主机再叠加注册/验证码 5 次/60 秒并封禁 600 秒、登录/2FA 20 次/60 秒并封禁 300 秒。Turnstile 按当前产品决定保持关闭，因此仍需观察自动注册和邮件额度消耗。
 - Cloudflare 代理、严格 SSL、最低 TLS 1.3、Managed WAF、OWASP、L7 DDoS 和高安全级别均启用。Super Bot Fight Mode 没有做全区域一刀切，避免误伤 `/v1` 的 Codex/Claude 等合法非浏览器客户端和同区域其他站点。
 - Turnstile 当前关闭。正式开放注册前必须先创建 JIYU 专用 widget，再以桌面/手机真实注册、验证码、失败和无障碍流程验收；不得直接复用历史 New-API 口径声称已开启。
 - JIYU 443 使用 Cloudflare Origin CA，并已通过 `jiyu-cloudflare-origin.service` 收口：服务从 Cloudflare 官方地址页下载并校验 CIDR，nftables 只允许 Cloudflare、loopback 和 Tailscale 访问 443。应用命令先安排 5 分钟自动回滚；必须从独立外部主机确认直连源站超时后，才能执行确认命令取消回滚。
