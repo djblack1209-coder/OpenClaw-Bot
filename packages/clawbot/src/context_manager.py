@@ -655,7 +655,8 @@ class TieredContextManager:
                 parts.append(f"[{label}]\n{value}")
         if not parts:
             return ""
-        return f"=== Core Memory ===\n{'\n\n'.join(parts)}"
+        rendered_parts = "\n\n".join(parts)
+        return f"=== Core Memory ===\n{rendered_parts}"
 
     # ---- Archival Memory 检索 ----
 

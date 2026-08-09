@@ -15,7 +15,7 @@
 | 管理脚本 | `scripts/sub2api_oracle_manage.sh` / Oracle `/usr/local/sbin/openclaw-sub2api-manager` | `install-jiyu-build <path>` 用于完整发布；`stage-jiyu-build <path>` 原子暂存已校验二进制，并调度独立 systemd 任务在 WebUI 重启后核对运行哈希和健康状态；`recharge-center` 原子维护最小回退页和精确 `frame-src`；`enable-web-update <broker> <manifest-url>` 安装固定 root 更新代理 |
 | 自动更新 | `.github/workflows/sub2api-jiyu-compat.yml` + `scripts/sub2api_jiyu_update_broker.sh` + `sub2api-update.timer` | CI 从官方稳定标签构建带 JIYU 补丁的 ARM64 兼容包并生成 SHA-256 清单；定时任务跳过已适配基础版，手动同版本修订发布为不可变 `-r<run_id>` 标签，旧工件不覆盖。WebUI 后端只能无参数调用 root 代理下载、校验和暂存。当前生产 `v0.1.172-jiyu.31261229885` 已启用受管 WebUI 更新 |
 | 自动备份 | `sub2api-backup.timer` / `sub2api-backup.service` | 每日 03:40（Asia/Singapore，随机延迟 15 分钟）备份 PostgreSQL、二进制、版本和 root-only 环境文件；本地 `/var/backups/sub2api` 保留 30 天 |
-| 管理员账号 | `djblack1209@gmail.com` | 当前唯一管理员；密码不写仓库，已存入 macOS 钥匙串服务“CC中转 Sub2API 管理员” |
+| 管理员账号 | 受控身份，不记录标识 | 当前唯一管理员；密码不写仓库，已存入 macOS 钥匙串服务“CC中转 Sub2API 管理员” |
 | 凭据保管 | Oracle `/etc/sub2api/sub2api.env` + 本机钥匙串 | Oracle env `0600 root-only`；修改管理员密码后同步更新这两处并做真实登录验证 |
 | 旧底座清理 | Oracle、腾讯云、R2 | Oracle/Tencent 旧 New-API 数据目录、SQLite/容器/镜像、systemd 服务和同名本地备份已删除；旧 R2 加密对象已删除并重建为只含 JIYU runtime/application.env 的新备份 |
 | 图形 Logo | `scripts/assets/jiyu-ai-logo-email.png` / `/api/v1/pages/docs/images/jiyu-ai-logo.png` | 512×512 PNG，源自选定的 2K JY 标志；站内继续使用 2K 等比图形，验证码、通知邮箱和运维告警模板通过同域公开 PNG 加载 |
@@ -25,26 +25,16 @@
 
 ### JIYU AI 上游、分组与渠道注册
 
-所有名称只登记用途，不登记密钥值。两个上游各有 5 个独立 Key：`JIYU——Claude Kiro`、`JIYU——Claude 官 Key`、`JIYU——OpenAI Pro`、`JIYU——OpenAI Plus`、`JIYU——Grok`；未复用历史 Key。
+永久测试用户为受控身份，不记录标识；不记录密码、Key、Token 或 Cookie，并保留独立、可轮换的真实调用验证能力。
 
-| 上游 | 账号/分组数 | 上游倍率 | 用户倍率 | 当前验证 |
-|---|---:|---|---|---|
-| 渠道A | 5 / 5 | Kiro `0.05`、Claude 官 Key `0.12`、OpenAI Pro `0.095`、OpenAI Plus `0.06`、Grok `0.03` | 分别为 `0.10`、`0.17`、`0.145`、`0.11`、`0.08` | 倍率合同已由数据库联表和创建密钥页面重载核对；真实可用性以监控的正常/降级/错误状态为准 |
-| 渠道B | 5 / 5 | Kiro `0.16`、Claude 官 Key `1.30`、OpenAI Pro `0.18`、OpenAI Plus `0.13`、Grok `0.08` | 分别为 `0.21`、`1.35`、`0.23`、`0.18`、`0.13` | 5 个分组均满足绝对增加 `0.05x`；实时状态继续由监控真实记录 |
-| 渠道A 生图 | 1 / 1 | `gpt-image-2` 上游标价 `0.05/张` | `0.10/张` | 分组、账号和渠道已启用；真实生成返回上游 `502`，保持故障状态，不伪造可用 |
-| 渠道B 生图 | 1 / 1 | `gpt-image-2` 高质量组 `0.07/张` | `0.12/张` | 分组、账号和渠道已启用；专用 Key 调用返回 `401`，保持故障状态，不伪造可用 |
-
-渠道A Claude 官 Key 当前探测到的上游声明倍率为 `0.45x`，但账号计费倍率和用户分组仍为 `0.12x/0.17x`。本轮按“不改定价”边界保持现值；声明值只作为风险证据，不能自动当作真实成本或擅自同步。
-
-永久测试账号 `jiyu-e2e-20260808@245334.xyz` 只登记身份和保留策略，不登记密码、Key、Token 或 Cookie。账号 ID 2，状态 active，余额用于小额真实调用；Claude 与 OpenAI Key 分开、可轮换，停用旧 Key 但不删除账号和历史用量。管理员不得把该账号并入清理任务。
-
-文本模型合同为“上游账号倍率 **绝对增加 `0.05x`**”，不是把成本乘以 1.05；生图合同为“上游每张价格 **绝对增加 `0.05`**”。10 个文本分组与 2 个生图分组均启用利润控制，12 个 active 渠道分别只绑定 1 个业务分组并同步模型定价。
-
-| 监控 | 模型 | 周期 | 当前合同 |
-|---|---|---|---|
-| 渠道A Kiro / 官 Key / Plus / Pro / Grok | 按各分组真实可调用模型 | 300 秒，±30 秒抖动 | 5 条均启用；状态如实反映正常、降级或错误，不用静态绿灯覆盖故障 |
-| 渠道B Kiro / 官 Key / Plus / Pro / Grok | 按各分组真实可调用模型 | 300 秒，±30 秒抖动 | 5 条均启用；真实状态持续写入监控历史 |
-| 渠道A 生图 / 渠道B 生图 | `gpt-image-2` | 300 秒，±30 秒抖动 | 2 条均已建立；必须写入生图专用 Key 后才可持续探测，当前上游 502/401 继续如实展示 |
+| 项目 | 当前约束 |
+|---|---|
+| 渠道家族 | 两个匿名渠道家族 |
+| 业务渠道 | 12 条 active 业务渠道 |
+| 监控 | 真实反映当前状态 |
+| 自营 Plus/Pro 池 | 两个自营号池当前均无库存 |
+| 定价与供应 | 内部定价由所有者控制；公式、数值及渠道供应商数据不得进入文档或用户 UI |
+| 原生账号费率回写 | 保持禁用，因其无法保留已批准的业务合同 |
 
 ### JIYU AI 邮箱与条款注册
 
@@ -53,7 +43,7 @@
 | SMTP | Gmail `smtp.gmail.com:587` + TLS；用户名、发件邮箱均为管理员邮箱，应用密码只保存在服务器加密设置，不写仓库 |
 | 邮箱绑定 | 个人资料提供“管理邮箱 → 发送验证码 → 更换主邮箱”；开放注册仍关闭，注册邮箱验证已开启，新用户默认余额 `0`、并发 `5`、RPM `60` |
 | 邮件模板 | `auth.verify_code`、`notification_email.verify_code`、`ops.alert` 中文模板均使用 JY 图形 Logo；验证码模板明确绑定用途、验证码和有效期 |
-| 登录条款 | 2026-08-07 生效；弹窗强制确认，明确不向中国大陆及联合国、新加坡、美国、欧盟或上游限制、制裁、出口管制地区开放 |
+| 登录条款 | 2026-08-07 生效；弹窗强制确认；中国大陆 IP 只显示国内模型，境外 IP 显示全部模型；技术分流完成真实回读前，页面明确以线上目录/API 为准；其他制裁、出口管制或上游服务限制仍适用 |
 
 ---
 
@@ -261,7 +251,7 @@
 | Codex WS 旧模式回滚 | `scripts/sub2api_oracle_manage.sh openai-ws-legacy` | 关闭官方模式路由并恢复旧版传输判定；用于桥接异常时快速回滚 |
 | 本地补号助手 | `make jiyu-sub2-replenish` | 只绑定 `127.0.0.1:18796` 的可视化 Web App；兼容分隔行、标签块和 JSON，串行走 Sub2 原生 OpenAI OAuth，识别 Plus/Pro 后只匹配同名自营号池，绝不回退渠道A/B；密码/TOTP/Token 只在进程内存，挑战页面暂停人工 |
 | 本地补号演练 | `make jiyu-sub2-replenish-dry-run` | 只验证三类严格解析、自营号池语义、掩码和页面，不读取钥匙串、不打开登录窗口、不调用生产接口 |
-| Telegram 远程补号 | `/jiyu_replenish`、`/jiyu_replenish status|stop|cancel` | 仅授权管理员私聊提交 JSON 或分隔行；Bot 只输出脱敏批次状态，本机主事件循环执行 OAuth 浏览器和人工风控，禁止群聊与并行批次 |
+| Telegram 补号安全提示 | `/jiyu_replenish`、`/jiyu_replenish cancel` | 仅授权管理员私聊提示远程材料提交和本地批次控制均已禁用，唯一入口是 `make jiyu-sub2-replenish`；提示后同一私聊的下一条普通文本会被一次性保护消费而不读取，`cancel` 仅取消该等待状态。`status`、`stop` 与遗留键盘操作均明确回复 Telegram 无法查看或控制本地批次；群聊失败关闭。 |
 
 ---
 
@@ -319,7 +309,7 @@
 | 闲鱼浏览器确认发货 | `127.0.0.1:18800/api/cc-xianyu-confirm/next` + `/api/cc-xianyu-confirm/current-page-candidate` + `/api/cc-shipments/{id}/mark-xianyu-confirmed` / `/mark-xianyu-confirm-failed` + Chrome/桥接器 `xianyuShipmentConfirm` | 本机受 `X-API-Token` 保护；正式队列只把 `message_sent`、未确认发货且订单号为 10 位以上数字的真实闲鱼订单交给浏览器助手，`xy_manual_*` / `xy_browser_*` 不进入正式 `xy_oid_*` 严格门。生产内测补救时，`current-page-candidate` 可返回已发卡密的手工/浏览器补救单候选，但浏览器页面执行器仍必须先看到当前页“已付款/待发货”可见信号，才会点击“去发货/无需物流/确认发货”；页面没有付款信号则安全跳过。结果写入 `cc_shipments.xianyu_confirm_status/xianyu_confirm_at/xianyu_confirm_error` |
 | 闲鱼恢复可售兜底 | `127.0.0.1:18800/api/cc-xianyu-relist/next` + `/api/cc-shipments/{id}/mark-relisted` / `/mark-relist-failed` + Chrome 插件 `xianyuItemRelist` / `relist_queue_watch` | 买家确认收货后，如闲鱼商品页明确显示“已下架/已售罄/重新上架”，浏览器助手可点击“重新上架/恢复上架”并回写 `cc_shipments.xianyu_relist_status/xianyu_relist_at/xianyu_relist_error`；页面显示仍在售时不会点击，不改标题、不改价格、不新建商品 |
 | 闲鱼可选后端确认发货 | `127.0.0.1:18800/api/cc-shipments/{id}/confirm-xianyu-backend` + `XianyuApis.confirm_dummy_shipment()` + `CC_XIANYU_AUTO_CONFIRM_SHIPMENT_ENABLED` | 借鉴开源闲鱼管理系统的虚拟商品确认发货做法；默认关闭。只有已成功发送兑换码、订单号是闲鱼真实数字订单号且显式开启时，才调用 `mtop.taobao.idle.logistic.consign.dummy` 尝试把闲鱼订单推进为已发货。18800 补救队列会对真实数字 `message_sent` 订单显示“后端确认发货”按钮；结果只写入 `cc_shipments.xianyu_confirm_status`，失败不回滚卡密发货，不对 `xy_manual_*` / `xy_browser_*` 内测兜底单执行 |
-| 闲鱼自动化运营水位 | `127.0.0.1:18800/api/cc-sale-readiness` / `/api/status.cc_chrome_extension` | 本机 GUI 汇总自动发货可用性、正式售卖门槛、webhook/ws/cookie/补救队列/商品映射状态、自动发货套餐路由预判、买家自助入口健康和仍需人工介入事项；`cc_chrome_extension` 会只读提示 Social Pilot 是否已加载、是否支持 `paid_page_dispatch/relist_queue_watch`，未加载时给出插件目录；不输出 token、卡密或用户 Key |
+| 闲鱼自动化运营水位 | `127.0.0.1:18800/api/cc-sale-readiness` / `/api/status.cc_chrome_extension` | 本机 GUI 汇总自动发货可用性、正式售卖门槛、webhook/ws/cookie/补救队列/商品映射状态、自动发货套餐路由预判、买家自助入口健康和仍需人工介入事项；`cc_chrome_extension` 只读保留 X/小红书 Social Pilot 能力上报，闲鱼卖家桥接器通过 `manifest_version=bridge` 表示 CDP 接管；不输出 token、卡密或用户 Key |
 | 闲鱼正式售卖上架锁 | `127.0.0.1:18800/api/cc-public-sale-lock` | 本机 GUI 只读上架门禁；默认读取缓存，`refresh=true` 时运行只读巡检刷新库存/兑换码/渠道/买家入口证据；只有自动发货、补救队列、库存、兑换码、渠道、买家主站/API 网关、webhook 未授权拦截、CC Switch 导入入口和真实小额单严格门全部满足才显示 `public_sale_unlocked`。若严格门已通过但老板手动暂停自动发货，会返回 `state=paused_after_strict_gate`、`state_label=严格门已通过，自动发货暂停保护`、`can_public_sale=false`，明确这是防重复发卡保护而非链路故障 |
 | 闲鱼实单闭环观察 | `127.0.0.1:18800/api/cc-loop-watch` | 本机 GUI/后台守护线程轻量观察真实订单闭环阶段：自动发货配置、WebSocket、Cookie、补救队列、真实订单数、商品映射、后台严格门节流状态和严格买家闭环是否通过；展示最近严格门脱敏摘要和后台严格门观察最近运行结果，摘要会落盘到本机 SQLite；不输出卡密 |
 | 闲鱼买家链路进度 | `127.0.0.1:18800/api/cc-buyer-chain-progress` | 只读聚合真实订单买家侧五步：已发货、已兑换、API Key、调模型、同单闭环；供 `/ops-links` 和本机 GUI 判断买家卡在哪一步，不触发审计、不发货、不分配卡密、不改库存 |
@@ -519,7 +509,7 @@
 | New-API 冷回滚同步 | `make new-api-check` / `make new-api-sync` | 人工显式执行 | 自动创建分支的定时 workflow 已随生产切换到 Sub2API 删除；旧底座研究不得自动恢复服务或生产数据库 |
 | JIYU AI 网关 | `https://jiyu.245334.xyz/v1` | Sub2API 原生 OpenAI/Claude 兼容网关；用户密钥、端点、计费和用量均由 Sub2API 管理，生产不再运行旧桥接进程。 |
 | Chrome 运营书签修复 | `cc_zhongzhuan_chrome_bookmarks.mjs` | `scripts/cc_zhongzhuan_chrome_bookmarks.mjs` | 修复/重建本机 Chrome 各 Profile 的 `CC中转运营` 书签文件夹，只写入 2 个老板可点入口：本机操作台、用户主站；`/ops-links` 保留兼容但不再默认收藏。写入前在 Chrome Profile 目录生成 `.codex-backup-*` 备份；加 `--open-window` 可直接打开 2 个运营入口窗口；2026-07-07 复验 `Default/Profile 1/Profile 2/Profile 3` 均为 2 个入口且 `chromeBookmarks.ok=true` |
-| CC中转卖家 Chromium 启动器 | `cc-seller-chrome` / `cc_zhongzhuan_launch_seller_chrome.mjs` | `make cc-seller-chrome` / `scripts/cc_zhongzhuan_launch_seller_chrome.mjs` | 准备卖家专用 Profile `~/.openclaw/cc-zhongzhuan-seller-chromium-v2`、运行版插件目录 `~/.openclaw/cc-social-pilot-runtime-extension` 和本机 `runtime-config.json`，打开本机操作台、用户主站与闲鱼。优先使用 Playwright Chromium 自动加载插件并带 Local Network Access 兼容参数；若 Chromium 缓存缺失，则降级到普通 Google Chrome 并提示安装 Chromium |
+| CC中转卖家 Chromium 启动器 | `cc-seller-chrome` / `cc_zhongzhuan_launch_seller_chrome.mjs` | OpenClaw 桌面端“启动并打开运营台”（维护入口：`scripts/cc_zhongzhuan_launch_seller_chrome.mjs`） | 由桌面端点击启动，准备独立卖家 Profile、回环 CDP 和本机操作台/用户主站/闲鱼首页；闲鱼由本机桥接器直接接管，不复制扩展、不读取 `.env`、不写 runtime-config、不复制 Token；遗留 `--copy-token` 参数失败关闭。优先使用可用的隔离 Chromium，否则降级到普通 Google Chrome，不提示下载或手动加载扩展 |
 | CC中转卖家本机桥接器 | `cc-seller-bridge` / `cc_zhongzhuan_seller_bridge.mjs` | `make cc-seller-bridge` / `scripts/cc_zhongzhuan_seller_bridge.mjs` | 本机 DevTools 桥接器，读取 18800 队列并注入闲鱼页面执行器，负责付款页发卡、点击发送、确认发货和恢复可售巡检；`--scan-only --require-real-order-id` 会只读捕获闲鱼 `message.headinfo` 真实订单号/商品 ID；`--one-shot-override` 会强制 delivery-only/只跑一次/只允许 1 个闲鱼页，并且优先把已发 `xy_browser_*` 临时单接管为 `xy_oid_*`，不重复发卡；不建议在重复发卡事故未完全验收前恢复 `ai.openclaw.cc-seller-bridge` 常驻 LaunchAgent |
 | 生产闭环审计 | `cc_zhongzhuan_readiness_audit.mjs` | `scripts/cc_zhongzhuan_readiness_audit.mjs` | 默认只读检查 Chrome 运营入口、本机闲鱼助手、本机 GUI 状态、本机配置、Oracle 服务/库存/公网安全门；Oracle 合同失败关闭校验 12 个分组/账号/启用渠道、10 条启用文本监控、2 条禁用生图监控、12 条 300±30 秒调度、文本 `+0.05x` 倍率差、生图 `1.0x`/按次 `0.10/0.12` 与渠道A Claude 账号 #2 状态；当前默认与 `--require-real-order` 两种只读巡检均 PASS，可用兑换码 7、自动发货未暂停、历史真实闲鱼订单 1 单、补救队列 0；链动首笔 ¥1 仍须单独实单确认；不输出 token、卡密或用户 Key |
 | 老板统一运营入口 | `/dashboard` / `/api/export-status` / `/api/cc-paid-order-probe` / `/api/cc-operator-mode/one-shot-delivery` / `/api/cc-seller-bridge/page-scan` / `/api/cc-seller-bridge/one-shot-delivery` / `/api/cc-simulation-gate` / `/api/cc-replacement-mode-test-pack` | `http://127.0.0.1:18800/dashboard` | 单一入口展示首页总览、闲鱼售卖、每日简报、系统维护、帮助中心；状态报告导出会脱敏订单、卡密、Token、买家昵称和 API Key；“真实待发货扫单”只读确认闲鱼待发货候选，不发卡、不点击发货；“只放行一次发卡”在暂停状态下只允许当前已付款页发送 1 条卡密；严格模拟门 v2 追踪真实发卡、商品模板/上架、兑换、API Key、CC Switch、模型调用、渠道/服务器状态，但不解锁 `xy_oid_*` 真实订单严格门 |
@@ -533,7 +523,7 @@
 
 | 环境变量 | 用途 | 备注 |
 |----------|------|------|
-| `NEWAPI_BASE_URL` | New-API 内网服务地址 | Oracle 生产为 `http://127.0.0.1:13000`；本地默认可为 `http://localhost:3000` |
+| `NEWAPI_BASE_URL` | New-API 内网服务地址 | 必须显式配置；未配置时本机兼容代理以 503 失败关闭，不会默认连接 `localhost:3000`。Oracle 生产为 `http://127.0.0.1:13000`。 |
 | `NEWAPI_HOST_PORT` | New-API 宿主机回环监听端口 | 本地/冷回滚 Docker 默认 `3000`，共享服务器可改 `13000`；Oracle 生产二进制直接监听 `127.0.0.1:13000` |
 | `NEWAPI_ADMIN_TOKEN` | New-API 用户 access token | 通过 New-API 用户资料页或 `/api/user/token` 生成，禁止写入仓库 |
 | `NEWAPI_ADMIN_USER_ID` | New-API 当前用户 ID | New-API v1 后台/用户 API 会校验 `New-Api-User` 头，需与 access token 所属用户一致 |
@@ -1144,7 +1134,7 @@
 | `packages/clawbot/src/sub2_replenish/sub2_client.py` | 读取 macOS 钥匙串并调用 Sub2 原生 OAuth、账号、分组接口 | 固定 `https://jiyu.245334.xyz`，错误不带响应正文，倍率不使用默认值 |
 | `packages/clawbot/src/sub2_replenish/runner.py` | 批次渠道、计划自动分组、独立 BrowserContext、`localhost:1455` 回调、串行/暂停/重试/停止 | OTP 只匹配明确 one-time-code/OTP/TOTP/MFA/verification code 语义；CAPTCHA、短信、实体手机号和风控交人工 |
 | `packages/clawbot/src/sub2_replenish/app.py` | localhost UI、同源校验、随机 HttpOnly 会话和 CSP | 无 CORS；仅 `127.0.0.1:18796` |
-| `packages/clawbot/src/bot/cmd_jiyu_replenish_mixin.py` | Telegram 远程补号菜单、严格号源接收和脱敏状态 | 仅 `ALLOWED_USER_IDS` 私聊；不回显邮箱/密码/TOTP/Token；复用本地 Runner |
+| `packages/clawbot/src/bot/cmd_jiyu_replenish_mixin.py` | Telegram 本机 UI 安全提示、取消等待和一次性保护消费 | 仅 `ALLOWED_USER_IDS` 私聊；不接受来源材料，不回显或解析文本；绝不构造、查看或停止本地 UI 的 `ReplenishRunner` |
 
 
 > 最后更新: 2026-04-19 | 新增 3 个模块 (285→288): ai-hedge-fund 估值 + Hurst + 大师 Agent
@@ -2465,7 +2455,7 @@
 |------|------|------|------|
 | xianyu_live.py | `src/xianyu/xianyu_live.py` | 1853 | 闲鱼实时客服 — WebSocket 长连接/自动回复/CC中转已付款自动发货、已付款/待发货状态变体与订单结构化字段位置识别、未付款/退款/普通聊天误发保护、商品套餐映射、订单自带商品 ID 优先路由、URL 参数真实订单号识别、稳定 `orderId` 幂等、发送失败补救记录和本机暂停开关 |
 | xianyu_agent.py | `src/xianyu/xianyu_agent.py` | 497 | 闲鱼 AI Agent — 多轮对话/砍价/推荐 |
-| xianyu_admin.py | `src/xianyu/xianyu_admin.py` | 3002 | 闲鱼管理后台 — Apple 风格 CC中转状态中心与操作台、商品/订单/统计/CC中转发货补救队列/已付款漏单兜底发货/商品套餐映射/完整闲鱼分享文本规整/暂停恢复自动发货/自动化运营水位/商品模板/一键闭环审计/CC Switch 导入入口上架锁/后台严格门观察/严格门摘要恢复与买家闭环进度恢复 |
+| xianyu_admin.py | `src/xianyu/xianyu_admin.py` | 3002 | 闲鱼管理后台 — Apple 风格 CC中转状态中心与操作台、商品/订单/统计/CC中转发货补救队列/已付款漏单兜底发货/商品套餐映射/完整闲鱼分享文本规整/暂停恢复自动发货/自动化运营水位/商品模板/一键闭环审计/CC Switch 导入入口上架锁/后台严格门观察/严格门摘要恢复与买家闭环进度恢复；桌面端通过 `/api/session/desktop-launch` 换取一次性本机启动 URL，消费后进入 `/dashboard`，不回显 API Token |
 | cc_operator_state.py | `src/xianyu/cc_operator_state.py` | 82 | CC中转本机操作台状态文件 — 保存暂停/恢复自动发货开关，不保存卡密、Token、Cookie 或买家信息 |
 | goofish_monitor.py | `src/xianyu/goofish_monitor.py` | 336 | 闲鱼监控 — 竞品价格/销量追踪 |
 
@@ -2557,13 +2547,9 @@
 
 **依赖关系:** `evolution/engine.py` → `evolution/github_trending.py` + `litellm_router.py` + `utils.py`
 
-#### 闲鱼新增 (src/xianyu/)
+#### 闲鱼登录入口
 
-| 模块 | 路径 | 行数 | 说明 |
-|------|------|------|------|
-| qr_login.py | `src/xianyu/qr_login.py` | 415 | 闲鱼扫码登录 — 纯 API 实现 (不弹浏览器)，Telegram 发送二维码 + 轮询扫码 + Cookie 写入 .env + 热更新 |
-
-**依赖关系:** `cmd_xianyu_mixin.py` → `qr_login.py`; 搬运自 GuDong2003/xianyu-auto-reply-fix
+旧 QR API 路由、桌面封装、`qr_login.py` 与 Telegram QR 通知链已移除。当前唯一登录入口是 OpenClaw 桌面端的“启动并打开运营台”按钮；它会打开隔离卖家 Chromium，资产所有者本人在其中扫码，随后由本机桥接器通过回环 CDP 接管。`xianyu_live` 的正常浏览器登录、CookieCloud 与运行态 Cookie 读取保持不变。
 
 #### cmd_basic 子模块展开 (从 cmd_basic_mixin.py 拆分)
 

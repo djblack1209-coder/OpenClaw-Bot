@@ -5,6 +5,271 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
+## [2026-08-09] 修正 JIYU 生产条款的地区总禁用冲突
+> 领域: `infra` | `docs`
+> 影响模块: `Sub2API 登录条款`, `JIYU 文档页`, `生产备份与回滚`
+> 关联问题: HI-1038
+### 变更内容
+- 生产登录前条款和受保护文档源不再声明中国大陆整体不开放；改为已确认的目录规则、海外主系统唯一账本边界，以及技术分流尚待真实回读的透明状态。
+- 复用既有 Sub2API 管理脚本新增 `terms-page` 最小维护命令，只替换过时地区句、保留其余条款文本和文档顺序；文档页继续由同一受管入口维护。
+- 本次未启用 Cloudflare 路由、国内节点、支付、对象存储或模型流量转发。地区目录过滤仍为 P0 待实施项，不能宣称已上线。
+### 文件变更
+- `scripts/sub2api_oracle_manage.sh` — 新增可回读的登录条款地区文案维护命令，并同步文档页模板。
+- `docs/006-registries.md`、`docs/028-jiyu-service-terms-guide.md`、`docs/029-jiyu-settings-and-payment-guide.md`、`docs/009-health.md`、`docs/012-handoff.md` — 同步生产状态、剩余技术边界与交接。
+### 验证
+- 写入前重新读取服务、文档、条款、渠道聚合和备份状态，并生成新的 Sub2API 一致性备份；保留管理脚本、文档页和条款 JSON 的单独恢复副本。
+- 写入后 Oracle 的 Sub2API、Redis、Apache 均为 active，回环 `/health` 为 200；公网未登录页面可读取新条款且不再包含旧大陆总禁用文案。受保护文档的实际渲染仍需用户自行同意条款后回读。
+
+## [2026-08-09] 闲鱼桌面入口自动启动托管服务
+> 领域: `frontend` | `infra` | `xianyu`
+> 影响模块: `OpenClaw Tauri`, `ai.openclaw.xianyu`, `闲鱼运营入口`
+> 关联问题: HI-1037
+### 变更内容
+- “启动并打开运营台”现在先幂等调用现有 Tauri 托管服务控制器启动 `ai.openclaw.xianyu`；服务已运行时不重启，再继续启动隔离卖家浏览器并换取一次性本机运营台地址。
+- 未新增依赖、常驻服务、Cookie/Token 输入或新的控制面；托管服务启动失败时会停止后续浏览器和地址交换并返回错误。
+### 文件变更
+- `apps/openclaw-manager-src/src-tauri/src/commands/clawbot_api.rs` — 复用托管服务启动路径并增加标签回归断言。
+### 验证
+- `cargo test --locked xianyu`、`cargo fmt -- --check`、`npx tsc --noEmit` 与 `git diff --check` 通过；未以启动本机服务或重新安装 App 替代桌面点击验证。
+
+## [2026-08-09] 收口闲鱼运营投影的桌面端提示
+> 领域: `backend` | `xianyu`
+> 影响模块: `闲鱼运营状态投影`, `闲鱼运营回归测试`
+> 关联问题: HI-1036
+### 变更内容
+- 当前状态投影不再要求刷新 Chrome 插件、打开插件弹窗或执行重启命令；统一指向 OpenClaw 桌面端运营台。
+- 保留真实边界：首次登录闲鱼仍由用户在隔离卖家浏览器中人工完成，后续由本机回环 CDP 接管。
+### 文件变更
+- `packages/clawbot/src/xianyu/operations_projection.py`、`packages/clawbot/tests/test_xianyu_operations_projection.py` — 更新补救、断线和登录恢复提示及回归断言。
+
+## [2026-08-09] 闲鱼桌面入口改为无扩展 CDP 接管
+> 领域: `frontend` | `backend` | `xianyu`
+> 影响模块: `闲鱼卖家浏览器启动器`, `OpenClaw Tauri`, `XianyuAdmin`
+> 关联问题: HI-1036
+### 变更内容
+- 闲鱼启动器只准备独立卖家浏览器、回环 CDP 和首屏地址，不再复制 Social Pilot、读取 `.env`、写入 runtime-config 或暴露 Token。
+- 移除闲鱼入口的 `--load-extension`、`--disable-extensions-except`、Finder 和 `chrome://extensions` 手动安装流程；`--copy-token` 继续失败关闭。
+- 桌面端发现逻辑只要求固定启动器脚本；X/小红书仍保留独立 Social Pilot 状态和能力上报，不与闲鱼桥接状态混淆。
+### 文件变更
+- `scripts/cc_zhongzhuan_launch_seller_chrome.mjs`、`scripts/cc_zhongzhuan_launch_seller_chrome.test.mjs` — 改为无扩展 CDP 启动契约及回归断言。
+- `apps/openclaw-manager-src/src-tauri/src/commands/clawbot_api.rs` — 移除无必要的扩展清单发现前置条件。
+- `packages/clawbot/src/xianyu/xianyu_admin.py`、`packages/clawbot/tests/test_xianyu_cc_auto_ship.py` — 更新闲鱼用户提示，保留社媒扩展检测。
+
+## [2026-08-09] 收紧 OpenClaw 桌面安装的候选包交换顺序
+> 领域: `infra`
+> 影响模块: `OpenClaw macOS 安装器`, `本地回滚副本`
+> 关联问题: HI-1035
+### 变更内容
+- `make tauri-build` 的安装脚本不再在构建前删除 `/Applications/OpenClaw.app`；现有 App 会一直保留到新构建、严格签名校验和安装临时副本校验全部成功。
+- 交换时先把当前 App 同目录暂存，再移动已验证候选包；任一可捕获失败会从本地备份恢复原有三个历史 App 名称，并保留既有持久回滚清单语义。
+- 移除安装脚本对其他 worktree 构建目录的删除，以及重置 Launchpad、重启 Dock 的无关副作用；成功交换后才清理两个 legacy App 名称。
+### 文件变更
+- `scripts/tauri_build_install.sh` — 延后安装交换和 legacy 清理，保留签名、备份与失败恢复链。
+
+## [2026-08-09] 校正线上 AI/API 服务的支付资质边界
+> 领域: `docs`
+> 影响模块: `JIYU 支付设置说明`, `兑换码过渡渠道`
+> 关联问题: HI-1030
+### 变更内容
+- 依据微信支付官方小微公开准入与服务商进件文档，明确小微仅面向指定线下行业；接口中的线上字段不构成本站线上 AI/API/虚拟服务的合规直连依据。
+- 明确个人收款码不是 API；本站支付开关继续保持关闭，第三方店铺售卖兑换码和站内核销只是过渡渠道。
+- 明确支付宝直连不承诺无营业执照个人一定可开通，须以当前产品开通页和审核为准。
+### 文件变更
+- `docs/029-jiyu-settings-and-payment-guide.md` — 校正支付资质与接入边界。
+
+## [2026-08-09] 关闭闲鱼旧 QR 凭据入口
+> 领域: `backend` | `frontend` | `xianyu`
+> 影响模块: `CC中转卖家 Chromium`, `闲鱼 API`, `OpenClaw 桌面端`, `闲鱼通知`
+> 关联问题: HI-1032
+### 变更内容
+- `make cc-seller-chrome` 不再默认传递 `--copy-token`；启动器移除剪贴板分支，遗留参数立即失败关闭并说明已移除。
+- 删除已确认无生产调用者的 `/api/v1/xianyu/qr/generate`、`/api/v1/xianyu/qr/status`、桌面 API 封装、`qr_login.py` 和 Telegram QR 通知方法。
+- 保留隔离卖家 Chromium、OpenClaw 桌面运营台、`xianyu_live` 正常浏览器登录、CookieCloud 和运行态 Cookie 读取；`.env` 自动浏览器登录/刷新边界仍待独立维护。
+### 文件变更
+- `Makefile`、`scripts/cc_zhongzhuan_launch_seller_chrome.mjs` — 关闭 Token 剪贴板入口并拒绝旧参数。
+- `packages/clawbot/src/api/routers/xianyu.py`、`packages/clawbot/src/xianyu/qr_login.py`、`packages/clawbot/src/xianyu/order_notifier.py` — 删除零调用 QR 会话链。
+- `apps/openclaw-manager-src/src/lib/api.ts`、`apps/openclaw-manager-src/src/i18n/*.ts` — 删除桌面 QR API 与失效文案。
+- `docs/006-registries.md`、`docs/009-health.md`、`docs/012-handoff.md` — 同步当前入口和保留边界。
+
+## [2026-08-09] OpenClaw 桌面端一键启动闲鱼卖家浏览器
+> 领域: `frontend` | `backend` | `xianyu`
+> 影响模块: `OpenClaw Tauri`, `xianyu_admin`, `闲鱼运营入口`
+> 关联问题: HI-1034
+### 变更内容
+- 桌面端 Xianyu 页面改为“启动并打开运营台”入口：调用现有隔离卖家 Chromium 启动器，再复用本机 `127.0.0.1:18800`；不启动后台服务、不新增 Cookie/Token 输入。
+- Tauri 只从可配置项目根、当前安装/开发路径和本机默认工作区发现固定脚本与 Node.js；缺少任一运行文件时失败关闭，不执行任意命令。
+- 后端新增仅回环可用的一次性短时启动链接：现有 API Token 只用于本机交换请求，链接约 60 秒有效且只能消费一次，消费后签发已有 15 分钟 HttpOnly 管理会话。
+- `XIANYU_ADMIN_URL` 现会在读取 API Token 前解析为仅本机回环的 HTTP 基地址；远程、HTTPS、伪造后缀主机、路径/查询和缺失主机均直接失败关闭，端口仍可配置。
+- 移除桌面页 Telegram 二维码登录弹窗，登录继续在隔离卖家 Chromium 中由资产所有者完成。
+### 文件变更
+- `packages/clawbot/src/xianyu/xianyu_admin.py`、`packages/clawbot/tests/test_api_routes_regression.py` — 一次性桌面启动入口与回归测试。
+- `apps/openclaw-manager-src/src-tauri/src/commands/clawbot_api.rs`、`apps/openclaw-manager-src/src-tauri/src/main.rs` — 固定启动器发现、Node 启动和本机启动 URL 命令及注册。
+- `apps/openclaw-manager-src/src/lib/tauri-ipc.ts`、`apps/openclaw-manager-src/src/lib/api.ts`、`apps/openclaw-manager-src/src/components/Xianyu/index.tsx`、`apps/openclaw-manager-src/src/i18n/*.ts` — 桌面按钮状态、错误提示和安全说明。
+### 验证
+- 2026-08-09 已仅通过 `make tauri-build` 事务式更新本机 `/Applications/OpenClaw.app`；发布前后签名和回滚副本均通过 `scripts/tauri_rollback.sh --check`，本机 `127.0.0.1:18800/dashboard` 返回 200，`/Applications` 仅保留 `OpenClaw.app`。
+- URL 守卫和启动器发现聚焦回归覆盖三个合法回环地址、六类非法地址及仓库资产存在性；随后 `cargo test --locked` 50/50、`cargo fmt -- --check`、`npm run lint`、`npx tsc --noEmit`、`git diff --check` 和 `make docs-check` 全部通过。
+- 新应用实际启动未崩溃；桌面自动化服务启动失败，故未通过 UI 点击复验按钮，也未读取 Cookie、浏览器存储或凭据。
+
+## [2026-08-09] 收口旧 New-API 兼容代理的默认连接与桌面列表解析
+> 领域: `backend` | `frontend` | `docs`
+> 影响模块: `New-API 兼容代理`, `API Gateway`, `AI 配置`
+> 关联问题: HI-1033
+### 变更内容
+- `NEWAPI_BASE_URL` 现在必须显式配置；缺失时所有 New-API 代理（含状态和价格）返回 503，并在发送 HTTP 前失败关闭。
+- 桌面端兼容 New-API v1 `{data:{items:[]}}` 列表；AI 配置页的池统计负 ID 占位项明确不可启停，避免显示可执行但后端会拒绝的操作。
+- 保留兼容 router、桌面入口、Compose、Make 与迁移/备份/回滚脚本；本轮没有连接任何 New-API 服务。
+### 文件变更
+- `packages/clawbot/src/api/routers/newapi.py`、`packages/clawbot/tests/test_newapi_router.py` — 统一地址守卫及无网络请求回归。
+- `apps/openclaw-manager-src/src/components/APIGateway/index.tsx`、`apps/openclaw-manager-src/src/components/AIConfig/index.tsx` — v1 列表解包与不可操作占位项。
+- `docs/006-registries.md`、`docs/009-health.md`、`docs/002-changelog.md` — 同步当前合同与风险关闭记录。
+
+## [2026-08-09] 收口闲鱼会话凭据的本机操作边界
+> 领域: `docs` | `xianyu`
+> 影响模块: `闲鱼运维手册`, `老板操作手册`, `闲鱼卖家浏览器入口`
+> 关联问题: HI-1032
+### 变更内容
+- 废止“导出 Cookie 并写入 `XIANYU_COOKIES`”的历史操作，当前唯一流程改为隔离卖家 Chromium、资产所有者本人扫码登录和受保护本机操作台授权。
+- 明确 Cookie/Token 不得复制、导出、粘贴、共享或写入聊天、文档、脚本参数、截图和仓库；启动器现有的本机剪贴板副作用单独登记为待最小代码修复风险。
+### 文件变更
+- `docs/005-quickstart.md`、`docs/007-operations.md`、`docs/081-owner-ops-handbook.md` — 替换危险操作步骤并补充断连恢复说明。
+- `docs/003-docs-index.md`、`docs/006-registries.md`、`docs/009-health.md` — 同步当前入口、历史兼容链与剩余风险。
+
+## [2026-08-09] 移除 Telegram 对本地补号批次的误导性控制面
+> 领域: `backend` | `docs`
+> 影响模块: `Telegram 补号安全提示`, `消息链路`, `JIYU 运维记录`
+> 关联问题: HI-1031
+### 变更内容
+- 删除 Telegram 侧独立 `ReplenishRunner`、批次状态读取、停止调用和键盘控制，避免其与本机 loopback UI 批次产生错误关联。
+- `/jiyu_replenish` 现在说明远程材料提交和远程批次控制均已禁用，并仅指向 `make jiyu-sub2-replenish`；`status`、`stop` 和遗留键盘操作明确回复 Telegram 无法查看或控制本地批次。
+- 保留下一条普通私聊消息的一次性保护消费和显式 `cancel`，不读取被消费的内容。
+### 文件变更
+- `packages/clawbot/src/bot/cmd_jiyu_replenish_mixin.py`、`packages/clawbot/multi_main.py` — 删除远程运行器控制路径并收紧命令描述。
+- `packages/clawbot/tests/test_jiyu_replenish_telegram.py`、`docs/006-registries.md`、`docs/007-operations.md`、`docs/009-health.md`、`docs/012-handoff.md`、`docs/051-jiyu-brand-production-plan.md` — 覆盖本机唯一入口和现有保护合同。
+
+## [2026-08-09] 关闭 Telegram 远程补号材料入口
+> 领域: `backend` | `docs`
+> 影响模块: `Telegram 补号安全门面`, `消息链路`, `JIYU 运维文档`
+> 关联问题: HI-1031
+### 变更内容
+- 历史版本曾提供授权私聊的状态、停止、取消和一次性保护消费；当前已收口为仅提示本机 UI、取消保护等待和一次性保护消费，不再读取、解析或启动远程补号材料。
+- 当前运维口径改为本机可信 UI 专用，聊天渠道不得承载账户材料。
+- 当前记录不保留敏感标识或内部定价公式。
+- 浏览器无认证 Telegram Web 会话，未发送真实 Telegram 命令，因此外部命令响应仍未验证。
+### 文件变更
+- `packages/clawbot/src/bot/cmd_jiyu_replenish_mixin.py`、`packages/clawbot/src/bot/message_mixin.py`、`packages/clawbot/multi_main.py` — 关闭远程输入与命令说明。
+- `packages/clawbot/tests/test_jiyu_replenish_telegram.py`、`docs/001-project-map.md`、`docs/006-registries.md`、`docs/007-operations.md`、`docs/009-health.md`、`docs/012-handoff.md` — 覆盖保护合同和更新当前操作边界。
+### 验证
+- 本地 LaunchAgent 重载后保持运行并取得新 PID，无需回滚；未发送真实 Telegram 命令，外部命令响应未验证。
+
+## [2026-08-09] 补齐 AI 客户端、服务条款与系统设置小白指南
+> 领域: `docs`
+> 影响模块: `AI 客户端指南`, `JIYU 服务说明`, `支付与存储设置`, `文档索引`
+> 关联问题: HI-1030
+### 变更内容
+- 新增 OpenCode/Grok Build、CC Switch、模型真伪核对、JIYU 服务条款草案和系统设置/支付说明五份指南。
+- 服务条款草案明确为待生产发布，采用“中国大陆 IP 仅国内模型，境外 IP 全部当前可用模型”规则，且不公开内部定价、渠道或供应商字段。
+- 所有支付、对象存储、语义审核与地域分流均保持当前未部署或关闭状态，不因文档写入产生生产变更。
+### 文件变更
+- `docs/025-opencode-grok-build-guide.md` 至 `docs/029-jiyu-settings-and-payment-guide.md` — 新增面向用户和运维人员的隔离指南。
+- `docs/003-docs-index.md`、`docs/012-handoff.md` — 同步索引和会话边界。
+
+## [2026-08-09] 更新 AI 客户端安装与 JIYU 版本指南
+> 领域: `docs`
+> 影响模块: `文档索引`, `项目地图`, `Claude Code`, `Claude Desktop`, `Codex`
+> 关联问题: HI-1030
+### 变更内容
+- 登记 020-024 AI 客户端指南并修正文档总数。
+- 更新 JIYU 当前构建版本和自营池库存状态，补充 Claude Code、Claude Desktop 与 Codex 的官方安装及登录边界说明。
+### 文件变更
+- `docs/001-project-map.md`、`docs/003-docs-index.md` — 更新项目版本、运行状态和文档索引。
+- `docs/021-claude-code-guide.md`、`docs/022-claude-desktop-guide.md`、`docs/023-codex-guide.md` — 补充准确的安装命令、入口路径和平台范围。
+
+## [2026-08-09] JIYU 自营号池库存待补审计
+> 领域: `ai-pool` | `docs`
+> 影响模块: `生产闭环审计`, `Plus/Pro 自营号池`, `健康登记`, `会话交接`
+> 关联问题: HI-1029
+### 变更内容
+- 只读审计新增自营池账号成员、活动渠道和监控计数及独立就绪布尔值。
+- 两个分组外壳均为空时明确报告“库存待补”；公开售卖渠道合同和总体售卖结论保持原有语义，不会因待补自营库存误报失败。
+### 文件变更
+- `scripts/cc_zhongzhuan_readiness_audit.mjs` — 输出自营库存、渠道、监控就绪状态和区分后的人工摘要。
+- `docs/009-health.md`、`docs/012-handoff.md` — 登记资产所有者补号边界与当前状态。
+### 验证
+- `node --check scripts/cc_zhongzhuan_readiness_audit.mjs`、只读 JSON 审计和 `git diff --check` 已重新执行。
+
+## [2026-08-09] 收口 Sonic 隔离期间 VPS 运维机器人边界
+> 领域: `infra` | `docs`
+> 影响模块: `VPS 运维机器人`, `Sonic 维护窗口`, `生产基线`, `会话交接`
+> 关联问题: HI-1028
+### 变更内容
+- 在唯一当前基线与新会话提示词中明确：当前 Sonic 专用维护隔离窗口未结束时，`/scan`、`/repair`、`/manual` 必须失败关闭，不得启动 broad 或 Sonic 目标的 `vpsctl pull/status/diff`、探针或修复。
+- 明确缺少主机与最小范围时直接不执行；只有用户明确重新开启维护窗口后，才允许对指定主机做目标化操作，并继续执行 fresh prestate、备份、回滚和真实业务探针流程。
+- 本轮仅更新文档，未运行 `vpsctl`，未连接或修改 Sonic 生产主机，未新增控制面、测试包或常驻服务。
+### 文件变更
+- `/Users/blackdj/Documents/VPS-Config/docs/current/live-first-closure-v1.md` — 补充当前 Sonic 隔离窗口和 Bot 失败关闭边界。
+- `/Users/blackdj/Documents/VPS-Config/docs/06-new-session-prompt.md` — 补充三个命令的禁止动作、最小范围和后续运行时修复门槛。
+- `docs/009-health.md`、`docs/012-handoff.md` — 登记文档收口和运行时 prompt 后续事项。
+### 验证
+- `git diff --check` 通过；本轮未执行生产写入或生产探针。
+
+## [2026-08-09] 修复消息链路测试夹具的异步合同
+> 领域: `backend` | `docs`
+> 影响模块: `Telegram 消息链路端到端测试`, `健康登记`, `会话交接`
+> 关联问题: HI-1027
+### 变更内容
+- 将消息链路端到端测试中默认不消费补号文本的夹具改为 `AsyncMock(False)`，与生产入口的协程合同一致。
+- 未修改消息处理、补号、生产服务或任何凭据；该问题已在基线提交中复现，属于既有测试夹具失配。
+### 文件变更
+- `packages/clawbot/tests/e2e/test_handle_message_chain.py` — 使测试替身匹配被 `await` 的真实接口。
+- `docs/009-health.md`、`docs/012-handoff.md` — 记录根因、边界和后续基线。
+### 验证
+- 该单测、`make test` 与 `git diff --check` 已在本次修复后重新执行。
+
+## [2026-08-09] 收口老板手册的业务验收口径
+> 领域: `docs`
+> 影响模块: `老板操作手册`, `会话交接`, `健康登记`
+> 关联问题: HI-1026
+### 变更内容
+- 将“替换模式模拟验收”和“导出状态报告”从日常建议收口为技术支持诊断工具，避免把演练或诊断数据误当成业务完成。
+- 明确日常恢复判断依赖真实健康探针；首次或恢复售卖依赖新的真实小额订单完成付款、自动发货、站内兑换和 API 调用。
+- 进一步明确老板只运行 `--dry-run`：任何带 `--confirm` 或会重启服务的恢复动作，必须由技术支持先确认最新状态、可恢复备份和最小影响范围后执行。
+### 文件变更
+- `docs/081-owner-ops-handbook.md`、`docs/003-docs-index.md` — 更新老板可执行的日常判断、诊断和恢复边界。
+- `docs/009-health.md`、`docs/012-handoff.md` — 登记文档风险闭环和后续交接。
+### 验证
+- `make docs-check`、`git diff --check` 通过。
+
+## [2026-08-09] 删除零调用本地审计遗留
+> 领域: `docs` | `infra`
+> 影响模块: `本地维护入口`, `历史审计资产`, `日志轮转配置`
+> 关联问题: HI-1025
+### 变更内容
+- 删除无运行、CI、LaunchAgent、源码、测试或操作文档入口的旧闲鱼插件配置脚本；当前卖家专用浏览器已自行写入所需配置。
+- 删除已被 `tools/newsyslog.d/openclaw.conf` 和 `scripts/setup_log_rotation.sh` 替代、且仍指向旧项目目录的日志轮转配置。
+- 删除 20 张全仓零引用且可由 Git 恢复的历史审计截图；未触碰仍被文档引用的品牌或当前生产证据。
+### 文件变更
+- `scripts/cc_zhongzhuan_configure_seller_extension.mjs`、`packages/clawbot/scripts/newsyslog.openclaw.conf` — 删除无调用的旧维护入口。
+- `scripts/assets/` — 删除 20 张零引用历史审计截图。
+- `docs/009-health.md`、`docs/012-handoff.md` — 同步本地基线和后续交接边界。
+### 验证
+- `git diff --check` 通过；`make docs-check` 通过（25 个文档，目录扁平、命名合规、索引完整、关键事实可验证）。
+- `node --check scripts/cc_zhongzhuan_launch_seller_chrome.mjs` 与 `bash -n scripts/setup_log_rotation.sh` 通过；删除项复查确认均不存在且无运行入口引用。
+
+## [2026-08-09] 修复闲鱼运营台 JIYU 健康链接
+> 领域: `xianyu` | `docs`
+> 影响模块: `闲鱼运营投影`, `闲鱼运营台摘要`
+> 关联问题: HI-1024
+### 变更内容
+- 将运营台三处 JIYU 健康入口从已不存在的 `/api/health` 更正为生产实际返回 200 的 `/health`。
+- 保持库存、支付、账号、Cookie 和远端生产配置不变；本机闲鱼服务仅平滑重载一次。
+### 文件变更
+- `packages/clawbot/src/xianyu/operations_projection.py`、`packages/clawbot/src/xianyu/xianyu_admin.py` — 统一运营摘要的只读健康链接。
+- `packages/clawbot/tests/test_xianyu_operations_projection.py` — 覆盖投影输出的健康地址。
+- `docs/009-health.md`、`docs/012-handoff.md` — 记录真实根因、验证和恢复点。
+### 验证
+- 修改前：旧地址公网返回 404，真实 `/health` 返回 200。
+- 修改后：聚焦 Python 回归、语法检查、本机运营台重载和公网健康探针通过。
+
 ## [2026-08-09] JIYU 运营审计适配自营号池与已移除 webhook
 > 领域: `ai-pool` | `xianyu` | `docs`
 > 影响模块: `生产闭环审计`, `闲鱼运营台只读摘要`, `自营号池合同`
@@ -46,7 +311,7 @@
 ### 验证
 - 官方 v0.1.172 干净源码 `git apply --check`、`go test -tags unit ./internal/service -run '^TestSupportedModels'` 通过。
 - 生产同步结果：12 个账号中 11 个返回清单，1 个返回失败；12 条渠道均已持久化限制状态，未输出凭据。
-- GitHub Actions `31278104138` 通过兼容包门禁并由生产 WebUI 完成“检查并安装 → 重启”；线上 VERSION 回读 `v0.1.172-jiyu.31278104138`，模型广场接口与页面回读 11 个受限分组，模型分组数量为 `1/9/8/1/8/9/6/6/7/1/7`，页面 Console 警告/错误为 0。验收截图：`scripts/assets/audit-20260809-model-plaza-after-align.jpg`。
+- GitHub Actions `31278104138` 通过兼容包门禁并由生产 WebUI 完成“检查并安装 → 重启”；线上 VERSION 回读 `v0.1.172-jiyu.31278104138`，模型广场接口与页面回读 11 个受限分组，模型分组数量为 `1/9/8/1/8/9/6/6/7/1/7`，页面 Console 警告/错误为 0。
 
 ## [2026-08-09] JIYU 自营补号池与支付/倍率能力澄清
 > 领域: `backend` | `ai-pool` | `docs` | `xianyu`
@@ -72,8 +337,7 @@
 ### 变更内容
 - 生产创建 `JIYU OpenAI Plus 自营号池`（专属、空池、模板 `2.0x`）和 `JIYU OpenAI Pro 自营号池`（专属、空池、模板 `3.0x`）；不绑定渠道、用户或默认分组。
 - 本地补号助手在目标空池没有账号时读取分组模板倍率，不再让首个账号反复人工输入；已有模板账号倍率冲突仍暂停确认。
-- Telegram Bot 新增 `/jiyu_replenish`、`status`、`stop`、`cancel` 私聊菜单，号源解析复用本地安全合同；闲鱼既有 `/xianyu start|stop|status` 保持可用。
-- Telegram 入口补充中文手机按钮菜单，点击“🧾 一键补号”即可进入号源等待状态。
+- 历史版本曾新增 `/jiyu_replenish`、`status`、`stop`、`cancel` 私聊菜单和号源等待状态；当前 Telegram 入口已收口为本机 UI 提示，不再承载材料或控制批次。闲鱼既有 `/xianyu start|stop|status` 保持可用。
 ### 文件变更
 - `packages/clawbot/src/sub2_replenish/sub2_client.py`、`runner.py`、`tests/test_sub2_replenish_helper.py` — 自营池模板倍率读取和空池回退。
 - `packages/clawbot/src/bot/cmd_jiyu_replenish_mixin.py`、`cmd_execution_mixin.py`、`message_mixin.py`、`multi_bot.py`、`multi_main.py` — Telegram 远程控制和菜单。
@@ -140,7 +404,6 @@
 - `scripts/sub2api-jiyu-v0.1.172.patch` — 限制端点浮层在移动端不制造横向滚动。
 - `docs/007-operations.md`、`docs/082-open-source-wheel-research.md` — 同步补号操作边界和闲鱼候选对比结论。
 - `docs/009-health.md`、`docs/012-handoff.md` — 登记外部移动端限制、已发布补丁与现场状态。
-- `scripts/assets/audit-20260809-create-key-mobile-after-update.jpg` — 新版本 `390×844` 创建密钥弹窗证据。
 - `docs/002-changelog.md` — 记录本次变更。
 ### 验证
 - 官方 `v0.1.172` 干净源码执行 `git apply --check` 和实际应用补丁均通过；`node --test scripts/sub2api_ops_scripts.test.mjs` 为 `4 passed`。
@@ -194,12 +457,11 @@
 - `scripts/sub2api-jiyu-v0.1.172.patch`、`scripts/sub2api_ops_scripts.test.mjs` — 移动端 fixed 满屏合同。
 - `packages/clawbot/src/sub2_replenish/`、`packages/clawbot/tests/test_sub2_replenish_helper.py` — 三类解析、批次渠道和 OTP 安全边界。
 - `docs/006-registries.md`、`docs/007-operations.md`、`docs/009-health.md`、`docs/082-open-source-wheel-research.md` — 同步操作、注册表、风险与闲鱼选型。
-- `scripts/assets/audit-jiyu-recharge-shop-final-mobile-20260808.png`、`scripts/assets/audit-jiyu-recharge-shop-final-desktop-20260808.png` — 生产充值中心最终双视口证据。
 ### 验证
 - `cd packages/clawbot && .venv312/bin/python -m pytest tests/test_sub2_replenish_helper.py -q`：`11 passed`；Ruff 与 Python 编译通过。
 - `node --test scripts/sub2api_ops_scripts.test.mjs`：`4 passed`；`git apply --numstat` 确认补丁结构有效。
 - 官方 `v0.1.172` 干净源码应用补丁后，前端类型检查、生产构建、两组嵌入 Web Go 聚焦测试和 Linux ARM64 构建通过。
-- 本地 dry-run 在 `390×844` 依次完成分隔行、标签块、JSON 数组和批次渠道B，最终页面只显示掩码邮箱；Console 0 error/0 warning，截图为 `scripts/assets/audit-jiyu-sub2-replenish-dry-run-mobile-20260808.png`。
+- 本地 dry-run 在 `390×844` 依次完成分隔行、标签块、JSON 数组和批次渠道B，最终页面只显示掩码邮箱；Console 0 error/0 warning。
 - GitHub Actions `31265860057` 成功发布不可变兼容包 `jiyu-v0.1.172-r31265860057`；受管更新链完成下载校验、暂存、重启后运行哈希与健康验证，生产版本为 `v0.1.172-jiyu.31265860057`，没有触发回滚。
 - 生产管理器确认 Sub2API、Redis、更新/备份 timer、Cloudflare 443 策略均 active，PostgreSQL、内网健康和 Responses WebSocket 通过；公网 `/health` 连续 `5/5` 返回 200，充值页返回 200。
 - 真实 Chrome 干净重载验收：`390×844` 下 iframe 为 `x=0,y=64,w=390,h=780`，`1440×1000` 下保持 `1176×936`；固定来源为 `https://pay.ldxp.cn/shop/ZCUGEDMV`、查询参数为空，两端新增 Console 警告/错误与失败网络请求均为 0。
@@ -234,8 +496,6 @@
 - `scripts/sub2api-jiyu-v0.1.172.patch` — 固定店铺专用全内容区嵌入和响应式高度。
 - `scripts/sub2api_oracle_manage.sh` — 最小回退页、CSP 精确放行、响应式下载网格和生产自检。
 - `scripts/sub2api_ops_scripts.test.mjs` — 更新固定地址、CSP 与专用前端分支聚焦合同。
-- `scripts/assets/audit-jiyu-recharge-shop-after-desktop-20260808.png`、`scripts/assets/audit-jiyu-recharge-shop-after-mobile-20260808.png` — 充值中心生产双视口证据。
-- `scripts/assets/audit-jiyu-docs-downloads-after-desktop-20260808.png`、`scripts/assets/audit-jiyu-docs-downloads-after-mobile-20260808.png` — 文档下载区双视口证据。
 - `docs/002-changelog.md`、`docs/007-operations.md`、`docs/009-health.md` — 同步生产操作与剩余安全边界。
 ### 验证
 - 官方 `v0.1.172` 干净源码应用补丁后，前端 `vue-tsc --noEmit` 和生产构建通过；Bash 语法、ShellCheck、4 项聚焦脚本合同和文档检查通过。GitHub Actions `31261229885` 完成类型检查、嵌入前端门、Go 聚焦测试和 ARM64 构建。
@@ -254,7 +514,6 @@
 - 生产当前管理员 API Key 通过不回显管道写入 macOS 钥匙串并完成匹配校验；未重新生成，也未进入终端输出、仓库、文档或截图。
 ### 文件变更
 - `scripts/sub2api_oracle_manage.sh` — 充值中心七档正式页面与兼容运维入口。
-- `scripts/assets/audit-chain-products-after-live-20260808.png`、`scripts/assets/audit-jiyu-recharge-center-after-20260808.png` — 上架库存与充值中心最终截图。
 - `docs/002-changelog.md`、`docs/006-registries.md`、`docs/007-operations.md`、`docs/009-health.md`、`docs/012-handoff.md` — 同步真实生产状态和外部凭据阻塞。
 ### 验证
 - `bash -n`、ShellCheck、`git diff --check`、`make docs-check` 通过；聚焦脚本测试 `4/4` 通过。生产 Sub2API 本地/公网健康、PostgreSQL 预检和充值中心 HTTP 200 通过。
@@ -290,7 +549,6 @@
 ### 文件变更
 - `scripts/sub2api-jiyu-v0.1.172.patch`、`scripts/sub2api_jiyu_update_broker.sh` — JIYU 更新入口、完整构建号比较和安全无操作语义。
 - `scripts/sub2api_oracle_manage.sh`、`scripts/sub2api_ops_scripts.test.mjs` — Apache reload 自动恢复、按需更新套接字和原有 4 项聚焦合同。
-- `scripts/assets/audit-jiyu-account-links-before-hotfix-20260808.png`、`scripts/assets/audit-jiyu-account-links-after-hotfix-20260808.png`、`scripts/assets/audit-jiyu-managed-update-entry-20260808.png` — 账号链接修复前后和最终 WebUI 无操作证据。
 - `docs/002-changelog.md`、`docs/007-operations.md`、`docs/009-health.md`、`docs/012-handoff.md`、`docs/086-release-evidence.md` — 同步故障根因、操作合同和最终验收事实。
 ### 验证
 - 旧提交红灯为 `2 passed / 2 failed`，当前代码绿灯为 `4 passed / 0 failed`；Bash 语法和 diff 检查通过。
@@ -365,7 +623,6 @@
 - `packages/clawbot/requirements.txt`、`requirements-lock.txt`、`requirements-lock-macos.txt` — `h2`/`pypdf` 安全版本和双平台哈希同步。
 - `packages/clawbot/src/xianyu/xianyu_admin.py` — 删除未使用的 JIYU server 源码读取，不改变预检结果。
 - `apps/openclaw-manager-src/package.json`、`package-lock.json` — 桌面构建传递依赖安全 override 与锁文件。
-- `scripts/assets/audit-jiyu-monitor-after-managed-update-20260808.jpg` — 生产发布后渠道排序、产品生态标签和真实健康状态截图。
 - `docs/006-registries.md`、`docs/007-operations.md`、`docs/009-health.md`、`docs/053-jiyu-growth-payment-image-update-plan.md`、`docs/087-jiyu-image-mcp-guide.md`、`docs/012-handoff.md` — 同步合同、操作步骤、风险和交接。
 ### 验证
 - JIYU 补丁在官方 `v0.1.172` 干净提交上通过 `git apply --check`；上游更新服务 unit 用例 `1/1`、排序/端点/CC Switch 前端用例 `13/13`、Vue 类型检查、运维脚本合同 `4/4`、工作流 YAML 与文档门均通过。
@@ -398,7 +655,7 @@
 > 影响模块: `Sub2API`, `CC Switch`, `channel monitor`, `JIYU readiness`, `链动小铺`
 > 关联问题: HI-985, HI-986, HI-987, HI-988, HI-989
 ### 变更内容
-- 将 10 个业务分组落为 10 个一对一渠道和 10 条真实监控，均保持 300 秒周期、±30 秒抖动；用户倍率继续严格等于对应上游倍率绝对增加 `0.05x`，渠道A OpenAI Plus 为 `0.06x → 0.11x`。
+- 将 10 个业务分组落为 10 个一对一渠道和 10 条真实监控，均保持 300 秒周期、±30 秒抖动；定价按已批准的所有者控制策略执行，公开文档不包含公式或数字。
 - 基于官方 Sub2API `v0.1.172` 固定提交维护可重复应用的 JIYU 补丁，生产发布 `v0.1.172-jiyu.3`；自动更新改为只检查，定制版只允许显式构建发布并在健康失败时自动回滚。新建监控表单默认值与生产合同统一为 300±30 秒。
 - 创建密钥页按分组显示 Claude 根端点或 OpenAI `/v1` 端点，默认勾选“创建后立即导入 CC Switch”；首页只展示 JIYU AI、JY Logo、渠道A和渠道B，移除上游仓库入口并修复重复版本前缀。
 - 系统监控默认周期从遗留 60 秒同步为 300 秒，定制表单默认抖动为 ±30 秒；更新检查能识别“基于当前官方最新版的 JIYU 构建”，不再误报待升级。
@@ -432,7 +689,7 @@
 > 影响模块: `Sub2API`, `JIYU AI branding`, `channel pricing`, `channel monitor`, `SMTP`, `CC Switch docs`
 > 关联问题: HI-985, HI-986
 ### 变更内容
-- 渠道A与渠道B各新建 5 个 JIYU 专用 Key，接入 10 个账号和 10 个独立分组；用户倍率统一为当前上游倍率绝对增加 `0.05x`，不复用历史上游 Key。
+- 渠道A与渠道B各新建 5 个 JIYU 专用 Key，接入 10 个账号和 10 个独立分组；定价按已批准的所有者控制策略执行，公开文档不包含公式或数字，不复用历史上游 Key。
 - 建立 6 个 active 渠道并同步模型定价，建立 6 条 Claude/OpenAI/Grok 真实连通监控，统一为 300 秒周期和 ±30 秒抖动。
 - 渠道B的 5 个账号全部通过站内真实请求；渠道A的 Claude Kiro、OpenAI Pro、OpenAI Plus 通过。渠道A的 Claude 满血因上游组不支持 Anthropic 路由保持不可调度，监控继续如实记录 Grok/OpenAI 上游波动。
 - 完成通用设置、2026-08-07 登录条款、用户默认值和 Gmail SMTP；开放注册保持关闭、邮箱验证开启。测试邮件与真实邮箱绑定验证码接口均返回 200。
@@ -464,7 +721,7 @@
 - 新增官方 release SHA-256 校验、升级前 PostgreSQL 备份、`flock` 并发锁、启动健康检查和失败自动回滚；`sub2api-update.timer` 每日检查，`sub2api-backup.timer` 每日做一致性备份。
 - 删除 Oracle 与腾讯云的旧 New-API SQLite、运行目录、环境密钥、二进制、systemd 服务、Docker 容器/镜像及同名本地备份；旧 R2 加密对象删除 19 个并重新生成不含 `one-api.db` 的加密备份。
 - 删除 Apache 旧 New-API HTML 品牌替换/标题注入，恢复 Sub2API 原生 CSP 页面；JIYU AI 兼容服务仍保留，但其 New-API 桥接开关已落为 `0`。
-- 将唯一管理员邮箱更新为 `djblack1209@gmail.com`，密码使用 bcrypt 写入数据库并同步 root-only 环境文件与 macOS 钥匙串；更新前已创建 PostgreSQL 备份，旧本机钥匙串账号已删除。
+- 受控管理员身份及其凭据已完成轮换，并仅存放于获批准的密钥存储中。
 - 补充小白首次使用说明，明确“补号”入口为“账号管理 → 添加账号”，首次配置顺序为“分组管理 → 账号管理 → API 密钥”。
 ### 文件变更
 - `scripts/sub2api_oracle_manage.sh` — 新增全新安装、收口、状态、检查、升级、备份、品牌恢复、切换、清理和旧底座永久清除入口。

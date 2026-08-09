@@ -68,6 +68,8 @@ const ENV_KEYS = [
   { key: 'IBKR_ACCOUNT', name: 'IBKR' },
 ];
 
+const JIYU_ADMIN_URL = String(import.meta.env.VITE_JIYU_ADMIN_URL || 'https://jiyu.245334.xyz/admin/dashboard');
+
 /* ====== 操作按钮定义 ====== */
 const ACTION_BUTTONS = [
   { id: 'export', labelKey: 'settings.exportConfigBtn', icon: Download, accent: 'var(--accent-cyan)' },
@@ -531,6 +533,30 @@ export function Settings(_props: SettingsProps) {
 
         {/* ====== Row 2.6: Cookie 同步中心 (span-8) ====== */}
         <CookieSyncCenter t={t} />
+
+        {/* JIYU 原生管理入口：桌面设置不复制 Sub2API 字段或状态。 */}
+        <motion.div className="col-span-12 md:col-span-6 lg:col-span-4" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full">
+            <div className="flex items-center gap-2 mb-3">
+              <ExternalLink size={16} style={{ color: 'var(--accent-cyan)' }} />
+              <span className="text-label" style={{ color: 'var(--accent-cyan)' }}>
+                {t('settings.jiyuNativeTitle')}
+              </span>
+            </div>
+            <p className="font-mono text-[11px] mb-4" style={{ color: 'var(--text-tertiary)' }}>
+              {t('settings.jiyuNativeDesc')}
+            </p>
+            <button
+              type="button"
+              onClick={() => void openExternal(JIYU_ADMIN_URL)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-mono text-xs font-bold"
+              style={{ background: 'rgba(0,212,255,0.1)', border: '1px solid rgba(0,212,255,0.25)', color: 'var(--accent-cyan)' }}
+            >
+              <ExternalLink size={14} />
+              {t('settings.jiyuNativeOpen')}
+            </button>
+          </div>
+        </motion.div>
 
         {/* ====== 一键启动/停止所有服务 ====== */}
         <motion.div className="col-span-12" variants={cardVariants}>

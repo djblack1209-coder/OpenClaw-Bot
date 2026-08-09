@@ -1,7 +1,13 @@
 # OpenClaw 文档总索引
 
-> 最后更新: 2026-08-08
-> 总文件: 26 个（001-015 核心/附录 + 050-053 功能计划 + 080-087 报告/手册，083 为历史停用编号）
+> 最后更新: 2026-08-09
+> 总文件: 36 个（含 `docs/current/` 的唯一生产当前基线；083 为历史停用编号）
+
+## 当前基线
+
+| 位置 | 文档 | 内容概要 |
+|------|------|---------|
+| `current/` | `current-baseline.md` | 唯一当前生产事实、已验证变更、剩余阻塞和下一会话交接提示词 |
 
 ## 核心文档 (001-010)
 
@@ -13,10 +19,25 @@
 | 004 | `004-architecture.md` | 系统架构：OMEGA v2 设计 + Bot Agent 三省六部指令 |
 | 005 | `005-quickstart.md` | 快速启动、部署、开发者指南、灾备、密钥轮换、API 注册 |
 | 006 | `006-registries.md` | 注册表总集：API 池 + 命令 + 依赖 + 模块 |
-| 007 | `007-operations.md` | JIYU AI 运维、闲鱼 Cookie、部署验证 |
+| 007 | `007-operations.md` | JIYU AI 运维、闲鱼隔离卖家浏览器、部署验证 |
 | 008 | `008-sop.md` | 开发规范：文档优先协议 + 错误翻译参考 |
 | 009 | `009-health.md` | 系统健康、Bug、技术债 + 经验库 + 需求跟踪 |
 | 010 | `010-feature-specs.md` | 功能规格总集：16 个设计文档 |
+
+## AI 客户端与 JIYU 使用指南 (020-029)
+
+| 编号 | 文档 | 内容概要 |
+|------|------|---------|
+| 020 | `020-ai-basics.md` | AI、LLM、Token 和常见指标的小白入门 |
+| 021 | `021-claude-code-guide.md` | Claude Code 安装、登录、项目和 CC Switch 路由指南 |
+| 022 | `022-claude-desktop-guide.md` | Claude Desktop 的 Chat、Cowork、Code 和扩展开发入口指南 |
+| 023 | `023-codex-guide.md` | Codex 安装、项目、审批和 CC Switch API 路由边界 |
+| 024 | `024-chatgpt-desktop-guide.md` | ChatGPT Desktop 的 Chat、Work、Codex 和登录边界指南 |
+| 025 | `025-opencode-grok-build-guide.md` | OpenCode 与 Grok Build 安装、项目、模式与路由边界 |
+| 026 | `026-cc-switch-guide.md` | CC Switch Provider、代理、MCP、更新与用量指南 |
+| 027 | `027-model-authenticity-guide.md` | 模型真伪的低成本核对与开源评测边界 |
+| 028 | `028-jiyu-service-terms-guide.md` | JIYU 用户可见服务条款与地区分流待实施边界 |
+| 029 | `029-jiyu-settings-and-payment-guide.md` | JIYU 支付、S3/R2、安全审核与地域分流设置说明 |
 
 ## 附录 (011-015)
 
@@ -41,7 +62,7 @@
 | 编号 | 文档 | 内容概要 |
 |------|------|---------|
 | 080 | `080-new-api-capability-roadmap.md` | CC中转 New-API 原生能力盘点、生产启用状态和“原生优先、自研补强”路线 |
-| 081 | `081-owner-ops-handbook.md` | 老板日常操作手册：绿灯/红灯、闲鱼订单、替换模式、健康检查、备份恢复 |
+| 081 | `081-owner-ops-handbook.md` | 老板日常操作手册：真实健康/订单判断、技术支持诊断、备份恢复 |
 | 082 | `082-open-source-wheel-research.md` | GitHub 高 Star 轮子调研：闲鱼、微博、小红书、抖音、知乎、财经、X、爬虫框架接入建议 |
 | 084 | `084-intel-brief-implementation-report.md` | Intel Brief Phase 0 / Phase B 历史验收证据汇总；当前状态以健康文档和变更日志为准 |
 | 085 | `085-intel-brief-design-qa.md` | 每日资讯 V2 方案 C + Top 3 + 候选 3 的视觉决策、同视口对比与 Telegram 验收边界 |
@@ -60,6 +81,6 @@
 
 详见 `AGENTS.md` §9 硬性规则。摘要：
 - **docs/ 是唯一存放位置**，禁止在 docs/ 以外创建 .md 项目文档
-- **docs/ 内禁止子目录**
+- **docs/current/ 是唯一例外，且只能保留 `current-baseline.md`**
 - **所有文件必须命名为 `编号-英文名.md`**
 - **新增文档 → 立即更新本索引**

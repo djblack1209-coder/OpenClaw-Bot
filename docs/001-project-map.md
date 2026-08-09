@@ -1,6 +1,6 @@
 # OpenClaw Bot — 项目全景地图
 
-> 最后更新: 2026-08-09 (JIYU AI v0.1.172-jiyu.31265860057、真实客户端与边缘防护审计) | AI 开发助手请先读完本文再开始工作 | 当前健康状态以 `docs/009-health.md` 和 `docs/002-changelog.md` 最近条目为准
+> 最后更新: 2026-08-09 (JIYU AI v0.1.172-jiyu.31278104138、真实客户端与边缘防护审计) | AI 开发助手请先读完本文再开始工作 | 当前健康状态以 `docs/009-health.md` 和 `docs/002-changelog.md` 最近条目为准
 
 ## 一句话概述
 
@@ -150,8 +150,9 @@ OpenEverything/
 - **客户隔离**：JIYU 在共享 New-API 管理账号之上维护客户 Token 归属；看板、日志、更新、删除和导入均按归属过滤。额度从客户已购余额划转，禁止无限 Key。
 - **桌面控制面**：管理器新建本地 `gateway.auth.token` 时只生成强随机字符串；当前受管运行时精确锁定 `OpenClaw 2026.7.2-beta.7`，Token/密码/远程 SecretRef 原样保留并交给官方校验。354 个直接/传递 npm 包由内嵌 SHA-512 锁安装。MCP Store 只展示受管运行包目录，不返回 command/args/env，也不伪装成已建立的 stdio 会话；真实 MCP 配置仍由 CC Switch/OpenClaw 官方配置链负责。配置跨实例原子写入，WebView 只接收脱敏配置，服务停止只针对管理器登记且核验通过的 PID，WebView 不直接拥有文件系统权限。
 - **运行时真值**：G4F、Kiro、Ollama、IBKR 和 VPS 心跳全部改为显式开关；未启用能力不进入 LiteLLM 路由、fallback 或交易定时器。健康检查同时验证必需 LaunchAgent 的 `running + PID` 和真实 HTTP/TCP 端点，不再用“服务已加载”代替“服务可用”。
+- **ClawBot Telegram 补号边界（2026-08-09）**：本地 LaunchAgent `ai.openclaw.clawbot-agent` 已在安全补丁后重载，现以新 PID 运行且无需回滚；浏览器无认证 Telegram Web 会话，未发送真实 `/jiyu_replenish status`，外部命令响应仍未验证。
 - **部署拓扑**：macOS LaunchAgent 是当前唯一 OpenEverything/ClawBot 活跃主实例。腾讯云旧备用实例因主心跳长期失效且进程持续启动失败，已于 2026-08-07 备份后停用其服务和 30 秒故障转移定时器；腾讯云上的微信接收、OpenClaw 云控和 SillyTavern 仍独立运行。恢复 VPS 自动接管前必须重新建立实时心跳、单主写入隔离和真实 Telegram 用户链路验收。
-- **JIYU AI / CC中转底座（2026-08-09）**：Oracle ARM 主站 `jiyu.245334.xyz` 对外品牌为 `JIYU AI`，当前运行基于官方 Sub2API `v0.1.172` 固定提交构建的 `v0.1.172-jiyu.31265860057`。Sub2API 只监听 `127.0.0.1:18080`，专用 Redis 只监听 `127.0.0.1:16379`，PostgreSQL 使用独立 `sub2api` 数据库。渠道A/渠道B各 5 个文本分组并各有 1 个生图分组；10 条文本监控按渠道A后渠道B分段显示，2 条生图监控因上游 502/401 如实禁用。永久测试用户已完成 Claude Code、OpenAI Responses 和 Codex Responses WebSocket 真实计费链路，Codex WS 调度已闭环。Cloudflare WAF/DDoS、注册/登录边缘限流和站内内容预拦截已启用；源站 443 使用 Origin CA，并由 nftables 只允许 Cloudflare、loopback 和 Tailscale。共享 80 端口承载与 JIYU 无关的 `naive-iad` 服务入口，JIYU 自身 HTTP 只返回 301，不把共享 80 误列为 JIYU 443 收口遗留项。
+- **JIYU AI / CC中转底座（2026-08-09）**：Oracle ARM 主站 `jiyu.245334.xyz` 对外品牌为 `JIYU AI`，当前运行基于官方 Sub2API `v0.1.172` 固定提交构建的 `v0.1.172-jiyu.31278104138`。Sub2API 只监听 `127.0.0.1:18080`，专用 Redis 只监听 `127.0.0.1:16379`，PostgreSQL 使用独立 `sub2api` 数据库。渠道A/渠道B各 5 个文本分组并各有 1 个生图分组；10 条文本监控按渠道A后渠道B分段显示，2 条生图监控因上游 502/401 如实禁用。永久测试用户已完成 Claude Code、OpenAI Responses 和 Codex Responses WebSocket 真实计费链路，Codex WS 调度已闭环。Cloudflare WAF/DDoS、注册/登录边缘限流和站内内容预拦截已启用；源站 443 使用 Origin CA，并由 nftables 只允许 Cloudflare、loopback 和 Tailscale。共享 80 端口承载与 JIYU 无关的 `naive-iad` 服务入口，JIYU 自身 HTTP 只返回 301，不把共享 80 误列为 JIYU 443 收口遗留项。两个 Plus/Pro 自营池目前库存待补，账号成员、活动渠道和监控均为零，当前公开售卖渠道不受影响。
 
 ### 2026-08-05 全维度审计收口
 

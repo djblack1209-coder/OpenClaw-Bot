@@ -99,9 +99,9 @@ BEGIN;
 
 UPDATE groups SET name='JIYU Claude 官 Key · 渠道A', updated_at=NOW() WHERE id=8;
 UPDATE groups SET name='JIYU Claude 官 Key · 渠道B', updated_at=NOW() WHERE id=13;
-UPDATE groups SET description='上游 0.095x + JIYU 利润 0.05x', updated_at=NOW() WHERE id=9;
+UPDATE groups SET description='OpenAI Pro 模型服务 · 渠道A', updated_at=NOW() WHERE id=9;
 UPDATE groups SET rate_multiplier=0.1100, updated_at=NOW() WHERE id=10;
-UPDATE groups SET description='上游 0.06x + JIYU 利润 0.05x', updated_at=NOW() WHERE id=10;
+UPDATE groups SET description='OpenAI Plus 模型服务 · 渠道A', updated_at=NOW() WHERE id=10;
 UPDATE accounts SET name='JIYU——Claude 官 Key｜渠道A', updated_at=NOW() WHERE id=2;
 UPDATE accounts SET name='JIYU——Claude 官 Key｜渠道B', updated_at=NOW() WHERE id=7;
 UPDATE accounts SET rate_multiplier=0.0600, updated_at=NOW() WHERE id=4;

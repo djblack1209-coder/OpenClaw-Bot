@@ -137,7 +137,7 @@ _COMMON_COMMANDS = [
     # --- 群聊 & 系统 ---
     BotCommand("lanes", "群聊分流规则"),
     BotCommand("xianyu", "闲鱼AI客服 start/stop/status"),
-    BotCommand("jiyu_replenish", "手机远程提交 JSON 补号"),
+    BotCommand("jiyu_replenish", "补号仅限本机操作（可取消保护等待）"),
     BotCommand("pricewatch", "降价提醒 add/list/remove"),
     # --- 补全缺失命令 ---
     BotCommand("accuracy", "AI预测准确率"),

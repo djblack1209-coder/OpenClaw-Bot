@@ -170,21 +170,23 @@ export function APIGateway() {
         setGatewayStatus(data);
       }
 
-      // 解析渠道列表（兼容数组 / { data: [] } / { channels: [] }）
+      // 解析渠道列表（兼容数组 / { data: [] } / { data: { items: [] } } / { channels: [] }）
       if (channelsResp.status === 'fulfilled') {
         const raw = await parseResponse<any>(channelsResp.value);
         const list: ChannelItem[] = Array.isArray(raw) ? raw
           : Array.isArray(raw?.data) ? raw.data
+          : Array.isArray(raw?.data?.items) ? raw.data.items
           : Array.isArray(raw?.channels) ? raw.channels
           : [];
         setChannels(list);
       }
 
-      // 解析令牌列表（兼容数组 / { data: [] } / { tokens: [] }）
+      // 解析令牌列表（兼容数组 / { data: [] } / { data: { items: [] } } / { tokens: [] }）
       if (tokensResp.status === 'fulfilled') {
         const raw = await parseResponse<any>(tokensResp.value);
         const list: TokenItem[] = Array.isArray(raw) ? raw
           : Array.isArray(raw?.data) ? raw.data
+          : Array.isArray(raw?.data?.items) ? raw.data.items
           : Array.isArray(raw?.tokens) ? raw.tokens
           : [];
         setTokens(list);
