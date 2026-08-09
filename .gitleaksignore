@@ -1,3 +1,2 @@
 # 历史误报指纹：变量名/测试哨兵字符串，不包含真实凭据。
 fb255f88e05208c8afbb7fca9c34eec88fae3ce6:docs/007-operations.md:generic-api-key:326
-395dccaa528cc228183c72a6ce8409dc571771d3:apps/frist-api/tests/new-api-adapter.test.mjs:generic-api-key:221

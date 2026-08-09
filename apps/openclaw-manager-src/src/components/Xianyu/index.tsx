@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { open } from '@tauri-apps/plugin-shell';
 import { toast } from '@/lib/notify';
 import { motion } from 'framer-motion';
 import { useLanguage } from '@/i18n';
@@ -15,7 +16,7 @@ import {
   XCircle,
   Wifi,
   WifiOff,
-  QrCode,
+  ExternalLink,
   Play,
   Square,
 } from 'lucide-react';
@@ -97,14 +98,10 @@ export function Xianyu() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [syncLoading, setSyncLoading] = useState(false);
-  const [showQr, setShowQr] = useState(false);
-  const [qrImage, setQrImage] = useState('');
-  const [qrLoading, setQrLoading] = useState(false);
-  const [qrStatus, setQrStatus] = useState<'waiting' | 'scanned' | 'confirmed' | 'expired' | 'error'>('waiting');
   const [serviceRunning, setServiceRunning] = useState(false);
   const [serviceToggling, setServiceToggling] = useState(false);
-  const qrPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const qrExpireRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [operatorLoading, setOperatorLoading] = useState(false);
+  const [operatorError, setOperatorError] = useState<string | null>(null);
 
   /* ====== 数据拉取 ====== */
   const fetchData = useCallback(async () => {
@@ -171,98 +168,21 @@ export function Xianyu() {
     }
   };
 
-  /* ====== 扫码登录 — 清理轮询定时器 ====== */
-  const stopQrPolling = useCallback(() => {
-    if (qrPollRef.current) {
-      clearInterval(qrPollRef.current);
-      qrPollRef.current = null;
-    }
-    if (qrExpireRef.current) {
-      clearTimeout(qrExpireRef.current);
-      qrExpireRef.current = null;
-    }
-  }, []);
-
-  /* ====== 扫码登录 — 关闭弹窗 ====== */
-  const closeQrModal = useCallback(() => {
-    stopQrPolling();
-    setShowQr(false);
-    setQrImage('');
-    setQrStatus('waiting');
-  }, [stopQrPolling]);
-
-  /* ====== 扫码登录 — 开始轮询扫码状态 ====== */
-  const startQrPolling = useCallback(() => {
-    stopQrPolling();
-
-    // 每 2 秒轮询一次扫码状态
-    qrPollRef.current = setInterval(async () => {
-      try {
-        const res = await clawbotFetchJson<{ status?: string; message?: string }>('/api/v1/xianyu/qr/status');
-        const status = res?.status as typeof qrStatus;
-        if (status) {
-          setQrStatus(status);
-        }
-        if (status === 'confirmed') {
-          stopQrPolling();
-          toast.success(t('xianyu.qr.loginSuccess'), { channel: 'log' });
-          setShowQr(false);
-          setQrImage('');
-          setQrStatus('waiting');
-          await fetchData();
-        } else if (status === 'expired' || status === 'error') {
-          stopQrPolling();
-        }
-      } catch {
-        // 轮询失败不中断，等下次再试
-      }
-    }, 2000);
-
-    // 5 分钟后自动过期
-    qrExpireRef.current = setTimeout(() => {
-      setQrStatus('expired');
-      stopQrPolling();
-    }, 300_000);
-  }, [fetchData, stopQrPolling, t]);
-
-  /* ====== 扫码登录 — 生成二维码 ====== */
-  const handleGenerateQR = async () => {
-    setQrLoading(true);
-    setQrStatus('waiting');
+  /* ====== 桌面端一键打开本机闲鱼运营台 ====== */
+  const handleOpenOperator = async () => {
+    setOperatorLoading(true);
+    setOperatorError(null);
     try {
-      const res = await clawbotFetchJson<{ qr_image?: string; qr_content?: string; expires_in?: number }>(
-        '/api/v1/xianyu/qr/generate',
-        { method: 'POST' },
-      );
-      const image = res?.qr_image ?? '';
-      if (image) {
-        setQrImage(image);
-        setShowQr(true);
-        startQrPolling();
-      } else {
-        toast.error(t('xianyu.error.qrFailed'), { channel: 'notification' });
-      }
-    } catch {
-      toast.error(t('xianyu.error.qrFailed'), { channel: 'notification' });
+      const launchUrl = await api.xianyuOpenOperator();
+      await open(launchUrl);
+    } catch (e: unknown) {
+      const message = (e as Error)?.message ?? t('xianyu.error.operationFailed');
+      setOperatorError(message);
+      toast.error(message, { channel: 'notification' });
     } finally {
-      setQrLoading(false);
+      setOperatorLoading(false);
     }
   };
-
-  /* ====== 扫码弹窗 ESC 键关闭 ====== */
-  useEffect(() => {
-    if (!showQr) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeQrModal();
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [showQr, closeQrModal]);
-
-  /* ====== 组件卸载时清理轮询 ====== */
-  useEffect(() => {
-    return () => stopQrPolling();
-  }, [stopQrPolling]);
 
   /* ====== 服务启停 ====== */
   const handleServiceToggle = async () => {
@@ -421,146 +341,40 @@ export function Xianyu() {
           </div>
         </motion.div>
 
-        {/* 扫码登录卡片 */}
+        {/* 本机运营台入口 */}
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
           <div className="abyss-card p-6 h-full">
             <div className="flex items-center gap-2 mb-5">
-              <QrCode size={16} style={{ color: 'var(--accent-purple)' }} />
-              <span className="text-label" style={{ color: 'var(--accent-purple)' }}>{t('xianyu.qr.title')}</span>
+              <ExternalLink size={16} style={{ color: 'var(--accent-purple)' }} />
+              <span className="text-label" style={{ color: 'var(--accent-purple)' }}>{t('xianyu.operator.title')}</span>
             </div>
-
             <p className="font-mono text-[11px] mb-4" style={{ color: 'var(--text-secondary)' }}>
-              {t('xianyu.qr.desc')}
+              {t('xianyu.operator.desc')}
             </p>
-
             <motion.button
               className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl cursor-pointer font-mono text-xs font-bold"
               style={{
                 background: 'rgba(168,85,247,0.08)',
                 border: '1px solid rgba(168,85,247,0.25)',
                 color: 'var(--accent-purple)',
-                opacity: qrLoading ? 0.5 : 1,
-                pointerEvents: qrLoading ? 'none' : 'auto',
+                opacity: operatorLoading ? 0.5 : 1,
+                pointerEvents: operatorLoading ? 'none' : 'auto',
               }}
               whileHover={{ scale: 1.01 }}
               whileTap={{ scale: 0.98 }}
-              onClick={handleGenerateQR}
+              onClick={handleOpenOperator}
             >
-              {qrLoading ? (
+              {operatorLoading ? (
                 <Loader2 size={14} className="animate-spin" />
               ) : (
-                <QrCode size={14} />
+                <ExternalLink size={14} />
               )}
-              {qrLoading ? t('xianyu.qr.generating') : t('xianyu.qr.loginBtn')}
+              {operatorLoading ? t('xianyu.operator.opening') : t('xianyu.operator.openBtn')}
             </motion.button>
-
-            <p className="font-mono text-[10px] mt-4" style={{ color: 'var(--text-disabled)' }}>
-              {t('xianyu.qr.autoUpdateHint')}
-            </p>
+            {operatorError && <p className="font-mono text-[10px] mt-3" style={{ color: 'var(--accent-red)' }}>{operatorError}</p>}
+            <p className="font-mono text-[10px] mt-4" style={{ color: 'var(--text-disabled)' }}>{t('xianyu.operator.securityHint')}</p>
           </div>
         </motion.div>
-
-        {/* 二维码弹窗 */}
-        {showQr && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center"
-            style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
-            onClick={closeQrModal}
-            role="dialog"
-            aria-modal="true"
-            aria-label={t('xianyu.qr.loginBtn')}
-          >
-            <motion.div
-              className="abyss-card p-6 rounded-2xl flex flex-col items-center gap-4"
-              style={{ minWidth: 300 }}
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center gap-2">
-                <QrCode size={18} style={{ color: 'var(--accent-purple)' }} />
-                <span className="font-display text-base font-bold" style={{ color: 'var(--text-primary)' }}>
-                  {t('xianyu.qr.loginBtn')}
-                </span>
-              </div>
-
-              {/* 二维码图片 — 白色背景保证扫码识别 */}
-              <div className="rounded-xl overflow-hidden bg-white p-4 flex items-center justify-center" style={{ minWidth: 216, minHeight: 216 }}>
-                {qrImage ? (
-                  <img src={`data:image/png;base64,${qrImage}`} alt="Xianyu QR Code" className="w-48 h-48 object-contain" />
-                ) : (
-                  <Loader2 size={32} className="animate-spin" style={{ color: 'var(--text-disabled)' }} />
-                )}
-              </div>
-
-              {/* 扫码状态提示 */}
-              <div className="flex items-center gap-2">
-                {qrStatus === 'waiting' && (
-                  <>
-                    <Loader2 size={14} className="animate-spin" style={{ color: 'var(--accent-purple)' }} />
-                    <span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                      {t('xianyu.qr.waitingScan')}
-                    </span>
-                  </>
-                )}
-                {qrStatus === 'scanned' && (
-                  <>
-                    <CheckCircle2 size={14} style={{ color: 'var(--accent-green)' }} />
-                    <span className="font-mono text-[11px]" style={{ color: 'var(--accent-green)' }}>
-                      {t('xianyu.qr.scannedConfirm')}
-                    </span>
-                  </>
-                )}
-                {qrStatus === 'expired' && (
-                  <>
-                    <XCircle size={14} style={{ color: 'var(--accent-red)' }} />
-                    <span className="font-mono text-[11px]" style={{ color: 'var(--accent-red)' }}>
-                      {t('xianyu.qr.expired')}
-                    </span>
-                  </>
-                )}
-                {qrStatus === 'error' && (
-                  <>
-                    <AlertCircle size={14} style={{ color: 'var(--accent-red)' }} />
-                    <span className="font-mono text-[11px]" style={{ color: 'var(--accent-red)' }}>
-                      {t('xianyu.qr.error')}
-                    </span>
-                  </>
-                )}
-              </div>
-
-              {/* 操作按钮 */}
-              <div className="flex items-center gap-3">
-                {(qrStatus === 'expired' || qrStatus === 'error') && (
-                  <motion.button
-                    className="font-mono text-xs px-4 py-2 rounded-xl cursor-pointer font-bold"
-                    style={{
-                      background: 'rgba(168,85,247,0.08)',
-                      border: '1px solid rgba(168,85,247,0.25)',
-                      color: 'var(--accent-purple)',
-                    }}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.97 }}
-                    onClick={handleGenerateQR}
-                  >
-                    {t('xianyu.qr.regenerate')}
-                  </motion.button>
-                )}
-                <button
-                  className="font-mono text-xs px-4 py-2 rounded-xl"
-                  style={{
-                    background: 'rgba(255,255,255,0.06)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    color: 'var(--text-secondary)',
-                  }}
-                  onClick={closeQrModal}
-                >
-                  {t('xianyu.btn.close')}
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
 
         {/* Cookie 状态卡片 */}
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>

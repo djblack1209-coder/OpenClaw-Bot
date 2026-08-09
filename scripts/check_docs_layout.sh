@@ -12,6 +12,8 @@ AUTHORITATIVE_DOCS=(
   "$DOCS_DIR/009-health.md"
 )
 PROJECT_MAP="$DOCS_DIR/001-project-map.md"
+CURRENT_DIR="$DOCS_DIR/current"
+CURRENT_BASELINE="$CURRENT_DIR/current-baseline.md"
 
 # 文档门禁必须能在最小 CI 镜像运行，优先使用 rg，缺失时回退到 POSIX 常见的 grep。
 search_fixed() {
@@ -60,9 +62,18 @@ if [[ -n "$ROOT_DOCS" ]]; then
   report_failure "项目根目录存在未归档文档：\n$ROOT_DOCS"
 fi
 
-DOC_SUBDIRS="$(find "$DOCS_DIR" -mindepth 1 -type d -print | sort)"
+DOC_SUBDIRS="$(find "$DOCS_DIR" -mindepth 1 -type d ! -path "$CURRENT_DIR" -print | sort)"
 if [[ -n "$DOC_SUBDIRS" ]]; then
-  report_failure "docs/ 内禁止子目录：\n$DOC_SUBDIRS"
+  report_failure "docs/ 只允许 current/ 当前基线目录：\n$DOC_SUBDIRS"
+fi
+
+if [[ ! -f "$CURRENT_BASELINE" ]]; then
+  report_failure "缺少唯一当前基线：$CURRENT_BASELINE"
+else
+  CURRENT_EXTRA="$(find "$CURRENT_DIR" -mindepth 1 \( -type d -o ! -name 'current-baseline.md' \) -print | sort)"
+  if [[ -n "$CURRENT_EXTRA" ]]; then
+    report_failure "docs/current/ 只能保留 current-baseline.md：\n$CURRENT_EXTRA"
+  fi
 fi
 
 BAD_NAMES=""

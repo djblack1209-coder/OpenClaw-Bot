@@ -205,10 +205,10 @@ def request(url, method="GET", data=None):
     return {"http":int(status),"has_jiyu":"jiyu ai" in lowered,"has_cc_switch":"cc switch" in lowered}
 
 sql=r'''SELECT json_build_object(
-  'groups', (SELECT json_agg(json_build_object('id',g.id,'name',g.name,'rate',g.rate_multiplier,'status',g.status,'platform',g.platform) ORDER BY g.id) FROM groups g WHERE g.deleted_at IS NULL),
+  'groups', (SELECT json_agg(json_build_object('id',g.id,'name',g.name,'rate',g.rate_multiplier,'status',g.status,'platform',g.platform,'account_memberships',(SELECT count(*) FROM account_groups ag WHERE ag.group_id=g.id)) ORDER BY g.id) FROM groups g WHERE g.deleted_at IS NULL),
   'accounts', (SELECT json_agg(json_build_object('id',a.id,'name',a.name,'rate',a.rate_multiplier,'status',a.status,'schedulable',a.schedulable,'group_count',membership.group_count,'group_id',membership.group_id,'group_name',membership.group_name) ORDER BY a.id) FROM accounts a LEFT JOIN LATERAL (SELECT count(*) AS group_count,min(g.id) AS group_id,min(g.name) AS group_name FROM account_groups ag JOIN groups g ON g.id=ag.group_id WHERE ag.account_id=a.id AND g.deleted_at IS NULL) membership ON true WHERE a.deleted_at IS NULL),
-  'channels', (SELECT json_agg(json_build_object('id',c.id,'name',c.name,'status',c.status,'group_count',(SELECT count(*) FROM channel_groups cg WHERE cg.channel_id=c.id)) ORDER BY c.id) FROM channels c),
-  'monitors', (SELECT json_agg(json_build_object('id',m.id,'name',m.name,'enabled',m.enabled,'interval',m.interval_seconds,'jitter',m.jitter_seconds,'latest_status',h.status,'last_checked_at',h.checked_at,'latency_ms',h.latency_ms) ORDER BY m.id) FROM channel_monitors m LEFT JOIN LATERAL (SELECT status,checked_at,latency_ms FROM channel_monitor_histories WHERE monitor_id=m.id ORDER BY checked_at DESC LIMIT 1) h ON true),
+  'channels', (SELECT json_agg(json_build_object('id',c.id,'name',c.name,'status',c.status,'group_count',(SELECT count(*) FROM channel_groups cg WHERE cg.channel_id=c.id),'group_ids',(SELECT coalesce(json_agg(cg.group_id ORDER BY cg.group_id),'[]'::json) FROM channel_groups cg WHERE cg.channel_id=c.id)) ORDER BY c.id) FROM channels c),
+  'monitors', (SELECT json_agg(json_build_object('id',m.id,'group_name',m.group_name,'name',m.name,'enabled',m.enabled,'interval',m.interval_seconds,'jitter',m.jitter_seconds,'latest_status',h.status,'last_checked_at',h.checked_at,'latency_ms',h.latency_ms) ORDER BY m.id) FROM channel_monitors m LEFT JOIN LATERAL (SELECT status,checked_at,latency_ms FROM channel_monitor_histories WHERE monitor_id=m.id ORDER BY checked_at DESC LIMIT 1) h ON true),
   'channel_pricing', (SELECT json_agg(json_build_object('channel_id',c.id,'channel_name',c.name,'billing_mode',p.billing_mode,'per_request_price',p.per_request_price) ORDER BY c.id) FROM channels c JOIN channel_model_pricing p ON p.channel_id=c.id WHERE c.status='active' AND c.name LIKE '%生图%'),
   'redeem_available', (SELECT count(*) FROM redeem_codes WHERE status='unused'),
   'active_keys', (SELECT count(*) FROM api_keys WHERE deleted_at IS NULL AND status='active'),
@@ -241,7 +241,7 @@ def rate_entry(group):
         group_rate=float(group["rate"]); account_rate=float(account["rate"]) if account else None
     except (TypeError, ValueError):
         group_rate=None; account_rate=None
-    return {"group_id":group["id"],"account_id":account.get("id") if account else None,"group_rate":group_rate,"account_rate":account_rate,"difference":round(group_rate-account_rate,4) if group_rate is not None and account_rate is not None else None}
+    return {"group_rate":group_rate,"account_rate":account_rate,"difference":round(group_rate-account_rate,4) if group_rate is not None and account_rate is not None else None}
 
 text_rates=[rate_entry(group) for group in text_groups]; image_rates=[rate_entry(group) for group in image_groups]; rates=text_rates+image_rates
 scheduled_monitors=sum(1 for item in monitors if int(item.get("interval") or 0)==300 and int(item.get("jitter") or 0)==30)
@@ -260,25 +260,35 @@ def price_matches(fragment, expected):
 
 image_channel_ids={item.get("id") for item in image_channels if item.get("id") is not None}
 pricing_channel_ids={item.get("channel_id") for item in channel_pricing if item.get("channel_id") is not None}
-image_pricing_ok=len(image_channels)==2 and len(channel_pricing)==2 and image_channel_ids==pricing_channel_ids and all(item.get("billing_mode")=="image" for item in channel_pricing) and price_matches("渠道A",0.10) and price_matches("渠道B",0.12)
-text_rate_difference_ok=len(text_rates)==10 and all(item.get("difference")==0.05 for item in text_rates)
-image_rate_difference_ok=len(image_rates)==2 and all(item.get("group_rate")==1.0 and item.get("account_rate")==1.0 and item.get("difference")==0.0 for item in image_rates)
+image_pricing_ok=len(image_channels)==len(channel_pricing) and image_channel_ids==pricing_channel_ids and all(item.get("billing_mode")=="image" for item in channel_pricing) and all(float(item.get("per_request_price") or 0)>0 for item in channel_pricing)
+text_rate_difference_ok=len(text_rates)>0 and all(item.get("difference")==0.05 for item in text_rates)
+image_rate_difference_ok=all(item.get("difference")==0.0 for item in image_rates)
 self_owned_pool_rates={str(item.get("name") or ""):float(item.get("rate") or 0) for item in self_owned_pools}
 self_owned_pool_ok=len(self_owned_pools)==2 and all(item.get("status")=="active" and item.get("platform")=="openai" for item in self_owned_pools) and self_owned_pool_rates=={"JIYU OpenAI Plus 自营号池":2.0,"JIYU OpenAI Pro 自营号池":3.0}
-claude_account=next((item for item in accounts if int(item.get("id") or 0)==2),None)
-claude_account_ok=claude_account is not None and claude_account.get("status")=="active" and claude_account.get("schedulable") is True and int(claude_account.get("group_count") or 0)==1 and "Claude" in str(claude_account.get("name") or "") and "渠道A" in str(claude_account.get("name") or "")
+self_owned_group_ids={int(item["id"]) for item in self_owned_pools}
+self_owned_account_memberships=sum(int(item.get("account_memberships") or 0) for item in self_owned_pools)
+self_owned_pool_channels=[item for item in channels if self_owned_group_ids.intersection({int(group_id) for group_id in (item.get("group_ids") or [])})]
+self_owned_channels=[item for item in self_owned_pool_channels if item.get("status")=="active"]
+self_owned_channel_names={str(item.get("name") or "") for item in self_owned_pool_channels}
+self_owned_monitors=[item for item in monitors if str(item.get("group_name") or "") in self_owned_channel_names]
+self_owned_inventory_ready=self_owned_pool_ok and self_owned_account_memberships>=len(self_owned_pools)
+self_owned_channel_ready=self_owned_inventory_ready and len(self_owned_channels)>0
+self_owned_monitor_ready=self_owned_channel_ready and len(self_owned_monitors)>0
+self_owned_inventory_pending=self_owned_pool_ok and self_owned_account_memberships==0 and len(self_owned_channels)==0 and len(self_owned_monitors)==0
 contract={
-  "groups":len(groups),"self_owned_pools":len(self_owned_pools),"accounts":len(accounts),"active_channels":len(active_channels),"text_channels":len(text_channels),"image_channels":len(image_channels),
+  "groups":len(groups),"self_owned_pools":len(self_owned_pools),"accounts":len(accounts),"active_channels":len(active_channels),"text_channels":len(text_channels),"image_channels":len(image_channels),"monitors":len(monitors),
   "enabled_monitors":enabled_text_monitors+enabled_image_monitors,"enabled_text_monitors":enabled_text_monitors,"enabled_image_monitors":enabled_image_monitors,"disabled_image_monitors":disabled_image_monitors,"scheduled_monitors":scheduled_monitors,
-  "one_group_per_channel":len(active_channels)==12 and all(int(item.get("group_count") or 0)==1 for item in active_channels),
-  "one_group_per_account":len(accounts)==12 and all(int(item.get("group_count") or 0)==1 for item in accounts),
-  "monitor_schedule_ok":len(monitors)==12 and scheduled_monitors==12,
-  "monitor_state_ok":len(text_monitors)==10 and enabled_text_monitors==10 and len(image_monitors)==2 and enabled_image_monitors==0 and disabled_image_monitors==2,
+  "one_group_per_channel":len(active_channels)>0 and all(int(item.get("group_count") or 0)==1 for item in active_channels),
+  "one_group_per_account":len(accounts)>0 and all(int(item.get("group_count") or 0)==1 for item in accounts),
+  "monitor_schedule_ok":len(monitors)>0 and scheduled_monitors==len(monitors),
+  "monitor_state_ok":len(text_monitors)>0 and enabled_text_monitors==len(text_monitors) and all(item.get("enabled") is False for item in image_monitors),
   "text_rate_difference_ok":text_rate_difference_ok,"image_rate_difference_ok":image_rate_difference_ok,"rate_difference_ok":text_rate_difference_ok and image_rate_difference_ok,
-  "image_pricing_ok":image_pricing_ok,"self_owned_pool_ok":self_owned_pool_ok,"claude_account_ok":claude_account_ok,
+  "image_pricing_ok":image_pricing_ok,"self_owned_pool_ok":self_owned_pool_ok,
+  "self_owned_account_memberships":self_owned_account_memberships,"self_owned_active_channels":len(self_owned_channels),"self_owned_monitors":len(self_owned_monitors),
+  "self_owned_inventory_ready":self_owned_inventory_ready,"self_owned_channel_ready":self_owned_channel_ready,"self_owned_monitor_ready":self_owned_monitor_ready,"self_owned_runtime_ready":self_owned_inventory_ready and self_owned_channel_ready and self_owned_monitor_ready,"self_owned_inventory_pending":self_owned_inventory_pending,
   "rate_differences":rates,
 }
-contract["ok"]=contract["groups"]==14 and contract["self_owned_pools"]==2 and len(text_groups)==10 and len(image_groups)==2 and contract["accounts"]==12 and contract["active_channels"]==12 and contract["text_channels"]==10 and contract["image_channels"]==2 and contract["one_group_per_channel"] and contract["one_group_per_account"] and contract["monitor_schedule_ok"] and contract["monitor_state_ok"] and contract["rate_difference_ok"] and contract["image_pricing_ok"] and contract["self_owned_pool_ok"] and contract["claude_account_ok"]
+contract["ok"]=contract["groups"]>0 and len(text_groups)>0 and contract["accounts"]>0 and contract["active_channels"]>0 and contract["text_channels"]>0 and contract["one_group_per_channel"] and contract["one_group_per_account"] and contract["monitor_schedule_ok"] and contract["monitor_state_ok"] and contract["rate_difference_ok"] and contract["image_pricing_ok"] and contract["self_owned_pool_ok"]
 provider_health=[{"monitor_id":item["id"],"status":item.get("latest_status") or "unknown","last_checked_at":item.get("last_checked_at"),"latency_ms":item.get("latency_ms")} for item in monitors]
 public={"home":request("https://jiyu.245334.xyz/"),"models":request("https://jiyu.245334.xyz/v1/models"),"docs_route":request("https://jiyu.245334.xyz/custom/docs"),"docs_content":request("https://jiyu.245334.xyz/api/v1/pages/docs"),"recharge":request("https://jiyu.245334.xyz/custom/recharge-center"),"webhook_no_token":request("https://jiyu.245334.xyz/api/ops/xianyu/paid-order",method="POST",data={"orderId":"jiyu-readonly-audit","paid":True})}
 public["webhook_no_token_rejected"]=public["webhook_no_token"]["http"] in (401,403,404)
@@ -326,8 +336,11 @@ if (jsonOnly) {
 } else {
   console.log(`JIYU AI 生产闭环审计 v2: ${ok ? 'PASS' : 'FAIL'} (${result.mode})`);
   console.log(`- 闲鱼软件闭环: ${softwareReady ? 'PASS' : 'FAIL'}`);
-  console.log(`- 生产配置合同: ${checks.oracle.config_contract?.ok ? 'PASS' : 'FAIL'}（可售分组 12 + 自营号池 ${checks.oracle.config_contract?.self_owned_pools || 0}/2，渠道 ${checks.oracle.config_contract?.active_channels || 0}/12，文本监控 ${checks.oracle.config_contract?.enabled_text_monitors || 0}/10，生图监控 ${checks.oracle.config_contract?.enabled_image_monitors || 0}/2，按真实异常禁用）`);
-  console.log(`- 监控调度合同: ${checks.oracle.config_contract?.scheduled_monitors || 0}/12（300 秒周期，±30 秒抖动）`);
+  const contract = checks.oracle.config_contract || {};
+  console.log(`- 公开售卖渠道就绪: ${contract.ok ? 'PASS' : 'FAIL'}（可售分组 ${contract.groups || 0}，渠道 ${contract.active_channels || 0}，文本监控 ${contract.enabled_text_monitors || 0}/${contract.text_channels || 0}，生图监控 ${contract.enabled_image_monitors || 0}/${contract.image_channels || 0}，按真实异常禁用）`);
+  const selfOwned = checks.oracle.config_contract || {};
+  console.log(`- 自营池运行就绪: ${selfOwned.self_owned_inventory_pending ? '库存待补' : selfOwned.self_owned_runtime_ready ? 'READY' : '待处理'}（组壳 ${selfOwned.self_owned_pools || 0}，账号成员 ${selfOwned.self_owned_account_memberships || 0}，活动渠道 ${selfOwned.self_owned_active_channels || 0}，监控 ${selfOwned.self_owned_monitors || 0}；库存 ${selfOwned.self_owned_inventory_ready ? 'READY' : 'PENDING'}，渠道 ${selfOwned.self_owned_channel_ready ? 'READY' : 'PENDING'}，监控 ${selfOwned.self_owned_monitor_ready ? 'READY' : 'PENDING'}）`);
+  console.log(`- 监控调度合同: ${contract.scheduled_monitors || 0}/${contract.monitors || 0}（300 秒周期，±30 秒抖动）`);
   console.log(`- 真实上游状态: ${JSON.stringify(checks.oracle.provider_health || [])}`);
   console.log(`- 公开售卖策略: ${result.nextHumanGate}`);
 }

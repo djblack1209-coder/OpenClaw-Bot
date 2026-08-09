@@ -4,10 +4,15 @@
 
 use crate::models::{AppError, AppResult};
 use serde_json::Value;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::sync::LazyLock;
 use tauri::command;
 
 const CLAWBOT_API_BASE: &str = "http://127.0.0.1:18790/api/v1";
+const XIANYU_ADMIN_DEFAULT_URL: &str = "http://127.0.0.1:18800";
+const XIANYU_SELLER_LAUNCHER: &str = "cc_zhongzhuan_launch_seller_chrome.mjs";
+const XIANYU_MANAGED_SERVICE_LABEL: &str = "ai.openclaw.xianyu";
 
 /// 全局复用的 HTTP 客户端，避免每次请求都新建 TCP 连接
 /// 超时设为 120 秒以支持 AI 类长时间操作（投资分析会、图片生成等）
@@ -150,6 +155,176 @@ pub async fn clawbot_api_ping() -> AppResult<Value> {
 #[command]
 pub async fn clawbot_api_status() -> AppResult<Value> {
     api_get("/status").await
+}
+
+/// 将可选的闲鱼运营台基地址收敛为本机回环启动端点。
+/// 必须在读取 API Token 前调用，避免将本机凭据发送给任意配置地址。
+fn xianyu_admin_launch_endpoint(base: &str) -> AppResult<reqwest::Url> {
+    let mut parsed = reqwest::Url::parse(base.trim())
+        .map_err(|_| AppError::config("XIANYU_ADMIN_URL 必须是本机 HTTP 地址"))?;
+    let loopback = matches!(
+        parsed.host_str(),
+        Some("127.0.0.1" | "localhost" | "::1" | "[::1]")
+    );
+    let has_credentials = !parsed.username().is_empty() || parsed.password().is_some();
+    if parsed.scheme() != "http"
+        || !loopback
+        || has_credentials
+        || parsed.path() != "/"
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+    {
+        return Err(AppError::config(
+            "XIANYU_ADMIN_URL 必须是不含路径或凭据的本机回环 HTTP 地址",
+        ));
+    }
+
+    parsed.set_path("/api/session/desktop-launch");
+    Ok(parsed)
+}
+
+/// 为桌面端打开闲鱼本机运营台；服务端只返回一次性短时启动地址。
+/// API Token 仅放在本次本机请求的请求头中，不会进入 URL、响应或日志。
+#[command]
+pub async fn clawbot_api_xianyu_operator_url() -> AppResult<String> {
+    let base =
+        std::env::var("XIANYU_ADMIN_URL").unwrap_or_else(|_| XIANYU_ADMIN_DEFAULT_URL.to_string());
+    let endpoint = xianyu_admin_launch_endpoint(&base)?;
+    let token = get_api_token()
+        .ok_or_else(|| AppError::config("未找到 OPENCLAW_API_TOKEN，无法打开闲鱼运营台"))?;
+    let response = CLIENT
+        .post(endpoint)
+        .header("X-API-Token", token)
+        .send()
+        .await
+        .map_err(|e| AppError::network(format!("闲鱼本机运营台不可用: {}", e)))?;
+    if !response.status().is_success() {
+        return Err(AppError::network(format!(
+            "闲鱼本机运营台拒绝启动: HTTP {}",
+            response.status()
+        )));
+    }
+    let payload = response
+        .json::<Value>()
+        .await
+        .map_err(|e| AppError::serialization(format!("闲鱼启动响应格式无效: {}", e)))?;
+    let launch_url = payload
+        .get("url")
+        .and_then(Value::as_str)
+        .ok_or_else(|| AppError::serialization("闲鱼启动响应缺少地址".to_string()))?;
+    let parsed = reqwest::Url::parse(launch_url)
+        .map_err(|_| AppError::serialization("闲鱼启动地址格式无效".to_string()))?;
+    let loopback = matches!(parsed.host_str(), Some("127.0.0.1" | "localhost" | "::1"));
+    if parsed.scheme() != "http" || !loopback || !parsed.path().starts_with("/launch/") {
+        return Err(AppError::validation(
+            "闲鱼启动地址不是受信任的本机一次性地址",
+        ));
+    }
+    Ok(launch_url.to_string())
+}
+
+/// 只接受项目内已知的闲鱼启动器；打包 App 找不到仓库时必须失败关闭。
+fn locate_xianyu_seller_launcher() -> AppResult<(PathBuf, PathBuf)> {
+    let mut roots = Vec::new();
+    for key in ["CC_XIANYU_PROJECT_ROOT", "OPENCLAW_PROJECT_ROOT"] {
+        if let Ok(root) = std::env::var(key) {
+            if !root.trim().is_empty() {
+                roots.push(PathBuf::from(root));
+            }
+        }
+    }
+    if let Some(home) = dirs::home_dir() {
+        roots.push(home.join("Desktop/OpenEverything"));
+    }
+    if let Ok(executable) = std::env::current_exe() {
+        roots.extend(executable.ancestors().take(8).map(Path::to_path_buf));
+    }
+    roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")));
+
+    for root in roots {
+        let mut cursor = Some(root);
+        for _ in 0..8 {
+            let Some(candidate_root) = cursor else { break };
+            let script = candidate_root.join("scripts").join(XIANYU_SELLER_LAUNCHER);
+            if script.is_file() {
+                let script = script
+                    .canonicalize()
+                    .map_err(|_| AppError::config("闲鱼启动器路径不可用"))?;
+                return Ok((script, candidate_root));
+            }
+            cursor = candidate_root.parent().map(Path::to_path_buf);
+        }
+    }
+    Err(AppError::config(
+        "未找到闲鱼本机启动器，请先安装 OpenClaw 项目运行文件",
+    ))
+}
+
+fn locate_node_binary() -> AppResult<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Ok(explicit) = std::env::var("CC_XIANYU_NODE_BIN") {
+        if !explicit.trim().is_empty() {
+            candidates.push(PathBuf::from(explicit));
+        }
+    }
+    let node_name = if cfg!(target_os = "windows") {
+        "node.exe"
+    } else {
+        "node"
+    };
+    let search_path = if cfg!(target_os = "windows") {
+        std::env::var_os("PATH").unwrap_or_default()
+    } else {
+        std::ffi::OsString::from(crate::utils::shell::get_extended_path())
+    };
+    candidates.extend(std::env::split_paths(&search_path).map(|entry| entry.join(node_name)));
+    candidates
+        .into_iter()
+        .find(|candidate| {
+            candidate.is_file()
+                && candidate
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .map(|name| name == "node" || name == "node.exe")
+                    .unwrap_or(false)
+        })
+        .ok_or_else(|| AppError::config("未找到 Node.js，无法启动闲鱼卖家浏览器"))
+}
+
+fn launch_xianyu_seller_chrome() -> AppResult<()> {
+    let (script, project_root) = locate_xianyu_seller_launcher()?;
+    let node = locate_node_binary()?;
+    let mut command = Command::new(node);
+    command
+        .arg(&script)
+        .arg("--json")
+        .current_dir(project_root)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(not(target_os = "windows"))]
+    command.env("PATH", crate::utils::shell::get_extended_path());
+    let status = command
+        .status()
+        .map_err(|_| AppError::network("闲鱼卖家浏览器启动失败"))?;
+    if !status.success() {
+        return Err(AppError::network("闲鱼卖家浏览器启动器拒绝执行"));
+    }
+    Ok(())
+}
+
+/// 一次点击启动隔离卖家浏览器，再打开已有的一次性本机运营台链接。
+#[command]
+pub async fn clawbot_api_xianyu_open_operator() -> AppResult<String> {
+    // 复用 Tauri 托管服务控制器；其 start 操作本身幂等，已运行时不会重启服务。
+    super::clawbot::control_managed_service(
+        XIANYU_MANAGED_SERVICE_LABEL.to_string(),
+        "start".to_string(),
+    )
+    .await?;
+    tokio::task::spawn_blocking(launch_xianyu_seller_chrome)
+        .await
+        .map_err(|_| AppError::network("闲鱼卖家浏览器启动任务失败"))??;
+    clawbot_api_xianyu_operator_url().await
 }
 
 // ──── Trading ────
@@ -786,4 +961,66 @@ pub async fn clawbot_api_omega_generate_video(prompt: String) -> AppResult<Value
 #[command]
 pub async fn clawbot_api_omega_media_models() -> AppResult<Value> {
     api_get("/omega/tools/media-models").await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        locate_xianyu_seller_launcher, xianyu_admin_launch_endpoint, XIANYU_MANAGED_SERVICE_LABEL,
+        XIANYU_SELLER_LAUNCHER,
+    };
+
+    #[test]
+    fn xianyu_operator_uses_the_managed_service_contract() {
+        assert_eq!(XIANYU_MANAGED_SERVICE_LABEL, "ai.openclaw.xianyu");
+    }
+
+    #[test]
+    fn xianyu_launch_endpoint_allows_only_configurable_loopback_ports() {
+        for (base, expected) in [
+            (
+                "http://127.0.0.1:18800",
+                "http://127.0.0.1:18800/api/session/desktop-launch",
+            ),
+            (
+                "http://localhost:19080/",
+                "http://localhost:19080/api/session/desktop-launch",
+            ),
+            (
+                "http://[::1]:19443",
+                "http://[::1]:19443/api/session/desktop-launch",
+            ),
+        ] {
+            let endpoint = xianyu_admin_launch_endpoint(base)
+                .unwrap_or_else(|_| panic!("应允许本机回环地址: {base}"));
+            assert_eq!(endpoint.as_str(), expected);
+        }
+    }
+
+    #[test]
+    fn xianyu_launch_endpoint_rejects_untrusted_or_ambiguous_bases() {
+        for base in [
+            "http://198.51.100.10:18800",
+            "https://127.0.0.1:18800",
+            "http://localhost.evil.example:18800",
+            "http://127.0.0.1:18800/admin?next=outside",
+            "http:///api/session/desktop-launch",
+            "http://operator@127.0.0.1:18800",
+        ] {
+            assert!(
+                xianyu_admin_launch_endpoint(base).is_err(),
+                "必须在读取 Token 前拒绝: {base}"
+            );
+        }
+    }
+
+    #[test]
+    fn seller_launcher_discovery_requires_the_known_launcher_script() {
+        let (script, root) = locate_xianyu_seller_launcher().expect("开发仓库应能发现闲鱼启动器");
+        assert_eq!(
+            script.file_name().and_then(|name| name.to_str()),
+            Some(XIANYU_SELLER_LAUNCHER)
+        );
+        assert!(root.join("scripts").join(XIANYU_SELLER_LAUNCHER).is_file());
+    }
 }

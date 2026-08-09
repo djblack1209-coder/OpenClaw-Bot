@@ -137,7 +137,7 @@ jiyu-sub2-replenish-dry-run: ## 演练补号助手，只验证解析和页面，
 	cd $(CLAWBOT) && $(PYTHON) -m src.sub2_replenish --dry-run
 
 cc-seller-chrome: ## 启动 CC中转闲鱼卖家专用 Chrome，并打开插件加载目录
-	node scripts/cc_zhongzhuan_launch_seller_chrome.mjs --copy-token
+	node scripts/cc_zhongzhuan_launch_seller_chrome.mjs
 
 cc-seller-bridge: ## 启动 CC中转闲鱼卖家本机桥接器，负责自动发卡/确认发货/恢复可售
 	node scripts/cc_zhongzhuan_seller_bridge.mjs

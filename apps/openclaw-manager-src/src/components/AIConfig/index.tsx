@@ -133,6 +133,10 @@ function isChannelEnabled(ch: ChannelItem): boolean {
   return ch.status === 1;
 }
 
+function isPoolStatsPlaceholder(ch: ChannelItem): boolean {
+  return ch.id < 0;
+}
+
 /** 延迟 → 颜色 */
 function latencyColor(ms?: number): string {
   if (!ms || ms === 0) return 'var(--text-disabled)';
@@ -177,9 +181,10 @@ export function AIConfig() {
       let channelsLoaded = false;
       if (channelsResp.status === 'fulfilled') {
         try {
-          const raw = await parseResponse<Record<string, unknown>>(channelsResp.value);
+          const raw = await parseResponse<any>(channelsResp.value);
           const list: ChannelItem[] = Array.isArray(raw) ? raw
             : Array.isArray(raw?.data) ? raw.data
+            : Array.isArray(raw?.data?.items) ? raw.data.items
             : Array.isArray(raw?.channels) ? raw.channels
             : [];
           setChannels(list);
@@ -220,6 +225,7 @@ export function AIConfig() {
 
   /* ── 渠道启用/禁用切换 ── */
   const handleToggle = useCallback(async (channelId: number) => {
+    if (channelId < 0) return;
     setTogglingIds((prev) => new Set(prev).add(channelId));
     try {
       await parseResponse(await api.newApiToggleChannel(channelId));
@@ -385,7 +391,8 @@ export function AIConfig() {
                 </div>
               ) : (
                 channels.map((ch) => {
-                  const enabled = isChannelEnabled(ch);
+                  const placeholder = isPoolStatsPlaceholder(ch);
+                  const enabled = !placeholder && isChannelEnabled(ch);
                   const toggling = togglingIds.has(ch.id);
                   const models = ch.models ? ch.models.split(',').map((m) => m.trim()).filter(Boolean) : [];
                   return (
@@ -400,7 +407,7 @@ export function AIConfig() {
                       {/* 渠道名称 + 模型标签 */}
                       <div className="min-w-0">
                         <span className="font-display text-sm font-semibold truncate block" style={{ color: 'var(--text-primary)' }}>
-                          {ch.name || `渠道 #${ch.id}`}
+                          {ch.name || `渠道 #${ch.id}`}{placeholder ? '（统计占位）' : ''}
                         </span>
                         {models.length > 0 && (
                           <div className="flex flex-wrap gap-0.5 mt-0.5">
@@ -444,9 +451,9 @@ export function AIConfig() {
                       <div className="flex justify-center">
                         <button
                           onClick={() => handleToggle(ch.id)}
-                          disabled={toggling}
+                          disabled={placeholder || toggling}
                           className="transition-colors hover:opacity-80 disabled:opacity-50"
-                          title={enabled ? t('aiConfig.clickToDisable') : t('aiConfig.clickToEnable')}
+                          title={placeholder ? '统计占位，不能启停' : enabled ? t('aiConfig.clickToDisable') : t('aiConfig.clickToEnable')}
                         >
                           {toggling ? (
                             <Loader2 size={16} className="animate-spin" style={{ color: 'var(--text-disabled)' }} />

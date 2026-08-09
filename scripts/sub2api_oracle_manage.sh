@@ -20,7 +20,7 @@ readonly UPDATE_SERVICE="sub2api-update.service"
 readonly UPDATE_TIMER="sub2api-update.timer"
 readonly BACKUP_SERVICE="sub2api-backup.service"
 readonly BACKUP_TIMER="sub2api-backup.timer"
-readonly APACHE_SITE="/etc/apache2/sites-available/jiyu-ai.conf"
+readonly APACHE_SITE="${SUB2API_APACHE_SITE:-/etc/apache2/sites-available/frist-api.conf}"
 readonly APACHE_ROLLBACK_FILE="${STATE_DIR}/apache-before-sub2api.conf"
 readonly UPDATE_STATE_FILE="${STATE_DIR}/upstream-release.json"
 readonly NEWAPI_SERVICE="openclaw-newapi.service"
@@ -48,6 +48,11 @@ readonly DOCS_PAGE_SLUG="docs"
 readonly BRAND_LOGO_SOURCE="${SUB2API_BRAND_LOGO_SOURCE:-/usr/local/share/jiyu-ai/jiyu-ai-logo.png}"
 readonly BRAND_LOGO_PUBLIC_PATH="/api/v1/pages/${DOCS_PAGE_SLUG}/images/jiyu-ai-logo.png"
 readonly UPSTREAM_ALLOWLIST_HOSTS="api.openai.com,api.anthropic.com,api.kimi.com,api.moonshot.ai,api.moonshot.cn,open.bigmodel.cn,api.minimaxi.com,generativelanguage.googleapis.com,cloudcode-pa.googleapis.com,*.openai.azure.com,api.aigo0.com,www.huyunapi.com"
+readonly PRICING_FALLBACK_URL="https://raw.githubusercontent.com/Wei-Shaw/model-price-repo/main/model_prices_and_context_window.json"
+readonly PRICING_FALLBACK_HASH_URL="https://raw.githubusercontent.com/Wei-Shaw/model-price-repo/main/model_prices_and_context_window.sha256"
+readonly PRICING_FALLBACK_DIR="${INSTALL_DIR}/resources/model-pricing"
+readonly PRICING_FALLBACK_FILE="${PRICING_FALLBACK_DIR}/model_prices_and_context_window.json"
+readonly PRICING_FALLBACK_HASH_FILE="${PRICING_FALLBACK_DIR}/model_prices_and_context_window.sha256"
 
 log() {
   printf '[Sub2API] %s\n' "$*"
@@ -797,7 +802,7 @@ apply_docs_page() {
   cat >"${pages_dir}/${DOCS_PAGE_SLUG}.md" <<'MARKDOWN'
 # JIYU AI 使用文档
 
-> 当前为邀请内测。JIYU AI 不向中国大陆及其他受限制、制裁或上游禁止服务的地区开放。
+> 当前为邀请内测。目标地区规则：中国大陆 IP 只显示国内模型，境外 IP 显示全部模型；账户、余额、订单、API 密钥和模型请求仍以海外主系统为唯一事实源。技术分流尚未完成真实生产回读前，请以线上实际目录和 API 返回为准。对于仍受制裁、出口管制或相关服务限制的地区，服务仍不开放。
 
 ## 下载 CC Switch
 
@@ -867,29 +872,94 @@ SQL
   log "左侧文档入口和 CC Switch 下载、导入说明已应用。"
 }
 
+apply_terms_page() {
+  require_root
+  require_linux
+  require_command psql
+
+  # 只替换过时的地区总禁用句，保留其余法律文本和文档顺序。
+  local replacement terms_revision agreement_state
+  replacement='**地区展示与服务范围：** 中国大陆 IP 只显示并可使用国内模型；境外 IP 显示全部模型。账户、余额、订单、API 密钥和模型请求继续由海外主系统统一处理，地区展示不创建第二套账户、余额或账本。大陆/境外技术分流尚未完成真实生产回读前，请以线上实际目录和 API 返回为准。对于仍受联合国、新加坡、美国、欧盟或相关服务提供方制裁、出口管制或服务限制的国家和地区，服务仍不开放。不得使用代理、虚假身份或其他方式规避适用限制。'
+  terms_revision="$(printf '%s' "$replacement" | sha256sum | awk '{print $1}')"
+
+  runuser -u postgres -- psql -v ON_ERROR_STOP=1 -d sub2api \
+    -v replacement="$replacement" -v revision="$terms_revision" <<'SQL'
+WITH current AS (
+  SELECT value::jsonb AS documents
+  FROM settings
+  WHERE key = 'login_agreement_documents'
+), updated AS (
+  SELECT jsonb_agg(
+    CASE
+      WHEN item->>'id' = 'terms' THEN jsonb_set(
+        item,
+        '{content_md}',
+        to_jsonb(replace(
+          item->>'content_md',
+          $$**JIYU AI 不向中国大陆以及受联合国、新加坡、美国、欧盟或相关服务提供方制裁、出口管制或服务限制的国家和地区开放。**不得使用代理、虚假身份或其他方式规避地区限制。$$,
+          :'replacement'
+        ))
+      )
+      ELSE item
+    END
+    ORDER BY ordinal
+  )::text AS documents
+  FROM current, jsonb_array_elements(current.documents) WITH ORDINALITY AS expanded(item, ordinal)
+)
+UPDATE settings
+SET value = updated.documents, updated_at = NOW()
+FROM updated
+WHERE settings.key = 'login_agreement_documents';
+
+INSERT INTO settings (key, value, updated_at)
+VALUES ('login_agreement_revision', :'revision', NOW())
+ON CONFLICT (key) DO UPDATE
+SET value = EXCLUDED.value, updated_at = NOW();
+SQL
+
+  agreement_state="$(runuser -u postgres -- psql -d sub2api -Atc "SELECT CASE WHEN value ILIKE '%地区展示与服务范围%' AND value NOT ILIKE '%不向中国大陆以及%' THEN 'ok' ELSE 'invalid' END FROM settings WHERE key='login_agreement_documents'")"
+  [[ "$agreement_state" == "ok" ]] || fail "登录条款地区文案回读失败。"
+  systemctl restart "$SUB2API_SERVICE"
+  wait_for_health 90 || fail "应用登录条款后健康检查失败。"
+  log "登录条款已移除中国大陆总禁用表述，并明确地区展示目标及真实回读前置条件。"
+}
+
 backup_database() {
   local destination="$1"
   postgresql_preflight
   install -d -m 0700 -o root -g root "$destination"
   runuser -u postgres -- pg_dump --format=custom sub2api >"${destination}/sub2api.dump"
-  cp -a "${INSTALL_DIR}/sub2api" "${INSTALL_DIR}/VERSION" "$ENV_FILE" \
-    "$REDIS_CONFIG" "$APACHE_SITE" "${destination}/"
+  local required_file
+  for required_file in \
+    "${INSTALL_DIR}/sub2api" "${INSTALL_DIR}/VERSION" "$ENV_FILE" \
+    "$REDIS_CONFIG" "$APACHE_SITE"; do
+    if [[ -e "$required_file" ]]; then
+      cp -a "$required_file" "${destination}/"
+    fi
+  done
   if [[ -f "${INSTALL_DIR}/data/config.yaml" ]]; then
     cp -a "${INSTALL_DIR}/data/config.yaml" "${destination}/"
   fi
   if [[ -d "${INSTALL_DIR}/data/pages" ]]; then
     cp -a "${INSTALL_DIR}/data/pages" "${destination}/pages"
   fi
+  if [[ -d "$PRICING_FALLBACK_DIR" ]]; then
+    cp -a "$PRICING_FALLBACK_DIR" "${destination}/model-pricing"
+  fi
   if [[ -d /usr/local/share/jiyu-ai ]]; then
     cp -a /usr/local/share/jiyu-ai "${destination}/brand-assets"
   fi
-  cp -a "/etc/systemd/system/${SUB2API_SERVICE}" \
+  for required_file in \
+    "/etc/systemd/system/${SUB2API_SERVICE}" \
     "/etc/systemd/system/${REDIS_SERVICE}" \
     "/etc/systemd/system/${UPDATE_SERVICE}" \
     "/etc/systemd/system/${UPDATE_TIMER}" \
     "/etc/systemd/system/${BACKUP_SERVICE}" \
-    "/etc/systemd/system/${BACKUP_TIMER}" \
-    "${destination}/"
+    "/etc/systemd/system/${BACKUP_TIMER}"; do
+    if [[ -e "$required_file" ]]; then
+      cp -a "$required_file" "${destination}/"
+    fi
+  done
   find "$destination" -maxdepth 2 -type f -print0 | sort -z | \
     xargs -0 sha256sum >"${destination}/SHA256SUMS"
   chmod -R go-rwx "$destination"
@@ -904,6 +974,47 @@ daily_backup() {
   backup_database "$backup_dir"
   find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -name 'daily-*' -mtime +30 -exec rm -rf -- {} +
   log "Sub2API 一致性备份已保存到 ${backup_dir}。"
+}
+
+install_pricing_fallback() {
+  require_root
+  require_linux
+  require_command curl
+  require_command jq
+  require_command sha256sum
+
+  local timestamp backup_dir temporary_json temporary_hash expected_hash actual_hash staged_json staged_hash
+  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  backup_dir="${BACKUP_ROOT}/pricing-fallback-${timestamp}"
+  backup_database "$backup_dir"
+
+  temporary_json="$(mktemp)"
+  temporary_hash="$(mktemp)"
+  trap 'rm -f "${temporary_json:-}" "${temporary_hash:-}" "${staged_json:-}" "${staged_hash:-}"' RETURN
+  curl -fsSL --retry 3 --retry-all-errors --max-time 60 "$PRICING_FALLBACK_URL" -o "$temporary_json"
+  curl -fsSL --retry 3 --retry-all-errors --max-time 30 "$PRICING_FALLBACK_HASH_URL" -o "$temporary_hash"
+  expected_hash="$(awk 'NR == 1 { print $1 }' "$temporary_hash")"
+  [[ "$expected_hash" =~ ^[0-9a-fA-F]{64}$ ]] || fail "官方价格回退校验文件格式无效。"
+  actual_hash="$(sha256sum "$temporary_json" | awk '{print $1}')"
+  [[ "${actual_hash,,}" == "${expected_hash,,}" ]] || fail "官方价格回退文件 SHA-256 校验失败。"
+  jq -e 'type == "object" and length > 0' "$temporary_json" >/dev/null || fail "官方价格回退文件不是非空 JSON 对象。"
+
+  install -d -m 0755 -o sub2api -g sub2api "$PRICING_FALLBACK_DIR"
+  staged_json="${PRICING_FALLBACK_FILE}.new"
+  staged_hash="${PRICING_FALLBACK_HASH_FILE}.new"
+  install -m 0644 -o sub2api -g sub2api "$temporary_json" "$staged_json"
+  printf '%s  %s\n' "$actual_hash" "model_prices_and_context_window.json" | install -m 0644 -o sub2api -g sub2api /dev/stdin "$staged_hash"
+  mv -f "$staged_json" "$PRICING_FALLBACK_FILE"
+  mv -f "$staged_hash" "$PRICING_FALLBACK_HASH_FILE"
+  systemctl restart "$SUB2API_SERVICE"
+  if ! wait_for_health 90; then
+    [[ -f "${backup_dir}/model-pricing/model_prices_and_context_window.json" ]] || fail "价格回退资源上线失败且备份中没有旧资源，拒绝继续。"
+    cp -a "${backup_dir}/model-pricing/." "$PRICING_FALLBACK_DIR/"
+    systemctl restart "$SUB2API_SERVICE"
+    wait_for_health 90 || fail "价格回退资源回滚后服务健康检查仍失败。"
+    fail "价格回退资源上线失败，已恢复备份。"
+  fi
+  log "官方价格回退资源已校验、原子安装并由服务加载；备份位于 ${backup_dir}。"
 }
 
 restore_database() {
@@ -1692,10 +1803,12 @@ usage() {
   verify-jiyu-stage          内部入口：核对暂存构建运行哈希与健康状态
   enable-web-update <broker> <manifest-url>  启用 WebUI 受限兼容包更新
   backup             立即生成数据库、页面、品牌、配置和二进制一致性备份
+  pricing-fallback   校验并原子安装官方模型价格回退资源，失败自动回滚
   brand              重新应用 JIYU AI 网站名称、副标题和 JY Logo
   brand-asset        重新发布邮件和文档使用的 JIYU AI 图形 Logo
   recharge-center     重新应用充值中心固定公开店铺和精确 CSP
   docs-page           重新应用文档入口和 CC Switch 下载、导入说明
+  terms-page          更新登录条款中的地区展示规则（保留其余条款文本）
   upstream-allowlist    重新应用两个指定上游的安全域名白名单
   harden-apache      禁止浏览器直接更新或回滚生产二进制
   postgres-preflight 修复 PostgreSQL 最小运行权限并验证数据库连通性
@@ -1746,6 +1859,9 @@ main() {
     backup)
       daily_backup
       ;;
+    pricing-fallback)
+      install_pricing_fallback
+      ;;
     brand)
       apply_branding
       ;;
@@ -1757,6 +1873,9 @@ main() {
       ;;
     docs-page)
       apply_docs_page
+      ;;
+    terms-page)
+      apply_terms_page
       ;;
     upstream-allowlist)
       apply_upstream_allowlist

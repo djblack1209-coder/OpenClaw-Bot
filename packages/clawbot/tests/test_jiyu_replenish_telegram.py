@@ -1,14 +1,12 @@
-"""Telegram 远程补号入口的最小脱敏合同。"""
+"""Telegram 补号安全门面的最小保护合同。"""
 
 from __future__ import annotations
 
-import asyncio
 from types import SimpleNamespace
 
 import pytest
 
 from src.bot.cmd_jiyu_replenish_mixin import JiyuReplenishCommandsMixin
-from src.sub2_replenish.runner import ReplenishRunner
 
 
 class _Message:
@@ -22,9 +20,6 @@ class _Message:
 
 
 class _Bot(JiyuReplenishCommandsMixin):
-    def __init__(self) -> None:
-        self._remote_replenish_runner = ReplenishRunner(dry_run=True)
-
     def _is_authorized(self, user_id: int) -> bool:
         return user_id == 7
 
@@ -39,23 +34,58 @@ def _update(text: str = "") -> SimpleNamespace:
 
 
 @pytest.mark.asyncio
-async def test_remote_replenish_accepts_private_payload_without_echoing_secret():
+async def test_remote_replenish_consumes_next_private_text_without_reading_it():
     bot = _Bot()
     update = _update()
     context = SimpleNamespace(args=[])
 
     await bot.cmd_jiyu_replenish.__wrapped__(bot, update, context)
-    assert "一键补号" in update.message.replies[-1]
-    assert update.message.markups[-1].keyboard[0][0].text == "🧾 一键补号"
+    assert "远程补号材料提交和远程批次控制均已禁用" in update.message.replies[-1]
+    assert update.message.markups[-1] is None
 
-    raw = "person@example.test----never-log-password----JBSWY3DPEHPK3PXP"
+    raw = object()
     accepted = await bot._handle_jiyu_replenish_text(update, raw)
-    await asyncio.sleep(0)
 
     assert accepted is True
-    assert "已接收 1 个号源" in update.message.replies[-1]
-    assert all(secret not in "\n".join(update.message.replies) for secret in ("never-log-password", "JBSWY3DPEHPK3PXP"))
-    await bot._remote_replenish_runner.stop()
+    assert "远程提交内容不会被读取" in update.message.replies[-1]
+    assert not hasattr(bot, "_remote_replenish_runner")
+    assert 9 not in bot._jiyu_replenish_waiting()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["status", "stop"])
+async def test_remote_replenish_status_and_stop_only_report_local_boundary(action: str):
+    bot = _Bot()
+    update = _update()
+
+    await bot.cmd_jiyu_replenish.__wrapped__(bot, update, SimpleNamespace(args=[action]))
+
+    assert "Telegram 无法查看或控制本地补号批次" in update.message.replies[-1]
+    assert not hasattr(bot, "_remote_replenish_runner")
+
+
+@pytest.mark.asyncio
+async def test_legacy_replenish_keyboard_only_reports_local_boundary():
+    bot = _Bot()
+    update = _update()
+
+    accepted = await bot._handle_jiyu_replenish_text(update, "📊 补号状态")
+
+    assert accepted is True
+    assert "Telegram 无法查看或控制本地补号批次" in update.message.replies[-1]
+    assert not hasattr(bot, "_remote_replenish_runner")
+
+
+@pytest.mark.asyncio
+async def test_remote_replenish_cancel_only_clears_protection_waiting_state():
+    bot = _Bot()
+    update = _update()
+    bot._jiyu_replenish_waiting().add(update.effective_chat.id)
+
+    await bot.cmd_jiyu_replenish.__wrapped__(bot, update, SimpleNamespace(args=["cancel"]))
+
+    assert update.message.replies[-1] == "已取消保护等待状态。"
+    assert update.effective_chat.id not in bot._jiyu_replenish_waiting()
 
 
 @pytest.mark.asyncio

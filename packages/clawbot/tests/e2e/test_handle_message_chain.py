@@ -48,6 +48,9 @@ def _make_mock_self(is_authorized: bool = True):
     # 授权控制
     mock_self._is_authorized = MagicMock(return_value=is_authorized)
 
+    # 补号入口是协程；默认不消费普通消息，继续验证后续 NLP 分发。
+    mock_self._handle_jiyu_replenish_text = AsyncMock(return_value=False)
+
     # 中文NLP分发 — AsyncMock
     mock_self._dispatch_chinese_action = AsyncMock()
 

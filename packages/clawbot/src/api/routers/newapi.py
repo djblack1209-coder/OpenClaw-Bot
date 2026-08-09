@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # New-API 服务地址和管理员令牌（从环境变量读取）
-_NEWAPI_BASE: str = os.getenv("NEWAPI_BASE_URL", "http://localhost:3000")
+_NEWAPI_BASE: str = os.getenv("NEWAPI_BASE_URL", "")
 _NEWAPI_TOKEN: str = os.getenv("NEWAPI_ADMIN_TOKEN", "")
 _NEWAPI_USER_ID: str = os.getenv("NEWAPI_ADMIN_USER_ID", os.getenv("NEWAPI_USER_ID", ""))
 
@@ -70,6 +70,17 @@ def _headers() -> dict[str, str]:
     return headers
 
 
+def _newapi_url(path: str) -> str:
+    """只允许显式配置的 New-API 地址，避免误连本机默认端口。"""
+    base_url = _NEWAPI_BASE.strip().rstrip("/")
+    if not base_url:
+        raise HTTPException(
+            status_code=503,
+            detail="NEWAPI_BASE_URL 未配置，无法访问 New-API 管理接口",
+        )
+    return f"{base_url}{path}"
+
+
 def _extract_data(body: Any) -> Any:
     """解包 New-API 的标准响应体"""
     return body.get("data", body) if isinstance(body, dict) else body
@@ -87,7 +98,7 @@ async def _proxy_json(
     try:
         resp = await _http.request(
             method,
-            f"{_NEWAPI_BASE}{path}",
+            _newapi_url(path),
             headers=_headers() if auth else None,
             params=params,
             json=json,
@@ -112,7 +123,7 @@ async def _proxy_json(
 async def newapi_status() -> dict[str, Any]:
     """检查 New-API 服务是否可用 — 通过请求 /api/status 端点判断"""
     try:
-        resp = await _http.get(f"{_NEWAPI_BASE}/api/status")
+        resp = await _http.get(_newapi_url("/api/status"))
         if resp.status_code == 200:
             return {"online": True, "data": resp.json()}
         raise HTTPException(status_code=502, detail=f"HTTP {resp.status_code}")
@@ -132,7 +143,7 @@ async def list_channels() -> dict[str, Any]:
     """获取所有通道列表 — 代理转发 /api/channel/ 接口，解包后直接返回数据数组"""
     try:
         resp = await _http.get(
-            f"{_NEWAPI_BASE}/api/channel/",
+            _newapi_url("/api/channel/"),
             headers=_headers(),
             params={"p": 0},
         )
@@ -156,7 +167,7 @@ async def list_tokens() -> dict[str, Any]:
     """获取所有令牌列表 — 代理转发 /api/token/ 接口，解包后直接返回数据数组"""
     try:
         resp = await _http.get(
-            f"{_NEWAPI_BASE}/api/token/",
+            _newapi_url("/api/token/"),
             headers=_headers(),
             params={"p": 0},
         )
@@ -180,7 +191,7 @@ async def create_channel(payload: ChannelCreate) -> dict[str, Any]:
     """创建新通道 — 代理转发 /api/channel/ 接口"""
     try:
         resp = await _http.post(
-            f"{_NEWAPI_BASE}/api/channel/",
+            _newapi_url("/api/channel/"),
             headers=_headers(),
             json=payload.model_dump(),
         )
@@ -207,7 +218,7 @@ async def update_channel(payload: ChannelCreate, channel_id: int = Path(ge=1, de
         data["id"] = channel_id
         resp = await _http.request(
             "PUT",
-            f"{_NEWAPI_BASE}/api/channel/",
+            _newapi_url("/api/channel/"),
             headers=_headers(),
             json=data,
         )
@@ -231,7 +242,7 @@ async def delete_channel(channel_id: int = Path(ge=1, description="通道ID")) -
     try:
         resp = await _http.request(
             "DELETE",
-            f"{_NEWAPI_BASE}/api/channel/{channel_id}",
+            _newapi_url(f"/api/channel/{channel_id}"),
             headers=_headers(),
         )
         resp.raise_for_status()
@@ -253,7 +264,7 @@ async def toggle_channel_status(channel_id: int = Path(ge=1, description="通道
     try:
         # 获取通道详情
         resp = await _http.get(
-            f"{_NEWAPI_BASE}/api/channel/{channel_id}",
+            _newapi_url(f"/api/channel/{channel_id}"),
             headers=_headers(),
         )
         resp.raise_for_status()
@@ -266,7 +277,7 @@ async def toggle_channel_status(channel_id: int = Path(ge=1, description="通道
         # 更新
         resp2 = await _http.request(
             "PUT",
-            f"{_NEWAPI_BASE}/api/channel/",
+            _newapi_url("/api/channel/"),
             headers=_headers(),
             json=channel_data,
         )
@@ -288,7 +299,7 @@ async def delete_token(token_id: int = Path(ge=1, description="令牌ID")) -> di
     try:
         resp = await _http.request(
             "DELETE",
-            f"{_NEWAPI_BASE}/api/token/{token_id}",
+            _newapi_url(f"/api/token/{token_id}"),
             headers=_headers(),
         )
         resp.raise_for_status()

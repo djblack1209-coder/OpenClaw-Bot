@@ -4,6 +4,7 @@ import sys
 import types
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
+from urllib.parse import urlsplit
 
 import pytest
 from fastapi import HTTPException
@@ -731,6 +732,66 @@ def test_xianyu_admin_exchanges_global_token_for_scoped_http_only_session(monkey
     assert "localStorage" not in page.text
     assert "sessionStorage" not in page.text
     assert "/api/session" in page.text
+
+
+def test_xianyu_admin_desktop_launch_requires_token_and_never_echoes_secret(monkeypatch):
+    """桌面启动交换必须在回环地址上验证现有 Token，响应不能回显秘密。"""
+    monkeypatch.setattr("src.api.auth._API_TOKEN", "unit-secret")
+    monkeypatch.setattr(xianyu_admin.app.state, "bind_host", "127.0.0.1", raising=False)
+    client = TestClient(xianyu_admin.app, base_url="http://127.0.0.1")
+
+    assert client.post("/api/session/desktop-launch").status_code == 401
+    wrong = client.post("/api/session/desktop-launch", headers={"X-API-Token": "wrong-secret"})
+    assert wrong.status_code == 401
+    assert "unit-secret" not in wrong.text
+
+    launch = client.post("/api/session/desktop-launch", headers={"X-API-Token": "unit-secret"})
+    assert launch.status_code == 200
+    payload = launch.json()
+    assert payload["ok"] is True
+    assert payload["expires_in"] == 60
+    assert "unit-secret" not in launch.text
+    assert "X-API-Token" not in launch.text
+    assert urlsplit(payload["url"]).path.startswith("/launch/")
+
+
+def test_xianyu_admin_desktop_launch_is_one_time_http_only_session(monkeypatch):
+    """一次性启动地址消费后签发已有 HttpOnly 会话，复用必须 404。"""
+    monkeypatch.setattr("src.api.auth._API_TOKEN", "unit-secret")
+    monkeypatch.setattr(xianyu_admin.app.state, "bind_host", "127.0.0.1", raising=False)
+    with xianyu_admin._admin_sessions_lock:
+        xianyu_admin._admin_sessions.clear()
+    with xianyu_admin._desktop_launches_lock:
+        xianyu_admin._desktop_launches.clear()
+    client = TestClient(xianyu_admin.app, base_url="http://127.0.0.1")
+
+    launch = client.post("/api/session/desktop-launch", headers={"X-API-Token": "unit-secret"}).json()
+    path = urlsplit(launch["url"]).path
+    consumed = client.get(path, follow_redirects=False)
+    assert consumed.status_code == 303
+    assert consumed.headers["location"] == "/dashboard"
+    set_cookie = consumed.headers["set-cookie"]
+    assert "HttpOnly" in set_cookie
+    assert "Path=/api" in set_cookie
+    assert "unit-secret" not in set_cookie
+    assert client.get("/api/status").status_code == 200
+    assert client.get(path, follow_redirects=False).status_code == 404
+
+
+def test_xianyu_admin_desktop_launch_rejects_expired_and_non_loopback(monkeypatch):
+    """过期 nonce 和非回环绑定都必须失败关闭。"""
+    monkeypatch.setattr("src.api.auth._API_TOKEN", "unit-secret")
+    monkeypatch.setattr(xianyu_admin.app.state, "bind_host", "127.0.0.1", raising=False)
+    client = TestClient(xianyu_admin.app, base_url="http://127.0.0.1")
+    nonce, _ = xianyu_admin._issue_desktop_launch_nonce()
+    with xianyu_admin._desktop_launches_lock:
+        xianyu_admin._desktop_launches[nonce] = xianyu_admin.time.monotonic() - 1
+    assert client.get(f"/launch/{nonce}", follow_redirects=False).status_code == 404
+    assert client.get("/launch/invalid", follow_redirects=False).status_code == 404
+
+    monkeypatch.setattr(xianyu_admin.app.state, "bind_host", "0.0.0.0", raising=False)
+    blocked = client.post("/api/session/desktop-launch", headers={"X-API-Token": "unit-secret"})
+    assert blocked.status_code == 403
 
 
 def test_xianyu_admin_session_rejects_cross_origin_write(monkeypatch):

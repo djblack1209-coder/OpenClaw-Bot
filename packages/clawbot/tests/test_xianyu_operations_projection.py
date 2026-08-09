@@ -77,6 +77,7 @@ def test_project_operations_preserves_verified_runtime_contract():
     assert readiness["can_auto_ship_paid_orders"] is True
     assert readiness["ready_for_public_sale"] is True
     assert readiness["operator_addresses"]["jiyu_console"] == "https://jiyu.245334.xyz/admin/dashboard"
+    assert readiness["operator_addresses"]["jiyu_health"] == "https://jiyu.245334.xyz/health"
     assert projection["loop_watch"]["stage"] == "closed_loop_verified"
     assert projection["buyer_progress"]["steps"] == {
         "paid_order_shipped": True,
@@ -124,10 +125,11 @@ def test_project_operations_fails_closed_for_paused_offline_rescue_snapshot():
         "闲鱼 Cookie 失效时扫码恢复",
         "处理发货补救队列",
         "配置默认套餐或商品套餐映射，避免无映射订单靠兜底发货",
-        "刷新 Chrome 插件并打开一次弹窗，同步新版发货看守能力",
+        "打开 OpenClaw 桌面端运营台处理待发货补救；首次使用先完成闲鱼登录",
         "发布商品后跑 1 单小额真实付款，并完成兑换/API/调模型严格验收",
         "持续处理上游续费和库存补货",
     ]
+    assert "Chrome 插件" not in " ".join(readiness["human_required"])
     assert projection["loop_watch"]["stage"] == "operator_paused"
     assert projection["loop_watch"]["checks"]["pending_rescue"] == 2
     assert projection["buyer_progress"]["stage"] == "waiting_paid_order"

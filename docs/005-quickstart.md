@@ -235,11 +235,13 @@ bash scripts/pack_deploy_bundle.sh
 ```
 生成 `OpenClaw_Deploy_v2026.3.zip`，上传到百度网盘
 
-### 3. 闲鱼Cookie更新
-当Cookie失效时：
-1. Chrome打开闲鱼，F12复制Cookie
-2. 更新 `.env` 中的 `XIANYU_COOKIES`
-3. 热更新：`kill -USR1 $(cat /tmp/xianyu.pid)`
+### 3. 闲鱼卖家会话恢复
+当卖家会话失效时：
+1. 打开 OpenClaw 桌面端的闲鱼页面，点击“启动并打开运营台”；桌面端会调用现有启动器并打开隔离卖家 Chromium。
+2. 资产所有者本人在该窗口扫码登录闲鱼；验证码、CAPTCHA 与平台风控均在这个窗口完成。
+3. 回到受保护的本机操作台确认状态，保持隔离窗口打开，让本机桥接器使用当前会话。
+
+不要打开开发者工具导出 Cookie，也不要手工写入 `XIANYU_COOKIES`、发送 Cookie/Token、把它们作为脚本参数或放进截图。旧二维码和 `.env` 写入路径只为历史兼容保留，不能作为当前操作入口。
 
 ## 商业流程
 
@@ -746,7 +748,7 @@ cd packages/clawbot && .venv312/bin/python -m pytest -k "test_name"
 | LLM 缓存 | data/llm_cache/ | 🔵 可再生 |
 | 配置文件 | config/.env | 🔴 关键（含 API 密钥） |
 | 草稿 | ~/.openclaw/drafts.json | 🟡 一般 |
-| Cookie | config/.env 中 XIANYU_COOKIES | 🟠 重要 |
+| 闲鱼卖家会话 | 隔离卖家 Chromium Profile（仅本机受保护路径） | 🟠 重要 |
 
 ---
 
@@ -842,7 +844,7 @@ rsync -avz user@vps:/path/to/clawbot/data/ packages/clawbot/data/
    - `MEM0_API_KEY` — mem0 Cloud 控制台
    - `SILICONFLOW_API_KEY` — SiliconFlow 控制台
    - `IBKR_*` — IBKR 交易网关配置
-   - `XIANYU_COOKIES` — 需要重新扫码登录
+   - 闲鱼卖家会话 — 不从 `.env` 恢复；重新从 OpenClaw 闲鱼页面点击“启动并打开运营台”，再由资产所有者在隔离窗口扫码登录
 3. 其余密钥参见 `docs/006-registries.md`
 
 ---
@@ -891,7 +893,7 @@ rsync -avz user@vps:/path/to/clawbot/data/ packages/clawbot/data/
 | **中** | 邮箱密码 | 180天 | `OPS_EMAIL_PASSWORD`, `SMTP_PASS` (同一密码，需同时更新) |
 | **中** | 免费 LLM API | 180天或额度耗尽 | `OPENROUTER_API_KEY`, `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `GEMINI_API_KEY` 等 |
 | **低** | Telegram Bot | 仅泄露时 | `QWEN235B_TOKEN` 等 7 个 Bot Token |
-| **低** | Session Cookie | 自动过期 | `XIANYU_COOKIES` |
+| **低** | 闲鱼卖家会话 | 自动过期 | 在隔离卖家 Chromium 中由资产所有者重新扫码登录 |
 
 ---
 

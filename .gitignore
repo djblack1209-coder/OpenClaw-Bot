@@ -191,7 +191,6 @@ apps/openclaw/memory/
 apps/openclaw/.manager/*.json
 apps/openclaw/.openclaw/*.json
 apps/openclaw/.clawhub/*.json
-apps/frist-api/data/
 
 # === 数据目录 ===
 data/

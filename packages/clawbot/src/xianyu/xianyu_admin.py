@@ -17,6 +17,7 @@
 import contextlib
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import os
@@ -32,7 +33,7 @@ from urllib.parse import parse_qsl, unquote, urlsplit
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -65,6 +66,9 @@ _ADMIN_SESSION_TTL_SECONDS = 900
 _ADMIN_SESSION_MAX_ACTIVE = 128
 _admin_sessions: dict[str, float] = {}
 _admin_sessions_lock = threading.Lock()
+_DESKTOP_LAUNCH_TTL_SECONDS = 60
+_desktop_launches: dict[str, float] = {}
+_desktop_launches_lock = threading.Lock()
 _last_cc_strict_audit: dict = {}
 _last_cc_readiness_audit: dict = {}
 _strict_audit_loop_started = False
@@ -153,6 +157,39 @@ def _admin_session_write_is_same_origin(request: Request) -> bool:
     origin = request.headers.get("origin", "").strip().rstrip("/").lower()
     expected = f"{request.url.scheme}://{request.url.netloc}".rstrip("/").lower()
     return bool(origin and hmac.compare_digest(origin, expected))
+
+
+def _is_loopback_host(value: str | None) -> bool:
+    """只允许本机地址使用桌面端一次性启动入口。"""
+    host = str(value or "").strip().lower().strip("[]")
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def _issue_desktop_launch_nonce() -> tuple[str, int]:
+    """签发一次性桌面启动 nonce；nonce 不承载任何 API 凭证。"""
+    now = time.monotonic()
+    nonce = secrets.token_urlsafe(32)
+    with _desktop_launches_lock:
+        expired = [value for value, expires_at in _desktop_launches.items() if expires_at <= now]
+        for value in expired:
+            _desktop_launches.pop(value, None)
+        _desktop_launches[nonce] = now + _DESKTOP_LAUNCH_TTL_SECONDS
+    return nonce, _DESKTOP_LAUNCH_TTL_SECONDS
+
+
+def _consume_desktop_launch_nonce(nonce: str) -> bool:
+    """原子消费一次性 nonce，过期或复用均失败。"""
+    if not nonce:
+        return False
+    now = time.monotonic()
+    with _desktop_launches_lock:
+        expires_at = _desktop_launches.pop(nonce, 0.0)
+    return expires_at > now
 
 
 def _live_runtime_snapshot() -> dict[str, bool | float | int]:
@@ -447,9 +484,12 @@ def _cc_chrome_extension_summary() -> dict:
     expected_extension_path = str(
         install_summary.get("expected_path") or "~/.openclaw/cc-social-pilot-runtime-extension"
     )
-    load_extension_action = (
-        "未检测到 OpenEverything Social Pilot 扩展；请先运行 make cc-seller-chrome，"
-        f"再在 chrome://extensions 加载运行版插件目录：{expected_extension_path}。"
+    bridge_action = (
+        "请在 OpenClaw 桌面端点击“启动并打开运营台”；保持隔离卖家浏览器登录，"
+        "本机卖家桥接器会通过回环 CDP 接管闲鱼。"
+    )
+    social_pilot_action = (
+        "闲鱼接管不依赖浏览器扩展；如需 X/小红书社媒能力，请在对应浏览器中刷新 Social Pilot。"
     )
     install_fields = {
         "social_pilot_installed": bool(install_summary.get("detected")),
@@ -471,11 +511,7 @@ def _cc_chrome_extension_summary() -> dict:
             "supports_relist_queue": False,
             "needs_refresh_for_global_watch": True,
             **install_fields,
-            "next_action": (
-                load_extension_action
-                if not install_fields["social_pilot_installed"]
-                else "刷新 Chrome 插件，然后打开一次插件弹窗完成能力上报。"
-            ),
+            "next_action": bridge_action,
         }
     try:
         data = json.loads(_SOCIAL_EXTENSION_STATUS_FILE.read_text(encoding="utf-8"))
@@ -494,11 +530,7 @@ def _cc_chrome_extension_summary() -> dict:
             "supports_relist_queue": False,
             "needs_refresh_for_global_watch": True,
             **install_fields,
-            "next_action": (
-                f"插件状态文件损坏，且未检测到 OpenEverything Social Pilot 扩展；{load_extension_action}"
-                if not install_fields["social_pilot_installed"]
-                else "插件状态文件损坏，刷新 Chrome 插件后重新打开弹窗。"
-            ),
+            "next_action": bridge_action if not install_fields["social_pilot_installed"] else social_pilot_action,
         }
     if not isinstance(data, dict):
         data = {}
@@ -536,17 +568,19 @@ def _cc_chrome_extension_summary() -> dict:
         "needs_refresh_for_global_watch": needs_refresh,
         **install_fields,
         "next_action": (
-            "Chrome 插件心跳已过期，请刷新扩展；新版会自动后台上报，无需反复打开弹窗。"
+            "本机卖家桥接器心跳已过期，请在 OpenClaw 桌面端重新点击“启动并打开运营台”。"
+            if bridge_active and not online
+            else "Chrome Social Pilot 心跳已过期，请刷新社媒插件；闲鱼接管不受影响。"
             if not online
             and supports_global
             and supports_preflight
             and supports_paid_page_dispatch
             and supports_relist_queue
-            else load_extension_action
+            else bridge_action
             if needs_refresh and not install_fields["social_pilot_installed"]
-            else "已启动 Social Pilot，但尚未上报新版发货能力；打开插件弹窗，在高级设置粘贴本机 Token 后保存。"
+            else social_pilot_action
             if needs_refresh and install_fields["social_pilot_source"] == "running_chrome_process"
-            else "刷新 Chrome 插件并打开一次插件弹窗，同步新版“付款页自动发卡/恢复上架队列”能力。"
+            else "请刷新 Social Pilot 并打开一次插件弹窗，同步社媒能力；闲鱼仍由本机桥接器接管。"
             if needs_refresh
             else "本机卖家桥接器已接管自动发货；保持卖家专用 Chromium 登录闲鱼并打开。"
             if bridge_active
@@ -1210,7 +1244,8 @@ def _cc_operator_next_action_summary() -> dict:
         title = "先处理发货补救队列"
         if int(checks.get("manual_delivery_ready") or 0) > 0:
             primary_action = (
-                "刷新 Chrome 插件，打开对应买家聊天页；点“看守当前聊天页”，或在只有 1 条待发货时点“看守所有闲鱼页”。"
+                "请在 OpenClaw 桌面端点击“启动并打开运营台”；保持隔离卖家浏览器登录，"
+                "本机桥接器会通过回环 CDP 扫描并接管闲鱼。若仍需人工补发，可在补救队列复制话术后手动发送。"
             )
         else:
             primary_action = "打开本机闲鱼 GUI 的“CC中转发货补救队列”，等待自动补发或手动重试/标记已处理。"
@@ -1282,7 +1317,7 @@ def _cc_operator_next_action_summary() -> dict:
             "xianyu_gui": "http://127.0.0.1:18800/",
             "user_site": "https://jiyu.245334.xyz/",
             "jiyu_console": "https://jiyu.245334.xyz/admin/dashboard",
-            "jiyu_health": "https://jiyu.245334.xyz/api/health",
+            "jiyu_health": "https://jiyu.245334.xyz/health",
         },
         "lock_state": lock.get("state"),
         "loop_stage": loop_watch.get("stage"),
@@ -1509,7 +1544,7 @@ def _cc_real_order_test_pack_summary() -> dict:
             "xianyu_gui": "http://127.0.0.1:18800/",
             "user_site": "https://jiyu.245334.xyz/",
             "jiyu_console": "https://jiyu.245334.xyz/admin/dashboard",
-            "jiyu_health": "https://jiyu.245334.xyz/api/health",
+            "jiyu_health": "https://jiyu.245334.xyz/health",
             "ccswitch_entry": "https://jiyu.245334.xyz/",
             "model_gateway": "https://jiyu.245334.xyz/v1",
         },
@@ -2439,16 +2474,63 @@ def create_admin_session(request: Request):
     return response
 
 
+@app.post("/api/session/desktop-launch")
+def create_desktop_launch(request: Request):
+    """为本机桌面端签发一次性启动地址，不在响应中返回 API Token。"""
+    bind_host = str(getattr(request.app.state, "bind_host", None) or "").strip()
+    # 绑定地址已经是回环时，客户端地址可能被 ASGI 测试传输层标记为 testclient；
+    # 以实际 Host URL 校验入口，避免测试适配绕过生产绑定限制。
+    request_host = request.url.hostname
+    if not _is_loopback_host(bind_host) or not _is_loopback_host(request_host):
+        raise HTTPException(status_code=403, detail="桌面启动入口仅允许本机回环地址")
+    expected = _expected_api_token()
+    provided = request.headers.get("x-api-token", "")
+    if not expected:
+        raise HTTPException(status_code=503, detail="管理面未配置 OPENCLAW_API_TOKEN")
+    if not provided or not hmac.compare_digest(provided, expected):
+        raise HTTPException(status_code=401, detail="Invalid or missing API token")
+    nonce, ttl_seconds = _issue_desktop_launch_nonce()
+    launch_url = str(request.url_for("consume_desktop_launch", nonce=nonce))
+    return JSONResponse({"ok": True, "url": launch_url, "expires_in": ttl_seconds})
+
+
+@app.get("/launch/{nonce}", name="consume_desktop_launch")
+def consume_desktop_launch(request: Request, nonce: str):
+    """消费一次性桌面启动地址并转为已有 HttpOnly 管理会话。"""
+    bind_host = str(getattr(request.app.state, "bind_host", None) or "").strip()
+    request_host = request.url.hostname
+    if not _is_loopback_host(bind_host) or not _is_loopback_host(request_host):
+        raise HTTPException(status_code=404, detail="启动地址不存在")
+    if not _consume_desktop_launch_nonce(nonce):
+        raise HTTPException(status_code=404, detail="启动地址不存在或已使用")
+    session_token, ttl_seconds = _issue_admin_session()
+    response = RedirectResponse(url="/dashboard", status_code=303)
+    response.set_cookie(
+        key=_ADMIN_SESSION_COOKIE,
+        value=session_token,
+        max_age=ttl_seconds,
+        httponly=True,
+        secure=request.url.scheme == "https",
+        samesite="strict",
+        path="/api",
+    )
+    return response
+
+
 @app.middleware("http")
 async def xianyu_admin_auth_middleware(request: Request, call_next):
     """保护 API，同时允许浏览器先打开首页再在页面里输入本机 Token。"""
     public_paths = {"/", "/dashboard", "/ops-links"}
     session_exchange = request.method == "POST" and request.url.path == "/api/session"
+    desktop_launch_exchange = request.method == "POST" and request.url.path == "/api/session/desktop-launch"
+    desktop_launch_consume = request.method == "GET" and request.url.path.startswith("/launch/")
     if (
         request.method == "OPTIONS"
         or request.url.path in public_paths
         or request.url.path.startswith("/static/")
         or session_exchange
+        or desktop_launch_exchange
+        or desktop_launch_consume
     ):
         return await call_next(request)
 
@@ -5075,7 +5157,7 @@ def index() -> HTMLResponse:
         <div class="body">
           <div class="list">
             <div class="item"><b>红灯：补救队列不为空</b><div class="hint">1. 展开“补救队列”；2. 点“填入话术”；3. 复制到闲鱼并点“已手动发送”。</div></div>
-            <div class="item"><b>黄灯：插件没有接管</b><div class="hint">1. 运行 make cc-seller-chrome；2. 打开 chrome://extensions；3. 加载运行版插件目录。</div></div>
+            <div class="item"><b>黄灯：闲鱼桥接器未接管</b><div class="hint">请在 OpenClaw 桌面端点击“启动并打开运营台”，并保持隔离卖家浏览器登录；本机桥接器通过回环 CDP 接管闲鱼。X/小红书社媒能力仍独立使用 Social Pilot。</div></div>
             <div class="item"><b>无法自己处理</b><div class="hint">点右上角“导出状态报告”，把 JSON 发给技术支持。</div></div>
           </div>
         </div>

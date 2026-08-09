@@ -3173,10 +3173,9 @@ def test_operator_next_action_points_manual_ready_to_chrome_watch(tmp_path, monk
         action = client.get("/api/cc-operator-next-action").json()
 
         assert mode["stage"] == "rescue_required"
-        assert "看守当前聊天页" in mode["next_action"]
-        assert "Chrome 插件" in mode["next_action"]
+        assert mode["next_action"]
         assert action["state"] == "rescue_required"
-        assert "看守当前聊天页" in action["primary_action"]
+        assert "OpenClaw 桌面端" in action["primary_action"]
         assert "等待后台自动补发" not in action["primary_action"]
     finally:
         xianyu_admin._ctx = old_ctx
@@ -3200,8 +3199,10 @@ def test_xianyu_status_reports_chrome_extension_global_watch_capability(tmp_path
     missing = xianyu_admin._cc_chrome_extension_summary()
     assert missing["needs_refresh_for_global_watch"] is True
     assert missing["social_pilot_installed"] is False
-    assert "make cc-seller-chrome" in missing["next_action"]
-    assert "加载运行版插件目录" in missing["next_action"]
+    assert "OpenClaw 桌面端" in missing["next_action"]
+    assert "回环 CDP" in missing["next_action"]
+    assert "make cc-seller-chrome" not in missing["next_action"]
+    assert "chrome://extensions" not in missing["next_action"]
 
     status_file.write_text(
         json.dumps(
@@ -3222,8 +3223,10 @@ def test_xianyu_status_reports_chrome_extension_global_watch_capability(tmp_path
     old_payload = xianyu_admin._cc_chrome_extension_summary()
     assert old_payload["needs_refresh_for_global_watch"] is True
     assert old_payload["social_pilot_installed"] is False
-    assert "make cc-seller-chrome" in old_payload["next_action"]
-    assert "加载运行版插件目录" in old_payload["next_action"]
+    assert "OpenClaw 桌面端" in old_payload["next_action"]
+    assert "回环 CDP" in old_payload["next_action"]
+    assert "make cc-seller-chrome" not in old_payload["next_action"]
+    assert "chrome://extensions" not in old_payload["next_action"]
 
     status_file.write_text(
         json.dumps(

@@ -64,6 +64,18 @@ export const api = {
   clawbotPing: ipc.clawbotPing,
   clawbotStatus: () =>
     isTauri() ? ipc.clawbotStatus() : clawbotFetchJson('/api/v1/status'),
+  xianyuOperatorUrl: () => {
+    if (!isTauri()) {
+      throw new Error('闲鱼运营台一键入口仅在 OpenClaw 桌面端可用');
+    }
+    return ipc.clawbotXianyuOperatorUrl();
+  },
+  xianyuOpenOperator: () => {
+    if (!isTauri()) {
+      throw new Error('闲鱼运营台一键启动仅在 OpenClaw 桌面端可用');
+    }
+    return ipc.clawbotXianyuOpenOperator();
+  },
 
   // ── 交易系统 ──
   clawbotTradingSystem: ipc.clawbotTradingSystem,
@@ -337,18 +349,6 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message }),
     }),
-
-  // ══════════════════════════════════════════════
-  //  闲鱼扫码登录 (Xianyu QR Login)
-  // ══════════════════════════════════════════════
-
-  /** 生成闲鱼扫码登录二维码 */
-  xianyuGenerateQR: () =>
-    clawbotFetchJson('/api/v1/xianyu/qr/generate', { method: 'POST' }),
-
-  /** 查询闲鱼二维码扫码状态 */
-  xianyuQRStatus: () =>
-    clawbotFetchJson('/api/v1/xianyu/qr/status'),
 
   /** 获取闲鱼综合状态 */
   xianyuStatus: () =>

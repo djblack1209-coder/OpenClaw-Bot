@@ -80,3 +80,45 @@ async def test_newapi_proxy_rejects_admin_calls_without_token(monkeypatch):
         await newapi.create_redemption({"name": "day-card", "quota": 100})
 
     assert exc.value.status_code == 503
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "proxy_call",
+    [
+        pytest.param(lambda: newapi.newapi_status(), id="status"),
+        pytest.param(lambda: newapi.list_channels(), id="list-channels"),
+        pytest.param(lambda: newapi.list_tokens(), id="list-tokens"),
+        pytest.param(lambda: newapi.create_channel(newapi.ChannelCreate(name="test")), id="create-channel"),
+        pytest.param(lambda: newapi.update_channel(newapi.ChannelCreate(name="test"), 1), id="update-channel"),
+        pytest.param(lambda: newapi.delete_channel(1), id="delete-channel"),
+        pytest.param(lambda: newapi.toggle_channel_status(1), id="toggle-channel"),
+        pytest.param(lambda: newapi.delete_token(1), id="delete-token"),
+        pytest.param(lambda: newapi.search_tokens(), id="search-tokens"),
+        pytest.param(lambda: newapi.create_token(newapi.TokenCreate(name="test")), id="create-token"),
+        pytest.param(lambda: newapi.update_token(newapi.TokenCreate(name="test"), 1), id="update-token"),
+        pytest.param(lambda: newapi.update_token_status(1, 1), id="toggle-token"),
+        pytest.param(lambda: newapi.list_self_logs(), id="list-logs"),
+        pytest.param(lambda: newapi.self_log_stat(), id="log-stat"),
+        pytest.param(lambda: newapi.self_quota_dates(1, 2), id="quota-dates"),
+        pytest.param(lambda: newapi.list_subscription_plans(), id="subscription-plans"),
+        pytest.param(lambda: newapi.subscription_self(), id="subscription-self"),
+        pytest.param(lambda: newapi.list_redemptions(), id="list-redemptions"),
+        pytest.param(lambda: newapi.create_redemption({"name": "test"}), id="create-redemption"),
+        pytest.param(lambda: newapi.pricing(), id="pricing"),
+        pytest.param(lambda: newapi.topup_info(), id="topup-info"),
+        pytest.param(lambda: newapi.affiliate_code(), id="affiliate-code"),
+        pytest.param(lambda: newapi.affiliate_transfer(), id="affiliate-transfer"),
+    ],
+)
+async def test_newapi_proxies_fail_closed_without_base_url(monkeypatch, proxy_call):
+    fake = _FakeHttp()
+    monkeypatch.setattr(newapi, "_NEWAPI_BASE", "")
+    monkeypatch.setattr(newapi, "_NEWAPI_TOKEN", "test-token")
+    monkeypatch.setattr(newapi, "_http", fake)
+
+    with pytest.raises(HTTPException) as exc:
+        await proxy_call()
+
+    assert exc.value.status_code == 503
+    assert fake.calls == []

@@ -99,7 +99,7 @@ def _project_sale_readiness(snapshot: Mapping[str, object]) -> dict[str, object]
     if ccswitch_import_known and not ccswitch_import.get("ok"):
         human_required.append("修复 CC Switch 导入入口")
     if pending_rescue > 0 and chrome_extension.get("needs_refresh_for_global_watch"):
-        human_required.append("刷新 Chrome 插件并打开一次弹窗，同步新版发货看守能力")
+        human_required.append("打开 OpenClaw 桌面端运营台处理待发货补救；首次使用先完成闲鱼登录")
     if not strict_ready:
         human_required.append("发布商品后跑 1 单小额真实付款，并完成兑换/API/调模型严格验收")
     human_required.append("持续处理上游续费和库存补货")
@@ -127,7 +127,7 @@ def _project_sale_readiness(snapshot: Mapping[str, object]) -> dict[str, object]
         "operator_addresses": {
             "user_site": "https://jiyu.245334.xyz/",
             "jiyu_console": "https://jiyu.245334.xyz/admin/dashboard",
-            "jiyu_health": "https://jiyu.245334.xyz/api/health",
+            "jiyu_health": "https://jiyu.245334.xyz/health",
             "xianyu_gui": "http://127.0.0.1:18800/",
         },
         "manual_chats": manual_chats,
@@ -161,20 +161,20 @@ def _project_loop_watch(snapshot: Mapping[str, object]) -> dict[str, object]:
     elif not auto.get("configured"):
         stage = "webhook_not_configured"
         label = "自动发货 webhook 未配置"
-        next_action = "检查本机 .env 的 CC_XIANYU_WEBHOOK_URL / TOKEN 后重启闲鱼助手"
+        next_action = "打开 OpenClaw 桌面端运营台检查自动发货配置；首次使用先完成闲鱼登录"
     elif not ws_connected:
         stage = "xianyu_ws_offline"
         label = "闲鱼 WebSocket 未在线"
-        next_action = "保持闲鱼助手运行；如断线请重启或重新登录闲鱼"
+        next_action = "打开 OpenClaw 桌面端运营台；首次使用完成闲鱼登录后系统会自动保持连接"
     elif not cookie_ok:
         stage = "xianyu_cookie_invalid"
         label = "闲鱼 Cookie 需要恢复"
-        next_action = "打开闲鱼登录页扫码/刷新 Cookie 后再观察"
+        next_action = "打开 OpenClaw 桌面端运营台并重新完成闲鱼登录"
     elif pending_rescue > 0:
         stage = "rescue_required"
         label = "有发货补救待处理"
         next_action = (
-            "刷新 Chrome 插件，打开买家聊天页；可点“看守当前聊天页”或“看守所有闲鱼页”发送已分配话术。"
+            "打开 OpenClaw 桌面端运营台，在闲鱼买家聊天页确认并发送已分配话术。"
             if manual_ready > 0
             else "等待后台自动补发，或在补救队列点击重试发送/标记已处理"
         )
