@@ -8,6 +8,7 @@ const manager = 'scripts/sub2api_oracle_manage.sh';
 const broker = 'scripts/sub2api_jiyu_update_broker.sh';
 const compatibilityWorkflow = '.github/workflows/sub2api-jiyu-compat.yml';
 const compatibilityPatch = 'scripts/sub2api-jiyu-v0.1.172.patch';
+const regionPatch = 'scripts/sub2api-region-filter-v0.1.172.patch';
 const brandLogo = 'scripts/assets/jiyu-ai-logo-email.png';
 
 test('Sub2API 管理入口可执行且 Bash 语法有效', async () => {
@@ -21,6 +22,7 @@ test('Sub2API 管理入口可执行且 Bash 语法有效', async () => {
 
 test('生产更新改为只检查，完整备份覆盖品牌与页面', async () => {
   const content = await readFile(manager, 'utf8');
+  const regionPatchContent = await readFile(regionPatch, 'utf8');
   assert.match(content, /ExecStart=.* check-upstream/);
   assert.doesNotMatch(content, /ExecStart=.* update\s*$/m);
   assert.match(content, /SUB2API_ALLOW_UPSTREAM_BINARY_UPDATE/);
@@ -43,6 +45,15 @@ test('生产更新改为只检查，完整备份覆盖品牌与页面', async ()
     /reload_apache_with_recovery\(\)[\s\S]*apache2ctl configtest[\s\S]*systemctl reload apache2\.service[\s\S]*verify_public_url[\s\S]*systemctl restart apache2\.service[\s\S]*verify_public_url/,
   );
   assert.match(content, /reload_apache_with_recovery "https:\/\/\$\{DOMAIN\}\/api\/status"/);
+  assert.match(content, /api\.deepseek\.com/);
+  assert.match(content, /api\.siliconflow\.cn/);
+  assert.match(content, /region-enforcement <enable\|disable>/);
+  assert.match(content, /地域强制配置应用失败，已恢复原配置/);
+  assert.match(regionPatchContent, /func IsJiyuGroupAllowed/);
+  assert.match(regionPatchContent, /backend\/internal\/handler\/api_key_handler\.go/);
+  assert.match(regionPatchContent, /backend\/internal\/handler\/available_channel_handler\.go/);
+  assert.match(regionPatchContent, /backend\/internal\/handler\/model_plaza_handler\.go/);
+  assert.match(regionPatchContent, /norm\.NFKC\.String/);
 });
 
 test('充值页只使用固定公开整店且 WebUI 更新只能进入固定 root 代理', async () => {
