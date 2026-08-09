@@ -13,6 +13,7 @@ const CLAWBOT_API_BASE: &str = "http://127.0.0.1:18790/api/v1";
 const XIANYU_ADMIN_DEFAULT_URL: &str = "http://127.0.0.1:18800";
 const XIANYU_SELLER_LAUNCHER: &str = "cc_zhongzhuan_launch_seller_chrome.mjs";
 const XIANYU_MANAGED_SERVICE_LABEL: &str = "ai.openclaw.xianyu";
+const JIYU_REPLENISH_URL: &str = "http://127.0.0.1:18796";
 
 /// 全局复用的 HTTP 客户端，避免每次请求都新建 TCP 连接
 /// 超时设为 120 秒以支持 AI 类长时间操作（投资分析会、图片生成等）
@@ -325,6 +326,105 @@ pub async fn clawbot_api_xianyu_open_operator() -> AppResult<String> {
         .await
         .map_err(|_| AppError::network("闲鱼卖家浏览器启动任务失败"))??;
     clawbot_api_xianyu_operator_url().await
+}
+
+fn locate_jiyu_replenish_root() -> AppResult<PathBuf> {
+    let mut roots = Vec::new();
+    for key in ["OPENCLAW_PROJECT_ROOT", "JIYU_REPLENISH_PROJECT_ROOT"] {
+        if let Ok(root) = std::env::var(key) {
+            if !root.trim().is_empty() {
+                roots.push(PathBuf::from(root));
+            }
+        }
+    }
+    if let Some(home) = dirs::home_dir() {
+        roots.push(home.join("Desktop/OpenEverything"));
+    }
+    if let Ok(executable) = std::env::current_exe() {
+        roots.extend(executable.ancestors().take(8).map(Path::to_path_buf));
+    }
+    roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")));
+
+    for root in roots {
+        let mut cursor = Some(root);
+        for _ in 0..8 {
+            let Some(candidate_root) = cursor else { break };
+            let clawbot_dir = candidate_root.join("packages/clawbot");
+            if clawbot_dir.join("src/sub2_replenish/__main__.py").is_file() {
+                return Ok(clawbot_dir);
+            }
+            cursor = candidate_root.parent().map(Path::to_path_buf);
+        }
+    }
+    Err(AppError::config(
+        "未找到 JIYU 补号助手运行文件，请先安装 OpenClaw 项目运行文件",
+    ))
+}
+
+fn locate_python_binary(clawbot_dir: &Path) -> AppResult<PathBuf> {
+    let mut candidates = vec![clawbot_dir.join(".venv312/bin/python")];
+    let python_name = if cfg!(target_os = "windows") {
+        "python.exe"
+    } else {
+        "python3"
+    };
+    let search_path = if cfg!(target_os = "windows") {
+        std::env::var_os("PATH").unwrap_or_default()
+    } else {
+        std::ffi::OsString::from(crate::utils::shell::get_extended_path())
+    };
+    candidates.extend(std::env::split_paths(&search_path).map(|entry| entry.join(python_name)));
+    candidates
+        .into_iter()
+        .find(|candidate| candidate.is_file())
+        .ok_or_else(|| AppError::config("未找到 Python，无法启动 JIYU 补号助手"))
+}
+
+async fn jiyu_replenish_ready() -> bool {
+    CLIENT
+        .get(JIYU_REPLENISH_URL)
+        .timeout(std::time::Duration::from_secs(1))
+        .send()
+        .await
+        .map(|response| response.status().is_success())
+        .unwrap_or(false)
+}
+
+fn launch_jiyu_replenish() -> AppResult<()> {
+    let clawbot_dir = locate_jiyu_replenish_root()?;
+    let python = locate_python_binary(&clawbot_dir)?;
+    let mut command = Command::new(python);
+    command
+        .arg("-m")
+        .arg("src.sub2_replenish")
+        .current_dir(clawbot_dir)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(not(target_os = "windows"))]
+    command.env("PATH", crate::utils::shell::get_extended_path());
+    command
+        .spawn()
+        .map_err(|_| AppError::network("JIYU 补号助手启动失败"))?;
+    Ok(())
+}
+
+/// 一次点击打开本机补号助手；仅在服务尚未运行时启动既有模块。
+#[command]
+pub async fn clawbot_api_jiyu_replenish_open() -> AppResult<String> {
+    if jiyu_replenish_ready().await {
+        return Ok(JIYU_REPLENISH_URL.to_string());
+    }
+    tokio::task::spawn_blocking(launch_jiyu_replenish)
+        .await
+        .map_err(|_| AppError::network("JIYU 补号助手启动任务失败"))??;
+    for _ in 0..16 {
+        if jiyu_replenish_ready().await {
+            return Ok(JIYU_REPLENISH_URL.to_string());
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+    Err(AppError::network("JIYU 补号助手未在预期时间内就绪"))
 }
 
 // ──── Trading ────
