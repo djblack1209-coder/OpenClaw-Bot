@@ -164,6 +164,8 @@ export const clawbotXianyuOperatorUrl = () =>
   invokeWithLog<string>('clawbot_api_xianyu_operator_url');
 export const clawbotXianyuOpenOperator = () =>
   invokeWithLog<string>('clawbot_api_xianyu_open_operator');
+export const clawbotJiyuReplenishOpen = () =>
+  invokeWithLog<string>('clawbot_api_jiyu_replenish_open');
 
 // ── 交易系统 ──
 

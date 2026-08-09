@@ -249,9 +249,9 @@
 | WebUI 更新启用 | `scripts/sub2api_oracle_manage.sh enable-web-update <broker> <manifest-url>` | 安装固定 root 代理、root-only 清单 URL、最小 sudoers 和 systemd 环境；完成健康检查后才放开受管更新接口 |
 | Codex WS 桥接启用 | `scripts/sub2api_oracle_manage.sh openai-ws-http-bridge` | 启用官方 OpenAI WS 模式路由；账号仍需在 WebUI 选择 `http_bridge`，不直接写数据库或改上游地址 |
 | Codex WS 旧模式回滚 | `scripts/sub2api_oracle_manage.sh openai-ws-legacy` | 关闭官方模式路由并恢复旧版传输判定；用于桥接异常时快速回滚 |
-| 本地补号助手 | `make jiyu-sub2-replenish` | 只绑定 `127.0.0.1:18796` 的可视化 Web App；兼容分隔行、标签块和 JSON，串行走 Sub2 原生 OpenAI OAuth，识别 Plus/Pro 后只匹配同名自营号池，绝不回退渠道A/B；密码/TOTP/Token 只在进程内存，挑战页面暂停人工 |
+| 本地补号助手 | OpenClaw Manager 的“系统设置 -> 补号助手”，或 `http://127.0.0.1:18796` | 桌面入口自动启动只绑定 `127.0.0.1:18796` 的可视化 Web App；兼容分隔行、标签块和 JSON，串行走 Sub2 原生 OpenAI OAuth，识别 Plus/Pro 后只匹配同名自营号池，绝不回退渠道A/B；密码/TOTP/Token 只在进程内存，挑战页面暂停人工。`make jiyu-sub2-replenish` 仅保留为排障入口 |
 | 本地补号演练 | `make jiyu-sub2-replenish-dry-run` | 只验证三类严格解析、自营号池语义、掩码和页面，不读取钥匙串、不打开登录窗口、不调用生产接口 |
-| Telegram 补号安全提示 | `/jiyu_replenish`、`/jiyu_replenish cancel` | 仅授权管理员私聊提示远程材料提交和本地批次控制均已禁用，唯一入口是 `make jiyu-sub2-replenish`；提示后同一私聊的下一条普通文本会被一次性保护消费而不读取，`cancel` 仅取消该等待状态。`status`、`stop` 与遗留键盘操作均明确回复 Telegram 无法查看或控制本地批次；群聊失败关闭。 |
+| Telegram 补号安全提示 | `/jiyu_replenish`、`/jiyu_replenish cancel` | 仅授权管理员私聊提示远程材料提交和本地批次控制均已禁用，唯一入口是本机桌面设置或本机网页；提示后同一私聊的下一条普通文本会被一次性保护消费而不读取，`cancel` 仅取消该等待状态。`status`、`stop` 与遗留键盘操作均明确回复 Telegram 无法查看或控制本地批次；群聊失败关闭。 |
 
 ---
 

@@ -16,7 +16,7 @@ import {
 import { toast } from '@/lib/notify';
 import { api } from '../../lib/api';
 import { useAppStore } from '../../stores/appStore';
-import { controlAllManagedServices } from '@/lib/tauri-ipc';
+import { clawbotJiyuReplenishOpen, controlAllManagedServices } from '@/lib/tauri-ipc';
 import { isTauri, clawbotFetchJson } from '@/lib/tauri-core';
 import { useLanguage } from '@/i18n';
 import type { Language } from '@/i18n';
@@ -403,6 +403,36 @@ export function Settings(_props: SettingsProps) {
                 );
               })}
             </div>
+          </div>
+        </motion.div>
+
+        <motion.div className="col-span-12 md:col-span-6 lg:col-span-4" variants={cardVariants}>
+          <div className="abyss-card p-6 h-full">
+            <div className="flex items-center gap-2 mb-3">
+              <PlayCircle size={16} style={{ color: 'var(--accent-green)' }} />
+              <span className="text-label" style={{ color: 'var(--accent-green)' }}>
+                {t('settings.jiyuReplenishTitle')}
+              </span>
+            </div>
+            <p className="font-mono text-[11px] mb-4" style={{ color: 'var(--text-tertiary)' }}>
+              {t('settings.jiyuReplenishDesc')}
+            </p>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const url = await clawbotJiyuReplenishOpen();
+                  await openExternal(url);
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : t('settings.jiyuReplenishFailed'));
+                }
+              }}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-mono text-xs font-bold"
+              style={{ background: 'rgba(0,255,170,0.1)', border: '1px solid rgba(0,255,170,0.25)', color: 'var(--accent-green)' }}
+            >
+              <PlayCircle size={14} />
+              {t('settings.jiyuReplenishOpen')}
+            </button>
           </div>
         </motion.div>
 
