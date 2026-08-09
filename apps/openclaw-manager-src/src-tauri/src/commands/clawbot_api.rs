@@ -234,9 +234,6 @@ fn locate_xianyu_seller_launcher() -> AppResult<(PathBuf, PathBuf)> {
             }
         }
     }
-    if let Some(home) = dirs::home_dir() {
-        roots.push(home.join("Desktop/OpenEverything"));
-    }
     if let Ok(executable) = std::env::current_exe() {
         roots.extend(executable.ancestors().take(8).map(Path::to_path_buf));
     }
