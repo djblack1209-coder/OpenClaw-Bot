@@ -9,8 +9,14 @@ import { test } from 'node:test';
 const manager = 'scripts/sub2api_oracle_manage.sh';
 const broker = 'scripts/sub2api_jiyu_update_broker.sh';
 const compatibilityWorkflow = '.github/workflows/sub2api-jiyu-compat.yml';
-const compatibilityPatch = 'scripts/sub2api-jiyu-v0.1.172.patch';
-const regionPatch = 'scripts/sub2api-region-filter-v0.1.172.patch';
+const compatibilityPatches = [
+  'scripts/sub2api-jiyu-v0.1.172.patch',
+  'scripts/sub2api-jiyu-v0.1.173.patch',
+];
+const regionPatches = [
+  'scripts/sub2api-region-filter-v0.1.172.patch',
+  'scripts/sub2api-region-filter-v0.1.173.patch',
+];
 const brandLogo = 'scripts/assets/jiyu-ai-logo-email.png';
 
 test('Sub2API 管理入口可执行且 Bash 语法有效', async () => {
@@ -24,7 +30,7 @@ test('Sub2API 管理入口可执行且 Bash 语法有效', async () => {
 
 test('生产更新改为只检查，完整备份覆盖品牌与页面', async () => {
   const content = await readFile(manager, 'utf8');
-  const regionPatchContent = await readFile(regionPatch, 'utf8');
+  const regionPatchContents = await Promise.all(regionPatches.map(file => readFile(file, 'utf8')));
   assert.match(content, /ExecStart=.* check-upstream/);
   assert.doesNotMatch(content, /ExecStart=.* update\s*$/m);
   assert.match(content, /SUB2API_ALLOW_UPSTREAM_BINARY_UPDATE/);
@@ -51,11 +57,13 @@ test('生产更新改为只检查，完整备份覆盖品牌与页面', async ()
   assert.match(content, /api\.siliconflow\.cn/);
   assert.match(content, /region-enforcement <enable\|disable>/);
   assert.match(content, /地域强制配置应用失败，已恢复原配置/);
-  assert.match(regionPatchContent, /func IsJiyuGroupAllowed/);
-  assert.match(regionPatchContent, /backend\/internal\/handler\/api_key_handler\.go/);
-  assert.match(regionPatchContent, /backend\/internal\/handler\/available_channel_handler\.go/);
-  assert.match(regionPatchContent, /backend\/internal\/handler\/model_plaza_handler\.go/);
-  assert.match(regionPatchContent, /norm\.NFKC\.String/);
+  for (const regionPatchContent of regionPatchContents) {
+    assert.match(regionPatchContent, /func IsJiyuGroupAllowed/);
+    assert.match(regionPatchContent, /backend\/internal\/handler\/api_key_handler\.go/);
+    assert.match(regionPatchContent, /backend\/internal\/handler\/available_channel_handler\.go/);
+    assert.match(regionPatchContent, /backend\/internal\/handler\/model_plaza_handler\.go/);
+    assert.match(regionPatchContent, /norm\.NFKC\.String/);
+  }
 });
 
 test('地域可信头只安装到 JIYU HTTPS VirtualHost', async () => {
@@ -125,7 +133,7 @@ test('充值页只使用固定公开整店且 WebUI 更新只能进入固定 roo
   const content = await readFile(manager, 'utf8');
   const brokerContent = await readFile(broker, 'utf8');
   const workflowContent = await readFile(compatibilityWorkflow, 'utf8');
-  const patchContent = await readFile(compatibilityPatch, 'utf8');
+  const patchContents = await Promise.all(compatibilityPatches.map(file => readFile(file, 'utf8')));
   assert.match(content, /readonly CHAIN_STORE_URL="\$\{CHAIN_STORE_ORIGIN\}\/shop\/ZCUGEDMV"/);
   assert.doesNotMatch(content, /<iframe src="\$\{CHAIN_STORE_URL\}"/);
   assert.match(content, /\[打开 JIYU AI 链动小铺\]\(\$\{CHAIN_STORE_URL\}\)/);
@@ -166,29 +174,33 @@ test('充值页只使用固定公开整店且 WebUI 更新只能进入固定 roo
   assert.doesNotMatch(brokerContent, /eval |bash -c|sh -c/);
   assert.match(workflowContent, /go test -tags embed \.\/internal\/web/);
   assert.match(workflowContent, /go build -tags embed/);
+  assert.match(workflowContent, /v0\.1\.172 \| v0\.1\.173/);
+  assert.match(workflowContent, /sub2api-jiyu-\$\{UPSTREAM_TAG\}\.patch/);
   assert.match(workflowContent, /EVENT_NAME: \$\{\{ github\.event_name \}\}/);
   assert.match(workflowContent, /release_tag="\$\{BASE_RELEASE_TAG\}-r\$\{GITHUB_RUN_ID\}"/);
   assert.match(workflowContent, /RELEASE_TAG: \$\{\{ steps\.existing\.outputs\.release_tag \}\}/);
   assert.match(workflowContent, /gh release upload jiyu-latest jiyu-update-manifest\.json --clobber/);
-  assert.match(patchContent, /diff --git a\/frontend\/src\/views\/admin\/AccountsView\.vue/);
-  assert.match(patchContent, /-function accountHomepageUrl\(row: Account\): string/);
-  assert.doesNotMatch(patchContent, /^\+.*accountHomepageUrl/m);
-  assert.doesNotMatch(patchContent, /^\+.*:href="accountHomepageUrl/m);
-  assert.match(patchContent, /v-else-if="isJiyuBuild"/);
-  assert.match(patchContent, /DialContext\(ctx, "unix", socketPath\)/);
-  assert.match(patchContent, /JIYU_UPDATE_STATUS=noop/);
-  assert.doesNotMatch(patchContent, /exec\.CommandContext|sudo/);
-  assert.match(patchContent, /const JIYU_RECHARGE_PAGE_ID = 'recharge-center'/);
-  assert.match(patchContent, /const JIYU_RECHARGE_URL = 'https:\/\/pay\.ldxp\.cn\/shop\/ZCUGEDMV'/);
-  assert.match(patchContent, /v-if="isJiyuRechargePage" class="jiyu-recharge-shell"/);
-  assert.match(patchContent, /height: calc\(100dvh - 64px\)/);
-  assert.doesNotMatch(patchContent, /height: calc\(100dvh - 64px -/);
-  assert.match(
-    patchContent,
-    /@media \(max-width: 767px\)[\s\S]*\.jiyu-recharge-shell[\s\S]*position: fixed[\s\S]*top: 64px[\s\S]*left: 0[\s\S]*width: 100vw[\s\S]*margin: 0[\s\S]*\.jiyu-recharge-open[\s\S]*display: none/,
-  );
-  assert.match(patchContent, /:src="JIYU_RECHARGE_URL"/);
-  assert.doesNotMatch(patchContent, /^\+.*buildEmbeddedUrl\([\s\S]*JIYU_RECHARGE_URL/m);
+  for (const patchContent of patchContents) {
+    assert.match(patchContent, /diff --git a\/frontend\/src\/views\/admin\/AccountsView\.vue/);
+    assert.match(patchContent, /-function accountHomepageUrl\(row: Account\): string/);
+    assert.doesNotMatch(patchContent, /^\+.*accountHomepageUrl/m);
+    assert.doesNotMatch(patchContent, /^\+.*:href="accountHomepageUrl/m);
+    assert.match(patchContent, /v-else-if="isJiyuBuild"/);
+    assert.match(patchContent, /DialContext\(ctx, "unix", socketPath\)/);
+    assert.match(patchContent, /JIYU_UPDATE_STATUS=noop/);
+    assert.doesNotMatch(patchContent, /exec\.CommandContext|sudo/);
+    assert.match(patchContent, /const JIYU_RECHARGE_PAGE_ID = 'recharge-center'/);
+    assert.match(patchContent, /const JIYU_RECHARGE_URL = 'https:\/\/pay\.ldxp\.cn\/shop\/ZCUGEDMV'/);
+    assert.match(patchContent, /v-if="isJiyuRechargePage" class="jiyu-recharge-shell"/);
+    assert.match(patchContent, /height: calc\(100dvh - 64px\)/);
+    assert.doesNotMatch(patchContent, /height: calc\(100dvh - 64px -/);
+    assert.match(
+      patchContent,
+      /@media \(max-width: 767px\)[\s\S]*\.jiyu-recharge-shell[\s\S]*position: fixed[\s\S]*top: 64px[\s\S]*left: 0[\s\S]*width: 100vw[\s\S]*margin: 0[\s\S]*\.jiyu-recharge-open[\s\S]*display: none/,
+    );
+    assert.match(patchContent, /:src="JIYU_RECHARGE_URL"/);
+    assert.doesNotMatch(patchContent, /^\+.*buildEmbeddedUrl\([\s\S]*JIYU_RECHARGE_URL/m);
+  }
   assert.match(content, /StandardInput=socket/);
   assert.match(content, /NoNewPrivileges=yes/);
 });
