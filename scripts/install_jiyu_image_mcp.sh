@@ -62,7 +62,7 @@ INSERT INTO mcp_servers (
   enabled_claude,enabled_codex,enabled_gemini,enabled_opencode,enabled_hermes,enabled_grokbuild
 ) VALUES (
   '${MCP_ID}','JIYU AI 生图','${sql_config}',
-  '固定调用 JIYU AI 生图端点的本地单图 MCP',
+  '固定调用 JIYU AI 原生异步生图端点的中央单图 MCP',
   'https://jiyu.245334.xyz','https://jiyu.245334.xyz/custom/docs','["image","jiyu"]',
   1,1,0,1,0,0
 )
