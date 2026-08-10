@@ -7,7 +7,7 @@
 - 本轮只复查本机 Mac OpenClaw/ClawBot 与 Oracle Singapore JIYU/Sub2API。腾讯旧备机、中国 origin 和其他项目只做边界确认，没有修改。
 - 没有制造模型请求、订单、支付、Telegram 外发或压力负载；没有调用会改变使用时间的 `/v1/usage`。
 - 真实设备覆盖本机签名 App 与现有 Chrome。当前没有实体手机，因此移动端明确未验证。
-- 本轮没有生产配置写入或服务重启。健康的运行时不因版本号、审计进度或本地检查被打断。
+- 本轮只执行了有即时备份和回读的最小写入：一次 Sub2API 系统设置保存，以及修复闲鱼售卖锁硬编码后的本机 `ai.openclaw.xianyu` 重启。没有升级或重启其余健康服务。
 
 ## 1. 已通过的真实生产检查
 
@@ -16,6 +16,7 @@
 - `scripts/auto_health_check.sh --json --strict` 返回 `ok=true`、`release_ready=true`：必需 LaunchAgent 同时满足 loaded、running、PID 与真实端点要求；本机控制台、ClawBot API、OpenClaw Gateway、公共站点和上游监控均返回 200。
 - OpenClaw 实际 CLI 与 Gateway 运行版本均为官方稳定版 `2026.7.1-2`。原生 `openclaw health --json` 返回健康，Gateway 仅监听 loopback，RPC 只读探针通过，插件没有加载错误。
 - `/Applications/OpenClaw.app` 为 `0.1.1`，`codesign --verify --deep --strict` 通过。本机真实 Chrome 登录态可用。
+- 闲鱼助手 WebSocket 与 Cookie 健康、库存 807、补救队列 0，历史真实订单严格门已通过。自动发货继续保持人工暂停，避免在新商品尚未发布和绑定时影响账号内现有商品。
 - 每日备份 LaunchAgent 已加载。本轮生成的新备份为 15.2 MB、耗时 18.72 秒；恢复演练通过 checksum、路径、manifest 与 SQLite 校验，且没有写入恢复目标。
 - Mac 剩余磁盘约 96 GB，没有当前硬件瓶颈。Docker daemon 不可用，但本地 Compose 不是生产运行面，因此不影响生产结论。
 
@@ -25,6 +26,8 @@
 - Sub2API、Redis、PostgreSQL、Apache、更新定时器和备份定时器均正常；内部 `/health`、公网回读与 Responses WebSocket 通过。本轮新 Oracle 备份的 SHA-256 清单和 PostgreSQL archive 结构校验通过，没有执行恢复写入。
 - Sub2API、Redis、PostgreSQL 只监听 loopback；公网业务只由 Apache 80/443 暴露。生产服务器约有 32 GB 磁盘和 10 GB 可用内存，当前无资源瓶颈。
 - Oracle 继续是账户、余额、订单、API 密钥和账本唯一事实源。中国生产面继续暂停，国内账号、分组、渠道和精确模型白名单未删除，也没有复制第二套数据库。
+- WebUI 已启用精简首页并补齐前端回跳地址；登录条款改为页内复选确认，地区文案不再互相矛盾；空置优惠码入口关闭；渠道监控切换到 V2 被动模式并对普通用户隐藏 RPM/TPM。注册邮箱验证、TOTP、Passkey、用户额度、路由、支付和 SMTP 凭据均未扩大变更。
+- Sub2API 原生备份 S3 与异步生图对象存储当前均未配置；现有 Oracle 本地一致性备份和每日定时器继续工作。本轮即时备份约 107 MB，PostgreSQL archive 与 checksum 校验通过。
 
 ### Cloudflare
 
@@ -41,13 +44,15 @@
 - `docs/012-handoff.md` 与 `docs/086-release-evidence.md` 的重复流水已退役为稳定路由；当前事实和新会话提示词只保留在本文件，真实故障与重大变更继续保留在健康记录和变更日志。
 - 历史 8.4 分评分已明确标注为 2026-08-04 快照，不再被项目地图、健康文档或运维手册当作当前生产结论。
 - 原生 OpenClaw 备份 dry-run 只覆盖 `~/.openclaw`；它不能覆盖 ClawBot、项目关键状态与 Oracle 数据，因此没有替换现有一致性备份和恢复链。
+- 修复闲鱼操作台把活动渠道数量写死为“必须恰好 10”的误判。生产已扩展到 13 个活动渠道、10 个有效文本监控，现改为直接复用既有动态生产合同；恢复前预检由错误阻断恢复为通过，操作台也不再显示固定 `/10` 分母。
 
 ## 3. 未修复问题及原因
 
 - OpenClaw Gateway 当前健康，但服务定义由 `2026.6.11` 安装，CLI/运行时为 `2026.7.1-2`。原生审计级别仅为 recommended，未出现启动、RPC 或健康失败；本轮不为消除提示而强制重装和重启。维护窗口内可先备份 plist，再执行原生重装与回读。
 - GitHub 仍提示 1 个中等级别 Rust 依赖告警，本地 `cargo audit` 对应 GTK3/`glib 0.18` 兼容链及上游未维护警告。现有 Tauri/Wry 链没有可安全单包替换的 GTK4 路径；强升或手改锁文件会制造桌面回归，因此等待上游成套迁移后再复查。
 - 桌面端与 LaunchAgent 模板仍有本机绝对路径 fallback。当前机器启动正常，且管理器已支持 `OPENCLAW_PROJECT_DIR`；跨机器或移动目录前没有真实收益，不做猜测性重构。
-- `ai.openclaw.cc-seller-bridge` 正在运行，而历史注册表仍保留“正式公开售卖前需确认重复投递”的警告。验证会产生真实外部消息，本轮禁止制造 Telegram 外发，因此只保留人工小额真实链路验收。
+- 闲鱼现有 Chrome 登录态、发布页和个人页可用，个人页未发现 JIYU 商品。发布所需首图上传被 ChatGPT Chrome 扩展的“Allow access to file URLs”权限阻断；未提交草稿、未发布商品、未新增映射。该权限需要用户在 Chrome 扩展详情中开启后继续。
+- 卖家专用 Chromium 当前没有调试端口，页面兜底桥接器虽已加载但无法接管页面；主 WebSocket 助手仍在线。新商品发布并逐项绑定前不恢复自动发货，避免无映射订单回退默认套餐而错发面额。
 - `packages/clawbot/relative-launch/` 是 gitignored 的评审产物且没有生产调用者，但无法从 Git 恢复；按照“只删除可由 Git 恢复内容”的约束，本轮没有删除。运行数据、浏览器 profile、`.openclaw`、备份、迁移、支付和关键浏览器测试同样保留。
 - 实体手机未连接，移动端布局、登录和业务流程未验证，不宣称通过。
 - 中国 origin、域名/ICP、独立健康端点和回滚包均未具备；Cloudflare China Network 还需要 Enterprise、单独订阅和合规审核。本轮禁止新增费用和修改共享中国主机。
@@ -57,7 +62,7 @@
 
 ### P0
 
-- 无。当前没有生产阻断、数据不可恢复或对外健康失败。
+- **完成闲鱼文件上传权限与首档发布**：用户开启 ChatGPT Chrome 扩展的本地文件访问后，先发布并绑定 ¥1 档，再按真实页面审核结果继续其余面额。收益是恢复当前唯一被阻断的发布链；预计人工操作 1 分钟、后续维护为 0，不涉及付费。
 
 ### P1
 
@@ -65,6 +70,7 @@
 - **路径 fallback 收敛**：先让桌面端、启动器和 plist 全部优先使用已有 `OPENCLAW_PROJECT_DIR`，仅在确有跨目录安装需求时删除绝对路径。收益是移动工作区后减少 1 类启动回归；实现约半天，后续维护低，当前机器收益有限。
 - **卖家桥接真实验收**：在下一笔真实、可人工确认的小额业务中验证只投递一次。收益是关闭重复外发风险；开发维护成本为 0，但需要人工业务窗口，禁止用合成消息替代。
 - **离机加密备份落地**：用户提供 GPG 公钥和独立介质后复用现有 `local_backup.sh`，不新增备份组件。收益是本机全盘故障时仍可恢复；一次配置约 30 分钟，每月恢复抽检约 10 分钟。
+- **专用离机对象存储**：只有用户提供明确属于 JIYU 的 S3/R2 bucket 时才启用原生数据库备份上传。收益是 Oracle 整机故障后仍有异地副本；一次配置约 30 分钟、每月恢复抽检约 10 分钟，不复用其他项目 bucket。
 
 ### P2
 
@@ -72,6 +78,7 @@
 - **中国双站分流**：需中国 origin、域名/ICP、合规和付费方案先成立。收益是大陆访问路径缩短，维护成本至少增加一个故障域、健康探针和回滚面；当前前置不成立。
 - **语义审核**：只有供应商提供免费、专用安全分类模型时才复用原生 Prompt Audit。当前用普通聊天模型替代会增加费用、误判和明文提示词风险。
 - **移动端实机**：连接实体手机后复用现有关键浏览器流程验收，不建立一次性测试包。
+- **异步生图对象存储**：等两条生图渠道从 502/401 恢复并完成一次受控单图验收后再启用。它可把大图片转存 S3/R2、Redis 只保留短任务状态和 URL，但不提供 MCP 的工具发现能力；预期减少 Redis 大对象和客户端轮询负担，当前启用收益为 0。
 - **桌面 GTK4 上游迁移**：仅在 Tauri/Wry 官方兼容链完成迁移后评估。收益是关闭现有 RustSec 警告；当前自行分叉的维护和回归成本明显高于收益。
 
 ## 5. 已无继续优化价值
@@ -79,12 +86,13 @@
 - 不为版本号强制升级 OpenClaw、Sub2API/New-API、glib、Wry 或 Tao；实际 OpenClaw 已是官方稳定版，生产 Sub2API 已基于当前受管上游版本且健康。
 - 不新增 Gate、证据编译器、计划 Schema、常驻 AI 管理面、第二事实源、第二补号入口、合成压力测试或周期性计费模型探针。
 - 不用原生 OpenClaw 备份替换覆盖范围更完整的现有备份；也不并行叠加第三套备份工具。
+- 不把“异步生图对象存储”误当成 MCP 服务。原生异步 API 的客户端可直接使用；需要工具发现的 Claude/Codex/OpenCode 继续复用中央维护的单个 MCP，用户不再自行封装。
 - 在没有中国 origin、合规和付费前，不设计或部署 Worker、Load Balancer、Geo DNS 或数据库双写。
 - 不重构大文件、迁移框架或自动同步国内模型白名单，除非出现明确故障或可量化维护收益。
 
 ## 6. 需要用户处理的事项与硬件结论
 
-- 需要用户处理：实体手机验收、离机 GPG 公钥/介质、Apple Developer ID 与公证、真实商户/卖家小额单、China Network/Load Balancing 付费决策、中国域名/ICP 和 origin 所有权。
+- 需要用户处理：开启 ChatGPT Chrome 扩展的“Allow access to file URLs”、实体手机验收、JIYU 专用离机 bucket 或 GPG 公钥/介质、Apple Developer ID 与公证、真实商户/卖家小额单、China Network/Load Balancing 付费决策、中国域名/ICP 和 origin 所有权。
 - MFA、账户恢复、续费、付款和所有权转移只在控制台实际提示时由用户接管；本轮没有发现必须立即续费或升级套餐的事项。
 - Mac 与 Oracle 当前磁盘、内存余量足够，没有需要新增硬件的瓶颈。
 
@@ -97,5 +105,7 @@ OpenClaw CLI/Gateway 实际运行版本为 2026.7.1-2，健康且仅监听 loopb
 
 不得输出密码、Token、Cookie、私钥、订阅地址或账户标识。不得制造模型请求、订单、支付、Telegram 外发或压力负载，也不得调用有使用时间副作用的 /v1/usage。任何生产写入必须具备最新 prestate、可恢复备份、单一最小变更、失败回滚和真实业务回读。不要新增 Gate、证据编译器、计划 Schema、一次性测试包或常驻 AI 管理面。
 
-当前 P0 为 0。P1 仅包括维护窗口内收敛 Gateway 服务定义、出现跨目录需求时收敛路径 fallback、用下一笔真实小额业务验证卖家桥接只投递一次，以及用户提供 GPG 公钥/独立介质后落地离机加密备份。实体手机、China Network/ICP、中国 origin、Developer ID/公证和真实付费均需用户接管。当前基线只维护在 docs/current/current-baseline.md；真实故障和重大变更分别写入 docs/009-health.md 与 docs/002-changelog.md。
+JIYU WebUI 已启用精简首页、前端回跳地址、页内复选条款、V2 被动渠道监控和普通用户吞吐隐藏，并关闭空置优惠码。原生 S3 备份与异步生图对象存储仍未配置；不要复用其他项目的 bucket。闲鱼售卖锁已移除“渠道必须恰好 10”的硬编码，现有 13 渠道/10 有效监控合同通过；但新商品尚未发布，自动发货保持暂停。先让用户在 Chrome 扩展详情开启 Allow access to file URLs，再从 ¥1 档发布、回读并绑定，页面审核通过后再继续其他面额；不要绕过 CAPTCHA 或平台审核。
+
+P1 还包括维护窗口内收敛 Gateway 服务定义、出现跨目录需求时收敛路径 fallback、用下一笔真实小额业务验证卖家桥接只投递一次，以及用户提供 JIYU 专用 bucket 或 GPG 公钥/独立介质后落地离机加密备份。实体手机、China Network/ICP、中国 origin、Developer ID/公证和真实付费均需用户接管。当前基线只维护在 docs/current/current-baseline.md；真实故障和重大变更分别写入 docs/009-health.md 与 docs/002-changelog.md。
 ```

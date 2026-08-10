@@ -5,6 +5,19 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
+## [2026-08-10] JIYU 设置收敛与闲鱼渠道合同去硬编码
+> 领域: `backend` | `infra` | `docs` | `xianyu`
+> 影响模块: `Sub2API 系统设置`, `登录条款`, `Channel Monitor V2`, `闲鱼上架锁`, `数据备份`
+> 关联问题: JIYU-20260810-SETTINGS-XIANYU
+### 变更内容
+- 生成 Oracle 即时一致性备份后，通过真实 WebUI 一次保存启用精简首页、补齐前端回跳地址、把登录条款改为页内复选并修正地区矛盾、关闭空置优惠码、切换 V2 被动监控和普通用户吞吐隐藏；支付、默认额度、路由和 SMTP 凭据未改。
+- 原生 S3 数据库备份与异步生图对象存储保持未配置；没有复用其他项目 bucket。异步存储只负责转存生成图片并返回 URL，不替代 MCP 工具发现。
+- 修复闲鱼售卖锁把活动渠道写死为 `== 10` 的漂移；现改为复用动态 `config_contract_ok`，操作台同步删除固定 `/10` 展示。生产 13 个活动渠道、10 个有效文本监控的恢复前预检通过。
+- 闲鱼 Chrome 登录态与发布页可用，但首图上传因 ChatGPT Chrome 扩展未允许本地文件访问而失败关闭；未提交草稿、未发布或绑定商品，自动发货继续暂停。
+### 验证
+- Oracle 服务、Redis、PostgreSQL、Apache、定时器、内外 `/health`、Responses WebSocket、模型广场、本机严格健康和闲鱼只读审计通过；即时备份 archive/checksum 通过。
+- `test_api_routes_regression.py` 全文件通过；本机助手重启后恢复前预检为 `safe_to_resume=true`，但在新商品逐项绑定前不执行恢复。
+
 ## [2026-08-10] 生产最终复查与基线收口
 > 领域: `infra` | `deploy` | `docs`
 > 影响模块: `Mac OpenClaw/ClawBot`, `Oracle JIYU/Sub2API`, `Cloudflare`, `备份恢复`, `遗留入口`

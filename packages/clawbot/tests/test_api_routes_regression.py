@@ -1890,7 +1890,7 @@ def test_xianyu_admin_public_sale_lock_refreshes_readonly_audit(monkeypatch):
                 "exit_code": 0,
                 "summary": {
                     "redeem_available": 2,
-                    "sub2api_active_channels": 10,
+                    "sub2api_active_channels": 13,
                     "sub2api_enabled_monitors": 10,
                     "config_contract_ok": True,
                     "pending_rescue": 0,

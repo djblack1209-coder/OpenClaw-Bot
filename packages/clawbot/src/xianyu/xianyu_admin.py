@@ -989,7 +989,7 @@ def _cc_public_sale_lock_summary(refresh: bool = False) -> dict:
         "inventory_known": inventory_known,
         "inventory_ready": inventory_known and inventory_unused > 0,
         "redemptions_ready": inventory_known and inventory_unused > 0,
-        "channels_ready": inventory_known and config_contract_ok and enabled_channels == 10 and enabled_monitors == 10,
+        "channels_ready": inventory_known and config_contract_ok,
         "buyer_self_service_ready": buyer_self_service_ready,
         "webhook_public_locked": webhook_public_locked,
         "ccswitch_import_ready": ccswitch_import_ready,
@@ -1030,7 +1030,7 @@ def _cc_public_sale_lock_summary(refresh: bool = False) -> dict:
         if not gates["redemptions_ready"]:
             blockers.append("Sub2API 可售兑换码库存为 0")
         if not gates["channels_ready"]:
-            blockers.append("Sub2API 10 渠道 / 10 监控合同未满足")
+            blockers.append("Sub2API 渠道与监控生产合同未满足")
         if not gates["buyer_self_service_ready"]:
             blockers.append("买家主站或 API 网关公网入口异常")
         if not gates["webhook_public_locked"]:
@@ -1355,7 +1355,7 @@ def _cc_auto_ship_resume_preflight() -> dict:
         if not gates.get("redemptions_ready"):
             blockers.append("Sub2API 可售兑换码为 0，先补兑换码")
         if not gates.get("channels_ready"):
-            blockers.append("Sub2API 10 渠道 / 10 监控合同未满足")
+            blockers.append("Sub2API 渠道与监控生产合同未满足")
         if not gates.get("buyer_self_service_ready"):
             blockers.append("买家主站或 API 网关异常，先修复公网入口")
         if not gates.get("webhook_public_locked"):
@@ -4939,11 +4939,11 @@ function renderSnapshot(data,mode){
     pill(paused?'发货暂停':(autoReady?'自动发货正常':'自动发货待处理'),paused?'warn':boolKind(autoReady)),
     pill((watch.stage_label||'实单闭环未知'),watch.ready_for_public_sale?'ok':'warn')
   );
-  const completed=[autoReady, Number(inv.redeem_available||0)>0, Number(inv.active_channels||0)===10, Number(inv.enabled_monitors||0)===10, gates.ccswitch_import_ready===true, (progress.steps||{}).same_order_verified===true].filter(Boolean).length;
-  const percent=pct(completed,6); $('ring').style.setProperty('--pct',percent); $('ring-num').textContent=percent+'%'; $('ring-label').textContent=publicReady?'已放行':'内测闭环';
-  $('ring-desc').textContent=`关键步骤 ${completed}/6；正式售卖前仍以真实小额单为准。`;
+  const completed=[autoReady, Number(inv.redeem_available||0)>0, gates.channels_ready===true, gates.ccswitch_import_ready===true, (progress.steps||{}).same_order_verified===true].filter(Boolean).length;
+  const percent=pct(completed,5); $('ring').style.setProperty('--pct',percent); $('ring-num').textContent=percent+'%'; $('ring-label').textContent=publicReady?'已放行':'内测闭环';
+  $('ring-desc').textContent=`关键步骤 ${completed}/5；正式售卖前仍以真实小额单为准。`;
   setMetric('ship',paused?'暂停':(autoReady?'正常':'检查'),`补救 ${ship.pending_rescue??0}；闲鱼 ${status.ws_connected?'在线':'离线'}；Cookie ${status.cookie_ok?'正常':'异常'}`);
-  setMetric('stock',`${inv.redeem_available??'--'} 个`,`渠道 ${inv.active_channels??'--'}/10；监控 ${inv.enabled_monitors??'--'}/10`);
+  setMetric('stock',`${inv.redeem_available??'--'} 个`,`渠道 ${inv.active_channels??'--'}；监控 ${inv.enabled_monitors??'--'}；合同 ${gates.channels_ready===true?'通过':'待处理'}`);
   const steps=progress.steps||{}; setMetric('buyer',steps.same_order_verified?'完成':'待跑',progress.next_action||watch.next_action||'等待真实小额单');
   $('next-action').textContent=paused?'如需继续售卖：先确认库存，再打开操作台恢复自动发货。':(action.primary_action||lock.next_action||watch.next_action||'继续观察。');
   $('debug-list').replaceChildren(...[
@@ -5480,7 +5480,7 @@ async function confirmShipmentBackend(id){if(!id)return; askConfirm('只对真�
 async function resolveShipment(id){if(!id)return; askPrompt('处理备注，可空','已人工处理',async(note)=>{ await apiFetch(`/api/cc-shipments/${id}/resolve`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({note})}); await load(true)})}
 async function generateProductTemplate(){const params=new URLSearchParams({title:$('title-input').value||'CC中转内测卡',plan_id:$('plan-input').value||'',price:'小额测试价'}); const data=await apiFetch(`/api/cc-product-template?${params.toString()}`); $('product-template').value=data.template||''}
 async function copyProductTemplate(){if(!$('product-template').value){await generateProductTemplate()} await navigator.clipboard.writeText($('product-template').value); notice('已复制')}
-async function runReadinessAudit(mode){$('audit-result').textContent='巡检运行中...'; try{const data=await apiFetch(`/api/cc-readiness-audit?mode=${encodeURIComponent(mode)}`); const s=data.summary||{}; $('audit-result').textContent=`${mode==='strict'?'正式售卖严格门':'生产内测巡检'}：${data.ok?'通过':'未通过'}；库存 ${s.redeem_available??0}；渠道 ${s.sub2api_active_channels??0}/10；监控 ${s.sub2api_enabled_monitors??0}/10；真实订单 ${s.real_orders??0}`; await load(true)}catch(err){$('audit-result').textContent='巡检失败：'+(err.message||err)}}
+async function runReadinessAudit(mode){$('audit-result').textContent='巡检运行中...'; try{const data=await apiFetch(`/api/cc-readiness-audit?mode=${encodeURIComponent(mode)}`); const s=data.summary||{}; $('audit-result').textContent=`${mode==='strict'?'正式售卖严格门':'生产内测巡检'}：${data.ok?'通过':'未通过'}；库存 ${s.redeem_available??0}；渠道 ${s.sub2api_active_channels??0}；监控 ${s.sub2api_enabled_monitors??0}；渠道合同 ${s.config_contract_ok?'通过':'未通过'}；真实订单 ${s.real_orders??0}`; await load(true)}catch(err){$('audit-result').textContent='巡检失败：'+(err.message||err)}}
 async function probePaidOrders(){
   $('paid-probe-result').textContent='正在只读扫描闲鱼待发货订单...';
   try{
