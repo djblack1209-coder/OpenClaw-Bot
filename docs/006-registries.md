@@ -1,6 +1,8 @@
 # 项目注册表总集
 
 > 合并自原 030-api-pool-registry.md + 031-command-registry.md + 032-dependency-map.md + 033-module-registry.md
+>
+> 当前生产事实、可用性和是否允许写入只看 `docs/current/current-baseline.md`。本文中的 `Frist`、`CC中转`、New-API 和旧 `/api/admin/*` 名称是兼容/历史引用，不代表第二库存或推荐的新产品入口。
 
 ## 2026-08-08 JIYU AI / Sub2API 部署注册
 
@@ -300,7 +302,7 @@
 | CC Switch 导入后检测 | `data-import-verification` / `data-refresh-health` / `data-playground-model` | 用户导入后按供应商卡片、用量脚本、真实调用、`gpt-image-2` 流程图和记录页消费逐项验收 |
 | 异常消耗检测 | `data-usage-anomalies` / `data-usage-anomaly-status` / `usageAnomalies` | Dashboard 返回今日消耗偏高、单次调用费用突增和高延迟提醒；前端说明监控余额突增、失败率、慢请求和异常模型消耗，只展示用户可读摘要，不展示上游 Key、供应商原始地址或 raw usage |
 | 闲鱼全自动发货 webhook | `/api/ops/xianyu/paid-order` | 由 OpenClaw `XianyuLive` 或后续浏览器助手在检测到“等待卖家发货/已付款”后调用；低权限 token 鉴权，未付款订单阻断，成功后分配兑换码并返回发货话术；本机传入稳定 `orderId`，服务端按 `orderId` 幂等，重复订单不会重复分配卡密 |
-| 闲鱼发货补救队列 | `127.0.0.1:18800/api/cc-shipments` / `/api/cc-shipments/{id}/resolve` / `/api/cc-shipments/{id}/mark-sent` / `/api/cc-shipments/{id}/mark-send-failed` | 本机受 `X-API-Token` 保护的闲鱼 GUI 接口；记录 CC中转 webhook 已发、消息发送失败、话术缺失、异常、人工已处理、`manual_delivery_ready` 漏单兜底和 `browser_delivery_claimed` 浏览器领取中状态；卡已分配但未确认发给买家时会进入补救队列，老板粘贴发送后必须点 mark-sent 才算真实已发货，浏览器发送失败会 mark-send-failed 退回重试队列 |
+| 闲鱼发货补救队列 | `127.0.0.1:18800/api/cc-shipments` / `/api/cc-shipments/{id}/resolve` / `/api/cc-shipments/{id}/mark-sent` / `/api/cc-shipments/{id}/mark-send-failed` | 本机受 `X-API-Token` 保护的闲鱼 GUI 接口；历史名称含“CC中转”，当前用途仅为平台消息投递和补救记录。兑换码库存只能经 JIYU/Sub2API 原子预留读取，当前默认暂停，不能把本地补救表当作库存或订单事实源。 |
 | 闲鱼商品套餐映射 | `127.0.0.1:18800/api/cc-item-mappings` + `127.0.0.1:18800/api/items` | 本机 GUI 配置 `item_id → planId`；GUI 会展示最近捕获到的闲鱼商品并一键填入映射表单；CC中转自动发货优先按商品映射发对应套餐，无映射时才回退默认套餐或任意未售卡密 |
 | 闲鱼已付款漏单兜底 | `127.0.0.1:18800/api/cc-manual-paid-order/dispatch` | 本机受 `X-API-Token` 保护；仅在老板已从闲鱼界面确认“买家已付款/等待发货”但 WebSocket 未触发时使用。接口调用低权限 webhook 分配兑换码并返回可复制话术，状态先记为 `manual_delivery_ready`，不自动标记已发货、不自动点击闲鱼、不绕风控。浏览器/桥接器在暂停状态下若带 `one_shot=true`，必须先消费 `/api/cc-operator-mode/one-shot-delivery` 的单次放行票，否则不会生成并发送卡密 |
 | 闲鱼真实待发货只读扫单 | `127.0.0.1:18800/api/cc-paid-order-probe` + `XianyuLive.scan_cc_paid_orders_readonly()` | 本机受 `X-API-Token` 保护；只读读取闲鱼卖家“待发货”列表，用于老板重新下单后确认系统是否看得到真实候选单。返回订单哈希、买家/商品是否存在、本机履约状态等脱敏摘要；不分配卡密、不调用 webhook、不发送闲鱼消息、不点击“去发货”、不解除 `auto_ship_paused` |
@@ -329,7 +331,7 @@
 | GUI 一键闭环审计 | `127.0.0.1:18800/api/cc-readiness-audit?mode=read_only|strict` | 本机受 `X-API-Token` 保护的只读审计接口；GUI 按钮可运行生产内测巡检或正式售卖严格门，不开放 `--webhook-smoke` 写入冒烟按钮；strict 结果会保存脱敏摘要到 `cc_strict_audits` |
 | CC中转状态中心 | `127.0.0.1:18800/ops-links` | 本机免 token 打开的老板日常入口；Apple 风格暗色状态中心只展示一个结论、闭环圆环、自动发货、库存与渠道、买家链路和下一步。输入本机 `OPENCLAW_API_TOKEN` 后只读读取 `/api/cc-ops-snapshot` 与 `/api/cc-operator-mode`，不提供发货/分配卡密/冒烟写入按钮；工程详情默认折叠，`/v1`、`/v1/models` 和旧 `/admin.html` 不再作为人类入口收藏 |
 | CC中转操作台 | `127.0.0.1:18800/` | 本机免 token 打开页面、API 受 `X-API-Token` 保护；Apple 风格深色状态面板 + 本机 `layui@2.13.8` 组件层（`/static/layui/...`，不走 CDN），首屏 6 张老板状态卡只回答：当前能不能卖、自动发货是否开着、库存是否够、上游余额是否够、是否有待处理订单、是否需要介入/是否有正式售卖资格。红/黄告警会通过 `top-alerts` 置顶，并给“怎么办/只读检查/只放行一次”按钮；恢复常驻自动发货前可点“恢复前安全检查”，恢复按钮也会二次确认并由后端预检兜底；恢复成功提示会说明“第 1 单发卡成功后会自动暂停”；商品绑定、漏单兜底、补救队列、只读巡检和高级排障默认折叠；补救队列使用 `layui-table`，确认/提示使用 layui layer；旧 `message_sent` 补救单待点击闲鱼发货时提示打开对应已付款页面，不要求重新下单 |
-| New-API 兑换状态回写 | `/api/admin/redemption-cards/sync-newapi-status` / `SUB2API_NEWAPI_REDEMPTION_STATUS_SYNC_ENABLED` | 遗留兼容能力：按卡密哈希读取 New-API SQLite 兑换状态，不是当前 Sub2API 闲鱼库存事实源。生产已付款 webhook 仍读取 Frist-API 旧卡池，迁移为原子领取 Sub2API `redeem_codes` 前不得用该入口恢复公开售卖 |
+| New-API 兑换状态回写 | `/api/admin/redemption-cards/sync-newapi-status` / `SUB2API_NEWAPI_REDEMPTION_STATUS_SYNC_ENABLED` | 遗留兼容能力，不是当前生产闲鱼库存事实源，也不得用于恢复公开售卖。当前库存唯一事实源是 Sub2API PostgreSQL；Frist 兼容适配器只调用原子预留函数，不保留旧卡池。 |
 | 闲鱼兑换码库存自动补 | `/api/admin/redemption-cards/autoreplenish` / `SUB2API_CARD_AUTOREPLENISH_ENABLED` | Sub2API 可按安全库存生成兑换码；当前 PostgreSQL 有八档 807 张未使用码，但遗留已付款 webhook 的可分配旧卡池为 0。不得把聚合库存误报为可发货库存，也不得把明文卡密复制到第二运行库 |
 | New-API 上游余额同步 | `/api/admin/upstream-balance` / `/api/admin/upstream-balance/sync` / `SUB2API_UPSTREAM_BALANCE_SYNC_ENABLED` | JIYU AI 可每日同步 New-API 上游余额，低于 50 元 warning、低于 20 元 critical；结果只给管理端展示或告警，不向用户暴露上游 token |
 | 导出模型清单 | `data-export-default-model` / `data-export-model-count` / `data-export-models` | 在 CC Switch 页展示默认模型、可用模型数量和完整模型列表 |
@@ -431,8 +433,8 @@
 | `SUB2API_UPSTREAM_BALANCE_CRITICAL_CNY` | 上游余额 critical 阈值 | 默认 `20` 元 |
 | `SUB2API_UPSTREAM_BALANCE_STALE_HOURS` | 上游余额数据过期小时数 | 默认 `26` 小时，超过视为状态过期 |
 | `SUB2API_UPSTREAM_BALANCE_WEBHOOK` | 上游余额预警 webhook | 可选；用于余额低于阈值时提醒老板充值 |
-| `CC_XIANYU_AUTO_SHIP_ENABLED` | OpenClaw 闲鱼助手是否启用 CC中转自动发货 | `1` 启用；`0/false/no/off` 禁用并回退旧本地 AutoShipper |
-| `CC_XIANYU_WEBHOOK_URL` | OpenClaw 调用 CC中转自动发货 webhook 的地址 | 当前生产内测指向 `https://jiyu.245334.xyz/api/ops/xianyu/paid-order`；本机会自动推导同域 `/api/ops/xianyu/remap-order` 用于真实订单号接管 |
+| `CC_XIANYU_AUTO_SHIP_ENABLED` | OpenClaw 闲鱼助手自动履约开关（历史变量名） | `1` 启用；当前生产必须保持暂停，直到真实商品 ID 映射和首笔受控小额单完成。 |
+| `CC_XIANYU_WEBHOOK_URL` | OpenClaw 调用 JIYU 闲鱼履约适配器的地址（历史变量名） | 适配器无管理员权限，只能发起已付款订单的原子领码；不得将其配置为 New-API、Frist 旧卡池或任意第三方地址。 |
 | `CC_XIANYU_WEBHOOK_TOKEN` | OpenClaw 调用 CC中转 webhook 的低权限 token | 只用于已付款订单发卡；禁止打印完整值，生产变更后需重启 `ai.openclaw.xianyu` |
 | `CC_XIANYU_AUTO_SHIP_PAUSED` | 自动发货运行时暂停的环境兜底 | 可选；`1/true/yes/on` 时启动后默认暂停。日常暂停/恢复优先使用本机操作台 `/api/cc-operator-mode`，不会要求老板改环境变量 |
 | `CC_OPERATOR_STATE_FILE` | 本机操作台状态文件路径 | 可选；默认 `.openclaw/cc-zhongzhuan-operator-state.json`，测试用例用该变量隔离暂停状态 |
