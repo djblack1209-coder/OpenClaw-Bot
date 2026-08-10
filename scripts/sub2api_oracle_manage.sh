@@ -1448,6 +1448,93 @@ ensure_jiyu_region_headers() {
   log "Apache 已在目标 HTTPS VirtualHost 剥离客户端伪造地域头，并仅转发可信 CF-IPCountry。"
 }
 
+rewrite_jiyu_cn_production_gate() {
+  local source_file="$1"
+  local destination_file="$2"
+  local canonical_host="$3"
+  local action="$4"
+
+  awk -v domain="$canonical_host" -v action="$action" '
+    function emit_gate() {
+      if (action == "pause") {
+        print "    # JIYU-CN-PRODUCTION-GATE-BEGIN: 临时暂停中国大陆生产面，资产保留。"
+        print "    SetEnvIf CF-IPCountry \"^CN$\" JIYU_CN_PRODUCTION_PAUSED=1"
+        print "    <Location />"
+        print "        <RequireAll>"
+        print "            Require all granted"
+        print "            Require not env JIYU_CN_PRODUCTION_PAUSED"
+        print "        </RequireAll>"
+        print "    </Location>"
+        print "    # JIYU-CN-PRODUCTION-GATE-END"
+      }
+    }
+
+    /# JIYU-CN-PRODUCTION-GATE-BEGIN:/ { skipping = 1; next }
+    skipping {
+      if (/# JIYU-CN-PRODUCTION-GATE-END/) { skipping = 0 }
+      next
+    }
+    /^[[:space:]]*<VirtualHost[[:space:]]+[^>]*\*:443[^>]*>/ {
+      in_https_vhost = 1
+      server_name = ""
+    }
+    in_https_vhost && /^[[:space:]]*ServerName[[:space:]]+/ { server_name = $2 }
+    in_https_vhost && /^[[:space:]]*<\/VirtualHost>/ {
+      if (server_name == domain) {
+        emit_gate()
+        found++
+      }
+      in_https_vhost = 0
+      server_name = ""
+    }
+    { print }
+    END { if (found != 1) exit 42 }
+  ' "$source_file" >"$destination_file"
+}
+
+set_jiyu_cn_production() {
+  require_root
+  require_linux
+  require_command apache2ctl
+  [[ -f "$APACHE_SITE" ]] || fail "找不到 Apache 站点配置: ${APACHE_SITE}"
+
+  local action="$1" temporary_file temporary_backup timestamp backup_dir
+  case "$action" in
+    pause|resume) ;;
+    *) fail "中国生产面只能是 pause 或 resume。" ;;
+  esac
+
+  temporary_file="$(mktemp)"
+  if ! rewrite_jiyu_cn_production_gate "$APACHE_SITE" "$temporary_file" "$DOMAIN" "$action"; then
+    rm -f "$temporary_file"
+    fail "无法唯一定位 ${DOMAIN} 的 HTTPS VirtualHost，拒绝修改中国生产面。"
+  fi
+  if cmp -s "$APACHE_SITE" "$temporary_file"; then
+    rm -f "$temporary_file"
+    log "中国生产面已经处于 ${action} 状态。"
+    return 0
+  fi
+
+  temporary_backup="${STATE_DIR}/apache-before-cn-production-${action}.conf"
+  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  backup_dir="${BACKUP_ROOT}/cn-production-${action}-${timestamp}"
+  backup_database "$backup_dir"
+  install -d -m 0700 -o root -g root "$STATE_DIR"
+  cp -a "$APACHE_SITE" "$temporary_backup"
+  cat "$temporary_file" >"$APACHE_SITE"
+  rm -f "$temporary_file"
+  if ! apache2ctl configtest || ! reload_apache_with_recovery; then
+    cp -a "$temporary_backup" "$APACHE_SITE"
+    reload_apache_with_recovery || true
+    fail "中国生产面 ${action} 校验或重载失败，已恢复原配置。"
+  fi
+  if [[ "$action" == "pause" ]]; then
+    log "中国大陆生产面已暂停；国内资产、账号、分组和渠道均保留。"
+  else
+    log "中国大陆生产面已恢复；仍受现有地域模型策略约束。"
+  fi
+}
+
 enable_managed_web_updates() {
   require_root
   require_linux
@@ -1958,6 +2045,7 @@ usage() {
   terms-page          更新登录条款中的地区展示规则（保留其余条款文本）
   region-headers      加固 Cloudflare 地域头的 Apache 信任边界（不启用地域强制）
   region-enforcement <enable|disable>  原子切换 JIYU 地域强制，失败自动回滚
+  cn-production <pause|resume>  原子暂停或恢复中国大陆站点生产面，资产不删除
   upstream-allowlist    重新应用当前生产账号的受信官方域名白名单
   harden-apache      禁止浏览器直接更新或回滚生产二进制
   postgres-preflight 修复 PostgreSQL 最小运行权限并验证数据库连通性
@@ -2031,6 +2119,9 @@ main() {
       ;;
     region-enforcement)
       set_jiyu_region_enforcement "${2:-}"
+      ;;
+    cn-production)
+      set_jiyu_cn_production "${2:-}"
       ;;
     upstream-allowlist)
       apply_upstream_allowlist

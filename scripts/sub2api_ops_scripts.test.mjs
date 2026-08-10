@@ -56,6 +56,9 @@ test('生产更新改为只检查，完整备份覆盖品牌与页面', async ()
   assert.match(content, /api\.deepseek\.com/);
   assert.match(content, /api\.siliconflow\.cn/);
   assert.match(content, /region-enforcement <enable\|disable>/);
+  assert.match(content, /cn-production <pause\|resume>/);
+  assert.match(content, /JIYU-CN-PRODUCTION-GATE-BEGIN/);
+  assert.match(content, /中国生产面 .*已恢复/);
   assert.match(content, /地域强制配置应用失败，已恢复原配置/);
   for (const regionPatchContent of regionPatchContents) {
     assert.match(regionPatchContent, /func IsJiyuGroupAllowed/);
@@ -124,6 +127,65 @@ test('地域可信头只安装到 JIYU HTTPS VirtualHost', async () => {
     );
     assert.equal(secondRewrite.status, 0, secondRewrite.stderr);
     assert.equal(await readFile(secondDestination, 'utf8'), output);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('中国生产闸门只位于 JIYU HTTPS VirtualHost 且可幂等恢复', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'sub2api-cn-gate-'));
+  const source = join(directory, 'site.conf');
+  const paused = join(directory, 'paused.conf');
+  const resumed = join(directory, 'resumed.conf');
+  const fixture = `<VirtualHost *:80>
+    ServerName example.test
+</VirtualHost>
+<VirtualHost *:443>
+    ServerName example.test
+    ProxyPass / http://127.0.0.1:18080/
+</VirtualHost>
+<VirtualHost *:443>
+    ServerName legacy.example.test
+</VirtualHost>
+`;
+  try {
+    await writeFile(source, fixture);
+    const pause = spawnSync(
+      'bash',
+      [
+        '-c',
+        `source <(sed '$d' "$1"); rewrite_jiyu_cn_production_gate "$2" "$3" example.test pause`,
+        'bash',
+        manager,
+        source,
+        paused,
+      ],
+      { encoding: 'utf8' },
+    );
+    assert.equal(pause.status, 0, pause.stderr);
+    const pausedOutput = await readFile(paused, 'utf8');
+    const targetStart = pausedOutput.indexOf('<VirtualHost *:443>');
+    const targetEnd = pausedOutput.indexOf('</VirtualHost>', targetStart);
+    const marker = pausedOutput.indexOf('JIYU-CN-PRODUCTION-GATE-BEGIN');
+    assert.equal((pausedOutput.match(/JIYU-CN-PRODUCTION-GATE-BEGIN/g) || []).length, 1);
+    assert.ok(marker > targetStart && marker < targetEnd);
+    assert.match(pausedOutput, /Require not env JIYU_CN_PRODUCTION_PAUSED/);
+    const resume = spawnSync(
+      'bash',
+      [
+        '-c',
+        `source <(sed '$d' "$1"); rewrite_jiyu_cn_production_gate "$2" "$3" example.test resume`,
+        'bash',
+        manager,
+        paused,
+        resumed,
+      ],
+      { encoding: 'utf8' },
+    );
+    assert.equal(resume.status, 0, resume.stderr);
+    const resumedOutput = await readFile(resumed, 'utf8');
+    assert.doesNotMatch(resumedOutput, /JIYU-CN-PRODUCTION-GATE-BEGIN/);
+    assert.doesNotMatch(resumedOutput, /JIYU_CN_PRODUCTION_PAUSED/);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
