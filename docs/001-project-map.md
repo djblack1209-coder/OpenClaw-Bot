@@ -152,7 +152,7 @@ OpenEverything/
 - **运行时真值**：G4F、Kiro、Ollama、IBKR 和 VPS 心跳全部改为显式开关；未启用能力不进入 LiteLLM 路由、fallback 或交易定时器。健康检查同时验证必需 LaunchAgent 的 `running + PID` 和真实 HTTP/TCP 端点，不再用“服务已加载”代替“服务可用”。
 - **ClawBot Telegram 补号边界（2026-08-09）**：本地 LaunchAgent `ai.openclaw.clawbot-agent` 已在安全补丁后重载，现以新 PID 运行且无需回滚；浏览器无认证 Telegram Web 会话，未发送真实 `/jiyu_replenish status`，外部命令响应仍未验证。
 - **部署拓扑**：macOS LaunchAgent 是当前唯一 OpenEverything/ClawBot 活跃主实例。腾讯云旧备用实例因主心跳长期失效且进程持续启动失败，已于 2026-08-07 备份后停用其服务和 30 秒故障转移定时器；腾讯云上的微信接收、OpenClaw 云控和 SillyTavern 仍独立运行。恢复 VPS 自动接管前必须重新建立实时心跳、单主写入隔离和真实 Telegram 用户链路验收。
-- **JIYU AI / CC中转底座（2026-08-10）**：Oracle ARM 主站 `jiyu.245334.xyz` 对外品牌为 `JIYU AI`，当前运行基于官方 Sub2API `v0.1.173` 固定提交构建的 `v0.1.173-jiyu.31344140382`。Sub2API 只监听 `127.0.0.1:18080`，专用 Redis 只监听 `127.0.0.1:16379`，PostgreSQL 使用独立 `sub2api` 数据库。DeepSeek、Kimi、SiliconFlow、智谱各有 1 个国内账号、分组和渠道，国内白名单数量为 2/4/8/61，文本分组倍率固定为账号倍率 +0.05。原生 Channel Monitor V2 已启用，旧主动监控仅保留回滚记录；内容预拦截和 Cloudflare WAF/DDoS、注册/登录限流正常。中国大陆到中国站点、其他地区到 Oracle 的站点级分流仍等待独立中国 origin、域名/ICP 与 Cloudflare 方案确认，Oracle 继续是账户、余额、订单、API 密钥和账本唯一事实源。
+- **JIYU AI / CC中转底座（2026-08-10）**：Oracle ARM 主站 `jiyu.245334.xyz` 对外品牌为 `JIYU AI`，当前运行基于官方 Sub2API `v0.1.173` 固定提交构建的 `v0.1.173-jiyu.31344140382`。Sub2API 只监听 `127.0.0.1:18080`，专用 Redis 只监听 `127.0.0.1:16379`，PostgreSQL 使用独立 `sub2api` 数据库。DeepSeek、Kimi、SiliconFlow、智谱各有 1 个国内账号、分组和渠道，国内白名单数量为 2/4/8/61，文本分组倍率固定为账号倍率 +0.05。当前按用户要求使用原生 Channel Monitor V1 主动探测；V2 配置和数据保留，不是阻塞项。内容预拦截和 Cloudflare WAF/DDoS、注册/登录限流正常。中国大陆到中国站点、其他地区到 Oracle 的站点级分流仍等待独立中国 origin、域名/ICP 与 Cloudflare 方案确认，Oracle 继续是账户、余额、订单、API 密钥和账本唯一事实源。
 
 ### 2026-08-05 全维度审计收口
 
