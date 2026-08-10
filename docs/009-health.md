@@ -10,7 +10,7 @@
 
 | 编号 | 分类 | 严重度 | 状态 | 当前结论 |
 |---|---|---|---|---|
-| JIYU-20260810-PROD-CLOSE | `DEPLOY/AI_POOL/SECURITY` | 🟢 已关闭 | 生产已闭环 | Oracle 已运行 `v0.1.173-jiyu.31344140382`；Channel Monitor V2 被动聚合启用，旧主动监控不再执行；四家国内 `/models` 零费用回读 200，精确映射 2/4/8/61，倍率合同错误 0；CN/SG/未知地域为 403/200/403；Prompt Audit 无专用安全分类模型保持关闭；发布后完整备份已生成。一次 `/v1/usage` 探针更新 `last_used_at` 已按 prestate 恢复，后续禁止把它当作无副作用探针。 |
+| JIYU-20260810-PROD-CLOSE | `DEPLOY/AI_POOL/SECURITY` | 🟢 已关闭 | 生产已闭环 | Oracle 已运行 `v0.1.173-jiyu.31344140382`；Channel Monitor 按用户要求从 V2 被动聚合恢复为 V1 主动探测（用户产品选择，不是阻塞项），V2 配置和历史保留；四家国内 `/models` 零费用回读 200，精确映射 2/4/8/61，倍率合同错误 0；CN/SG/未知地域为 403/200/403；Prompt Audit 无专用安全分类模型保持关闭；发布后完整备份已生成。一次 `/v1/usage` 探针更新 `last_used_at` 已按 prestate 恢复，后续禁止把它当作无副作用探针。 |
 
 ### 2026-08-09 模型广场真实上游对齐
 
