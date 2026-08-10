@@ -5,6 +5,19 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
+## [2026-08-10] 生产最终复查与基线收口
+> 领域: `infra` | `deploy` | `docs`
+> 影响模块: `Mac OpenClaw/ClawBot`, `Oracle JIYU/Sub2API`, `Cloudflare`, `备份恢复`, `遗留入口`
+> 关联问题: PROD-20260810-FINAL-REVIEW
+### 变更内容
+- 从真实运行态复核本机必需 LaunchAgent、签名 App、原生 OpenClaw 健康、Oracle 服务/定时器/监听面/资源和 Cloudflare DNS/TLS/WAF/路由边界；没有制造模型请求、订单、支付、Telegram 外发或压力负载。
+- 删除 7 个无生产调用者且可由 Git 恢复的旧执行入口：4 个失效打包脚本、2 个旧服务安装脚本和 1 个旧 MITM CA 安装脚本；同步移除快速开始、运维技能和 OpenClaw 上下文中的旧绝对路径及不存在命令。
+- 将滚动交接与快照式发布报告退役为稳定路由，唯一当前生产状态和新会话提示词收口到 `docs/current/current-baseline.md`。
+- 原生 OpenClaw 备份 dry-run 只覆盖 `~/.openclaw`，不足以覆盖 ClawBot、项目状态和 Oracle 数据，继续保留现有一致性备份与恢复链。
+### 验证
+- 本机严格健康、原生 Gateway 健康、App 严格签名、Oracle 管理器检查、Responses WebSocket、Cloudflare 控制台只读核对通过；本机新备份的恢复演练以及 Oracle 新备份的 SHA-256/PostgreSQL archive 校验通过。
+- Gateway 服务定义版本漂移、跨目录路径 fallback、卖家桥接真实小额单、实体手机、离机介质和中国双站前置保留为明确 P1/P2，不为消除审计提示重启健康服务。
+
 ## [2026-08-10] 修正中国/海外站点级分流目标
 > 领域: `infra` | `docs`
 > 影响模块: `Cloudflare 路由`, `JIYU 站点边界`, `生产事实源`

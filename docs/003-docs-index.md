@@ -1,6 +1,6 @@
 # OpenClaw 文档总索引
 
-> 最后更新: 2026-08-09
+> 最后更新: 2026-08-10
 > 总文件: 36 个（含 `docs/current/` 的唯一生产当前基线；083 为历史停用编号）
 
 ## 当前基线
@@ -44,7 +44,7 @@
 | 编号 | 文档 | 内容概要 |
 |------|------|---------|
 | 011 | `011-kiro-gateway.md` | Kiro Gateway 子项目文档（架构/Agent 指令/贡献/测试/CLA） |
-| 012 | `012-handoff.md` | 会话交接摘要（AI Agent 上下文恢复） |
+| 012 | `012-handoff.md` | 退役交接入口；当前提示词只在 `docs/current/current-baseline.md` 维护 |
 | 013 | `013-contributing.md` | 开源贡献指南、开发流程、验证要求和 AI/API credits 使用边界 |
 | 014 | `014-security.md` | 安全政策、漏洞报告方式、密钥处理规则和高风险动作边界 |
 | 015 | `015-code-of-conduct.md` | 社区协作行为准则、敏感信息处理和执行方式 |
@@ -66,7 +66,7 @@
 | 082 | `082-open-source-wheel-research.md` | GitHub 高 Star 轮子调研：闲鱼、微博、小红书、抖音、知乎、财经、X、爬虫框架接入建议 |
 | 084 | `084-intel-brief-implementation-report.md` | Intel Brief Phase 0 / Phase B 历史验收证据汇总；当前状态以健康文档和变更日志为准 |
 | 085 | `085-intel-brief-design-qa.md` | 每日资讯 V2 方案 C + Top 3 + 候选 3 的视觉决策、同视口对比与 Telegram 验收边界 |
-| 086 | `086-release-evidence.md` | 全维度审计闭环的 CI、安全、供应链、灾备、桌面构建与截图证据 |
+| 086 | `086-release-evidence.md` | 退役发布证据入口；保留稳定路由，不再生成快照报告 |
 | 087 | `087-jiyu-image-mcp-guide.md` | JIYU 生图专用 Key、CC Switch MCP 和可复制 AI 安装提示词小白教程 |
 
 ## 排除范围

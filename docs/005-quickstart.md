@@ -222,20 +222,11 @@ bash scripts/stop_all.sh
 
 ## 核心配置
 
-### 1. 百度网盘交付链接
-编辑 `config/.env`，设置：
-```bash
-BAIDU_PAN_LINK=https://pan.baidu.com/s/你的分享链接
-BAIDU_PAN_CODE=提取码
-```
+### 1. 交付与安装
 
-### 2. 打包部署客户端
-```bash
-bash scripts/pack_deploy_bundle.sh
-```
-生成 `OpenClaw_Deploy_v2026.3.zip`，上传到百度网盘
+旧部署客户端、网页安装器和百度网盘打包入口已经退役。当前只维护签名桌面 App、受管运行包和现有生产管理器；不要从历史压缩包恢复运行时。
 
-### 3. 闲鱼卖家会话恢复
+### 2. 闲鱼卖家会话恢复
 当卖家会话失效时：
 1. 打开 OpenClaw 桌面端的闲鱼页面，点击“启动并打开运营台”；桌面端会调用现有启动器并打开隔离卖家 Chromium。
 2. 资产所有者本人在该窗口扫码登录闲鱼；验证码、CAPTCHA 与平台风控均在这个窗口完成。
@@ -395,28 +386,23 @@ ClawBot 是一个 **Telegram 多模型 AI 自动交易系统**，核心能力：
 ### 安装依赖
 
 ```bash
-cd "/Users/blackdj/Desktop/OpenClaw Bot/packages/clawbot"
-python3.12 -m venv .venv312
-.venv312/bin/pip install -r requirements.txt
+python3.12 -m venv packages/clawbot/.venv312
+packages/clawbot/.venv312/bin/pip install --require-hashes \
+  -r packages/clawbot/requirements-lock-macos.txt
 ```
 
-### 启动服务
+### 检查和恢复服务
 
 ```bash
-# 启动
-python3 multi_main.py
+# 生产只读健康检查
+bash scripts/auto_health_check.sh --json --strict
+openclaw gateway status --json
 
-# 后台运行
-nohup python3 multi_main.py &
-
-# 使用运维脚本
-./scripts/clawctl.sh start
-./scripts/clawctl.sh status
-./scripts/clawctl.sh stop
-
-# 查看日志
-tail -f logs/multi_bot.log
+# 先预览恢复动作；只有确认 prestate、备份和回滚后才允许执行
+bash scripts/auto_recovery.sh --dry-run --scope services
 ```
+
+生产实例由 `ai.openclaw.*` LaunchAgent 管理。不要用手工 `nohup`、广域 `pkill` 或第二套启动脚本制造重复实例。
 
 ### 运行测试
 
@@ -517,7 +503,7 @@ clawbot/
 │   ├── utils.py               # 工具函数
 │   └── tools/                 # 工具集（bash/file/screen/image 等）
 ├── tests/                     # 408 个单元测试
-├── scripts/                   # 运维脚本（clawctl.sh 等）
+├── scripts/                   # 现有启动、健康和维护脚本
 ├── data/             # 数据存储（history/）
 ├── logs/                      # 运行日志
 └── images/                    # 生成的图片
@@ -630,19 +616,16 @@ self.app.add_handler(CommandHandler("xxx", self.cmd_xxx))
 ## 八、运维
 
 ```bash
-# 使用 clawctl.sh
-./scripts/clawctl.sh start    # 启动
-./scripts/clawctl.sh stop     # 停止
-./scripts/clawctl.sh restart  # 重启
-./scripts/clawctl.sh status   # 查看状态
-./scripts/clawctl.sh logs     # 查看日志
+# 只读检查
+bash scripts/auto_health_check.sh --json --strict
+openclaw gateway status --json
+bash scripts/manage_backup_launchagent.sh status
 
-# 手动操作
-python3 multi_main.py                    # 前台启动
-nohup python3 multi_main.py &            # 后台启动
-pkill -f 'multi_main.py'                 # 停止
-tail -f logs/multi_bot.log               # 日志
+# 恢复前预览
+bash scripts/auto_recovery.sh --dry-run --scope services
 ```
+
+日常运维只使用现有 LaunchAgent、原生 OpenClaw 和仓库维护入口。手工前台启动或广域 `pkill` 只允许在隔离排障环境使用，不能作为生产操作。
 
 ---
 
