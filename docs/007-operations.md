@@ -163,8 +163,8 @@ WebUI 更新方案 A 已在仓库和生产启用：`.github/workflows/sub2api-ji
 
 ### 链动小铺运营边界
 
-- 店铺昵称、公告、头像和自定义链接已统一为 JIYU AI；¥1/10/50/100/300/500/1000 七档商品已建立并使用同一 JY Logo，标题、详情和兑换步骤已保存。
-- 保证金账户已真实显示 ¥100；¥1/10/50/100/300/500/1000 七档商品各保留既有 1 张并新增 100 张，生产数据库与链动小铺回读均为 101 张未使用、销售中（总计 707 张）。充值中心由 JIYU 前端对 `recharge-center` 专门嵌入固定公开整店页 `https://pay.ldxp.cn/shop/ZCUGEDMV`，不得经过通用 URL 参数拼接；受管重建命令为 `ssh oracle-arm1 'sudo /usr/local/sbin/openclaw-sub2api-manager recharge-center'`。
+- 店铺昵称、公告、头像和自定义链接已统一为 JIYU AI；¥1/10/30/50/100/300/500/1000 八档商品已建立并使用同一 JY Logo，标题、详情和兑换步骤已保存。
+- 保证金账户已真实显示 ¥100；¥1/10/50/100/300/500/1000 七档商品各保留既有 1 张并新增 100 张，生产数据库与链动小铺回读均为 101 张未使用、销售中；¥30 商品为 100 张未使用、销售中，公开售价与详情均为 ¥30。八档总计 807 张。充值中心由 JIYU 前端对 `recharge-center` 专门嵌入固定公开整店页 `https://pay.ldxp.cn/shop/ZCUGEDMV`，不得经过通用 URL 参数拼接；受管重建命令为 `ssh oracle-arm1 'sudo /usr/local/sbin/openclaw-sub2api-manager recharge-center'`。
 - 专用嵌入必须在 `1440×1000` 与 `390×844` 记录 iframe 几何、查询参数、Console 和失败网络请求；当前 `v0.1.172-jiyu.31271410817` 沿用已验收尺寸 `1176×936` 与 `x=0,y=64,w=390,h=780`，均等于可用内容区，查询参数、失败请求和干净重载后的新增浏览器警告/错误均为零。
 - 重建命令会通过 Sub2API 原生 `security.csp.policy`，只在 `frame-src` 去重加入精确来源 `https://pay.ldxp.cn`，不会放宽 `script-src`、`connect-src` 或其他 CSP 指令。若链动后续返回 `X-Frame-Options` 或 `frame-ancestors` 阻止内嵌，停止使用 iframe 并报告，不得反代绕过。
 - 仍未执行真实购买。首笔 ¥1 实单必须在操作当时再次确认，再按“付款 → 自动发货 → 兑换到账 → 创建密钥 → CC Switch 导入 → 用量查询”完成闭环；任一步失败立即下架并保留交易证据。
