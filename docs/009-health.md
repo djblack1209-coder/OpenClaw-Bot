@@ -10,6 +10,8 @@
 
 | 编号 | 分类 | 严重度 | 状态 | 当前结论 |
 |---|---|---|---|---|
+| JIYU-20260810-R2-ASYNC | `BACKUP/AI_POOL/SECURITY` | 🟢 已关闭 | 生产已闭环 | JIYU 专用私有 R2 已用于 Sub2API 原生数据库备份和异步生图对象存储；首份对象完成下载、校验、gzip SQL 解析与临时 PostgreSQL 恢复，共 96 张表。中央 MCP 已切到原生异步端点，真实 SDK 调用可完成 202 提交和终态轮询；当前终态失败源于上游渠道权限/模型支持，不是 R2 或 MCP 故障，未产生成功图片对象或费用。 |
+| XIANYU-20260810-INVENTORY-SOURCE | `XIANYU/ORDER/ARCH` | 🔴 阻塞 | 公开售卖失败关闭 | Sub2API PostgreSQL 有 807 张八档未使用兑换码，但真实已付款 webhook 仍从遗留 Frist-API `runtime.json` 卡池分配，当前可分配数为 0且套餐口径过时。严格门的聚合库存绿灯不能代表 webhook 可履约；自动发货保持暂停，禁止发布商品。修复必须让受管 webhook 原子领取 Sub2API `redeem_codes` 并删除旧 SQLite/New-API 卡池适配，不得复制明文卡密到第二运行库。 |
 | JIYU-20260810-PROD-CLOSE | `DEPLOY/AI_POOL/SECURITY` | 🟢 已关闭 | 生产已闭环 | Oracle 已运行 `v0.1.173-jiyu.31344140382`；Channel Monitor 按用户要求从 V2 被动聚合恢复为 V1 主动探测（用户产品选择，不是阻塞项），V2 配置和历史保留；四家国内 `/models` 零费用回读 200，精确映射 2/4/8/61，倍率合同错误 0；CN/SG/未知地域为 403/200/403；Prompt Audit 无专用安全分类模型保持关闭；发布后完整备份已生成。一次 `/v1/usage` 探针更新 `last_used_at` 已按 prestate 恢复，后续禁止把它当作无副作用探针。 |
 
 ### 2026-08-09 模型广场真实上游对齐

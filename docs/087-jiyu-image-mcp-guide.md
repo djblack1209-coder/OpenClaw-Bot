@@ -1,32 +1,33 @@
 # JIYU AI 生图与 MCP 小白教程
 
-> 日期: 2026-08-08
+> 日期: 2026-08-10
 > 适用对象: 不会写代码，但会使用 JIYU AI、CC Switch 和 AI 编程助手的用户
-> 当前状态: 站内已建立两个匿名生图分组；上游专用 Key 权限确认后再做收费单图验收
+> 当前状态: Sub2API 原生异步端点、私有 R2 与中央 MCP 已就绪；两条供货渠道仍不可用，恢复前不会成功出图
 
 ## 先说结论
 
-文本模型和生图模型不是同一个接口。Claude 端点用于 Messages，ChatGPT 端点用于 OpenAI 兼容文本接口；生图要调用：
+文本模型和生图模型不是同一个接口。Claude 端点用于 Messages，ChatGPT 端点用于 OpenAI 兼容文本接口；原生支持异步图片 API 的客户端直接调用：
 
 ```text
-https://jiyu.245334.xyz/v1/images/generations
+POST https://jiyu.245334.xyz/v1/images/generations/async
+GET  https://jiyu.245334.xyz/v1/images/tasks/{task_id}
 ```
 
-CC Switch 的本地路由能在常见文本协议之间转换，但不会自动把一句普通聊天变成“调用生图接口”。最稳妥的做法是另建一个生图专用 Key，再用一个本地 MCP 把生图接口包装成 AI 能调用的 `generate_image` 工具。
+CC Switch 的本地路由能在常见文本协议之间转换，但不会自动把一句普通聊天变成“调用生图接口”。需要工具调用的 Claude、Codex 和 OpenCode 统一使用仓库维护的一个 `JIYU AI 生图` MCP；用户只创建生图专用 Key，不再自己写或复制 MCP 代码。
 
 ## 你需要准备什么
 
 1. 已安装 CC Switch。
 2. 站内“API 密钥”页面已经出现 `JIYU 生图 · 渠道A` 或 `JIYU 生图 · 渠道B`。
-3. 单独创建一个生图 Key。不要复用日常文本 Key，也不要把 Key 发到聊天、截图或代码仓库。
+3. 单独创建一个生图 Key。不要复用日常文本 Key，也不要把 Key 发到聊天、截图或代码仓库。运营机已经建立总额度 1 USD 的中央 MCP Key，普通用户仍应使用自己的限额 Key。
 4. 电脑已安装 Node.js 18 以上；仓库安装器会固定 MCP SDK 版本并建立隔离目录。
 
-站内当前已有两个生图分组，但上游仍分别返回 502 和 401；恢复前可以完成 MCP 安装和缺 Key 冒烟，不要反复发起付费生图。
+站内当前已有两个生图分组。2026-08-10 实测渠道 A 返回 403；渠道 B 的模型目录没有图片模型，图片请求返回 404。Sub2API 异步提交和轮询本身已通过，但任务会真实进入 `failed`；恢复前不要反复发起付费生图。
 
 ## 当前价格和可用范围
 
-- 渠道A：上游标价 `$0.05/次`，站内价格 `$0.10/张`；上游专用请求当前返回 502，恢复前不要反复重试。
-- 渠道B：已确认上游高画质 `gpt-image-2` 为 `$0.07/次`，站内价格为 `$0.12/张`；上游 Key 返回 401 时先确认令牌仍启用并允许模型，不要连续试图生成。
+- 渠道A：站内价格合同保持不变；当前凭据返回 403，需在供应商后台恢复账户/分组权限或轮换可用 Key。
+- 渠道B：当前账户模型目录不包含 `gpt-image-2`，图片请求返回“不支持该模型”；只有供应商明确开通图片模型后才可启用。
 - 首版只支持文生图单图和三个常见横竖尺寸；图片编辑、参考图、批量和任意外部地址均未开放。
 
 ## MCP 应该做什么
@@ -40,11 +41,12 @@ generate_image(prompt, model, size, quality, output_format)
 它收到 AI 的工具调用后：
 
 1. 从本机安全存储读取生图 Key。
-2. 向 JIYU 的 `/v1/images/generations` 发送请求。
-3. 检查 HTTP 状态、响应类型和图片大小。
-4. 把返回的图片作为 MCP 图片内容交回 AI。
+2. 向 JIYU 的 `/v1/images/generations/async` 提交一次任务。
+3. 使用同一 Key 按服务端 `Retry-After` 轮询任务，不重试付费提交。
+4. 任务成功后只从 JIYU 或 Cloudflare R2 的 HTTPS 地址下载图片，检查 MIME 和 20 MiB 上限。
+5. 把返回的图片作为 MCP 图片内容交回 AI。
 
-MCP 不应输出 Key，不应把完整 base64 图片写日志，也不应允许用户临时改成任意外部网址。
+Sub2API 会把图片写入私有 R2 的 `images/` 前缀，返回 24 小时预签名链接，Redis 只保留短任务状态和 URL。MCP 不应输出 Key，不应把完整 base64 图片写日志，也不应允许用户临时改成任意外部网址。
 
 ## 一键安装
 
@@ -56,7 +58,7 @@ scripts/install_jiyu_image_mcp.sh set-key
 scripts/install_jiyu_image_mcp.sh status
 ```
 
-第二条命令使用隐藏输入把生图专用 Key 写入 macOS 钥匙串，终端和 CC Switch 配置都不会保存明文。安装器会先备份两个旧 MCP 条目的不含环境变量结构，再替换成一个 `JIYU AI 生图` 条目，并默认同步到 Claude、Codex 和 OpenCode。
+只有首次配置或轮换专用 Key 时才执行第二条命令；隐藏输入会写入 macOS 钥匙串，终端和 CC Switch 配置都不会保存明文。安装器维护唯一 `JIYU AI 生图` 条目，并默认同步到 Claude、Codex 和 OpenCode。
 
 ## 在 CC Switch 中确认
 
@@ -81,10 +83,10 @@ scripts/install_jiyu_image_mcp.sh status
 
 1. 使用仓库提供的 `scripts/install_jiyu_image_mcp.sh` 安装本地 stdio MCP；它固定使用官方 MCP SDK、隔离安装目录和 CC Switch 数据库，不执行网上来路不明的 `npx -y`。
 2. MCP 只提供 generate_image 工具，参数为 prompt、model、size、quality、output_format。
-3. API 根地址固定为 https://jiyu.245334.xyz/v1，请求路径固定为 /images/generations，不允许调用者覆盖主机名或关闭 HTTPS 校验。
+3. API 根地址固定为 https://jiyu.245334.xyz/v1，提交路径固定为 /images/generations/async，轮询路径固定为 /images/tasks/{task_id}，不允许调用者覆盖主机名或关闭 HTTPS 校验。
 4. 生图 API Key 必须单独使用。执行到这里时让我通过隐藏输入或 macOS 钥匙串提供，禁止在聊天、终端历史、源码、配置文件、日志、截图或测试夹具中输出明文。
 5. stdio 的 stdout 只能写 MCP JSON-RPC；普通日志写 stderr，并对 Authorization、Key、Token、Cookie 和图片 base64 脱敏。
-6. 设置 120 秒总超时、20 MiB 最大响应；付费 POST 不自动重试，拒绝重定向到非 JIYU 域名、私网地址和非图片响应。
+6. 每次 HTTP 请求超时 30 秒，任务最多轮询 30 分钟，图片上限 20 MiB；付费 POST 不自动重试，拒绝非 JIYU/Cloudflare R2 地址、重定向和非图片响应。
 7. 返回 MCP ImageContent；失败时返回小白能读懂的错误，不泄露内部上游品牌、域名或凭据。
 8. 在 CC Switch 新增自定义 stdio MCP“JIYU AI 生图”，同步到已安装的 Claude、Codex、OpenCode；不要修改其他 Provider 或 MCP。
 9. 删除或停用指向不存在脚本的旧生图 MCP 条目，但先备份其不含 env 的结构，禁止输出旧环境变量值。
@@ -96,7 +98,7 @@ scripts/install_jiyu_image_mcp.sh status
 
 - CC Switch 的 MCP 列表中显示 `JIYU AI 生图`，开启的客户端同步成功。
 - AI 能列出 `generate_image`，缺少 Key 时明确失败，不会偷偷使用文本 Key。
-- 经你确认费用后只生成一张测试图；站内使用记录能看到图片模型、尺寸、渠道和费用。
+- 上游恢复后，在现有 1 USD 总额度内只生成一张低质量测试图；站内使用记录能看到图片模型、尺寸、渠道和费用，R2 `images/` 出现一个可回读对象。
 - 关闭 MCP 后，AI 不再看到该工具；日常 Claude/ChatGPT 文本调用不受影响。
 
 ## 常见问题
