@@ -1094,7 +1094,7 @@ deploy_xianyu_fulfillment() {
   unused_before="$(runuser -u postgres -- psql -d sub2api -Atc "SELECT count(*) FROM redeem_codes WHERE type='balance' AND status='unused' AND value IN (1,10,30,50,100,300,500,1000) AND (expires_at IS NULL OR expires_at > NOW())")"
   if [[ "$role_before" == "1" ]]; then
     db_url_line="$(grep '^FRIST_API_SUB2API_DATABASE_URL=' "$FRIST_API_ENV" | tail -n 1)"
-    role_password="${db_url_line#*://${FRIST_API_XIANYU_ROLE}:}"
+    role_password="${db_url_line#*://"${FRIST_API_XIANYU_ROLE}":}"
     role_password="${role_password%@*}"
     [[ "$role_password" =~ ^[0-9a-f]{64}$ ]] || fail "现有闲鱼数据库角色缺少可复用的受保护连接配置。"
   else
@@ -1164,7 +1164,7 @@ SQL
   find "$FRIST_API_DIR/src" -mindepth 1 -delete 2>/dev/null || true
   for legacy_path in data assets deploy src tests .playwright-cli admin.html index.html favicon.svg; do
     if [[ -e "$FRIST_API_DIR/$legacy_path" || -L "$FRIST_API_DIR/$legacy_path" ]]; then
-      rm -rf -- "$FRIST_API_DIR/$legacy_path"
+      rm -rf -- "${FRIST_API_DIR:?}/$legacy_path"
     fi
   done
   install -m 0644 "${bundle}/package.json" "${bundle}/package-lock.json" "$FRIST_API_DIR/"
