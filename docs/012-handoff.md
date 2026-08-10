@@ -12,7 +12,7 @@
 ## [2026-08-10] 中国/海外站点级分流目标修正
 
 - 新产品目标：大陆 IP → 中国服务器站点，其他 IP → Oracle Singapore 海外站点；Oracle 继续唯一保存账户、余额、订单、API 密钥和账本。
-- 当前未闭环：现有中国主机没有 JIYU 服务/vhost，腾讯 SSH 不可达，没有 JIYU 中国域名/ICP/独立健康端点；不要修改共享中国主机或把其他项目服务当作 JIYU origin。
+- 当前未闭环：现有中国主机没有 JIYU 服务/vhost、没有全局 IPv6，443 和防火墙属于共享业务边界；腾讯 SSH 不可达，没有 JIYU 中国域名/ICP/独立健康端点；不要修改共享中国主机或把其他项目服务当作 JIYU origin。
 - Cloudflare 官方门槛已核对：Load Balancing 是付费附加项；China Network 需要 Enterprise、单独订阅、ICP/许可和 JD Cloud 内容审核。项目不允许擅自升级付费套餐，故本轮只记录设计，不部署 Worker、DNS、Cloudflare 路由或中国服务。
 - 待用户处理：确认中国 origin 所属项目、域名和 ICP/许可；确认是否批准 Cloudflare 付费/Enterprise，或批准一次性评估 Worker 按 `request.cf.country` 代理方案；提供可回读的中国 origin 健康端点和回滚权限。
 
