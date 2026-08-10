@@ -5,6 +5,30 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
+## [2026-08-10] 修正中国/海外站点级分流目标
+> 领域: `infra` | `docs`
+> 影响模块: `Cloudflare 路由`, `JIYU 站点边界`, `生产事实源`
+> 关联问题: JIYU-20260810-REGION-ROUTING
+### 变更内容
+- 产品目标从“海外站点按模型限制”修正为“中国大陆 IP → 中国站点，其他 IP → 海外站点”。Oracle Singapore 仍是唯一账户、余额、订单、密钥和账本事实源。
+- 只读核对确认现有中国主机没有 JIYU/Sub2API 服务或 vhost，腾讯主机 SSH 不可达；本轮不修改共享主机、不新增 DNS/Worker/Cloudflare 路由。
+- 官方 Cloudflare 方案需要付费 Load Balancing，或 Enterprise + China Network + ICP/许可 + JD Cloud 审核；在用户明确批准前保持阻塞。
+### 验证
+- 现有过渡保护继续通过 CN/SG/未知地域 403/200/403；不把该结果误报为站点级分流完成。
+
+## [2026-08-10] JIYU v0.1.173 生产升级与被动监控闭环
+> 领域: `backend` | `infra` | `deploy` | `docs`
+> 影响模块: `Sub2API 兼容包`, `Channel Monitor V2`, `地域过滤`, `价格同步`, `生产备份`
+> 关联问题: JIYU-20260810-PROD-CLOSE
+### 变更内容
+- 四组 JIYU 补丁整体移植到官方 Sub2API `v0.1.173`，兼容工作流只允许已验证的 `v0.1.172`/`v0.1.173`，未知上游版本失败关闭。
+- Oracle Singapore 已发布 `v0.1.173-jiyu.31344140382`；安装器先备份数据库并保留健康失败自动回滚，发布后服务、Redis、Apache、定时器、内网健康和 Responses WebSocket 全部通过。
+- 启用官方 Channel Monitor V2 被动聚合，保留旧主动监控记录用于回滚；没有新增计费请求或合成负载。原生 `/models` 目录、价格回退、倍率联动和地域过滤继续使用既有单一事实源。
+- 一次只读地域探针发现 `/v1/usage` 会更新 API Key `last_used_at`，已用探针前 prestate 恢复；该端点不再作为无副作用生产探针。
+### 验证
+- GitHub 主线安全、前端/桌面、Python 检查和兼容工作流均成功；fresh-clone 应用 v0.1.172/v0.1.173 补丁成功。
+- 生产真实回读：四家国内 `/models` 均 200（2/4/14/91 条上游目录），国内精确映射为 2/4/8/61，倍率合同错误 0；CN/SG/未知地域为 403/200/403；v2 watermark/聚合器更新且旧主动 `last_checked_at` 无新增；最终一致性备份成功。
+
 ## [2026-08-09] 修正 JIYU 生产条款的地区总禁用冲突
 > 领域: `infra` | `docs`
 > 影响模块: `Sub2API 登录条款`, `JIYU 文档页`, `生产备份与回滚`

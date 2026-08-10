@@ -2,6 +2,20 @@
 
 > 最后更新: 2026-08-09
 
+## [2026-08-10] JIYU v0.1.173 与被动监控生产闭环
+
+- 生产已升级为 `v0.1.173-jiyu.31344140382`；发布前备份、健康失败回滚、ARM64 哈希、主线 CI 和兼容工作流均通过。
+- Channel Monitor V2 已启用；旧主动监控记录保留但不再运行。真实回读显示旧 `last_checked_at` 无新增，v2 watermark/聚合器正常。
+- 四家国内 `/models` 零费用探针仍为 200，模型映射计数为 2/4/8/61；地域回读 CN/SG/未知为 403/200/403。一次 `/v1/usage` 只读探针更新了 `last_used_at`，已按 prestate 恢复，后续不得把该端点当作无副作用探针。
+- Prompt Audit 仍保持默认关闭（无配置行、无节点），因为现有 Key 没有专用安全分类模型；原生内容预拦截仍为 29 条规则、Unicode NFKC、30/1 天留存。
+
+## [2026-08-10] 中国/海外站点级分流目标修正
+
+- 新产品目标：大陆 IP → 中国服务器站点，其他 IP → Oracle Singapore 海外站点；Oracle 继续唯一保存账户、余额、订单、API 密钥和账本。
+- 当前未闭环：现有中国主机没有 JIYU 服务/vhost，腾讯 SSH 不可达，没有 JIYU 中国域名/ICP/独立健康端点；不要修改共享中国主机或把其他项目服务当作 JIYU origin。
+- Cloudflare 官方门槛已核对：Load Balancing 是付费附加项；China Network 需要 Enterprise、单独订阅、ICP/许可和 JD Cloud 内容审核。项目不允许擅自升级付费套餐，故本轮只记录设计，不部署 Worker、DNS、Cloudflare 路由或中国服务。
+- 待用户处理：确认中国 origin 所属项目、域名和 ICP/许可；确认是否批准 Cloudflare 付费/Enterprise，或批准一次性评估 Worker 按 `request.cf.country` 代理方案；提供可回读的中国 origin 健康端点和回滚权限。
+
 ---
 
 ## [2026-08-09] JIYU 地区分流实施前置已核实
