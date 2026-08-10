@@ -69,15 +69,15 @@ jobs:
         env:
           UPSTREAM_TAG: ${{ steps.release.outputs.tag }}
         run: |
+          case "$UPSTREAM_TAG" in
+            v0.1.172 | v0.1.173) ;;
+            *) echo "JIYU patches are not reviewed for ${UPSTREAM_TAG}" >&2; exit 1 ;;
+          esac
           git clone --depth 1 --branch "$UPSTREAM_TAG" https://github.com/Wei-Shaw/sub2api.git upstream
-          cp scripts/sub2api-jiyu-v0.1.172.patch upstream/
-          cp scripts/sub2api-model-align-v0.1.172.patch upstream/
-          cp scripts/sub2api-pricing-region-v0.1.172.patch upstream/
-          cp scripts/sub2api-region-filter-v0.1.172.patch upstream/
-          git -C upstream apply sub2api-jiyu-v0.1.172.patch
-          git -C upstream apply sub2api-model-align-v0.1.172.patch
-          git -C upstream apply sub2api-pricing-region-v0.1.172.patch
-          git -C upstream apply sub2api-region-filter-v0.1.172.patch
+          git -C upstream apply "../scripts/sub2api-jiyu-${UPSTREAM_TAG}.patch"
+          git -C upstream apply "../scripts/sub2api-model-align-${UPSTREAM_TAG}.patch"
+          git -C upstream apply "../scripts/sub2api-pricing-region-${UPSTREAM_TAG}.patch"
+          git -C upstream apply "../scripts/sub2api-region-filter-${UPSTREAM_TAG}.patch"
 
       - name: Setup Node and pnpm
         if: steps.existing.outputs.skip != 'true'

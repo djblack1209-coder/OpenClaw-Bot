@@ -1,0 +1,279 @@
+diff --git a/backend/internal/handler/api_key_handler.go b/backend/internal/handler/api_key_handler.go
+index 336323081..96a053bb7 100644
+--- a/backend/internal/handler/api_key_handler.go
++++ b/backend/internal/handler/api_key_handler.go
+@@ -287,6 +287,9 @@ func (h *APIKeyHandler) GetAvailableGroups(c *gin.Context) {
+ 
+ 	out := make([]dto.Group, 0, len(groups))
+ 	for i := range groups {
++		if !service.IsJiyuGroupAllowed(c.GetHeader("X-JIYU-Country"), groups[i].Description) {
++			continue
++		}
+ 		out = append(out, *dto.GroupFromService(&groups[i]))
+ 	}
+ 	response.Success(c, out)
+diff --git a/backend/internal/handler/available_channel_handler.go b/backend/internal/handler/available_channel_handler.go
+index 300eb1b1a..64df5def8 100644
+--- a/backend/internal/handler/available_channel_handler.go
++++ b/backend/internal/handler/available_channel_handler.go
+@@ -138,6 +138,9 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
+ 	}
+ 	allowedGroupIDs := make(map[int64]struct{}, len(userGroups))
+ 	for i := range userGroups {
++		if !service.IsJiyuGroupAllowed(c.GetHeader("X-JIYU-Country"), userGroups[i].Description) {
++			continue
++		}
+ 		allowedGroupIDs[userGroups[i].ID] = struct{}{}
+ 	}
+ 
+diff --git a/backend/internal/handler/model_plaza_handler.go b/backend/internal/handler/model_plaza_handler.go
+index 0bf294d44..fa1b75b5c 100644
+--- a/backend/internal/handler/model_plaza_handler.go
++++ b/backend/internal/handler/model_plaza_handler.go
+@@ -126,6 +126,9 @@ func (h *ModelPlazaHandler) Get(c *gin.Context) {
+ 
+ 	out := make([]modelPlazaGroup, 0, len(visible))
+ 	for i := range visible {
++		if !service.IsJiyuGroupAllowed(c.GetHeader("X-JIYU-Country"), visible[i].Description) {
++			continue
++		}
+ 		out = append(out, toModelPlazaGroupDTO(&visible[i], userRates))
+ 	}
+ 	response.Success(c, modelPlazaResponse{
+diff --git a/backend/internal/server/middleware/api_key_auth.go b/backend/internal/server/middleware/api_key_auth.go
+index a595fbdb3..ca7163bcc 100644
+--- a/backend/internal/server/middleware/api_key_auth.go
++++ b/backend/internal/server/middleware/api_key_auth.go
+@@ -181,6 +181,9 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
+ 			})
+ 			c.Set(string(ContextKeyUserRole), apiKey.User.Role)
+ 			setGroupContext(c, apiKey.Group)
++			if !enforceJiyuRegion(c, apiKey.Group) {
++				return
++			}
+ 			if !billingInfoRequest {
+ 				_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
+ 			}
+@@ -279,6 +282,9 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
+ 		})
+ 		c.Set(string(ContextKeyUserRole), apiKey.User.Role)
+ 		setGroupContext(c, apiKey.Group)
++		if !enforceJiyuRegion(c, apiKey.Group) {
++			return
++		}
+ 		if !billingInfoRequest {
+ 			_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
+ 		}
+diff --git a/backend/internal/server/middleware/api_key_auth_google.go b/backend/internal/server/middleware/api_key_auth_google.go
+index 9efbbcb2c..a3c751eae 100644
+--- a/backend/internal/server/middleware/api_key_auth_google.go
++++ b/backend/internal/server/middleware/api_key_auth_google.go
+@@ -140,6 +140,9 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
+ 			})
+ 			c.Set(string(ContextKeyUserRole), apiKey.User.Role)
+ 			setGroupContext(c, apiKey.Group)
++			if !enforceJiyuRegion(c, apiKey.Group) {
++				return
++			}
+ 			_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
+ 			c.Next()
+ 			return
+@@ -213,6 +216,9 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
+ 		})
+ 		c.Set(string(ContextKeyUserRole), apiKey.User.Role)
+ 		setGroupContext(c, apiKey.Group)
++		if !enforceJiyuRegion(c, apiKey.Group) {
++			return
++		}
+ 		_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
+ 		c.Next()
+ 	}
+diff --git a/backend/internal/server/middleware/jiyu_region.go b/backend/internal/server/middleware/jiyu_region.go
+new file mode 100644
+index 000000000..a5fd689db
+--- /dev/null
++++ b/backend/internal/server/middleware/jiyu_region.go
+@@ -0,0 +1,23 @@
++package middleware
++
++import (
++	"net/http"
++
++	"github.com/Wei-Shaw/sub2api/internal/service"
++	"github.com/gin-gonic/gin"
++)
++
++// enforceJiyuRegion applies the production split at the shared API-key gate.
++// Cloudflare/Apache supplies X-JIYU-Country after stripping the client header;
++// missing or malformed values are deliberately treated as restricted.
++func enforceJiyuRegion(c *gin.Context, group *service.Group) bool {
++	if group == nil {
++		return true
++	}
++	if service.IsJiyuGroupAllowed(c.GetHeader("X-JIYU-Country"), group.Description) {
++		return true
++	}
++	service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
++	AbortWithError(c, http.StatusForbidden, "REGION_MODEL_RESTRICTED", "This model group is unavailable in the current region")
++	return false
++}
+diff --git a/backend/internal/server/middleware/jiyu_region_test.go b/backend/internal/server/middleware/jiyu_region_test.go
+new file mode 100644
+index 000000000..686225124
+--- /dev/null
++++ b/backend/internal/server/middleware/jiyu_region_test.go
+@@ -0,0 +1,35 @@
++package middleware
++
++import (
++	"net/http/httptest"
++	"testing"
++
++	"github.com/Wei-Shaw/sub2api/internal/service"
++	"github.com/gin-gonic/gin"
++	"github.com/stretchr/testify/require"
++)
++
++func TestEnforceJiyuRegion(t *testing.T) {
++	t.Setenv("SUB2API_JIYU_REGION_ENFORCEMENT", "1")
++	tests := []struct {
++		name        string
++		country     string
++		description string
++		allowed     bool
++	}{
++		{name: "overseas_allows_global", country: "SG", allowed: true},
++		{name: "mainland_rejects_global", country: "CN", allowed: false},
++		{name: "mainland_allows_domestic", country: "CN", description: "region=cn", allowed: true},
++		{name: "unknown_rejects_global", country: "", allowed: false},
++	}
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			c, _ := gin.CreateTestContext(httptest.NewRecorder())
++			c.Request = httptest.NewRequest("GET", "/v1/models", nil)
++			if tt.country != "" {
++				c.Request.Header.Set("X-JIYU-Country", tt.country)
++			}
++			require.Equal(t, tt.allowed, enforceJiyuRegion(c, &service.Group{Description: tt.description}))
++		})
++	}
++}
+diff --git a/backend/internal/service/content_moderation_input.go b/backend/internal/service/content_moderation_input.go
+index 73d5b6973..6e5b071b3 100644
+--- a/backend/internal/service/content_moderation_input.go
++++ b/backend/internal/service/content_moderation_input.go
+@@ -7,6 +7,7 @@ import (
+ 	"strings"
+ 
+ 	"github.com/tidwall/gjson"
++	"golang.org/x/text/unicode/norm"
+ )
+ 
+ func ExtractContentModerationText(protocol string, body []byte) string {
+@@ -315,5 +316,5 @@ func addModerationText(parts *[]string, text string) {
+ }
+ 
+ func normalizeContentModerationText(text string) string {
+-	return strings.Join(strings.Fields(strings.TrimSpace(text)), " ")
++	return strings.Join(strings.Fields(norm.NFKC.String(strings.TrimSpace(text))), " ")
+ }
+diff --git a/backend/internal/service/content_moderation_keyword_matcher.go b/backend/internal/service/content_moderation_keyword_matcher.go
+index 4628d3b70..a1b3f6e32 100644
+--- a/backend/internal/service/content_moderation_keyword_matcher.go
++++ b/backend/internal/service/content_moderation_keyword_matcher.go
+@@ -39,6 +39,7 @@ func newContentModerationKeywordMatcher(keywords []string) *contentModerationKey
+ 	originalKeywords := append([]string(nil), keywords...)
+ 
+ 	for keywordIndex, keyword := range keywords {
++		keyword = normalizeContentModerationText(keyword)
+ 		if keyword == "" {
+ 			continue
+ 		}
+@@ -168,7 +169,7 @@ func (m *contentModerationKeywordMatcher) Match(text string) (string, bool) {
+ 	if m == nil || text == "" || len(m.nodes) == 0 || len(m.keywords) == 0 {
+ 		return "", false
+ 	}
+-	lower := strings.ToLower(text)
++	lower := strings.ToLower(normalizeContentModerationText(text))
+ 	state := int32(0)
+ 	bestKeyword := int32(-1)
+ 	for index := 0; index < len(lower); index++ {
+diff --git a/backend/internal/service/content_moderation_keyword_matcher_test.go b/backend/internal/service/content_moderation_keyword_matcher_test.go
+index 4be70dca3..cb1cf3dd7 100644
+--- a/backend/internal/service/content_moderation_keyword_matcher_test.go
++++ b/backend/internal/service/content_moderation_keyword_matcher_test.go
+@@ -33,6 +33,18 @@ func TestContentModerationKeywordMatcherMatchesLegacyBehavior(t *testing.T) {
+ 	}
+ }
+ 
++func TestContentModerationKeywordMatcherNormalizesUnicodeCompatibilityForms(t *testing.T) {
++	matcher := newContentModerationKeywordMatcher([]string{"ignore previous instructions", "system prompt"})
++
++	keyword, hit := matcher.Match("ｉｇｎｏｒｅ　ｐｒｅｖｉｏｕｓ　ｉｎｓｔｒｕｃｔｉｏｎｓ")
++	require.True(t, hit)
++	require.Equal(t, "ignore previous instructions", keyword)
++
++	keyword, hit = matcher.Match("reveal the ｓｙｓｔｅｍ　ｐｒｏｍｐｔ")
++	require.True(t, hit)
++	require.Equal(t, "system prompt", keyword)
++}
++
+ func TestContentModerationKeywordMatcherRandomizedParity(t *testing.T) {
+ 	rng := rand.New(rand.NewSource(20260714))
+ 	const alphabet = "abcXYZ"
+diff --git a/backend/internal/service/jiyu_region.go b/backend/internal/service/jiyu_region.go
+new file mode 100644
+index 000000000..5244670e1
+--- /dev/null
++++ b/backend/internal/service/jiyu_region.go
+@@ -0,0 +1,17 @@
++package service
++
++import (
++	"os"
++	"strings"
++)
++
++// IsJiyuGroupAllowed keeps the region decision identical across user-facing
++// discovery endpoints and the shared API-key middleware.
++func IsJiyuGroupAllowed(country, description string) bool {
++	if os.Getenv("SUB2API_JIYU_REGION_ENFORCEMENT") != "1" {
++		return true
++	}
++	country = strings.ToUpper(strings.TrimSpace(country))
++	mainlandOrUnknown := country == "" || country == "CN" || len(country) != 2
++	return !mainlandOrUnknown || strings.Contains(strings.ToLower(description), "region=cn")
++}
+diff --git a/backend/internal/service/jiyu_region_test.go b/backend/internal/service/jiyu_region_test.go
+new file mode 100644
+index 000000000..d9f09bd97
+--- /dev/null
++++ b/backend/internal/service/jiyu_region_test.go
+@@ -0,0 +1,26 @@
++package service
++
++import "testing"
++
++func TestIsJiyuGroupAllowed(t *testing.T) {
++	t.Setenv("SUB2API_JIYU_REGION_ENFORCEMENT", "1")
++	tests := []struct {
++		name        string
++		country     string
++		description string
++		allowed     bool
++	}{
++		{name: "overseas_allows_global", country: "SG", allowed: true},
++		{name: "mainland_rejects_global", country: "CN", allowed: false},
++		{name: "mainland_allows_domestic", country: "CN", description: "REGION=CN", allowed: true},
++		{name: "unknown_rejects_global", country: "", allowed: false},
++		{name: "malformed_rejects_global", country: "CHN", allowed: false},
++	}
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			if got := IsJiyuGroupAllowed(tt.country, tt.description); got != tt.allowed {
++				t.Fatalf("IsJiyuGroupAllowed() = %v, want %v", got, tt.allowed)
++			}
++		})
++	}
++}
+

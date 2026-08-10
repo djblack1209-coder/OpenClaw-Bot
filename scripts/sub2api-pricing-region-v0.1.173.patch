@@ -1,0 +1,111 @@
+diff --git a/backend/internal/repository/account_repo.go b/backend/internal/repository/account_repo.go
+index 010442eb6..448b82dd2 100644
+--- a/backend/internal/repository/account_repo.go
++++ b/backend/internal/repository/account_repo.go
+@@ -15,6 +15,7 @@ import (
+ 	"database/sql"
+ 	"encoding/json"
+ 	"errors"
++	"fmt"
+ 	"strconv"
+ 	"strings"
+ 	"time"
+@@ -2712,9 +2713,97 @@ func (r *accountRepository) updateUpstreamBillingProbeSnapshotInTx(
+ 	if affected == 0 {
+ 		return service.ErrUpstreamBillingProbeIdentityChanged
+ 	}
++	if rateMultiplier != nil {
++		if err := syncUpstreamBillingTextGroupRates(ctx, client, account, *rateMultiplier); err != nil {
++			return err
++		}
++	}
+ 	return enqueueSchedulerOutbox(ctx, client, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, nil)
+ }
+ 
++// syncUpstreamBillingTextGroupRates keeps the single text group associated with
++// an account at the documented account-rate + 0.05 contract. A group is only
++// eligible when its current rate still matches the previous contract; this
++// preserves manually managed prices and user-specific overrides.
++func syncUpstreamBillingTextGroupRates(ctx context.Context, client *dbent.Client, account *service.Account, nextAccountRate float64) error {
++	if account == nil || nextAccountRate <= 0 {
++		return nil
++	}
++	if account.RateMultiplier == nil {
++		return nil
++	}
++	previousGroupRate := *account.RateMultiplier + 0.05
++	rows, err := client.QueryContext(ctx, `
++		SELECT g.id, g.rate_multiplier
++		FROM groups g
++		JOIN account_groups ag ON ag.group_id = g.id
++		WHERE ag.account_id = $1
++		  AND g.platform = $2
++		  AND g.status = 'active'
++		  AND COALESCE(g.allow_image_generation, false) = false
++		  AND g.rate_multiplier = $3::numeric
++		  AND NOT EXISTS (
++			SELECT 1 FROM user_group_rate_multipliers ugr
++			WHERE ugr.group_id = g.id
++			  AND (ugr.rate_multiplier IS NOT NULL OR ugr.rpm_override IS NOT NULL)
++		  )
++		  AND g.deleted_at IS NULL
++		FOR UPDATE`, account.ID, account.Platform, previousGroupRate)
++	if err != nil {
++		return err
++	}
++	defer func() { _ = rows.Close() }()
++	type groupRate struct {
++		id   int64
++		rate float64
++	}
++	groups := make([]groupRate, 0, 1)
++	for rows.Next() {
++		var item groupRate
++		if err := rows.Scan(&item.id, &item.rate); err != nil {
++			return err
++		}
++		groups = append(groups, item)
++	}
++	if err := rows.Err(); err != nil {
++		return err
++	}
++	if len(groups) != 1 {
++		return nil
++	}
++	newGroupRate := nextAccountRate + 0.05
++	result, err := client.ExecContext(ctx, `
++		UPDATE groups SET rate_multiplier = $1::numeric, updated_at = NOW()
++		WHERE id = $2 AND rate_multiplier = $3::numeric AND deleted_at IS NULL`, newGroupRate, groups[0].id, previousGroupRate)
++	if err != nil {
++		return err
++	}
++	affected, err := result.RowsAffected()
++	if err != nil {
++		return err
++	}
++	if affected != 1 {
++		return fmt.Errorf("upstream billing group rate CAS failed")
++	}
++	if err := enqueueSchedulerOutbox(ctx, client, service.SchedulerOutboxEventGroupChanged, nil, &groups[0].id, nil); err != nil {
++		return err
++	}
++	// Keep the audit record metadata-only: no account, credential, or model
++	// identifiers are persisted, and the request body remains empty.
++	detail, _ := json.Marshal(map[string]any{
++		"source":             "upstream_billing_probe",
++		"account_rate":       nextAccountRate,
++		"text_group_rate":    newGroupRate,
++		"rate_markup":        0.05,
++		"groups_updated":     1,
++		"manual_price_guard": true,
++	})
++	_, err = client.ExecContext(ctx, `
++		INSERT INTO audit_logs (created_at, actor_role, auth_method, action, method, path, request_body, status_code, latency_ms, extra)
++		VALUES (NOW(), 'system', 'internal', 'pricing.upstream_rate_sync', 'INTERNAL', '/internal/upstream-billing', '', 200, 0, $1::jsonb)`, string(detail))
++	return err
++}
++
+ func lockAndMatchProbeProxyIdentity(ctx context.Context, client *dbent.Client, account *service.Account) (bool, error) {
+ 	if account.ProxyID == nil {
+ 		return true, nil
+
