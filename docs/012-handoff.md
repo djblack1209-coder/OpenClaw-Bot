@@ -16,6 +16,11 @@
 - Cloudflare 官方门槛已核对：Load Balancing 是付费附加项；China Network 需要 Enterprise、单独订阅、ICP/许可和 JD Cloud 内容审核。项目不允许擅自升级付费套餐，故本轮只记录设计，不部署 Worker、DNS、Cloudflare 路由或中国服务。
 - 待用户处理：确认中国 origin 所属项目、域名和 ICP/许可；确认是否批准 Cloudflare 付费/Enterprise，或批准一次性评估 Worker 按 `request.cf.country` 代理方案；提供可回读的中国 origin 健康端点和回滚权限。
 
+## [2026-08-10] Cloudflare 控制台只读复核
+
+- 已通过现有 Chrome 登录态进入 `245334.xyz` 控制台；区域为 Business 套餐，当前 JIYU 的代理 DNS 记录只指向 Oracle Singapore，没有中国 JIYU origin 或现成地域路由。
+- 这消除了“Cloudflare 浏览器无法接管”的旧前置，不改变 China Network/Load Balancing 的套餐与合规门槛，也不授权修改 DNS、Worker 或共享中国主机。
+
 ---
 
 ## [2026-08-09] JIYU 地区分流实施前置已核实
