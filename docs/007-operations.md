@@ -1237,7 +1237,7 @@ tar -czf "data/backups/newapi-$(date +%Y%m%d-%H%M%S).tgz" data/newapi
 
 ### 2026-08-04 最终实测证据
 
-- `make ci-local` 的最终数字必须以命令末次输出和 `docs/086-release-evidence.md` 为准；该门现在包含 Python 双锁复算、受管 npm 审计、临时目录干净安装、Python/JIYU/桌面/Rust 全量测试、TypeScript、ESLint、Vite、覆盖率和文档真实性检查。
+- `make ci-local` 只用于本地回归，不替代生产结论；当前生产状态只维护在 `docs/current/current-baseline.md`。该命令包含 Python 双锁复算、受管 npm 审计、临时目录干净安装、Python/JIYU/桌面/Rust 测试、TypeScript、ESLint、Vite、覆盖率和文档真实性检查。
 - npm 三组审计与 `pip-audit` 均为 0；Gitleaks 扫描 859 个提交、约 55 MB 历史无泄漏；354 包完整性与 Linux/macOS Python 哈希锁复算通过。
 - `make tauri-build` 成功生成并安装 `OpenClaw.app` 和 DMG；构建脚本在删除旧 App 前先完成所有本地备份，任何备份不完整都保持旧安装不动；随后由 `codesign --verify --deep --strict`、`hdiutil verify`、`make tauri-rollback-check` 和唯一安装检查生成证据。
 - `/Applications` 只存在 `OpenClaw.app`，版本 `0.1.1`、Bundle ID `com.openclaw.manager`；0.1.1 与 0.1.0 的 CDHash 不同，已实测 `0.1.1 → 0.1.0 → 0.1.1` 双向交换并在每一步通过严格签名和回滚检查。清单同时记录源码补丁 SHA-256 与 DMG SHA-256；同指纹副本会被拒绝，不再计为有效回滚。真实安装包首屏截图见 `output/playwright/openclaw-installed-app-final.png`。当前签名为 ad-hoc 内测签名，未持有 Developer ID/公证凭据，因此不扩张为公开发行证据。

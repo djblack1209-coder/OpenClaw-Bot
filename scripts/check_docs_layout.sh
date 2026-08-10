@@ -161,12 +161,26 @@ for required_fact in \
   'MANAGED_MCP_PACKAGES' \
   'SUB2API_PAYMENT_REQUEST_TIMEOUT_MS' \
   'tag@sha256' \
-  'make clean-install-check' \
-  'docs/086-release-evidence.md'; do
+  'make clean-install-check'; do
   if ! search_fixed "$required_fact" "${AUTHORITATIVE_DOCS[@]:0:3}"; then
     report_failure "权威文档缺少当前发布门事实：$required_fact"
   fi
 done
+
+for current_fact in \
+  '生产运行时是唯一事实' \
+  '## 1. 已通过的真实生产检查' \
+  '## 3. 未修复问题及原因' \
+  '## 7. 新会话交接提示词'; do
+  if ! search_fixed "$current_fact" "$CURRENT_BASELINE"; then
+    report_failure "唯一当前基线缺少生产收口事实：$current_fact"
+  fi
+done
+
+if ! search_fixed '快照式发布报告已于 2026-08-10 退役' "$DOCS_DIR/086-release-evidence.md" || \
+   ! search_fixed 'docs/current/current-baseline.md' "$DOCS_DIR/086-release-evidence.md"; then
+  report_failure "历史发布证据入口没有稳定路由到唯一当前基线"
+fi
 
 # 对新增核心模块的登记行数做真实文件比对，避免注册表随重构静默漂移。
 check_registered_line_count() {

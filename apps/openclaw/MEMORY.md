@@ -3,7 +3,7 @@
 ## Stable Facts
 
 - Human should be addressed as **严总**.
-- Primary workspace is `~/Desktop/OpenClaw Bot`.
+- Primary workspace is the current OpenEverything repository; do not assume a fixed absolute path.
 - Preferred language is Chinese.
 
 ## 记忆索引系统 (2026-03-15 建立)

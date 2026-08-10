@@ -14,7 +14,7 @@ _Learn about the person you're helping. Update this as you go._
 
 ## Context
 
-- Main project: `~/Desktop/OpenClaw Bot`
+- Main project: the current OpenEverything repository (path-independent)
 - Core objective: keep OpenClaw gateway + ClawBot services stable and controllable from one native desktop app.
 - Investment objective language: if profit targets are missed, immediately enter recovery mode (diagnose, retrain, tighten risk, restart execution).
 - Communication preference: Chinese.
