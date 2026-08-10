@@ -17,6 +17,7 @@
 ### 验证
 - 本机严格健康、原生 Gateway 健康、App 严格签名、Oracle 管理器检查、Responses WebSocket、Cloudflare 控制台只读核对通过；本机新备份的恢复演练以及 Oracle 新备份的 SHA-256/PostgreSQL archive 校验通过。
 - Gateway 服务定义版本漂移、跨目录路径 fallback、卖家桥接真实小额单、实体手机、离机介质和中国双站前置保留为明确 P1/P2，不为消除审计提示重启健康服务。
+- GitHub 的 1 个中等级别 Rust 告警仍对应 GTK3/`glib 0.18` 上游兼容链；没有安全的单包升级路径，继续等待 Tauri/Wry 成套迁移。
 
 ## [2026-08-10] 修正中国/海外站点级分流目标
 > 领域: `infra` | `docs`
