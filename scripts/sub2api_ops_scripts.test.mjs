@@ -55,6 +55,13 @@ test('生产更新改为只检查，完整备份覆盖品牌与页面', async ()
   assert.match(content, /reload_apache_with_recovery "https:\/\/\$\{DOMAIN\}\/api\/status"/);
   assert.match(content, /api\.deepseek\.com/);
   assert.match(content, /api\.siliconflow\.cn/);
+  assert.match(content, /xianyu-fulfillment <bundle>/);
+  assert.match(content, /jiyu_xianyu_reserve_redeem_code/);
+  assert.match(content, /bridge\/server\.js/);
+  assert.match(content, /rsync -a --delete "\$\{bundle\}\/bridge\//);
+  assert.match(content, /FRIST_API_CARD_AUTOREPLENISH_ENABLED=0/);
+  assert.match(content, /find "\$FRIST_API_DIR" -mindepth 1 -delete/);
+  assert.match(content, /ROLLBACK;/);
   assert.match(content, /region-enforcement <enable\|disable>/);
   assert.match(content, /cn-production <pause\|resume>/);
   assert.match(content, /JIYU-CN-PRODUCTION-GATE-BEGIN/);
