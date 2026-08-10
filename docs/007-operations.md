@@ -5,7 +5,7 @@
 
 ## 2026-08-09 当前主站：JIYU AI（Sub2API 底座）
 
-当前用户主站 `https://jiyu.245334.xyz` 的对外品牌为 `JIYU AI`，运行基于官方 Sub2API `v0.1.172` 固定提交构建的 `v0.1.172-jiyu.31278104138`。JIYU 改动以仓库补丁固化，WebUI 只安装通过聚焦门和完整性清单的 JIYU 兼容包，不会用官方原版覆盖定制。
+当前用户主站 `https://jiyu.245334.xyz` 的对外品牌为 `JIYU AI`，运行基于官方 Sub2API `v0.1.173` 固定提交构建的 `v0.1.173-jiyu.31344140382`。JIYU 改动以仓库补丁固化，WebUI 只安装通过聚焦门和完整性清单的 JIYU 兼容包，不会用官方原版覆盖定制。
 
 ### 模型广场真实模型合同（2026-08-09）
 
@@ -66,7 +66,7 @@ make jiyu-sub2-replenish-dry-run
 
 ### 上游倍率探测与同步边界（2026-08-09）
 
-- Sub2 `v0.1.172` 原生 upstream billing probe 已在全局启用，当前每 30 分钟执行一次；系统允许的最短周期为 5 分钟。probe 只作为上游计费信号观察，不等于允许自动修改生产倍率。
+- Sub2 `v0.1.173` 原生 upstream billing probe 已在全局启用，当前每 30 分钟执行一次；系统允许的最短周期为 5 分钟。probe 只作为上游计费信号观察，JIYU 联动路径才会在同一事务内更新账号和唯一文本组，不等于允许手工修改生产倍率。
 - 12 个账号的 rate sync 均保持关闭。渠道A的 probe resolved 值会与已存账号倍率漂移；启用原生自动写回只会修改 `accounts.rate_multiplier`，不会同步修改对应用户分组。
 - 在业务确认定价策略以及账号/分组联动或写回后校验方案前，禁止直接开启任何账号的 rate sync；不得让原生写回静默破坏已批准的定价合同。本轮没有修改倍率、分组、账号或线路。
 - 当前支付设置、启用条件和回调边界以 `docs/029-jiyu-settings-and-payment-guide.md` 为准；未满足该文档的受控配置与验证条件时，保持支付关闭。
@@ -148,7 +148,7 @@ ssh oracle-arm1 'sudo /usr/local/sbin/openclaw-sub2api-manager confirm-cloudflar
 ssh oracle-arm1 'sudo /usr/local/sbin/openclaw-sub2api-manager rollback-cloudflare-origin-443'
 ```
 
-`update` 当前默认只检查。发布新的 JIYU 构建必须先从固定官方提交应用 `scripts/sub2api-jiyu-v0.1.172.patch`、完成聚焦验证和 ARM64 构建，再执行 `SUB2API_JIYU_VERSION=<version> openclaw-sub2api-manager install-jiyu-build <path>`。该命令会先备份并在健康失败时回滚；不要直接替换二进制或修改 Apache。
+`update` 当前默认只检查。发布新的 JIYU 构建必须先从固定官方提交应用对应版本的 `scripts/sub2api-jiyu-v<version>.patch`、完成聚焦验证和 ARM64 构建，再执行 `SUB2API_JIYU_VERSION=<version> openclaw-sub2api-manager install-jiyu-build <path>`。该命令会先备份并在健康失败时回滚；不要直接替换二进制或修改 Apache。当前生产已在 v0.1.173。
 
 WebUI 更新方案 A 已在仓库和生产启用：`.github/workflows/sub2api-jiyu-compat.yml` 只发布通过补丁、类型检查、嵌入式前端根页和聚焦测试的 ARM64 兼容包及 SHA-256 清单；首个基础版使用不可变 `jiyu-vX.Y.Z` 标签，同一上游版本的手动修订使用不可变 `jiyu-vX.Y.Z-r<run_id>`，旧发布和旧工件不覆盖；定时任务看到已适配基础版仍直接跳过。`jiyu-latest` 只移动清单且清单始终引用不可变工件。`scripts/sub2api_jiyu_update_broker.sh` 不接受任何浏览器参数，只读取 root 管理的清单并调用 `stage-jiyu-build`。版本面板对 JIYU 构建始终显示“检查并安装”，代理按完整 `vX.Y.Z-jiyu.<run_id>` 比较；相同构建固定返回“已是最新”，不会下载或重启。应用进程保留 `NoNewPrivileges`，只允许通过 `/run/sub2api-jiyu-update.sock` 连接 systemd 按需启动的固定 root 代理；套接字仅 `root:sub2api` 可读写，服务端状态协议只接受 `noop`、`staged`、`error`，旧 sudoers 会在启用时删除。Sub2API unit 使用 `Restart=always`，因此 WebUI 的正常退出重启会自动拉起新进程；暂存时会另起独立 systemd 验证任务，管理员点击重启后，该任务核对正在运行的二进制哈希和 `/health`，失败自动恢复二进制、VERSION 与 PostgreSQL，10 分钟未重启也会撤销暂存。禁止恢复官方裸二进制更新路径。
 

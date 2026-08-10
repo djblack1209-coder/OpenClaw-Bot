@@ -9,18 +9,18 @@
 | 类型 | 唯一事实源 / 入口 | 当前合同 |
 |---|---|---|
 | 对外品牌 | `JIYU AI` / `Unified AI API Gateway` | 通过 Sub2API OEM `site_name`、`site_subtitle` 保存到 PostgreSQL；登录页、首页、侧边栏和浏览器标题统一读取该设置 |
-| 生产底座 | Oracle `jiyu.245334.xyz` / `sub2api.service` | 基于官方 Sub2API `v0.1.172` 固定提交构建的 `v0.1.172-jiyu.31328941240` ARM64 二进制；JIYU 补丁可从官方提交重复应用，主进程只绑定 `127.0.0.1:18080` |
+| 生产底座 | Oracle `jiyu.245334.xyz` / `sub2api.service` | 基于官方 Sub2API `v0.1.173` 固定提交构建的 `v0.1.173-jiyu.31344140382` ARM64 二进制；JIYU 补丁可从官方提交重复应用，主进程只绑定 `127.0.0.1:18080` |
 | 数据库 | PostgreSQL 16 `sub2api` | 独立角色、独立数据库；首次安装不导入 New-API 用户、Key、渠道、兑换码、日志或上游凭据；当前只保留 1 个管理员 |
 | 缓存 | `sub2api-redis.service` | 专用 Redis 7 实例，绑定 `127.0.0.1:16379`，密码只保存在 Oracle `/etc/sub2api/sub2api.env` |
 | 管理脚本 | `scripts/sub2api_oracle_manage.sh` / Oracle `/usr/local/sbin/openclaw-sub2api-manager` | `install-jiyu-build <path>` 用于完整发布；`stage-jiyu-build <path>` 原子暂存已校验二进制，并调度独立 systemd 任务在 WebUI 重启后核对运行哈希和健康状态；`pricing-fallback` 校验并原子安装官方模型价格回退资源；`region-headers` 收口 Cloudflare 地域头信任边界；`recharge-center` 原子维护最小回退页和精确 `frame-src`；`enable-web-update <broker> <manifest-url>` 安装固定 root 更新代理 |
-| 自动更新 | `.github/workflows/sub2api-jiyu-compat.yml` + `scripts/sub2api_jiyu_update_broker.sh` + `sub2api-update.timer` | CI 从官方稳定标签构建带 JIYU 补丁的 ARM64 兼容包并生成 SHA-256 清单；定时任务跳过已适配基础版，手动同版本修订发布为不可变 `-r<run_id>` 标签，旧工件不覆盖。WebUI 后端只能无参数调用 root 代理下载、校验和暂存。当前生产 `v0.1.172-jiyu.31328941240` 已启用受管 WebUI 更新 |
+| 自动更新 | `.github/workflows/sub2api-jiyu-compat.yml` + `scripts/sub2api_jiyu_update_broker.sh` + `sub2api-update.timer` | CI 从官方稳定标签构建带 JIYU 补丁的 ARM64 兼容包并生成 SHA-256 清单；当前兼容基线只允许 `v0.1.172`/`v0.1.173`，未知上游标签失败关闭。当前生产 `v0.1.173-jiyu.31344140382` 已启用受管更新 |
 | 自动备份 | `sub2api-backup.timer` / `sub2api-backup.service` | 每日 03:40（Asia/Singapore，随机延迟 15 分钟）备份 PostgreSQL、二进制、版本和 root-only 环境文件；本地 `/var/backups/sub2api` 保留 30 天 |
 | 管理员账号 | 受控身份，不记录标识 | 当前唯一管理员；密码不写仓库，已存入 macOS 钥匙串服务“CC中转 Sub2API 管理员” |
 | 凭据保管 | Oracle `/etc/sub2api/sub2api.env` + 本机钥匙串 | Oracle env `0600 root-only`；修改管理员密码后同步更新这两处并做真实登录验证 |
 | 旧底座清理 | Oracle、腾讯云、R2 | Oracle/Tencent 旧 New-API 数据目录、SQLite/容器/镜像、systemd 服务和同名本地备份已删除；旧 R2 加密对象已删除并重建为只含 JIYU runtime/application.env 的新备份 |
 | 图形 Logo | `scripts/assets/jiyu-ai-logo-email.png` / `/api/v1/pages/docs/images/jiyu-ai-logo.png` | 512×512 PNG，源自选定的 2K JY 标志；站内继续使用 2K 等比图形，验证码、通知邮箱和运维告警模板通过同域公开 PNG 加载 |
 | 文档入口 | `/custom/docs` / `md:docs` | 左侧“文档”提供 CC Switch v3.19.2 三平台下载和全部官方版本入口；四个入口使用桌面四列、窄屏两列的同宽网格。创建密钥时按 Claude/OpenAI 展示根端点或 `/v1`，并默认在创建后立即导入 CC Switch |
-| 定制补丁 | `scripts/sub2api-jiyu-v0.1.172.patch` | 固定应用到官方 `v0.1.172` 提交；覆盖品牌隐私、账号列表供货域名隐藏、标题/版本徽标、创建密钥端点引导、CC Switch、充值中心固定公开嵌入和公告空状态 |
+| 定制补丁 | `scripts/sub2api-jiyu-v0.1.173.patch` | 当前生产补丁；`v0.1.172` 对应补丁仍保留用于可恢复发布。覆盖品牌隐私、账号列表供货域名隐藏、标题/版本徽标、创建密钥端点引导、CC Switch、充值中心固定公开嵌入和公告空状态 |
 | 历史渠道迁移 | `scripts/sub2api_configure_jiyu_channels.mjs` | 只保留为可从 Git 恢复的数据库迁移材料；其前置基线固定为 6 个聚合渠道、目标为 10 个一对一渠道，当前 16 渠道生产态不得再次执行 |
 
 ### JIYU AI 上游、分组与渠道注册
@@ -31,7 +31,7 @@
 |---|---|
 | 渠道家族 | 两个匿名渠道家族 |
 | 业务渠道 | 16 条 active 业务渠道，其中 4 条只服务 `region=cn` 国内分组 |
-| 监控 | 10 条原有主动监控保持启用；4 条国内渠道不新增会计费的周期性模型调用 |
+| 监控 | Channel Monitor V2 被动聚合已启用；10 条原主动监控记录保留但不再运行，4 条国内渠道不新增会计费的周期性模型调用 |
 | 自营 Plus/Pro 池 | 两个自营号池当前均无库存 |
 | 定价与供应 | 内部定价由所有者控制；公式、数值及渠道供应商数据不得进入文档或用户 UI |
 | 原生账号费率回写 | 保持禁用，因其无法保留已批准的业务合同 |
@@ -43,7 +43,7 @@
 | SMTP | Gmail `smtp.gmail.com:587` + TLS；用户名、发件邮箱均为管理员邮箱，应用密码只保存在服务器加密设置，不写仓库 |
 | 邮箱绑定 | 个人资料提供“管理邮箱 → 发送验证码 → 更换主邮箱”；开放注册仍关闭，注册邮箱验证已开启，新用户默认余额 `0`、并发 `5`、RPM `60` |
 | 邮件模板 | `auth.verify_code`、`notification_email.verify_code`、`ops.alert` 中文模板均使用 JY 图形 Logo；验证码模板明确绑定用途、验证码和有效期 |
-| 登录条款 | 2026-08-07 生效；弹窗强制确认；中国大陆 IP 只显示国内模型，境外 IP 显示全部模型；技术分流完成真实回读前，页面明确以线上目录/API 为准；其他制裁、出口管制或上游服务限制仍适用 |
+| 登录条款 | 2026-08-07 生效；弹窗强制确认；目标为中国大陆 IP 指向中国站点、其他 IP 指向海外站点；中国站点前置条件未满足前，线上仍由海外唯一事实源提供服务并执行模型地域限制；其他制裁、出口管制或上游服务限制仍适用 |
 
 ---
 
