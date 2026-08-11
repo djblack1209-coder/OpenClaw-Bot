@@ -154,7 +154,6 @@ const MODULE_COLORS: Record<string, string> = {
   Channel: '#fb923c',
   Setup: '#22d3ee',
   Dashboard: '#a3e635',
-  Testing: '#e879f9',
   API: '#fbbf24',
 };
 
@@ -276,7 +275,6 @@ export const aiLogger = createLogger('AI');
 export const channelLogger = createLogger('Channel');
 export const setupLogger = createLogger('Setup');
 export const dashboardLogger = createLogger('Dashboard');
-export const testingLogger = createLogger('Testing');
 export const apiLogger = createLogger('API');
 
 // 在控制台暴露日志控制函数

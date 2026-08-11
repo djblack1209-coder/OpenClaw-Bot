@@ -10,7 +10,7 @@
 
 | 编号 | 分类 | 严重度 | 状态 | 当前结论 |
 |---|---|---|---|---|
-| JIYU-20260810-R2-ASYNC | `BACKUP/AI_POOL/SECURITY` | 🟢 已关闭 | 生产已闭环 | JIYU 专用私有 R2 已用于 Sub2API 原生数据库备份和异步生图对象存储；首份对象完成下载、校验、gzip SQL 解析与临时 PostgreSQL 恢复，共 96 张表。中央 MCP 已切到原生异步端点，真实 SDK 调用可完成 202 提交和终态轮询；当前终态失败源于上游渠道权限/模型支持，不是 R2 或 MCP 故障，未产生成功图片对象或费用。 |
+| JIYU-20260810-R2-ASYNC | `BACKUP/AI_POOL/SECURITY` | 🟢 已关闭 | 原生存储已闭环，MCP 已退役 | JIYU 专用私有 R2 已用于 Sub2API 原生数据库备份和异步生图对象存储；首份对象完成下载、校验、gzip SQL 解析与临时 PostgreSQL 恢复，共 96 张表。2026-08-11 因中央 MCP 没有生产服务调用者且增加客户端配置面，已备份后移除；原生异步 API 与 R2 不受影响。当前图片成功链仍受上游渠道权限/模型支持阻断，未产生成功图片对象或费用。 |
 | XIANYU-20260810-INVENTORY-SOURCE | `XIANYU/ORDER/ARCH` | 🟢 已关闭 | 公开售卖边界已收口 | 故障原因是旧 Frist-API `runtime.json` 卡池与 Sub2API 库存事实源分裂：旧卡池可分配数为 0，而 Sub2API 有 807 张八档未使用兑换码。已将受管 webhook 改为 PostgreSQL 原子领取/幂等重试/换码，生产回读 `reservations=0`、`stock=807`、健康 200、未授权 401、未付款 409；旧 SQLite/New-API 卡池和完整公有中转实现已从运行时与源码退役。真实付费小单仍需浏览器操作时确认，自动发货保持暂停。 |
 | JIYU-20260810-PROD-CLOSE | `DEPLOY/AI_POOL/SECURITY` | 🟢 已关闭 | 生产已闭环 | Oracle 已运行 `v0.1.173-jiyu.31344140382`；Channel Monitor 按用户要求从 V2 被动聚合恢复为 V1 主动探测（用户产品选择，不是阻塞项），V2 配置和历史保留；四家国内 `/models` 零费用回读 200，精确映射 2/4/8/61，倍率合同错误 0；CN/SG/未知地域为 403/200/403；Prompt Audit 无专用安全分类模型保持关闭；发布后完整备份已生成。一次 `/v1/usage` 探针更新 `last_used_at` 已按 prestate 恢复，后续禁止把它当作无副作用探针。 |
 
@@ -85,7 +85,7 @@
 | HI-993 | `OPS` | 🟠 重要 | 余额提醒已启用，账号限额待确认 | 8 条运维告警规则与 SMTP 保持启用；余额不足邮件提醒已开启，默认阈值 `$1`，按钮指向同源充值中心。账号限额通知和通知邮箱列表仍保持原值，需先确认收件人、去重与静默窗口，避免直接打开造成邮件轰炸。 |
 | HI-994 | `DEPLOY/ARCH_LIMIT` | 🟠 重要 | 线上已关闭 | 旧 Apache 拦截曾把更新错误截成 `status c`。现生产已启用 CI 兼容包、`jiyu-latest` 移动清单、SHA-256/大小/架构校验、root 管理的 systemd Unix 激活套接字、原子暂存与独立哈希/健康验证；应用继续保留 `NoNewPrivileges`，旧 sudoers 已删除。GitHub Actions `31265860057` 的不可变修订已通过相同受管链安装为 `v0.1.172-jiyu.31265860057`，运行哈希、PostgreSQL、内外健康与 Responses WebSocket 均通过且未回滚。定时任务跳过已适配基础版；同上游版本的手动修订使用不可变 `-r<run_id>` 发布。 |
 | HI-995 | `AI_POOL/BUSINESS` | 🟠 重要 | 渠道已建，上游阻塞 | 两个匿名生图分组、账号、渠道和 300±30 秒监控配置均已建立，仅开放 `gpt-image-2`。渠道A按上游 `0.05/张` 定价 `0.10/张`，真实调用返回 `502 Upstream access forbidden`；渠道B高质量组按 `0.07/张` 定价 `0.12/张`，专用 Key 返回 `401 invalid token`。两条监控保持禁用，不伪造绿色、不持续付费探测。 |
-| HI-996 | `BUG/SECURITY` | 🟠 重要 | 本机运行时已重建，专用站内 Key 待创建 | 已删除 CC Switch 中两个指向缺失脚本的旧条目，安装基于官方 MCP SDK `1.30.0` 的 `jiyu-ai-image` stdio MCP，并同步 Claude、Codex、OpenCode；该版本修复 `1.29.0` 传递依赖的中危路径穿越公告，生产依赖审计为 0。MCP 只允许 JIYU 固定域名、单图、20 MiB 上限且付费 POST 不自动重试；当前钥匙串未配置站内生图专用 Key，因此失败关闭，待上游 502/401 修复后做一次真实单图验收。 |
+| HI-996 | `BUG/SECURITY` | 🟢 已关闭 | 中央 MCP 已退役 | 2026-08-11 复核确认该 stdio MCP 只有 CC Switch 客户端注入，没有生产服务调用者。删除前已生成受保护的 CC Switch 数据库和安装目录回滚副本；随后移除 CC Switch 记录、本机安装目录、安装器、源码和专用教程。Claude、Codex、OpenCode 活动配置无残留，钥匙串凭据保留但没有调用者。 |
 | HI-997 | `SECURITY` | 🟡 一般 | 剩余 1 项上游架构风险 | main 推送回执从 31 项降至 9、3，最终只剩 Tauri 最新 `2.11.5` 在 Linux 目标锁入的 `glib 0.18.5` 中危；可直接修复的 `h2/hpack/pypdf/js-yaml/nanoid` 均已升级。`glib 0.20` 需要 GTK/Tauri 依赖链迁移，当前 macOS 生产目标不执行该 Linux 路径，本轮不为清零数字强升 GUI 栈。 |
 | HI-998 | `FRONTEND/BUG` | 🟡 一般 | 线上已关闭 | 管理端和用户“渠道状态”现复用同一排序器，生产真实重载顺序为 `AAAAABBBBB`，没有静态绿灯。 |
 | HI-999 | `CI/BUG` | 🟡 一般 | 远端已关闭 | 兼容包遗漏新文件、ShellCheck `SC2155`、Ruff `F841` 和桌面端两个高危公告均已修；OpenClaw CI `31237915263` 的 5 个作业全部成功，JIYU 兼容包 CI `31237926226` 成功并发布 108,200,098 字节 ARM64 嵌入式前端工件。 |

@@ -137,6 +137,8 @@ test('Provider、模型和渠道配置始终在跨进程事务内读改写', () 
 test('停止服务只能使用管理器 PID 记录并核验进程身份', () => {
   const service = read('apps/openclaw-manager-src/src-tauri/src/commands/service.rs');
   const clawbot = read('apps/openclaw-manager-src/src-tauri/src/commands/clawbot.rs');
+  const bots = read('apps/openclaw-manager-src/src/components/Bots/index.tsx');
+  const systemRouter = read('packages/clawbot/src/api/routers/system.py');
 
   assert.match(service, /read_managed_gateway_pid/);
   assert.match(service, /verify_managed_gateway_pid/);
@@ -152,10 +154,14 @@ test('停止服务只能使用管理器 PID 记录并核验进程身份', () => 
   assert.match(clawbot, /prepare_managed_script/);
   assert.match(clawbot, /reap_fallback_process/);
   assert.match(clawbot, /MANAGED_SERVICE_OPERATION_LOCK/);
+  assert.match(clawbot, /ai\.openclaw\.cc-seller-bridge/);
   assert.match(clawbot, /format_env_assignment/);
   assert.match(clawbot, /wait\\n/);
   assert.doesNotMatch(clawbot, /IBKR_DEFAULT_STOP_CMD|get_default_ibkr_stop_cmd/);
   assert.doesNotMatch(clawbot, /find_pid_by_port/);
+  assert.match(bots, /api\.getManagedServicesStatus\(\)/);
+  assert.match(bots, /api\.controlManagedService/);
+  assert.doesNotMatch(systemRouter, /@router\.post\("\/system\/services\/\{service_id\}\/(?:start|stop)"\)/);
   const shell = read('apps/openclaw-manager-src/src-tauri/src/utils/shell.rs');
   assert.doesNotMatch(shell, /apps\/openclaw-cli/);
 });

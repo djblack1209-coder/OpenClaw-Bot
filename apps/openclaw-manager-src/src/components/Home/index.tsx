@@ -75,7 +75,7 @@ export interface LogEntry {
 const quickActions: { labelKey: string; icon: React.ElementType; page: PageType; accent: string }[] = [
   { labelKey: 'home.action.investAnalysis', icon: TrendingUp, page: 'portfolio', accent: 'var(--accent-green)' },
   { labelKey: 'home.action.socialPost', icon: Share2, page: 'social', accent: 'var(--accent-purple)' },
-  { labelKey: 'home.action.xianyuManage', icon: Fish, page: 'xianyu', accent: 'var(--accent-amber)' },
+  { labelKey: 'home.action.xianyuManage', icon: Fish, page: 'bots', accent: 'var(--accent-amber)' },
   { labelKey: 'home.action.aiChat', icon: MessageSquare, page: 'assistant', accent: 'var(--accent-cyan)' },
   { labelKey: 'home.action.marketScan', icon: ScanSearch, page: 'finradar', accent: 'var(--accent-red)' },
   { labelKey: 'home.action.settings', icon: Settings, page: 'settings', accent: 'var(--text-secondary)' },
@@ -356,7 +356,7 @@ export function HomeDashboard() {
         <motion.div className="col-span-12 md:col-span-6 lg:col-span-4" variants={cardVariants}>
           <div
             className="abyss-card p-6 h-full cursor-pointer"
-            onClick={() => setCurrentPage('xianyu')}
+            onClick={() => setCurrentPage('bots')}
           >
             <span className="text-label" style={{ color: 'var(--accent-amber)' }}>
               {t('home.xianyuAiLabel')}

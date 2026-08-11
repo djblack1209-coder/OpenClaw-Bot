@@ -158,7 +158,7 @@ WebUI 更新方案 A 已在仓库和生产启用：`.github/workflows/sub2api-ji
 
 - Sub2API 已原生提供 `POST /v1/images/generations` 和图片权限/计价能力，不需要另建一套公网生图网关。
 - 两个上游生图入口已在用户侧匿名为 `JIYU 生图 · 渠道A`、`JIYU 生图 · 渠道B`，分别使用独立账号、分组、渠道和监控；两个分组开启生图权限和独立 1x 图片倍率。
-- 本机已用 `scripts/install_jiyu_image_mcp.sh` 将两个失效 MCP 条目替换为 `JIYU AI 生图`，同步到 Claude、Codex 和 OpenCode；Key 只从 macOS 钥匙串服务“JIYU AI 生图 API Key”读取。新手步骤见 `docs/087-jiyu-image-mcp-guide.md`。
+- 2026-08-11 已按最终简化决定移除 `JIYU AI 生图` 中央 MCP、CC Switch 条目和本机安装目录。Claude、Codex、OpenCode 不再注入该工具；原生支持异步图片 API 的客户端直接调用 Sub2API。钥匙串中的旧 Key 仅作为不可逆删除前的本机回滚材料保留，没有活动调用者。
 - 生图价格使用上游每张价格绝对增加 `$0.05`。渠道B高画质上游价为 `$0.07/次`，站内为 `$0.12/张`；渠道A请求返回 502、渠道B令牌返回 401，恢复前监控和健康记录必须保持真实异常，不执行连续付费重试。
 
 ### 闲鱼运营边界

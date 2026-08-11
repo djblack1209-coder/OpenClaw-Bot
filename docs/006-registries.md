@@ -239,13 +239,10 @@
 
 ---
 
-## JIYU AI 运维与本机 MCP 入口
+## JIYU AI 运维入口
 
 | 入口 | 命令 | 说明 |
 |---|---|---|
-| 生图 MCP 安装 | `scripts/install_jiyu_image_mcp.sh install` | 安装锁定依赖、固定调用 Sub2API 原生异步生图端点的中央 stdio MCP，清理两个失效旧条目，并同步到 CC Switch 的 Claude、Codex、OpenCode；用户无需自行封装 MCP |
-| 生图 Key | `scripts/install_jiyu_image_mcp.sh set-key` | 隐藏输入后写入 macOS 钥匙串服务“JIYU AI 生图 API Key”，脚本和 CC Switch 数据库均不保存明文 |
-| 生图 MCP 状态 | `scripts/install_jiyu_image_mcp.sh status` | 只返回安装文件、CC Switch 条目和钥匙串三项布尔状态，不回显 Key |
 | 兼容包暂存 | `scripts/sub2api_oracle_manage.sh stage-jiyu-build <path>` | root 发布内部入口；备份后原子替换磁盘二进制与 VERSION，不直接杀死正在服务的进程，并创建独立验证任务 |
 | 兼容包验证 | `scripts/sub2api_oracle_manage.sh verify-jiyu-stage` | 仅供 systemd 内部调用；重启后校验运行中 `/proc/<pid>/exe` 哈希与 `/health`，失败或超时自动恢复发布前二进制、VERSION 和数据库 |
 | WebUI 更新启用 | `scripts/sub2api_oracle_manage.sh enable-web-update <broker> <manifest-url>` | 安装固定 root 代理、root-only 清单 URL、最小 sudoers 和 systemd 环境；完成健康检查后才放开受管更新接口 |

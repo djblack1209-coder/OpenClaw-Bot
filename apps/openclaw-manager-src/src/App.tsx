@@ -26,12 +26,10 @@ const ControlCenter = lazy(() => import('./components/ControlCenter').then(m => 
 const AIConfig = lazy(() => import('./components/AIConfig').then(m => ({ default: m.AIConfig })));
 const Channels = lazy(() => import('./components/Channels').then(m => ({ default: m.Channels })));
 const Social = lazy(() => import('./components/Social').then(m => ({ default: m.Social })));
-const Xianyu = lazy(() => import('./components/Xianyu').then(m => ({ default: m.Xianyu })));
 const Money = lazy(() => import('./components/Money').then(m => ({ default: m.Money })));
 const Dev = lazy(() => import('./components/Dev').then(m => ({ default: m.Dev })));
 const DevPanel = lazy(() => import('./components/DevPanel'));
 const Settings = lazy(() => import('./components/Settings').then(m => ({ default: m.Settings })));
-const Testing = lazy(() => import('./components/Testing').then(m => ({ default: m.Testing })));
 const Logs = lazy(() => import('./components/Logs').then(m => ({ default: m.Logs })));
 const ExecutionFlow = lazy(() => import('./components/ExecutionFlow').then(m => ({ default: m.ExecutionFlow })));
 const Memory = lazy(() => import('./components/Memory').then(m => ({ default: m.Memory })));
@@ -78,25 +76,23 @@ export type PageType =
   /* 智能体 */
   | 'bots'           // 我的机器人
   | 'store'          // Bot 商店
-  /* 运营中心 */
-  | 'xianyu'         // 闲鱼管理
   | 'onboarding'     // 引导流程（仅首次启动）
   /* 原有页面（开发者模式） */
   | 'control' | 'dashboard' | 'ai' | 'channels' | 'social' | 'money'
-  | 'dev' | 'devpanel' | 'testing' | 'logs' | 'settings' | 'flow' | 'plugins'
+  | 'dev' | 'devpanel' | 'logs' | 'settings' | 'flow'
   | 'memory' | 'evolution' | 'gateway' | 'scheduler' | 'perf';
 
 const VALID_PAGES = new Set<PageType>([
   'home', 'assistant', 'notifications', 'worldmonitor', 'newsfeed', 'finradar',
-  'portfolio', 'trading', 'risk', 'bots', 'store', 'xianyu', 'onboarding',
+  'portfolio', 'trading', 'risk', 'bots', 'store', 'onboarding',
   'control', 'dashboard', 'ai', 'channels', 'social', 'money', 'dev',
-  'devpanel', 'testing', 'logs', 'settings', 'flow', 'plugins', 'memory',
+  'devpanel', 'logs', 'settings', 'flow', 'memory',
   'evolution', 'gateway', 'scheduler', 'perf',
 ]);
 
 const DEV_PAGES = new Set<PageType>([
   'control', 'dashboard', 'ai', 'channels', 'money', 'dev', 'devpanel',
-  'testing', 'logs', 'flow', 'plugins', 'memory', 'evolution', 'gateway',
+  'logs', 'flow', 'memory', 'evolution', 'gateway',
   'scheduler', 'perf',
 ]);
 
@@ -130,7 +126,6 @@ function App() {
   const setCurrentPage = useAppStore((s) => s.setCurrentPage);
   const isReady = useAppStore((s) => s.isReady);
   const setIsReady = useAppStore((s) => s.setIsReady);
-  const envStatus = useAppStore((s) => s.envStatus);
   const setEnvStatus = useAppStore((s) => s.setEnvStatus);
   const serviceStatus = useAppStore((s) => s.serviceStatus);
   const setServiceStatus = useAppStore((s) => s.setServiceStatus);
@@ -200,11 +195,6 @@ function App() {
     return () => clearInterval(interval);
   }, [setServiceStatus]);
 
-  const handleSetupComplete = useCallback(() => {
-    appLogger.info('安装向导完成');
-    checkEnvironment();
-  }, [checkEnvironment]);
-
   // 页面切换处理 — 支持导航守卫（如 Settings 页未保存提示）
   const handleNavigate = (page: PageType) => {
     const guard = useAppStore.getState().navigationGuard;
@@ -245,22 +235,18 @@ function App() {
         /* 智能体 */
         case 'bots': return wrap('我的机器人', <Bots />);
         case 'store': return wrap('Bot 商店', <Store />);
-        /* 运营中心 */
-        case 'xianyu': return wrap('闲鱼管理', <Xianyu />);
         case 'onboarding': return wrap('引导', <Onboarding onComplete={() => { setOnboardingComplete(true); setCurrentPage('home'); }} />);
         /* 原有页面（开发者模式） */
         case 'control': return wrap('控制中心', <ControlCenter />);
-        case 'dashboard': return wrap('仪表盘', <Dashboard envStatus={envStatus} onSetupComplete={handleSetupComplete} />);
+        case 'dashboard': return wrap('仪表盘', <Dashboard />);
         case 'flow': return wrap('执行流', <ExecutionFlow />);
         case 'memory': return wrap('记忆', <Memory />);
-        case 'plugins': return wrap('插件', <Store />);
         case 'ai': return wrap('AI 配置', <AIConfig />);
         case 'channels': return wrap('频道', <Channels />);
         case 'social': return wrap('社媒', <Social />);
         case 'money': return wrap('财务', <Money />);
         case 'dev': return wrap('开发', <Dev />);
         case 'devpanel': return wrap('开发者工作台', <DevPanel />);
-        case 'testing': return wrap('测试', <Testing />);
         case 'logs': return wrap('日志', <Logs />);
         case 'settings': return wrap('设置', <Settings onEnvironmentChange={checkEnvironment} />);
         case 'evolution': return wrap('进化', <Evolution />);
