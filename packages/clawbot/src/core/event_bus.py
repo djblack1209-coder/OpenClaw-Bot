@@ -75,9 +75,6 @@ class EventType:
     GATEWAY_MESSAGE = "gateway.message"
     GATEWAY_CALLBACK = "gateway.callback"
 
-    # 闲鱼事件
-    XIANYU_ORDER_PAID = "xianyu.order_paid"          # 闲鱼订单支付
-
     # 预算事件
     BUDGET_EXCEEDED = "life.budget_exceeded"          # 预算超支
 

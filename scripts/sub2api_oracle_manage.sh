@@ -53,12 +53,6 @@ readonly PRICING_FALLBACK_HASH_URL="https://raw.githubusercontent.com/Wei-Shaw/m
 readonly PRICING_FALLBACK_DIR="${INSTALL_DIR}/resources/model-pricing"
 readonly PRICING_FALLBACK_FILE="${PRICING_FALLBACK_DIR}/model_prices_and_context_window.json"
 readonly PRICING_FALLBACK_HASH_FILE="${PRICING_FALLBACK_DIR}/model_prices_and_context_window.sha256"
-readonly FRIST_API_DIR="/opt/frist-api/apps/frist-api"
-readonly FRIST_API_ENV="/etc/frist-api/frist-api.env"
-readonly FRIST_API_SERVICE="frist-api.service"
-readonly FRIST_API_BACKUP_ROOT="/var/backups/frist-api"
-readonly FRIST_API_HEALTH_URL="http://127.0.0.1:3180/"
-readonly FRIST_API_XIANYU_ROLE="frist_xianyu"
 
 log() {
   printf '[Sub2API] %s\n' "$*"
@@ -166,17 +160,6 @@ wait_for_health() {
   local index
   for ((index = 1; index <= attempts; index += 1)); do
     if curl -fsS --max-time 3 "$HEALTH_URL" >/dev/null 2>&1; then
-      return 0
-    fi
-    sleep 2
-  done
-  return 1
-}
-
-wait_for_frist_api() {
-  local attempts="${1:-30}" index
-  for ((index = 1; index <= attempts; index += 1)); do
-    if curl -fsS --max-time 3 "$FRIST_API_HEALTH_URL" >/dev/null 2>&1; then
       return 0
     fi
     sleep 2
@@ -1049,168 +1032,6 @@ daily_backup() {
   backup_database "$backup_dir"
   find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -name 'daily-*' -mtime +30 -exec rm -rf -- {} +
   log "Sub2API 一致性备份已保存到 ${backup_dir}。"
-}
-
-deploy_xianyu_fulfillment() {
-  require_root
-  require_linux
-  local bundle="${2:-}" timestamp backup_dir role_password env_staged db_url_line reservation_before reservation_after reservation_current unused_before unused_after webhook_token schema_before role_before unauth_status unpaid_status probe_attempt role_created=false
-  [[ -d "$bundle" && -f "${bundle}/SHA256SUMS" ]] || fail "缺少闲鱼履约发布工件或校验清单。"
-  (
-    cd "$bundle"
-    sha256sum -c SHA256SUMS >/dev/null
-  ) || fail "闲鱼履约发布工件校验失败。"
-  for required_file in \
-    bridge/server.js bridge/sub2ApiRedeemStore.js package.json package-lock.json \
-    migrations/jiyu_xianyu_redeem_reservations.sql; do
-    [[ -s "${bundle}/${required_file}" ]] || fail "履约工件缺少 ${required_file}。"
-  done
-  [[ -d "${bundle}/node_modules/pg" ]] || fail "履约工件缺少锁定的 pg 运行依赖。"
-  [[ -d "$FRIST_API_DIR" && -f "$FRIST_API_ENV" ]] || fail "Frist API 生产目录或环境文件不存在。"
-  if systemctl is-active --quiet "$FRIST_API_SERVICE" && wait_for_frist_api 5; then
-    log "Frist API 发布前健康检查: 通过。"
-  else
-    log "Frist API 当前不可用；继续执行仅限本次受控履约恢复发布。"
-  fi
-  grep -q '^FRIST_API_XIANYU_WEBHOOK_TOKEN=.' "$FRIST_API_ENV" || fail "闲鱼低权限 webhook token 未配置。"
-  postgresql_preflight
-
-  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
-  backup_dir="${FRIST_API_BACKUP_ROOT}/xianyu-sub2api-${timestamp}"
-  install -d -m 0700 -o root -g root "$backup_dir"
-  backup_database "${backup_dir}/sub2api"
-  cp -a "$FRIST_API_DIR" "${backup_dir}/app"
-  cp -a "$FRIST_API_ENV" "${backup_dir}/frist-api.env"
-  systemctl cat "$FRIST_API_SERVICE" >"${backup_dir}/frist-api.service"
-  find "$backup_dir" -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum >"${backup_dir}/SHA256SUMS"
-  chmod -R go-rwx "$backup_dir"
-
-  schema_before="$(runuser -u postgres -- psql -d sub2api -Atc "SELECT CASE WHEN to_regclass('public.xianyu_redeem_reservations') IS NULL THEN 0 ELSE 1 END")"
-  role_before="$(runuser -u postgres -- psql -d sub2api -Atc "SELECT count(*) FROM pg_roles WHERE rolname='${FRIST_API_XIANYU_ROLE}'")"
-  reservation_before=0
-  if [[ "$schema_before" == "1" ]]; then
-    reservation_before="$(runuser -u postgres -- psql -d sub2api -Atc "SELECT count(*) FROM public.xianyu_redeem_reservations")"
-  fi
-  unused_before="$(runuser -u postgres -- psql -d sub2api -Atc "SELECT count(*) FROM redeem_codes WHERE type='balance' AND status='unused' AND value IN (1,10,30,50,100,300,500,1000) AND (expires_at IS NULL OR expires_at > NOW())")"
-  if [[ "$role_before" == "1" ]]; then
-    db_url_line="$(grep '^FRIST_API_SUB2API_DATABASE_URL=' "$FRIST_API_ENV" | tail -n 1)"
-    role_password="${db_url_line#*://"${FRIST_API_XIANYU_ROLE}":}"
-    role_password="${role_password%@*}"
-    [[ "$role_password" =~ ^[0-9a-f]{64}$ ]] || fail "现有闲鱼数据库角色缺少可复用的受保护连接配置。"
-  else
-    role_password="$(random_hex 32)"
-    role_created=true
-  fi
-  env_staged="$(mktemp "${STATE_DIR}/frist-api-env.XXXXXXXX")"
-
-  rollback_xianyu_fulfillment() {
-    trap - EXIT ERR
-    systemctl stop "$FRIST_API_SERVICE" >/dev/null 2>&1 || true
-    find "$FRIST_API_DIR" -mindepth 1 -delete
-    cp -a "${backup_dir}/app/." "$FRIST_API_DIR/"
-    cp -a "${backup_dir}/frist-api.env" "$FRIST_API_ENV"
-    reservation_current=0
-    if [[ "$(runuser -u postgres -- psql -d sub2api -Atc "SELECT CASE WHEN to_regclass('public.xianyu_redeem_reservations') IS NULL THEN 0 ELSE 1 END" 2>/dev/null || printf 0)" == "1" ]]; then
-      reservation_current="$(runuser -u postgres -- psql -d sub2api -Atc "SELECT count(*) FROM public.xianyu_redeem_reservations" 2>/dev/null || printf unknown)"
-    fi
-    if [[ "$schema_before" == "0" && "$reservation_current" == "$reservation_before" ]]; then
-      runuser -u postgres -- psql -v ON_ERROR_STOP=1 -d sub2api >/dev/null <<SQL || true
-DROP FUNCTION IF EXISTS public.jiyu_xianyu_remap_redeem_reservation(text, text);
-DROP FUNCTION IF EXISTS public.jiyu_xianyu_reserve_redeem_code(text, numeric, text);
-DROP TABLE IF EXISTS public.xianyu_redeem_reservations;
-SQL
-    fi
-    if [[ "$role_created" == "true" ]]; then
-      runuser -u postgres -- psql -v ON_ERROR_STOP=1 -d sub2api \
-        -c "DROP OWNED BY ${FRIST_API_XIANYU_ROLE}; DROP ROLE IF EXISTS ${FRIST_API_XIANYU_ROLE};" >/dev/null 2>&1 || true
-    fi
-    systemctl start "$FRIST_API_SERVICE" >/dev/null 2>&1 || true
-  }
-
-  trap 'rollback_xianyu_fulfillment' EXIT
-  runuser -u postgres -- psql -v ON_ERROR_STOP=1 -d sub2api >/dev/null < \
-    "${bundle}/migrations/jiyu_xianyu_redeem_reservations.sql"
-  runuser -u postgres -- psql -v ON_ERROR_STOP=1 -v role_password="$role_password" \
-    -v role_created="$role_created" -d sub2api >/dev/null <<SQL
-DO \$\$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${FRIST_API_XIANYU_ROLE}') THEN
-    CREATE ROLE ${FRIST_API_XIANYU_ROLE} LOGIN;
-  END IF;
-END
-\$\$;
-\if :role_created
-ALTER ROLE ${FRIST_API_XIANYU_ROLE} PASSWORD :'role_password';
-\endif
-GRANT CONNECT ON DATABASE sub2api TO ${FRIST_API_XIANYU_ROLE};
-GRANT USAGE ON SCHEMA public TO ${FRIST_API_XIANYU_ROLE};
-GRANT EXECUTE ON FUNCTION public.jiyu_xianyu_reserve_redeem_code(text, numeric, text) TO ${FRIST_API_XIANYU_ROLE};
-GRANT EXECUTE ON FUNCTION public.jiyu_xianyu_remap_redeem_reservation(text, text) TO ${FRIST_API_XIANYU_ROLE};
-REVOKE ALL ON TABLE public.xianyu_redeem_reservations FROM ${FRIST_API_XIANYU_ROLE};
-REVOKE ALL ON TABLE public.redeem_codes FROM ${FRIST_API_XIANYU_ROLE};
-SQL
-
-  awk '!/^FRIST_API_SUB2API_DATABASE_URL=/ && !/^FRIST_API_CARD_AUTOREPLENISH_ENABLED=/' \
-    "$FRIST_API_ENV" >"$env_staged"
-  printf 'FRIST_API_SUB2API_DATABASE_URL=postgresql://%s:%s@127.0.0.1:5432/sub2api\n' \
-    "$FRIST_API_XIANYU_ROLE" "$role_password" >>"$env_staged"
-  printf 'FRIST_API_CARD_AUTOREPLENISH_ENABLED=0\n' >>"$env_staged"
-  install -m 0600 -o root -g root "$env_staged" "$FRIST_API_ENV"
-  rm -f "$env_staged"
-
-  systemctl stop "$FRIST_API_SERVICE"
-  install -d -m 0755 "$FRIST_API_DIR/server"
-  rsync -a --delete "${bundle}/bridge/" "$FRIST_API_DIR/server/"
-  find "$FRIST_API_DIR/src" -mindepth 1 -delete 2>/dev/null || true
-  for legacy_path in data assets deploy src tests .playwright-cli admin.html index.html favicon.svg; do
-    if [[ -e "$FRIST_API_DIR/$legacy_path" || -L "$FRIST_API_DIR/$legacy_path" ]]; then
-      rm -rf -- "${FRIST_API_DIR:?}/$legacy_path"
-    fi
-  done
-  install -m 0644 "${bundle}/package.json" "${bundle}/package-lock.json" "$FRIST_API_DIR/"
-  find "$FRIST_API_DIR/node_modules" -mindepth 1 -delete 2>/dev/null || true
-  install -d -m 0755 "$FRIST_API_DIR/node_modules"
-  cp -a "${bundle}/node_modules/." "$FRIST_API_DIR/node_modules/"
-  chown -R root:root "$FRIST_API_DIR/server" \
-    "$FRIST_API_DIR/package.json" "$FRIST_API_DIR/package-lock.json" "$FRIST_API_DIR/node_modules"
-  systemctl start "$FRIST_API_SERVICE"
-  wait_for_frist_api 30 || fail "Frist API 发布后健康检查失败。"
-
-  unauth_status=""
-  for ((probe_attempt = 1; probe_attempt <= 10; probe_attempt += 1)); do
-    unauth_status="$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' -X POST \
-      -H "Host: ${DOMAIN}" -H 'X-Forwarded-Proto: https' -H 'content-type: application/json' \
-      --data '{"orderId":"preflight","paid":true,"denomination":1}' \
-      http://127.0.0.1:3180/api/ops/xianyu/paid-order || true)"
-    [[ "$unauth_status" == "401" ]] && break
-    sleep 1
-  done
-  [[ "$unauth_status" == "401" ]] || fail "闲鱼 webhook 未授权探针状态为 ${unauth_status:-000}，预期 401。"
-  webhook_token="$(sed -n 's/^FRIST_API_XIANYU_WEBHOOK_TOKEN=//p' "$FRIST_API_ENV" | tail -n 1)"
-  unpaid_status="$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' -X POST \
-    -H "Host: ${DOMAIN}" -H 'X-Forwarded-Proto: https' -H 'content-type: application/json' \
-    -H "x-cc-xianyu-token: ${webhook_token}" \
-    --data '{"orderId":"preflight-unpaid","status":"等待买家付款","paid":false,"denomination":1}' \
-    http://127.0.0.1:3180/api/ops/xianyu/paid-order || true)"
-  [[ "$unpaid_status" == "409" ]] || fail "闲鱼未付款零写入探针状态为 ${unpaid_status:-000}，预期 409。"
-
-  PGPASSWORD="$role_password" psql -v ON_ERROR_STOP=1 -U "$FRIST_API_XIANYU_ROLE" \
-    -h 127.0.0.1 -d sub2api >/dev/null <<'SQL'
-BEGIN;
-SELECT * FROM public.jiyu_xianyu_reserve_redeem_code(
-  repeat('0', 64), 1, 'rollback-drill'
-);
-ROLLBACK;
-SQL
-  reservation_after="$(runuser -u postgres -- psql -d sub2api -Atc "SELECT count(*) FROM public.xianyu_redeem_reservations")"
-  unused_after="$(runuser -u postgres -- psql -d sub2api -Atc "SELECT count(*) FROM redeem_codes WHERE type='balance' AND status='unused' AND value IN (1,10,30,50,100,300,500,1000) AND (expires_at IS NULL OR expires_at > NOW())")"
-  [[ "$reservation_after" == "$reservation_before" && "$unused_after" == "$unused_before" ]] || \
-    fail "回滚演练改变了闲鱼预留或 Sub2API 可兑换库存。"
-  systemctl is-active --quiet "$SUB2API_SERVICE" || fail "发布后 Sub2API 服务异常。"
-  wait_for_health 5 || fail "发布后 Sub2API 健康检查失败。"
-  trap - EXIT ERR
-  install -m 0755 -o root -g root "$0" "$MANAGER_PATH"
-  log "闲鱼履约已切换到 Sub2API 原子预留；发布前备份位于 ${backup_dir}。"
 }
 
 install_pricing_fallback() {
@@ -2222,7 +2043,6 @@ usage() {
   recharge-center     重新应用充值中心固定公开店铺和精确 CSP
   docs-page           重新应用文档入口和 CC Switch 下载、导入说明
   terms-page          更新登录条款中的地区展示规则（保留其余条款文本）
-  xianyu-fulfillment <bundle>  备份后发布 Sub2API 原子领码履约，失败自动回滚
   region-headers      加固 Cloudflare 地域头的 Apache 信任边界（不启用地域强制）
   region-enforcement <enable|disable>  原子切换 JIYU 地域强制，失败自动回滚
   cn-production <pause|resume>  原子暂停或恢复中国大陆站点生产面，资产不删除
@@ -2293,9 +2113,6 @@ main() {
       ;;
     terms-page)
       apply_terms_page
-      ;;
-    xianyu-fulfillment)
-      deploy_xianyu_fulfillment "$@"
       ;;
     region-headers)
       ensure_jiyu_region_headers

@@ -14,7 +14,6 @@ OpenClaw OMEGA — 核心编排器 (Brain)
 """
 
 import asyncio
-import importlib.util
 import logging
 import threading
 import time
@@ -330,9 +329,6 @@ class OpenClawBrain(BrainGraphBuilderMixin, BrainExecutorMixin):
                     ("📋 今日简报", "cmd:brief"),
                     ("📱 账单状态", "cmd:bill"),
                 ]
-                # 检查闲鱼模块是否可用
-                if importlib.util.find_spec("src.xianyu.xianyu_context"):
-                    _suggestions.append(("🐟 闲鱼状态", "cmd:xianyu"))
                 result.extra_data["quick_suggestions"] = _suggestions
 
                 # GAP 10 修复: 调用方明确要求跳过聊天降级时，直接返回 forward_to_chat

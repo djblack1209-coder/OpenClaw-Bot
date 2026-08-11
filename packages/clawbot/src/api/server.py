@@ -41,7 +41,6 @@ from .routers import (
     router_trading,
     router_wechat,
     router_ws,
-    router_xianyu,
 )
 
 logger = logging.getLogger(__name__)
@@ -341,7 +340,6 @@ class APIServer:
         self.app.include_router(router_newapi, prefix="/api/v1", tags=["New-API"])
         self.app.include_router(router_controls, prefix="/api/v1", tags=["Controls"])
         self.app.include_router(router_conversation, prefix="/api/v1", tags=["Conversation"])
-        self.app.include_router(router_xianyu, prefix="/api/v1", tags=["Xianyu"])
         self.app.include_router(router_cli, prefix="/api/v1", tags=["CLI"])
         self.app.include_router(router_monitor, prefix="/api/v1", tags=["WorldMonitor"])
         self.app.include_router(router_wechat, prefix="/api/v1", tags=["WeChat"])

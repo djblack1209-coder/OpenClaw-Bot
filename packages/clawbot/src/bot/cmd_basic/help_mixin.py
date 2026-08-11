@@ -31,10 +31,7 @@ def _build_help_main_keyboard():
                 InlineKeyboardButton("📈 投资分析", callback_data="help:invest"),
                 InlineKeyboardButton("🏦 IBKR实盘", callback_data="help:ibkr"),
             ],
-            [
-                InlineKeyboardButton("🏠 生活助手", callback_data="help:life"),
-                InlineKeyboardButton("🛒 闲鱼运营", callback_data="help:xianyu"),
-            ],
+            [InlineKeyboardButton("🏠 生活助手", callback_data="help:life")],
             [
                 InlineKeyboardButton("⚙️ 高级功能", callback_data="help:advanced"),
                 InlineKeyboardButton("🔧 系统工具", callback_data="help:system"),
@@ -247,14 +244,6 @@ class _HelpMixin:
                 "/evolution  进化引擎\n"
                 "/intel  情报收集\n"
                 "/keyhealth  API Key 健康检查"
-            ),
-            "xianyu": (
-                "🛒 闲鱼运营\n"
-                "───────────────────\n"
-                "/xianyu  闲鱼AI客服 start/stop/status\n"
-                "/xianyu_style  闲鱼客服话术风格\n"
-                "/xianyu_report  闲鱼运营报表\n"
-                "/ship <订单>  闲鱼发货"
             ),
             "life": (
                 "🏠 生活助手\n"

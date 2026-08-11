@@ -23,8 +23,8 @@ import { test } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 
 const scripts = [
-  ['scripts/auto_health_check.sh', ['--json', 'OPENCLAW', 'cc_zhongzhuan_readiness_audit.mjs']],
-  ['scripts/auto_recovery.sh', ['--dry-run', '--confirm', '--scope', 'make cc-seller-auto', 'launchctl']],
+  ['scripts/auto_health_check.sh', ['--json', 'OPENCLAW', 'backup_freshness']],
+  ['scripts/auto_recovery.sh', ['--dry-run', '--confirm', '--scope', 'services', 'maintenance']],
   ['scripts/local_backup.sh', ['OPENCLAW_BACKUP_DIR', 'tar', '30']],
   ['scripts/disaster_recovery.sh', ['--from-r2', '--dry-run', 'restore']],
   ['scripts/manage_backup_launchagent.sh', ['install', 'status', 'uninstall', 'StartCalendarInterval', '--drill']],
@@ -257,32 +257,6 @@ test('recovery defaults to a read-only preview and never invokes fulfillment', a
   }
 });
 
-test('fulfillment recovery requires both its isolated scope and confirmation', async () => {
-  const sandbox = await mkdtemp(join(tmpdir(), 'openclaw-recovery-fulfillment-'));
-  try {
-    const { callsFile, env } = await createOpsCommandStubs(sandbox);
-    const preview = spawnSync(
-      'bash',
-      ['scripts/auto_recovery.sh', '--scope', 'fulfillment'],
-      { cwd: process.cwd(), encoding: 'utf8', env },
-    );
-    const previewCalls = await readFile(callsFile, 'utf8').catch(() => '');
-    assert.equal(preview.status, 0, preview.stderr);
-    assert.doesNotMatch(previewCalls, /^make /m);
-
-    const confirmed = spawnSync(
-      'bash',
-      ['scripts/auto_recovery.sh', '--scope', 'fulfillment', '--confirm'],
-      { cwd: process.cwd(), encoding: 'utf8', env },
-    );
-    const confirmedCalls = await readFile(callsFile, 'utf8').catch(() => '');
-    assert.notEqual(confirmed.status, 0, 'strict post-action health check should fail against stubs');
-    assert.match(confirmedCalls, /^make cc-seller-auto$/m);
-  } finally {
-    await rm(sandbox, { recursive: true, force: true });
-  }
-});
-
 test('strict health check exits non-zero when required services are down', async () => {
   const sandbox = await mkdtemp(join(tmpdir(), 'openclaw-health-strict-'));
   try {
@@ -308,9 +282,7 @@ test('health check validates required runtimes and distinguishes disabled option
   for (const required of [
     'ai.openclaw.clawbot-agent',
     'ai.openclaw.gateway',
-    'ai.openclaw.xianyu',
     'ai.openclaw.intel-brief.telegram-listener',
-    'ai.openclaw.cc-seller-bridge',
     'ai.openclaw.daily-backup',
     'backup_freshness',
     'http://127.0.0.1:18790/api/v1/status',
@@ -512,22 +484,6 @@ test('desktop macOS internal bundle is ad-hoc signed and verified before install
   assert.ok(buildScript.includes(installVerification), 'desktop build should verify the temporary install copy');
   assert.ok(buildScript.indexOf(bundleVerification) < buildScript.indexOf(installVerification));
   assert.ok(buildScript.indexOf(installVerification) < buildScript.indexOf(installMove));
-});
-
-test('seller bridge exposes relist-only simulation mode without delivery or confirm actions', async () => {
-  const file = 'scripts/cc_zhongzhuan_seller_bridge.mjs';
-  await access(file, constants.F_OK);
-  const content = await readFile(file, 'utf8');
-  assert.ok(content.includes("--relist-only"), 'bridge should expose relist-only mode');
-  assert.ok(content.includes("--simulation-relist"), 'bridge should expose simulation relist mode');
-  assert.ok(content.includes("cc-xianyu-relist/next?mode="), 'bridge should call the relist queue with an explicit mode');
-  assert.ok(
-    content.includes("relist_only_requires_exactly_one_xianyu_page"),
-    'relist-only mode should refuse to run when more than one Xianyu page is open',
-  );
-  assert.ok(content.includes("online_verified"), 'bridge should mark already-online product pages as verified');
-  assert.ok(content.includes("deliveries: []"), 'relist-only result should not run delivery actions');
-  assert.ok(content.includes("confirms: []"), 'relist-only result should not run confirm-shipment actions');
 });
 
 test('backup publishes an atomic checksummed bundle with consistent SQLite snapshots', async () => {

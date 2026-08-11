@@ -173,11 +173,8 @@ fn get_base_dir() -> AppResult<String> {
 
 fn get_managed_services() -> AppResult<Vec<ManagedServiceDefinition>> {
     let base_dir = get_base_dir()?;
-    let home_dir = get_home_dir()?;
     let launchagents_dir = format!("{}/tools/launchagents", base_dir);
-    let user_launchagents_dir = format!("{}/Library/LaunchAgents", home_dir);
     let logs_dir = format!("{}/packages/clawbot/logs", base_dir);
-    let user_logs_dir = format!("{}/Library/Logs/OpenClaw", home_dir);
     let openclaw_logs_dir = format!("{}/.openclaw/logs", base_dir);
 
     Ok(vec![
@@ -228,30 +225,6 @@ fn get_managed_services() -> AppResult<Vec<ManagedServiceDefinition>> {
             )),
             stdout_log: Some(format!("{}/com-clawbot-agent.stdout.log", logs_dir)),
             stderr_log: Some(format!("{}/com-clawbot-agent.stderr.log", logs_dir)),
-        },
-        ManagedServiceDefinition {
-            label: "ai.openclaw.xianyu".to_string(),
-            name: "闲鱼 AI 客服".to_string(),
-            plist_path: format!("{}/ai.openclaw.xianyu.plist", launchagents_dir),
-            port: None, // 闲鱼客服是 WebSocket 客户端，不监听端口
-            launcher_script: Some(format!(
-                "{}/packages/clawbot/scripts/start_xianyu.sh",
-                base_dir
-            )),
-            stdout_log: Some(format!("{}/com-clawbot-xianyu.stdout.log", logs_dir)),
-            stderr_log: Some(format!("{}/com-clawbot-xianyu.stderr.log", logs_dir)),
-        },
-        ManagedServiceDefinition {
-            label: "ai.openclaw.cc-seller-bridge".to_string(),
-            name: "闲鱼自动交付桥".to_string(),
-            plist_path: format!(
-                "{}/ai.openclaw.cc-seller-bridge.plist",
-                user_launchagents_dir
-            ),
-            port: None,
-            launcher_script: None,
-            stdout_log: Some(format!("{}/cc-seller-bridge.stdout.log", user_logs_dir)),
-            stderr_log: Some(format!("{}/cc-seller-bridge.stderr.log", user_logs_dir)),
         },
     ])
 }
@@ -822,16 +795,6 @@ fn get_service_log_path(label: &str) -> AppResult<String> {
                 base_dir
             )
         }
-        "ai.openclaw.xianyu" => {
-            format!(
-                "{}/packages/clawbot/logs/com-clawbot-xianyu.stderr.log",
-                base_dir
-            )
-        }
-        "ai.openclaw.cc-seller-bridge" => format!(
-            "{}/Library/Logs/OpenClaw/cc-seller-bridge.stderr.log",
-            get_home_dir()?
-        ),
         _ => return Err(AppError::not_found(format!("未知服务标签: {}", label))),
     };
     Ok(path)

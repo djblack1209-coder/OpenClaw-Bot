@@ -26,7 +26,7 @@ metadata: {"openclaw":{"emoji":"📖"}}
 OpenClaw Bot 是一套 AI Agent 驱动的全栈自动化系统：
 
 • 🧠 OpenClaw — AI 中枢大脑（Telegram Bot @carven_OpenClaw_Bot）
-• 🤖 ClawBot — Python 多 Bot 执行引擎（交易/社媒/闲鱼/浏览器）
+• 🤖 ClawBot — Python 多 Bot 执行引擎（交易/社媒/资讯/浏览器）
 • 🖥️ Manager — macOS 原生桌面管理面板
 • ⚡ Gateway — 本地网关（端口 18789）
 
@@ -66,14 +66,14 @@ OpenClaw Bot 是一套 AI Agent 驱动的全栈自动化系统：
 
 ━━━━━━ 💰 盈利渠道 ━━━━━━
 
-1. 闲鱼 AI 客服 — OpenClaw 一键部署服务 ¥19.9
-2. Upwork 自动接单 — 变现 watcher 自动推送
-3. 社媒流量变现 — X(@CodeTiredAI) + 小红书(代码写累了) 引流
+1. Upwork 自动接单 — 变现 watcher 自动推送
+2. 社媒流量变现 — X + 小红书引流
+3. JIYU 用户支持与 API 配置
 
 ━━━━━━ 🤖 自动化能力 ━━━━━━
 
 • 社交发布: 热点监控→选题评分→内容生成→预检→Playwright 自动发布→互动
-• 闲鱼客服: WebSocket 实时监控→意图分类→议价/技术专家→自动回复→订单通知
+• 用户支持: 账号/余额/API Key/渠道状态只读定位→明确下一步
 • 交易系统: 回测→风控→自动交易→绩效分析→止损回撤自动停机
 • 浏览器自动化: Chrome CDP 预热→X/小红书/Upwork 自动操作
 

@@ -137,7 +137,6 @@ function getSocialSwitchFallback(t: (key: string) => string) {
 /** 社交开关名称映射 */
 function getSocialSwitchLabels(t: (key: string) => string): Record<string, string> {
   return {
-    xianyu_enabled: t('controlCenter.social.xianyu'),
     xhs_enabled: t('controlCenter.social.xhs'),
     twitter_enabled: t('controlCenter.social.twitter'),
     x_twitter_enabled: t('controlCenter.social.xTwitter'),
@@ -194,7 +193,7 @@ function logSrcColor(src: string): string {
   if (src.includes('trad') || src.includes('ibkr')) return 'var(--accent-cyan)';
   if (src.includes('news') || src.includes('rss')) return 'var(--accent-amber)';
   if (src.includes('error') || src.includes('risk')) return 'var(--accent-red)';
-  if (src.includes('xianyu') || src.includes('social')) return 'var(--accent-purple)';
+  if (src.includes('social')) return 'var(--accent-purple)';
   return 'var(--accent-green)';
 }
 

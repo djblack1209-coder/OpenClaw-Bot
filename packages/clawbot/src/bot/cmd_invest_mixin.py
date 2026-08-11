@@ -666,7 +666,7 @@ class InvestCommandsMixin:
     @requires_auth
     @with_typing
     async def cmd_export(self, update, context):
-        """导出数据为 Excel: /export [trades|watchlist|portfolio|expenses|xianyu] [天数] [csv]"""
+        """导出数据为 Excel: /export [trades|watchlist|portfolio|expenses] [天数] [csv]"""
         args = context.args or []
         target = args[0].lower() if args else "trades"
         # 检测 csv 格式标记 (可能在任意位置)
@@ -780,37 +780,6 @@ class InvestCommandsMixin:
                 filename = f"expenses_{days}d.{fmt}"
                 caption = f"记账数据 (近{days}天, {len(expenses)} 条)"
 
-            elif target == "xianyu":
-                # 导出闲鱼订单: /export xianyu [天数]
-                days = 90
-                for a in args[1:]:
-                    if a.isdigit():
-                        days = int(a)
-                        break
-                try:
-                    from src.xianyu.xianyu_context import XianyuContextManager
-                    ctx = XianyuContextManager()
-                    orders = ctx.get_all_orders(days=days)
-                    if not orders:
-                        await update.message.reply_text("暂无闲鱼订单，无法导出")
-                        return
-                    # 获取利润汇总
-                    ps = ctx.get_profit_summary(days=days)
-                    profit_summary = {
-                        "total_orders": ps.get("orders", 0),
-                        "total_revenue": ps.get("revenue", 0),
-                        "total_cost": ps.get("cost", 0),
-                        "total_commission": ps.get("total_commission", 0),
-                        "net_profit": ps.get("profit", 0),
-                    }
-                except ImportError:
-                    await update.message.reply_text("闲鱼模块未加载")
-                    return
-                from src.tools.export_service import export_xianyu_orders
-                buf = export_xianyu_orders(orders, profit_summary=profit_summary, format=fmt)
-                filename = f"xianyu_orders_{days}d.{fmt}"
-                caption = f"闲鱼订单 (近{days}天, {len(orders)} 笔)"
-
             else:
                 # 默认导出交易记录
                 limit = 100
@@ -840,7 +809,7 @@ class InvestCommandsMixin:
             logger.error("导出失败: %s", e, exc_info=True)
             await update.message.reply_text(
                 "❌ 严总，导出失败了，请稍后再试\n\n"
-                "用法: `/export [trades|watchlist|portfolio|expenses|xianyu] [天数] [csv]`",
+                "用法: `/export [trades|watchlist|portfolio|expenses] [天数] [csv]`",
                 parse_mode="Markdown",
             )
 

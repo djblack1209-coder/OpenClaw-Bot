@@ -396,7 +396,7 @@ class AnalysisCommandsMixin:
     @requires_auth
     @with_typing
     async def cmd_weekly(self, update, context):
-        """手动触发综合周报 — 聚合投资+社媒+闲鱼+成本 7 天数据"""
+        """手动触发综合周报 — 聚合投资、社媒和成本 7 天数据。"""
         msg = await update.message.reply_text(f"{self.emoji} 正在生成综合周报，请稍候...")
         try:
             from src.execution.daily_brief import weekly_report

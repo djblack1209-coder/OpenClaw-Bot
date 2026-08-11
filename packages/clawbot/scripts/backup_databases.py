@@ -30,12 +30,10 @@ DATABASES = [
     "history.db",
     "shared_memory.db",
     "execution_hub.db",
-    "xianyu_chat.db",
     "feedback.db",
     "cost_analytics.db",
     "deploy_licenses.db",
     "novels.db",
-    "auto_shipper.db",
 ]
 
 

@@ -9,12 +9,11 @@ SCOPE="services"
 
 usage() {
   cat <<'USAGE'
-用法：scripts/auto_recovery.sh [--dry-run] [--confirm] [--scope services|maintenance|fulfillment]
+用法：scripts/auto_recovery.sh [--dry-run] [--confirm] [--scope services|maintenance]
 
 默认只预览服务恢复动作，不会修改系统。真正执行必须带 --confirm：
   --scope services      只恢复本机服务（默认）
   --scope maintenance   只清理旧日志和测试缓存
-  --scope fulfillment   只检查卖家 Chrome 与桥接器，可能处理真实订单
 USAGE
 }
 
@@ -50,9 +49,9 @@ while (( $# > 0 )); do
 done
 
 case "$SCOPE" in
-  services|maintenance|fulfillment) ;;
+  services|maintenance) ;;
   *)
-    echo "❌ --scope 只能是 services、maintenance 或 fulfillment" >&2
+    echo "❌ --scope 只能是 services 或 maintenance" >&2
     exit 64
     ;;
 esac
@@ -82,34 +81,13 @@ else
 fi
 
 if [[ "$SCOPE" == "services" ]]; then
-  # 本机控制台不通时，只恢复对应 LaunchAgent，不触碰卖家履约。
-  dashboard_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:18800/dashboard 2>/dev/null || echo 000)
-  root_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:18800/ 2>/dev/null || echo 000)
-  api_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:18800/api/status 2>/dev/null || echo 000)
-  api_alive=0
-  case "$api_code" in
-    200|401) api_alive=1 ;;
-  esac
-  if [[ "$dashboard_code" != "200" && "$root_code" != "200" && "$api_alive" != "1" ]]; then
-    if launchctl print "gui/$UID/ai.openclaw.xianyu" >/dev/null 2>&1; then
-      run_action "重启闲鱼本机服务" launchctl kickstart -k "gui/$UID/ai.openclaw.xianyu"
-    else
-      echo "⚠️ 未找到 ai.openclaw.xianyu LaunchAgent；请先按运维文档安装。"
-    fi
-  else
-    echo "✅ 本机控制台可访问（dashboard=${dashboard_code} / root=${root_code} / api=${api_code}）"
-  fi
+  echo "ℹ️ 服务恢复由各 LaunchAgent 原生 KeepAlive 策略负责；此入口仅执行恢复后的统一健康检查。"
 fi
 
 if [[ "$SCOPE" == "maintenance" ]]; then
   # 维护范围只处理可再生成的历史文件。
   run_action "清理 30 天前日志" find "$ROOT_DIR" -path '*/logs/*' -type f -mtime +30 -delete
   run_action "清理 pytest 缓存" find "$ROOT_DIR" -type d -name '.pytest_cache' -prune -exec rm -rf {} +
-fi
-
-if [[ "$SCOPE" == "fulfillment" ]]; then
-  # 履约范围必须同时提供专用 scope 和 --confirm，避免服务恢复误处理真实订单。
-  run_action "检查卖家 Chrome 与桥接器（可能处理真实订单）" make cc-seller-auto
 fi
 
 if (( DRY_RUN == 1 )); then

@@ -1,6 +1,6 @@
 """Manual order-to-entitlement helpers for Intel Brief.
 
-This is the safe operator bridge before Xianyu/payment automation exists.  It
+This is the safe operator bridge before payment automation exists.  It
 turns a verified external order into a subscription grant, with dry-run by
 default and redacted evidence.
 """
@@ -215,7 +215,7 @@ def grant_manual_entitlement(
         "profile_after": _safe_profile(profile),
         "network_calls": 0,
         "limits": [
-            "Manual entitlement writes local SQLite only; no payment provider, Xianyu, Telegram, or remote worker is called.",
+            "Manual entitlement writes local SQLite only; no payment provider, marketplace, Telegram, or remote worker is called.",
             "Telegram user/chat ids and order reference are represented only by presence flags in evidence.",
         ],
     }
@@ -231,7 +231,7 @@ def build_manual_entitlement_sandbox(output_dir: str | Path) -> dict[str, Any]:
         db_path=db_path,
         telegram_user_id="manual-user",
         chat_id="manual-chat",
-        order_ref="xianyu-order-001",
+        order_ref="marketplace-order-001",
         duration_days=30,
         categories=["akshare", "senate_trading"],
         starts_at="2026-07-07T00:00:00+00:00",
@@ -241,7 +241,7 @@ def build_manual_entitlement_sandbox(output_dir: str | Path) -> dict[str, Any]:
         db_path=db_path,
         telegram_user_id="manual-user",
         chat_id="manual-chat",
-        order_ref="xianyu-order-001",
+        order_ref="marketplace-order-001",
         duration_days=30,
         categories=["akshare", "senate_trading"],
         starts_at="2026-07-07T00:00:00+00:00",
@@ -251,7 +251,7 @@ def build_manual_entitlement_sandbox(output_dir: str | Path) -> dict[str, Any]:
         db_path=db_path,
         telegram_user_id="manual-user",
         chat_id="manual-chat",
-        order_ref="xianyu-order-002-renewal",
+        order_ref="marketplace-order-002-renewal",
         duration_days=30,
         categories=["akshare", "senate_trading"],
         starts_at="2026-07-08T00:00:00+00:00",
@@ -276,7 +276,7 @@ def build_manual_entitlement_sandbox(output_dir: str | Path) -> dict[str, Any]:
         "rollback": [str(db_path), str(evidence_path)],
         "limits": [
             "Sandbox SQLite only; production intel_brief.db was not touched.",
-            "No payment provider, Xianyu, Telegram Bot API, scheduler, or remote worker call.",
+            "No payment provider, marketplace, Telegram Bot API, scheduler, or remote worker call.",
         ],
     }
     evidence_path.write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding="utf-8")

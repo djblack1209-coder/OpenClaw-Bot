@@ -32,7 +32,7 @@ async def _send_proactive(user_id: str, text: str):
     except Exception as e:
         logger.debug(f"主动通知发送失败: {e}")
 
-    # 微信镜像推送 — 异动告警/交易跟踪/闲鱼订单等主动通知也要到达微信
+    # 微信镜像推送 — 异动告警和交易跟踪等主动通知也要到达微信
     try:
         import asyncio
 

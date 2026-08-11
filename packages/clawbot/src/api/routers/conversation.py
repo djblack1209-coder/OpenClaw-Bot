@@ -133,7 +133,6 @@ _LOG_TRANSLATIONS = {
     "browser_use": "正在浏览网页...",
     "litellm": "AI 模型处理中...",
     "self_heal": "正在自动修复...",
-    "xianyu": "闲鱼系统处理中...",
     "trading": "交易系统处理中...",
     "social": "社媒系统处理中...",
 }

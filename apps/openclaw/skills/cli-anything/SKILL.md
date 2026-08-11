@@ -57,14 +57,14 @@ cp CLI-Anything/openclaw-skill/SKILL.md ~/.openclaw/skills/cli-anything/SKILL.md
 
 ## OpenClaw Bot 集成场景
 
-### 控制闲鱼客户端
+### 控制内部管理台
 ```bash
-# 为闲鱼 Web 版生成 CLI
-@cli-anything build a CLI for xianyu web interface
+# 为内部 Web 管理台生成 CLI
+@cli-anything build a CLI for an internal web admin interface
 
 # Agent 可以直接操作
-cli-anything-xianyu listing create --title "..." --price 19.9
-cli-anything-xianyu order list --status pending --json
+cli-anything-admin records list --status pending --json
+cli-anything-admin records show --id example --json
 ```
 
 ### 控制浏览器自动化

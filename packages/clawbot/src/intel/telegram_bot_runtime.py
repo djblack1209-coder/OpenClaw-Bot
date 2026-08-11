@@ -290,7 +290,7 @@ def build_telegram_bot_runtime_probe(
             "Token is never written to evidence; only boolean presence is recorded.",
             "Raw updates, chat ids, user ids, and message text are not persisted in evidence.",
             "No sendMessage call is made by this probe.",
-            "No scheduler/cron/systemd registration, production DB write, payment/Xianyu call, scraper call, or worker mutation.",
+            "No scheduler/cron/systemd registration, production DB write, payment/marketplace call, scraper call, or worker mutation.",
         ],
     }
     path = Path(evidence_path)

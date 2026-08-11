@@ -322,7 +322,7 @@ pub async fn clawbot_api_social_browser_control(
     .await
 }
 
-/// 获取统一浏览器运营工作台（X / 小红书 / 闲鱼）
+/// 获取统一浏览器运营工作台（X / 小红书）
 #[command]
 pub async fn clawbot_api_social_ops_workspace() -> AppResult<Value> {
     api_get("/social/ops-workspace").await

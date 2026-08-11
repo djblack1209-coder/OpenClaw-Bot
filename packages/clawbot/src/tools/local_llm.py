@@ -38,7 +38,7 @@ LOCAL_SUITABLE_TASKS = frozenset(
         "summarize",  # 摘要压缩
         "keyword_extract",  # 关键词提取
         "sentiment_analysis",  # 情感分析
-        "simple_reply",  # 简单回复（闲鱼客服等）
+        "simple_reply",  # 简单回复
         "content_draft",  # 内容草稿
     }
 )

@@ -5,19 +5,20 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
-## [2026-08-11] 中央 MCP 退役与 OpenClaw 控制面收敛
+## [2026-08-11] 闲鱼/Frist 最终退役与 OpenClaw 控制面收敛
 > 领域: `frontend` | `backend` | `infra` | `docs` | `xianyu`
-> 影响模块: `OpenClaw App`, `LaunchAgent 管理`, `CC Switch`, `本机生图入口`, `文档基线`
+> 影响模块: `OpenClaw App`, `ClawBot`, `Chrome 扩展`, `Oracle Frist-API`, `LaunchAgent`, `文档基线`
 > 关联问题: OPENCLAW-20260811-CONTROL-PLANE-REDUCTION
 ### 变更内容
-- 在受保护目录备份 CC Switch 数据库和已安装 MCP 后，移除 `jiyu-ai-image` 的 CC Switch 记录与本机安装目录；Claude、Codex、OpenCode 活动配置没有残留。钥匙串凭据因不可逆删除边界保留，但已无活动调用者。
-- 删除中央 MCP 安装器、服务源码、锁文件和专用教程；原生支持异步图片 API 的客户端继续直连 Sub2API，文本客户端不再注入额外生图工具。
-- “智能体”页改为直接使用 Tauri 现有 LaunchAgent 控制器，纳入闲鱼 AI 客服和闲鱼自动交付桥；删除 FastAPI 中重复的 `Popen/pkill` 服务启停端点。
-- 删除独立“闲鱼管理”和未接入真实测试系统的“测试诊断”页面及其 IPC、翻译和导航入口。闲鱼状态与服务开关继续由“智能体”页承接，真实测试仍由现有命令和 CI 执行。
-- 用户已决定不继续建设闲鱼销售或官方小程序链路；申请材料和中央 MCP 教程均可从 Git 恢复，不再作为当前文档维护面。
+- 用户确认商品全部下架且无待处理订单后，先完成本机一致性备份和闲鱼 plist 专项备份，再卸载客服与卖家桥；删除闲鱼后端、Bot/API/RPC、控制台、CookieCloud、扩展能力、自动发货、脚本与对应测试。
+- Oracle 先生成 Sub2API 一致性备份和独立 Frist root-only 归档，再删除 Frist service/timer/运行时和管理器部署命令，关闭 3180，禁止旧数据库角色登录；空迁移表保留用于恢复。
+- OpenClaw App 服务舰队从 7 个收敛为 5 个共享服务；首页、Bots、Settings、Money、Social、i18n 与 Tauri 命令删除闲鱼控件。中央生图 MCP 保持退役，通用 MCP 插件商店保留。
+- 删除 `start_all.sh`、`stop_all.sh`、旧健康脚本、CC 卖家脚本、重复报告和无调用的硬编码 browser-bootstrap LaunchAgent；严格健康不再检查退役的 18800/CC 中转。
+- 文档收敛到 28 份，`docs/current/` 只保留唯一生产基线。支付、订单、授权、迁移、备份恢复、安全、投资风控和关键浏览器测试保留。
 ### 验证
-- 中央 MCP 回读为安装目录不存在、CC Switch 记录为 0；未输出或删除 Key。
-- OpenClaw 前端生产构建、lint、Tauri Rust `cargo check`、静态安全回归和文档结构检查通过；事务式脚本完成签名 App 原子安装并保留回滚副本。真实 App 回读显示 7 个受管服务，首页“服务开关”直达唯一“智能体”控制页，LaunchAgent 状态未改变。
+- 本机严格健康返回 `ok=true/release_ready=true`；只剩一个签名 OpenClaw App，真实首页/智能体/设置/社媒页无闲鱼或中央 MCP，X/小红书真实浏览器冒烟没有点击发布。
+- Oracle Sub2API/PostgreSQL/Redis/Apache 与 timer active，公网健康 200、未授权模型目录 401；Frist service/timer/3180 均不存在，旧角色不可登录、预留记录为 0，备份 checksum 通过。
+- 完整 `make ci-local`、签名回滚检查和唯一文档规则通过；本地测试只作为代码回归，不替代上述生产结论。
 
 ## [2026-08-11] 闲鱼官方虚拟订单申请材料就绪
 > 领域: `backend` | `docs` | `infra` | `xianyu`

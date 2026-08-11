@@ -20,10 +20,6 @@ DEFAULT_USER_AGENT = (
     "Chrome/134.0.0.0 Safari/537.36"
 )
 
-# 闲鱼/咸鱼专用 User-Agent（Windows Chrome）
-# 闲鱼 Web 端 (goofish.com) 对 UA 有检测，需要模拟 Windows 浏览器
-XIANYU_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/134.0.0.0 Safari/537.36"
-
 # ── Bot ID 常量 ─────────────────────────────────────────────────
 # 7 个 Bot 的内部标识符，对应 multi_main.py 中注册的 bot_id
 # 修改 bot 名称/增删 bot 只需改此处

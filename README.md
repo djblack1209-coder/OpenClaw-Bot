@@ -10,7 +10,7 @@
 
 OpenClaw Bot 是一个公开开源的 AI operations / personal automation 实验仓库，重点沉淀这些可复用模式：
 
-- **多 Bot 协作**：7 个 Telegram Bot 分工处理系统状态、AI 号池、交易复盘、闲鱼客服、微信入口和运维提醒。
+- **多 Bot 协作**：7 个 Telegram Bot 分工处理系统状态、AI 号池、交易复盘、社媒、微信入口和运维提醒。
 - **LLM 路由与成本控制**：用 LiteLLM 风格的统一路由、免费优先策略、收费模型闸门和低敏健康统计管理多 Provider。
 - **手机 + 桌面双控制面**：Telegram 命令卡片适合手机操作，Tauri + React 管理端适合本地配置、可视化和调试。
 - **开源集成编排**：集成 FastAPI、python-telegram-bot、CrewAI、browser-use、crawl4ai、Redis、APScheduler、Plotly 等生态工具。
@@ -80,7 +80,6 @@ OpenClaw Bot/
 - `docs/001-project-map.md`：项目全景与模块说明
 - `docs/004-architecture.md`：系统架构与 Bot 指令
 - `docs/005-quickstart.md`：启动、部署、灾备、密钥轮换
-- `docs/006-registries.md`：API 池、命令、依赖、模块注册表
 - `docs/009-health.md`：已知问题、技术债和健康状态
 - `docs/002-changelog.md`：变更历史
 - `docs/013-contributing.md`：贡献指南

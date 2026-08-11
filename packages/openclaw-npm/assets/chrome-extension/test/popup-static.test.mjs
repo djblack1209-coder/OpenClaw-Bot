@@ -144,63 +144,6 @@ test('background scans and records performance but has no boost path', () => {
 })
 
 
-test('popup exposes Xianyu CC delivery helper for paid orders only', () => {
-  assert.match(popupHtml, /id="xianyu-delivery-panel"/)
-  assert.match(popupHtml, /id="xianyu-delivery-scan"/)
-  assert.match(popupHtml, /id="xianyu-delivery-send"/)
-  assert.match(popupHtml, /id="xianyu-delivery-watch"/)
-  assert.match(popupHtml, /id="xianyu-delivery-watch-all"/)
-  assert.match(popupJs, /async function scanXianyuDelivery\(/)
-  assert.match(popupJs, /async function sendXianyuDelivery\(/)
-  assert.match(popupJs, /async function toggleXianyuDeliveryWatch\(/)
-  assert.match(popupJs, /xianyuDeliveryScan/)
-  assert.match(popupJs, /xianyuDeliverySend/)
-  assert.match(popupJs, /xianyuDeliveryWatchSet/)
-  assert.match(popupHtml, /看守当前聊天页/)
-  assert.match(popupHtml, /看守所有闲鱼页/)
-  assert.match(popupJs, /buildExtensionHeartbeat/)
-  assert.match(popupJs, /cc_delivery_helper_version/)
-  assert.match(popupJs, /all_open_xianyu_tabs_watch/)
-  assert.match(popupJs, /paid_page_dispatch/)
-  assert.match(popupJs, /relist_queue_watch/)
-  assert.match(manifestJson, /"version": "0\.2\.1"/)
-})
-
-test('manifest and platform detection include Xianyu short links used by mobile shares', () => {
-  assert.match(manifestJson, /https:\/\/m\.tb\.cn\/\*/)
-  assert.match(socialCoreJs, /m\.tb\.cn/)
-  assert.match(popupHtml, /想跟TA|看守当前聊天页/)
-})
-
-test('background bridges Xianyu CC delivery through local protected admin API', () => {
-  assert.match(backgroundJs, /runXianyuDeliveryScanInPage/)
-  assert.match(backgroundJs, /runXianyuDeliveryFillAndSendInPage/)
-  assert.match(backgroundJs, /api\/cc-browser-delivery\/next/)
-  assert.match(backgroundJs, /api\/cc-manual-paid-order\/dispatch/)
-  assert.match(backgroundJs, /ensurePendingXianyuDeliveryFromPaidPage/)
-  assert.match(backgroundJs, /normalizeXianyuItemIdFromUrl/)
-  assert.match(backgroundJs, /api\/cc-shipments\/.*mark-sent/)
-  assert.match(backgroundJs, /msg\?\.type === 'xianyuDeliveryScan'/)
-  assert.match(backgroundJs, /msg\?\.type === 'xianyuDeliverySend'/)
-  assert.match(backgroundJs, /msg\?\.type === 'xianyuDeliveryWatchSet'/)
-  assert.match(backgroundJs, /XIANYU_DELIVERY_WATCH_ALARM/)
-  assert.match(backgroundJs, /runXianyuDeliveryWatchOnce/)
-  assert.match(backgroundJs, /scanXianyuDeliveryTab\(tab, payload\)/)
-  assert.match(backgroundJs, /all_open_xianyu_tabs/)
-  assert.match(backgroundJs, /assertSinglePendingDeliveryForGlobalWatch/)
-  assert.match(backgroundJs, /heartbeatSocialExtensionStatus/)
-  assert.match(backgroundJs, /background_heartbeat/)
-  assert.match(backgroundJs, /relist_queue_watch/)
-  assert.match(backgroundJs, /paid_page_dispatch/)
-  assert.match(backgroundJs, /api\/cc-xianyu-relist\/next/)
-  assert.match(backgroundJs, /XIANYU_RELIST_WATCH_ALARM/)
-  assert.match(backgroundJs, /runXianyuRelistWatchOnce/)
-  assert.match(backgroundJs, /relay-keepalive/)
-  assert.match(backgroundJs, /pending_rescue/)
-  assert.doesNotMatch(backgroundJs, /xianyuBargainAutoAccept/)
-})
-
-
 test('popup exposes growth feedback recap without enabling automation', () => {
   assert.match(popupHtml, /id="refresh-growth-feedback"/)
   assert.match(popupHtml, /id="growth-panel"/)
@@ -273,12 +216,11 @@ test('options page wraps credential fields in a real form for browser UX', () =>
   assert.match(optionsJs, /event\.preventDefault\(\)/)
 })
 
-test('repository includes a real-browser social pilot smoke script for all supported platforms', () => {
+test('repository includes a real-browser social pilot smoke script for X and Xiaohongshu', () => {
   const smokeScript = readFileSync(resolve(__dirname, '../test/social-browser-smoke.mjs'), 'utf8')
   assert.match(smokeScript, /PLATFORM_SCENARIOS/)
   assert.match(smokeScript, /https:\/\/x\.com\/home/)
   assert.match(smokeScript, /https:\/\/www\.xiaohongshu\.com\/explore/)
-  assert.match(smokeScript, /https:\/\/www\.goofish\.com\/item\?id=1/)
   assert.match(smokeScript, /runSocialFieldPlanInPage/)
   assert.match(smokeScript, /runSocialPageContextScanInPage/)
   assert.match(smokeScript, /contextResult\.ready/)

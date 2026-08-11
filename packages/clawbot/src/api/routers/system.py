@@ -124,7 +124,7 @@ async def daily_brief():
     返回:
     - date: 日期字符串
     - system_status: 系统整体状态 (healthy/degraded/error)
-    - metrics: {portfolio_pnl, positions_count, xianyu_consultations, xianyu_orders, social_posts, api_daily_cost, market_sentiment}
+    - metrics: {portfolio_pnl, positions_count, social_posts, api_daily_cost, market_sentiment}
     - modules: [{name, status, summary}] 各模块快速状态
     """
     try:
@@ -145,8 +145,6 @@ async def daily_brief():
             result["metrics"] = {
                 "portfolio_pnl": metrics.get("portfolio_pnl", 0),
                 "positions_count": metrics.get("positions_count", 0),
-                "xianyu_consultations": metrics.get("xianyu_consultations", 0),
-                "xianyu_orders": metrics.get("xianyu_orders", 0),
                 "social_posts": metrics.get("social_posts", 0),
                 "api_daily_cost": metrics.get("api_daily_cost", 0),
                 "market_sentiment": metrics.get("market_sentiment", ""),
@@ -194,11 +192,6 @@ async def daily_brief():
                     "summary": f"{result['metrics'].get('positions_count', 0)} 个持仓",
                 },
                 {
-                    "name": "闲鱼客服",
-                    "status": "online" if status_data.get("xianyu", {}).get("running") else "idle",
-                    "summary": f"今日 {result['metrics'].get('xianyu_consultations', 0)} 咨询",
-                },
-                {
                     "name": "社媒运营",
                     "status": "online" if status_data.get("social", {}).get("scheduler_running") else "idle",
                     "summary": f"今日 {result['metrics'].get('social_posts', 0)} 帖",
@@ -241,7 +234,7 @@ def push_notification(
 ) -> dict[str, Any]:
     """推送一条通知（供其他模块调用）
 
-    category: system / trading / xianyu / social / security / ai
+    category: system / trading / social / security / ai
     level: info / warning / error / success
     """
     global _notification_counter
@@ -271,7 +264,7 @@ def push_notification(
 @router.get("/system/notifications")
 def list_notifications(
     limit: int = Query(default=50, ge=1, le=200),
-    category: str | None = Query(default=None, description="按类别过滤: system/trading/xianyu/social/security/ai"),
+    category: str | None = Query(default=None, description="按类别过滤: system/trading/social/security/ai"),
     unread_only: bool = Query(default=False, description="只返回未读通知"),
 ):
     """获取通知列表"""
@@ -336,13 +329,6 @@ _SERVICE_REGISTRY: list[dict[str, Any]] = [
         "description": "核心 AI 引擎 + Telegram Bot + FastAPI",
         "process_keyword": "multi_main",
         "port": 18790,
-    },
-    {
-        "id": "xianyu",
-        "name": "闲鱼 AI 客服",
-        "description": "闲鱼平台自动回复 + 智能议价",
-        "process_keyword": "xianyu_main",
-        "port": None,
     },
     {
         "id": "gateway",

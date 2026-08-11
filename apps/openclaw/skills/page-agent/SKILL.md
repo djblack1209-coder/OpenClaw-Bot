@@ -64,21 +64,11 @@ async def publish_to_xhs(content, images):
     await agent.act("点击发布")
 ```
 
-### 集成到闲鱼自动化
-
-```python
-async def reply_xianyu_customer(message):
-    agent = PageAgent(browser_page)
-    await agent.act(f"在聊天输入框中输入: {message}")
-    await agent.act("点击发送按钮")
-```
-
 ## 使用场景
 
 1. **社交媒体发布** — 替代 `social-browser-adapter.mjs` 中的 Playwright 硬编码
-2. **闲鱼操作** — 替代 WebSocket 方式的备用方案
-3. **网页数据采集** — 替代 `crawl4ai` 的部分场景
-4. **任意网页交互** — 严总 说"帮我在 xxx 网站上做 yyy"
+2. **网页数据采集** — 替代 `crawl4ai` 的部分场景
+3. **任意网页交互** — 严总 说"帮我在 xxx 网站上做 yyy"
 
 ## 触发条件
 

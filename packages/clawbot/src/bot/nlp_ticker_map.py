@@ -87,7 +87,6 @@ _COMMAND_KEYWORDS: list[tuple[str, str, str]] = [
     ("记账", "expense_add", "记账"),
     ("账单", "bill_list", "账单追踪"),
     ("话费", "bill_list", "话费追踪"),
-    ("闲鱼", "xianyu_report", "闲鱼报告"),
     ("复盘", "review", "交易复盘"),
     ("绩效", "performance", "投资绩效"),
     ("风控", "risk", "风控检查"),

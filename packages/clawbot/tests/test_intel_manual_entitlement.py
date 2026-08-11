@@ -26,7 +26,7 @@ def test_manual_entitlement_dry_run_does_not_write_business_rows(tmp_path):
         db_path=db_path,
         telegram_user_id="manual-user",
         chat_id="manual-chat",
-        order_ref="xianyu-order-001",
+        order_ref="marketplace-order-001",
         duration_days=30,
         categories=["akshare", "senate_trading"],
         starts_at="2026-07-07T00:00:00+00:00",
@@ -48,7 +48,7 @@ def test_manual_entitlement_dry_run_does_not_write_business_rows(tmp_path):
     public_text = json.dumps(result, ensure_ascii=False)
     assert "manual-chat" not in public_text
     assert "manual-user" not in public_text
-    assert "xianyu-order-001" not in public_text
+    assert "marketplace-order-001" not in public_text
 
 
 def test_manual_entitlement_apply_and_renewal_extend_from_existing_expiry(tmp_path):
@@ -58,22 +58,22 @@ def test_manual_entitlement_apply_and_renewal_extend_from_existing_expiry(tmp_pa
         db_path=db_path,
         telegram_user_id="manual-user",
         chat_id="manual-chat",
-        order_ref="xianyu-order-001",
+        order_ref="marketplace-order-001",
         duration_days=30,
         categories=["akshare", "senate_trading"],
         starts_at="2026-07-07T00:00:00+00:00",
-        source="manual_xianyu_sale",
+        source="manual_marketplace_sale",
         apply=True,
     )
     renewal = grant_manual_entitlement(
         db_path=db_path,
         telegram_user_id="manual-user",
         chat_id="manual-chat",
-        order_ref="xianyu-order-002-renewal",
+        order_ref="marketplace-order-002-renewal",
         duration_days=30,
         categories=["akshare", "senate_trading"],
         starts_at="2026-07-08T00:00:00+00:00",
-        source="manual_xianyu_sale",
+        source="manual_marketplace_sale",
         apply=True,
     )
 
@@ -95,13 +95,13 @@ def test_manual_entitlement_apply_and_renewal_extend_from_existing_expiry(tmp_pa
         audit_sources = [row[0] for row in conn.execute("SELECT source FROM subscription_audit_log ORDER BY id")]
     assert statuses == ["superseded", "active"]
     assert len(audit_sources) == 2
-    assert all("xianyu-order" not in source for source in audit_sources)
+    assert all("marketplace-order" not in source for source in audit_sources)
     assert all("order_ref_sha256" in source for source in audit_sources)
 
     public_text = json.dumps(renewal, ensure_ascii=False)
     assert "manual-chat" not in public_text
     assert "manual-user" not in public_text
-    assert "xianyu-order-002-renewal" not in public_text
+    assert "marketplace-order-002-renewal" not in public_text
 
 
 def test_manual_entitlement_cli_dry_run_and_apply_write_evidence(tmp_path):
@@ -120,7 +120,7 @@ def test_manual_entitlement_cli_dry_run_and_apply_write_evidence(tmp_path):
             "--chat-id",
             "manual-chat",
             "--order-ref",
-            "xianyu-order-cli-001",
+            "marketplace-order-cli-001",
             "--category",
             "akshare",
             "--starts-at",
@@ -138,7 +138,7 @@ def test_manual_entitlement_cli_dry_run_and_apply_write_evidence(tmp_path):
             "--chat-id",
             "manual-chat",
             "--order-ref",
-            "xianyu-order-cli-001",
+            "marketplace-order-cli-001",
             "--category",
             "akshare",
             "--starts-at",
@@ -158,7 +158,7 @@ def test_manual_entitlement_cli_dry_run_and_apply_write_evidence(tmp_path):
     saved = dry_evidence.read_text(encoding="utf-8") + apply_evidence.read_text(encoding="utf-8")
     assert "manual-chat" not in saved
     assert "manual-user" not in saved
-    assert "xianyu-order-cli-001" not in saved
+    assert "marketplace-order-cli-001" not in saved
 
 
 def test_manual_entitlement_sandbox_evidence_is_redacted(tmp_path):
@@ -172,5 +172,5 @@ def test_manual_entitlement_sandbox_evidence_is_redacted(tmp_path):
     saved = (tmp_path / "evidence" / "evidence.json").read_text(encoding="utf-8")
     assert "manual-chat" not in saved
     assert "manual-user" not in saved
-    assert "xianyu-order-001" not in saved
-    assert "xianyu-order-002-renewal" not in saved
+    assert "marketplace-order-001" not in saved
+    assert "marketplace-order-002-renewal" not in saved

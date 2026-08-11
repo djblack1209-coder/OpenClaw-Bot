@@ -58,84 +58,6 @@ def test_social_extension_status_update_persists_safe_fields(tmp_path, monkeypat
     assert state_file.exists()
 
 
-def test_social_extension_status_update_persists_cc_delivery_capabilities(tmp_path, monkeypatch):
-    state_file = tmp_path / "social_extension_status.json"
-    monkeypatch.setattr("src.api.rpc._SOCIAL_EXTENSION_STATUS_FILE", state_file)
-
-    result = ClawBotRPC._rpc_social_extension_status_update(
-        {
-            "platform": "xianyu",
-            "url": "https://www.goofish.com/",
-            "extension": {
-                "manifest_version": "0.2.1",
-                "cc_delivery_helper_version": "2026-07-06-global-watch",
-                "capabilities": {
-                    "xianyu_delivery_scan": True,
-                    "xianyu_delivery_send": True,
-                    "current_chat_watch": True,
-                    "all_open_xianyu_tabs_watch": True,
-                    "target_tab_preflight": True,
-                    "single_pending_global_gate": True,
-                    "unsafe_extra": "drop-me",
-                },
-                "token": "must-not-persist",
-            },
-        }
-    )
-
-    assert result["success"] is True
-    loaded = ClawBotRPC._rpc_social_extension_status()
-    extension = loaded["extension"]
-    assert extension["manifest_version"] == "0.2.1"
-    assert extension["cc_delivery_helper_version"] == "2026-07-06-global-watch"
-    assert extension["capabilities"]["all_open_xianyu_tabs_watch"] is True
-    assert extension["capabilities"]["target_tab_preflight"] is True
-    assert extension["capabilities"]["background_heartbeat"] is False
-    assert "unsafe_extra" not in extension["capabilities"]
-    assert "token" not in extension
-
-
-def test_social_extension_status_preserves_known_cc_capabilities_when_old_payload_arrives(tmp_path, monkeypatch):
-    """旧插件动作不带 extension 字段时，不应冲掉已知的新版发货能力。"""
-    state_file = tmp_path / "social_extension_status.json"
-    monkeypatch.setattr("src.api.rpc._SOCIAL_EXTENSION_STATUS_FILE", state_file)
-
-    ClawBotRPC._rpc_social_extension_status_update(
-        {
-            "platform": "xianyu",
-            "extension": {
-                "manifest_version": "0.2.1",
-                "cc_delivery_helper_version": "2026-07-07-background-heartbeat",
-                "capabilities": {
-                    "all_open_xianyu_tabs_watch": True,
-                    "target_tab_preflight": True,
-                    "single_pending_global_gate": True,
-                    "background_heartbeat": True,
-                    "xianyu_confirm_shipment": True,
-                    "xianyu_relist_item": True,
-                    "relist_queue_watch": True,
-                    "paid_page_dispatch": True,
-                },
-            },
-        }
-    )
-    ClawBotRPC._rpc_social_extension_status_update(
-        {
-            "platform": "x",
-            "running": True,
-            "settings": {"personaTags": ["热点"]},
-        }
-    )
-
-    loaded = ClawBotRPC._rpc_social_extension_status()
-    extension = loaded["extension"]
-    assert extension["cc_delivery_helper_version"] == "2026-07-07-background-heartbeat"
-    assert extension["capabilities"]["all_open_xianyu_tabs_watch"] is True
-    assert extension["capabilities"]["background_heartbeat"] is True
-    assert extension["capabilities"]["relist_queue_watch"] is True
-    assert extension["capabilities"]["paid_page_dispatch"] is True
-
-
 def test_social_extension_status_update_clamps_invalid_platform(tmp_path, monkeypatch):
     state_file = tmp_path / "social_extension_status.json"
     monkeypatch.setattr("src.api.rpc._SOCIAL_EXTENSION_STATUS_FILE", state_file)
@@ -287,7 +209,7 @@ def test_social_extension_draft_create_includes_platform_content_and_image_plan(
     assert draft["cost_route"]["image_model"] == "gpt-image"
 
 
-def test_social_extension_asset_plan_is_platform_specific_for_x_and_xianyu(tmp_path, monkeypatch):
+def test_social_extension_asset_plan_is_platform_specific_for_x(tmp_path, monkeypatch):
     state_file = tmp_path / "x_auto_state.json"
     extension_file = tmp_path / "extension_status.json"
     monkeypatch.setattr("src.execution.social.x_auto_ops._STATE_FILE", state_file)
@@ -312,25 +234,6 @@ def test_social_extension_asset_plan_is_platform_specific_for_x_and_xianyu(tmp_p
     assert x_draft["image_plan"]["auto_generate"] is False
     assert "可选" in x_draft["image_plan"]["cover_prompt"]
     assert "投资建议" in " ".join(x_draft["safety_checklist"])
-
-    xianyu_result = ClawBotRPC._rpc_social_extension_draft_create(
-        {
-            "platform": "xianyu",
-            "url": "https://www.goofish.com/item?id=1",
-            "page_context": {
-                "title": "学生党二手相机咨询",
-                "selection": "买家问能不能便宜一点，今天能发吗",
-                "trends": ["二手数码", "学生党"],
-            },
-            "settings": {"personaTags": ["二手交易"], "imageModel": "none"},
-        }
-    )
-    xianyu_draft = xianyu_result["draft"]
-    assert xianyu_draft["content_plan"]["format"] == "xianyu_reply_or_listing"
-    assert xianyu_draft["platform_style"] == "闲鱼成交话术与商品优化"
-    assert xianyu_draft["image_plan"]["auto_generate"] is False
-    assert xianyu_draft["image_plan"]["image_model"] == "none"
-    assert "不要虚构成色" in " ".join(xianyu_draft["safety_checklist"])
 
 
 def test_social_extension_draft_update_and_review_by_id(tmp_path, monkeypatch):
@@ -841,17 +744,6 @@ def test_social_ops_workspace_exposes_growth_feedback_for_app_control(tmp_path, 
     )
     monkeypatch.setattr(ClawBotRPC, "_rpc_social_personas", staticmethod(lambda: []))
     monkeypatch.setattr(ClawBotRPC, "_rpc_autopilot_status", staticmethod(lambda: {"running": False}))
-    monkeypatch.setattr(
-        ClawBotRPC,
-        "_rpc_xianyu_compact_status",
-        staticmethod(lambda: {"running": False, "online": False, "cookie_ok": False}),
-    )
-    monkeypatch.setattr(
-        ClawBotRPC,
-        "_rpc_xianyu_recent_conversations",
-        staticmethod(lambda limit=10: {"conversations": [], "total": 0}),
-    )
-
     workspace = ClawBotRPC._rpc_social_ops_workspace()
 
     assert workspace["success"] is True
@@ -1116,9 +1008,6 @@ def test_social_ops_workspace_exposes_growth_draft_action(tmp_path, monkeypatch)
     monkeypatch.setattr(ClawBotRPC, "_rpc_social_drafts", staticmethod(lambda: {"drafts": [], "count": 0}))
     monkeypatch.setattr(ClawBotRPC, "_rpc_social_personas", staticmethod(lambda: []))
     monkeypatch.setattr(ClawBotRPC, "_rpc_autopilot_status", staticmethod(lambda: {"running": False}))
-    monkeypatch.setattr(ClawBotRPC, "_rpc_xianyu_compact_status", staticmethod(lambda: {"running": False, "online": False, "cookie_ok": False}))
-    monkeypatch.setattr(ClawBotRPC, "_rpc_xianyu_recent_conversations", staticmethod(lambda limit=10: {"conversations": [], "total": 0}))
-
     workspace = ClawBotRPC._rpc_social_ops_workspace()
 
     action = workspace["growth_draft_action"]
@@ -1142,9 +1031,6 @@ def test_social_ops_workspace_keeps_growth_draft_action_enabled_without_prior_si
     monkeypatch.setattr(ClawBotRPC, "_rpc_social_drafts", staticmethod(lambda: {"drafts": [], "count": 0}))
     monkeypatch.setattr(ClawBotRPC, "_rpc_social_personas", staticmethod(lambda: []))
     monkeypatch.setattr(ClawBotRPC, "_rpc_autopilot_status", staticmethod(lambda: {"running": False}))
-    monkeypatch.setattr(ClawBotRPC, "_rpc_xianyu_compact_status", staticmethod(lambda: {"running": False, "online": False, "cookie_ok": False}))
-    monkeypatch.setattr(ClawBotRPC, "_rpc_xianyu_recent_conversations", staticmethod(lambda limit=10: {"conversations": [], "total": 0}))
-
     workspace = ClawBotRPC._rpc_social_ops_workspace()
 
     action = workspace["growth_draft_action"]
@@ -1430,9 +1316,6 @@ def test_social_ops_workspace_exposes_strategy_summary_for_app_control(tmp_path,
     monkeypatch.setattr(ClawBotRPC, "_rpc_social_drafts", staticmethod(lambda: {"drafts": [], "count": 0}))
     monkeypatch.setattr(ClawBotRPC, "_rpc_social_personas", staticmethod(lambda: []))
     monkeypatch.setattr(ClawBotRPC, "_rpc_autopilot_status", staticmethod(lambda: {"running": False}))
-    monkeypatch.setattr(ClawBotRPC, "_rpc_xianyu_compact_status", staticmethod(lambda: {"running": False, "online": False, "cookie_ok": False}))
-    monkeypatch.setattr(ClawBotRPC, "_rpc_xianyu_recent_conversations", staticmethod(lambda limit=10: {"conversations": [], "total": 0}))
-
     workspace = ClawBotRPC._rpc_social_ops_workspace()
 
     assert workspace["strategy_summary"]["effective_preset"] == "x_absurd_growth"

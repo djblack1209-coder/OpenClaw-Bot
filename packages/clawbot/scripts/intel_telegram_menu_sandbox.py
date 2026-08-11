@@ -172,7 +172,7 @@ def build_intel_telegram_menu_sandbox_evidence(
             "Sandbox SQLite only; production intel_brief.db was not touched.",
             "No Telegram Bot API call; handler returned reply contracts only.",
             "No scraper was triggered by /custom; target was only recorded for later rate-limited collection.",
-            "No payment provider or Xianyu automation call.",
+            "No payment provider or marketplace automation call.",
         ],
     }
     evidence_path.write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding="utf-8")

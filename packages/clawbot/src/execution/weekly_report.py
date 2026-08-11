@@ -1,7 +1,7 @@
 """
 综合周报 — 每周日推送的 7 天数据汇总
 
-聚合投资+社媒+闲鱼+成本的周度表现。
+聚合投资、社媒和成本的周度表现。
 由 scheduler 每周日 20:30 自动触发，也可通过 /weekly 手动触发。
 """
 
@@ -19,9 +19,8 @@ async def weekly_report() -> str:
 
     内容架构:
       1. 📱 社媒周报 (发文绩效 + 自动驾驶 + 粉丝增长)
-      2. 🐟 闲鱼周报 (营收/利润/成交/咨询/转化)
-      3. 💰 成本周报 (API 日均/周均/月预估)
-      4. 🎯 目标进度 (交易目标达成情况)
+      2. 💰 成本周报 (API 日均/周均/月预估)
+      3. 🎯 目标进度 (交易目标达成情况)
 
     所有数据源独立 try/except，一个失败不影响其他。
     """
@@ -89,47 +88,6 @@ async def weekly_report() -> str:
             sections.append(_section("📱 社媒周报", items))
     except Exception as e:
         logger.debug("[WeeklyReport] 社媒: %s", e)
-
-    # ── 2. 🐟 闲鱼周报 ──────────────────────────────────────
-    try:
-        xctx = None
-        try:
-            from src.xianyu.xianyu_context import XianyuContextManager
-
-            xctx = XianyuContextManager()
-        except ImportError:
-            pass  # 合理保留：可选依赖缺失时继续走后续降级链
-
-        if xctx:
-            items = []
-            # 尝试获取利润汇总（7天）
-            profit = {}
-            if hasattr(xctx, "get_profit_summary"):
-                try:
-                    profit = xctx.get_profit_summary(days=7) or {}
-                except Exception as e:
-                    logger.debug("静默异常: %s", e)
-            # 尝试获取日统计（聚合7天）
-            xstats = {}
-            if hasattr(xctx, "daily_stats"):
-                try:
-                    xstats = xctx.daily_stats() or {}
-                except Exception as e:
-                    logger.debug("静默异常: %s", e)
-            if profit.get("revenue", 0) > 0:
-                items.append(kv("营收", f"¥{profit['revenue']:,.0f}"))
-                items.append(kv("利润", f"¥{profit.get('profit', 0):,.0f}"))
-                if profit.get("orders", 0) > 0:
-                    avg = profit["revenue"] / profit["orders"]
-                    items.append(kv("成交", f"{profit['orders']} 单 | 客单价 ¥{avg:.0f}"))
-            if xstats.get("messages", 0) > 0:
-                items.append(kv("咨询", f"{xstats['messages']} 条"))
-            if xstats.get("conversion_rate"):
-                items.append(kv("转化率", f"{xstats['conversion_rate']}"))
-            if items:
-                sections.append(_section("🐟 闲鱼周报", items))
-    except Exception as e:
-        logger.debug("[WeeklyReport] 闲鱼: %s", e)
 
     # ── 3. 💰 成本周报 ──────────────────────────────────────
     try:

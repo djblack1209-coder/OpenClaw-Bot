@@ -42,7 +42,6 @@ const CHANNEL_META: Record<string, { icon: string; color: string; label: string 
   feishu:    { icon: '🪶', color: 'var(--accent-cyan)',   label: '飞书' },
   wechat:    { icon: '💬', color: 'var(--accent-green)',  label: '微信' },
   whatsapp:  { icon: '📱', color: 'var(--accent-green)',  label: 'WhatsApp' },
-  xianyu:    { icon: '🐟', color: 'var(--accent-amber)',  label: '闲鱼' },
   email:     { icon: '📧', color: 'var(--accent-purple)', label: 'Email' },
   slack:     { icon: '💼', color: 'var(--accent-amber)',  label: 'Slack' },
   web:       { icon: '🌐', color: 'var(--accent-cyan)',   label: 'Web' },

@@ -59,7 +59,6 @@ PLATFORM_REGISTRY: dict[str, dict] = {
     "taobao": {"browser_url": "https://www.taobao.com"},
     "pdd": {"browser_url": "https://www.pinduoduo.com"},
     "smzdm": {"api": "https://www.smzdm.com/rss", "browser_url": "https://www.smzdm.com"},
-    "xianyu": {"browser_url": "https://www.goofish.com"},
     "composio": {"composio": True},  # 250+ 外部服务 (Gmail/Calendar/Slack/GitHub 等)
 }
 

@@ -1,7 +1,7 @@
 """
 主动智能引擎 — 定时主动检查
 
-收集系统上下文（持仓/闲鱼/交易/提醒/风控/自选股/行为洞察），
+收集系统上下文（持仓/交易/提醒/风控/自选股/行为洞察），
 评估是否值得主动推送通知给管理员。
 
 由 multi_main.py 主循环每 30 分钟调用一次。
@@ -64,17 +64,7 @@ async def periodic_proactive_check(engine: ProactiveEngine):
         except Exception as e:
             logger.debug(f"[Proactive] 持仓数据获取失败: {e}")
 
-        # 2. 未读闲鱼消息
-        try:
-            from src.xianyu.xianyu_live import get_unread_count
-
-            unread = get_unread_count()
-            if unread and unread > 0:
-                context_parts.append(f"闲鱼未读消息: {unread} 条")
-        except Exception as e:
-            logger.debug(f"[Proactive] 闲鱼未读获取失败: {e}")
-
-        # 3. 今日交易汇总
+        # 2. 今日交易汇总
         try:
             from src.trading_journal import TradingJournal
 
@@ -155,19 +145,7 @@ async def periodic_proactive_check(engine: ProactiveEngine):
         except Exception as e:
             logger.debug(f"[Proactive] 重复提醒统计失败: {e}")
 
-        # 8. 闲鱼最近成交 (跨域关联: 成交→有闲钱→投资机会)
-        try:
-            from src.xianyu.xianyu_live import get_recent_sales
-
-            sales = get_recent_sales(hours=24) if callable(get_recent_sales) else []
-            if sales:
-                total = sum(s.get("price", 0) for s in sales)
-                if total > 0:
-                    context_parts.append(f"闲鱼24h成交: ¥{total:.0f} ({len(sales)}笔)")
-        except Exception as e:
-            logger.debug(f"[Proactive] 闲鱼成交获取失败: {e}")
-
-        # 9. 使用行为洞察 — 搬运 Spotify Wrapped / Apple 屏幕使用时间洞察模式
+        # 7. 使用行为洞察 — 搬运 Spotify Wrapped / Apple 屏幕使用时间洞察模式
         # 从历史消息中检测行为模式，生成主动建议
         try:
             from src.bot.globals import history_store as _history_store_ref

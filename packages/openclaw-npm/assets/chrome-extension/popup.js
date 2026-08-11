@@ -41,13 +41,6 @@ const els = {
   personaTags: document.getElementById('persona-tags'),
   modelRoute: document.getElementById('model-route'),
   tasks: document.getElementById('tasks'),
-  xianyuDeliveryPanel: document.getElementById('xianyu-delivery-panel'),
-  xianyuDeliveryHint: document.getElementById('xianyu-delivery-hint'),
-  xianyuDeliveryScan: document.getElementById('xianyu-delivery-scan'),
-  xianyuDeliverySend: document.getElementById('xianyu-delivery-send'),
-  xianyuDeliveryWatch: document.getElementById('xianyu-delivery-watch'),
-  xianyuDeliveryWatchAll: document.getElementById('xianyu-delivery-watch-all'),
-  xianyuDeliveryState: document.getElementById('xianyu-delivery-state'),
   refreshTrends: document.getElementById('refresh-trends'),
   scanPageContext: document.getElementById('scan-page-context'),
   pageContextPanel: document.getElementById('page-context-panel'),
@@ -170,13 +163,13 @@ async function loadState() {
 
 function render() {
   const supported = platform.supported
-  els.platformShort.textContent = platform.id === 'xhs' ? '红' : platform.id === 'xianyu' ? '鱼' : platform.id === 'x' ? 'X' : '?'
+  els.platformShort.textContent = platform.id === 'xhs' ? '红' : platform.id === 'x' ? 'X' : '?'
   els.platformLabel.textContent = platform.label
   els.platformTone.textContent = platform.tone || `当前域名：${platform.host || 'unknown'}`
   els.statusBox.dataset.kind = supported ? (running ? 'running' : 'paused') : 'unsupported'
   els.statusBox.textContent = supported
     ? buildStatusSummary(platform, running, settings)
-    : '当前页面暂不支持自动运营。请切到 X / 小红书 / 闲鱼 页面。'
+    : '当前页面暂不支持自动运营。请切到 X / 小红书页面。'
   els.start.disabled = !supported || running
   els.pause.disabled = !supported || !running
   els.sync.disabled = !supported
@@ -201,13 +194,6 @@ function render() {
   els.refreshGrowthFeedback.disabled = !supported
   els.refreshSchedule.disabled = !supported
   els.refreshReviewPack.disabled = !supported
-  const xianyuDeliveryVisible = platform.id === 'xianyu'
-  els.xianyuDeliveryPanel.dataset.visible = xianyuDeliveryVisible ? 'true' : 'false'
-  els.xianyuDeliveryHint.style.display = xianyuDeliveryVisible ? 'none' : 'block'
-  els.xianyuDeliveryScan.disabled = !xianyuDeliveryVisible
-  els.xianyuDeliverySend.disabled = !xianyuDeliveryVisible
-  els.xianyuDeliveryWatch.disabled = !xianyuDeliveryVisible
-  els.xianyuDeliveryWatchAll.disabled = false
 }
 
 function renderDraftEditor(draft) {
@@ -422,138 +408,6 @@ async function capturePerformanceSnapshot() {
   }
 }
 
-function renderXianyuDeliveryState(result, prefix = '') {
-  const scan = result?.result || result?.scan || {}
-  const signals = Array.isArray(scan.paidSignals) && scan.paidSignals.length
-    ? `信号：${scan.paidSignals.join(' / ')}`
-    : '信号：未看到已付款/待发货'
-  const input = scan.inputReady ? '输入框：已找到' : '输入框：未找到'
-  const send = scan.sendButtonReady ? '发送按钮：已找到' : '发送按钮：未找到'
-  els.xianyuDeliveryState.textContent = [prefix, signals, input, send].filter(Boolean).join('\n')
-}
-
-async function scanXianyuDelivery() {
-  setError('')
-  els.xianyuDeliveryScan.disabled = true
-  els.xianyuDeliveryScan.textContent = '检测中…'
-  try {
-    if (!hasChromeRuntime()) {
-      renderXianyuDeliveryState({
-        result: { paidSignals: ['买家已付款'], inputReady: true, sendButtonReady: true },
-      }, '预览模式：当前聊天可发货。')
-      return
-    }
-    const result = await chrome.runtime.sendMessage({ type: 'xianyuDeliveryScan', payload: {} })
-    if (!result?.ok) {
-      setError(result?.error || '检测当前闲鱼页面失败。')
-      return
-    }
-    renderXianyuDeliveryState(result, result.result?.ready ? '当前聊天通过发货预检。' : '当前聊天还不能自动发货。')
-  } catch (err) {
-    setError(err instanceof Error ? err.message : String(err))
-  } finally {
-    els.xianyuDeliveryScan.disabled = platform.id !== 'xianyu'
-    els.xianyuDeliveryScan.textContent = '检测当前聊天'
-  }
-}
-
-async function sendXianyuDelivery() {
-  setError('')
-  els.xianyuDeliverySend.disabled = true
-  els.xianyuDeliverySend.textContent = '发送中…'
-  try {
-    if (!hasChromeRuntime()) {
-      renderXianyuDeliveryState({
-        result: { paidSignals: ['买家已付款'], inputReady: true, sendButtonReady: true },
-      }, '预览模式：会填入待发货卡密并点击发送。')
-      return
-    }
-    const result = await chrome.runtime.sendMessage({ type: 'xianyuDeliverySend', payload: {} })
-    if (!result?.ok) {
-      renderXianyuDeliveryState(result, '已阻止发送。')
-      setError(result?.error || '发送失败，请检查当前闲鱼聊天页。')
-      return
-    }
-    renderXianyuDeliveryState(result, `已发送并标记本机记录 #${result.shipment?.id || ''}。`)
-    els.draftResult.textContent = '发货完成：买家收到兑换网址和卡密后，继续让买家注册/登录、兑换、创建 API Key、导入 CC Switch 并调一次模型。'
-  } catch (err) {
-    setError(err instanceof Error ? err.message : String(err))
-  } finally {
-    els.xianyuDeliverySend.disabled = platform.id !== 'xianyu'
-    els.xianyuDeliverySend.textContent = '发送待发货卡密'
-  }
-}
-
-async function refreshXianyuDeliveryWatchState() {
-  if (!els.xianyuDeliveryWatch) return
-  try {
-    if (!hasChromeRuntime()) {
-      els.xianyuDeliveryWatch.textContent = '看守当前聊天页'
-      return
-    }
-    const state = await chrome.runtime.sendMessage({ type: 'xianyuDeliveryWatchState', payload: {} })
-    const enabled = Boolean(state?.watch?.enabled)
-    const scope = state?.watch?.scope || 'current_chat'
-    els.xianyuDeliveryWatch.textContent = enabled && scope === 'current_chat' ? '关闭看守' : '看守当前聊天页'
-    els.xianyuDeliveryWatchAll.textContent = enabled && scope === 'all_open_xianyu_tabs' ? '关闭全局看守' : '看守所有闲鱼页'
-    if (state?.watch?.last_result?.ok) {
-      renderXianyuDeliveryState(
-        state.watch.last_result,
-        scope === 'all_open_xianyu_tabs' ? `全局看守运行中：已扫描 ${state.watch.tabCount || 0} 个闲鱼页。` : '看守模式最近一次已发货。',
-      )
-    }
-  } catch {
-    els.xianyuDeliveryWatch.textContent = '看守当前聊天页'
-    els.xianyuDeliveryWatchAll.textContent = '看守所有闲鱼页'
-  }
-}
-
-async function toggleXianyuDeliveryWatch(scope = 'current_chat') {
-  setError('')
-  const button = scope === 'all_open_xianyu_tabs' ? els.xianyuDeliveryWatchAll : els.xianyuDeliveryWatch
-  button.disabled = true
-  button.textContent = '处理中…'
-  try {
-    if (!hasChromeRuntime()) {
-      renderXianyuDeliveryState({
-        result: { paidSignals: ['买家已付款'], inputReady: true, sendButtonReady: true },
-      }, scope === 'all_open_xianyu_tabs' ? '预览模式：会看守所有已打开闲鱼页。' : '预览模式：会看守当前聊天页，命中后自动发送一次。')
-      return
-    }
-    const state = await chrome.runtime.sendMessage({ type: 'xianyuDeliveryWatchState', payload: {} })
-    const enabled = Boolean(state?.watch?.enabled)
-    const currentScope = state?.watch?.scope || 'current_chat'
-    const nextEnabled = !(enabled && currentScope === scope)
-    const result = await chrome.runtime.sendMessage({
-      type: 'xianyuDeliveryWatchSet',
-      payload: { enabled: nextEnabled, scope },
-    })
-    if (!result?.ok) {
-      setError(result?.error || (scope === 'all_open_xianyu_tabs' ? '全局看守开启失败，请先打开闲鱼买家聊天页。' : '看守模式切换失败，请确认当前页是闲鱼买家聊天页。'))
-      return
-    }
-    if (nextEnabled) {
-      const prefix = scope === 'all_open_xianyu_tabs'
-        ? `已开启全局看守：保持闲鱼聊天页打开（当前 ${result.watch?.tabCount || 0} 个）。`
-        : '已开启看守：保持当前闲鱼买家聊天页打开。'
-      renderXianyuDeliveryState(result.scan || {}, prefix)
-      els.draftResult.textContent = scope === 'all_open_xianyu_tabs'
-        ? '全局看守已开启：只在本机刚好 1 条待发货、页面看见已付款信号时发送，成功一次后自动关闭。'
-        : '看守模式已开启：插件会定时检查当前聊天页；成功发货一次后自动关闭，避免重复发送。'
-    } else {
-      els.xianyuDeliveryState.textContent = '看守模式已关闭。'
-      els.draftResult.textContent = '已关闭闲鱼发货看守。'
-    }
-  } catch (err) {
-    setError(err instanceof Error ? err.message : String(err))
-  } finally {
-    els.xianyuDeliveryWatch.disabled = platform.id !== 'xianyu'
-    els.xianyuDeliveryWatchAll.disabled = false
-    await refreshXianyuDeliveryWatchState()
-  }
-}
-
-
 function renderGrowthFeedback(summary = {}) {
   currentGrowthFeedback = normalizeGrowthFeedbackSummary(summary || {})
   els.growthPanel.innerHTML = ''
@@ -733,13 +587,6 @@ function createPreviewPageContext() {
       bodyText: '家人们，冷泡茶加柠檬真的适合收藏，适合做成步骤图文。',
     })
   }
-  if (platform.id === 'xianyu') {
-    return normalizePageContext({
-      title: '闲鱼商品页',
-      headings: ['MacBook Air M2 低价出'],
-      bodyText: '买家问还能不能便宜一点，今天能不能发货，适合生成成交回复。',
-    })
-  }
   return normalizePageContext({
     title: 'X Home',
     trends: ['GitHub 一周异常 Star 工具榜'],
@@ -843,11 +690,6 @@ function createPreviewInteractions() {
       { id: 'preview-xhs-comment', text: '这个夏日冷饮适合宿舍做吗？', author: '小红书用户', metric: '5赞', reply_angle: '补充低成本替代材料和收藏引导' },
     ])
   }
-  if (platform.id === 'xianyu') {
-    return normalizeInteractionSignals([
-      { id: 'preview-xianyu-chat', text: '还能便宜点吗？今天能发货吗？', author: '闲鱼买家', metric: '高意向', reply_angle: '价格锚点 + 小让步 + 发货承诺边界' },
-    ])
-  }
   return normalizeInteractionSignals([
     { id: 'preview-x-comment', text: '这些 AI 工具怎么部署到自己的业务里？', author: 'young_builder', metric: '18 likes', reply_angle: '给 3 步部署检查清单，不承诺收益' },
   ])
@@ -893,9 +735,7 @@ async function createDraftFromInteraction(index) {
         ...createPreviewDraft(),
         id: `preview-interaction-${index}`,
         title: `互动回复：${signal.text.slice(0, 40)}`,
-        text: platform.id === 'xianyu'
-          ? `可以这样回：这个价格我已经压得比较低了，如果你今天拍，我可以优先发出。\n\n买家信号：${signal.text}\n\n注意：确认商品事实，不诱导站外交易。`
-          : `可以这样回：\n\n${signal.text}\n\n我的建议是先拆成 3 步：\n1. 先确认真实需求\n2. 找一个最小可执行动作\n3. 做完再看反馈\n\n这条只是待审回复草稿，不会自动评论。`,
+        text: `可以这样回：\n\n${signal.text}\n\n我的建议是先拆成 3 步：\n1. 先确认真实需求\n2. 找一个最小可执行动作\n3. 做完再看反馈\n\n这条只是待审回复草稿，不会自动评论。`,
         review_status: 'pending',
         source: 'chrome_extension_interaction_scan',
       }
@@ -989,7 +829,7 @@ function renderSampleList(samples = []) {
       <strong></strong>
       <div class="sample-meta"></div>
     `
-    const platformLabel = sample.platform === 'xhs' ? '小红书' : sample.platform === 'xianyu' ? '闲鱼' : 'X'
+    const platformLabel = sample.platform === 'xhs' ? '小红书' : 'X'
     card.querySelector('strong').textContent = sample.title || sample.text.slice(0, 36) || '未命名样稿'
     card.querySelector('.sample-meta').textContent = `${platformLabel} · ${sample.source || 'review-pack'} · ${sample.text.slice(0, 88)}`
     card.addEventListener('click', () => {
@@ -1079,7 +919,7 @@ function renderScheduleList(items = []) {
       <strong></strong>
       <div class="schedule-meta"></div>
     `
-    const platformLabel = item.platform === 'xhs' ? '小红书' : item.platform === 'xianyu' ? '闲鱼' : 'X'
+    const platformLabel = item.platform === 'xhs' ? '小红书' : 'X'
     card.querySelector('strong').textContent = item.title || '未命名排程'
     card.querySelector('.schedule-meta').textContent = `${platformLabel} · ${scheduleStatusLabel(item)} · ${item.scheduled_at || '未设置时间'}`
     card.addEventListener('click', () => loadDraftFromSchedule(index))
@@ -1123,19 +963,9 @@ function buildExtensionHeartbeat() {
   const manifest = hasChromeRuntime() && chrome.runtime.getManifest ? chrome.runtime.getManifest() : {}
   return {
     manifest_version: String(manifest.version || 'preview'),
-    cc_delivery_helper_version: '2026-07-07-paid-page-fallback',
     capabilities: {
-      xianyu_delivery_scan: true,
-      xianyu_delivery_send: true,
-      xianyu_confirm_shipment: true,
-      xianyu_relist_item: true,
-      current_chat_watch: true,
-      all_open_xianyu_tabs_watch: true,
       target_tab_preflight: true,
-      single_pending_global_gate: true,
       background_heartbeat: true,
-      relist_queue_watch: true,
-      paid_page_dispatch: true,
     },
   }
 }
@@ -1195,7 +1025,7 @@ async function probeCurrentPageFields() {
   els.probePage.textContent = '检测中…'
   try {
     if (!hasChromeRuntime()) {
-      const fields = platform.id === 'xhs' ? '标题 / 正文' : platform.id === 'xianyu' ? '回复或描述' : '发帖输入框'
+      const fields = platform.id === 'xhs' ? '标题 / 正文' : '发帖输入框'
       els.draftResult.textContent = `预览模式：当前平台预计可检测 ${fields}；真实安装后会扫描页面输入框，不会点击发布按钮。`
       return
     }
@@ -1236,17 +1066,6 @@ function createPreviewTrends() {
         source: 'preview_life',
         tags: ['生活方式', '通勤', '省钱'],
         heat_reason: '轻量攻略，适合封面清单化',
-      },
-    ])
-  }
-  if (platform.id === 'xianyu') {
-    return normalizeTrendItems([
-      {
-        title: '学生党开学前二手数码需求升温',
-        source: 'preview_xianyu',
-        tags: ['二手交易', '数码', '学生'],
-        heat_reason: '适合优化标题和砍价回复',
-        call_to_action: '生成闲鱼成交话术',
       },
     ])
   }
@@ -1306,7 +1125,7 @@ function createPreviewReviewPack() {
       one_liner: '中英热点观察员 + 抽象吐槽 + 低风险追梗。',
       positioning: '不做 AI 教程号，追中文/英文趋势，用短、怪、有反差的表达制造互动。',
       tone: ['短', '怪', '有反差', '轻微阴阳怪气'],
-      content_mix: { x: '70% 热点短吐槽', xhs: '生活化热点笔记', xianyu: '保持客服专业' },
+      content_mix: { x: '70% 热点短吐槽', xhs: '生活化热点笔记' },
     },
     persona_approved: false,
     samples: [
@@ -1375,28 +1194,6 @@ function createPreviewAssetPlan(platformId = platform.id) {
       },
       format_checklist: ['标题 20 字左右', '正文 3-5 步', 'emoji 不堆砌', '发布前人工确认'],
       safety_checklist: ['不自动发布', '不写功效承诺', '不盗用真实品牌 Logo'],
-      cost_route: { content_model: settings.contentModel, image_model: settings.imageModel, prefer_web_quota: true },
-    }
-  }
-  if (platformId === 'xianyu') {
-    return {
-      platform_style: '闲鱼成交话术与商品优化',
-      content_plan: {
-        format: 'xianyu_reply_or_listing',
-        strategy_preset: settings.strategyPreset || 'xianyu_deal_closer',
-        audience: '闲鱼买家 / 卖家 / 二手数码用户',
-        hook: '这个买家的真实需求可能是想确认成色和发货速度',
-        growth_loop: '成交率优先：提高回复速度、降低疑虑、记录高转化话术。',
-        structure: ['判断买家意图', '价格锚点', '成色证据', '小让步引导下单'],
-      },
-      image_plan: {
-        auto_generate: false,
-        image_model: settings.imageModel || 'none',
-        cover_prompt: '闲鱼商品真实拍摄建议，白天自然光，清楚展示成色、配件和瑕疵，不生成虚假配件',
-        asset_prompts: ['商品主图建议', '边角瑕疵细节图', '配件和包装清单图'],
-      },
-      format_checklist: ['先回应买家问题', '不写无法兑现承诺', '确认商品事实'],
-      safety_checklist: ['不自动发布', '不要虚构成色', '不诱导站外交易'],
       cost_route: { content_model: settings.contentModel, image_model: settings.imageModel, prefer_web_quota: true },
     }
   }
@@ -1529,16 +1326,6 @@ function createPreviewDraft() {
       text: '家人们，今天这个低卡柠檬茶真的很适合夏天续命 🍋\n\n1. 柠檬片先用盐搓洗\n2. 加冰块、乌龙茶和一点蜂蜜\n3. 最后撒薄荷叶，拍照也很好看\n\n#夏日冷饮 #学生党省钱 #低卡饮品',
       review_status: 'pending',
       ...createPreviewAssetPlan('xhs'),
-    }
-  }
-  if (platform.id === 'xianyu') {
-    return {
-      id: 'preview-xianyu',
-      platform: 'xianyu',
-      title: '砍价回复建议',
-      text: '可以小刀一点，但这个成色和配件都比较完整。你今天拍的话，我这边优先给你发出。',
-      review_status: 'pending',
-      ...createPreviewAssetPlan('xianyu'),
     }
   }
   return {
@@ -1741,10 +1528,6 @@ els.capturePerformance.addEventListener('click', () => void capturePerformanceSn
 els.refreshGrowthFeedback.addEventListener('click', () => void refreshGrowthFeedback())
 els.generateGrowthDrafts.addEventListener('click', () => void generateGrowthDrafts())
 els.refreshReviewPack.addEventListener('click', () => void refreshReviewPack())
-els.xianyuDeliveryScan.addEventListener('click', () => void scanXianyuDelivery())
-els.xianyuDeliverySend.addEventListener('click', () => void sendXianyuDelivery())
-els.xianyuDeliveryWatch.addEventListener('click', () => void toggleXianyuDeliveryWatch('current_chat'))
-els.xianyuDeliveryWatchAll.addEventListener('click', () => void toggleXianyuDeliveryWatch('all_open_xianyu_tabs'))
 els.personaApprove.addEventListener('click', () => void reviewPersonaDirection(true))
 els.personaReject.addEventListener('click', () => void reviewPersonaDirection(false))
 els.refreshSchedule.addEventListener('click', () => void refreshScheduleQueue())
@@ -1774,5 +1557,4 @@ els.attachRelay.addEventListener('click', (event) => {
 })
 
 void loadState()
-void refreshXianyuDeliveryWatchState()
 renderDraftEditor(null)

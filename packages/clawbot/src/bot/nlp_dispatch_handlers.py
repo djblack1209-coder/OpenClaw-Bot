@@ -69,17 +69,12 @@ async def handle_expense_undo(mixin, update, context, action_arg):
         await update.message.reply_text("没有可删除的记录")
 
 
-# ── 导出记账/闲鱼 ──────────────────────────────────────────
+# ── 导出记账 ──────────────────────────────────────────────
 async def handle_export_expenses(mixin, update, context, action_arg):
     """导出记账数据"""
     context.args = ["expenses", action_arg]
     await mixin.cmd_export(update, context)
 
-
-async def handle_export_xianyu(mixin, update, context, action_arg):
-    """导出闲鱼订单数据"""
-    context.args = ["xianyu", action_arg]
-    await mixin.cmd_export(update, context)
 
 
 # ── 收入记录 ──────────────────────────────────────────────
@@ -437,19 +432,6 @@ async def handle_ops_route(mixin, update, context, action_type, action_arg):
     return False
 
 
-# ── 闲鱼风格/FAQ ──────────────────────────────────────────
-async def handle_xianyu_style_show(mixin, update, context, action_arg):
-    """显示闲鱼回复风格"""
-    context.args = ["show"]
-    await mixin.cmd_xianyu_style(update, context)
-
-
-async def handle_xianyu_style_faq_list(mixin, update, context, action_arg):
-    """列出闲鱼常见问题"""
-    context.args = ["faq", "list"]
-    await mixin.cmd_xianyu_style(update, context)
-
-
 # ── 自动交易 ──────────────────────────────────────────────
 async def handle_autotrader_start(mixin, update, context, action_arg):
     """启动自动交易"""
@@ -520,7 +502,6 @@ _SPECIAL_HANDLERS: dict[str, object] = {
     "expense_summary": handle_expense_summary,
     "expense_undo": handle_expense_undo,
     "export_expenses": handle_export_expenses,
-    "export_xianyu": handle_export_xianyu,
     "income_add": handle_income_add,
     "budget_set": handle_budget_set,
     "monthly_summary": handle_monthly_summary,
@@ -531,8 +512,6 @@ _SPECIAL_HANDLERS: dict[str, object] = {
     "bill_tips": handle_bill_tips,
     "bill_predict": handle_bill_predict,
     "ops_life_remind": handle_ops_life_remind,
-    "xianyu_style_show": handle_xianyu_style_show,
-    "xianyu_style_faq_list": handle_xianyu_style_faq_list,
     "autotrader_start": handle_autotrader_start,
     "autotrader_stop": handle_autotrader_stop,
     "buy": handle_buy,

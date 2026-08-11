@@ -14,11 +14,9 @@ PYTHON ?= $(shell \
 		echo python3; \
 	fi)
 FRONTEND := apps/openclaw-manager-src
-SHELLCHECK_FILES := $(filter-out \
-	packages/clawbot/scripts/start_xianyu.sh, \
-	$(wildcard scripts/*.sh packages/clawbot/scripts/*.sh tools/launchagents/*.sh))
+SHELLCHECK_FILES := $(wildcard scripts/*.sh packages/clawbot/scripts/*.sh tools/launchagents/*.sh)
 
-.PHONY: test lint format typecheck docker clean help ci-local syntax-check docs-check shellcheck gitleaks-check dependency-audit rust-audit security-check clean-install-check supply-chain-check python-lock python-lock-check critical-coverage-check new-api-up new-api-down new-api-check new-api-sync new-api-brand-patch sub2api-check jiyu-sub2-replenish jiyu-sub2-replenish-dry-run cc-seller-chrome cc-seller-bridge cc-seller-auto backup-run backup-schedule-install backup-schedule-status backup-schedule-uninstall backup-restore-drill tauri-rollback-check tauri-rollback
+.PHONY: test lint format typecheck docker clean help ci-local syntax-check docs-check shellcheck gitleaks-check dependency-audit rust-audit security-check clean-install-check supply-chain-check python-lock python-lock-check critical-coverage-check new-api-up new-api-down new-api-check new-api-sync new-api-brand-patch sub2api-check jiyu-sub2-replenish jiyu-sub2-replenish-dry-run backup-run backup-schedule-install backup-schedule-status backup-schedule-uninstall backup-restore-drill tauri-rollback-check tauri-rollback
 
 ## ─── 帮助 ───
 help: ## 显示所有可用命令
@@ -38,16 +36,14 @@ test-cov: ## 运行测试 + 覆盖率报告
 
 critical-coverage-check: ## 要求高风险业务模块聚合覆盖率不低于 80%
 	cd $(CLAWBOT) && $(PYTHON) -m coverage report \
-		--include='src/api/auth.py,src/core/loop_owner.py,src/xianyu/cc_operator_state.py,src/execution/social/publish_gate.py,src/intel/scheduled_pipeline.py,src/risk_validators.py' \
+		--include='src/api/auth.py,src/core/loop_owner.py,src/execution/social/publish_gate.py,src/intel/scheduled_pipeline.py,src/risk_validators.py' \
 		--fail-under=80
 	cd $(CLAWBOT) && $(PYTHON) -m coverage report --include='src/api/auth.py' --fail-under=70
 	cd $(CLAWBOT) && $(PYTHON) -m coverage report --include='src/core/loop_owner.py' --fail-under=70
-	cd $(CLAWBOT) && $(PYTHON) -m coverage report --include='src/xianyu/cc_operator_state.py' --fail-under=90
 	cd $(CLAWBOT) && $(PYTHON) -m coverage report --include='src/execution/social/publish_gate.py' --fail-under=75
 	cd $(CLAWBOT) && $(PYTHON) -m coverage report --include='src/intel/scheduled_pipeline.py' --fail-under=90
 	cd $(CLAWBOT) && $(PYTHON) -m coverage report --include='src/risk_validators.py' --fail-under=90
 	cd $(CLAWBOT) && $(PYTHON) -m coverage report --include='src/broker_bridge.py' --fail-under=35
-	cd $(CLAWBOT) && $(PYTHON) -m coverage report --include='src/xianyu/xianyu_live.py' --fail-under=35
 
 ## ─── 代码检查 ───
 lint: ## Ruff 静态检查
@@ -59,7 +55,7 @@ typecheck: ## 前端 TypeScript 类型检查
 docs-check: ## 检查 docs 扁平目录、编号命名和索引完整性
 	bash scripts/check_docs_layout.sh
 
-shellcheck: ## 检查仓库自有 Shell 脚本（仅排除依赖特殊运行环境的闲鱼启动脚本）
+shellcheck: ## 检查仓库自有 Shell 脚本
 	@command -v shellcheck >/dev/null 2>&1 || { echo '缺少 shellcheck，请先安装后重试'; exit 127; }
 	shellcheck -x $(SHELLCHECK_FILES)
 
@@ -135,15 +131,6 @@ jiyu-sub2-replenish: ## 启动 JIYU Sub2 本地补号助手（http://127.0.0.1:1
 
 jiyu-sub2-replenish-dry-run: ## 演练补号助手，只验证解析和页面，不登录或建号
 	cd $(CLAWBOT) && $(PYTHON) -m src.sub2_replenish --dry-run
-
-cc-seller-chrome: ## 启动 CC中转闲鱼卖家专用 Chrome，并打开插件加载目录
-	node scripts/cc_zhongzhuan_launch_seller_chrome.mjs
-
-cc-seller-bridge: ## 启动 CC中转闲鱼卖家本机桥接器，负责自动发卡/确认发货/恢复可售
-	node scripts/cc_zhongzhuan_seller_bridge.mjs
-
-cc-seller-auto: cc-seller-chrome ## 启动卖家专用浏览器后，运行一次本机桥接巡检
-	node scripts/cc_zhongzhuan_seller_bridge.mjs --once
 
 backup-run: ## 立即生成本机备份并完成一次只读恢复演练
 	bash scripts/manage_backup_launchagent.sh run

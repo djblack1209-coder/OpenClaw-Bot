@@ -33,7 +33,6 @@ MODULES_TO_TEST = [
     "src.message_sender",
     # 新增: 架构重构后的5个拆分Mixin
     "src.bot.cmd_social_mixin",
-    "src.bot.cmd_xianyu_mixin",
     "src.bot.cmd_life_mixin",
     "src.bot.cmd_novel_mixin",
     "src.bot.cmd_ops_mixin",

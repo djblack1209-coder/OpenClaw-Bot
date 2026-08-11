@@ -136,7 +136,6 @@ _COMMON_COMMANDS = [
     BotCommand("rebalance", "再平衡建议"),
     # --- 群聊 & 系统 ---
     BotCommand("lanes", "群聊分流规则"),
-    BotCommand("xianyu", "闲鱼AI客服 start/stop/status"),
     BotCommand("jiyu_replenish", "补号仅限本机操作（可取消保护等待）"),
     BotCommand("pricewatch", "降价提醒 add/list/remove"),
     # --- 补全缺失命令 ---
@@ -145,7 +144,6 @@ _COMMON_COMMANDS = [
     BotCommand("targets", "盈利目标进度"),
     BotCommand("weekly", "综合周报"),
     BotCommand("bill", "话费水电费追踪"),
-    BotCommand("xianyu_report", "闲鱼运营报表"),
 ]
 
 # Free-LLM-Bot 简化命令集（聚焦核心功能，避免冗余）
@@ -339,28 +337,6 @@ async def main():
 
     # 7. 自适应路由器已废弃 — LiteLLM Router 内置自适应路由，无需单独初始化
     logger.info("  自适应路由: LiteLLM Router 内置，无需单独初始化")
-
-    # 7.5 初始化闲鱼监控（可选）
-    try:
-        from src.xianyu.goofish_monitor import init_goofish_monitor
-
-        init_goofish_monitor()
-        logger.info("  闲鱼监控已初始化")
-    except Exception as e:
-        logger.debug("  闲鱼监控初始化跳过: %s", e)
-
-    # 7.6 初始化 CookieCloud 自动同步（可选）
-    try:
-        from src.xianyu.cookie_cloud import get_cookie_cloud_manager
-
-        cc_manager = get_cookie_cloud_manager()
-        if cc_manager.enabled:
-            asyncio.ensure_future(cc_manager.run_sync_loop())
-            logger.info("  CookieCloud 自动同步已启动 (间隔 %ds)", cc_manager._sync_interval)
-        else:
-            logger.info("  CookieCloud 未配置，跳过自动同步")
-    except Exception as e:
-        logger.debug("  CookieCloud 初始化跳过: %s", e)
 
     # 8. 挂载交易记忆桥接（自动将交易事件写入共享记忆）
     trading_memory_bridge.attach(shared_memory=shared_memory)
@@ -895,7 +871,7 @@ async def main():
                     await app.bot.send_message(chat_id=_private_notify_chat_id, text=text)
             except Exception as e:
                 logger.error("[ExecutionHub] 私聊通知发送失败: %s", e)
-        # 微信镜像推送 — 定时推送（晨报/周报/闲鱼/预算等）也要到达微信
+        # 微信镜像推送 — 定时推送（晨报/周报/预算等）也要到达微信
         try:
             from src.wechat_bridge import send_to_wechat
 
@@ -1165,15 +1141,6 @@ async def main():
             logger.info("  LLM 缓存已关闭")
     except Exception as e:
         logger.debug("关闭LLM缓存时异常(可忽略): %s", e)
-    # 关闭 httpx 长生命周期客户端（防止 TCP 连接泄漏）
-    try:
-        from src.xianyu.goofish_monitor import _monitor as _gm
-
-        if _gm and hasattr(_gm, "close"):
-            await _gm.close()
-            logger.info("  GoofishMonitor httpx 客户端已关闭")
-    except Exception as e:
-        logger.debug("GoofishMonitor 关闭跳过: %s", e)
     try:
         from src.execution.social.media_crawler_bridge import MediaCrawlerBridge
 

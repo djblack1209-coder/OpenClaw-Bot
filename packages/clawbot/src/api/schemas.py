@@ -44,8 +44,6 @@ class SystemStatus(BaseModel):
     total_cost_usd: float = 0.0
     avg_latency_ms: float = 0.0
     memory_entries: int = 0
-    # 闲鱼客服运行状态
-    xianyu: dict = {}
 
 
 # ============================================================

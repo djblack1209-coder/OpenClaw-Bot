@@ -15,7 +15,6 @@ import {
   Square,
   Clock,
   CheckCircle2,
-  Fish,
   Eye,
   MousePointerClick,
   MessageSquare,
@@ -31,7 +30,6 @@ import { api } from '../../lib/api';
 import { useLanguage } from '../../i18n';
 import { useActivePagePolling } from '@/hooks/useActivePagePolling';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { useAppStore } from '@/stores/appStore';
 
 /* ====== 入场动画 ====== */
 const containerVariants = {
@@ -60,7 +58,6 @@ const strategyPresetOptions = [
   { id: 'x_wealth_frontier', labelKey: 'social.strategy.xWealthFull' },
   { id: 'x_absurd_growth', labelKey: 'social.strategy.xAbsurdFull' },
   { id: 'xhs_lifestyle_tutorial', labelKey: 'social.strategy.xhsLifestyleFull' },
-  { id: 'xianyu_deal_closer', labelKey: 'social.strategy.xianyuDealFull' },
 ];
 
 /* ====== 类型 ====== */
@@ -121,14 +118,6 @@ interface PersonaItem {
   display_name?: string;
   name?: string;
   platform_accounts?: Record<string, { name?: string; bio?: string }>;
-}
-interface XianyuStatusData {
-  running?: boolean;
-  online?: boolean;
-  cookie_ok?: boolean;
-  auto_reply_active?: boolean;
-  unread_chats?: number;
-  conversations_today?: number;
 }
 interface WorkspacePlatform {
   id: string;
@@ -200,8 +189,6 @@ interface SocialOpsWorkspaceData {
     verdict?: string;
     files?: { id: string; path: string; exists: boolean }[];
   };
-  xianyu_status?: XianyuStatusData;
-  xianyu_conversations?: unknown[];
   review_pack?: SocialReviewPackData;
 }
 interface PersonaProposal {
@@ -302,15 +289,12 @@ const isPublishableStatus = (draft: DraftItem) => !['published', 'publishing', '
  */
 export function Social() {
   const { t } = useLanguage();
-  const setCurrentPage = useAppStore((s) => s.setCurrentPage);
   const [socialStatus, setSocialStatus] = useState<SocialStatusData | null>(null);
   const [drafts, setDrafts] = useState<DraftItem[]>([]);
   const [calendar, setCalendar] = useState<CalendarItem[]>([]);
   const [topics, setTopics] = useState<TopicItem[]>([]);
   const [browserStatus, setBrowserStatus] = useState<BrowserStatusData | null>(null);
   const [personas, setPersonas] = useState<PersonaItem[]>([]);
-  const [xianyuStatus, setXianyuStatus] = useState<XianyuStatusData | null>(null);
-  const [xianyuConversations, setXianyuConversations] = useState<unknown[]>([]);
   const [opsWorkspace, setOpsWorkspace] = useState<SocialOpsWorkspaceData | null>(null);
   const [personaReview, setPersonaReview] = useState<PersonaReviewData | null>(null);
   const [reviewPack, setReviewPack] = useState<SocialReviewPackData | null>(null);
@@ -348,8 +332,6 @@ export function Social() {
         if (workspace.browser_status) setBrowserStatus(workspace.browser_status);
         if (Array.isArray(workspace.drafts)) setDrafts(workspace.drafts);
         if (Array.isArray(workspace.personas)) setPersonas(workspace.personas);
-        if (workspace.xianyu_status) setXianyuStatus(workspace.xianyu_status);
-        if (Array.isArray(workspace.xianyu_conversations)) setXianyuConversations(workspace.xianyu_conversations);
         if (workspace.persona_review) setPersonaReview(workspace.persona_review);
         if (workspace.review_pack) setReviewPack(workspace.review_pack);
         if (workspace.growth_feedback) setGrowthFeedback(workspace.growth_feedback);
@@ -357,14 +339,12 @@ export function Social() {
         if (workspaceStrategy?.preset) setSelectedStrategyPreset(workspaceStrategy.preset);
       } else {
         setOpsWorkspace(null);
-        const [statusRes, draftsRes, browserRes, personasRes, personaReviewRes, xianyuStatusRes, xianyuConvRes] = await Promise.allSettled([
+        const [statusRes, draftsRes, browserRes, personasRes, personaReviewRes] = await Promise.allSettled([
           api.clawbotSocialStatus(),
           api.clawbotSocialDrafts(),
           api.clawbotSocialBrowserStatus(),
           api.clawbotSocialPersonas(),
           api.clawbotSocialPersonaReview(),
-          api.xianyuStatus(),
-          api.xianyuConversations(10),
         ]);
         if (statusRes.status === 'fulfilled') setSocialStatus(statusRes.value as any);
         if (draftsRes.status === 'fulfilled') {
@@ -377,11 +357,6 @@ export function Social() {
           setPersonas(Array.isArray(pdata) ? pdata : pdata?.personas ?? []);
         }
         if (personaReviewRes.status === 'fulfilled') setPersonaReview(personaReviewRes.value as PersonaReviewData);
-        if (xianyuStatusRes.status === 'fulfilled') setXianyuStatus(xianyuStatusRes.value as XianyuStatusData);
-        if (xianyuConvRes.status === 'fulfilled') {
-          const cdata = xianyuConvRes.value as any;
-          setXianyuConversations(Array.isArray(cdata) ? cdata : cdata?.conversations ?? []);
-        }
       }
       if (reviewPackRes.status === 'fulfilled') {
         setReviewPack(reviewPackRes.value as SocialReviewPackData);
@@ -487,7 +462,6 @@ export function Social() {
   };
   const xWorkspace = workspacePlatformMap.get('x');
   const xhsWorkspace = workspacePlatformMap.get('xhs');
-  const xianyuWorkspace = workspacePlatformMap.get('xianyu');
   const workspacePlatforms = [
     {
       id: 'x',
@@ -544,34 +518,6 @@ export function Social() {
       onOpen: () => runBrowserControl('open_xhs', 'xhs'),
       onLogin: () => runBrowserControl('login_xhs', 'xhs'),
       onAction: () => focusFirstDraft(['xhs', 'xiaohongshu']),
-    },
-    {
-      id: 'xianyu',
-      icon: Fish,
-      title: xianyuWorkspace?.title || t('social.workspace.xianyu.title'),
-      subtitle: xianyuWorkspace?.subtitle || t('social.workspace.xianyu.subtitle'),
-      status: xianyuWorkspace?.status || (xianyuStatus?.running || xianyuStatus?.online ? t('xianyu.status.running') : t('xianyu.status.stopped')),
-      metric: xianyuWorkspace?.metric || `${xianyuConversations.length || xianyuStatus?.unread_chats || 0} ${t('social.workspace.xianyu.metric')}`,
-      detail: xianyuWorkspace?.detail || t('social.workspace.xianyu.detail'),
-      strategyLabel: xianyuWorkspace?.strategy_label || t('social.strategy.xianyuDeal'),
-      strategyPreset: xianyuWorkspace?.strategy_preset || 'xianyu_deal_closer',
-      growthLoop: xianyuWorkspace?.growth_loop || t('social.strategy.xianyuDealLoop'),
-      strategyLabelText: t('social.strategyLabel'),
-      growthLoopLabel: t('social.growthLoopLabel'),
-      accent: 'var(--accent-amber)',
-      ready: xianyuWorkspace?.ready ?? Boolean(xianyuStatus?.cookie_ok || xianyuStatus?.running || xianyuStatus?.online),
-      action: t('social.openXianyuManager'),
-      openAction: t('social.refreshBrowserStatus'),
-      loginAction: '',
-      openLoading: browserActionLoading === 'all:status',
-      loginLoading: false,
-      nextStep: xianyuWorkspace?.next_step || t('social.workspace.xianyu.nextStep'),
-      samplePreview: xianyuWorkspace?.sample_preview || '',
-      nextStepLabel: t('social.nextStep'),
-      samplePreviewLabel: t('social.samplePreview'),
-      onOpen: () => runBrowserControl('status', 'all'),
-      onLogin: undefined,
-      onAction: () => setCurrentPage('bots'),
     },
   ];
 
@@ -1044,7 +990,7 @@ export function Social() {
               </p>
             </div>
 
-            {/* 统一浏览器运营插件入口：X / 小红书 / 闲鱼放在同一个工作台 */}
+            {/* 统一浏览器运营插件入口：X / 小红书。 */}
             <div className="mb-5">
               <div className="flex items-center justify-between mb-3">
                 <div>
@@ -1055,7 +1001,7 @@ export function Social() {
                   {t('social.reviewFirstBadge')}
                 </span>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {workspacePlatforms.map((item) => (
                   <PlatformWorkspaceCard key={item.id} {...item} />
                 ))}

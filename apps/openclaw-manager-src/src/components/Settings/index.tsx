@@ -28,7 +28,6 @@ interface PlatformCookieStatus {
 }
 
 interface CookieStatusMap {
-  xianyu?: PlatformCookieStatus;
   twitter?: PlatformCookieStatus;
   xiaohongshu?: PlatformCookieStatus;
   wechat?: PlatformCookieStatus;
@@ -786,7 +785,6 @@ function CookieSyncCenter({ t }: { t: (key: string) => string }) {
 
   /* 平台定义：id、名称、登录 URL */
   const PLATFORMS: { id: keyof CookieStatusMap; labelKey: string; url: string }[] = [
-    { id: 'xianyu', labelKey: 'settings.platformXianyu', url: 'https://goofish.com' },
     { id: 'twitter', labelKey: 'settings.platformX', url: 'https://x.com/login' },
     { id: 'xiaohongshu', labelKey: 'settings.platformXiaohongshu', url: 'https://www.xiaohongshu.com' },
     { id: 'wechat', labelKey: 'settings.platformWechat', url: '' },
@@ -794,7 +792,7 @@ function CookieSyncCenter({ t }: { t: (key: string) => string }) {
 
   /* 拉取各平台 Cookie 状态
    * 后端 /api/v1/cookies/status 返回：
-   * { platforms: { xianyu: {...}, x: {...}, xhs: {...}, wechat: {...} }, summary: {...} }
+   * { platforms: { x: {...}, xhs: {...}, wechat: {...} }, summary: {...} }
    * 需要将 x → twitter, xhs → xiaohongshu 映射到前端字段 */
   const fetchCookieStatus = useCallback(async () => {
     try {
@@ -802,7 +800,6 @@ function CookieSyncCenter({ t }: { t: (key: string) => string }) {
       /* 兼容两种格式：嵌套在 platforms 里 或 直接平铺 */
       const platforms = raw?.platforms ?? raw ?? {};
       const mapped: CookieStatusMap = {
-        xianyu: platforms.xianyu ?? undefined,
         twitter: platforms.twitter ?? platforms.x ?? undefined,
         xiaohongshu: platforms.xiaohongshu ?? platforms.xhs ?? undefined,
         wechat: platforms.wechat ?? undefined,
@@ -819,14 +816,12 @@ function CookieSyncCenter({ t }: { t: (key: string) => string }) {
   /* 首次挂载时拉取一次 */
   useEffect(() => { fetchCookieStatus(); }, [fetchCookieStatus]);
 
-  /* 一键同步 */
+  /* 刷新本地登录状态，不写入外部平台。 */
   const handleSyncAll = async () => {
     setSyncing(true);
     try {
-      await clawbotFetchJson('/api/v1/cookies/sync-all', { method: 'POST' });
-      toast.success(t('settings.syncSuccess'), { channel: 'notification' });
-      /* 同步完成后刷新状态 */
       await fetchCookieStatus();
+      toast.success(t('settings.syncSuccess'), { channel: 'notification' });
     } catch (err) {
       console.error('[CookieSyncCenter] 同步失败:', err);
       toast.error(`${t('settings.syncFailed')}: ${err instanceof Error ? err.message : String(err)}`, { channel: 'notification' });
@@ -922,7 +917,6 @@ function CookieSyncCenter({ t }: { t: (key: string) => string }) {
           <button
             onClick={async () => {
               const urls = [
-                'https://goofish.com',
                 'https://x.com/login',
                 'https://www.xiaohongshu.com',
               ];

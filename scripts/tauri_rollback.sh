@@ -62,8 +62,8 @@ check_rollback_ready() {
     echo "回滚清单缺少可复核的源码补丁 SHA-256" >&2
     return 1
   }
-  [[ "$dmg_sha256" =~ ^[0-9a-f]{64}$ ]] || {
-    echo "回滚清单缺少可复核的 DMG SHA-256" >&2
+  [[ -z "$dmg_sha256" || "$dmg_sha256" =~ ^[0-9a-f]{64}$ ]] || {
+    echo "回滚清单中的 DMG SHA-256 格式无效" >&2
     return 1
   }
   for legacy_app in OpenEverything.app OpenClaw-Gateway.app; do

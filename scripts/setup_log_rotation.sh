@@ -45,7 +45,6 @@ for f in \
     "$SCRIPT_DIR/packages/clawbot/logs/com-clawbot-agent.stdout.log" \
     "$SCRIPT_DIR/packages/clawbot/logs/com-clawbot-kiro-gateway.stderr.log" \
     "$SCRIPT_DIR/packages/clawbot/logs/com-clawbot-g4f.stderr.log" \
-    "$SCRIPT_DIR/packages/clawbot/logs/com-clawbot-xianyu.stderr.log" \
     "$SCRIPT_DIR/.openclaw/logs/gateway.log" \
     "$SCRIPT_DIR/.openclaw/logs/gateway.err.log"; do
     if [[ -f "$f" ]]; then
