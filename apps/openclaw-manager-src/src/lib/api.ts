@@ -337,38 +337,6 @@ export const api = {
       body: JSON.stringify({ message }),
     }),
 
-  /** 获取闲鱼综合状态 */
-  xianyuStatus: () =>
-    clawbotFetchJson('/api/v1/xianyu/status'),
-
-  /** 获取闲鱼最近对话列表 */
-  xianyuConversations: (limit: number = 20) =>
-    clawbotFetchJson(`/api/v1/xianyu/conversations?limit=${limit}`),
-
-  // ══════════════════════════════════════════════
-  //  CookieCloud 管理
-  // ══════════════════════════════════════════════
-
-  /** 获取 CookieCloud 同步状态 */
-  cookieCloudStatus: () =>
-    clawbotFetchJson('/api/v1/xianyu/cookiecloud/status'),
-
-  /** 立即触发 CookieCloud 同步 */
-  cookieCloudSync: () =>
-    clawbotFetchJson('/api/v1/xianyu/cookiecloud/sync', { method: 'POST' }),
-
-  /** 配置 CookieCloud 连接参数 */
-  cookieCloudConfigure: (config: {
-    host: string;
-    uuid: string;
-    password: string;
-    interval: number;
-  }) =>
-    clawbotFetchJson('/api/v1/xianyu/cookiecloud/configure', {
-      method: 'POST',
-      body: JSON.stringify(config),
-    }),
-
   // ══════════════════════════════════════════════
   //  交易操作 (Trading Actions)
   // ══════════════════════════════════════════════
@@ -428,14 +396,6 @@ export const api = {
     const q = qs.toString();
     return clawbotFetchJson(`/api/v1/trading/journal${q ? '?' + q : ''}`);
   },
-
-  // ══════════════════════════════════════════════
-  //  闲鱼收入 (Xianyu Revenue)
-  // ══════════════════════════════════════════════
-
-  /** 获取闲鱼利润汇总 */
-  xianyuProfit: (days = 30) =>
-    clawbotFetchJson(`/api/v1/xianyu/profit?days=${days}`),
 
   /** 估值分析 */
   tradingValuation: (symbol: string) =>
@@ -545,7 +505,4 @@ export const api = {
   socialCookieStatus: () =>
     clawbotFetchJson('/api/v1/social/cookie-status'),
 
-  /** 获取闲鱼 Cookie 状态 */
-  xianyuCookieStatus: () =>
-    clawbotFetchJson('/api/v1/xianyu/cookie-status'),
 };

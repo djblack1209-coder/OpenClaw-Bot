@@ -564,88 +564,6 @@ def test_social_browser_control_blocks_publish_like_actions(monkeypatch):
     assert result["requires_review"] is True
     assert calls == []
 
-def test_social_ops_workspace_aggregates_browser_saas_cards(monkeypatch):
-    """统一运营工作台必须聚合 X / 小红书 / 闲鱼，并默认保持审核优先。"""
-    monkeypatch.setattr("src.api.rpc._ensure_social_review_drafts", lambda *args, **kwargs: {"success": True})
-    monkeypatch.setattr("src.api.rpc._social_review_pack_payload", lambda *args, **kwargs: {"success": True, "samples": []})
-    monkeypatch.setattr(
-        ClawBotRPC,
-        "_rpc_social_status",
-        staticmethod(lambda: {
-            "autopilot_running": False,
-            "platforms": [
-                {"platform": "x", "connected": True, "posts_today": 1, "total_posts": 8},
-                {"platform": "xhs", "connected": False, "posts_today": 0, "total_posts": 2},
-            ],
-        }),
-    )
-    monkeypatch.setattr(
-        ClawBotRPC,
-        "_rpc_social_browser_status",
-        staticmethod(lambda: {"browser_running": True, "x": "ready", "xhs": "unknown"}),
-    )
-    monkeypatch.setattr(
-        ClawBotRPC,
-        "_rpc_social_drafts",
-        staticmethod(lambda: {
-            "drafts": [
-                {"id": "x-1", "platform": "x", "status": "ready", "review_status": "pending", "text": "待确认 X"},
-                {"id": "x-2", "platform": "x", "status": "approved", "review_status": "approved", "text": "可发布 X"},
-                {"id": "xhs-1", "platform": "xhs", "status": "ready", "review_status": "pending", "text": "待确认小红书"},
-            ],
-            "count": 3,
-        }),
-    )
-    monkeypatch.setattr(
-        ClawBotRPC,
-        "_rpc_social_personas",
-        staticmethod(lambda: [{"persona_id": "zhou-yuheng", "display_name": "旧 AI 人设"}]),
-    )
-    monkeypatch.setattr(ClawBotRPC, "_rpc_autopilot_status", staticmethod(lambda: {"running": False}))
-    monkeypatch.setattr(
-        ClawBotRPC,
-        "_rpc_xianyu_compact_status",
-        staticmethod(lambda: {
-            "running": True,
-            "online": True,
-            "cookie_ok": True,
-            "auto_reply_active": True,
-            "conversations_today": 4,
-            "unread_chats": 1,
-        }),
-    )
-    monkeypatch.setattr(
-        ClawBotRPC,
-        "_rpc_xianyu_recent_conversations",
-        staticmethod(lambda limit=10: {"conversations": [{"chat_id": "c1"}], "total": 1}),
-    )
-
-    workspace = ClawBotRPC._rpc_social_ops_workspace()
-
-    assert workspace["success"] is True
-    assert workspace["review_required"] is True
-    assert workspace["auto_publish_enabled"] is False
-    assert workspace["review_gate"]["needs_review"] == 2
-    assert workspace["review_gate"]["ready_to_publish"] == 1
-    platforms = {item["id"]: item for item in workspace["platforms"]}
-    assert set(platforms) == {"x", "xhs", "xianyu"}
-    assert platforms["x"]["ready"] is True
-    assert platforms["x"]["needs_review"] == 1
-    assert platforms["x"]["ready_to_publish"] == 1
-    assert platforms["xhs"]["needs_review"] == 1
-    assert platforms["xianyu"]["ready"] is True
-    assert platforms["xianyu"]["conversations_today"] == 4
-    assert workspace["persona_check"]["needs_confirmation"] is True
-    assert len(workspace["persona_check"]["review_samples"]) == 2
-    assert workspace["persona_check"]["review_samples"][0]["text"] == "待确认 X"
-    assert workspace["persona_check"]["review_samples"][0]["platform"] == "x"
-    assert workspace["persona_check"]["sample_count"] == 2
-    assert workspace["platforms"][0]["next_step"] == "先确认人设与 1 条内容，再点最终发布"
-    assert workspace["platforms"][0]["sample_preview"] == "待确认 X"
-    assert workspace["platforms"][2]["next_step"] == "打开闲鱼管理页处理客服会话"
-    assert workspace["skill_audit"]["exists"] is True
-
-
 def test_social_persona_review_confirm_updates_workspace(tmp_path, monkeypatch):
     """确认热点抽象号人设后，工作台应显示人设已确认，但不自动发布草稿。"""
     from src.execution.social import persona_review
@@ -676,9 +594,6 @@ def test_social_persona_review_confirm_updates_workspace(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(ClawBotRPC, "_rpc_social_personas", staticmethod(lambda: []))
     monkeypatch.setattr(ClawBotRPC, "_rpc_autopilot_status", staticmethod(lambda: {"running": False}))
-    monkeypatch.setattr(ClawBotRPC, "_rpc_xianyu_compact_status", staticmethod(lambda: {"running": False, "online": False, "cookie_ok": False}))
-    monkeypatch.setattr(ClawBotRPC, "_rpc_xianyu_recent_conversations", staticmethod(lambda limit=10: {"conversations": [], "total": 0}))
-
     before = ClawBotRPC._rpc_social_persona_review()
     assert before["needs_confirmation"] is True
 
@@ -825,8 +740,6 @@ def test_social_ops_workspace_exposes_extension_schedule_queue(monkeypatch):
     )
     monkeypatch.setattr(ClawBotRPC, "_rpc_social_personas", staticmethod(lambda: []))
     monkeypatch.setattr(ClawBotRPC, "_rpc_autopilot_status", staticmethod(lambda: {"running": False}))
-    monkeypatch.setattr(ClawBotRPC, "_rpc_xianyu_compact_status", staticmethod(lambda: {"running": False, "online": False, "cookie_ok": False}))
-    monkeypatch.setattr(ClawBotRPC, "_rpc_xianyu_recent_conversations", staticmethod(lambda limit=10: {"conversations": [], "total": 0}))
     monkeypatch.setattr(
         ClawBotRPC,
         "_rpc_social_extension_schedule_queue",

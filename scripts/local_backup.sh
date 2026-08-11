@@ -185,7 +185,6 @@ copy_inventory_item() {
 PROJECT_ITEMS=(
   ".env"
   ".openclaw"
-  "AGENTS.md"
   "README.md"
   "Makefile"
   "docs"
@@ -197,7 +196,6 @@ PROJECT_ITEMS=(
   "apps/openclaw-manager-src/src"
   "apps/openclaw-manager-src/src-tauri"
   "packages/clawbot/multi_main.py"
-  "packages/clawbot/pyproject.toml"
   "packages/clawbot/pytest.ini"
   "packages/clawbot/requirements.txt"
   "packages/clawbot/requirements-lock.txt"
@@ -221,7 +219,6 @@ HOME_ITEMS=(
   "key_repair_alerts.json"
   "iflow_key_timestamp.json"
   "wechat_coupon_mitm_local_status.json"
-  "cc-zhongzhuan-operator-state.json"
   "x_cookies.json"
   "xhs_cookies.json"
   "identity"

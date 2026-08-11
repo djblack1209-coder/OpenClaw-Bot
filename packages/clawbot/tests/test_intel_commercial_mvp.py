@@ -49,7 +49,7 @@ def test_grant_subscription_profile_records_expiry_preferences_and_schedule(tmp_
         plan_name=plan["plan_name"],
         starts_at="2026-07-07T00:00:00+00:00",
         expires_at="2026-08-07T00:00:00+00:00",
-        source="manual_xianyu_sale",
+        source="manual_marketplace_sale",
     )
     set_source_preferences(db_path, user_id=subscriber["user_id"], enabled_categories=["senate_trading", "akshare"])
     set_delivery_preferences(

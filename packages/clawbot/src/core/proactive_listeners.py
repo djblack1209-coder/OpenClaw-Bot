@@ -8,7 +8,6 @@
   - 自选股异动 (情报级富文本)
   - 任务完成 (延迟回访)
   - 任务图执行进度
-  - 闲鱼订单支付
   - 月度预算超支
   - 社媒内容发布 (延迟跟进)
   - 粉丝里程碑
@@ -50,7 +49,7 @@ async def setup_proactive_listeners(engine: ProactiveEngine):
                 quantity = data.get("quantity", 0)
                 entry_price = data.get("entry_price", 0)
 
-                # 立即: 评估跨域通知（如闲鱼有钱了可以补货）
+                # 立即评估跨域通知。
                 context = (
                     f"严总刚刚 {direction} 了 {symbol}"
                     + (f" x{quantity} @ ${entry_price:.2f}" if entry_price else "")
@@ -326,27 +325,6 @@ async def setup_proactive_listeners(engine: ProactiveEngine):
                 logger.debug(f"进度推送异常: {e}")
 
         bus.subscribe("brain.progress", on_brain_progress)
-
-        # ── 闲鱼订单支付 — 提醒发货 ──
-        async def on_xianyu_order_paid(event_data):
-            """闲鱼订单支付 — 提醒卖家尽快发货。"""
-            try:
-                data = event_data.data if hasattr(event_data, "data") else event_data
-                item_name = data.get("item_name", "商品")
-                amount = data.get("amount", 0)
-                context = f"闲鱼有人刚付款了: {item_name}，金额 ¥{amount:.0f}。可能需要尽快发货。"
-                notification = await engine.evaluate(
-                    context_type="cross_domain",
-                    current_context=context,
-                    user_id="default",
-                )
-                if notification:
-                    await _send_proactive("default", notification)
-            except Exception as e:
-                logger.warning("闲鱼订单主动通知失败: %s", e)
-
-        if hasattr(EventType, "XIANYU_ORDER_PAID"):
-            bus.subscribe(EventType.XIANYU_ORDER_PAID, on_xianyu_order_paid)
 
         # ── 月度预算超支提醒 ──
         async def on_budget_exceeded(event_data):

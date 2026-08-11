@@ -7,9 +7,8 @@ INDEX_FILE="$DOCS_DIR/003-docs-index.md"
 FAILED=0
 AUTHORITATIVE_DOCS=(
   "$DOCS_DIR/001-project-map.md"
-  "$DOCS_DIR/006-registries.md"
   "$DOCS_DIR/007-operations.md"
-  "$DOCS_DIR/009-health.md"
+  "$DOCS_DIR/current/current-baseline.md"
 )
 PROJECT_MAP="$DOCS_DIR/001-project-map.md"
 CURRENT_DIR="$DOCS_DIR/current"
@@ -152,21 +151,6 @@ for spec in "${MUTABLE_INSTALL_SPECS[@]}"; do
   fi
 done
 
-for required_fact in \
-  'packages/clawbot/requirements-lock.txt' \
-  'packages/clawbot/requirements-lock-macos.txt' \
-  '--cov-fail-under=40' \
-  '--fail-under=80' \
-  'src/core/loop_owner.py' \
-  'MANAGED_MCP_PACKAGES' \
-  'SUB2API_PAYMENT_REQUEST_TIMEOUT_MS' \
-  'tag@sha256' \
-  'make clean-install-check'; do
-  if ! search_fixed "$required_fact" "${AUTHORITATIVE_DOCS[@]:0:3}"; then
-    report_failure "权威文档缺少当前发布门事实：$required_fact"
-  fi
-done
-
 for current_fact in \
   '生产运行时是唯一事实' \
   '## 1. 已通过的真实生产检查' \
@@ -176,34 +160,6 @@ for current_fact in \
     report_failure "唯一当前基线缺少生产收口事实：$current_fact"
   fi
 done
-
-if ! search_fixed '快照式发布报告已于 2026-08-10 退役' "$DOCS_DIR/086-release-evidence.md" || \
-   ! search_fixed 'docs/current/current-baseline.md' "$DOCS_DIR/086-release-evidence.md"; then
-  report_failure "历史发布证据入口没有稳定路由到唯一当前基线"
-fi
-
-# 对新增核心模块的登记行数做真实文件比对，避免注册表随重构静默漂移。
-check_registered_line_count() {
-  local source_path="$1"
-  local registry_path="$2"
-  local module_name="$3"
-  local actual_lines
-  local expected_row
-  actual_lines="$(wc -l < "$ROOT_DIR/$source_path" | tr -d ' ')"
-  printf -v expected_row "| %s | \`%s\` | %s |" "$module_name" "$registry_path" "$actual_lines"
-  if ! search_fixed "$expected_row" "$DOCS_DIR/006-registries.md"; then
-    report_failure "模块注册行数与源码不一致：$source_path 实际 $actual_lines 行"
-  fi
-}
-
-check_registered_line_count \
-  'packages/clawbot/src/core/proactive_periodic.py' \
-  'src/core/proactive_periodic.py' \
-  'proactive_periodic.py'
-check_registered_line_count \
-  'packages/clawbot/src/core/loop_owner.py' \
-  'src/core/loop_owner.py' \
-  'loop_owner.py'
 
 PROJECT_STRUCTURE="$(awk '
   /^## 项目结构$/ { in_section = 1; next }
@@ -220,4 +176,4 @@ fi
 
 DOC_COUNT="$(find "$DOCS_DIR" -maxdepth 1 -type f -name '*.md' | wc -l | tr -d ' ')"
 [[ -f "$CURRENT_BASELINE" ]] && DOC_COUNT=$((DOC_COUNT + 1))
-printf '✅ docs-check 通过：%s 个文档，唯一当前基线、命名合规、索引完整、关键事实可验证。\n' "$DOC_COUNT"
+printf '✅ docs-check 通过：%s 个文档，唯一当前基线、命名合规、索引完整。\n' "$DOC_COUNT"

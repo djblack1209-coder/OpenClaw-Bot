@@ -198,7 +198,7 @@ def build_launchagent_next_run_readiness(
         "network_calls": 0,
         "limits": [
             "Read-only audit; does not run launchctl kickstart/bootstrap/bootout.",
-            "Does not modify plist, private env, production DB, VPS, remote worker, payment/Xianyu, scraper, or Telegram state.",
+            "Does not modify plist, private env, production DB, VPS, remote worker, payment/marketplace, scraper, or Telegram state.",
             "This proves next-run readiness from installed plist plus controlled six-source evidence; it is not itself a natural calendar trigger.",
         ],
     }

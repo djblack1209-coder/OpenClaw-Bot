@@ -364,9 +364,6 @@ class MultiBot(
         self.app.add_handler(CommandHandler("xhspost", self.cmd_xhspost))
         self.app.add_handler(CommandHandler("dualpost", self.cmd_post))  # dualpost 是 post 的别名
         self.app.add_handler(CommandHandler("publish", self.cmd_publish))
-        self.app.add_handler(CommandHandler("xianyu", self.cmd_xianyu))
-        self.app.add_handler(CommandHandler("xianyu_report", self.cmd_xianyu_report))
-        self.app.add_handler(CommandHandler("xianyu_style", self.cmd_xianyu_style))
         self.app.add_handler(CommandHandler("social_calendar", self.cmd_social_calendar))
         self.app.add_handler(CommandHandler("social_report", self.cmd_social_report))
         self.app.add_handler(CommandHandler("social_strategy", self.cmd_social_strategy))
@@ -391,7 +388,6 @@ class MultiBot(
         self.app.add_handler(CommandHandler("novel", self.cmd_novel))
         self.app.add_handler(CommandHandler("evolution", self.cmd_evolution))
         self.app.add_handler(CommandHandler("perf", self.cmd_perf))
-        self.app.add_handler(CommandHandler("ship", self.cmd_ship))
         self.app.add_handler(CommandHandler("weekly", self.cmd_weekly))
         self.app.add_handler(CommandHandler("review_history", self.cmd_review_history))
         self.app.add_handler(CommandHandler("bill", self.cmd_bill))

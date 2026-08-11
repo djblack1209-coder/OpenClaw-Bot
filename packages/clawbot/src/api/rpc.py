@@ -29,7 +29,7 @@ _SOCIAL_EXTENSION_STATUS_FILE = Path(
         str(_PACKAGE_ROOT / "data" / "social_extension_status.json"),
     )
 )
-_SOCIAL_EXTENSION_PLATFORMS = {"x", "xhs", "xianyu", "unsupported"}
+_SOCIAL_EXTENSION_PLATFORMS = {"x", "xhs", "unsupported"}
 _SOCIAL_EXTENSION_SETTING_KEYS = {
     "strategyPreset",
     "personaTags",
@@ -41,21 +41,20 @@ _SOCIAL_EXTENSION_SETTING_KEYS = {
     "apiBaseUrl",
 }
 
-_SOCIAL_EXTENSION_DRAFT_PLATFORMS = {"x", "xhs", "xianyu"}
+_SOCIAL_EXTENSION_DRAFT_PLATFORMS = {"x", "xhs"}
 _SOCIAL_STRATEGY_PRESETS = {
     "auto_mcn_growth",
     "x_wealth_frontier",
     "x_absurd_growth",
     "xhs_lifestyle_tutorial",
-    "xianyu_deal_closer",
 }
 
 _SOCIAL_STRATEGY_PRESET_META = {
     "auto_mcn_growth": {
         "label": "自动匹配平台涨粉打法",
         "short_label": "自动匹配",
-        "platform_style": "按当前平台自动选择 X 财富前沿 / 小红书生活攻略 / 闲鱼成交客服",
-        "audience": "按平台切换：X 年轻创业者，小红书生活方式，闲鱼交易用户",
+        "platform_style": "按当前平台自动选择 X 财富前沿 / 小红书生活攻略",
+        "audience": "按平台切换：X 年轻创业者，小红书生活方式",
         "growth_loop": "先按平台最佳实践生成待审内容，再用增长复盘调整下一轮选题权重。",
         "content_focus": "少参数 no-code，优先让插件识别当前页面并套用平台默认打法。",
     },
@@ -83,14 +82,6 @@ _SOCIAL_STRATEGY_PRESET_META = {
         "growth_loop": "收藏率优先：封面结果感 + 步骤清单 + 评论区补材料，后续复盘高收藏标题。",
         "content_focus": "把热点包装成夏日饮品、生活教程、省钱清单、健身/穿搭等可收藏图文。",
     },
-    "xianyu_deal_closer": {
-        "label": "闲鱼成交客服",
-        "short_label": "成交客服",
-        "platform_style": "闲鱼成交话术与商品优化",
-        "audience": "闲鱼买家 / 卖家 / 学生党 / 二手数码用户",
-        "growth_loop": "成交率优先：提高回复速度、降低疑虑、记录高转化话术，不做站外导流。",
-        "content_focus": "把商品/聊天信号转成标题优化、砍价回复、成色证据和温和催拍话术。",
-    },
 }
 
 _SOCIAL_STRATEGY_PLATFORM_DEFAULTS = {
@@ -98,7 +89,6 @@ _SOCIAL_STRATEGY_PLATFORM_DEFAULTS = {
     "twitter": "x_wealth_frontier",
     "xhs": "xhs_lifestyle_tutorial",
     "xiaohongshu": "xhs_lifestyle_tutorial",
-    "xianyu": "xianyu_deal_closer",
 }
 
 
@@ -175,19 +165,7 @@ def _sanitize_social_extension_payload(payload: dict) -> dict:
     tasks = [str(item)[:160] for item in tasks_in[:8]]
     extension_in = payload.get("extension") if isinstance(payload.get("extension"), dict) else {}
     capabilities_in = extension_in.get("capabilities") if isinstance(extension_in.get("capabilities"), dict) else {}
-    capability_keys = {
-        "xianyu_delivery_scan",
-        "xianyu_delivery_send",
-        "current_chat_watch",
-        "all_open_xianyu_tabs_watch",
-        "target_tab_preflight",
-        "single_pending_global_gate",
-        "background_heartbeat",
-        "xianyu_confirm_shipment",
-        "xianyu_relist_item",
-        "relist_queue_watch",
-        "paid_page_dispatch",
-    }
+    capability_keys = {"target_tab_preflight", "background_heartbeat"}
     capabilities = {key: bool(capabilities_in.get(key)) for key in capability_keys}
 
     return {
@@ -453,16 +431,6 @@ def _extension_compose_draft(platform: str, topic: str, context: dict, settings:
         ])
         return {"title": title, "body": body, "text": f"{title}\n\n{body}"}
 
-    if platform == "xianyu":
-        title = _bounded_str(f"闲鱼成交优化：{topic}", 48)
-        body = "\n".join([
-            f"当前商品/聊天线索：{topic}",
-            "运营建议：先判断买家意图，再用「价格锚点 + 使用场景 + 小让步」回复。",
-            f"可用信号：{trend_line}。",
-            "待审回复：这个价格我已经压得比较低了，如果你今天能拍，我可以帮你优先发出/包好一点。",
-        ])
-        return {"title": title, "body": body, "text": body}
-
     title = _bounded_str(topic, 80)
     text = "\n".join([
         f"我会把「{topic}」当成今天的一个小机会信号，而不是新闻本身。",
@@ -490,7 +458,6 @@ def _extension_content_asset_plan(platform: str, topic: str, context: dict, sett
         strategy_preset = {
             "x": "x_wealth_frontier",
             "xhs": "xhs_lifestyle_tutorial",
-            "xianyu": "xianyu_deal_closer",
         }.get(platform, "x_wealth_frontier")
     prefer_web_quota = content_model.startswith("web-") or image_model.startswith("web-")
 
@@ -549,52 +516,6 @@ def _extension_content_asset_plan(platform: str, topic: str, context: dict, sett
                 *base_safety,
                 "不写医疗、减肥、功效或绝对化承诺",
                 "不盗用茶颜悦色/霸王茶姬等真实品牌 Logo 或商标元素",
-            ],
-            "cost_route": cost_route,
-        }
-
-    if platform == "xianyu":
-        return {
-            "platform_style": "闲鱼成交话术与商品优化",
-            "content_plan": {
-                "format": "xianyu_reply_or_listing",
-                "strategy_preset": strategy_preset,
-                "audience": "闲鱼买家 / 卖家 / 学生党 / 二手数码用户",
-                "hook": f"这个买家的真实需求可能是：{clean_topic}",
-                "growth_loop": "成交率优先：提高回复速度、降低疑虑、记录高转化话术，不做站外导流。",
-                "structure": [
-                    "先判断买家是砍价、催发货还是确认成色",
-                    "回复用价格锚点 + 成色证据 + 小让步",
-                    "商品标题突出品牌/型号/成色/配件，不堆关键词",
-                    "结尾温和引导下单或继续追问需求",
-                ],
-                "topic_signal": trend_line,
-                "persona": persona,
-            },
-            "image_plan": {
-                "auto_generate": False,
-                "image_model": image_model,
-                "cover_prompt": (
-                    f"闲鱼商品图优化建议，主题「{clean_topic}」，真实二手物品拍摄参考，"
-                    "白天自然光、清楚展示成色和配件，不生成虚假瑕疵或不存在配件"
-                ),
-                "asset_prompts": [
-                    "商品主图建议：正面、清晰、无遮挡，展示真实成色",
-                    "细节图建议：边角、配件、瑕疵位置单独拍摄，不修饰成全新",
-                    "发货图建议：包装材料和配件清单，增强信任但不虚构库存",
-                ],
-                "visual_style": "真实、清楚、可信，不做虚假精修",
-            },
-            "format_checklist": [
-                "回复先回应买家问题，再给成交理由",
-                "商品标题包含型号/成色/配件/使用场景",
-                "价格让步必须可执行，不写无法兑现承诺",
-                "发布前人工确认商品事实和聊天上下文",
-            ],
-            "safety_checklist": [
-                *base_safety,
-                "不要虚构成色、配件、保修、物流、库存或原价",
-                "不诱导站外交易，不发送联系方式或支付信息",
             ],
             "cost_route": cost_route,
         }
@@ -684,18 +605,6 @@ def _extension_mcn_operating_card(platform: str, title: str, source: str, tags: 
             "hook_template": "家人们，这个真的建议夏天收藏：",
         }
 
-    if platform == "xianyu":
-        return {
-            "audience": "闲鱼买家 / 卖家 / 二手数码和学生党",
-            "content_angle": "转成商品标题优化、砍价回复或成交话术，不做内容号灌水",
-            "platform_playbook": "闲鱼成交：价格锚点 + 成色证据 + 小让步 + 催拍",
-            "growth_reason": "提高回复速度和成交确定性，比单纯追热点更适合闲鱼场景",
-            "risk_level": risk_level,
-            "risk_note": "不要虚构成色、物流、保修或库存",
-            "execution_steps": ["提炼买家意图", "给出价格锚点", "补充成色/配件证据", "用温和方式引导下单"],
-            "hook_template": "这个买家的真实需求可能是：",
-        }
-
     content_angle = "拆成可执行工具清单、机会观察表或低风险讨论问题"
     if any(keyword in text for keyword in ("github", "工具", "ai", "skill", "codex", "claude")):
         content_angle = "把前沿热点拆成可执行、可收藏、可复盘的工具清单"
@@ -724,12 +633,10 @@ def _extension_seed_to_trend(seed, platform: str) -> dict:
     language = _bounded_str(getattr(seed, "language", ""), 12)
     raw_score = int(getattr(seed, "raw_score", 0) or 0)
     raw_rank = int(getattr(seed, "raw_rank", 0) or 0)
-    platform_label = {"x": "X", "xhs": "小红书", "xianyu": "闲鱼"}.get(platform, "当前平台")
+    platform_label = {"x": "X", "xhs": "小红书"}.get(platform, "当前平台")
     safe_tags = [_bounded_str(item, 40) for item in tags[:6] if _bounded_str(item, 40)]
     if platform == "xhs":
         call_to_action = "生成女性向/生活化图文草稿"
-    elif platform == "xianyu":
-        call_to_action = "生成商品优化或砍价回复草稿"
     else:
         call_to_action = "生成 X 热点短帖草稿"
     operating_card = _extension_mcn_operating_card(platform, title, source, safe_tags, heat_reason)
@@ -868,10 +775,6 @@ def _extension_platform_trend_score(trend: dict, platform: str) -> int:
                 score += 240
         if str(trend.get("language") or "").lower() == "zh":
             score += 100
-    elif platform == "xianyu":
-        for keyword in ("闲鱼", "二手", "成交", "商品", "砍价", "省钱", "数码", "租房", "学生"):
-            if keyword.lower() in text:
-                score += 220
     score += int(trend.get("growth_feedback_boost") or 0)
     return score
 
@@ -1369,40 +1272,6 @@ class ClawBotRPC:
         except Exception:
             logger.debug("Silenced exception", exc_info=True)
 
-        # ── 闲鱼客服状态检测 ──
-        xianyu_online = False
-        xianyu_detail: dict = {"online": False, "service": "xianyu_live"}
-        try:
-            import subprocess
-
-            result = subprocess.run(["pgrep", "-f", "xianyu_main"], capture_output=True, text=True, timeout=3)
-            xianyu_online = result.returncode == 0 and bool(result.stdout.strip())
-            xianyu_detail["online"] = xianyu_online
-
-            # 如果闲鱼进程在线，通过内部 admin API 拉取详细状态
-            if xianyu_online:
-                try:
-                    import httpx
-                    _xy_headers = {"X-API-Token": os.environ.get("OPENCLAW_API_TOKEN", "")}
-                    # 拉取 WS 连接 + Cookie 状态
-                    _xy_r = httpx.get("http://127.0.0.1:18800/api/status", timeout=3, headers=_xy_headers)
-                    if _xy_r.status_code == 200:
-                        _xs = _xy_r.json()
-                        xianyu_detail["cookie_ok"] = _xs.get("cookie_ok", False)
-                        xianyu_detail["auto_reply_active"] = _xs.get("ws_connected", False) and _xs.get("cookie_ok", False)
-                    # 拉取今日咨询数
-                    _xy_r2 = httpx.get("http://127.0.0.1:18800/api/dashboard", timeout=3, headers=_xy_headers)
-                    if _xy_r2.status_code == 200:
-                        _xy_dash = _xy_r2.json()
-                        _xy_today = _xy_dash.get("today", {})
-                        xianyu_detail["conversations_today"] = _xy_today.get("consultations", 0)
-                        xianyu_detail["unread_chats"] = _xy_today.get("consultations", 0)
-                except Exception:
-                    # 闲鱼 admin 不可用时静默降级
-                    logger.debug("闲鱼 admin API 不可用，使用基础状态")
-        except Exception as e:
-            logger.debug("闲鱼状态检测失败: %s", e)
-
         return {
             "uptime_seconds": uptime,
             "bots": bot_statuses,
@@ -1415,7 +1284,6 @@ class ClawBotRPC:
             "total_cost_usd": pool_stats.get("total_cost_usd", 0.0),
             "avg_latency_ms": pool_stats.get("avg_latency_ms", 0.0),
             "memory_entries": mem_entries,
-            "xianyu": xianyu_detail,
         }
 
     # ──────────────────────────────────────────────
@@ -2195,13 +2063,13 @@ class ClawBotRPC:
                 "requires_owner_review": True,
                 "auto_publish_enabled": False,
                 "external_actions_locked": True,
-                "error": "当前页面不是 X / 小红书 / 闲鱼，不能生成运营草稿",
+                "error": "当前页面不是 X / 小红书，不能生成运营草稿",
             }
 
         settings_in = payload.get("settings") if isinstance(payload.get("settings"), dict) else {}
         settings = _sanitize_social_extension_payload({"platform": platform, "settings": settings_in})["settings"]
         context = _extension_page_context(payload)
-        fallback = {"x": "当前 X 热点", "xhs": "当前小红书话题", "xianyu": "当前闲鱼商品/聊天"}.get(platform, "当前页面")
+        fallback = {"x": "当前 X 热点", "xhs": "当前小红书话题"}.get(platform, "当前页面")
         topic = _extension_topic_from_context(context, fallback=fallback)
         url = _bounded_str(payload.get("url"), 500)
         source = _bounded_str(payload.get("source"), 80) or "chrome_extension"
@@ -2968,91 +2836,10 @@ class ClawBotRPC:
         }
 
     @staticmethod
-    def _rpc_xianyu_compact_status() -> dict:
-        """获取闲鱼在统一社媒工作台中的轻量状态。
-
-        这里不复用 FastAPI router，避免 RPC 层反向依赖路由层；只读取系统状态和
-        CookieCloud 状态，失败时降级为空状态，保证社媒页不会因为闲鱼子系统异常而崩。
-        """
-        try:
-            status_data = ClawBotRPC._rpc_system_status()
-            detail = status_data.get("xianyu", {}) or {}
-            result = {
-                "running": bool(detail.get("online", False)),
-                "online": bool(detail.get("online", False)),
-                "cookie_ok": bool(detail.get("cookie_ok", False)),
-                "auto_reply_active": bool(detail.get("auto_reply_active", False)),
-                "conversations_today": int(detail.get("conversations_today", 0) or 0),
-                "unread_chats": int(detail.get("unread_chats", 0) or 0),
-            }
-
-            try:
-                from src.xianyu.cookie_cloud import get_cookie_cloud_manager
-
-                manager = get_cookie_cloud_manager()
-                cc_status = manager.status
-                result["cookiecloud_enabled"] = bool(cc_status.get("enabled", False))
-                result["cookiecloud_last_sync"] = cc_status.get("last_sync")
-            except Exception as e:
-                logger.debug("闲鱼 CookieCloud 状态读取失败: %s", e)
-                result["cookiecloud_enabled"] = False
-            return result
-        except Exception as e:
-            logger.warning("Xianyu compact status failed: %s", e)
-            return {
-                "running": False,
-                "online": False,
-                "cookie_ok": False,
-                "auto_reply_active": False,
-                "conversations_today": 0,
-                "unread_chats": 0,
-                "error": _safe_error(e),
-            }
-
-    @staticmethod
-    def _rpc_xianyu_recent_conversations(limit: int = 10) -> dict:
-        """读取闲鱼最近对话摘要，供统一运营工作台展示数量与最近消息。"""
-        limit = min(max(1, int(limit or 10)), 50)
-        try:
-            from src.xianyu.xianyu_context import XianyuContextManager
-
-            ctx = XianyuContextManager()
-            with ctx._conn() as c:
-                rows = c.execute(
-                    """
-                    SELECT chat_id, MAX(ts) as last_ts, COUNT(*) as msg_count,
-                           (SELECT content FROM messages m2
-                            WHERE m2.chat_id = m.chat_id
-                            ORDER BY id DESC LIMIT 1) as last_msg
-                    FROM messages m
-                    GROUP BY chat_id
-                    ORDER BY last_ts DESC
-                    LIMIT ?
-                    """,
-                    (limit,),
-                ).fetchall()
-
-            conversations = [
-                {
-                    "chat_id": row[0],
-                    "last_ts": row[1],
-                    "msg_count": int(row[2] or 0),
-                    "last_msg": (row[3] or "")[:100],
-                }
-                for row in rows
-            ]
-            return {"conversations": conversations, "total": len(conversations)}
-        except ImportError:
-            return {"conversations": [], "total": 0}
-        except Exception as e:
-            logger.debug("读取闲鱼最近对话失败: %s", e)
-            return {"conversations": [], "total": 0, "error": _safe_error(e)}
-
-    @staticmethod
     def _rpc_social_ops_workspace() -> dict:
         """统一浏览器运营工作台。
 
-        给桌面端提供一个商业 SaaS 风格的聚合接口：X / 小红书 / 闲鱼统一状态、
+        给桌面端提供一个商业 SaaS 风格的聚合接口：X / 小红书统一状态、
         草稿审核计数、人设确认、浏览器登录态和安全闸口。此接口只读，不触发发布。
         """
         _ensure_social_review_drafts()
@@ -3168,15 +2955,6 @@ class ClawBotRPC:
             "verdict": "人设确认状态不可用，默认禁止自动外发。",
         })
         autopilot_status = _safe_call(ClawBotRPC._rpc_autopilot_status, {"running": False})
-        xianyu_status = _safe_call(ClawBotRPC._rpc_xianyu_compact_status, {
-            "running": False,
-            "online": False,
-            "cookie_ok": False,
-            "auto_reply_active": False,
-            "conversations_today": 0,
-            "unread_chats": 0,
-        })
-        xianyu_recent = _safe_call(lambda: ClawBotRPC._rpc_xianyu_recent_conversations(10), {"conversations": [], "total": 0})
         extension_status = _safe_call(ClawBotRPC._rpc_social_extension_status, _default_social_extension_status())
         if not isinstance(extension_status, dict):
             extension_status = _default_social_extension_status()
@@ -3221,15 +2999,13 @@ class ClawBotRPC:
         schedule_queue = extension_schedule.get("queue", []) if isinstance(extension_schedule, dict) else []
         if not isinstance(schedule_queue, list):
             schedule_queue = []
-        scheduled_counts = {"x": 0, "xhs": 0, "xianyu": 0}
+        scheduled_counts = {"x": 0, "xhs": 0}
         for item in schedule_queue:
             platform_key = str(item.get("platform") or "x").lower()
             if platform_key in {"x", "twitter"}:
                 scheduled_counts["x"] += 1
             elif platform_key in {"xhs", "xiaohongshu"}:
                 scheduled_counts["xhs"] += 1
-            elif platform_key == "xianyu":
-                scheduled_counts["xianyu"] += 1
         review_samples = _draft_review_samples(drafts)
         x_sample_preview = _first_sample_text({"x", "twitter"}, review_samples)
         xhs_sample_preview = _first_sample_text({"xhs", "xiaohongshu"}, review_samples)
@@ -3248,18 +3024,6 @@ class ClawBotRPC:
         xhs_browser_value = browser_status.get("xiaohongshu_ready", browser_status.get("xhs")) if isinstance(browser_status, dict) else None
         x_ready = bool(x_row.get("connected")) or _ready_state(x_browser_value) or _is_social_cookie_ready("x")
         xhs_ready = bool(xhs_row.get("connected")) or _ready_state(xhs_browser_value) or _is_social_cookie_ready("xhs")
-        xianyu_ready = bool(
-            xianyu_status.get("cookie_ok")
-            or xianyu_status.get("running")
-            or xianyu_status.get("online")
-        )
-        xianyu_metric_count = int(
-            xianyu_status.get("conversations_today")
-            or xianyu_status.get("unread_chats")
-            or xianyu_recent.get("total", 0)
-            or 0
-        )
-
         current_persona = personas[0] if personas else {
             "persona_id": "zhou-yuheng",
             "display_name": "待确认热点抽象号人设",
@@ -3391,33 +3155,7 @@ class ClawBotRPC:
                     "scheduled": scheduled_counts["xhs"],
                     **xhs_counts,
                 },
-                {
-                    "id": "xianyu",
-                    "name": "闲鱼",
-                    "title": "闲鱼自动客服",
-                    "subtitle": "客服 · 议价 · 自动发货",
-                    "ready": xianyu_ready,
-                    "needs_login": not bool(xianyu_status.get("cookie_ok")),
-                    "browser_state": "ready" if xianyu_ready else "stopped",
-                    "status": "运行中" if xianyu_ready else "未运行",
-                    "metric": f"{xianyu_metric_count} 对话",
-                    "detail": "复用现有闲鱼客服链路，在统一插件入口查看状态并跳转深度管理。",
-                    "strategy_preset": "xianyu_deal_closer",
-                    "strategy_label": "成交客服",
-                    "growth_loop": _SOCIAL_STRATEGY_PRESET_META["xianyu_deal_closer"]["growth_loop"],
-                    "next_step": "打开闲鱼管理页处理客服会话",
-                    "sample_preview": "",
-                    "conversations_today": xianyu_metric_count,
-                    "unread_chats": int(xianyu_status.get("unread_chats", 0) or 0),
-                    "auto_reply_active": bool(xianyu_status.get("auto_reply_active", False)),
-                    "drafts": 0,
-                    "needs_review": 0,
-                    "ready_to_publish": 0,
-                    "scheduled": scheduled_counts["xianyu"],
-                },
             ],
-            "xianyu_status": xianyu_status,
-            "xianyu_conversations": xianyu_recent.get("conversations", []),
             "recommendation": "先在此工作台确认热点抽象号人设和样稿，再恢复任何自动外发任务。",
             "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         }

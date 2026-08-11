@@ -37,7 +37,6 @@ def _social_review_platform_label(platform: str) -> str:
         "twitter": "X",
         "xhs": "小红书",
         "xiaohongshu": "小红书",
-        "xianyu": "闲鱼",
     }.get(str(platform or "").strip().lower(), "社媒")
 
 
@@ -61,10 +60,6 @@ _SOCIAL_STRATEGY_ALIASES = {
     "生活攻略": "xhs_lifestyle_tutorial",
     "女性向": "xhs_lifestyle_tutorial",
     "xhs_lifestyle_tutorial": "xhs_lifestyle_tutorial",
-    "闲鱼": "xianyu_deal_closer",
-    "成交": "xianyu_deal_closer",
-    "客服": "xianyu_deal_closer",
-    "xianyu_deal_closer": "xianyu_deal_closer",
 }
 
 _SOCIAL_STRATEGY_LABELS = {
@@ -72,7 +67,6 @@ _SOCIAL_STRATEGY_LABELS = {
     "x_wealth_frontier": "X 财富前沿实操",
     "x_absurd_growth": "X 抽象热点涨粉",
     "xhs_lifestyle_tutorial": "小红书生活攻略",
-    "xianyu_deal_closer": "闲鱼成交客服",
 }
 
 
@@ -83,8 +77,6 @@ def _normalize_social_strategy_args(raw: str) -> tuple[str, str]:
     platform = "x"
     if re.search("小红书|xhs|xiaohongshu", text, re.IGNORECASE):
         platform = "xhs"
-    elif re.search("闲鱼|xianyu|goofish", text, re.IGNORECASE):
-        platform = "xianyu"
     elif re.search(r"(?:^|\s)(?:x|twitter|推特)(?:\s|$)|X", text):
         platform = "x"
 
@@ -96,8 +88,6 @@ def _normalize_social_strategy_args(raw: str) -> tuple[str, str]:
             preset = _SOCIAL_STRATEGY_ALIASES[key]
             if preset == "xhs_lifestyle_tutorial":
                 platform = "xhs"
-            elif preset == "xianyu_deal_closer":
-                platform = "xianyu"
             elif preset.startswith("x_"):
                 platform = "x"
             return preset, platform
@@ -108,8 +98,6 @@ def _normalize_social_strategy_args(raw: str) -> tuple[str, str]:
         return "x_wealth_frontier", "x"
     if "小红书" in text or "生活" in text or "女性" in text:
         return "xhs_lifestyle_tutorial", "xhs"
-    if "闲鱼" in text or "成交" in text or "客服" in text:
-        return "xianyu_deal_closer", "xianyu"
     if "自动" in text or not text:
         return "auto_mcn_growth", platform
     return "auto_mcn_growth", platform
@@ -143,7 +131,7 @@ def _format_social_strategy_message(payload: dict) -> str:
         lines.append(f"- 增长闭环: {summary.get('growth_loop')}")
     lines.append("- 安全边界: 只影响后续待审草稿/素材计划/热点排序")
     lines.append("- 不会自动发布、评论、关注、私信、推广或刷量")
-    lines.append("可选打法: 自动 / 财富前沿 / 抽象热点 / 小红书生活攻略 / 闲鱼成交客服")
+    lines.append("可选打法: 自动 / 财富前沿 / 抽象热点 / 小红书生活攻略")
     return "\n".join(lines)
 
 def _format_social_strategy_status_message(payload: dict) -> str:
@@ -184,7 +172,7 @@ def _format_social_strategy_status_message(payload: dict) -> str:
 
     lines.append("")
     lines.append("安全边界: 不会自动发布、评论、关注、私信、推广或刷量。")
-    lines.append("切换示例: /social_strategy 抽象热点 / 财富前沿 / 小红书生活攻略 / 闲鱼成交客服")
+    lines.append("切换示例: /social_strategy 抽象热点 / 财富前沿 / 小红书生活攻略")
     return "\n".join(lines)
 
 def _format_social_review_drafts_message(payload: dict) -> str:
@@ -1253,8 +1241,6 @@ class SocialCommandsMixin:
                 await update.message.reply_text("⚠️ 命令执行失败，请稍后重试")
             except Exception as e:
                 logger.debug("消息发送失败: %s", e)
-
-    # ---- 闲鱼 AI 客服控制 ----
 
     @requires_auth
     @with_typing

@@ -35,8 +35,6 @@ class ExecutionScheduler:
         self._last_bounty_ts = 0.0
         self._last_social_operator_ts = 0.0
         self._last_intel_brief_date = ""
-        self._last_stock_check_ts = 0.0
-        self._stock_alert_cooldown: dict[str, float] = {}  # 库存预警冷却(每item 24h)
         self._last_price_watch_ts = 0.0  # 降价监控上次检查时间
         self._last_deal_scan_ts = 0.0  # 折扣搜集上次扫描时间
         # 外部依赖（注入）
@@ -100,12 +98,6 @@ class ExecutionScheduler:
             # 账单低余额告警 + 定期查询提醒
             await self._run_bill_checks(now)
 
-            # 闲鱼发货超时提醒
-            await self._run_xianyu_shipment_check()
-
-            # 闲鱼库存低预警 — 每4小时巡检
-            await self._run_stock_check(ts)
-
             # 每周日 20:00 策略绩效评估
             await self._run_weekly_strategy_review()
 
@@ -149,7 +141,7 @@ class ExecutionScheduler:
             logger.warning("[Strategy] 周度评估异常: %s", e)
 
     async def _run_weekly_report(self):
-        """每周日 20:30 推送综合周报 — 聚合投资+社媒+闲鱼+成本"""
+        """每周日 20:30 推送综合周报 — 聚合投资、社媒和成本。"""
         now = time.localtime()
         # 仅周日 20:30-20:31 执行（避开 20:00 的策略评估）
         if now.tm_wday != 6 or now.tm_hour != 20 or now.tm_min != 30:
@@ -480,60 +472,6 @@ class ExecutionScheduler:
                 )
         except Exception as e:
             logger.warning("[Scheduler] 账单检查异常: %s", e)
-
-    async def _run_xianyu_shipment_check(self):
-        """检查超时未发货的闲鱼订单并提醒"""
-        try:
-            from src.xianyu.xianyu_context import XianyuContextManager
-
-            ctx = XianyuContextManager()
-            pending = ctx.get_pending_shipments(hours_threshold=4)
-            if not pending:
-                return
-            for order in pending:
-                # 计算等待小时数（ts 是 SQLite datetime 文本格式）
-                try:
-                    from datetime import datetime as _dt
-
-                    order_time = _dt.strptime(order["ts"], "%Y-%m-%d %H:%M:%S")
-                    hours_ago = int((time.time() - order_time.timestamp()) / 3600)
-                except Exception as e:  # noqa: F841
-                    hours_ago = 4  # 解析失败时使用默认值
-                msg = f"⚠️ 闲鱼发货提醒\n商品: {order.get('item_id', '未知')}\n已等待发货 {hours_ago} 小时\n请尽快处理！"
-                if self._private_notify_func:
-                    try:
-                        await self._private_notify_func(msg)
-                    except Exception as e:
-                        logger.warning("[Xianyu] 发货提醒通知失败: %s", e)
-                ctx.mark_shipment_reminded(order["id"])
-        except ImportError:
-            pass  # 闲鱼模块未安装
-        except Exception as e:
-            logger.warning("[Xianyu] 发货检查异常: %s", e)
-
-    async def _run_stock_check(self, ts):
-        """每4小时巡检闲鱼商品库存，低于阈值推送 Telegram 预警"""
-        if ts - self._last_stock_check_ts < 14400:  # 4小时
-            return
-        self._last_stock_check_ts = ts
-        try:
-            from src.xianyu.auto_shipper import AutoShipper
-
-            low_items = AutoShipper().check_low_stock(threshold=3)
-            for item in low_items:
-                iid = item["item_id"]
-                # 24小时冷却，避免重复通知
-                if ts - self._stock_alert_cooldown.get(iid, 0) < 86400:
-                    continue
-                self._stock_alert_cooldown[iid] = ts
-                if self._private_notify_func:
-                    await self._private_notify_func(
-                        f"⚠️ 库存预警\n商品: {iid}\n剩余: {item['available']} 张\n请及时补货！"
-                    )
-        except ImportError:
-            pass  # 合理保留：可选依赖缺失时继续走后续降级链
-        except Exception as e:
-            logger.debug("[Scheduler] 库存巡检异常: %s", e)
 
     async def _run_price_watch_check(self, now, ts):
         """每6小时检查降价监控 — 06:00/12:00/18:00/00:00 ET 各执行一次"""

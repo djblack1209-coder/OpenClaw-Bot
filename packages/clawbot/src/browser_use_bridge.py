@@ -10,7 +10,7 @@ browser-use 升级适配层 — 搬运自 browser-use (81k⭐)
 保留 ClawBot 独有能力：
 - social_browser_worker.py 的平台特定发布逻辑（X/XHS）
 - cookie 管理和 CDP 模式
-- 闲鱼 WebSocket 实时监听
+- 浏览器实时状态监听
 
 集成方式：browser-use 不可用时自动降级回原有 Playwright 逻辑。
 """

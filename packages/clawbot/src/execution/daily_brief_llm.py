@@ -88,15 +88,13 @@ async def _generate_executive_summary(sections_data: dict) -> str:
     LLM 失败时降级为模板摘要，保证日报不中断。
 
     Args:
-        sections_data: 包含 portfolio_pnl, xianyu_orders, social_posts 等关键指标的字典
+        sections_data: 包含 portfolio_pnl, social_posts 等关键指标的字典
     Returns:
         格式化的执行摘要文本，以「📊 今日概况」开头
     """
     # 提取关键指标用于 LLM prompt 和模板降级
     pnl = sections_data.get("portfolio_pnl", 0)
     pnl_label = f"浮盈${pnl:+,.2f}" if pnl >= 0 else f"浮亏${pnl:+,.2f}"
-    xianyu_consult = sections_data.get("xianyu_consultations", 0)
-    xianyu_orders = sections_data.get("xianyu_orders", 0)
     social_posts = sections_data.get("social_posts", 0)
     api_cost = sections_data.get("api_daily_cost", 0)
     market_sentiment = sections_data.get("market_sentiment", "")
@@ -113,8 +111,6 @@ async def _generate_executive_summary(sections_data: dict) -> str:
         metrics_parts = []
         if pnl != 0:
             metrics_parts.append(f"投资组合{pnl_label}")
-        if xianyu_consult > 0 or xianyu_orders > 0:
-            metrics_parts.append(f"闲鱼咨询{xianyu_consult}条/下单{xianyu_orders}笔")
         if social_posts > 0:
             metrics_parts.append(f"社媒发帖{social_posts}篇")
         if api_cost > 0:
@@ -162,8 +158,6 @@ async def _generate_executive_summary(sections_data: dict) -> str:
     if pnl != 0:
         trend = "盈利" if pnl > 0 else "亏损"
         parts.append(f"投资组合今日{trend} ${abs(pnl):,.2f}")
-    if xianyu_orders > 0:
-        parts.append(f"闲鱼成交 {xianyu_orders} 单")
     if not parts:
         parts.append("各项业务运行平稳")
     summary = f"{'，'.join(parts)}。"
@@ -174,8 +168,6 @@ async def _generate_executive_summary(sections_data: dict) -> str:
     if abs(pnl_delta) > 100:
         direction = "上升" if pnl_delta > 0 else "下降"
         attention = f"持仓盈亏较昨日{direction} ${abs(pnl_delta):,.0f}，需留意。"
-    elif xianyu_consult > 10:
-        attention = f"闲鱼咨询量 {xianyu_consult} 条，转化情况值得关注。"
     else:
         attention = "暂无需要特别关注的异常。"
 
@@ -195,8 +187,6 @@ async def _generate_daily_recommendations(sections_data: dict) -> str:
     """
     # 提取关键指标
     pnl = sections_data.get("portfolio_pnl", 0)
-    xianyu_consult = sections_data.get("xianyu_consultations", 0)
-    xianyu_orders = sections_data.get("xianyu_orders", 0)
     social_posts = sections_data.get("social_posts", 0)
     api_cost = sections_data.get("api_daily_cost", 0)
     market_sentiment = sections_data.get("market_sentiment", "")
@@ -213,9 +203,6 @@ async def _generate_daily_recommendations(sections_data: dict) -> str:
         data_lines = []
         if pnl != 0:
             data_lines.append(f"投资组合浮盈亏: ${pnl:+,.2f}, 持仓 {positions_count} 个")
-        if xianyu_consult > 0:
-            conv = f"{xianyu_orders}/{xianyu_consult}" if xianyu_consult > 0 else "N/A"
-            data_lines.append(f"闲鱼: 咨询 {xianyu_consult} 条, 下单 {xianyu_orders} 笔, 转化 {conv}")
         if social_posts > 0:
             data_lines.append(f"社媒: 今日发帖 {social_posts} 篇")
         if api_cost > 0:
@@ -235,7 +222,7 @@ async def _generate_daily_recommendations(sections_data: dict) -> str:
             f"你是一位私人财务管家和运营顾问。以下是用户今日的业务数据:\n"
             f"{data_text}\n\n"
             f"请给出恰好 3 条今日可操作建议。要求:\n"
-            f"1. 每条建议必须引用具体数据（如「闲鱼咨询 15 条但下单仅 2 笔，建议优化话术」）\n"
+            f"1. 每条建议必须引用具体数据（如「社媒发帖 3 篇，建议复盘互动最高的内容」）\n"
             f"2. 建议要具体可执行，不要空泛（如「注意市场风险」这种无用建议）\n"
             f"3. 用中文，每条一行，每条不超过 30 字\n"
             f"4. 涵盖不同领域（投资/电商/运营中选 2-3 个有数据的领域）\n"
@@ -272,8 +259,6 @@ async def _generate_daily_recommendations(sections_data: dict) -> str:
         # 降级模板：基于已有数据生成基础建议，不让整个 section 消失
         fallback = []
         if sections_data:
-            if sections_data.get("xianyu_consultations", 0) > 0:
-                fallback.append(f"闲鱼今日{sections_data['xianyu_consultations']}条咨询，留意高频问题优化话术")
             if sections_data.get("positions_count", 0) > 0:
                 fallback.append("检查持仓止损位是否需要调整")
             if sections_data.get("social_posts", 0) > 0:

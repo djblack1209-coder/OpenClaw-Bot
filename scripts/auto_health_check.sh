@@ -155,9 +155,7 @@ load_env
 # 核心守护进程必须同时满足 launchd 正在运行和真实端点可用。
 check_required_launchagent "ai.openclaw.clawbot-agent"
 check_required_launchagent "ai.openclaw.gateway"
-check_required_launchagent "ai.openclaw.xianyu"
 check_required_launchagent "ai.openclaw.intel-brief.telegram-listener"
-check_required_launchagent "ai.openclaw.cc-seller-bridge"
 check_scheduled_launchagent "ai.openclaw.intel-brief.scheduler"
 check_scheduled_launchagent "ai.openclaw.daily-backup"
 check_backup_freshness
@@ -178,18 +176,6 @@ else
   add_check "intel_runtime" "bad" "每日资讯运行健康脚本不可用" "恢复 .venv312 和 intel_runtime_health.py"
 fi
 
-# 本机操作台：有 Token 时检查受保护接口，否则只检查页面是否打开。
-if [[ -n "${OPENCLAW_API_TOKEN:-}" ]]; then
-  code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 -H "X-API-Token: ${OPENCLAW_API_TOKEN}" "http://127.0.0.1:18800/api/status" 2>/dev/null || echo "000")
-else
-  code=$(http_code "http://127.0.0.1:18800/dashboard")
-fi
-if [[ "$code" == "200" ]]; then
-  add_check "local_console" "ok" "本机控制台 HTTP $code" "无需处理"
-else
-  add_check "local_console" "bad" "本机控制台不可用 HTTP $code" "先运行 scripts/auto_recovery.sh 预览，再用 --scope services --confirm 执行"
-fi
-
 if [[ -n "${OPENCLAW_API_TOKEN:-}" ]]; then
   bot_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 -H "X-API-Token: ${OPENCLAW_API_TOKEN}" "http://127.0.0.1:18790/api/v1/status" 2>/dev/null || echo "000")
 else
@@ -206,43 +192,6 @@ if [[ "$gateway_code" == "200" ]]; then
   add_check "gateway_api" "ok" "OpenClaw Gateway HTTP 200" "无需处理"
 else
   add_check "gateway_api" "bad" "OpenClaw Gateway 健康检查失败 HTTP $gateway_code" "检查 18789 和 Gateway 日志"
-fi
-
-# CC中转生产内测巡检：复用现有只读审计脚本。
-if command -v node >/dev/null 2>&1 && [[ -f "$ROOT_DIR/scripts/cc_zhongzhuan_readiness_audit.mjs" ]]; then
-  if ! audit_output="$(
-    cd "$ROOT_DIR" || exit 1
-    python3 - <<'PY_AUDIT' 2>/dev/null
-import json
-import subprocess
-try:
-    result = subprocess.run(
-        ["node", "scripts/cc_zhongzhuan_readiness_audit.mjs", "--json"],
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=20,
-    )
-    output = result.stdout.strip()
-    if output:
-        print(output)
-    else:
-        print(json.dumps({"ok": False, "error": "readiness_audit_no_output", "exit_code": result.returncode}))
-except subprocess.TimeoutExpired:
-    print('{"ok":false,"error":"readiness_audit_timeout_20s"}')
-PY_AUDIT
-  )"; then
-    audit_output='{"ok":false,"error":"readiness_audit_exec_failed"}'
-  fi
-  if printf '%s' "$audit_output" | python3 -c 'import json,sys; d=json.load(sys.stdin); raise SystemExit(0 if d.get("ok") else 1)' >/dev/null 2>&1; then
-    add_check "cc_readiness" "ok" "生产内测只读巡检 ok=true" "无需处理"
-  elif printf '%s' "$audit_output" | grep -q 'readiness_audit_timeout_20s'; then
-    add_check "cc_readiness" "warn" "生产内测巡检超过 20 秒，已自动跳过" "打开 http://127.0.0.1:18800/dashboard 查看缓存状态"
-  else
-    add_check "cc_readiness" "warn" "生产内测巡检未通过或无法解析" "打开 http://127.0.0.1:18800/dashboard 查看红色提示"
-  fi
-else
-  add_check "cc_readiness" "warn" "node 或 cc_zhongzhuan_readiness_audit.mjs 不存在" "确认 Node.js 已安装"
 fi
 
 # 公网主站和渠道状态页：只看是否能打开，不输出任何密钥。

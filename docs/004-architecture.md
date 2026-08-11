@@ -127,7 +127,6 @@ packages/clawbot/
 │   ├── execution/                   # 现有
 │   ├── trading/                     # 现有
 │   ├── shopping/                    # 现有
-│   ├── xianyu/                      # 现有
 │   ├── tools/                       # 现有
 │   ├── synergy.py                   # 现有（升级为EventBus消费者）
 │   ├── monitoring.py                # 现有

@@ -3,19 +3,12 @@ import { motion } from 'framer-motion';
 import { toast } from '@/lib/notify';
 import {
   Server,
-  Clock,
   Terminal,
   RotateCcw,
-  Cookie,
   Play,
   Square,
   Loader2,
   AlertCircle,
-  Wifi,
-  WifiOff,
-  Fish,
-  MessageSquare,
-  Zap,
   Navigation,
   CalendarClock,
   Bell,
@@ -47,20 +40,6 @@ interface ServiceItem {
   description: string;
   status: string;
   port?: number;
-}
-
-interface CookieStatus {
-  enabled: boolean;
-  last_sync_time: string;
-  consecutive_failures: number;
-  last_cookie_available: boolean;
-}
-
-/* 闲鱼数据 */
-interface XianyuData {
-  online: boolean;
-  autoReplyEnabled: boolean;
-  conversationCount: number;
 }
 
 /* 社媒自动驾驶数据 */
@@ -108,17 +87,9 @@ export function Bots() {
   const { t, lang } = useLanguage();
   /* ====== 状态 ====== */
   const [services, setServices] = useState<ServiceItem[]>([]);
-  const [cookieStatus, setCookieStatus] = useState<CookieStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
-
-  /* 闲鱼状态 */
-  const [xianyuData, setXianyuData] = useState<XianyuData>({
-    online: false,
-    autoReplyEnabled: false,
-    conversationCount: 0,
-  });
 
   /* 社媒自动驾驶状态 */
   const [autopilotData, setAutopilotData] = useState<AutopilotData>({
@@ -139,14 +110,11 @@ export function Bots() {
   /* ====== 数据拉取 ====== */
   const fetchData = useCallback(async () => {
     try {
-      const [servicesRes, cookieRes, xianyuConvRes, autopilotRes, schedulerRes, statusRes] = await Promise.allSettled([
+      const [servicesRes, autopilotRes, schedulerRes] = await Promise.allSettled([
         isTauri() ? api.getManagedServicesStatus() : api.services(),
-        api.cookieCloudStatus(),
-        api.xianyuConversations(20),
         /* 使用 social/status API 获取自动驾驶状态，保持与社交页数据源一致 */
         api.clawbotSocialStatus(),
         clawbotFetchJson('/api/v1/controls/scheduler').catch(() => null),
-        api.clawbotStatus(),
       ]);
 
       /* 服务列表 */
@@ -162,41 +130,6 @@ export function Bots() {
           : data?.services ?? [];
         setServices(list);
       }
-
-      /* Cookie 状态 */
-      if (cookieRes.status === 'fulfilled') {
-        setCookieStatus(cookieRes.value as any);
-      }
-
-      /* 闲鱼数据：从系统状态 + 对话列表组合 */
-      let xianyuOnline = false;
-      let xianyuAutoReply = false;
-      if (statusRes.status === 'fulfilled' && statusRes.value) {
-        const s = statusRes.value as Record<string, unknown>;
-        const xy = s.xianyu as Record<string, unknown> | undefined;
-        if (xy) {
-          xianyuOnline = Boolean(xy.running ?? xy.online ?? false);
-          /* auto_reply_active 由后端在 admin API 可用时设置；
-             如果字段不存在但进程在线，说明 admin API 未返回，
-             此时以进程在线状态作为自动回复的合理降级判断 */
-          if (xy.auto_reply_active !== undefined) {
-            xianyuAutoReply = Boolean(xy.auto_reply_active);
-          } else if (xy.auto_reply_enabled !== undefined) {
-            xianyuAutoReply = Boolean(xy.auto_reply_enabled);
-          } else {
-            /* 降级：进程在线即视为自动回复开启 */
-            xianyuAutoReply = xianyuOnline;
-          }
-        }
-      }
-      let convCount = 0;
-      if (xianyuConvRes.status === 'fulfilled' && xianyuConvRes.value) {
-        const convData = xianyuConvRes.value as any;
-        convCount = Array.isArray(convData?.conversations)
-          ? convData.conversations.length
-          : Array.isArray(convData) ? convData.length : Number(convData?.total ?? 0);
-      }
-      setXianyuData({ online: xianyuOnline, autoReplyEnabled: xianyuAutoReply, conversationCount: convCount });
 
       /* 社媒自动驾驶 — 从 social/status API 提取（与社交页使用同一数据源） */
       if (autopilotRes.status === 'fulfilled' && autopilotRes.value) {
@@ -314,11 +247,6 @@ export function Bots() {
     { label: t('bots.stopped'), value: stoppedCount, color: 'var(--text-tertiary)' },
     { label: t('bots.error'), value: errorCount, color: 'var(--accent-red)' },
   ];
-
-  /* ====== Cookie 状态判断 ====== */
-  const cookieValid = cookieStatus?.last_cookie_available && (cookieStatus?.consecutive_failures ?? 0) === 0;
-  const cookieLabel = cookieValid ? 'VALID' : 'INVALID';
-  const cookieColor = cookieValid ? 'var(--accent-green)' : 'var(--accent-red)';
 
   /* 通知服务状态：Apprise 是内置模块不是独立进程，
    * 从 services 列表查找；如果找不到则从系统在线状态推断 */
@@ -469,79 +397,6 @@ export function Bots() {
           </div>
         </motion.div>
 
-        {/* ====== Row 1 右: Cookie 状态 + 连接概览 (col-span-4) ====== */}
-        <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
-          <div className="abyss-card p-6 h-full">
-            <div className="flex items-center gap-2 mb-5">
-              <Cookie size={16} style={{ color: cookieColor }} />
-              <span className="text-label" style={{ color: cookieColor }}>{t('bots.cookieStatusLabel')}</span>
-            </div>
-
-            {/* 大状态指示器 */}
-            <div className="flex items-center gap-3 mb-6">
-              <div className="relative">
-                <div className="w-4 h-4 rounded-full animate-pulse" style={{ background: cookieColor }} />
-                <div className="absolute inset-0 w-4 h-4 rounded-full animate-ping opacity-40" style={{ background: cookieColor }} />
-              </div>
-              <span className="font-display text-2xl font-bold tracking-wider" style={{ color: cookieColor }}>
-                {cookieStatus ? cookieLabel : '—'}
-              </span>
-            </div>
-
-            {/* 详细信息 */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Clock size={13} style={{ color: 'var(--text-disabled)' }} />
-                  <span className="font-mono text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{t('bots.lastSync')}</span>
-                </div>
-                <span className="font-mono text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
-                  {cookieStatus?.last_sync_time
-                    ? new Date(
-                        /* API 返回 Unix 秒级时间戳，Date 需要毫秒 */
-                        typeof cookieStatus.last_sync_time === 'number' && cookieStatus.last_sync_time < 1e12
-                          ? cookieStatus.last_sync_time * 1000
-                          : cookieStatus.last_sync_time
-                      ).toLocaleTimeString(lang === 'en-US' ? 'en-US' : 'zh-CN')
-                    : '—'}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <AlertCircle size={13} style={{ color: 'var(--text-disabled)' }} />
-                  <span className="font-mono text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{t('bots.consecutiveFailures')}</span>
-                </div>
-                <span className="font-mono text-xs font-medium" style={{
-                  color: (cookieStatus?.consecutive_failures ?? 0) > 0 ? 'var(--accent-red)' : 'var(--accent-green)',
-                }}>
-                  {cookieStatus?.consecutive_failures ?? 0}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  {cookieStatus?.enabled ? (
-                    <Wifi size={13} style={{ color: 'var(--accent-green)' }} />
-                  ) : (
-                    <WifiOff size={13} style={{ color: 'var(--text-disabled)' }} />
-                  )}
-                  <span className="font-mono text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{t('bots.syncFeature')}</span>
-                </div>
-                <span className="font-mono text-xs font-medium" style={{
-                  color: cookieStatus?.enabled ? 'var(--accent-green)' : 'var(--text-disabled)',
-                }}>
-                  {cookieStatus?.enabled ? t('bots.enabled') : t('bots.disabled')}
-                </span>
-              </div>
-            </div>
-
-            <p className="font-mono text-[10px] mt-6" style={{ color: 'var(--text-disabled)' }}>
-              {t("bots.cookieDesc")}
-            </p>
-          </div>
-        </motion.div>
-
         {/* ====== Row 2: 连接概览 (col-span-4) ====== */}
         <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
           <div className="abyss-card p-6 h-full">
@@ -615,21 +470,6 @@ export function Bots() {
                   {services.length > 0 ? Math.round((runningCount / services.length) * 100) : 0}%
                 </span>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm flex items-center gap-1.5" style={{ color: 'var(--text-secondary)' }}>
-                  <Cookie size={14} /> Cookie
-                </span>
-                <span
-                  className="font-mono text-xs px-2.5 py-1 rounded-full font-bold"
-                  style={{
-                    color: cookieColor,
-                    background: cookieValid ? 'rgba(0,255,170,0.1)' : 'rgba(255,0,0,0.1)',
-                    border: `1px solid ${cookieValid ? 'rgba(0,255,170,0.25)' : 'rgba(255,0,0,0.25)'}`,
-                  }}
-                >
-                  {cookieStatus ? cookieLabel : '—'}
-                </span>
-              </div>
             </div>
           </div>
         </motion.div>
@@ -637,92 +477,6 @@ export function Bots() {
         {/* ══════════════════════════════════════════════════════════════
             以下为新增区域
            ══════════════════════════════════════════════════════════════ */}
-
-        {/* ====== 闲鱼 AI 客服 (col-span-6) ====== */}
-        <motion.div className="col-span-12 lg:col-span-6" variants={cardVariants}>
-          <div className="abyss-card p-6 h-full">
-            <div className="flex items-center gap-2 mb-1">
-              <Fish size={16} style={{ color: 'var(--accent-amber)' }} />
-              <span className="text-label" style={{ color: 'var(--accent-amber)' }}>{t('bots.xianyuAiLabel')}</span>
-            </div>
-            <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
-              {t('bots.xianyuTitle')} <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>{t('bots.xianyuSuffix')}</span>
-              <span className="font-mono text-xs ml-2" style={{ color: 'var(--text-disabled)', fontWeight: 400 }}>:18790</span>
-            </h3>
-
-            <div className="space-y-4">
-              {/* 在线状态 */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="relative flex-shrink-0">
-                    {xianyuData.online && (
-                      <motion.span
-                        className="absolute inset-[-3px] rounded-full"
-                        style={{ background: 'var(--accent-green)', opacity: 0.3 }}
-                        animate={{ scale: [1, 1.8, 1], opacity: [0.3, 0, 0.3] }}
-                        transition={{ duration: 2, repeat: Infinity }}
-                      />
-                    )}
-                    <span className="block w-2.5 h-2.5 rounded-full"
-                      style={{ background: xianyuData.online ? 'var(--accent-green)' : 'var(--text-disabled)' }} />
-                  </span>
-                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('bots.serviceStatus')}</span>
-                </div>
-                <span className="font-mono text-xs font-bold" style={{
-                  color: xianyuData.online ? 'var(--accent-green)' : 'var(--text-disabled)',
-                }}>
-                  {xianyuData.online ? t('bots.statusOnline') : t('bots.statusOffline')}
-                </span>
-              </div>
-
-              {/* Cookie 状态 — 明确是闲鱼登录 Cookie */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Cookie size={13} style={{ color: 'var(--text-disabled)' }} />
-                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('bots.xianyuCookieStatus')}</span>
-                </div>
-                <span
-                  className="font-mono text-[10px] px-2 py-0.5 rounded-full font-bold"
-                  style={{
-                    color: cookieColor,
-                    background: cookieValid ? 'rgba(0,255,170,0.1)' : 'rgba(255,0,0,0.1)',
-                    border: `1px solid ${cookieValid ? 'rgba(0,255,170,0.25)' : 'rgba(255,0,0,0.25)'}`,
-                  }}
-                >
-                  {cookieStatus ? cookieLabel : '—'}
-                </span>
-              </div>
-
-              {/* 自动回复 */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Zap size={13} style={{ color: xianyuData.autoReplyEnabled ? 'var(--accent-green)' : 'var(--text-disabled)' }} />
-                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('bots.autoReply')}</span>
-                </div>
-                <span className="font-mono text-xs font-bold" style={{
-                  color: xianyuData.autoReplyEnabled ? 'var(--accent-green)' : 'var(--text-disabled)',
-                }}>
-                  {xianyuData.autoReplyEnabled ? t('bots.on') : t('bots.off')}
-                </span>
-              </div>
-
-              {/* 最近对话数 */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <MessageSquare size={13} style={{ color: 'var(--text-disabled)' }} />
-                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('bots.recentChats')}</span>
-                </div>
-                <span className="font-mono text-2xl font-bold" style={{ color: 'var(--accent-amber)' }}>
-                  {xianyuData.conversationCount}
-                </span>
-              </div>
-            </div>
-
-            <p className="font-mono text-[10px] mt-6" style={{ color: 'var(--text-disabled)' }}>
-              {t("bots.xianyuDesc")}
-            </p>
-          </div>
-        </motion.div>
 
         {/* ====== 社媒自动驾驶 (col-span-6) ====== */}
         <motion.div className="col-span-12 lg:col-span-6" variants={cardVariants}>

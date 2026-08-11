@@ -4,12 +4,9 @@
 import logging
 
 from src.bot.input_processor import _build_smart_reply_keyboard
-from src.http_client import ResilientHTTPClient
 
 logger = logging.getLogger(__name__)
 
-# 模块级别 HTTP 客户端（本地状态查询）
-_http_status = ResilientHTTPClient(timeout=5.0, name="local_status")
 
 
 class SessionTrackerMixin:
@@ -100,26 +97,6 @@ class SessionTrackerMixin:
                     summary_parts.append(f"📊 自选股异动: {', '.join(movers)}")
         except Exception as e:
             logger.debug("静默异常: %s", e)
-
-        try:
-            # 2. 闲鱼未读消息 — 通过 FastAPI 内部 API 查询闲鱼进程状态
-            import os as _os
-
-            api_port = _os.environ.get("CLAWBOT_API_PORT", "18790")
-            api_token = _os.environ.get("OPENCLAW_API_TOKEN", "")
-            resp = await _http_status.get(
-                f"http://127.0.0.1:{api_port}/api/v1/system/status",
-                headers={"X-API-Token": api_token} if api_token else {},
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                # 从系统状态中提取闲鱼相关信息
-                xianyu_status = data.get("components", {}).get("xianyu", {})
-                unread = xianyu_status.get("unread_count", 0)
-                if unread > 0:
-                    summary_parts.append(f"🐟 闲鱼: {unread} 条未读消息")
-        except Exception as e:
-            logger.debug("闲鱼状态查询跳过: %s", e)
 
         if not summary_parts:
             return False

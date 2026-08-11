@@ -2,12 +2,10 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   TrendingUp,
   MessageSquare,
-  Fish,
   Share2,
   Settings,
   ScanSearch,
   RefreshCw,
-  Cookie,
   Clock,
   AlertTriangle,
   Loader2,
@@ -55,13 +53,6 @@ interface SocialData {
   postsToday: number;
 }
 
-/** 闲鱼数据 */
-interface XianyuData {
-  unreadChats: number;
-  cookieStatus: 'ok' | 'expired' | 'unknown';
-  autoReplyActive: boolean;
-}
-
 /** 终端日志条目 */
 export interface LogEntry {
   id: string;
@@ -75,7 +66,6 @@ export interface LogEntry {
 const quickActions: { labelKey: string; icon: React.ElementType; page: PageType; accent: string }[] = [
   { labelKey: 'home.action.investAnalysis', icon: TrendingUp, page: 'portfolio', accent: 'var(--accent-green)' },
   { labelKey: 'home.action.socialPost', icon: Share2, page: 'social', accent: 'var(--accent-purple)' },
-  { labelKey: 'home.action.xianyuManage', icon: Fish, page: 'bots', accent: 'var(--accent-amber)' },
   { labelKey: 'home.action.aiChat', icon: MessageSquare, page: 'assistant', accent: 'var(--accent-cyan)' },
   { labelKey: 'home.action.marketScan', icon: ScanSearch, page: 'finradar', accent: 'var(--accent-red)' },
   { labelKey: 'home.action.settings', icon: Settings, page: 'settings', accent: 'var(--text-secondary)' },
@@ -112,7 +102,6 @@ export function HomeDashboard() {
     llmCostDaily: 0, activeBots: 0, poolActive: 0, poolTotal: 0, memoryEntries: 0,
   });
   const [social, setSocial] = useState<SocialData>({ running: false, mode: 'manual', postsToday: 0 });
-  const [xianyu, setXianyu] = useState<XianyuData>({ unreadChats: 0, cookieStatus: 'unknown', autoReplyActive: false });
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [briefData, setBriefData] = useState<Record<string, unknown> | null>(null);
   const [ibkrConnected, setIbkrConnected] = useState(false);
@@ -196,16 +185,6 @@ export function HomeDashboard() {
           poolActive: Number(s.pool_active_sources ?? prev.poolActive ?? 0),
           poolTotal: Number(s.pool_total_sources ?? prev.poolTotal ?? 0),
         }));
-
-        /* 闲鱼数据 */
-        const xy = s.xianyu as Record<string, unknown> | undefined;
-        if (xy) {
-          setXianyu({
-            unreadChats: Number(xy.unread_chats ?? xy.conversations_today ?? 0),
-            cookieStatus: xy.cookie_ok ? 'ok' : xy.cookie_status === 'expired' ? 'expired' : 'unknown',
-            autoReplyActive: Boolean(xy.auto_reply_active ?? xy.running),
-          });
-        }
 
         /* IBKR 连接状态 */
         setIbkrConnected(Boolean(s.ibkr_connected));
@@ -319,7 +298,7 @@ export function HomeDashboard() {
           <TelemetryCard data={telemetry} isRunning={isRunning} />
         </motion.div>
 
-        {/* ====== 第二行：Social (span-4) + Xianyu (span-4) + Quick Actions 预览 (span-4) ====== */}
+        {/* ====== 第二行：Social + Quick Actions ====== */}
         <motion.div className="col-span-12 md:col-span-6 lg:col-span-4" variants={cardVariants}>
           <div
             className="abyss-card p-6 h-full cursor-pointer"
@@ -349,46 +328,6 @@ export function HomeDashboard() {
             </div>
             <p className="text-[11px] mt-3" style={{ color: 'var(--text-tertiary)' }}>
               {t('home.social.desc')}
-            </p>
-          </div>
-        </motion.div>
-
-        <motion.div className="col-span-12 md:col-span-6 lg:col-span-4" variants={cardVariants}>
-          <div
-            className="abyss-card p-6 h-full cursor-pointer"
-            onClick={() => setCurrentPage('bots')}
-          >
-            <span className="text-label" style={{ color: 'var(--accent-amber)' }}>
-              {t('home.xianyuAiLabel')}
-            </span>
-            <h3 className="font-display text-xl font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
-              {t('home.xianyu.title')}
-            </h3>
-            <div className="flex items-center gap-3 mt-4">
-              <div>
-                <span className="text-label">{t('home.xianyu.unread')}</span>
-                <div className="text-metric mt-1">{xianyu.unreadChats}</div>
-              </div>
-              <div className="ml-auto">
-                <span className="text-label">{t('home.cookieLabel')}</span>
-                <div className="flex items-center gap-1.5 mt-1">
-                  <Cookie size={14} style={{
-                    color: xianyu.cookieStatus === 'ok' ? 'var(--accent-green)'
-                         : xianyu.cookieStatus === 'expired' ? 'var(--accent-red)'
-                         : 'var(--text-tertiary)',
-                  }} />
-                  <span className="font-mono text-xs" style={{
-                    color: xianyu.cookieStatus === 'ok' ? 'var(--accent-green)'
-                         : xianyu.cookieStatus === 'expired' ? 'var(--accent-red)'
-                         : 'var(--text-tertiary)',
-                  }}>
-                    {xianyu.cookieStatus === 'ok' ? t('home.cookieValid') : xianyu.cookieStatus === 'expired' ? t('home.cookieExpired') : t('home.cookieNA')}
-                  </span>
-                </div>
-              </div>
-            </div>
-            <p className="text-[11px] mt-3" style={{ color: 'var(--text-tertiary)' }}>
-              {xianyu.autoReplyActive ? t('home.xianyu.autoReplyRunning') : t('home.xianyu.autoReplyStopped')} · CookieCloud {t('home.xianyu.sync')}
             </p>
           </div>
         </motion.div>
@@ -478,7 +417,7 @@ export function HomeDashboard() {
                   return entries.map(([key, value]) => (
                   <div key={key} className="p-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)' }}>
                     <span className="font-mono text-[10px] uppercase" style={{ color: 'var(--text-disabled)' }}>
-                      {{ portfolio_pnl: t('home.briefMetrics.portfolioPnl'), positions_count: t('home.briefMetrics.positionsCount'), xianyu_consultations: t('home.briefMetrics.xianyuConsultations'), xianyu_orders: t('home.briefMetrics.xianyuOrders'), social_posts: t('home.briefMetrics.socialPosts'), api_daily_cost: t('home.briefMetrics.apiDailyCost'), market_sentiment: t('home.briefMetrics.marketSentiment') }[key] || key.replace(/_/g, ' ')}
+                      {{ portfolio_pnl: t('home.briefMetrics.portfolioPnl'), positions_count: t('home.briefMetrics.positionsCount'), social_posts: t('home.briefMetrics.socialPosts'), api_daily_cost: t('home.briefMetrics.apiDailyCost'), market_sentiment: t('home.briefMetrics.marketSentiment') }[key] || key.replace(/_/g, ' ')}
                     </span>
                     <div className="font-mono text-lg font-bold mt-1" style={{ color: value === 0 ? 'var(--text-disabled)' : 'var(--accent-cyan)' }}>
                       {typeof value === 'number' ? (value === 0 ? '—' : value.toLocaleString()) : String(value ?? '—')}
@@ -555,12 +494,6 @@ export function HomeDashboard() {
                 <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>{t('home.socialEngine')}</span>
                 <span className="font-mono text-[10px]" style={{ color: social.running ? 'var(--accent-green)' : 'var(--text-tertiary)' }}>
                   {social.running ? t('home.socialRunning') : t('home.socialIdle')}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>{t('home.xianyuCS')}</span>
-                <span className="font-mono text-[10px]" style={{ color: xianyu.autoReplyActive ? 'var(--accent-green)' : 'var(--text-tertiary)' }}>
-                  {xianyu.autoReplyActive ? t('home.xianyuActive') : t('home.xianyuIdle')}
                 </span>
               </div>
               <div className="flex items-center justify-between">

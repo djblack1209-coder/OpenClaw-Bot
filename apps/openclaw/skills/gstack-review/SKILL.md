@@ -63,7 +63,7 @@ metadata: {"openclaw":{"emoji":"🎯"}}
 ## 在 Telegram 中使用
 
 ```
-严总: /review-ceo 我想给闲鱼加个自动降价功能
+严总: /review-ceo 我想给用户中心加一个批量筛选功能
 
 Agent: 🎯 CEO 审查模式
 

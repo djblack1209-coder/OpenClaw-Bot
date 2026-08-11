@@ -61,7 +61,7 @@ _FINANCIAL_PATTERNS = [
 
 _ECOMMERCE_KEYWORDS = {
     # 平台
-    "闲鱼", "淘宝", "拼多多", "京东", "抖音", "小红书", "1688",
+    "淘宝", "拼多多", "京东", "抖音", "小红书", "1688",
     "咸鱼", "转转", "得物", "唯品会",
     # 商品/交易
     "包邮", "到手价", "活动价", "原价", "折扣", "促销", "满减",
@@ -117,7 +117,7 @@ def classify_ocr_scene(ocr_text: str, caption: str = "") -> SceneMatch:
     caption_lower = caption.lower()
 
     financial_intents = ["财报", "分析", "交易", "持仓", "行情", "K线", "k线", "股票", "基金"]
-    ecommerce_intents = ["竞品", "比价", "定价", "闲鱼", "淘宝", "商品", "对标", "同款"]
+    ecommerce_intents = ["竞品", "比价", "定价", "淘宝", "商品", "对标", "同款"]
 
     for intent in financial_intents:
         if intent in caption_lower:

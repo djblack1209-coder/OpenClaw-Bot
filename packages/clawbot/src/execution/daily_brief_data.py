@@ -7,7 +7,7 @@
 
 import logging
 import os
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from src.execution._db import get_conn
 
@@ -32,17 +32,14 @@ def _get_timestamp_tag() -> str:
 async def _get_yesterday_comparison(db_path=None) -> dict:
     """获取昨日关键指标，用于与今日数据对比计算 delta。
 
-    只对比 3-4 个核心指标（持仓盈亏/闲鱼咨询/闲鱼下单/社媒发帖），
+    只对比核心指标（持仓盈亏/社媒发帖），
     每个数据源独立 try/except，任一失败不影响其他。
 
     Args:
         db_path: 可选的数据库路径
-    Returns:
-        昨日指标字典，如 {"portfolio_pnl": 100.5, "xianyu_consultations": 12, ...}
+        Returns:
+        昨日指标字典，如 {"portfolio_pnl": 100.5, "social_posts": 12}
     """
-    from src.utils import now_et
-
-    yesterday_str = (now_et() - timedelta(days=1)).strftime("%Y-%m-%d")
     result = {}
 
     # 1. 昨日持仓盈亏 — 从交易日志获取
@@ -57,20 +54,7 @@ async def _get_yesterday_comparison(db_path=None) -> dict:
     except Exception as e:
         logger.debug("[DailyBrief] 昨日持仓对比失败: %s", e)
 
-    # 2. 昨日闲鱼数据 — daily_stats 支持传入日期
-    try:
-        from src.xianyu.xianyu_context import XianyuContextManager
-
-        xctx = XianyuContextManager()
-        if hasattr(xctx, "daily_stats"):
-            ystats = xctx.daily_stats(date=yesterday_str)
-            if ystats:
-                result["xianyu_consultations"] = ystats.get("consultations", 0)
-                result["xianyu_orders"] = ystats.get("orders", 0)
-    except Exception as e:
-        logger.debug("[DailyBrief] 昨日闲鱼对比失败: %s", e)
-
-    # 3. 昨日社媒发帖 — 通过 engagement_summary(days=1) 近似
+    # 2. 昨日社媒发帖 — 通过 engagement_summary(days=1) 近似
     try:
         from src.execution.life_automation import get_engagement_summary
 
@@ -90,13 +74,11 @@ def _calc_deltas(today_data: dict, yesterday_data: dict) -> dict:
         today_data: 今日指标字典
         yesterday_data: 昨日指标字典（来自 _get_yesterday_comparison）
     Returns:
-        中文标签到 delta 值的映射，如 {"持仓盈亏": +50.0, "闲鱼咨询": -3}
+        中文标签到 delta 值的映射，如 {"持仓盈亏": +50.0, "社媒发帖": -3}
     """
     # 定义要对比的指标: (内部 key, 中文标签)
     comparisons = [
         ("portfolio_pnl", "持仓盈亏"),
-        ("xianyu_consultations", "闲鱼咨询"),
-        ("xianyu_orders", "闲鱼下单"),
         ("social_posts", "社媒发帖"),
     ]
     deltas = {}
@@ -233,8 +215,6 @@ async def _fetch_trending_projects() -> list[str]:
         "telegram bot",
         "social media",
         "auto upload",
-        "xianyu",
-        "闲鱼",
         "llm",
         "ai agent",
         "tts",
@@ -667,55 +647,6 @@ async def _brief_api_cost(sections: list) -> None:
         logger.debug("[DailyBrief] cost: %s", e)
 
 
-async def _brief_xianyu(sections: list) -> None:
-    """section 11: 闲鱼运营 — 无数据时不显示"""
-    try:
-        from src.xianyu.xianyu_context import XianyuContextManager
-
-        xctx = XianyuContextManager()
-        xstats = xctx.daily_stats() if hasattr(xctx, "daily_stats") else {}
-        if xstats:
-            xlines = []
-            if xstats.get("messages", 0) > 0:
-                xlines.append(f"💬 咨询 {xstats.get('messages', 0)} 条")
-            if xstats.get("orders", 0) > 0:
-                xlines.append(f"📦 下单 {xstats.get('orders', 0)} 笔")
-            if xstats.get("payments", 0) > 0:
-                xlines.append(f"💰 成交 {xstats.get('payments', 0)} 笔")
-            if xstats.get("conversion_rate"):
-                xlines.append(f"📈 转化率 {xstats['conversion_rate']}")
-            # 营收+利润数据
-            try:
-                profit = xctx.get_profit_summary(days=1) if hasattr(xctx, "get_profit_summary") else {}
-                if profit and profit.get("revenue", 0) > 0:
-                    xlines.append(f"💵 营收 ¥{profit['revenue']:.0f} | 利润 ¥{profit['profit']:.0f}")
-                    if profit.get("orders", 0) > 0:
-                        avg = profit["revenue"] / profit["orders"]
-                        xlines.append(f"📊 客单价 ¥{avg:.0f}")
-            except Exception as e:
-                logger.warning("闲鱼利润数据获取失败: %s", e)
-            if xlines:
-                sections.append(_section("🐟 闲鱼运营", xlines))
-            # 无有效数据行时不显示
-            # 今日热销 Top3
-            try:
-                top3 = xctx.get_item_rankings(days=1, limit=3)
-                if top3:
-                    top_lines = ["🏆 今日热销:"]
-                    for i, item in enumerate(top3, 1):
-                        title = item.get("title", "未知")[:10]
-                        consult = item.get("consultations", 0)
-                        convert = item.get("conversions", 0)
-                        top_lines.append(f"  {i}. {title} ({consult}咨询/{convert}成交)")
-                    sections.append(_section("🏆 闲鱼热销", top_lines))
-            except Exception as e:
-                logger.debug("闲鱼热销获取异常: %s", e)
-        else:
-            pass  # 无闲鱼数据时不显示
-    except Exception as e:
-        logger.debug("日报段落生成异常: %s", e)
-
-
 async def _brief_engagement(sections: list, *, db_path=None) -> None:
     """section 12: 社媒互动"""
     try:
@@ -766,7 +697,7 @@ async def _collect_brief_metrics(*, db_path=None) -> dict:
     """收集各模块关键指标，用于执行摘要 + 智能建议。
 
     Returns:
-        包含 portfolio_pnl, positions_count, xianyu_*, social_posts,
+        包含 portfolio_pnl, positions_count, social_posts,
         api_daily_cost, market_sentiment, deltas 等键的字典
     """
     sections_data: dict = {}
@@ -781,18 +712,6 @@ async def _collect_brief_metrics(*, db_path=None) -> dict:
                 sections_data["positions_count"] = _st.get("monitored_count", 0)
         except Exception as e:
             logger.debug("日报指标收集-持仓盈亏异常: %s", e)
-
-        # 闲鱼数据
-        try:
-            from src.xianyu.xianyu_context import XianyuContextManager
-
-            _xctx = XianyuContextManager()
-            _xst = _xctx.daily_stats() if hasattr(_xctx, "daily_stats") else {}
-            if _xst:
-                sections_data["xianyu_consultations"] = _xst.get("consultations", 0)
-                sections_data["xianyu_orders"] = _xst.get("orders", 0)
-        except Exception as e:
-            logger.debug("日报指标收集-闲鱼数据异常: %s", e)
 
         # 社媒发帖
         try:

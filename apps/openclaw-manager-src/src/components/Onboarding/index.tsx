@@ -14,7 +14,6 @@ import { toast } from '@/lib/notify';
 
 /** 功能列表的 i18n key 映射 */
 const FEATURE_KEYS: { id: string; labelKey: string; descKey: string; icon: typeof Zap; color: string; alwaysOn?: boolean }[] = [
-  { id: 'xianyu', labelKey: 'onboarding.feature.xianyuLabel', descKey: 'onboarding.feature.xianyuDesc', icon: Zap, color: 'var(--accent-amber)' },
   { id: 'trading', labelKey: 'onboarding.feature.tradingLabel', descKey: 'onboarding.feature.tradingDesc', icon: TrendingUp, color: 'var(--accent-green)' },
   { id: 'social', labelKey: 'onboarding.feature.socialLabel', descKey: 'onboarding.feature.socialDesc', icon: Share2, color: 'var(--accent-cyan)' },
   { id: 'assistant', labelKey: 'onboarding.feature.assistantLabel', descKey: 'onboarding.feature.assistantDesc', icon: Bot, color: 'var(--accent-purple)', alwaysOn: true },

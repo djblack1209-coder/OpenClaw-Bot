@@ -186,18 +186,12 @@ def _match_chinese_command(text=None):
     if re.search(r"(?:撤销|删除|取消)(?:上)?(?:一)?(?:笔)?(?:记账|支出|开支)", cleaned):
         return ("expense_undo", "")
 
-    # ── 导出记账/闲鱼 ──
+    # ── 导出记账 ──
     # "导出记账" / "导出账单" / "导出记账90天"
     m_export_exp = re.search(r"导出(?:记账|账单|支出|开支)\s*(\d+)?(?:天)?", cleaned)
     if m_export_exp:
         days = m_export_exp.group(1) or "30"
         return ("export_expenses", days)
-    # "导出闲鱼" / "闲鱼报表导出" / "导出闲鱼订单30天"
-    m_export_xy = re.search(r"(?:导出闲鱼|闲鱼(?:报表|订单)?导出)\s*(?:订单)?\s*(\d+)?(?:天)?", cleaned)
-    if m_export_xy:
-        days = m_export_xy.group(1) or "90"
-        return ("export_xianyu", days)
-
     # ── 收入记录 ──
     # "收入5000元" / "进账8000" / "工资到账5000" / "收到3000红包"
     m_income = re.search(r"(?:收入|进账|到账|收到|入账)[：:\s]*(\d+(?:\.\d+)?)\s*(?:块|元|￥)?\s*(.*)", cleaned)
@@ -400,7 +394,7 @@ def _match_chinese_command(text=None):
     if m_hotpost:
         return ("social_hotpost", m_hotpost.group(1).strip())
     # 社媒 no-code 运营打法 NL 触发：只切换策略，不自动发布/评论
-    if re.search("(?:切到|切换到|改成|换成|设置|保存).*(?:运营打法|打法|策略)", cleaned) or re.search("(?:抽象热点打法|财富前沿打法|小红书生活攻略|闲鱼成交客服)", cleaned):
+    if re.search("(?:切到|切换到|改成|换成|设置|保存).*(?:运营打法|打法|策略)", cleaned) or re.search("(?:抽象热点打法|财富前沿打法|小红书生活攻略)", cleaned):
         return ("social_strategy", cleaned)
 
     # 社媒待审草稿 Telegram 中控 NL 触发：只审核/排程，不自动外发
@@ -447,17 +441,6 @@ def _match_chinese_command(text=None):
     # ── 社媒日历 ──
     if re.search("发文日历|内容日历|发文计划", cleaned):
         return ("social_calendar", "")
-    # v4.0: 闲鱼 BI 报表 NL 触发 — 报告/排行/高峰/转化
-    if re.search(
-        "闲鱼报告|闲鱼数据|闲鱼报表|闲鱼分析|商品排行|哪个商品卖得好|热销排行|咨询高峰|什么时候咨询最多|转化率|转化漏斗|闲鱼转化",
-        cleaned,
-    ):
-        return ("xianyu_report", "")
-    # v5.0: 闲鱼回复风格 / FAQ 管理 NL 触发
-    if re.search("闲鱼风格|闲鱼回复风格|客服风格|闲鱼客服风格|AI客服风格", cleaned):
-        return ("xianyu_style_show", "")
-    if re.search("闲鱼常见问题|闲鱼FAQ|闲鱼faq", cleaned):
-        return ("xianyu_style_faq_list", "")
     # ── 语音播报 ──
     m_voice = re.search(r"(?:念出来|语音播报|朗读)\s*(.*)", cleaned)
     if m_voice:
@@ -465,9 +448,6 @@ def _match_chinese_command(text=None):
     # ── AI写作 ──
     if re.search("写小说|续写小说|AI写作", cleaned):
         return ("novel", "")
-    # ── 闲鱼发货 ──
-    if re.search("发货管理|闲鱼发货", cleaned):
-        return ("ship", "")
     # v3.0: 综合周报 NL 触发
     if re.search(f"{_PRE}(?:周报|本周总结|每周总结|本周汇总|综合周报|这周怎么样){_SUF}", cleaned):
         return ("weekly", "")
@@ -712,7 +692,6 @@ class ChineseNLPMixin:
             "social_review_schedule": self.cmd_social_review_schedule,
             "social_review_schedule_queue": self.cmd_social_review_schedule_queue,
             "social_review_final_confirm": self.cmd_social_review_final_confirm,
-            "xianyu_report": self.cmd_xianyu_report,
             "weekly": self.cmd_weekly,
             # ── 投资 & 交易 ──
             "invest": self.cmd_invest,
@@ -769,7 +748,6 @@ class ChineseNLPMixin:
             # ── 语音/写作/发货 ──
             "voice": self.cmd_voice,
             "novel": self.cmd_novel,
-            "ship": self.cmd_ship,
         }
 
         handler = dispatch_map.get(action_type)

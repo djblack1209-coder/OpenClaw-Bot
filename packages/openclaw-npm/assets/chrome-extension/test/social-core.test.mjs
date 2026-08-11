@@ -33,7 +33,6 @@ test('detectSocialPlatform identifies supported social pages', () => {
   assert.equal(detectSocialPlatform('https://x.com/home').id, 'x')
   assert.equal(detectSocialPlatform('https://twitter.com/explore').id, 'x')
   assert.equal(detectSocialPlatform('https://creator.xiaohongshu.com/publish/publish').id, 'xhs')
-  assert.equal(detectSocialPlatform('https://www.goofish.com/item?id=1').id, 'xianyu')
   assert.equal(detectSocialPlatform('https://example.com').supported, false)
 })
 
@@ -93,7 +92,6 @@ test('status summary and task preview are platform aware', () => {
   const platform = detectSocialPlatform('https://www.xiaohongshu.com/explore')
   assert.match(buildStatusSummary(platform, true, { automationLevel: 'autofill' }), /小红书 · 运行中 · 自动填入页面/)
   assert.ok(createDefaultTaskPreview('x').some((item) => item.includes('GitHub')))
-  assert.ok(createDefaultTaskPreview('xianyu').some((item) => item.includes('砍价')))
 })
 
 test('buildSocialApiUrl trims base URL and leading path slashes', () => {
@@ -428,28 +426,22 @@ test('buildTrendDraftPayload packages a selected hotspot as a safe draft source'
 test('buildAutofillSelectors returns platform-specific safe field plans', () => {
   const x = buildAutofillSelectors('x')
   const xhs = buildAutofillSelectors('xhs')
-  const xianyu = buildAutofillSelectors('xianyu')
 
   assert.ok(x.fields.some((field) => field.name === 'compose' && field.kind === 'body'))
   assert.ok(xhs.fields.some((field) => field.name === 'title' && field.kind === 'title'))
   assert.ok(xhs.fields.some((field) => field.name === 'body' && field.kind === 'body'))
-  assert.ok(xianyu.fields.some((field) => field.name === 'reply_or_description'))
   assert.equal(x.allowButtonClick, false)
   assert.equal(xhs.allowButtonClick, false)
-  assert.equal(xianyu.allowButtonClick, false)
 })
 
 test('buildAutofillSelectors covers modern real-page editor variants', () => {
   const xSelectors = buildAutofillSelectors('x').fields.flatMap((field) => field.selectors)
   const xhsSelectors = buildAutofillSelectors('xhs').fields.flatMap((field) => field.selectors)
-  const xianyuSelectors = buildAutofillSelectors('xianyu').fields.flatMap((field) => field.selectors)
 
   assert.ok(xSelectors.includes('div[data-testid^="tweetTextarea"] div[contenteditable="true"]'))
   assert.ok(xSelectors.includes('div.public-DraftEditor-content[contenteditable="true"]'))
   assert.ok(xhsSelectors.includes('.ql-editor[contenteditable="true"]'))
   assert.ok(xhsSelectors.includes('div[contenteditable="true"][aria-placeholder*="正文"]'))
-  assert.ok(xianyuSelectors.includes('div[contenteditable="true"][data-placeholder*="请输入"]'))
-  assert.ok(xianyuSelectors.includes('div[contenteditable="true"][aria-label*="回复"]'))
 })
 
 test('buildPageProbePayload reports a detection-only action with no publish intent', () => {

@@ -60,28 +60,6 @@ export const PLATFORM_SCENARIOS = [
     assertionText: '家人们，冷泡茶',
     contextText: '冷泡茶加柠檬',
   },
-  {
-    id: 'xianyu',
-    url: 'https://www.goofish.com/item?id=1',
-    title: '闲鱼商品',
-    draft: {
-      id: 'smoke-xianyu',
-      platform: 'xianyu',
-      review_status: 'approved',
-      title: '买家问能不能便宜',
-      text: '可以小刀，但商品状态和配件都在，今天拍可以优先发出。',
-    },
-    html: `
-      <main>
-        <section class="item-card"><div class="title">MacBook Air M2 低价出</div></section>
-        <section class="message">买家问还能不能便宜一点，今天能不能发货</section>
-        <div contenteditable="true" data-placeholder="请输入回复内容"></div>
-        <button class="send">发送</button>
-      </main>
-    `,
-    assertionText: '可以小刀',
-    contextText: '今天能不能发货',
-  },
 ]
 
 async function loadChromium() {

@@ -11,12 +11,6 @@ export const SUPPORTED_PLATFORMS = {
     tone: '生活方式 · 女性向攻略 · 图文教程',
     hosts: ['xiaohongshu.com', 'www.xiaohongshu.com', 'creator.xiaohongshu.com'],
   },
-  xianyu: {
-    id: 'xianyu',
-    label: '闲鱼',
-    tone: '客服成交 · 商品优化 · 砍价回复',
-    hosts: ['goofish.com', 'www.goofish.com', '2.taobao.com', 'm.tb.cn', 'tb.cn', 'idlefish'],
-  },
 }
 
 export const DEFAULT_SOCIAL_SETTINGS = {
@@ -35,7 +29,6 @@ export const STRATEGY_PRESET_OPTIONS = {
   x_wealth_frontier: 'X 财富前沿实操',
   x_absurd_growth: 'X 抽象热点涨粉',
   xhs_lifestyle_tutorial: '小红书生活攻略',
-  xianyu_deal_closer: '闲鱼成交客服',
 }
 
 export const PERSONA_TAG_OPTIONS = [
@@ -713,29 +706,6 @@ export function buildAutofillSelectors(platformId = 'unsupported') {
       ],
     }
   }
-  if (platform === 'xianyu') {
-    return {
-      ...common,
-      fields: [
-        {
-          name: 'reply_or_description',
-          kind: 'body',
-          selectors: [
-            'textarea[placeholder*="回复"]',
-            'textarea[placeholder*="描述"]',
-            'input[placeholder*="回复"]',
-            'div[contenteditable="true"][placeholder*="回复"]',
-            'div[contenteditable="true"][data-placeholder*="回复"]',
-            'div[contenteditable="true"][data-placeholder*="请输入"]',
-            'div[contenteditable="true"][aria-placeholder*="回复"]',
-            'div[contenteditable="true"][aria-label*="回复"]',
-            'div[contenteditable="true"][role="textbox"]',
-            'textarea',
-          ],
-        },
-      ],
-    }
-  }
   return { ...common, fields: [] }
 }
 
@@ -833,7 +803,7 @@ export function normalizeReviewPack(pack = {}) {
     if (!id || seen.has(id)) continue
     seen.add(id)
     const platform = boundedText(item?.platform || 'x', 24)
-    if (!['x', 'xhs', 'xianyu'].includes(platform)) continue
+    if (!['x', 'xhs'].includes(platform)) continue
     samples.push({
       id,
       index: Number.isFinite(Number(item?.index)) ? Number(item.index) : -1,
@@ -864,7 +834,6 @@ export function normalizeReviewPack(pack = {}) {
       content_mix: {
         x: boundedText(contentMix.x || '', 160),
         xhs: boundedText(contentMix.xhs || '', 160),
-        xianyu: boundedText(contentMix.xianyu || '', 160),
       },
     },
     persona_approved: Boolean(pack?.persona_approved || pack?.approved),
@@ -937,12 +906,5 @@ export function createDefaultTaskPreview(platformId) {
       '审计收益承诺、投资建议和平台风险',
     ]
   }
-  if (platformId === 'xianyu') {
-    return [
-      '读取当前商品或聊天上下文',
-      '生成标题优化、砍价回复和成交建议',
-      '标记高意向买家并同步到中控',
-    ]
-  }
-  return ['打开 X / 小红书 / 闲鱼 页面后再启动运营']
+  return ['打开 X / 小红书页面后再启动运营']
 }

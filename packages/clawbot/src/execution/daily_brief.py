@@ -30,7 +30,6 @@ from src.execution.daily_brief_data import (  # noqa: F401
     _brief_trading,
     _brief_trending,
     _brief_watchlist,
-    _brief_xianyu,
     _build_today_agenda,
     _calc_deltas,
     _collect_brief_metrics,
@@ -77,7 +76,7 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
     await _brief_market(sections)
     await _brief_sentiment(sections)
 
-    # 第四层: 运营数据（社媒+闲鱼合并展示）
+    # 第四层: 运营数据
     social_sections: list[tuple[str, list[str]]] = []
     await _brief_social_ops(social_sections)
     await _brief_engagement(social_sections, db_path=db_path)
@@ -88,8 +87,6 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
         for _, items in social_sections:
             merged_items.extend(items)
         sections.append(_section("📱 社媒", merged_items))
-
-    await _brief_xianyu(sections)
 
     # 第五层: 信息参考
     await _brief_news(sections)

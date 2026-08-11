@@ -98,7 +98,6 @@ class _CallbackMixin:
             "evolve": self.cmd_status,
             "tasks": self.cmd_ops,
             "bill": self.cmd_bill,
-            "xianyu": self.cmd_xianyu,
         }
 
         handler = cmd_map.get(cmd_name)

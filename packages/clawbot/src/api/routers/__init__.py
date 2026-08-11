@@ -17,7 +17,6 @@ from .system import router as router_system
 from .trading import router as router_trading
 from .wechat import router as router_wechat
 from .ws import router as router_ws
-from .xianyu import router as router_xianyu
 
 __all__ = [
     "router_cli",
@@ -37,5 +36,4 @@ __all__ = [
     "router_trading",
     "router_wechat",
     "router_ws",
-    "router_xianyu",
 ]

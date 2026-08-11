@@ -8,9 +8,6 @@ import { useState, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
   DollarSign,
-  TrendingUp,
-  PieChart,
-  Lightbulb,
   ArrowUpRight,
   ArrowDownRight,
   BarChart3,
@@ -18,7 +15,6 @@ import {
 } from 'lucide-react';
 import { clawbotFetchJson } from '../../lib/tauri-core';
 import { useLanguage } from '../../i18n';
-import { api } from '../../lib/api';
 import { toast } from '@/lib/notify';
 import { EmptyState } from '../shared/EmptyState';
 import { useActivePagePolling } from '@/hooks/useActivePagePolling';
@@ -60,24 +56,6 @@ interface OmegaCostData {
   [key: string]: unknown;
 }
 
-/** 闲鱼利润后端数据 */
-interface XianyuProfitData {
-  orders?: number;
-  revenue?: number;
-  cost?: number;
-  total_commission?: number;
-  profit?: number;
-  days?: number;
-  today?: {
-    consultations?: number;
-    messages?: number;
-    orders?: number;
-    payments?: number;
-    conversion_rate?: number;
-  };
-  [key: string]: unknown;
-}
-
 /* ====== 工具函数 ====== */
 
 /** 格式化金额为人民币 */
@@ -107,7 +85,6 @@ export function Money() {
   /* 状态 */
   const [pnlData, setPnlData] = useState<TradingPnlData | null>(null);
   const [costData, setCostData] = useState<OmegaCostData | null>(null);
-  const [xianyuData, setXianyuData] = useState<XianyuProfitData | null>(null);
   const [pnlError, setPnlError] = useState<string | null>(null);
   const [costError, setCostError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -117,11 +94,10 @@ export function Money() {
   const fetchData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      /* 并行拉取交易 P&L、AI 成本、闲鱼利润 */
-      const [pnlRes, costRes, xyRes] = await Promise.allSettled([
+      /* 并行拉取交易 P&L 与 AI 成本。 */
+      const [pnlRes, costRes] = await Promise.allSettled([
         clawbotFetchJson<TradingPnlData>('/api/v1/trading/pnl'),
         clawbotFetchJson<OmegaCostData>('/api/v1/omega/cost'),
-        api.xianyuProfit(30) as Promise<XianyuProfitData>,
       ]);
 
       if (!mountedRef.current) return;
@@ -140,11 +116,6 @@ export function Money() {
         setCostError(t('money.costUnavailable'));
       }
 
-      if (xyRes.status === 'fulfilled') {
-        setXianyuData(xyRes.value);
-      } else {
-        setXianyuData(null);
-      }
     } catch {
       if (!mountedRef.current) return;
       toast.error(t('money.loadFailed'));
@@ -356,100 +327,7 @@ export function Money() {
           </div>
         </motion.div>
 
-        {/* ====== 收入源 (col-4) ====== */}
-        <motion.div className="col-span-12 lg:col-span-4" variants={cardVariants}>
-          <div className="abyss-card p-6 h-full flex flex-col">
-            <span className="text-label" style={{ color: 'var(--accent-amber)' }}>
-              {t('money.otherRevenue')}
-            </span>
-            <h3 className="font-display text-lg font-bold mt-1 mb-5" style={{ color: 'var(--text-primary)' }}>
-              {t("money.otherRevenue")}
-            </h3>
 
-            <div className="flex-1 space-y-4">
-              {/* 闲鱼销售收入 — 已接入 */}
-              <div
-                className="p-4 rounded-xl border"
-                style={{ background: 'var(--bg-secondary)', borderColor: xianyuData ? 'rgba(255,170,0,0.3)' : 'var(--glass-border)' }}
-              >
-                <div className="flex items-start gap-2.5">
-                  <PieChart size={16} className="shrink-0 mt-0.5" style={{ color: 'var(--accent-amber)' }} />
-                  <div className="flex-1">
-                    <p className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                      {t("money.xianyuRevenue")}
-                    </p>
-                    {xianyuData ? (
-                      <div className="mt-2 space-y-1.5 font-mono text-xs">
-                        <div className="flex justify-between">
-                          <span style={{ color: 'var(--text-disabled)' }}>{`${xianyuData.days ?? 30}${t('money.daysRevenue')}`}</span>
-                          <span className="font-bold" style={{ color: 'var(--accent-amber)' }}>
-                            {formatCNY(xianyuData.revenue ?? 0)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span style={{ color: 'var(--text-disabled)' }}>{t('money.netProfit')}</span>
-                          <span className="font-bold" style={{ color: (xianyuData.profit ?? 0) >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-                            {formatCNY(xianyuData.profit ?? 0)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span style={{ color: 'var(--text-disabled)' }}>{t('money.orderCount')}</span>
-                          <span style={{ color: 'var(--text-secondary)' }}>{xianyuData.orders ?? 0}</span>
-                        </div>
-                        {xianyuData.today && (
-                          <div className="flex justify-between pt-1 mt-1" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                            <span style={{ color: 'var(--text-disabled)' }}>{t('money.todayConsultPayment')}</span>
-                            <span style={{ color: 'var(--text-secondary)' }}>
-                              {xianyuData.today.consultations ?? 0} / {xianyuData.today.payments ?? 0}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="font-mono text-[11px] mt-1 leading-relaxed" style={{ color: 'var(--text-disabled)' }}>
-                        {t("money.xianyuLoading")}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* 套利策略 — 待接入 */}
-              <div className="p-4 rounded-xl border" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--glass-border)' }}>
-                <div className="flex items-start gap-2.5">
-                  <TrendingUp size={16} className="shrink-0 mt-0.5" style={{ color: 'var(--accent-cyan)' }} />
-                  <div>
-                    <p className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('money.arbitrageRevenue')}</p>
-                    <p className="font-mono text-[11px] mt-1 leading-relaxed" style={{ color: 'var(--text-disabled)' }}>
-                      {t("money.pendingArbitrage")}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* DeFi — 待接入 */}
-              <div className="p-4 rounded-xl border" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--glass-border)' }}>
-                <div className="flex items-start gap-2.5">
-                  <Lightbulb size={16} className="shrink-0 mt-0.5" style={{ color: 'var(--accent-purple)' }} />
-                  <div>
-                    <p className="font-display text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('money.defiRevenue')}</p>
-                    <p className="font-mono text-[11px] mt-1 leading-relaxed" style={{ color: 'var(--text-disabled)' }}>
-                      {t("money.pendingDefi")}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* 底部说明 */}
-            <p
-              className="font-mono text-[10px] mt-4 pt-3 border-t"
-              style={{ color: 'var(--text-disabled)', borderColor: 'var(--glass-border)' }}
-            >
-              {t("money.revenueNote")}
-            </p>
-          </div>
-        </motion.div>
       </motion.div>
     </div>
   );

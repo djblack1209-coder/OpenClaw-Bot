@@ -500,7 +500,6 @@ class OpsCommandsMixin:
             "/ops life action <动作> [JSON] - 触发本机动作/设备Webhook\n"
             "/ops project [路径] - 项目协作周报\n"
             "/ops dev [路径] - 开发流程自动化\n"
-            "/ops xianyu start|stop|status|reload - 闲鱼 AI 客服控制\n"
             "/publish <平台> <文件路径> [标题] - 社媒多平台发布 (抖音/B站/小红书/快手)"
         )
 
@@ -622,5 +621,3 @@ class OpsCommandsMixin:
             logger.error("[Evolution] 扫描失败: %s", e, exc_info=True)
             await processing_msg.delete()
             await update.message.reply_text(f"❌ 进化扫描失败: {error_service_failed()}")
-
-    # ---- 闲鱼卡券自动发货管理 ----

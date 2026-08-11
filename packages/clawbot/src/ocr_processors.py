@@ -3,12 +3,12 @@ OCR 场景处理器 — 将 OCR 文字转化为业务决策
 
 两条核心链路：
 1. Financial: OCR → LLM 提取指标 → 注入 SharedMemory → 自动触发 /invest
-2. Ecommerce: OCR → LLM 提取竞品数据 → 对比闲鱼商品 → 生成调价建议
+2. Ecommerce: OCR → LLM 提取竞品数据 → 对比电商商品 → 生成调价建议
 
 核心升级（vs v1 正则版）：
 - 用免费 LLM（SiliconFlow）做结构化提取，替代正则匹配
 - 财报场景自动触发 6-bot 投资分析链（零命令）
-- 电商场景对接闲鱼实际商品数据
+- 电商场景对接实际商品数据
 - OCR 结果注入对话上下文（可追问）
 """
 import logging
@@ -73,7 +73,7 @@ OCR 文字:
       "original_price": 199.0,
       "sales": 500,
       "reviews": 120,
-      "platform": "闲鱼/淘宝/拼多多"
+      "platform": "淘宝/拼多多/京东"
     }}
   ],
   "price_range": {{"min": 59, "max": 299, "avg": 150}},

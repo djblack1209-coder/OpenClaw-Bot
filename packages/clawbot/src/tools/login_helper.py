@@ -1,13 +1,13 @@
 """通用登录弹窗工具 — macOS 桌面弹窗 + 浏览器自动打开 + 登录状态检测
 
-当任何服务（闲鱼/X/小红书/微信等）需要用户手动登录时：
+当任何服务（X/小红书/微信等）需要用户手动登录时：
 1. 弹出 macOS 通知和对话框，确保用户看到
 2. 自动打开登录网页到前台
 3. 轮询检测登录完成，自动恢复服务
 
 使用示例:
     from src.tools.login_helper import LoginHelper
-    helper = LoginHelper("闲鱼")
+    helper = LoginHelper("小红书")
     helper.alert_and_open("https://login.taobao.com/...")
     ok = await helper.wait_for_condition(lambda: check_cookie(), timeout=600)
 """
@@ -31,7 +31,7 @@ class LoginHelper:
         """初始化登录助手。
 
         Args:
-            service_name: 服务名称，用于显示在通知和对话框中，如"闲鱼"、"X (Twitter)"
+            service_name: 服务名称，用于显示在通知和对话框中，如"小红书"、"X (Twitter)"
         """
         self.service_name = service_name
         self._is_macos = sys.platform == "darwin"

@@ -2,7 +2,6 @@
 # 搬运自 n3d1117/chatgpt-telegram-bot (3.5k⭐) 流式模式
 
 import asyncio
-import importlib.util
 import io
 import logging
 import time as _time
@@ -305,9 +304,6 @@ class MessageHandlerMixin(WorkflowMixin, CallbackMixin, VoiceHandlerMixin, Sessi
                     ("📋 今日简报", "cmd:brief"),
                     ("📱 账单状态", "cmd:bill"),
                 ]
-                # 闲鱼模块可用时追加
-                if importlib.util.find_spec("src.xianyu.xianyu_context"):
-                    _fuzzy_suggestions.append(("🐟 闲鱼状态", "cmd:xianyu"))
                 _fuzzy_rows = [
                     [InlineKeyboardButton(t, callback_data=cb) for t, cb in _fuzzy_suggestions[:3]],
                 ]

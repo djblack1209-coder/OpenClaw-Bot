@@ -138,11 +138,7 @@ NUMBERED_COMMANDS: dict[int, tuple[str, bool, str]] = {
     306: ("题材研究", True, "cmd_topic"),
     307: ("社媒报告", False, "cmd_social_report"),
     308: ("发文日历", False, "cmd_social_calendar"),
-    # 🛒 400-409: 闲鱼 & 电商
-    400: ("闲鱼控制", False, "cmd_xianyu"),
-    401: ("闲鱼报表", False, "cmd_xianyu_report"),
-    402: ("闲鱼话术", False, "cmd_xianyu_style"),
-    403: ("闲鱼发货", False, "cmd_ship"),
+    # 🛒 400-409: 电商
     404: ("降价监控", True, "cmd_pricewatch"),
     405: ("折扣搜索", True, "cmd_deals"),
     407: ("全球情报", False, "cmd_intel"),
@@ -230,7 +226,7 @@ def _build_welcome_message() -> str:
         "100 帮助  |  104 早报\n"
         "200 查股价  |  201 市场概览\n"
         "202 组合  |  217 AI投资会\n"
-        "300 热点发文  |  401 闲鱼报表\n"
+        "300 热点发文  |  307 社媒报告\n"
         "700 每日简报  |  706 英伟达\n"
         "\n"
         "💡 带参数用法\n"
@@ -241,7 +237,7 @@ def _build_welcome_message() -> str:
         "发 \"706 英伟达\" → 追踪英伟达相关新闻\n"
         "\n"
         "📈 投资: 200-221 | 🏦 实盘: 230-235\n"
-        "📱 社媒: 300-308 | 🛒 闲鱼: 400-405/407-408\n"
+        "📱 社媒: 300-308 | 🔎 发现: 404-408\n"
         "🏠 生活: 500-503 | ⚙️ 系统: 600-606\n"
         "🧭 每日简报: 700-708\n"
         "\n"
@@ -263,7 +259,7 @@ def _build_full_help() -> str:
         2: "📈 投资分析 (200-221)",
         23: "🏦 IBKR 实盘 (230-235)",
         3: "📱 社媒发文 (300-308)",
-        4: "🛒 闲鱼 & 电商 (400-405/407-408)",
+        4: "🔎 发现与折扣 (404-408)",
         5: "🏠 生活助手 (500-503)",
         6: "⚙️ 系统设置 (600-606)",
         7: "🧭 每日简报 (700-708)",
@@ -391,10 +387,6 @@ _CMD_API_MAP: dict[str, tuple[str, str]] = {
     "cmd_model": ("/api/v1/pool/stats", "当前模型"),
     "cmd_config": ("/api/v1/system/services", "运行配置"),
     "cmd_settings": ("/api/v1/controls/settings", "偏好设置"),
-    # 闲鱼类
-    "cmd_xianyu": ("/api/v1/xianyu/conversations", "闲鱼客服"),
-    "cmd_xianyu_report": ("/api/v1/xianyu/profit", "闲鱼报表"),
-    "cmd_xianyu_style": ("/api/v1/xianyu/status", "闲鱼话术"),
     # 社媒类
     "cmd_hot": ("/api/v1/social/extension/trends?platform=x&limit=8", "热点发文选题"),
     "cmd_social_report": ("/api/v1/social/analytics?days=7", "社媒报告"),
@@ -420,7 +412,6 @@ _EXPLICIT_UNAVAILABLE_COMMANDS: dict[int, str] = {
     301: "双平台发文只允许生成待审草稿，不会自动发布；请在 Social 中控人工确认。",
     302: "X 发文只允许生成待审草稿，不会自动发布；请在 Social 中控人工确认。",
     303: "小红书发文只允许生成待审草稿，不会自动发布；请在 Social 中控人工确认。",
-    403: "闲鱼发货涉及真实卡券/订单状态，微信编号入口不直接执行；请在闲鱼中控人工确认。",
     404: "降价监控目前没有稳定只读 API；可用 405 折扣搜索查看候选商品。",
     501: "话费账单历史自动化已下线，当前没有安全可用的账单 API。",
     502: "数据导出会生成本地文件，微信转发器没有安全附件回传通道；请在桌面端执行导出。",

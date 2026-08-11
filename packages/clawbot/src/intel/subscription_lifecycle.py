@@ -482,7 +482,7 @@ def run_subscription_lifecycle_maintenance(
         "limits": [
             "Default run is read-only unless apply_expiry/send_reminders are explicitly requested and gated.",
             "Reminder audit events are de-duplicated per subscriber/plan/day.",
-            "No payment provider, Xianyu automation, scraper, remote worker, or LaunchAgent operation is performed.",
+            "No payment provider, marketplace automation, scraper, remote worker, or LaunchAgent operation is performed.",
             "Raw Telegram token/chat id/user id values are not returned.",
         ],
     }

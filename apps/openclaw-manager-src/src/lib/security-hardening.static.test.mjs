@@ -154,7 +154,6 @@ test('停止服务只能使用管理器 PID 记录并核验进程身份', () => 
   assert.match(clawbot, /prepare_managed_script/);
   assert.match(clawbot, /reap_fallback_process/);
   assert.match(clawbot, /MANAGED_SERVICE_OPERATION_LOCK/);
-  assert.match(clawbot, /ai\.openclaw\.cc-seller-bridge/);
   assert.match(clawbot, /format_env_assignment/);
   assert.match(clawbot, /wait\\n/);
   assert.doesNotMatch(clawbot, /IBKR_DEFAULT_STOP_CMD|get_default_ibkr_stop_cmd/);

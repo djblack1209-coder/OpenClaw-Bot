@@ -165,8 +165,6 @@ def get_scheduler_status():
         {"id": "bounty_scan", "name": "赏金猎人扫描", "cron": "每45分钟", "enabled": True},
         {"id": "reminders", "name": "用户提醒", "cron": "每60秒", "enabled": True},
         {"id": "bill_checks", "name": "账单告警", "cron": "09:00/18:00 ET", "enabled": True},
-        {"id": "xianyu_shipment", "name": "闲鱼发货超时", "cron": "每60秒", "enabled": True},
-        {"id": "stock_check", "name": "闲鱼库存预警", "cron": "每4小时", "enabled": True},
         {"id": "price_watch", "name": "降价监控", "cron": "每6小时", "enabled": True},
         {"id": "budget_alert", "name": "预算超支检查", "cron": "20:00 ET", "enabled": True},
         {"id": "weekly_strategy", "name": "策略绩效评估", "cron": "周日 20:00", "enabled": True},

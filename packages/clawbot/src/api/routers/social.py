@@ -51,7 +51,7 @@ def control_social_browser(
 
 @router.get("/social/ops-workspace", response_model=dict[str, Any])
 def get_social_ops_workspace():
-    """获取 X / 小红书 / 闲鱼统一浏览器运营工作台。"""
+    """获取 X / 小红书统一浏览器运营工作台。"""
     try:
         return ClawBotRPC._rpc_social_ops_workspace()
     except Exception as e:
@@ -617,15 +617,16 @@ def final_confirm_draft(
 @router.get("/social/cookie-status")
 async def get_social_cookie_status():
     """获取社媒平台 Cookie 健康状态"""
-    from src.xianyu.cookie_refresher import CookieHealthMonitor
-    monitor = CookieHealthMonitor()
     try:
-        all_status = await monitor.check_all_cookies()
+        from src.api.routers.cookies import cookie_status
+
+        all_status = await cookie_status()
+        platforms = all_status.get("platforms", {})
         return {
             "success": True,
             "data": {
-                "x": all_status.get("x", {}),
-                "xhs": all_status.get("xhs", {}),
+                "x": platforms.get("x", {}),
+                "xhs": platforms.get("xhs", {}),
             }
         }
     except Exception as e:
