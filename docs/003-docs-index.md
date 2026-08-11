@@ -1,7 +1,7 @@
 # OpenClaw 文档总索引
 
-> 最后更新: 2026-08-10
-> 总文件: 36 个（含 `docs/current/` 的唯一生产当前基线；083 为历史停用编号）
+> 最后更新: 2026-08-11
+> 总文件: 37 个（含 `docs/current/` 的唯一生产当前基线；083 为历史停用编号）
 
 ## 当前基线
 
@@ -68,6 +68,7 @@
 | 085 | `085-intel-brief-design-qa.md` | 每日资讯 V2 方案 C + Top 3 + 候选 3 的视觉决策、同视口对比与 Telegram 验收边界 |
 | 086 | `086-release-evidence.md` | 退役发布证据入口；保留稳定路由，不再生成快照报告 |
 | 087 | `087-jiyu-image-mcp-guide.md` | JIYU 生图专用 Key、CC Switch MCP 和可复制 AI 安装提示词小白教程 |
+| 088 | `088-xianyu-official-application.md` | 闲鱼官方虚拟订单准入、MRD/PRD、最小权限、数据边界和发布验收材料 |
 
 ## 排除范围
 
