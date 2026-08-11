@@ -64,19 +64,6 @@ export const api = {
   clawbotPing: ipc.clawbotPing,
   clawbotStatus: () =>
     isTauri() ? ipc.clawbotStatus() : clawbotFetchJson('/api/v1/status'),
-  xianyuOperatorUrl: () => {
-    if (!isTauri()) {
-      throw new Error('闲鱼运营台一键入口仅在 OpenClaw 桌面端可用');
-    }
-    return ipc.clawbotXianyuOperatorUrl();
-  },
-  xianyuOpenOperator: () => {
-    if (!isTauri()) {
-      throw new Error('闲鱼运营台一键启动仅在 OpenClaw 桌面端可用');
-    }
-    return ipc.clawbotXianyuOpenOperator();
-  },
-
   // ── 交易系统 ──
   clawbotTradingSystem: ipc.clawbotTradingSystem,
   clawbotTradingPositions: ipc.clawbotTradingPositions,
@@ -381,18 +368,6 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(config),
     }),
-
-  // ══════════════════════════════════════════════
-  //  服务控制 (Service Control)
-  // ══════════════════════════════════════════════
-
-  /** 启动指定服务 */
-  serviceStart: (serviceId: string) =>
-    clawbotFetchJson(`/api/v1/system/services/${serviceId}/start`, { method: 'POST' }),
-
-  /** 停止指定服务 */
-  serviceStop: (serviceId: string) =>
-    clawbotFetchJson(`/api/v1/system/services/${serviceId}/stop`, { method: 'POST' }),
 
   // ══════════════════════════════════════════════
   //  交易操作 (Trading Actions)

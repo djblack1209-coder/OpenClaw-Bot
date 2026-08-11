@@ -55,7 +55,7 @@
 |------|------|---------|
 | 051 | `051-jiyu-brand-production-plan.md` | CC中转品牌收口、域名/HTTPS、生产加固分期和生产内测验收 |
 | 052 | `052-intel-brief-master-plan.md` | Intel Brief 总体方案、开源轮子搬运规划、多服务器运行基线和分阶段验证路线 |
-| 053 | `053-jiyu-growth-payment-image-update-plan.md` | JIYU 生图渠道、MCP、链动充值和 WebUI 自助更新分阶段方案 |
+| 053 | `053-jiyu-growth-payment-image-update-plan.md` | JIYU 生图渠道、原生异步 API、链动充值和 WebUI 自助更新分阶段方案 |
 
 ## 报告/归档 (080-099)
 
@@ -67,8 +67,6 @@
 | 084 | `084-intel-brief-implementation-report.md` | Intel Brief Phase 0 / Phase B 历史验收证据汇总；当前状态以健康文档和变更日志为准 |
 | 085 | `085-intel-brief-design-qa.md` | 每日资讯 V2 方案 C + Top 3 + 候选 3 的视觉决策、同视口对比与 Telegram 验收边界 |
 | 086 | `086-release-evidence.md` | 退役发布证据入口；保留稳定路由，不再生成快照报告 |
-| 087 | `087-jiyu-image-mcp-guide.md` | JIYU 生图专用 Key、CC Switch MCP 和可复制 AI 安装提示词小白教程 |
-| 088 | `088-xianyu-official-application.md` | 闲鱼官方虚拟订单准入、MRD/PRD、最小权限、数据边界和发布验收材料 |
 
 ## 排除范围
 

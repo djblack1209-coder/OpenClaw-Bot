@@ -5,6 +5,20 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
+## [2026-08-11] 中央 MCP 退役与 OpenClaw 控制面收敛
+> 领域: `frontend` | `backend` | `infra` | `docs` | `xianyu`
+> 影响模块: `OpenClaw App`, `LaunchAgent 管理`, `CC Switch`, `本机生图入口`, `文档基线`
+> 关联问题: OPENCLAW-20260811-CONTROL-PLANE-REDUCTION
+### 变更内容
+- 在受保护目录备份 CC Switch 数据库和已安装 MCP 后，移除 `jiyu-ai-image` 的 CC Switch 记录与本机安装目录；Claude、Codex、OpenCode 活动配置没有残留。钥匙串凭据因不可逆删除边界保留，但已无活动调用者。
+- 删除中央 MCP 安装器、服务源码、锁文件和专用教程；原生支持异步图片 API 的客户端继续直连 Sub2API，文本客户端不再注入额外生图工具。
+- “智能体”页改为直接使用 Tauri 现有 LaunchAgent 控制器，纳入闲鱼 AI 客服和闲鱼自动交付桥；删除 FastAPI 中重复的 `Popen/pkill` 服务启停端点。
+- 删除独立“闲鱼管理”和未接入真实测试系统的“测试诊断”页面及其 IPC、翻译和导航入口。闲鱼状态与服务开关继续由“智能体”页承接，真实测试仍由现有命令和 CI 执行。
+- 用户已决定不继续建设闲鱼销售或官方小程序链路；申请材料和中央 MCP 教程均可从 Git 恢复，不再作为当前文档维护面。
+### 验证
+- 中央 MCP 回读为安装目录不存在、CC Switch 记录为 0；未输出或删除 Key。
+- OpenClaw 前端生产构建、lint、Tauri Rust `cargo check`、静态安全回归和文档结构检查通过；事务式脚本完成签名 App 原子安装并保留回滚副本。真实 App 回读显示 7 个受管服务，首页“服务开关”直达唯一“智能体”控制页，LaunchAgent 状态未改变。
+
 ## [2026-08-11] 闲鱼官方虚拟订单申请材料就绪
 > 领域: `backend` | `docs` | `infra` | `xianyu`
 > 影响模块: `闲鱼三方开放平台`, `Sub2API 履约`, `官方申请材料`

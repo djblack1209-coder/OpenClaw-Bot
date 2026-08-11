@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useLanguage } from '../../i18n';
-import { clawbotFetchJson } from '../../lib/tauri-core';
+import { clawbotFetchJson, isTauri } from '../../lib/tauri-core';
 import { useActivePagePolling } from '@/hooks/useActivePagePolling';
 
 /* ====== 入场动画 ====== */
@@ -140,7 +140,7 @@ export function Bots() {
   const fetchData = useCallback(async () => {
     try {
       const [servicesRes, cookieRes, xianyuConvRes, autopilotRes, schedulerRes, statusRes] = await Promise.allSettled([
-        api.services(),
+        isTauri() ? api.getManagedServicesStatus() : api.services(),
         api.cookieCloudStatus(),
         api.xianyuConversations(20),
         /* 使用 social/status API 获取自动驾驶状态，保持与社交页数据源一致 */
@@ -152,7 +152,15 @@ export function Bots() {
       /* 服务列表 */
       if (servicesRes.status === 'fulfilled') {
         const data = servicesRes.value as any;
-        setServices(data?.services ?? []);
+        const list = Array.isArray(data)
+          ? data.map((service) => ({
+              id: String(service.label ?? service.id ?? ''),
+              name: String(service.name ?? service.label ?? service.id ?? ''),
+              description: t('bots.managedServiceDesc'),
+              status: service.running === true ? 'running' : 'stopped',
+            }))
+          : data?.services ?? [];
+        setServices(list);
       }
 
       /* Cookie 状态 */
@@ -232,25 +240,23 @@ export function Bots() {
 
   /* ====== 服务启停（带 Toast 反馈） ====== */
   const handleToggleService = async (serviceId: string, currentStatus: string) => {
+    if (!isTauri()) {
+      toast.warning(t('bots.serviceControlAppOnly'), { channel: 'notification' });
+      return;
+    }
     const serviceName = findServiceName(services, serviceId);
     const isStop = currentStatus === 'running';
     setActionLoading((prev) => ({ ...prev, [serviceId]: true }));
     try {
-      let result: any;
-      if (isStop) {
-        result = await api.serviceStop(serviceId);
-      } else {
-        result = await api.serviceStart(serviceId);
-      }
+      const result = await api.controlManagedService(serviceId, isStop ? 'stop' : 'start');
       /* 等一小段时间让后端状态更新 */
       await new Promise((r) => setTimeout(r, 800));
       await fetchData();
       /* 处理跳过的情况（如 Docker 服务、需要手动启动的服务） */
-      if (result?.status === 'skipped') {
-        toast.warning(`${serviceName}: ${result?.message || t('bots.serviceNeedsManualStart')}`, { channel: 'notification' });
-      } else {
-        toast.success(isStop ? `${serviceName} ${t('bots.serviceStopped')}` : `${serviceName} ${t('bots.serviceStarted')}`, { channel: 'log' });
-      }
+      toast.success(isStop ? `${serviceName} ${t('bots.serviceStopped')}` : `${serviceName} ${t('bots.serviceStarted')}`, {
+        description: result,
+        channel: 'log',
+      });
     } catch (e: unknown) {
       await fetchData();
       toast.error(`${t('bots.operationFailed')}: ${(e as Error)?.message ?? t('portfolio.error.unknown')}`, { channel: 'notification' });

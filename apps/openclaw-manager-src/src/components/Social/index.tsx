@@ -571,7 +571,7 @@ export function Social() {
       samplePreviewLabel: t('social.samplePreview'),
       onOpen: () => runBrowserControl('status', 'all'),
       onLogin: undefined,
-      onAction: () => setCurrentPage('xianyu'),
+      onAction: () => setCurrentPage('bots'),
     },
   ];
 

@@ -90,8 +90,6 @@ fn main() {
             // ClawBot Internal API (FastAPI :18790)
             clawbot_api::clawbot_api_ping,
             clawbot_api::clawbot_api_status,
-            clawbot_api::clawbot_api_xianyu_operator_url,
-            clawbot_api::clawbot_api_xianyu_open_operator,
             clawbot_api::clawbot_api_jiyu_replenish_open,
             clawbot_api::clawbot_api_trading_status,
             clawbot_api::clawbot_api_trading_positions,

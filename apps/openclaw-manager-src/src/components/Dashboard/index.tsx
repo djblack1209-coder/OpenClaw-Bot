@@ -22,7 +22,6 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { toast } from '@/lib/notify';
-import { EnvironmentStatus } from '../../App';
 import { clawbotFetchJson } from '../../lib/tauri-core';
 import { useLanguage } from '../../i18n';
 
@@ -133,15 +132,9 @@ function formatAvgResponse(perf: SystemPerf): string {
   return '--';
 }
 
-/* ====== 接口定义 ====== */
-interface DashboardProps {
-  envStatus?: EnvironmentStatus | null;
-  onSetupComplete?: () => void;
-}
-
 /* ====== 主组件 ====== */
 
-export function Dashboard(_props: DashboardProps) {
+export function Dashboard() {
   const { t } = useLanguage();
   /* —— 状态 —— */
   const [services, setServices] = useState<ServiceItem[]>([]);

@@ -15,7 +15,7 @@ import { toast } from '@/lib/notify'
 import { useLanguage } from '@/i18n'
 
 import {
-  Bot, Brain, DollarSign, Dna, Fish, Globe,
+  Bot, Brain, DollarSign, Dna, Globe,
   Home, Landmark, Layout, MessageSquare, Network, Settings, Shield,
   ShoppingBag, Zap, TrendingUp, Newspaper, Send,
 } from 'lucide-react'
@@ -29,7 +29,6 @@ const mainNavigationItems: Array<{ page: PageType; labelKey: string; icon: React
   { page: 'portfolio', labelKey: 'sidebar.portfolio', icon: TrendingUp },
   { page: 'bots', labelKey: 'sidebar.bots', icon: Bot },
   { page: 'store', labelKey: 'sidebar.store', icon: ShoppingBag },
-  { page: 'xianyu', labelKey: 'sidebar.xianyu', icon: Fish },
   { page: 'social', labelKey: 'sidebar.social', icon: Globe },
   { page: 'settings', labelKey: 'sidebar.settings', icon: Settings },
 ]
