@@ -28,6 +28,29 @@ test('Sub2API 管理入口可执行且 Bash 语法有效', async () => {
   }
 });
 
+test('共享配置目录不会在 Cloudflare 或 WebUI 配置时切断 Redis 读取权限', async () => {
+  const content = await readFile(manager, 'utf8');
+  assert.match(content, /prepare_config_directory\(\)/);
+  assert.match(
+    content,
+    /setfacl -m u:sub2api:--x,u:sub2api-redis:--x,m::r-x "\$CONFIG_DIR"/,
+  );
+  assert.match(content, /runuser -u sub2api-redis -- test -x "\$CONFIG_DIR"/);
+  assert.equal(
+    (content.match(/install -d -m 0750 -o root -g root "\$CONFIG_DIR"/g) || []).length,
+    1,
+  );
+  assert.equal(
+    (content.match(/install -d -m 0750 -o root -g (?:sub2api|sub2api-redis) "\$CONFIG_DIR"/g) || [])
+      .length,
+    0,
+  );
+  assert.match(
+    content,
+    /finish_install\(\)[\s\S]*chown root:sub2api-redis "\$REDIS_CONFIG"[\s\S]*chmod 0640 "\$REDIS_CONFIG"[\s\S]*prepare_config_directory/,
+  );
+});
+
 test('生产更新改为只检查，完整备份覆盖品牌与页面', async () => {
   const content = await readFile(manager, 'utf8');
   const regionPatchContents = await Promise.all(regionPatches.map(file => readFile(file, 'utf8')));

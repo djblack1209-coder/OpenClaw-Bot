@@ -75,6 +75,17 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "缺少命令: $1"
 }
 
+prepare_config_directory() {
+  install -d -m 0750 -o root -g root "$CONFIG_DIR"
+  # 配置文件各自保持最小所有权；运行用户只获得父目录穿越权限，不能列目录。
+  setfacl -m u:sub2api:--x,u:sub2api-redis:--x,m::r-x "$CONFIG_DIR"
+  runuser -u sub2api -- test -x "$CONFIG_DIR" || fail "sub2api 无法穿越配置目录。"
+  runuser -u sub2api-redis -- test -x "$CONFIG_DIR" || fail "Redis 无法穿越配置目录。"
+  if [[ -f "$REDIS_CONFIG" ]]; then
+    runuser -u sub2api-redis -- test -r "$REDIS_CONFIG" || fail "Redis 无法读取专用配置。"
+  fi
+}
+
 random_hex() {
   openssl rand -hex "$1"
 }
@@ -570,7 +581,7 @@ install_clean() {
     useradd --system --home-dir /var/lib/sub2api-redis --shell /usr/sbin/nologin sub2api-redis
 
   install -d -m 0750 -o sub2api -g sub2api "$INSTALL_DIR" "${INSTALL_DIR}/data"
-  install -d -m 0750 -o root -g sub2api-redis "$CONFIG_DIR"
+  prepare_config_directory
   install -d -m 0700 -o root -g root "$BACKUP_ROOT" "$STATE_DIR"
   install -d -m 0750 -o sub2api-redis -g sub2api-redis /var/lib/sub2api-redis
 
@@ -601,10 +612,10 @@ finish_install() {
   [[ -x "${INSTALL_DIR}/sub2api" && -f "$ENV_FILE" && -f "$REDIS_CONFIG" ]] || \
     fail "缺少 Sub2API 二进制或配置，无法收口安装。"
 
-  chown root:sub2api-redis "$CONFIG_DIR" "$REDIS_CONFIG"
-  chmod 0750 "$CONFIG_DIR"
+  chown root:sub2api-redis "$REDIS_CONFIG"
   chmod 0640 "$REDIS_CONFIG"
   chmod 0600 "$ENV_FILE"
+  prepare_config_directory
   if [[ "$(readlink -f "${BASH_SOURCE[0]}")" != "$(readlink -f "$MANAGER_PATH")" ]]; then
     install -m 0755 -o root -g root "${BASH_SOURCE[0]}" "$MANAGER_PATH"
   fi
@@ -1545,7 +1556,7 @@ enable_managed_web_updates() {
   postgresql_preflight
 
   install -m 0755 -o root -g root "$broker_source" "$JIYU_UPDATE_BROKER_PATH"
-  install -d -m 0750 -o root -g sub2api "$CONFIG_DIR"
+  prepare_config_directory
   printf 'MANIFEST_URL=%s\n' "$manifest_url" >"$JIYU_UPDATE_CONFIG"
   chown root:root "$JIYU_UPDATE_CONFIG"
   chmod 0600 "$JIYU_UPDATE_CONFIG"
@@ -1927,7 +1938,7 @@ table inet jiyu_cloudflare_origin {
 }
 NFT
   nft -c -f "$temporary_policy"
-  install -d -m 0750 -o root -g root "$CONFIG_DIR"
+  prepare_config_directory
   install -m 0600 -o root -g root "$temporary_policy" "$CLOUDFLARE_ORIGIN_NFT"
 }
 
