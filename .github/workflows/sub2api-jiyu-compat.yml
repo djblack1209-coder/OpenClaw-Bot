@@ -78,6 +78,9 @@ jobs:
           git -C upstream apply "../scripts/sub2api-model-align-${UPSTREAM_TAG}.patch"
           git -C upstream apply "../scripts/sub2api-pricing-region-${UPSTREAM_TAG}.patch"
           git -C upstream apply "../scripts/sub2api-region-filter-${UPSTREAM_TAG}.patch"
+          if [ -f "scripts/sub2api-channel-account-source-${UPSTREAM_TAG}.patch" ]; then
+            git -C upstream apply "../scripts/sub2api-channel-account-source-${UPSTREAM_TAG}.patch"
+          fi
 
       - name: Setup Node and pnpm
         if: steps.existing.outputs.skip != 'true'
@@ -113,6 +116,7 @@ jobs:
           (cd backend && go test -tags unit ./internal/service -run '^TestUpdateService' -count=1)
           (cd backend && go test -tags unit ./internal/service -run '^TestSupportedModels' -count=1)
           (cd backend && go test ./internal/repository -run 'UpstreamBilling|AccountRepo' -count=1)
+          (cd backend && go test ./internal/service -run 'ChannelMonitor' -count=1)
           (cd backend && go test ./internal/server/middleware -run 'EnforceJiyuRegion|APIKeyAuth' -count=1)
           (cd backend && go test -tags embed ./internal/web -run '^(TestHasEmbeddedFrontend|TestNewFrontendServer)$' -count=1)
           (cd backend && go test -tags embed ./internal/web -run '^TestServeEmbeddedFrontend$/^serves_index_html_for_root$' -count=1)
