@@ -55,6 +55,7 @@
   "overrides": {
     "glob": "^10.5.0",
     "brace-expansion": "2.1.4",
+    "nanoid": "3.3.18",
     "postcss": "8.5.25",
     "esbuild": "^0.28.1"
   }

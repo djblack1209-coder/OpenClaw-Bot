@@ -38,6 +38,7 @@
 - **停用绑定后旧监控仍可运行。** 旧 resolver 只校验账号 active，未校验 channel/group active，因此会继续探测已停用受管绑定的旧凭证。现在三层绑定都必须 active；若受管绑定存在但已停用，监控自动禁用并取消调度。独立监控仍可使用自己的快照，不受影响。
 - 2026-08-12 的 Redis 503 根因已维持修复：Cloudflare 策略写入路径统一复用最小 ACL，避免覆盖 Redis 对配置目录的遍历权限。真实 Redis 重启、连续公网健康回读和备份恢复材料均通过。
 - 远端 CI 在本轮发现桌面管理器根 `nanoid` override 为 `3.3.17`，触发高危 GHSA-2v37-7h3g-55p8；已在同一主版本升级到 `3.3.18` 并重生成锁文件。前端高危审计、TypeScript、lint 和生产构建通过。
+- 同一审计随后发现 `.openclaw/extensions/openclaw-weixin` 的 PostCSS 开发链仍解析到旧 `nanoid`；已在扩展现有 overrides 与 lockfile 同步固定 `3.3.18`，干净安装和高危审计通过。该扩展没有 `tsconfig.json`，其既有 `typecheck/build` 脚本只输出 TypeScript 帮助，不宣称完成源码编译。
 - 本轮没有新增控制面、Schema、常驻服务或一次性测试包。仅更新既有 `v0.1.173` 两个受管补丁，并向各自已有回归测试加入最小防回归案例。
 
 ## 3. 未修复问题及原因
