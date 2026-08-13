@@ -1,5 +1,168 @@
+diff --git a/backend/cmd/server/wire_gen.go b/backend/cmd/server/wire_gen.go
+index 8969bf4..25da99c 100644
+--- a/backend/cmd/server/wire_gen.go
++++ b/backend/cmd/server/wire_gen.go
+@@ -174,7 +174,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
+ 	announcementService := service.NewAnnouncementService(announcementRepository, announcementReadRepository, userRepository, userSubscriptionRepository)
+ 	announcementHandler := handler.NewAnnouncementHandler(announcementService)
+ 	channelMonitorRepository := repository.NewChannelMonitorRepository(client, db)
+-	channelMonitorService := service.ProvideChannelMonitorService(channelMonitorRepository, secretEncryptor, settingService)
++	channelMonitorService := service.ProvideChannelMonitorService(channelMonitorRepository, secretEncryptor, settingService, db)
+ 	channelMonitorUserHandler := handler.NewChannelMonitorUserHandler(channelMonitorService, settingService)
+ 	channelMonitorV2Repository := repository.NewChannelMonitorV2Repository(db)
+ 	channelMonitorV2Service := service.ProvideChannelMonitorV2Service(channelMonitorV2Repository, settingService)
+diff --git a/backend/internal/repository/channel_monitor_repo.go b/backend/internal/repository/channel_monitor_repo.go
+index aa8b12f..f892167 100644
+--- a/backend/internal/repository/channel_monitor_repo.go
++++ b/backend/internal/repository/channel_monitor_repo.go
+@@ -93,6 +93,14 @@ func (r *channelMonitorRepository) FindByDuplicateOperationID(ctx context.Contex
+ 	return entToServiceMonitor(row), nil
+ }
+ 
++func (r *channelMonitorRepository) SetEnabled(ctx context.Context, id int64, enabled bool) error {
++	client := clientFromContext(ctx, r.client)
++	if err := client.ChannelMonitor.UpdateOneID(id).SetEnabled(enabled).Exec(ctx); err != nil {
++		return translatePersistenceError(err, service.ErrChannelMonitorNotFound, nil)
++	}
++	return nil
++}
++
+ func (r *channelMonitorRepository) GetByID(ctx context.Context, id int64) (*service.ChannelMonitor, error) {
+ 	row, err := r.client.ChannelMonitor.Query().
+ 		Where(channelmonitor.IDEQ(id)).
+diff --git a/backend/internal/service/channel_monitor_account_source_test.go b/backend/internal/service/channel_monitor_account_source_test.go
+new file mode 100644
+index 0000000..4ce25fb
+--- /dev/null
++++ b/backend/internal/service/channel_monitor_account_source_test.go
+@@ -0,0 +1,111 @@
++package service
++
++import (
++	"context"
++	"errors"
++	"testing"
++
++	"github.com/DATA-DOG/go-sqlmock"
++	"github.com/stretchr/testify/require"
++)
++
++type inactiveBindingRuntimeStub struct{}
++
++func (inactiveBindingRuntimeStub) GetChannelMonitorRuntime(context.Context) ChannelMonitorRuntime {
++	return ChannelMonitorRuntime{Enabled: true, Mode: ChannelMonitorModeV1}
++}
++
++type inactiveBindingResolverStub struct{}
++
++func (inactiveBindingResolverStub) Resolve(context.Context, *ChannelMonitor) (string, string, bool, error) {
++	return "", "", false, ErrChannelMonitorManagedBindingInactive
++}
++
++type inactiveBindingRepositoryStub struct {
++	ChannelMonitorRepository
++	monitor     *ChannelMonitor
++	disabledIDs []int64
++}
++
++func (r *inactiveBindingRepositoryStub) GetByID(context.Context, int64) (*ChannelMonitor, error) {
++	return r.monitor, nil
++}
++
++func (r *inactiveBindingRepositoryStub) SetEnabled(_ context.Context, id int64, enabled bool) error {
++	if enabled {
++		return errors.New("inactive monitor must only be disabled")
++	}
++	r.disabledIDs = append(r.disabledIDs, id)
++	return nil
++}
++
++type inactiveBindingSchedulerStub struct {
++	unscheduledIDs []int64
++}
++
++func (*inactiveBindingSchedulerStub) Schedule(*ChannelMonitor) {}
++
++func (s *inactiveBindingSchedulerStub) Unschedule(id int64) {
++	s.unscheduledIDs = append(s.unscheduledIDs, id)
++}
++
++func TestSQLChannelMonitorCredentialResolverUsesCurrentAccount(t *testing.T) {
++	db, mock, err := sqlmock.New()
++	require.NoError(t, err)
++	t.Cleanup(func() { _ = db.Close() })
++
++	mock.ExpectQuery("SELECT COALESCE").
++		WithArgs("JIYU 渠道A · OpenAI Plus", "openai").
++		WillReturnRows(sqlmock.NewRows([]string{"base_url", "api_key"}).
++			AddRow("https://upstream.test/v1", "runtime-key"))
++
++	resolver := NewSQLChannelMonitorCredentialResolver(db)
++	endpoint, apiKey, found, err := resolver.Resolve(context.Background(), &ChannelMonitor{
++		GroupName: "JIYU 渠道A · OpenAI Plus",
++		Provider:  "openai",
++		Endpoint:  "https://legacy.test",
++	})
++	require.NoError(t, err)
++	require.True(t, found)
++	require.Equal(t, "https://upstream.test", endpoint)
++	require.Equal(t, "runtime-key", apiKey)
++	require.NoError(t, mock.ExpectationsWereMet())
++}
++
++func TestSQLChannelMonitorCredentialResolverIgnoresDisabledManagedBinding(t *testing.T) {
++	db, mock, err := sqlmock.New()
++	require.NoError(t, err)
++	t.Cleanup(func() { _ = db.Close() })
++
++	mock.ExpectQuery("SELECT COALESCE").
++		WithArgs("JIYU 渠道A · OpenAI Pro", "openai").
++		WillReturnRows(sqlmock.NewRows([]string{"base_url", "api_key"}))
++	mock.ExpectQuery("SELECT EXISTS").
++		WithArgs("JIYU 渠道A · OpenAI Pro", "openai").
++		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
++
++	resolver := NewSQLChannelMonitorCredentialResolver(db)
++	_, _, found, err := resolver.Resolve(context.Background(), &ChannelMonitor{
++		GroupName: "JIYU 渠道A · OpenAI Pro",
++		Provider:  "openai",
++		Endpoint:  "https://legacy.test",
++	})
++	require.ErrorIs(t, err, ErrChannelMonitorManagedBindingInactive)
++	require.False(t, found)
++	require.NoError(t, mock.ExpectationsWereMet())
++}
++
++func TestRunCheckDisablesInactiveManagedBindingWithoutProbe(t *testing.T) {
++	repo := &inactiveBindingRepositoryStub{monitor: &ChannelMonitor{ID: 41, APIKey: ""}}
++	scheduler := &inactiveBindingSchedulerStub{}
++	svc := NewChannelMonitorService(repo, nil)
++	svc.SetRuntimeReader(inactiveBindingRuntimeStub{})
++	svc.SetCredentialResolver(inactiveBindingResolverStub{})
++	svc.SetScheduler(scheduler)
++
++	results, err := svc.RunCheck(context.Background(), 41)
++	require.ErrorIs(t, err, ErrChannelMonitorManagedBindingInactive)
++	require.Nil(t, results)
++	require.Equal(t, []int64{41}, repo.disabledIDs)
++	require.Equal(t, []int64{41}, scheduler.unscheduledIDs)
++}
+diff --git a/backend/internal/service/channel_monitor_const.go b/backend/internal/service/channel_monitor_const.go
+index 6a41add..13cda92 100644
+--- a/backend/internal/service/channel_monitor_const.go
++++ b/backend/internal/service/channel_monitor_const.go
+@@ -156,6 +156,9 @@ var (
+ 	ErrChannelMonitorAPIKeyDecryptFailed = infraerrors.InternalServer(
+ 		"CHANNEL_MONITOR_KEY_DECRYPT_FAILED", "api key decryption failed; please re-edit the monitor with a fresh key",
+ 	)
++	ErrChannelMonitorManagedBindingInactive = infraerrors.Conflict(
++		"CHANNEL_MONITOR_MANAGED_BINDING_INACTIVE", "managed channel binding is inactive",
++	)
+ )
+ 
+ var (
 diff --git a/backend/internal/service/channel_monitor_service.go b/backend/internal/service/channel_monitor_service.go
-index 248b721..b040fa8 100644
+index 248b721..ba4c553 100644
 --- a/backend/internal/service/channel_monitor_service.go
 +++ b/backend/internal/service/channel_monitor_service.go
 @@ -3,7 +3,9 @@ package service
@@ -12,7 +175,15 @@ index 248b721..b040fa8 100644
  	"fmt"
  	"log/slog"
  	"strconv"
-@@ -67,6 +69,15 @@ type channelMonitorRuntimeReader interface {
+@@ -25,6 +27,7 @@ type ChannelMonitorRepository interface {
+ 	Delete(ctx context.Context, id int64) error
+ 	List(ctx context.Context, params ChannelMonitorListParams) ([]*ChannelMonitor, int64, error)
+ 	FindByDuplicateOperationID(ctx context.Context, operationID string) (*ChannelMonitor, error)
++	SetEnabled(ctx context.Context, id int64, enabled bool) error
+ 
+ 	// 调度器辅助
+ 	ListEnabled(ctx context.Context) ([]*ChannelMonitor, error)
+@@ -67,6 +70,15 @@ type channelMonitorRuntimeReader interface {
  	GetChannelMonitorRuntime(ctx context.Context) ChannelMonitorRuntime
  }
  
@@ -28,7 +199,7 @@ index 248b721..b040fa8 100644
  // ChannelMonitorService 渠道监控管理服务。
  type ChannelMonitorService struct {
  	repo      ChannelMonitorRepository
-@@ -76,7 +87,8 @@ type ChannelMonitorService struct {
+@@ -76,7 +88,8 @@ type ChannelMonitorService struct {
  	settings channelMonitorRuntimeReader
  	// scheduler 由 wire 通过 SetScheduler 注入；CRUD 后调用对应钩子即时同步任务。
  	// 测试或未注入场景下保持 nil，所有钩子调用变为 no-op。
@@ -38,7 +209,7 @@ index 248b721..b040fa8 100644
  }
  
  const maxChannelMonitorNameRunes = 100
-@@ -101,6 +113,16 @@ func (s *ChannelMonitorService) SetRuntimeReader(r channelMonitorRuntimeReader) {
+@@ -101,6 +114,16 @@ func (s *ChannelMonitorService) SetRuntimeReader(r channelMonitorRuntimeReader)
  	s.settings = r
  }
  
@@ -55,13 +226,22 @@ index 248b721..b040fa8 100644
  func (s *ChannelMonitorService) probeRuntime(ctx context.Context) ChannelMonitorRuntime {
  	if s == nil || s.settings == nil {
  		return ChannelMonitorRuntime{Enabled: true, Mode: ChannelMonitorModeV2}
-@@ -466,6 +488,17 @@ func (s *ChannelMonitorService) RunCheck(ctx context.Context, id int64) ([]*Chec
+@@ -466,6 +489,26 @@ func (s *ChannelMonitorService) RunCheck(ctx context.Context, id int64) ([]*Chec
  	if err != nil {
  		return nil, err
  	}
 +	if s.credentialResolver != nil {
 +		endpoint, apiKey, found, resolveErr := s.credentialResolver.Resolve(ctx, m)
 +		if resolveErr != nil {
++			if errors.Is(resolveErr, ErrChannelMonitorManagedBindingInactive) {
++				if err := s.repo.SetEnabled(ctx, m.ID, false); err != nil {
++					return nil, fmt.Errorf("disable inactive managed channel monitor: %w", err)
++				}
++				if s.scheduler != nil {
++					s.scheduler.Unschedule(m.ID)
++				}
++				return nil, ErrChannelMonitorManagedBindingInactive
++			}
 +			return nil, fmt.Errorf("resolve current channel account credentials: %w", resolveErr)
 +		}
 +		if found {
@@ -73,7 +253,7 @@ index 248b721..b040fa8 100644
  	if m.APIKeyDecryptFailed {
  		return nil, ErrChannelMonitorAPIKeyDecryptFailed
  	}
-@@ -474,6 +507,64 @@ func (s *ChannelMonitorService) RunCheck(ctx context.Context, id int64) ([]*Chec
+@@ -474,6 +517,82 @@ func (s *ChannelMonitorService) RunCheck(ctx context.Context, id int64) ([]*Chec
  	return results, nil
  }
  
@@ -92,28 +272,46 @@ index 248b721..b040fa8 100644
 +	return &sqlChannelMonitorCredentialResolver{db: db}
 +}
 +
-+func (r *sqlChannelMonitorCredentialResolver) Resolve(ctx context.Context, monitor *ChannelMonitor) (string, string, bool, error) {
++func (r *sqlChannelMonitorCredentialResolver) Resolve(ctx context.Context, monitor *ChannelMonitor) (endpoint, apiKey string, found bool, err error) {
 +	if r == nil || r.db == nil || monitor == nil || strings.TrimSpace(monitor.GroupName) == "" {
 +		return "", "", false, nil
 +	}
-+	var endpoint, apiKey string
-+	err := r.db.QueryRowContext(ctx, `
++	err = r.db.QueryRowContext(ctx, `
 +		SELECT COALESCE(a.credentials->>'base_url', ''),
 +		       COALESCE(a.credentials->>'api_key', '')
 +		FROM channels c
 +		JOIN channel_groups cg ON cg.channel_id = c.id
-+		JOIN groups g ON g.id = cg.group_id AND g.deleted_at IS NULL
++		JOIN groups g ON g.id = cg.group_id
 +		JOIN account_groups ag ON ag.group_id = g.id
 +		JOIN accounts a ON a.id = ag.account_id
-+		WHERE a.deleted_at IS NULL
++		WHERE c.status = 'active'
++		  AND g.status = 'active'
++		  AND g.deleted_at IS NULL
 +		  AND a.status = 'active'
++		  AND a.deleted_at IS NULL
 +		  AND g.platform = $2
 +		  AND (c.name = $1 OR g.name = $1)
 +		ORDER BY CASE WHEN c.name = $1 THEN 0 ELSE 1 END,
-+		         ag.priority ASC NULLS LAST,
++		         ag.priority ASC,
 +		         a.id ASC
 +		LIMIT 1`, strings.TrimSpace(monitor.GroupName), monitor.Provider).Scan(&endpoint, &apiKey)
 +	if errors.Is(err, sql.ErrNoRows) {
++		var managed bool
++		err = r.db.QueryRowContext(ctx, `
++			SELECT EXISTS (
++				SELECT 1
++				FROM channels c
++				JOIN channel_groups cg ON cg.channel_id = c.id
++				JOIN groups g ON g.id = cg.group_id
++				WHERE g.platform = $2
++				  AND (c.name = $1 OR g.name = $1)
++			)`, strings.TrimSpace(monitor.GroupName), monitor.Provider).Scan(&managed)
++		if err != nil {
++			return "", "", false, err
++		}
++		if managed {
++			return "", "", false, ErrChannelMonitorManagedBindingInactive
++		}
 +		// Standalone monitors created outside a JIYU channel keep their legacy
 +		// snapshot and remain compatible with the existing V1 UI.
 +		return "", "", false, nil
@@ -154,54 +352,3 @@ index 9355573..b638925 100644
  	return svc
  }
  
-diff --git a/backend/cmd/server/wire_gen.go b/backend/cmd/server/wire_gen.go
-index 8969bf4..25da99c 100644
---- a/backend/cmd/server/wire_gen.go
-+++ b/backend/cmd/server/wire_gen.go
-@@ -174,7 +174,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
- 	announcementService := service.NewAnnouncementService(announcementRepository, announcementReadRepository, userRepository, userSubscriptionRepository)
- 	announcementHandler := handler.NewAnnouncementHandler(announcementService)
- 	channelMonitorRepository := repository.NewChannelMonitorRepository(client, db)
--	channelMonitorService := service.ProvideChannelMonitorService(channelMonitorRepository, secretEncryptor, settingService)
-+	channelMonitorService := service.ProvideChannelMonitorService(channelMonitorRepository, secretEncryptor, settingService, db)
- 	channelMonitorUserHandler := handler.NewChannelMonitorUserHandler(channelMonitorService, settingService)
- 	channelMonitorV2Repository := repository.NewChannelMonitorV2Repository(db)
- 	channelMonitorV2Service := service.ProvideChannelMonitorV2Service(channelMonitorV2Repository, settingService)
-diff --git a/backend/internal/service/channel_monitor_account_source_test.go b/backend/internal/service/channel_monitor_account_source_test.go
-new file mode 100644
-index 0000000..8bbb113
---- /dev/null
-+++ b/backend/internal/service/channel_monitor_account_source_test.go
-@@ -0,0 +1,32 @@
-+package service
-+
-+import (
-+	"context"
-+	"testing"
-+
-+	"github.com/DATA-DOG/go-sqlmock"
-+	"github.com/stretchr/testify/require"
-+)
-+
-+func TestSQLChannelMonitorCredentialResolverUsesCurrentAccount(t *testing.T) {
-+	db, mock, err := sqlmock.New()
-+	require.NoError(t, err)
-+	t.Cleanup(func() { _ = db.Close() })
-+
-+	mock.ExpectQuery("SELECT COALESCE").
-+		WithArgs("JIYU 渠道A · OpenAI Plus", "openai").
-+		WillReturnRows(sqlmock.NewRows([]string{"base_url", "api_key"}).
-+			AddRow("https://upstream.test/v1", "runtime-key"))
-+
-+	resolver := NewSQLChannelMonitorCredentialResolver(db)
-+	endpoint, apiKey, found, err := resolver.Resolve(context.Background(), &ChannelMonitor{
-+		GroupName: "JIYU 渠道A · OpenAI Plus",
-+		Provider:  "openai",
-+		Endpoint:  "https://legacy.test",
-+	})
-+	require.NoError(t, err)
-+	require.True(t, found)
-+	require.Equal(t, "https://upstream.test", endpoint)
-+	require.Equal(t, "runtime-key", apiKey)
-+	require.NoError(t, mock.ExpectationsWereMet())
-+}
