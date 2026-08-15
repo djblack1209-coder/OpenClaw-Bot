@@ -937,7 +937,7 @@ index 8006695dd..829f95a0b 100644
 -    <div class="custom-page-layout">
 +    <div v-if="isJiyuRechargePage" class="jiyu-recharge-shell">
 +      <a
-+        :href="JIYU_RECHARGE_URL"
++        :href="jiyuRechargeUrl"
 +        target="_blank"
 +        rel="noopener noreferrer"
 +        class="jiyu-recharge-open"
@@ -947,9 +947,9 @@ index 8006695dd..829f95a0b 100644
 +        <Icon name="externalLink" size="md" :stroke-width="2" />
 +      </a>
 +      <iframe
-+        :src="JIYU_RECHARGE_URL"
++        :src="jiyuRechargeUrl"
 +        class="jiyu-recharge-frame"
-+        title="JIYU AI 链动小铺"
++        :title="jiyuRechargeTitle"
 +        loading="eager"
 +        referrerpolicy="strict-origin-when-cross-origin"
 +        allowfullscreen
@@ -960,14 +960,25 @@ index 8006695dd..829f95a0b 100644
        <div class="card flex-1 min-h-0 overflow-hidden">
          <div v-if="loading" class="flex h-full items-center justify-center py-12">
            <div
-@@ -150,7 +171,10 @@ const tocVisible = ref(typeof window !== 'undefined' ? window.innerWidth > 768 :
+@@ -150,7 +171,21 @@ const tocVisible = ref(typeof window !== 'undefined' ? window.innerWidth > 768 :
  const activeHeadingId = ref('')
  let themeObserver: MutationObserver | null = null
  
 +const JIYU_RECHARGE_PAGE_ID = 'recharge-center'
++const JIYU_RECHARGE_SECOND_PAGE_ID = 'recharge-center-2'
 +const JIYU_RECHARGE_URL = 'https://pay.ldxp.cn/shop/ZCUGEDMV'
  const menuItemId = computed(() => route.params.id as string)
-+const isJiyuRechargePage = computed(() => menuItemId.value === JIYU_RECHARGE_PAGE_ID)
++const jiyuRechargeUrl = computed(() => {
++  if (menuItemId.value === JIYU_RECHARGE_SECOND_PAGE_ID) {
++    const configuredUrl = menuItem.value?.url?.trim() ?? ''
++    return /^https:\/\//i.test(configuredUrl) ? configuredUrl : ''
++  }
++  return menuItemId.value === JIYU_RECHARGE_PAGE_ID ? JIYU_RECHARGE_URL : ''
++})
++const jiyuRechargeTitle = computed(() =>
++  menuItemId.value === JIYU_RECHARGE_SECOND_PAGE_ID ? 'JIYU AI 云猫寄售' : 'JIYU AI 链动小铺'
++)
++const isJiyuRechargePage = computed(() => Boolean(jiyuRechargeUrl.value))
  
  const menuItem = computed(() => {
    const id = menuItemId.value

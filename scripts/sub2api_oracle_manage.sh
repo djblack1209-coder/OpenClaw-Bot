@@ -44,6 +44,9 @@ readonly SITE_BRAND_SUBTITLE="${SUB2API_SITE_SUBTITLE:-Unified AI API Gateway}"
 readonly RECHARGE_PAGE_SLUG="recharge-center"
 readonly CHAIN_STORE_ORIGIN="https://pay.ldxp.cn"
 readonly CHAIN_STORE_URL="${CHAIN_STORE_ORIGIN}/shop/ZCUGEDMV"
+readonly SECOND_RECHARGE_PAGE_SLUG="recharge-center-2"
+readonly YUNMAO_STORE_ORIGIN="${SUB2API_YUNMAO_STORE_ORIGIN:-https://catfk.com}"
+readonly YUNMAO_STORE_URL="${SUB2API_YUNMAO_STORE_URL:-${YUNMAO_STORE_ORIGIN}/shop/RJYFBH36}"
 readonly DOCS_PAGE_SLUG="docs"
 readonly BRAND_LOGO_SOURCE="${SUB2API_BRAND_LOGO_SOURCE:-/usr/local/share/jiyu-ai/jiyu-ai-logo.png}"
 readonly BRAND_LOGO_PUBLIC_PATH="/api/v1/pages/${DOCS_PAGE_SLUG}/images/jiyu-ai-logo.png"
@@ -713,7 +716,7 @@ apply_recharge_csp_policy() {
   [[ -n "$current_policy" ]] || fail "无法读取 Sub2API 当前有效 CSP。"
 
   config_temp="$(mktemp "${config_file}.csp.XXXXXX")"
-  if ! CSP_ORIGIN="$CHAIN_STORE_ORIGIN" EFFECTIVE_CSP="$current_policy" \
+  if ! CSP_ORIGINS="${CHAIN_STORE_ORIGIN},${YUNMAO_STORE_ORIGIN}" EFFECTIVE_CSP="$current_policy" \
     python3 - "$config_file" "$config_temp" <<'PY'
 import os
 import re
@@ -722,7 +725,9 @@ import sys
 import yaml
 
 source_path, target_path = sys.argv[1:]
-origin = os.environ["CSP_ORIGIN"]
+origins = [item.strip() for item in os.environ["CSP_ORIGINS"].split(",") if item.strip()]
+if not origins or any(not re.fullmatch(r"https://[A-Za-z0-9.-]+", origin) for origin in origins):
+    raise SystemExit("充值中心来源必须是无凭据的 HTTPS origin")
 effective_policy = os.environ["EFFECTIVE_CSP"]
 
 with open(source_path, "r", encoding="utf-8") as source:
@@ -752,7 +757,7 @@ for directive in directives:
     if not tokens:
         continue
     name = tokens[0].lower()
-    sources = [token for token in tokens[1:] if token != origin]
+    sources = [token for token in tokens[1:] if token not in origins]
     if name == "frame-src":
         if frame_index is None:
             frame_index = len(result)
@@ -762,16 +767,19 @@ for directive in directives:
         continue
     result.append(" ".join([tokens[0], *sources]))
 
-frame_sources.append(origin)
+for origin in origins:
+    if origin not in frame_sources:
+        frame_sources.append(origin)
 frame_directive = " ".join(["frame-src", *frame_sources])
 if frame_index is None:
     result.append(frame_directive)
 else:
     result.insert(frame_index, frame_directive)
 
-origin_directives = [item for item in result if origin in item.split()[1:]]
-if origin_directives != [frame_directive] or frame_directive.split().count(origin) != 1:
-    raise SystemExit("链动小铺来源必须且只能出现一次于 frame-src")
+for origin in origins:
+    origin_directives = [item for item in result if origin in item.split()[1:]]
+    if origin_directives != [frame_directive] or frame_directive.split().count(origin) != 1:
+        raise SystemExit(f"充值来源 {origin} 必须且只能出现一次于 frame-src")
 
 csp["enabled"] = True
 csp["policy"] = "; ".join(result) + ";"
@@ -793,6 +801,9 @@ apply_recharge_center() {
   require_root
   require_linux
   require_command psql
+  [[ "$YUNMAO_STORE_URL" =~ ^https://[A-Za-z0-9.-]+(/[^[:space:]?\#&]+)?$ ]] || fail "云猫店铺地址必须是无查询参数的 HTTPS URL。"
+  [[ "$YUNMAO_STORE_ORIGIN" =~ ^https://[A-Za-z0-9.-]+$ ]] || fail "云猫店铺来源必须是 HTTPS origin。"
+  [[ "$YUNMAO_STORE_URL" == "$YUNMAO_STORE_ORIGIN"/* ]] || fail "云猫店铺地址必须属于已配置的来源。"
 
   local pages_dir
   local effective_csp
@@ -806,7 +817,7 @@ MARKDOWN
   chown sub2api:sub2api "${pages_dir}/${RECHARGE_PAGE_SLUG}.md"
   chmod 0640 "${pages_dir}/${RECHARGE_PAGE_SLUG}.md"
 
-  runuser -u postgres -- psql -v ON_ERROR_STOP=1 -d sub2api <<'SQL'
+  runuser -u postgres -- psql -v ON_ERROR_STOP=1 -v yunmao_store_url="$YUNMAO_STORE_URL" -d sub2api <<'SQL'
 WITH current_items AS (
   SELECT COALESCE(
     (SELECT value::jsonb FROM settings WHERE key = 'custom_menu_items'),
@@ -814,7 +825,7 @@ WITH current_items AS (
   ) AS items
 ), filtered_items AS (
   SELECT COALESCE(
-    jsonb_agg(item) FILTER (WHERE item->>'id' <> 'recharge-center'),
+    jsonb_agg(item) FILTER (WHERE item->>'id' NOT IN ('recharge-center', 'recharge-center-2')),
     '[]'::jsonb
   ) AS items
   FROM current_items, LATERAL jsonb_array_elements(items) AS item
@@ -829,6 +840,13 @@ SELECT 'custom_menu_items', (
     'page_slug', 'recharge-center',
     'visibility', 'user',
     'sort_order', 80
+  ), jsonb_build_object(
+    'id', 'recharge-center-2',
+    'label', '充值中心2',
+    'icon_svg', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M16 13h.01M2 10h20"/></svg>',
+    'url', :'yunmao_store_url',
+    'visibility', 'user',
+    'sort_order', 81
   ))
 )::text, NOW()
 FROM filtered_items
@@ -845,18 +863,21 @@ SQL
         sub(/^[^:]+:[[:space:]]*/, ""); sub(/\r$/, ""); print; exit
       }'
   )"
-  CSP_ORIGIN="$CHAIN_STORE_ORIGIN" CSP_POLICY="$effective_csp" python3 <<'PY'
+  CSP_ORIGINS="${CHAIN_STORE_ORIGIN},${YUNMAO_STORE_ORIGIN}" CSP_POLICY="$effective_csp" python3 <<'PY'
 import os
 
-origin = os.environ["CSP_ORIGIN"]
+origins = [item.strip() for item in os.environ["CSP_ORIGINS"].split(",") if item.strip()]
 directives = [item.strip().split() for item in os.environ["CSP_POLICY"].split(";") if item.strip()]
-matches = [(tokens[0].lower(), tokens[1:].count(origin)) for tokens in directives if origin in tokens[1:]]
-if matches != [("frame-src", 1)]:
-    raise SystemExit("生产 CSP 未把链动小铺来源精确限制到 frame-src")
+for origin in origins:
+    matches = [(tokens[0].lower(), tokens[1:].count(origin)) for tokens in directives if origin in tokens[1:]]
+    if matches != [("frame-src", 1)]:
+        raise SystemExit(f"生产 CSP 未把充值来源精确限制到 frame-src: {origin}")
 PY
   curl -fsS --max-time 20 "https://${DOMAIN}/custom/${RECHARGE_PAGE_SLUG}" >/dev/null || \
     fail "充值中心公网页面不可用。"
-  log "充值中心已启用专用公开整店嵌入；固定地址不携带站内用户参数。"
+  curl -fsS --max-time 20 "https://${DOMAIN}/custom/${SECOND_RECHARGE_PAGE_SLUG}" >/dev/null || \
+    fail "充值中心2公网页面不可用。"
+  log "充值中心与充值中心2已启用专用公开整店嵌入；不携带站内用户参数。"
 }
 
 apply_docs_page() {
