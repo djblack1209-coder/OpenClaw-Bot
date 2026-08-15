@@ -229,6 +229,11 @@ test('充值页只使用固定公开整店且 WebUI 更新只能进入固定 roo
   assert.match(content, /'label', '充值中心2'/);
   assert.match(content, /'url', :'yunmao_store_url'/);
   assert.match(content, /CSP_ORIGINS="\$\{CHAIN_STORE_ORIGIN\},\$\{YUNMAO_STORE_ORIGIN\}"/);
+  assert.match(content, /prestate_dir="\$\{BACKUP_ROOT\}\/recharge-\$\{timestamp\}"/);
+  assert.match(content, /backup_database "\$prestate_dir"/);
+  assert.match(content, /restore_recharge_prestate "\$prestate_dir"/);
+  assert.match(content, /充值中心部署失败，已恢复 prestate/);
+  assert.match(content, /充值中心部署失败且自动回滚失败/);
   assert.doesNotMatch(content, /pay\.ldxp\.cn[^"']*[?&](?:user_id|token|cookie)=/i);
   assert.match(content, /security\.setdefault\("csp", \{\}\)/);
   assert.match(content, /origin_directives != \[frame_directive\]/);

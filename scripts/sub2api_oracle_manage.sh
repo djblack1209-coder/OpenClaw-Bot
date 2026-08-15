@@ -797,6 +797,40 @@ PY
   mv -f "$config_temp" "$config_file"
 }
 
+restore_recharge_prestate() {
+  local prestate_dir="$1"
+  local page_file="${INSTALL_DIR}/data/pages/${RECHARGE_PAGE_SLUG}.md"
+  local menu_json menu_state page_state
+
+  [[ -d "$prestate_dir" ]] || return 1
+  menu_state="$(<"${prestate_dir}/custom-menu-state")"
+  if [[ "$menu_state" == "present" ]]; then
+    menu_json="$(<"${prestate_dir}/custom-menu-items.json")"
+    runuser -u postgres -- psql -v ON_ERROR_STOP=1 -v menu_json="$menu_json" -d sub2api <<'SQL' || return 1
+INSERT INTO settings (key, value, updated_at)
+VALUES ('custom_menu_items', :'menu_json', NOW())
+ON CONFLICT (key) DO UPDATE
+SET value = EXCLUDED.value, updated_at = NOW();
+SQL
+  else
+    runuser -u postgres -- psql -v ON_ERROR_STOP=1 -d sub2api \
+      -c "DELETE FROM settings WHERE key = 'custom_menu_items';" || return 1
+  fi
+
+  if [[ -f "${prestate_dir}/config.yaml" ]]; then
+    cp -a "${prestate_dir}/config.yaml" "${INSTALL_DIR}/data/config.yaml" || return 1
+  fi
+  page_state="$(<"${prestate_dir}/recharge-page-state")"
+  if [[ "$page_state" == "present" ]]; then
+    install -d -m 0750 -o sub2api -g sub2api "$(dirname "$page_file")" || return 1
+    cp -a "${prestate_dir}/recharge-center.md" "$page_file" || return 1
+  else
+    rm -f "$page_file" || return 1
+  fi
+  systemctl restart "$SUB2API_SERVICE" || return 1
+  wait_for_health 90 || return 1
+}
+
 apply_recharge_center() {
   require_root
   require_linux
@@ -805,19 +839,42 @@ apply_recharge_center() {
   [[ "$YUNMAO_STORE_ORIGIN" =~ ^https://[A-Za-z0-9.-]+$ ]] || fail "云猫店铺来源必须是 HTTPS origin。"
   [[ "$YUNMAO_STORE_URL" == "$YUNMAO_STORE_ORIGIN"/* ]] || fail "云猫店铺地址必须属于已配置的来源。"
 
-  local pages_dir
-  local effective_csp
+  local pages_dir page_file timestamp prestate_dir effective_csp
   pages_dir="${INSTALL_DIR}/data/pages"
-  install -d -m 0750 -o sub2api -g sub2api "$pages_dir"
+  page_file="${pages_dir}/${RECHARGE_PAGE_SLUG}.md"
+  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  prestate_dir="${BACKUP_ROOT}/recharge-${timestamp}"
+  backup_database "$prestate_dir"
+  if runuser -u postgres -- psql -tAc "SELECT 1 FROM settings WHERE key = 'custom_menu_items'" | grep -qx '1'; then
+    printf 'present\n' >"${prestate_dir}/custom-menu-state"
+    runuser -u postgres -- psql -Atc "SELECT value FROM settings WHERE key = 'custom_menu_items'" >"${prestate_dir}/custom-menu-items.json"
+  else
+    printf 'absent\n' >"${prestate_dir}/custom-menu-state"
+  fi
+  if [[ -e "$page_file" ]]; then
+    printf 'present\n' >"${prestate_dir}/recharge-page-state"
+    cp -a "$page_file" "${prestate_dir}/recharge-center.md"
+  else
+    printf 'absent\n' >"${prestate_dir}/recharge-page-state"
+  fi
+  chmod 0600 "${prestate_dir}/custom-menu-state" "${prestate_dir}/recharge-page-state"
+  if [[ -f "${prestate_dir}/custom-menu-items.json" ]]; then
+    chmod 0600 "${prestate_dir}/custom-menu-items.json"
+  fi
+  log "充值中心 prestate/备份已保存到 ${prestate_dir}。"
 
-  cat >"${pages_dir}/${RECHARGE_PAGE_SLUG}.md" <<MARKDOWN
+  if ! (
+    set -Eeuo pipefail
+    install -d -m 0750 -o sub2api -g sub2api "$pages_dir"
+
+    cat >"$page_file" <<MARKDOWN
 [打开 JIYU AI 链动小铺](${CHAIN_STORE_URL})
 MARKDOWN
 
-  chown sub2api:sub2api "${pages_dir}/${RECHARGE_PAGE_SLUG}.md"
-  chmod 0640 "${pages_dir}/${RECHARGE_PAGE_SLUG}.md"
+    chown sub2api:sub2api "$page_file"
+    chmod 0640 "$page_file"
 
-  runuser -u postgres -- psql -v ON_ERROR_STOP=1 -v yunmao_store_url="$YUNMAO_STORE_URL" -d sub2api <<'SQL'
+    runuser -u postgres -- psql -v ON_ERROR_STOP=1 -v yunmao_store_url="$YUNMAO_STORE_URL" -d sub2api <<'SQL'
 WITH current_items AS (
   SELECT COALESCE(
     (SELECT value::jsonb FROM settings WHERE key = 'custom_menu_items'),
@@ -854,16 +911,16 @@ ON CONFLICT (key) DO UPDATE
 SET value = EXCLUDED.value, updated_at = NOW();
 SQL
 
-  apply_recharge_csp_policy
-  systemctl restart "$SUB2API_SERVICE"
-  wait_for_health 90 || fail "应用充值中心页面后健康检查失败。"
-  effective_csp="$(
-    curl -fsS -D - -o /dev/null --max-time 15 "https://${DOMAIN}/health" |
-      awk 'BEGIN { IGNORECASE=1 } /^Content-Security-Policy:/ {
-        sub(/^[^:]+:[[:space:]]*/, ""); sub(/\r$/, ""); print; exit
-      }'
-  )"
-  CSP_ORIGINS="${CHAIN_STORE_ORIGIN},${YUNMAO_STORE_ORIGIN}" CSP_POLICY="$effective_csp" python3 <<'PY'
+    apply_recharge_csp_policy
+    systemctl restart "$SUB2API_SERVICE"
+    wait_for_health 90
+    effective_csp="$(
+      curl -fsS -D - -o /dev/null --max-time 15 "https://${DOMAIN}/health" |
+        awk 'BEGIN { IGNORECASE=1 } /^Content-Security-Policy:/ {
+          sub(/^[^:]+:[[:space:]]*/, ""); sub(/\r$/, ""); print; exit
+        }'
+    )"
+    CSP_ORIGINS="${CHAIN_STORE_ORIGIN},${YUNMAO_STORE_ORIGIN}" CSP_POLICY="$effective_csp" python3 <<'PY'
 import os
 
 origins = [item.strip() for item in os.environ["CSP_ORIGINS"].split(",") if item.strip()]
@@ -873,10 +930,14 @@ for origin in origins:
     if matches != [("frame-src", 1)]:
         raise SystemExit(f"生产 CSP 未把充值来源精确限制到 frame-src: {origin}")
 PY
-  curl -fsS --max-time 20 "https://${DOMAIN}/custom/${RECHARGE_PAGE_SLUG}" >/dev/null || \
-    fail "充值中心公网页面不可用。"
-  curl -fsS --max-time 20 "https://${DOMAIN}/custom/${SECOND_RECHARGE_PAGE_SLUG}" >/dev/null || \
-    fail "充值中心2公网页面不可用。"
+    curl -fsS --max-time 20 "https://${DOMAIN}/custom/${RECHARGE_PAGE_SLUG}" >/dev/null
+    curl -fsS --max-time 20 "https://${DOMAIN}/custom/${SECOND_RECHARGE_PAGE_SLUG}" >/dev/null
+  ); then
+    if restore_recharge_prestate "$prestate_dir"; then
+      fail "充值中心部署失败，已恢复 prestate；备份保留在 ${prestate_dir}。"
+    fi
+    fail "充值中心部署失败且自动回滚失败；请使用备份 ${prestate_dir} 人工恢复。"
+  fi
   log "充值中心与充值中心2已启用专用公开整店嵌入；不携带站内用户参数。"
 }
 
