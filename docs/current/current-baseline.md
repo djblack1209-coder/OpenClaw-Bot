@@ -73,7 +73,7 @@
 
 - 只有官方 `v0.1.176` 含当前相关安全或稳定修复时，才评估重放 JIYU 补丁；预计 2–4 小时并需要完整 prestate/备份/回滚。
 - 对 OpenClaw 原生 backup/doctor 与本地包装脚本做等价性审计，只有能删除维护面时才迁移。
-- 人工批准后回收可再生缓存；预计释放数 GB 磁盘，但不提升生产稳定性。
+- 本轮在确认无 Cargo/Tauri/npm/Playwright 构建进程后，已回收 `target`、桌面 `node_modules`、npm runtime 构建依赖、`output` 和 `.playwright-cli`，释放约 `4,515,044 KiB`（约 4.3 GiB）；不会自动删除运行中的 `.venv312`、浏览器 profile 或 `.openclaw`。
 - 对外分发、公证、new-api 子模块和 Cloudflare 代理替换暂不处理。
 
 ## 6. 已无继续优化价值
@@ -86,13 +86,14 @@
 ## 7. 新会话交接提示词
 
 - 用户只需在需要时处理 MFA、账户恢复、续费/付款、所有权转移、Apple Developer ID、公证、离机加密备份介质、供应商图片权限和实体手机。
-- 当前没有硬件瓶颈；本地可再生缓存的磁盘回收需人工批准，不自动删除浏览器 profile、凭证或运行时目录。
+- 当前没有硬件瓶颈；构建/测试缓存已回收，`.venv312`、浏览器 profile、`.openclaw` 和凭证相关运行态目录继续保留。
 
 ## 8. 本轮收口验证
 
 - Intel LaunchAgent 审计回归测试通过，包含“计数器陈旧”和“无符合条件订阅者但投递成功”两条路径；备份与自动运维脚本测试 19/19 通过。
 - `bash -n scripts/auto_health_check.sh scripts/manage_backup_launchagent.sh`、`git diff --check` 通过；本轮仍未执行生产写入、kickstart、备份安装或账户操作。
 - 生产完成结论来自真实 LaunchAgent 产物、备份归档/恢复演练、健康端点和真实登录态页面；本地测试仅作为代码回归证据。
+- 本地减负后再次运行严格健康、`openclaw health` 和 `openclaw doctor --lint` 均通过；清理仅涉及可再生、被 Git 忽略的构建/测试产物。
 
 ```text
 接手 OpenEverything 生产维护。生产运行时是唯一事实，仓库只用于必要维护、恢复和异地备份。范围仅限本机 Mac OpenClaw/ClawBot 与 Oracle Singapore JIYU/Sub2API；其他项目只做只读边界确认。
