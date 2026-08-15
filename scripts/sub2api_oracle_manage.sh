@@ -716,7 +716,10 @@ apply_recharge_csp_policy() {
   [[ -n "$current_policy" ]] || fail "无法读取 Sub2API 当前有效 CSP。"
 
   config_temp="$(mktemp "${config_file}.csp.XXXXXX")"
-  if ! CSP_ORIGINS="${CHAIN_STORE_ORIGIN},${YUNMAO_STORE_ORIGIN}" EFFECTIVE_CSP="$current_policy" \
+  # 当前 JIYU 运行时会从外部菜单 URL 自动补入 frame-src；云猫菜单是直链，
+  # 因此只把链动的 Markdown 页面来源持久化到配置，并移除旧的云猫静态副本，
+  # 由重启后的有效 CSP 回读保证两个来源各出现一次。
+  if ! CSP_ORIGINS="${CHAIN_STORE_ORIGIN}" CSP_REMOVE_ORIGINS="${YUNMAO_STORE_ORIGIN}" EFFECTIVE_CSP="$current_policy" \
     python3 - "$config_file" "$config_temp" <<'PY'
 import os
 import re
@@ -726,6 +729,7 @@ import yaml
 
 source_path, target_path = sys.argv[1:]
 origins = [item.strip() for item in os.environ["CSP_ORIGINS"].split(",") if item.strip()]
+remove_origins = [item.strip() for item in os.environ.get("CSP_REMOVE_ORIGINS", "").split(",") if item.strip()]
 if not origins or any(not re.fullmatch(r"https://[A-Za-z0-9.-]+", origin) for origin in origins):
     raise SystemExit("充值中心来源必须是无凭据的 HTTPS origin")
 effective_policy = os.environ["EFFECTIVE_CSP"]
@@ -757,7 +761,7 @@ for directive in directives:
     if not tokens:
         continue
     name = tokens[0].lower()
-    sources = [token for token in tokens[1:] if token not in origins]
+    sources = [token for token in tokens[1:] if token not in origins and token not in remove_origins]
     if name == "frame-src":
         if frame_index is None:
             frame_index = len(result)
@@ -845,9 +849,9 @@ apply_recharge_center() {
   timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
   prestate_dir="${BACKUP_ROOT}/recharge-${timestamp}"
   backup_database "$prestate_dir"
-  if runuser -u postgres -- psql -tAc "SELECT 1 FROM settings WHERE key = 'custom_menu_items'" | grep -qx '1'; then
+  if runuser -u postgres -- psql -tA -d sub2api -c "SELECT 1 FROM settings WHERE key = 'custom_menu_items'" | grep -qx '1'; then
     printf 'present\n' >"${prestate_dir}/custom-menu-state"
-    runuser -u postgres -- psql -Atc "SELECT value FROM settings WHERE key = 'custom_menu_items'" >"${prestate_dir}/custom-menu-items.json"
+    runuser -u postgres -- psql -At -d sub2api -c "SELECT value FROM settings WHERE key = 'custom_menu_items'" >"${prestate_dir}/custom-menu-items.json"
   else
     printf 'absent\n' >"${prestate_dir}/custom-menu-state"
   fi

@@ -228,7 +228,7 @@ test('充值页只使用固定公开整店且 WebUI 更新只能进入固定 roo
   assert.match(content, /'id', 'recharge-center-2'/);
   assert.match(content, /'label', '充值中心2'/);
   assert.match(content, /'url', :'yunmao_store_url'/);
-  assert.match(content, /CSP_ORIGINS="\$\{CHAIN_STORE_ORIGIN\},\$\{YUNMAO_STORE_ORIGIN\}"/);
+  assert.match(content, /CSP_ORIGINS="\$\{CHAIN_STORE_ORIGIN\}" CSP_REMOVE_ORIGINS="\$\{YUNMAO_STORE_ORIGIN\}"/);
   assert.match(content, /prestate_dir="\$\{BACKUP_ROOT\}\/recharge-\$\{timestamp\}"/);
   assert.match(content, /backup_database "\$prestate_dir"/);
   assert.match(content, /restore_recharge_prestate "\$prestate_dir"/);
