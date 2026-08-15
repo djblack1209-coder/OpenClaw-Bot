@@ -64,15 +64,36 @@ jobs:
           fi
           echo "release_tag=${release_tag}" >> "$GITHUB_OUTPUT"
 
+      - name: Check reviewed compatibility patches
+        id: reviewed
+        env:
+          UPSTREAM_TAG: ${{ steps.release.outputs.tag }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          case "$UPSTREAM_TAG" in
+            v0.1.172 | v0.1.173)
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              {
+                echo "## JIYU compatibility package skipped"
+                echo "Official ${UPSTREAM_TAG} has no reviewed JIYU compatibility patch in this repository."
+                echo "Scheduled runs stay green without publishing an unreviewed package."
+              } >> "$GITHUB_STEP_SUMMARY"
+              if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+                echo "JIYU patches are not reviewed for ${UPSTREAM_TAG}; add and verify the patch before dispatching." >&2
+                exit 1
+              fi
+              ;;
+          esac
+
       - name: Clone official source at the resolved tag
-        if: steps.existing.outputs.skip != 'true'
+        if: steps.existing.outputs.skip != 'true' && steps.reviewed.outputs.skip != 'true'
         env:
           UPSTREAM_TAG: ${{ steps.release.outputs.tag }}
         run: |
-          case "$UPSTREAM_TAG" in
-            v0.1.172 | v0.1.173) ;;
-            *) echo "JIYU patches are not reviewed for ${UPSTREAM_TAG}" >&2; exit 1 ;;
-          esac
           git clone --depth 1 --branch "$UPSTREAM_TAG" https://github.com/Wei-Shaw/sub2api.git upstream
           git -C upstream apply "../scripts/sub2api-jiyu-${UPSTREAM_TAG}.patch"
           git -C upstream apply "../scripts/sub2api-model-align-${UPSTREAM_TAG}.patch"
@@ -83,13 +104,13 @@ jobs:
           fi
 
       - name: Setup Node and pnpm
-        if: steps.existing.outputs.skip != 'true'
+        if: steps.existing.outputs.skip != 'true' && steps.reviewed.outputs.skip != 'true'
         uses: pnpm/action-setup@7088e561eb65bb68695d245aa206f005ef30921d # v4.1.0
         with:
           version: 9
 
       - name: Setup runtimes
-        if: steps.existing.outputs.skip != 'true'
+        if: steps.existing.outputs.skip != 'true' && steps.reviewed.outputs.skip != 'true'
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '20'
@@ -97,14 +118,14 @@ jobs:
           cache-dependency-path: upstream/frontend/pnpm-lock.yaml
 
       - name: Setup Go
-        if: steps.existing.outputs.skip != 'true'
+        if: steps.existing.outputs.skip != 'true' && steps.reviewed.outputs.skip != 'true'
         uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
         with:
           go-version-file: upstream/backend/go.mod
           cache-dependency-path: upstream/backend/go.sum
 
       - name: Build and run focused gates
-        if: steps.existing.outputs.skip != 'true'
+        if: steps.existing.outputs.skip != 'true' && steps.reviewed.outputs.skip != 'true'
         env:
           UPSTREAM_TAG: ${{ steps.release.outputs.tag }}
         working-directory: upstream
@@ -124,7 +145,7 @@ jobs:
           (cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags embed -trimpath -ldflags="-s -w -X main.Version=$(cat cmd/server/VERSION)" -o ../../sub2api-jiyu-linux-arm64 ./cmd/server)
 
       - name: Create integrity manifest and release
-        if: steps.existing.outputs.skip != 'true'
+        if: steps.existing.outputs.skip != 'true' && steps.reviewed.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           UPSTREAM_TAG: ${{ steps.release.outputs.tag }}
