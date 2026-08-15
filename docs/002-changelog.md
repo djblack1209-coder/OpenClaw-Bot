@@ -5,6 +5,20 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
+## [2026-08-15] JIYU 充值中心2与兼容包工作流收口
+> 领域: `frontend` | `deploy` | `docs`
+> 影响模块: `充值中心`, `充值中心2`, `云猫寄售`, `Sub2API compatibility workflow`
+> 关联问题: OPENCLAW-20260815-YUNMAO-RECHARGE2-COMPAT
+### 变更内容
+- 只读接管现有 Chrome 登录态确认云猫商家后台可达，公开店铺地址 `https://catfk.com/shop/RJYFBH36` 可达且当前暂无商品；点击商品发布会先跳转店铺设置，平台要求至少补充 QQ、手机或微信联系方式。
+- 运维脚本新增可配置的 `充值中心2` 菜单项，默认使用云猫公开店铺 URL；前端补丁对两个充值页使用专用全屏 iframe，云猫 URL 直接来自菜单配置，不拼接用户 ID、Token、Cookie 或其他会话参数。
+- CSP 维护入口现在对链动小铺和云猫来源都只放行到 `frame-src`，重复执行保持幂等；未执行远程生产写入，待店铺资料和商品参数确认后再按备份、最小变更、业务探针、失败回滚顺序部署。
+- GitHub `JIYU Sub2API compatibility package` 在官方版本升级到 `v0.1.176` 后因没有已审阅补丁而连续失败；工作流现对定时任务安全跳过未审阅版本并保持绿色，手工指定未审阅版本仍明确失败，避免误发布。
+### 验证
+- 真实 Chrome 云猫仪表盘和公开店铺页可打开；商品列表为空，没有提交店铺资料、商品、价格、库存、支付或联系方式。
+- 两个受支持补丁对官方 `v0.1.173` 源码 `git apply --check` 通过；`bash -n scripts/sub2api_oracle_manage.sh`、`node --test scripts/sub2api_ops_scripts.test.mjs`（7/7）和 `git diff --check` 通过。
+- GitHub 工作流修复已提交并推送到 `codex/production-final-audit-20260815`；本次未手动触发发布，不产生新的不可变兼容包。
+
 ## [2026-08-15] 生产终检与零调用遗留入口清理
 > 领域: `infra` | `docs` | `deploy`
 > 影响模块: `Mac OpenClaw`, `Oracle JIYU/Sub2API`, `LaunchAgent`, `本地维护入口`, `生产基线`
