@@ -44,9 +44,11 @@ readonly SITE_BRAND_SUBTITLE="${SUB2API_SITE_SUBTITLE:-Unified AI API Gateway}"
 readonly RECHARGE_PAGE_SLUG="recharge-center"
 readonly CHAIN_STORE_ORIGIN="https://pay.ldxp.cn"
 readonly CHAIN_STORE_URL="${CHAIN_STORE_ORIGIN}/shop/ZCUGEDMV"
+readonly CHAIN_STORE_LABEL="链动小铺"
 readonly SECOND_RECHARGE_PAGE_SLUG="recharge-center-2"
 readonly YUNMAO_STORE_ORIGIN="${SUB2API_YUNMAO_STORE_ORIGIN:-https://catfk.com}"
 readonly YUNMAO_STORE_URL="${SUB2API_YUNMAO_STORE_URL:-${YUNMAO_STORE_ORIGIN}/shop/RJYFBH36}"
+readonly YUNMAO_STORE_LABEL="云猫寄售"
 readonly DOCS_PAGE_SLUG="docs"
 readonly BRAND_LOGO_SOURCE="${SUB2API_BRAND_LOGO_SOURCE:-/usr/local/share/jiyu-ai/jiyu-ai-logo.png}"
 readonly BRAND_LOGO_PUBLIC_PATH="/api/v1/pages/${DOCS_PAGE_SLUG}/images/jiyu-ai-logo.png"
@@ -872,13 +874,16 @@ apply_recharge_center() {
     install -d -m 0750 -o sub2api -g sub2api "$pages_dir"
 
     cat >"$page_file" <<MARKDOWN
-[打开 JIYU AI 链动小铺](${CHAIN_STORE_URL})
+[打开 ${CHAIN_STORE_LABEL}](${CHAIN_STORE_URL})
 MARKDOWN
 
     chown sub2api:sub2api "$page_file"
     chmod 0640 "$page_file"
 
-    runuser -u postgres -- psql -v ON_ERROR_STOP=1 -v yunmao_store_url="$YUNMAO_STORE_URL" -d sub2api <<'SQL'
+    runuser -u postgres -- psql -v ON_ERROR_STOP=1 \
+      -v chain_store_label="$CHAIN_STORE_LABEL" \
+      -v yunmao_store_label="$YUNMAO_STORE_LABEL" \
+      -v yunmao_store_url="$YUNMAO_STORE_URL" -d sub2api <<'SQL'
 WITH current_items AS (
   SELECT COALESCE(
     (SELECT value::jsonb FROM settings WHERE key = 'custom_menu_items'),
@@ -895,7 +900,7 @@ INSERT INTO settings (key, value, updated_at)
 SELECT 'custom_menu_items', (
   items || jsonb_build_array(jsonb_build_object(
     'id', 'recharge-center',
-    'label', '充值中心',
+    'label', :'chain_store_label',
     'icon_svg', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M16 13h.01M2 10h20"/></svg>',
     'url', 'md:recharge-center',
     'page_slug', 'recharge-center',
@@ -903,7 +908,7 @@ SELECT 'custom_menu_items', (
     'sort_order', 80
   ), jsonb_build_object(
     'id', 'recharge-center-2',
-    'label', '充值中心2',
+    'label', :'yunmao_store_label',
     'icon_svg', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M16 13h.01M2 10h20"/></svg>',
     'url', :'yunmao_store_url',
     'visibility', 'user',
