@@ -43,6 +43,37 @@ def _write_success_cycle(path: Path, *, sources: list[str] | None = None) -> Non
     )
 
 
+def _write_zero_recipient_cycle(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "status": "success",
+                "timestamp": "2026-08-15T00:30:06+00:00",
+                "network_calls": 0,
+                "sources": ["senate_trading"],
+                "steps": {
+                    "collect": {
+                        "sources": ["senate_trading"],
+                        "summary": {"success": 1, "failed": 0},
+                        "runs": [{"source": "senate_trading", "status": "success"}],
+                    },
+                    "production_once": {
+                        "status": "success",
+                        "delivery": {
+                            "status": "success",
+                            "summary": {"eligible": 0, "sent": 0, "failed": 0},
+                            "send_result": {"success": False},
+                        },
+                    },
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_launchagent_audit_reports_not_triggered_when_no_run_evidence(tmp_path):
     from src.intel.launchagent_audit import build_launchagent_post_run_audit
 
@@ -130,6 +161,40 @@ def test_launchagent_audit_accepts_success_artifact_when_launchctl_counter_is_st
         "expected_sources_checked": False,
         "basis": "artifact_and_standard_output",
     }
+
+
+def test_launchagent_audit_accepts_successful_delivery_without_eligible_subscribers(tmp_path):
+    from src.intel.launchagent_audit import build_launchagent_post_run_audit
+
+    run_evidence = tmp_path / "runs" / "latest-production-cycle.json"
+    _write_zero_recipient_cycle(run_evidence)
+    stdout = tmp_path / "logs" / "stdout.log"
+    stderr = tmp_path / "logs" / "stderr.log"
+    stdout.parent.mkdir(parents=True, exist_ok=True)
+    stdout.write_text('{"status":"success","network_calls":0}\n', encoding="utf-8")
+    stderr.write_text("", encoding="utf-8")
+
+    report = build_launchagent_post_run_audit(
+        label="ai.openclaw.intel-brief.scheduler",
+        run_evidence_path=run_evidence,
+        stdout_path=stdout,
+        stderr_path=stderr,
+        launchctl_text=(
+            "state = not running\n"
+            "runs = 0\n"
+            "last exit code = (never exited)\n"
+            "program = intel_production_cycle.py\n"
+            "event triggers = {\n"
+            "  com.apple.launchd.calendarinterval = { Hour = 8; Minute = 30; }\n"
+            "}\n"
+        ),
+        now=datetime(2026, 8, 15, 0, 40, tzinfo=UTC),
+    )
+
+    assert report["status"] == "verified_success"
+    assert report["verification"]["artifact_success"] is True
+    assert report["run_evidence"]["telegram_send_success"] is False
+    assert report["run_evidence"]["zero_recipient_delivery_success"] is True
 
 
 def test_launchagent_audit_rejects_two_source_artifact_when_six_sources_are_expected(tmp_path):
