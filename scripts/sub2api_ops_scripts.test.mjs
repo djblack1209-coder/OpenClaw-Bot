@@ -224,9 +224,12 @@ test('充值页只使用固定公开整店且 WebUI 更新只能进入固定 roo
   assert.match(content, /readonly YUNMAO_STORE_ORIGIN="\$\{SUB2API_YUNMAO_STORE_ORIGIN:-https:\/\/catfk\.com\}"/);
   assert.match(content, /readonly YUNMAO_STORE_URL="\$\{SUB2API_YUNMAO_STORE_URL:-\$\{YUNMAO_STORE_ORIGIN\}\/shop\/RJYFBH36\}"/);
   assert.doesNotMatch(content, /<iframe src="\$\{CHAIN_STORE_URL\}"/);
-  assert.match(content, /\[打开 JIYU AI 链动小铺\]\(\$\{CHAIN_STORE_URL\}\)/);
+  assert.match(content, /readonly CHAIN_STORE_LABEL="链动小铺"/);
+  assert.match(content, /readonly YUNMAO_STORE_LABEL="云猫寄售"/);
+  assert.match(content, /\[打开 \$\{CHAIN_STORE_LABEL\}\]\(\$\{CHAIN_STORE_URL\}\)/);
   assert.match(content, /'id', 'recharge-center-2'/);
-  assert.match(content, /'label', '充值中心2'/);
+  assert.match(content, /'label', :'chain_store_label'/);
+  assert.match(content, /'label', :'yunmao_store_label'/);
   assert.match(content, /'url', :'yunmao_store_url'/);
   assert.match(content, /CSP_ORIGINS="\$\{CHAIN_STORE_ORIGIN\}" CSP_REMOVE_ORIGINS="\$\{YUNMAO_STORE_ORIGIN\}"/);
   assert.match(content, /prestate_dir="\$\{BACKUP_ROOT\}\/recharge-\$\{timestamp\}"/);
