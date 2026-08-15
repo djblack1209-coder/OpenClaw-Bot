@@ -260,6 +260,10 @@ test('充值页只使用固定公开整店且 WebUI 更新只能进入固定 roo
   assert.match(workflowContent, /go test -tags embed \.\/internal\/web/);
   assert.match(workflowContent, /go build -tags embed/);
   assert.match(workflowContent, /v0\.1\.172 \| v0\.1\.173/);
+  assert.match(workflowContent, /id: reviewed/);
+  assert.match(workflowContent, /GITHUB_STEP_SUMMARY/);
+  assert.match(workflowContent, /echo "skip=true"/);
+  assert.match(workflowContent, /steps\.reviewed\.outputs\.skip/);
   assert.match(workflowContent, /sub2api-jiyu-\$\{UPSTREAM_TAG\}\.patch/);
   assert.match(workflowContent, /EVENT_NAME: \$\{\{ github\.event_name \}\}/);
   assert.match(workflowContent, /release_tag="\$\{BASE_RELEASE_TAG\}-r\$\{GITHUB_RUN_ID\}"/);
