@@ -40,6 +40,7 @@
 - 心跳脚本由当前 `tools/launchagents/ai.openclaw.heartbeat-sender.plist` 内联逻辑取代；无人值守脚本引用的旧 `com.openclaw.*` plist 已不存在；JIYU 一次性迁移脚本只剩历史文档引用。
 - 保留了 `start_clawbot.sh`、`start.sh`、`start_omega.sh`、IBKR 运维脚本、支付/订单/授权、数据库迁移、备份恢复、安全和关键浏览器测试；未删除 Tauri 生成 Schema 或 `jiyu_xianyu_redeem_reservations.sql`。
 - 修正现有 Intel LaunchAgent 只读审计：投递状态成功且 `eligible/sent/failed` 均为 0 时，明确记录为“无收件人但投递成功”，不伪造 Telegram 发送成功；严格健康检查现在复用该审计，并对每日备份复用已有归档与恢复演练产物。
+- 充值中心部署入口已补齐写入保护：每次执行先生成 `recharge-<UTC timestamp>` prestate/一致性备份，记录当前菜单和页面存在性，失败时恢复数据库、CSP、页面并重启复核健康。
 
 ## 3. 未修复问题及原因
 
@@ -101,6 +102,7 @@
 - 生产完成结论来自真实 LaunchAgent 产物、备份归档/恢复演练、健康端点和真实登录态页面；本地测试仅作为代码回归证据。
 - 本地减负后再次运行严格健康、`openclaw health` 和 `openclaw doctor --lint` 均通过；清理仅涉及可再生、被 Git 忽略的构建/测试产物。
 - 本轮新增合同验证为官方 `v0.1.173` 源码补丁可应用、云猫公开页 HTTP 200、云猫响应未声明阻止 iframe 的 `X-Frame-Options`；这只是集成前置证据，不代表云猫商品或生产菜单已发布。
+- 充值中心 prestate/回滚路径已通过 ShellCheck、Bash 语法和运维合同静态检查；尚未在生产触发，因此没有产生新的远端备份或写入。
 
 ```text
 接手 OpenEverything 生产维护。生产运行时是唯一事实，仓库只用于必要维护、恢复和异地备份。范围仅限本机 Mac OpenClaw/ClawBot 与 Oracle Singapore JIYU/Sub2API；其他项目只做只读边界确认。
