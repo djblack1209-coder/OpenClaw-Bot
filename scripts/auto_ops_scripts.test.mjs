@@ -284,6 +284,8 @@ test('health check validates required runtimes and distinguishes disabled option
     'ai.openclaw.gateway',
     'ai.openclaw.intel-brief.telegram-listener',
     'ai.openclaw.daily-backup',
+    'intel_scheduler_artifact_status',
+    'backup_natural_run_status',
     'backup_freshness',
     'http://127.0.0.1:18790/api/v1/status',
     'http://127.0.0.1:18789/health',

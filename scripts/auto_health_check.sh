@@ -84,8 +84,114 @@ check_required_launchagent() {
   fi
 }
 
+intel_scheduler_artifact_status() {
+  local report="$1" run_evidence stdout_log stderr_log audit_file audit_status
+  run_evidence="$(printf '%s\n' "$report" | awk '/^[[:space:]]*--evidence$/{getline; gsub(/^[[:space:]]+|[[:space:]]+$/, "", $0); print; exit}')"
+  stdout_log="$(printf '%s\n' "$report" | sed -n 's/^[[:space:]]*stdout path = //p' | head -1)"
+  stderr_log="$(printf '%s\n' "$report" | sed -n 's/^[[:space:]]*stderr path = //p' | head -1)"
+  if [[ -z "$run_evidence" || -z "$stdout_log" || -z "$stderr_log" ]]; then
+    printf 'not_verified|Intel 调度产物路径不可读取\n'
+    return
+  fi
+
+  local intel_python="$ROOT_DIR/packages/clawbot/.venv312/bin/python"
+  local audit_script="$ROOT_DIR/packages/clawbot/scripts/intel_launchagent_audit.py"
+  if [[ ! -x "$intel_python" || ! -f "$audit_script" ]]; then
+    printf 'not_verified|Intel 调度审计运行时不可用\n'
+    return
+  fi
+
+  if ! audit_file="$(mktemp "${TMPDIR:-/tmp}/openclaw-intel-audit.XXXXXX")"; then
+    printf 'not_verified|Intel 调度审计临时文件不可创建\n'
+    return
+  fi
+  "$intel_python" "$audit_script" \
+    --run-evidence "$run_evidence" \
+    --stdout-log "$stdout_log" \
+    --stderr-log "$stderr_log" \
+    --output "$audit_file" >/dev/null 2>&1 || true
+  audit_status="$(python3 - "$audit_file" <<'PY' 2>/dev/null || true
+import json
+import sys
+from pathlib import Path
+
+try:
+    print(json.loads(Path(sys.argv[1]).read_text(encoding="utf-8")).get("status", "not_verified"))
+except (OSError, json.JSONDecodeError, IndexError):
+    print("not_verified")
+PY
+)"
+  rm -f "$audit_file"
+  if [[ "$audit_status" == "verified_success" ]]; then
+    printf 'ok|Intel 调度产物、标准输出和投递结果已验证（LaunchAgent 计数器未更新）\n'
+  else
+    printf '%s|Intel 调度产物尚未通过只读审计\n' "${audit_status:-not_verified}"
+  fi
+}
+
+backup_natural_run_status() {
+  local report="$1" stdout_log backup_dir
+  stdout_log="$(printf '%s\n' "$report" | sed -n 's/^[[:space:]]*stdout path = //p' | head -1)"
+  backup_dir="${OPENCLAW_BACKUP_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/openclaw/backups}"
+  if [[ -z "$stdout_log" ]]; then
+    printf 'not_verified|备份自然运行日志路径不可读取\n'
+    return
+  fi
+  python3 - "$stdout_log" "$backup_dir" <<'PY' 2>/dev/null || printf 'not_verified|备份自然运行产物不可读取\n'
+import json
+import pathlib
+import sys
+import time
+
+stdout = pathlib.Path(sys.argv[1])
+backup_dir = pathlib.Path(sys.argv[2])
+if not stdout.is_file() or stdout.is_symlink():
+    print("not_verified|备份自然运行日志不存在")
+    raise SystemExit
+lines = [line for line in stdout.read_text(encoding="utf-8", errors="replace").splitlines() if line.strip()]
+if len(lines) < 2 or not lines[-2].startswith("restore drill passed:"):
+    print("not_verified|最近备份日志没有恢复演练通过记录")
+    raise SystemExit
+try:
+    payload = json.loads(lines[-1])
+except json.JSONDecodeError:
+    print("not_verified|最近备份结果不是有效 JSON")
+    raise SystemExit
+archive_value = payload.get("archive")
+if payload.get("ok") is not True or not isinstance(archive_value, str):
+    print("not_verified|最近备份结果未标记成功")
+    raise SystemExit
+archive_path = pathlib.Path(archive_value)
+if archive_path.is_symlink():
+    print("not_verified|最近备份归档是符号链接")
+    raise SystemExit
+try:
+    archive = archive_path.resolve()
+    archive.relative_to(backup_dir.resolve())
+except ValueError:
+    print("not_verified|最近备份归档不在受管备份目录")
+    raise SystemExit
+ready = pathlib.Path(f"{archive}.ready")
+checksum = pathlib.Path(f"{archive}.sha256")
+if (
+    not archive.is_file() or archive.is_symlink()
+    or not ready.is_file() or ready.is_symlink()
+    or not checksum.is_file() or checksum.is_symlink()
+):
+    print("not_verified|最近备份归档缺少有效就绪标记")
+    raise SystemExit
+if max(0, int((time.time() - archive.stat().st_mtime) // 3600)) > 36:
+    print("not_verified|最近自然备份已超过 36 小时")
+    raise SystemExit
+if stdout.stat().st_mtime < archive.stat().st_mtime:
+    print("not_verified|备份日志早于归档完成时间")
+    raise SystemExit
+print("ok|备份归档、就绪标记和只读恢复演练已验证（LaunchAgent 计数器未更新）")
+PY
+}
+
 check_scheduled_launchagent() {
-  local label="$1" report state last_exit
+  local label="$1" report state last_exit artifact_status artifact_detail
   if ! report="$(launchagent_report "$label")"; then
     add_check "launchagent:$label" "bad" "$label 未加载" "重新部署该定时任务"
     return
@@ -95,7 +201,23 @@ check_scheduled_launchagent() {
   if [[ "$state" == "running" || "$last_exit" == "0" ]]; then
     add_check "launchagent:$label" "ok" "$label 已加载且最近退出正常" "无需处理"
   elif [[ "$last_exit" == "(never exited)" ]]; then
-    add_check "launchagent:$label" "warn" "$label 已加载，等待首次自然调度验证" "到点后重新运行严格健康检查"
+    if [[ "$label" == "ai.openclaw.intel-brief.scheduler" ]]; then
+      IFS='|' read -r artifact_status artifact_detail <<<"$(intel_scheduler_artifact_status "$report")"
+      if [[ "$artifact_status" == "ok" ]]; then
+        add_check "launchagent:$label" "ok" "$artifact_detail" "无需处理"
+      else
+        add_check "launchagent:$label" "warn" "$label 已加载，等待自然调度产物验证" "到点后重新运行严格健康检查"
+      fi
+    elif [[ "$label" == "ai.openclaw.daily-backup" ]]; then
+      IFS='|' read -r artifact_status artifact_detail <<<"$(backup_natural_run_status "$report")"
+      if [[ "$artifact_status" == "ok" ]]; then
+        add_check "launchagent:$label" "ok" "$artifact_detail" "无需处理"
+      else
+        add_check "launchagent:$label" "warn" "$label 已加载，等待自然调度产物验证" "到点后重新运行严格健康检查"
+      fi
+    else
+      add_check "launchagent:$label" "warn" "$label 已加载，等待首次自然调度验证" "到点后重新运行严格健康检查"
+    fi
   else
     add_check "launchagent:$label" "bad" "$label 最近执行异常 (state=${state:-unknown}, exit=${last_exit:-unknown})" "检查定时任务日志和最近触发时间"
   fi

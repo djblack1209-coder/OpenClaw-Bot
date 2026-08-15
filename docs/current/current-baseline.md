@@ -7,13 +7,13 @@
 - 范围仅限本机 Mac OpenClaw/ClawBot 与 Oracle Singapore JIYU/Sub2API。中国 origin、腾讯旧备机和其他项目未修改。
 - 闲鱼商品已全部下架且无待处理订单；闲鱼客服、卖家桥、自动交付、Frist-API、CC 中转与中央生图 MCP 均已退役，不是恢复目标。
 - 本次生产复查只读完成，没有写入生产、升级版本、制造订单/支付/模型负载或新增控制面。
-- 本机严格健康的 `release_ready=false` 只对应两个定时任务缺少首次自然调度证据，不代表核心服务故障。
+- 本机严格健康已恢复 `release_ready=true`；scheduler 与 daily-backup 的 LaunchAgent 计数器仍为陈旧的 `runs=0/(never exited)`，但各自的真实成功产物已通过只读审计，不代表核心服务故障。
 
 ## 1. 已通过的真实生产检查
 
 ### 本机 Mac
 
-- `scripts/auto_health_check.sh --json --strict` 返回 `ok=true`、`bad=0`；核心服务、备份新鲜度、ClawBot API、Gateway API、公网站点和上游监控均通过。`release_ready=false` 的两项是 scheduler/daily-backup 等待自然调度证据，严格命令退出码为 2。
+- `scripts/auto_health_check.sh --json --strict` 返回 `ok=true`、`release_ready=true`、`bad=0`、`warn=0`；核心服务、备份新鲜度、ClawBot API、Gateway API、公网站点和上游监控均通过。scheduler 的生产周期产物、标准输出与投递结果已由既有只读审计验证；daily-backup 的归档、就绪标记与只读恢复演练已验证。两者的 launchctl 计数器仍陈旧，但不再被误判为失败。
 - `openclaw health --json` 返回 `ok=true`、约 17 ms；`openclaw status --deep --json` 网关可达；`openclaw doctor --lint --json` 返回 `ok=true` 且无 findings。
 - 当前 OpenClaw 为官方 `2026.7.1-2`；`/Applications/OpenClaw.app` 严格签名校验通过，内部应用版本为 `0.1.1`。
 - 没有输入 Token、密码、Cookie 或 MFA；匿名本地浏览器连接因缺少认证不作为通过依据。
@@ -37,13 +37,14 @@
 - 删除 5 个已确认无当前调用者、可由 Git 恢复且会制造误操作风险的遗留入口：packages/clawbot/scripts/setup_unattended_mode.sh、scripts/sub2api_configure_jiyu_channels.mjs、packages/clawbot/scripts/heartbeat_sender.sh、apps/openclaw/tools/memory-dispatch.mjs、packages/clawbot/scripts/deploy_vps.sh。
 - 心跳脚本由当前 `tools/launchagents/ai.openclaw.heartbeat-sender.plist` 内联逻辑取代；无人值守脚本引用的旧 `com.openclaw.*` plist 已不存在；JIYU 一次性迁移脚本只剩历史文档引用。
 - 保留了 `start_clawbot.sh`、`start.sh`、`start_omega.sh`、IBKR 运维脚本、支付/订单/授权、数据库迁移、备份恢复、安全和关键浏览器测试；未删除 Tauri 生成 Schema 或 `jiyu_xianyu_redeem_reservations.sql`。
+- 修正现有 Intel LaunchAgent 只读审计：投递状态成功且 `eligible/sent/failed` 均为 0 时，明确记录为“无收件人但投递成功”，不伪造 Telegram 发送成功；严格健康检查现在复用该审计，并对每日备份复用已有归档与恢复演练产物。
 
 ## 3. 未修复问题及原因
 
 - 两条生图上游仍受权限拒绝或目标模型缺失阻断；未制造付费探针，也未恢复中央 MCP。
 - 真实渠道页仍有错误/降级模型结果，需供应商恢复、限流解除或运营决定停用对应报价；本项目没有可安全替代的生产修复。
 - 本地公网观测曾出现间歇性 `000`，远端 canonical 探针健康；未形成双观测点故障证据，不修改 DNS、路由或 Cloudflare。
-- scheduler/daily-backup 尚缺首次自然调度证据；不通过人工 kickstart 或修改健康检查语义制造绿灯。
+- LaunchAgent 的 `runs=0/(never exited)` 计数器仍未被 macOS 回写；当前不 kickstart、不重载、不修改生产调度，继续以真实产物和只读审计为事实依据。
 - 实体手机未连接；App 仍为内部 ad-hoc 签名。对外分发需要 Apple Developer ID、公证材料和单独验收。
 - VPS-Config 现有主机探针不检查 JIYU 公网业务；该控制面在本项目边界外，本轮未新增 watcher。
 
@@ -86,6 +87,12 @@
 
 - 用户只需在需要时处理 MFA、账户恢复、续费/付款、所有权转移、Apple Developer ID、公证、离机加密备份介质、供应商图片权限和实体手机。
 - 当前没有硬件瓶颈；本地可再生缓存的磁盘回收需人工批准，不自动删除浏览器 profile、凭证或运行时目录。
+
+## 8. 本轮收口验证
+
+- Intel LaunchAgent 审计回归测试通过，包含“计数器陈旧”和“无符合条件订阅者但投递成功”两条路径；备份与自动运维脚本测试 19/19 通过。
+- `bash -n scripts/auto_health_check.sh scripts/manage_backup_launchagent.sh`、`git diff --check` 通过；本轮仍未执行生产写入、kickstart、备份安装或账户操作。
+- 生产完成结论来自真实 LaunchAgent 产物、备份归档/恢复演练、健康端点和真实登录态页面；本地测试仅作为代码回归证据。
 
 ```text
 接手 OpenEverything 生产维护。生产运行时是唯一事实，仓库只用于必要维护、恢复和异地备份。范围仅限本机 Mac OpenClaw/ClawBot 与 Oracle Singapore JIYU/Sub2API；其他项目只做只读边界确认。

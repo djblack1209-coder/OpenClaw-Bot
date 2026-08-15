@@ -12,11 +12,14 @@
 ### 变更内容
 - 完成 Mac OpenClaw、Oracle/JIYU、备份校验和真实 Chrome 登录态的只读生产复查；没有生产写入、版本升级、模型负载、订单或支付操作。
 - 删除 5 个已确认无当前调用者且可由 Git 恢复的遗留入口：旧无人值守配置、一次性 JIYU 渠道迁移、外置心跳脚本、无调用记忆调度器和旧 VPS 部署脚本；保留人工维护、IBKR、迁移、支付、备份恢复、安全和关键浏览器测试。
-- 更新唯一 `docs/current/current-baseline.md`，记录当前 `release_ready=false` 的自然调度证据缺口、真实渠道页 DEGRADED、7 个受管 group 的 0 漂移、备份 checksum 结果和新会话交接提示词。
+- 更新唯一 `docs/current/current-baseline.md`，记录真实渠道页 DEGRADED、7 个受管 group 的 0 漂移、备份 checksum 结果和新会话交接提示词；随后收口两个 LaunchAgent 计数器的已知陈旧误报，使严格健康检查以真实产物审计为准。
+- 修正既有 Intel 产物审计对“无符合条件订阅者”的成功语义：保留真实 `telegram_send_success=false`，仅在 delivery 成功且 `eligible/sent/failed=0` 时判定该周期成功；健康脚本同时验证 Intel 产物和每日备份归档/恢复演练，不触发任何任务。
 ### 验证
-- 本机 `openclaw health`、`status --deep`、`doctor --lint`、应用签名和核心自动健康检查通过；严格检查仅对两个等待自然调度的 LaunchAgent 告警。
+- 本机 `openclaw health`、`status --deep`、`doctor --lint`、应用签名和核心自动健康检查通过；严格检查先记录两个 LaunchAgent 计数器的自然调度误报，后经只读产物审计收口。
 - Oracle systemd 失败单元为 0，Apache `Syntax OK`，公网健康 200、未授权模型 401、Responses/WebSocket 未授权 401；9 个监控最新年龄约 0–5 分钟，38/38 备份 checksum 通过。
 - 真实登录态仪表盘和渠道状态页可打开；渠道页如实保留上游错误/降级结果，未输入 Token、密码、Cookie 或 MFA。
+- 复查后 `scripts/auto_health_check.sh --json --strict` 返回 `ok=true`、`release_ready=true`；Intel LaunchAgent 产物审计与备份自然运行产物均通过，launchctl `runs=0/(never exited)` 仅记录为陈旧计数器，不再作为失败依据。
+- `packages/clawbot/tests/test_intel_launchagent_audit.py`、`node --test scripts/auto_ops_scripts.test.mjs`（19/19）和 Bash 语法检查通过；测试不替代生产结论。
 
 ## [2026-08-11] 闲鱼/Frist 最终退役与 OpenClaw 控制面收敛
 > 领域: `frontend` | `backend` | `infra` | `docs` | `xianyu`

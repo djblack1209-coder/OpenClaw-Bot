@@ -65,6 +65,14 @@ def _clean_list(values: list[Any] | tuple[Any, ...] | None) -> list[str]:
     return result
 
 
+def _summary_count(summary: dict[str, Any], key: str) -> int | None:
+    value = summary.get(key)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _source_list(payload: dict[str, Any], collect: dict[str, Any]) -> list[str]:
     top_sources = payload.get("sources")
     if isinstance(top_sources, list):
@@ -100,6 +108,7 @@ def _run_evidence_summary(path: Path, *, expected_sources: list[str] | None = No
     production_once = payload.get("steps", {}).get("production_once", {}) if isinstance(payload.get("steps"), dict) else {}
     delivery = production_once.get("delivery", {}) if isinstance(production_once, dict) else {}
     send = delivery.get("send_result", {}) if isinstance(delivery, dict) else {}
+    delivery_summary = delivery.get("summary", {}) if isinstance(delivery, dict) else {}
     collect_summary = collect.get("summary", {}) if isinstance(collect, dict) else {}
     sources = _source_list(payload, collect if isinstance(collect, dict) else {})
     expected = _clean_list(expected_sources)
@@ -122,6 +131,19 @@ def _run_evidence_summary(path: Path, *, expected_sources: list[str] | None = No
             and not failed_sources
             and all(source in successful_sources for source in expected)
         )
+    delivery_status = str(delivery.get("status") or "") if isinstance(delivery, dict) else ""
+    telegram_send_success = bool(send.get("success")) if isinstance(send, dict) else False
+    delivery_counts = {
+        key: _summary_count(delivery_summary, key)
+        for key in ("eligible", "sent", "failed", "deliveries_count")
+    } if isinstance(delivery_summary, dict) else {}
+    zero_recipient_delivery_success = (
+        delivery_status == "success"
+        and isinstance(delivery_summary, dict)
+        and _summary_count(delivery_summary, "eligible") == 0
+        and _summary_count(delivery_summary, "sent") == 0
+        and _summary_count(delivery_summary, "failed") == 0
+    )
     return {
         **base,
         "status": str(payload.get("status") or ""),
@@ -136,7 +158,11 @@ def _run_evidence_summary(path: Path, *, expected_sources: list[str] | None = No
         "failed_sources": failed_sources,
         "collect_summary": collect_summary,
         "production_once_status": str(production_once.get("status") or "") if isinstance(production_once, dict) else "",
-        "telegram_send_success": bool(send.get("success")) if isinstance(send, dict) else False,
+        "delivery_status": delivery_status,
+        "delivery_summary": delivery_counts,
+        "telegram_send_success": telegram_send_success,
+        "delivery_success": telegram_send_success or zero_recipient_delivery_success,
+        "zero_recipient_delivery_success": zero_recipient_delivery_success,
         "message_id_present": bool(send.get("message_id")) if isinstance(send, dict) else False,
     }
 
@@ -159,7 +185,7 @@ def build_launchagent_post_run_audit(
     run_summary = _run_evidence_summary(run_path, expected_sources=expected)
     runs = _parse_runs(launchctl_text)
     last_exit_code = _parse_last_exit_code(launchctl_text)
-    artifact_success = run_summary.get("status") == "success" and bool(run_summary.get("telegram_send_success"))
+    artifact_success = run_summary.get("status") == "success" and bool(run_summary.get("delivery_success"))
     artifact_source_success = not expected or (
         bool(run_summary.get("sources_match_expected"))
         and bool(run_summary.get("collect_success_matches_expected"))
