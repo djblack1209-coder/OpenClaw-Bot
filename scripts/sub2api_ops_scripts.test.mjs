@@ -308,6 +308,7 @@ test('充值页只使用固定公开整店且 WebUI 更新只能进入固定 roo
     assert.match(patchContent, /:title="jiyuRechargeTitle"/);
     assert.doesNotMatch(patchContent, /^\+.*buildEmbeddedUrl\([\s\S]*JIYU_RECHARGE_URL/m);
   }
+  assert.match(patchContents[1], /:sticky-actions-column="false"/);
   assert.match(content, /StandardInput=socket/);
   assert.match(content, /NoNewPrivileges=yes/);
 });
