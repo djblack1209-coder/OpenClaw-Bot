@@ -5,6 +5,19 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
+## [2026-08-16] 跨项目 GFS 保留闭环同步
+> 时间: `2026-08-16T05:47Z`
+> 领域: `infra` | `docs`
+> 影响模块: `OpenEverything 生产基线`, `VPS-Config 备份保留`, `Oracle Ashburn`, `HostDare`
+> 关联问题: OPENCLAW-20260816-CROSS-PROJECT-GFS-CLOSE
+### 变更内容
+- 同步 VPS-Config 已获资产所有者精确批准并完成的 `7 daily + 4 weekly + 3 monthly` GFS：保留 19 个、删除 39 个唯一备份族，实际回收 `12,861,810,280` bytes。
+- 删除当前基线中“仍待批准”和“约三个每日代际余量”的陈旧状态；最新定点生产回读为 Oracle Ashburn 36.1%、HostDare 45.7%，两节点 0 问题、0 failed unit。
+- 本次只更新跨项目事实，不修改 OpenEverything 生产运行时；备份保留继续由 VPS-Config 默认只读、精确摘要批准的既有入口维护，本仓不增加清理器或重复控制面。
+### 验证
+- VPS-Config 在删除前后均完成三镜像和真实恢复探针；删除后再次 dry-run 保留 19 个、删除候选 0，确认事务清理和幂等。
+- 本次仅修改文档；运行 `make docs-check` 与 `git diff --check`，不以本地检查替代生产结论。
+
 ## [2026-08-16] 跨项目磁盘状态更正
 > 时间: `2026-08-16T05:06Z`
 > 领域: `infra` | `docs`
