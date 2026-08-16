@@ -5,6 +5,19 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
+## [2026-08-16] 跨项目磁盘状态更正
+> 时间: `2026-08-16T05:06Z`
+> 领域: `infra` | `docs`
+> 影响模块: `OpenEverything 生产基线`, `VPS-Config Oracle Ashburn`, `备份保留`
+> 关联问题: OPENCLAW-20260816-CROSS-PROJECT-DISK-STATUS
+### 变更内容
+- 更正当前基线中已过时的 Oracle Ashburn `23.4%` 告警：VPS-Config 在双端哈希验证后只移除重复备份副本，并于 `2026-08-16T05:01:03Z` 全量生产回读确认 Oracle Ashburn 约 28.4% 可用、HostDare 约 28.2% 可用，所有磁盘下限通过。
+- 明确本次跨项目更正没有修改 OpenEverything 或 VPS 生产运行时，也没有删除任何唯一历史备份；OpenEverything 不增加清理器、保留策略或重复控制面。
+- 将剩余事项收敛为资产所有者决策：既有 `7 daily + 4 weekly + 3 monthly` GFS dry-run 预计回收约 12.82 GB，但会删除 39 个唯一历史备份族，未获明确授权前保持不执行。
+### 验证
+- OpenEverything `main` 与 `origin/main` 在更正前均为 `154f105`，工作树干净且没有未合并分支；更正依据为 VPS-Config 当前唯一生产基线记录的 `2026-08-16T05:01:03Z` 全量回读和备份再平衡结果。
+- 本次仅修改文档；运行 `make docs-check` 与 `git diff --check`，不以本地检查替代生产结论。
+
 ## [2026-08-16] 生产优化闭环、备份恢复与冗余审计收口
 > 时间: `2026-08-16T03:42Z`
 > 领域: `infra` | `deploy` | `docs`
