@@ -5,6 +5,20 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
+## [2026-08-16] 渠道 A 单目录与实时成本边界收敛
+> 时间: `2026-08-16T13:42Z`
+> 领域: `ai-pool` | `infra` | `docs`
+> 影响模块: `Sub2API groups`, `upstream billing probe`, `channel monitor`, `public catalog`
+> 关联问题: JIYU-20260816-CHANNEL-A-ONLY
+### 变更内容
+- 生产回读确认渠道 A 五个账号的原生账单倍率同步均为 `ok/200`；渠道 B 五个账号虽开启同步，但供应商账单端点均为 `unsupported/404`，因此此前只能沿用存储倍率，不能称为实时同步。国内四个账号同样不支持且同步关闭。
+- 按运营规则通过 Sub2API 原生分组表单只把渠道 B 五组与国内四组从 active 改为 inactive；渠道 A 五组保持 active，两个专用生图组保持 disabled。账号、倍率、模型、绑定、利润阈值和历史均未修改。
+- 九组停用后，现有受管监控解析器按 5 分钟自然周期把渠道 B 五个监控自动关闭；最终为渠道 A `5 enabled`、渠道 B `5 disabled`、生图 `2 disabled`，没有手工制造探针。
+### 验证与回滚
+- 创建 Key 的真实 Chrome 下拉框恰好只显示渠道 A 五组，用户 `/monitor` 也只显示五个渠道 A 文本渠道；弹窗已取消，没有创建 Key。数据库审计恰好 9 条 `admin.groups.update`/HTTP 200，待处理订单 0、用量记录仍为 10、重复监控 0。
+- 渠道 A 当前 5/5 通过原生 `3% + 0%` 利润准入，最低配置毛利空间约 `9.09%`。公网首页 200、未授权 `/v1/models` 401，Sub2API、Redis、PostgreSQL、Cloudflare 源站策略和定时器均通过。
+- 写入前备份为 `/var/backups/sub2api/daily-20260816T133245Z`，最终一致性备份为 `/var/backups/sub2api/daily-20260816T134253Z`，最终归档可由 `pg_restore --list` 解析。本机归档 `openeverything-20260816-214606.tgz` 的 checksum、路径、manifest 与 SQLite 只读恢复演练通过；回滚只需恢复前态或把上述九组恢复 active，不重建任何对象。
+
 ## [2026-08-16] 全文本目录恢复、原生利润保护与监控开关修复
 > 时间: `2026-08-16T12:52Z`
 > 领域: `ai-pool` | `frontend` | `deploy` | `docs`
