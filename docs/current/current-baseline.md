@@ -1,6 +1,6 @@
 # JIYU AI 当前生产基线
 
-> 更新时间：2026-08-16（Asia/Singapore；本轮最终复查完成于 2026-08-16T03:28Z）。生产运行时是唯一事实；仓库仅用于必要维护、恢复和异地备份。`docs/current/` 只保留本文件。
+> 更新时间：2026-08-16（Asia/Singapore；本轮最终复查完成于 2026-08-16T03:42Z）。生产运行时是唯一事实；仓库仅用于必要维护、恢复和异地备份。`docs/current/` 只保留本文件。
 
 ## 范围与结论
 
@@ -28,7 +28,7 @@
 - `2026-08-16T03:27Z` 的既有 VPS-Config 只读状态查询到达 7 台服务器和 2 台路由器，全部可达且受管 unit 无失败；Oracle Ashburn 根分区可用空间为 23.4%，低于既有 25% 阈值，已作为跨项目只读告警记录，未做删除或迁移。
 - 当前 `payment_orders=0`、近 24 小时/7 天 `usage_logs=0`、active channels=9、active accounts=16；9 个启用监控的最新年龄约 0–5 分钟。
 - 受管费率按当前账号倍率加既有 `+0.05` 合同回读为 7 个符合条件 group，7 个正确、0 个漂移。生产事实优先于旧基线中曾出现的 11/11 数字。
-- 备份目录有 1608 个文件、38 个 checksum 文件；38/38 checksum 校验通过。备份 timer active；现有本地备份新鲜，离机加密介质仍未配置。
+- 备份目录有 1608 个文件、38 个 checksum 文件；38/38 checksum 校验通过。备份 timer active；本轮新增本地归档 `openeverything-20260816-114058.tgz`，checksum、路径、manifest、SQLite 恢复演练全部通过；清单 49 项中 4 个当前不存在的运行目录被如实标记，离机加密介质仍未配置。
 
 ### 真实 Chrome 登录态与窄屏回读
 
@@ -128,6 +128,7 @@
 - 本轮新增真实验证为 GitHub 工件 SHA/大小/架构匹配、Oracle 发布后服务健康、菜单2存在、两个自定义页面 HTTP 200、CSP 中链动/云猫各出现一次且无其他云猫指令、公开页 7 档库存充足、浏览器 iframe 无查询参数且与链动页整屏尺寸一致。
 - 充值中心写入生成了带时间戳的数据库/配置/页面 prestate 和日备份；发布前二进制备份位于 `/var/backups/sub2api/jiyu-v0.1.173-jiyu.31894209937-20260815T161855Z`，菜单安全回滚 prestate 仍可恢复。
 - 最终回读：远端管理脚本与仓库 HEAD 一致；菜单新标签均存在且旧标签均不存在；两个充值页 HTTP 200，浏览器确认两个 iframe 无用户参数且窄屏无横向溢出；Mac 实机 App 窗口、签名和核心引擎均正常。VPS-Config 的只读状态查询只发现 Oracle Ashburn 磁盘阈值告警。
+- 本轮重新执行 `make docs-check`、`make sub2api-check`、`make shellcheck`、`make gitleaks-check` 与 `git diff --check` 均通过；重新回读 Sub2API 生产状态和公网探针，结果与上方基线一致。生产结论仍以真实运行时和备份恢复演练为准。
 
 ```text
 接手 OpenEverything 生产维护。生产运行时是唯一事实，仓库只用于必要维护、恢复和异地备份。范围仅限本机 Mac OpenClaw/ClawBot 与 Oracle Singapore JIYU/Sub2API；其他项目只做只读边界确认。

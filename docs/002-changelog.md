@@ -5,6 +5,19 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
+## [2026-08-16] 生产优化闭环、备份恢复与冗余审计收口
+> 时间: `2026-08-16T03:42Z`
+> 领域: `infra` | `deploy` | `docs`
+> 影响模块: `OpenEverything 生产基线`, `OpenClaw 备份恢复`, `Oracle JIYU/Sub2API`, `分支收口`
+> 关联问题: OPENCLAW-20260816-PRODUCTION-OPTIMIZATION-CLOSE
+### 变更内容
+- 在不新增控制面、合成负载或付费资源的前提下，完成当前项目范围内的稳定性、速度、安全性、用户体验、维护成本和资源利用率复查；官方 Sub2API `v0.1.177` 的破坏性默认行为仍不足以抵消 JIYU 补丁重放风险，保持现有受管构建。
+- 依据真实调用关系复核已删除遗留入口、`docs/current/` 唯一基线、备份/恢复/支付/迁移/关键浏览器测试保留边界，没有发现可安全再删除的生产入口。
+- 使用既有 `backup-run` 新增本地一致性归档并完成 checksum、路径、manifest 与 SQLite 恢复演练；离机加密介质和四个当前不存在的运行目录如实记录，未打印或提交任何凭证。
+### 验证
+- 本机严格健康、OpenClaw `health`/`doctor`、Sub2API/Redis/定时器/Cloudflare/PostgreSQL/内网健康/WebSocket 代理、公网页面和未授权边界均通过；两页充值入口为 200，未授权模型入口为 401。
+- `make docs-check`、`make sub2api-check`、`make shellcheck`、`make gitleaks-check`、`git diff --check` 和 agent-reach 官方版本核验通过；未执行版本升级、订单、支付或合成业务请求。
+
 ## [2026-08-16] 远端充值管理脚本同步与菜单漂移修复
 > 时间: `2026-08-16T03:18Z`
 > 领域: `deploy` | `frontend` | `docs`
