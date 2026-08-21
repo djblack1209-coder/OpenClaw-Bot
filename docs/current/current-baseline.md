@@ -1,6 +1,6 @@
 # JIYU / Sub2API 当前生产基线
 
-> 更新时间：2026-08-16（Asia/Singapore；生产目录收敛完成于 2026-08-16T13:42Z）。生产运行时是唯一事实；仓库只作为维护入口、恢复材料和异地备份。`docs/current/` 只保留本文件。
+> 更新时间：2026-08-21（UTC；本次全项目生产复查收口）。生产运行时是唯一事实；仓库只作为维护入口、恢复材料和异地备份。`docs/current/` 只保留本文件。
 
 ## 当前结论
 
@@ -16,7 +16,7 @@
 ### 运行时与公网
 
 - Sub2API、专用 Redis、自动更新 timer、每日备份 timer、Cloudflare 443 源站策略均为 active；PostgreSQL 预检、内网健康和 Responses WebSocket 代理通过。
-- 公网首页返回 200，未授权 `/v1/models` 返回 401；服务写入后没有重启或错误状态。
+- 公网首页返回 200，未授权 `/v1/models` 返回 401；上一轮渠道写入后没有重启或错误状态，本次复查另行记录了一个优雅退出服务的恢复。
 - 待处理/处理中支付订单为 0，用量记录仍为 10；本轮没有创建 Key、订单或人工模型请求，没有制造合成负载。
 
 ### 分组、目录与监控
@@ -94,3 +94,12 @@
 ```text
 只维护 /Users/blackdj/Desktop/OpenEverything 中的 JIYU/Sub2API，不跨项目写入。生产 jiyu.245334.xyz 是唯一事实，当前版本 v0.1.173-jiyu.31947794554。当前公开目录只有渠道 A 的 5 个文本组 active；渠道 B 5 个和国内 4 个均 inactive，生图 2 个 disabled。渠道 A 5 个账号的原生上游账单探测和倍率同步均为 ok/200，分组倍率按账号倍率 +0.05 原子收敛，5/5 保留 profit_control_enabled=true、profit_min_margin=0.03、profit_safety_buffer=0。渠道 B 5 个虽然保留同步开关，但供应商端点为 unsupported/404，无法实时同步，所以禁止恢复；国内 4 个按运营要求暂时下架且同步关闭。监控为渠道 A 5 enabled、渠道 B 5 disabled、生图 2 disabled。不要因为渠道 A 的上游错误/慢响应改本方路由或关闭其他 A 分组，只需继续证明故障不是本方导致。任何生产写入前先取最新 prestate、执行 /usr/local/sbin/openclaw-sub2api-manager backup、准备最小回滚并用真实创建 Key 目录和 /monitor 回读。写入前备份 daily-20260816T133245Z，最终备份 daily-20260816T134253Z，本机归档 openeverything-20260816-214606.tgz。不要新增 Gate、证据编译器、计划 Schema、一次性测试包、成本 daemon 或常驻 AI 管理面，不输出任何凭据或账号标识。唯一当前基线为 docs/current/current-baseline.md。
 ```
+
+
+## 2026-08-21 全项目复查读回
+
+- 发现 `sub2api.service` 曾以退出码 0 优雅退出但不在 active 状态；这不是 OOM、数据库或 Cloudflare 故障。写入前已执行现有原生一致性备份，随后仅执行 `systemctl restart sub2api.service`。
+- 重启后的内部健康为 200，systemd 为 active/running，`NRestarts=0`；公网首页返回 200，未授权 `/v1/models` 返回 401。没有创建 Key、订单或用量，没有发起供应商模型请求。
+- Redis、PostgreSQL、Apache、备份/更新 timer 和失败单元读回正常。渠道 A 仍是唯一销售边界；渠道 B、国内和生图继续保持原有停用/禁用状态，不因为供应商错误改本方路由。
+- 本轮未修改渠道、计费、监控、Cloudflare、DNS、数据库结构或故障切换；独立异地备份和实体手机验证仍是明确残余。
+- 原作者仓库复查显示当前上游已有更新 release，但生产版本已通过真实销售边界、成本保护和公网/管理面读回；本轮不做无故升级，避免把供应商错误或回归风险引入生产。
