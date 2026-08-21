@@ -6906,3 +6906,9 @@
 - New-API submodule：`git status --short` 为空；品牌补丁 `git apply --check` 通过。
 - `git diff --check`：通过。
 - staged snapshot `gitleaks dir`：扫描约 `24.26 MB`，`no leaks found`.
+## [2026-08-21] 桌面 h2 安全修复与最终异地备份收口前审计
+
+- `apps/openclaw-manager-src/src-tauri/Cargo.lock` 更新 `h2` 补丁版本，消除本轮 CI 发现的 RUSTSEC-2026-0258；保留既有 GTK3/旧宏生态维护性 warning，不做无生产收益的大范围桌面依赖迁移。
+- 本地 `cargo check --locked`、`cargo test --locked`（47 项）和 `cargo audit` 通过；远端 CI 需在提交推送后重新确认。
+- 生产只读读回保持通过；渠道、计费、Cloudflare、DNS、数据库结构和自动故障切换均未修改。
+- 独立异地备份仍按“本轮最终加密归档上传并完成远端清单读回后关闭”执行，避免用本机临时恢复能力替代独立副本。
