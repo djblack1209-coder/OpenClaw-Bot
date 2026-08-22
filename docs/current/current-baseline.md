@@ -118,3 +118,15 @@
 - 百度网盘客户端上传任务已完成；远端根目录七个分类目录可见。`04-OpenEverything` 目录进一步读回显示 5 个文件：加密归档 1.31GB、`.iv` 33.00B、`.key.enc` 384.00B、SHA-256 校验文件 95.00B、`manifest.json` 1.17KB；未下载归档。
 - 完整远端下载、解密、哈希和恢复演练未执行；本地/临时副本恢复通过不等于独立异地恢复闭环完成。
 - 不新增供应商请求、计费写入、渠道激活、代理、CDN、控制平面或重复监控。
+
+## 2026-08-22 百度远端备份读回边界
+
+- 百度 `Carven's Macbook Air/04-OpenEverything` 分类目录可读，远端显示加密归档、SHA-256 sidecar、`manifest.json` 及配套文件。
+- 本轮没有下载 1.31GB OpenEverything 归档；因此不把本地归档存在、客户端上传完成或目录可见写成 OpenEverything 的远端解密/恢复证明。
+- 本地 `auto_health_check.sh --json` 与 disaster-recovery drill 仍为本地服务边界证据；供应商错误与可选 disabled 能力继续单独归因。
+- 桌面 h2 安全修复保持在当前提交；不新增代理、CDN、负载均衡、控制面或重复监控。
+
+## 2026-08-22 跨项目备份读回边界补充
+
+- 同日中央复核已完成一次 SONIC 百度远端加密归档下载、SHA-256 匹配和本机只读解密读取；该证据属于 SONIC 项目，不转移为 OpenEverything 远端恢复证据。
+- OpenEverything 自身 `04-OpenEverything` 归档仍未下载；远端目录与文件元数据可见，但远端解密、哈希复核和恢复演练未验证。
