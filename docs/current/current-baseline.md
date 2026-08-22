@@ -137,3 +137,21 @@
 - sidecar SHA-256 匹配，校验值为 `44b472ebfaf1478295fb2e86a6feae41244af09fc9627f5c52eac10554e9d450`；RSA 包装密钥解包和 AES-256-CBC 解密成功。
 - 解密后的 tar 可读，共 158,295 个条目，未发现绝对路径或 `..` 路径；只读验证在受限临时目录完成，未写入生产。
 - 该事实关闭“远端归档不可读”的当前疑问，但不等于完整远端生产恢复演练；中央归档也已完成一次远端下载与只读可读抽样，CloudKit 远端同步可见性仍未独立验证。
+
+
+## 2026-08-22 P1/P2 隔离恢复与周期抽样
+
+- `04-OpenEverything` 百度加密归档已在 ignored 临时恢复树中完成 sidecar
+  SHA-256、RSA/AES、路径安全和安全提取，并复用现有
+  `scripts/local_backup.sh` 与 `scripts/disaster_recovery.sh --drill`。
+- 原始恢复树首次运行遇到 macOS AppleDouble `._main.sqlite` 元数据导致的
+  SQLite 拒绝；只在临时恢复树删除 `._*` 资源元数据后，native backup 和
+  restore drill 通过。`offsite=not_configured` 与 19 条 inventory warning
+  仍如实保留；不能把本地 native drill 写成独立异地生产恢复。
+- 统一恢复手册：先 fresh prestate/runtime，再校验加密归档，解密到权限收紧
+  的临时目录并检查路径；调用现有 native backup/restore dry-run；读回
+  checksum、manifest、SQLite 与清理结果；最后删除临时明文。任何生产覆盖、
+  Cloudflare/Tunnel 变更或 retention 删除都必须另行批准。
+- 每月从 OpenEverything 分类抽一份加密归档做 hash、解密、路径安全和 tar
+  读取；每季度复用 native restore drill。失败只记录具体阶段，不新增 daemon、
+  监控面、控制平面、代理、CDN 或付费容量。
