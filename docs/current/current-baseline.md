@@ -1,6 +1,6 @@
 # JIYU / Sub2API 当前生产基线
 
-> 更新时间：2026-08-21（UTC；本次全项目生产复查收口）。生产运行时是唯一事实；仓库只作为维护入口、恢复材料和异地备份。`docs/current/` 只保留本文件。
+> 更新时间：2026-08-25（UTC；本次全项目最终复查补充）。生产运行时是唯一事实；仓库只作为维护入口、恢复材料和异地备份。`docs/current/` 只保留本文件。
 
 ## 当前结论
 
@@ -10,6 +10,7 @@
 - 国内 4 个文本分组按运营要求暂时下架；其无效费率同步保持关闭，配置完整保留，后续需要时先复核成本再恢复。
 - 14 个成本型文本分组均保留原生利润保护 `profit_min_margin=0.03`、`profit_safety_buffer=0`。当前在售渠道 A 的最低配置毛利空间约 `9.09%`，5/5 通过准入。
 - 当前生产版本为 `v0.1.173-jiyu.31947794554`。本轮未改代码、未升级版本、未新增组件或控制面。
+- 2026-08-25 的全项目复查没有改变销售、计费、渠道、账号、Cloudflare 或可见节点边界；仅修复了本地健康检查对 listener 目录中两个受控元数据文件的错误计数，并保留原有测试与恢复材料。
 
 ## 1. 已通过的真实生产检查
 
@@ -155,3 +156,17 @@
 - 每月从 OpenEverything 分类抽一份加密归档做 hash、解密、路径安全和 tar
   读取；每季度复用 native restore drill。失败只记录具体阶段，不新增 daemon、
   监控面、控制平面、代理、CDN 或付费容量。
+
+## 2026-08-25 最终全量复查补充
+
+- 生产 `bash scripts/auto_health_check.sh --json` 首次只读结果为 `ok=false`，唯一坏项是 `intel_runtime` 将 listener 目录内的两个受控元数据文件与不可变事件文件混计为 `2002`。实际事件文件仍为 `2000`、6/6 来源覆盖，数据库、API、公网入口、备份新鲜度和磁盘检查没有新增故障。
+- 根因已在现有 `packages/clawbot/src/intel/runtime_health.py` 的 `_evidence_usage` 中最小修复：只统计不可变 `*-real-update-daemon.json` 事件文件，排除 `heartbeat.json` 与 `latest-real-update-daemon.json` 两个有界快照/心跳元数据。没有新增 daemon、Gate、证据编译器、计划 schema 或常驻管理面。
+- 现有 `packages/clawbot/tests/test_intel_runtime_health.py` 已补上真实文件命名形态；聚焦测试 `3 passed`。修复后同一生产检查于 `2026-08-25T16:35:38Z` 返回 `ok=true`、`release_ready=true`、6/6 来源、`2000` 事件文件/约 `0.7MB`，没有生产用户、计费或模型请求写入。
+- 本地私有 prestate 已转移到中央项目的 ignored `.staging/current/`，OpenEverything 仓库不再出现未跟踪的私有 staging 目录；只保留两处源代码/测试变更与本基线更新。
+- 仍保持原结论：渠道 A 的 5 个文本分组是唯一销售边界；渠道 B、国内文本和专用生图继续停用/禁用；供应商 `unsupported/404`、上游错误或慢响应不构成本方路由、DNS、Cloudflare 或计费修复理由。
+
+### 本轮交接提示词补充
+
+```text
+继续维护 /Users/blackdj/Desktop/OpenEverything 中的 JIYU/Sub2API。生产运行时优先；销售边界保持渠道 A 5 个文本组 active，渠道 B 5 个、国内 4 个 inactive，生图 2 个 disabled。2026-08-25 已修复 auto_health_check 对 listener 两个元数据文件的错误计数：只统计不可变 *-real-update-daemon.json，当前 6/6 来源、2000 个事件文件、ok=true、release_ready=true。不要把供应商 unsupported/404、502、403 或慢响应改写成本方路由故障；不要新增 Gate、证据编译器、计划 schema、成本 daemon、一次性测试包或常驻 AI 管理面。任何生产写入前必须取新鲜 prestate、调用现有原生备份、准备回滚并用真实业务探针读回；不得输出凭据、Cookie、Token、私钥、订阅地址或账号标识。唯一当前基线为 docs/current/current-baseline.md。
+```
