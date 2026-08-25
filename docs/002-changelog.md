@@ -5,6 +5,20 @@
 
 ## 最近更新（2026-08 / 2026-07 / 2026-06 / 2026-05）
 
+## [2026-08-25] Intel listener 事件配额误计数修复
+> 时间: `2026-08-25T16:35Z`
+> 领域: `backend` | `docs`
+> 影响模块: `Intel Brief runtime health`, `listener evidence retention`, `current baseline`
+> 关联问题: JIYU-20260825-INTEL-LISTENER-QUOTA
+### 变更内容
+- 全项目生产复查中，现有 `auto_health_check` 的唯一坏项是 listener evidence 数量 `2002` 超过 `2000` 限制；目录实际包含 2000 个不可变事件，以及 `heartbeat.json`、`latest-real-update-daemon.json` 两个有界元数据文件。
+- 现有 `_evidence_usage()` 现在只排除这两个明确的心跳/最新快照元数据，继续统计全部不可变 `*-real-update-daemon.json` 事件；没有放宽事件上限、删除历史、增加 daemon、Gate、证据编译器或新控制面。
+- 聚焦测试使用真实事件命名，并保留 `2001` 个事件必须失败的边界。
+### 验证与边界
+- `packages/clawbot/.venv312/bin/python -m pytest -q packages/clawbot/tests/test_intel_runtime_health.py`：`3 passed`。
+- `bash scripts/auto_health_check.sh --json`：`ok=true`、`release_ready=true`、6/6 来源、2000 个事件文件/约 0.7MB。
+- 没有修改生产用户、Telegram 订阅、渠道 A 销售边界、费率、计费、账号、Cloudflare、数据库或模型请求；私有 prestate 只保留在中央项目 ignored `.staging/`。
+
 ## [2026-08-16] 渠道 A 单目录与实时成本边界收敛
 > 时间: `2026-08-16T13:42Z`
 > 领域: `ai-pool` | `infra` | `docs`

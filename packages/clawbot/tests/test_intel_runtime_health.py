@@ -13,6 +13,7 @@ def test_runtime_health_reports_source_coverage_and_listener_limits(tmp_path):
     evidence_dir.mkdir()
     now = datetime(2026, 8, 4, 1, 0, tzinfo=UTC)
     (evidence_dir / "heartbeat.json").write_text(json.dumps({"timestamp": now.isoformat()}), encoding="utf-8")
+    (evidence_dir / "20260804T010000000000Z-real-update-daemon.json").touch()
     for source in EXPECTED_SOURCES:
         record_source_attempt(
             db_path,
@@ -52,7 +53,7 @@ def test_runtime_health_marks_evidence_explosion_as_bad(tmp_path):
     evidence_dir = tmp_path / "listener"
     evidence_dir.mkdir()
     for index in range(2001):
-        (evidence_dir / f"event-{index}.json").touch()
+        (evidence_dir / f"20260804T010000{index:04d}Z-real-update-daemon.json").touch()
 
     result = build_intel_runtime_health(
         db_path=db_path,

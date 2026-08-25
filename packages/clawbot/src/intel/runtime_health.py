@@ -79,8 +79,11 @@ def _evidence_usage(path: Path) -> tuple[int, int]:
         return 0, 0
     count = 0
     total = 0
+    # The limit applies to immutable listener event files only.  The directory
+    # also contains the current heartbeat and latest snapshot, which are
+    # bounded control-plane metadata and must not consume the event budget.
     for item in path.iterdir():
-        if not item.is_file():
+        if not item.is_file() or item.name in {"heartbeat.json", "latest-real-update-daemon.json"}:
             continue
         count += 1
         try:
