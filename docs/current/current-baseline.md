@@ -1,6 +1,15 @@
 # JIYU / Sub2API 当前生产基线
 
-> 更新时间：2026-08-25（UTC；本次全项目最终复查补充）。生产运行时是唯一事实；仓库只作为维护入口、恢复材料和异地备份。`docs/current/` 只保留本文件。
+> 更新时间：2026-08-28（UTC；本次全项目最终复查补充）。生产运行时是唯一事实；仓库只作为维护入口、恢复材料和异地备份。`docs/current/` 只保留本文件。
+
+## 2026-08-28 最终生产复查读回
+
+- 2026-08-28T20:44:26Z `bash scripts/auto_health_check.sh --json --strict` 返回 `ok=true`、`release_ready=true`；Gateway、ClawBot、Intel listener、调度与备份链正常，公网首页/健康页 200，未授权 `/v1/models` 401。
+- Oracle ARM1 当前生产版本仍为 `v0.1.173-jiyu.31947794554`；Sub2API、Redis、Apache、Cloudflare 443、更新 timer、备份 timer 和 Responses WebSocket 代理均正常。最新备份 `daily-20260828T195404Z` 已存在且可读。
+- 销售边界未改变：渠道 A 五个文本组 active；渠道 B 五个关联组 inactive；国内四组 inactive；生图两组 disabled。数据库中的渠道 B entity 仍显示 active，但其关联 groups 全部 inactive，这是模型语义差异，不代表公开销售目录泄漏。
+- 16 个供应商账号 active；最近 90 天没有支付订单，最近 30 天用量仅 10 条；近期上游费率同步审计均为 HTTP 200。渠道/计费/Cloudflare/DNS/路由本轮没有生产写入。
+- 官方上游当前为 Sub2API `v0.1.183`；本地 New-API 冷回滚 submodule 为 `v1.0.0-rc.4`，官方为 `v1.0.0-rc.26`。JIYU 品牌/计费补丁尚未针对新版本重放，故不直接覆盖生产。
+- 2026-08-28T20:45:06Z 总控 `vpsctl pull` 成功；HostDare/Yanhuo provider-paused 且不在本项目生产依赖链，没有发现由暂停导致的 JIYU 中断或故障转移异常。
 
 ## 当前结论
 
