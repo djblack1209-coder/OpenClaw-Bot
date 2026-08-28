@@ -3431,9 +3431,9 @@ requests-file==3.0.1 \
 requests-oauthlib==2.0.0 \
     --hash=sha256:7dd8a5c40426b779b0868c404bdef9768deccf22749cde15852df527e6269b36 \
     --hash=sha256:b3dffaebd884d8cd778494369603a9e7b58d29111bf6b41bdc2dcd87203af4e9
-restrictedpython==8.2 \
-    --hash=sha256:6ff69e2fe06674bfe88943f17f2ce8353a9bc743ee37ea7bec38ff8b4851afd1 \
-    --hash=sha256:b835c2ff87d71b76f6d8b129096cc5a1e893bf01839ab802ba47a4129f1bdfe4
+restrictedpython==8.3a1.dev0 \
+    --hash=sha256:060029a7ab4b1daf2c7a0a41e6df0a91a8ba1b932282d360f3e5af6a30cc1255 \
+    --hash=sha256:4180b848a35ff6e1b9e4e614f99da60076d7de37ddfc0711d306945a0a544369
 rich==13.9.4 \
     --hash=sha256:439594978a49a09530cff7ebc4b5c7103ef57baf48d5ea3184f21d9a2befa098 \
     --hash=sha256:6049d5e6ec054bf2779ab3358186963bac2ea89175919d699e378b99738c2a90
