@@ -1,6 +1,16 @@
 # JIYU / Sub2API 当前生产基线
 
-> 更新时间：2026-08-28（UTC；本次全项目最终复查补充）。生产运行时是唯一事实；仓库只作为维护入口、恢复材料和异地备份。`docs/current/` 只保留本文件。
+> 更新时间：2026-08-29（UTC；最终全量生产复查补充）。生产运行时是唯一事实；仓库只作为维护入口、恢复材料和异地备份。`docs/current/` 只保留本文件。
+
+## 2026-08-29 最终全量生产复查
+
+- `bash scripts/auto_health_check.sh --json --strict` 在 2026-08-29T15:17:49Z 返回 `ok=true`、`release_ready=true`；现有 LaunchAgent、备份、新版检查、Gateway、ClawBot、Intel runtime、磁盘和公共站点检查均通过。
+- 公共首页、健康入口和未授权模型入口的边界保持正确；本轮没有创建 Key、订单、用量、供应商请求或 Cloudflare/数据库写入。
+- `make sub2api-check` 复跑通过 7/7。早先一次 `command not found` 是测试进程的瞬时 shell 环境问题，随后同一工作树直接复跑成功；没有把它误修成生产代码。
+- 当前生产仍为 JIYU 定制的 `v0.1.173`，官方上游已到 `v0.1.183`；补丁、品牌、计费和发布回滚链尚未在新版本完成 staging + 真实销售探针，因此本轮不升级、不切换 New-API。
+- HostDare/Yanhuo 暂停没有形成 JIYU 的已确认中断或错误故障转移；业务继续由 Oracle ARM1 和现有 Cloudflare 链路承载。
+
+
 
 ## 2026-08-28 最终生产复查读回
 
