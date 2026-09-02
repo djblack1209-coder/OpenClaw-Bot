@@ -199,3 +199,12 @@ data/
 scripts/nightly-audit/config.env
 scripts/nightly-audit/logs/
 scripts/nightly-audit/*.plist
+
+# Runtime state produced by the local openclaw runner (never source).
+.openclaw/cron/
+.openclaw/npm/
+.openclaw/state/
+.openclaw/session-sqlite-migration-runs/
+.openclaw/openclaw.json.last-good
+.openclaw/update-check.json.migrated
+.staging/
