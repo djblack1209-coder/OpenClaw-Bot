@@ -154,6 +154,11 @@ copy_inventory_item() {
       if should_skip "$logical_path"; then
         continue
       fi
+      if [[ ! -e "$source_file" ]]; then
+        printf '%s\t%s\tmissing_during_copy\tfile\n' "$scope" "$logical_path" >> "$INVENTORY"
+        WARNINGS=$((WARNINGS + 1))
+        continue
+      fi
       copy_regular_file "$source_file" "$destination/$relative" "$logical_path"
     done < <(
       find "$source" \
