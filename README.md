@@ -28,6 +28,27 @@ OpenClaw Bot 是一个公开开源的 AI operations / personal automation 实验
 | Browser / Web | browser-use, DrissionPage, crawl4ai |
 | Infra / Ops | Docker Compose, Redis, Langfuse, loguru, APScheduler |
 
+## 基础设施
+
+**双活架构:**
+- **主节点:** Oracle ARM1 (24GB) - 主要Bot运行时
+- **辅助节点:** 腾讯云 (2GB) - 轻量级服务
+
+**网络优化:**
+- sing-box 1.14.0 代理服务
+- BBR v3 内核优化 (7.1.8-joeyblog-bbrv3)
+- Cloudflare Tunnel (jiyu.245334.xyz)
+
+**备份策略:**
+- 本地每日自动备份 (30天保留)
+- ⚠️ 异地备份待配置 (offsite_not_configured)
+- GPG加密存储到iCloud
+
+**性能:**
+- ARM1内存使用: 13.1% (充足)
+- 所有LaunchAgent正常运行
+- 健康检查: /health 返回ok
+
 ## Quick Start
 
 ### Prerequisites
