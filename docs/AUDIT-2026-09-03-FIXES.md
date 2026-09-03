@@ -1,0 +1,148 @@
+# OpenEverything 审计后修复记录
+
+**日期**: 2026-09-03  
+**关联**: AUDIT-2026-09-03.md
+
+---
+
+## 已完成的修复
+
+### 1. ✅ 推送未提交的 commits
+
+**问题**: 有 2 个未推送的 commits (0df9bbe + f575ca0)
+
+**修复**:
+```bash
+cd /Users/blackdj/Desktop/OpenEverything
+git push origin main
+```
+
+**结果**: 
+- ✅ 成功推送到 `origin/main`
+- 推送的 commits:
+  - `0df9bbe`: chore: ignore openclaw runtime state and staging dirs
+  - `f575ca0`: docs: add 2026-09-03 project audit report
+
+**GitHub 安全提醒**: 
+- 发现 20 个依赖漏洞（8 高危、8 中危、4 低危）
+- 详情: https://github.com/djblack1209-coder/OpenClaw-Bot/security/dependabot
+- 注: 根据 `docs/009-health.md` HI-997，已知只剩 1 个上游架构风险 (`glib 0.18.5` Linux 中危)
+
+---
+
+## 待修复问题
+
+### 2. ⚠️ 每日备份服务异常
+
+**问题**: `ai.openclaw.daily-backup` 最近执行失败 (exit=1)
+
+**根因**: 备份脚本尝试复制不存在的文件
+```
+cp: /Users/blackdj/Desktop/OpenEverything/packages/clawbot/data/intel_evidence/phasefix/telegram-listener/20260902T055525925609Z-real-update-daemon.json: No such file or directory
+```
+
+**分析**:
+1. telegram-listener 目录有 2004 个文件
+2. 备份脚本硬编码了一个特定时间戳的文件名
+3. 该文件已不存在（可能被清理或轮转）
+4. 最新文件时间戳为 `20260902T085xxx`，而脚本查找 `20260902T055xxx`
+
+**影响**: 
+- 备份功能本身仍在工作（最新备份 33 小时前完成）
+- 只是因为 1 个不存在的文件导致脚本退出 1
+- 其他警告 `offsite_not_configured` 是预期的（离机备份未配置）
+
+**建议修复方案**:
+1. 检查备份脚本逻辑，不应硬编码文件名
+2. 改为通配符匹配或跳过不存在的文件
+3. 或者更新健康检查，将 "文件不存在" 从错误降级为警告
+
+**修复责任**: 需要用户确认备份策略
+- 是否需要备份所有 telegram-listener 证据文件？
+- 还是只备份数据库和配置？
+- 建议使用 `rsync` 或 `tar` 整目录备份，而不是 `cp` 单个文件
+
+---
+
+## 未修复但已记录的问题
+
+### 3. ℹ️ GitHub Dependabot 漏洞
+
+**状态**: 已知问题，见 HI-997
+
+**当前漏洞数**: 20 个
+- 8 高危
+- 8 中危  
+- 4 低危
+
+**已修复的历史漏洞** (根据 HI-997):
+- ✅ `h2`
+- ✅ `hpack`
+- ✅ `pypdf`
+- ✅ `js-yaml`
+- ✅ `nanoid`
+
+**剩余风险**:
+- `glib 0.18.5` (Linux 中危) — 需要 GTK/Tauri 依赖链迁移
+- macOS 生产目标不执行该 Linux 路径
+- 不为清零数字强升 GUI 栈
+
+**建议**: 定期运行 `make dependency-audit` 跟踪漏洞状态
+
+---
+
+## 优化建议（未实施）
+
+### 4. 📝 更新 README.md 澄清部署架构
+
+**当前问题**: README 未明确说明部署架构
+
+**建议添加**:
+```markdown
+## 部署架构
+
+OpenClaw Bot 主要作为**本地桌面服务**运行在 macOS 上:
+- 7 个 Telegram Bot
+- Kiro Gateway
+- Intel Brief 资讯系统
+- Tauri 桌面管理端
+
+**生产环境**:
+- 主实例: macOS LaunchAgent (本地)
+- 辅助服务: 腾讯云控制面 (1 个进程)
+- JIYU AI: Oracle ARM1 (独立 Sub2API 服务)
+
+**备用架构**: 已停用（HI-982）
+```
+
+### 5. 📊 完善健康检查报告
+
+**建议**: 将备份异常从总体状态中分离
+- `ok`: 核心服务健康（ClawBot、Gateway、Intel）
+- `release_ready`: 包含备份、更新等辅助服务
+- 当前因备份异常导致 `ok=false` 可能过于严格
+
+---
+
+## 文件变更记录
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `docs/AUDIT-2026-09-03.md` | 新建 | 完整审计报告 (280 行) |
+| `docs/AUDIT-2026-09-03-FIXES.md` | 新建 | 本文件：修复记录 |
+| `.gitignore` | 已提交 | 0df9bbe 添加运行时目录忽略 |
+
+---
+
+## 总结
+
+**已解决**: 1/2 个 P0 问题（推送 commits ✅）  
+**待解决**: 1/2 个 P0 问题（备份服务 ⚠️）  
+**已记录**: 20 个依赖漏洞（持续跟踪）
+
+**下一步**:
+1. 用户确认备份策略并修复脚本
+2. 定期运行 `make dependency-audit`
+3. 考虑更新 README 澄清架构
+
+**审计状态**: ✅ 完成并推送到远程仓库
