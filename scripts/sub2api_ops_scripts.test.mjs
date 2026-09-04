@@ -12,6 +12,7 @@ const compatibilityWorkflow = '.github/workflows/sub2api-jiyu-compat.yml';
 const compatibilityPatches = [
   'scripts/sub2api-jiyu-v0.1.172.patch',
   'scripts/sub2api-jiyu-v0.1.173.patch',
+  'scripts/sub2api-jiyu-v0.2.0.patch',
 ];
 const regionPatches = [
   'scripts/sub2api-region-filter-v0.1.172.patch',
@@ -119,7 +120,7 @@ test('地域可信头只安装到 JIYU HTTPS VirtualHost', async () => {
       'bash',
       [
         '-c',
-        `source <(sed '$d' "$1"); rewrite_jiyu_region_headers "$2" "$3" example.test`,
+        `source /dev/stdin <<<"$(sed '$d' "$1")"; rewrite_jiyu_region_headers "$2" "$3" example.test`,
         'bash',
         manager,
         source,
@@ -140,7 +141,7 @@ test('地域可信头只安装到 JIYU HTTPS VirtualHost', async () => {
       'bash',
       [
         '-c',
-        `source <(sed '$d' "$1"); rewrite_jiyu_region_headers "$2" "$3" example.test`,
+        `source /dev/stdin <<<"$(sed '$d' "$1")"; rewrite_jiyu_region_headers "$2" "$3" example.test`,
         'bash',
         manager,
         destination,
@@ -177,7 +178,7 @@ test('中国生产闸门只位于 JIYU HTTPS VirtualHost 且可幂等恢复', as
       'bash',
       [
         '-c',
-        `source <(sed '$d' "$1"); rewrite_jiyu_cn_production_gate "$2" "$3" example.test pause`,
+        `source /dev/stdin <<<"$(sed '$d' "$1")"; rewrite_jiyu_cn_production_gate "$2" "$3" example.test pause`,
         'bash',
         manager,
         source,
@@ -197,7 +198,7 @@ test('中国生产闸门只位于 JIYU HTTPS VirtualHost 且可幂等恢复', as
       'bash',
       [
         '-c',
-        `source <(sed '$d' "$1"); rewrite_jiyu_cn_production_gate "$2" "$3" example.test resume`,
+        `source /dev/stdin <<<"$(sed '$d' "$1")"; rewrite_jiyu_cn_production_gate "$2" "$3" example.test resume`,
         'bash',
         manager,
         paused,
@@ -274,7 +275,8 @@ test('充值页只使用固定公开整店且 WebUI 更新只能进入固定 roo
   assert.doesNotMatch(brokerContent, /eval |bash -c|sh -c/);
   assert.match(workflowContent, /go test -tags embed \.\/internal\/web/);
   assert.match(workflowContent, /go build -tags embed/);
-  assert.match(workflowContent, /v0\.1\.172 \| v0\.1\.173/);
+  assert.match(workflowContent, /v0\.1\.172 \| v0\.1\.173 \| v0\.2\.0/);
+  assert.match(workflowContent, /UPSTREAM_TAG.*v0\.2\.0.*sub2api-jiyu-v0\.2\.0\.patch/s);
   assert.match(workflowContent, /id: reviewed/);
   assert.match(workflowContent, /GITHUB_STEP_SUMMARY/);
   assert.match(workflowContent, /echo "skip=true"/);
