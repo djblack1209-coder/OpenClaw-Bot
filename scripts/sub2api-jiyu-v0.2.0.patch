@@ -1,0 +1,2183 @@
+diff --git a/backend/cmd/server/wire_gen.go b/backend/cmd/server/wire_gen.go
+index 5ec4892..d6637f0 100644
+--- a/backend/cmd/server/wire_gen.go
++++ b/backend/cmd/server/wire_gen.go
+@@ -174,7 +174,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
+ 	announcementService := service.NewAnnouncementService(announcementRepository, announcementReadRepository, userRepository, userSubscriptionRepository)
+ 	announcementHandler := handler.NewAnnouncementHandler(announcementService)
+ 	channelMonitorRepository := repository.NewChannelMonitorRepository(client, db)
+-	channelMonitorService := service.ProvideChannelMonitorService(channelMonitorRepository, secretEncryptor, settingService)
++	channelMonitorService := service.ProvideChannelMonitorService(channelMonitorRepository, secretEncryptor, settingService, db)
+ 	channelMonitorUserHandler := handler.NewChannelMonitorUserHandler(channelMonitorService, settingService)
+ 	channelMonitorV2Repository := repository.NewChannelMonitorV2Repository(db)
+ 	channelMonitorV2Service := service.ProvideChannelMonitorV2Service(channelMonitorV2Repository, settingService)
+diff --git a/backend/internal/handler/api_key_handler.go b/backend/internal/handler/api_key_handler.go
+index 6361b97..c5bdfe3 100644
+--- a/backend/internal/handler/api_key_handler.go
++++ b/backend/internal/handler/api_key_handler.go
+@@ -334,6 +334,9 @@ func (h *APIKeyHandler) GetAvailableGroups(c *gin.Context) {
+ 
+ 	out := make([]dto.Group, 0, len(groups))
+ 	for i := range groups {
++		if !service.IsJiyuGroupAllowed(c.GetHeader("X-JIYU-Country"), groups[i].Description) {
++			continue
++		}
+ 		out = append(out, *dto.GroupFromService(&groups[i]))
+ 	}
+ 	response.Success(c, out)
+diff --git a/backend/internal/handler/available_channel_handler.go b/backend/internal/handler/available_channel_handler.go
+index 5d35ff3..d33070f 100644
+--- a/backend/internal/handler/available_channel_handler.go
++++ b/backend/internal/handler/available_channel_handler.go
+@@ -140,6 +140,9 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
+ 	}
+ 	allowedGroupIDs := make(map[int64]struct{}, len(userGroups))
+ 	for i := range userGroups {
++		if !service.IsJiyuGroupAllowed(c.GetHeader("X-JIYU-Country"), userGroups[i].Description) {
++			continue
++		}
+ 		allowedGroupIDs[userGroups[i].ID] = struct{}{}
+ 	}
+ 
+diff --git a/backend/internal/handler/model_plaza_handler.go b/backend/internal/handler/model_plaza_handler.go
+index 8ac8c6a..f937b8f 100644
+--- a/backend/internal/handler/model_plaza_handler.go
++++ b/backend/internal/handler/model_plaza_handler.go
+@@ -151,6 +151,9 @@ func (h *ModelPlazaHandler) Get(c *gin.Context) {
+ 
+ 	out := make([]modelPlazaGroup, 0, len(visible))
+ 	for i := range visible {
++		if !service.IsJiyuGroupAllowed(c.GetHeader("X-JIYU-Country"), visible[i].Description) {
++			continue
++		}
+ 		out = append(out, toModelPlazaGroupDTO(&visible[i], userRates))
+ 	}
+ 	response.Success(c, modelPlazaResponse{
+diff --git a/backend/internal/repository/account_repo.go b/backend/internal/repository/account_repo.go
+index ff0335e..ae83134 100644
+--- a/backend/internal/repository/account_repo.go
++++ b/backend/internal/repository/account_repo.go
+@@ -15,6 +15,7 @@ import (
+ 	"database/sql"
+ 	"encoding/json"
+ 	"errors"
++	"fmt"
+ 	"strconv"
+ 	"strings"
+ 	"time"
+@@ -2749,9 +2750,93 @@ func (r *accountRepository) updateUpstreamBillingProbeSnapshotInTx(
+ 	if affected == 0 {
+ 		return service.ErrUpstreamBillingProbeIdentityChanged
+ 	}
++	if rateMultiplier != nil {
++		if err := syncUpstreamBillingTextGroupRates(ctx, client, account, *rateMultiplier); err != nil {
++			return err
++		}
++	}
+ 	return enqueueSchedulerOutbox(ctx, client, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, nil)
+ }
+ 
++// syncUpstreamBillingTextGroupRates keeps the single text group associated with
++// a rate-sync-enabled account at the documented account-rate + 0.05 contract.
++// The account-level switch is the explicit managed-price opt-in, so an existing
++// group drift must converge on the next successful probe. User-specific
++// overrides and ambiguous/image bindings remain excluded.
++func syncUpstreamBillingTextGroupRates(ctx context.Context, client *dbent.Client, account *service.Account, nextAccountRate float64) error {
++	if account == nil || nextAccountRate <= 0 {
++		return nil
++	}
++	rows, err := client.QueryContext(ctx, `
++		SELECT g.id, g.rate_multiplier
++		FROM groups g
++		JOIN account_groups ag ON ag.group_id = g.id
++		WHERE ag.account_id = $1
++		  AND g.platform = $2
++		  AND g.status = 'active'
++		  AND COALESCE(g.allow_image_generation, false) = false
++		  AND NOT EXISTS (
++			SELECT 1 FROM user_group_rate_multipliers ugr
++			WHERE ugr.group_id = g.id
++			  AND (ugr.rate_multiplier IS NOT NULL OR ugr.rpm_override IS NOT NULL)
++		  )
++		  AND g.deleted_at IS NULL
++		FOR UPDATE`, account.ID, account.Platform)
++	if err != nil {
++		return err
++	}
++	defer func() { _ = rows.Close() }()
++	type groupRate struct {
++		id   int64
++		rate float64
++	}
++	groups := make([]groupRate, 0, 1)
++	for rows.Next() {
++		var item groupRate
++		if err := rows.Scan(&item.id, &item.rate); err != nil {
++			return err
++		}
++		groups = append(groups, item)
++	}
++	if err := rows.Err(); err != nil {
++		return err
++	}
++	if len(groups) != 1 {
++		return nil
++	}
++	newGroupRate := nextAccountRate + 0.05
++	result, err := client.ExecContext(ctx, `
++		UPDATE groups SET rate_multiplier = $1::numeric, updated_at = NOW()
++		WHERE id = $2 AND rate_multiplier = $3::numeric AND deleted_at IS NULL`, newGroupRate, groups[0].id, groups[0].rate)
++	if err != nil {
++		return err
++	}
++	affected, err := result.RowsAffected()
++	if err != nil {
++		return err
++	}
++	if affected != 1 {
++		return fmt.Errorf("upstream billing group rate CAS failed")
++	}
++	if err := enqueueSchedulerOutbox(ctx, client, service.SchedulerOutboxEventGroupChanged, nil, &groups[0].id, nil); err != nil {
++		return err
++	}
++	// Keep the audit record metadata-only: no account, credential, or model
++	// identifiers are persisted, and the request body remains empty.
++	detail, _ := json.Marshal(map[string]any{
++		"source":             "upstream_billing_probe",
++		"account_rate":       nextAccountRate,
++		"text_group_rate":    newGroupRate,
++		"rate_markup":        0.05,
++		"groups_updated":     1,
++		"manual_price_guard": true,
++	})
++	_, err = client.ExecContext(ctx, `
++		INSERT INTO audit_logs (created_at, actor_role, auth_method, action, method, path, request_body, status_code, latency_ms, extra)
++		VALUES (NOW(), 'system', 'internal', 'pricing.upstream_rate_sync', 'INTERNAL', '/internal/upstream-billing', '', 200, 0, $1::jsonb)`, string(detail))
++	return err
++}
++
+ func lockAndMatchProbeProxyIdentity(ctx context.Context, client *dbent.Client, account *service.Account) (bool, error) {
+ 	if account.ProxyID == nil {
+ 		return true, nil
+diff --git a/backend/internal/repository/account_repo_upstream_billing_probe_cas_test.go b/backend/internal/repository/account_repo_upstream_billing_probe_cas_test.go
+index f9fe019..1bc1f23 100644
+--- a/backend/internal/repository/account_repo_upstream_billing_probe_cas_test.go
++++ b/backend/internal/repository/account_repo_upstream_billing_probe_cas_test.go
+@@ -101,6 +101,9 @@ func TestUpdateUpstreamBillingProbeSnapshotCommitsSnapshotAndOutboxAtomically(t
+ 	mock.ExpectExec(`(?s)`+regexp.QuoteMeta("UPDATE accounts")+`.*`+regexp.QuoteMeta("rate_multiplier = CASE")+`.*`+regexp.QuoteMeta("THEN $10::numeric")+`.*`+regexp.QuoteMeta("AND credentials = $5::jsonb")+`.*`+regexp.QuoteMeta("AND proxy_id IS NOT DISTINCT FROM $6")+`.*`+regexp.QuoteMeta("COALESCE(extra -> 'upstream_billing_probe', 'null'::jsonb) = $7::jsonb")).
+ 		WithArgs(sqlmock.AnyArg(), int64(17), service.PlatformOpenAI, service.AccountTypeAPIKey, `{"api_key":"sk-test"}`, nil, "null", "true", "true", 0.065).
+ 		WillReturnResult(sqlmock.NewResult(0, 1))
++	mock.ExpectQuery("SELECT g.id, g.rate_multiplier").
++		WithArgs(int64(17), service.PlatformOpenAI).
++		WillReturnRows(sqlmock.NewRows([]string{"id", "rate_multiplier"}))
+ 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO scheduler_outbox")).
+ 		WithArgs(service.SchedulerOutboxEventAccountChanged, int64(17), nil, nil, sqlmock.AnyArg()).
+ 		WillReturnResult(sqlmock.NewResult(1, 1))
+@@ -130,6 +133,57 @@ func TestUpdateUpstreamBillingProbeSnapshotCommitsSnapshotAndOutboxAtomically(t
+ 	require.NoError(t, mock.ExpectationsWereMet())
+ }
+ 
++func TestUpdateUpstreamBillingProbeSnapshotRepairsManagedGroupRateDrift(t *testing.T) {
++	db, mock, err := sqlmock.New()
++	require.NoError(t, err)
++	t.Cleanup(func() { _ = db.Close() })
++	driver := entsql.OpenDB(dialect.Postgres, db)
++	client := dbent.NewClient(dbent.Driver(driver))
++	t.Cleanup(func() { _ = client.Close() })
++
++	mock.ExpectBegin()
++	mock.ExpectExec(`(?s)`+regexp.QuoteMeta("UPDATE accounts")+`.*`+regexp.QuoteMeta("rate_multiplier = CASE")+`.*`+regexp.QuoteMeta("THEN $10::numeric")).
++		WithArgs(sqlmock.AnyArg(), int64(17), service.PlatformOpenAI, service.AccountTypeAPIKey, `{"api_key":"sk-test"}`, nil, "null", "true", "true", 0.5).
++		WillReturnResult(sqlmock.NewResult(0, 1))
++	mock.ExpectQuery("SELECT g.id, g.rate_multiplier").
++		WithArgs(int64(17), service.PlatformOpenAI).
++		WillReturnRows(sqlmock.NewRows([]string{"id", "rate_multiplier"}).AddRow(int64(31), 0.17))
++	mock.ExpectExec(`(?s)`+regexp.QuoteMeta("UPDATE groups SET rate_multiplier = $1::numeric, updated_at = NOW()")+`.*`+regexp.QuoteMeta("WHERE id = $2")+`.*`+regexp.QuoteMeta("AND rate_multiplier = $3::numeric")).
++		WithArgs(0.55, int64(31), 0.17).
++		WillReturnResult(sqlmock.NewResult(0, 1))
++	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO scheduler_outbox")).
++		WithArgs(service.SchedulerOutboxEventGroupChanged, nil, int64(31), nil, sqlmock.AnyArg()).
++		WillReturnResult(sqlmock.NewResult(1, 1))
++	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO audit_logs")).
++		WithArgs(sqlmock.AnyArg()).
++		WillReturnResult(sqlmock.NewResult(1, 1))
++	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO scheduler_outbox")).
++		WithArgs(service.SchedulerOutboxEventAccountChanged, int64(17), nil, nil, sqlmock.AnyArg()).
++		WillReturnResult(sqlmock.NewResult(1, 1))
++	mock.ExpectCommit()
++
++	repo := newAccountRepositoryWithSQL(client, db, nil)
++	account := &service.Account{
++		ID:          17,
++		Platform:    service.PlatformOpenAI,
++		Type:        service.AccountTypeAPIKey,
++		Credentials: map[string]any{"api_key": "sk-test"},
++		Extra: map[string]any{
++			service.UpstreamBillingProbeEnabledExtraKey:    true,
++			service.UpstreamBillingRateSyncEnabledExtraKey: true,
++		},
++	}
++	nextRate := 0.5
++
++	err = repo.UpdateUpstreamBillingProbeSnapshot(
++		context.Background(), account,
++		&service.UpstreamBillingProbeSnapshot{Status: service.UpstreamBillingProbeStatusOK},
++		&nextRate,
++	)
++	require.NoError(t, err)
++	require.NoError(t, mock.ExpectationsWereMet())
++}
++
+ func TestUpdateUpstreamBillingProbeSnapshotRejectsChangedProxyIdentity(t *testing.T) {
+ 	db, mock, err := sqlmock.New()
+ 	require.NoError(t, err)
+@@ -178,6 +232,9 @@ func TestUpdateUpstreamBillingProbeSnapshotRollsBackWhenOutboxFails(t *testing.T
+ 	mock.ExpectExec(`(?s)`+regexp.QuoteMeta("UPDATE accounts")+`.*`+regexp.QuoteMeta("AND proxy_id IS NOT DISTINCT FROM $6")+`.*`+regexp.QuoteMeta("COALESCE(extra -> 'upstream_billing_probe', 'null'::jsonb) = $7::jsonb")).
+ 		WithArgs(sqlmock.AnyArg(), int64(18), service.PlatformOpenAI, service.AccountTypeAPIKey, `{"api_key":"sk-test"}`, nil, "null", "true", "true", 0.7).
+ 		WillReturnResult(sqlmock.NewResult(0, 1))
++	mock.ExpectQuery("SELECT g.id, g.rate_multiplier").
++		WithArgs(int64(18), service.PlatformOpenAI).
++		WillReturnRows(sqlmock.NewRows([]string{"id", "rate_multiplier"}))
+ 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO scheduler_outbox")).WillReturnError(errors.New("outbox failed"))
+ 	mock.ExpectRollback()
+ 
+diff --git a/backend/internal/repository/channel_monitor_repo.go b/backend/internal/repository/channel_monitor_repo.go
+index c4586bc..f552da4 100644
+--- a/backend/internal/repository/channel_monitor_repo.go
++++ b/backend/internal/repository/channel_monitor_repo.go
+@@ -99,6 +99,14 @@ func (r *channelMonitorRepository) FindByDuplicateOperationID(ctx context.Contex
+ 	return entToServiceMonitor(row), nil
+ }
+ 
++func (r *channelMonitorRepository) SetEnabled(ctx context.Context, id int64, enabled bool) error {
++	client := clientFromContext(ctx, r.client)
++	if err := client.ChannelMonitor.UpdateOneID(id).SetEnabled(enabled).Exec(ctx); err != nil {
++		return translatePersistenceError(err, service.ErrChannelMonitorNotFound, nil)
++	}
++	return nil
++}
++
+ func (r *channelMonitorRepository) GetByID(ctx context.Context, id int64) (*service.ChannelMonitor, error) {
+ 	row, err := r.client.ChannelMonitor.Query().
+ 		Where(channelmonitor.IDEQ(id)).
+diff --git a/backend/internal/server/middleware/api_key_auth.go b/backend/internal/server/middleware/api_key_auth.go
+index a595fbd..ca7163b 100644
+--- a/backend/internal/server/middleware/api_key_auth.go
++++ b/backend/internal/server/middleware/api_key_auth.go
+@@ -181,6 +181,9 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
+ 			})
+ 			c.Set(string(ContextKeyUserRole), apiKey.User.Role)
+ 			setGroupContext(c, apiKey.Group)
++			if !enforceJiyuRegion(c, apiKey.Group) {
++				return
++			}
+ 			if !billingInfoRequest {
+ 				_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
+ 			}
+@@ -279,6 +282,9 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
+ 		})
+ 		c.Set(string(ContextKeyUserRole), apiKey.User.Role)
+ 		setGroupContext(c, apiKey.Group)
++		if !enforceJiyuRegion(c, apiKey.Group) {
++			return
++		}
+ 		if !billingInfoRequest {
+ 			_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
+ 		}
+diff --git a/backend/internal/server/middleware/api_key_auth_google.go b/backend/internal/server/middleware/api_key_auth_google.go
+index 9efbbcb..a3c751e 100644
+--- a/backend/internal/server/middleware/api_key_auth_google.go
++++ b/backend/internal/server/middleware/api_key_auth_google.go
+@@ -140,6 +140,9 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
+ 			})
+ 			c.Set(string(ContextKeyUserRole), apiKey.User.Role)
+ 			setGroupContext(c, apiKey.Group)
++			if !enforceJiyuRegion(c, apiKey.Group) {
++				return
++			}
+ 			_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
+ 			c.Next()
+ 			return
+@@ -213,6 +216,9 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
+ 		})
+ 		c.Set(string(ContextKeyUserRole), apiKey.User.Role)
+ 		setGroupContext(c, apiKey.Group)
++		if !enforceJiyuRegion(c, apiKey.Group) {
++			return
++		}
+ 		_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
+ 		c.Next()
+ 	}
+diff --git a/backend/internal/server/middleware/jiyu_region.go b/backend/internal/server/middleware/jiyu_region.go
+new file mode 100644
+index 0000000..a5fd689
+--- /dev/null
++++ b/backend/internal/server/middleware/jiyu_region.go
+@@ -0,0 +1,23 @@
++package middleware
++
++import (
++	"net/http"
++
++	"github.com/Wei-Shaw/sub2api/internal/service"
++	"github.com/gin-gonic/gin"
++)
++
++// enforceJiyuRegion applies the production split at the shared API-key gate.
++// Cloudflare/Apache supplies X-JIYU-Country after stripping the client header;
++// missing or malformed values are deliberately treated as restricted.
++func enforceJiyuRegion(c *gin.Context, group *service.Group) bool {
++	if group == nil {
++		return true
++	}
++	if service.IsJiyuGroupAllowed(c.GetHeader("X-JIYU-Country"), group.Description) {
++		return true
++	}
++	service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
++	AbortWithError(c, http.StatusForbidden, "REGION_MODEL_RESTRICTED", "This model group is unavailable in the current region")
++	return false
++}
+diff --git a/backend/internal/service/channel.go b/backend/internal/service/channel.go
+index df3b5f8..917f372 100644
+--- a/backend/internal/service/channel.go
++++ b/backend/internal/service/channel.go
+@@ -545,6 +545,8 @@ func buildPricingIndex(pricings []ChannelModelPricing) map[string]*platformPrici
+ //   - 通配符 src（如 "claude-3-*"）：用同 platform 定价里前缀匹配的模型作为候选展开，
+ //     每个候选用自身定价（通配符场景一般是 passthrough，target 通常也是通配符）。
+ //   - "*" 单独 mapping key 走通配符分支（前缀为空 → 全展开）。
++//   - 当 RestrictModels 启用且存在显式映射时，映射是唯一的可用模型事实来源；
++//     定价仍负责计费，但不能单独把模型重新暴露出来。
+ //   - Pass B（pricing-only）：遍历 ModelPricing 中所有非通配符模型，对未在 Pass A 添加过的
+ //     补齐——显示名 = 定价模型名，定价 = 自身（这是关键修复：定价存在即代表渠道支持该模型，
+ //     即使没配映射）。
+@@ -632,11 +634,14 @@ func (c *Channel) SupportedModels() []SupportedModel {
+ 		}
+ 	}
+ 
+-	// Pass B：从 pricing 补齐 mapping 未覆盖的具体模型（修复"定价存在但没配映射 → 不显示"）
+-	for platform, pidx := range idx {
+-		for _, name := range pidx.names {
+-			display, pricing := lookup(pidx, name)
+-			add(platform, display, pricing)
++	// 受限渠道的显式映射来自已验证的上游模型清单，不能让历史定价行绕过该白名单。
++	if !c.RestrictModels || len(c.ModelMapping) == 0 {
++		// Pass B：从 pricing 补齐 mapping 未覆盖的具体模型（修复"定价存在但没配映射 → 不显示"）
++		for platform, pidx := range idx {
++			for _, name := range pidx.names {
++				display, pricing := lookup(pidx, name)
++				add(platform, display, pricing)
++			}
+ 		}
+ 	}
+ 
+diff --git a/backend/internal/service/channel_monitor_account_source_test.go b/backend/internal/service/channel_monitor_account_source_test.go
+new file mode 100644
+index 0000000..4ce25fb
+--- /dev/null
++++ b/backend/internal/service/channel_monitor_account_source_test.go
+@@ -0,0 +1,111 @@
++package service
++
++import (
++	"context"
++	"errors"
++	"testing"
++
++	"github.com/DATA-DOG/go-sqlmock"
++	"github.com/stretchr/testify/require"
++)
++
++type inactiveBindingRuntimeStub struct{}
++
++func (inactiveBindingRuntimeStub) GetChannelMonitorRuntime(context.Context) ChannelMonitorRuntime {
++	return ChannelMonitorRuntime{Enabled: true, Mode: ChannelMonitorModeV1}
++}
++
++type inactiveBindingResolverStub struct{}
++
++func (inactiveBindingResolverStub) Resolve(context.Context, *ChannelMonitor) (string, string, bool, error) {
++	return "", "", false, ErrChannelMonitorManagedBindingInactive
++}
++
++type inactiveBindingRepositoryStub struct {
++	ChannelMonitorRepository
++	monitor     *ChannelMonitor
++	disabledIDs []int64
++}
++
++func (r *inactiveBindingRepositoryStub) GetByID(context.Context, int64) (*ChannelMonitor, error) {
++	return r.monitor, nil
++}
++
++func (r *inactiveBindingRepositoryStub) SetEnabled(_ context.Context, id int64, enabled bool) error {
++	if enabled {
++		return errors.New("inactive monitor must only be disabled")
++	}
++	r.disabledIDs = append(r.disabledIDs, id)
++	return nil
++}
++
++type inactiveBindingSchedulerStub struct {
++	unscheduledIDs []int64
++}
++
++func (*inactiveBindingSchedulerStub) Schedule(*ChannelMonitor) {}
++
++func (s *inactiveBindingSchedulerStub) Unschedule(id int64) {
++	s.unscheduledIDs = append(s.unscheduledIDs, id)
++}
++
++func TestSQLChannelMonitorCredentialResolverUsesCurrentAccount(t *testing.T) {
++	db, mock, err := sqlmock.New()
++	require.NoError(t, err)
++	t.Cleanup(func() { _ = db.Close() })
++
++	mock.ExpectQuery("SELECT COALESCE").
++		WithArgs("JIYU 渠道A · OpenAI Plus", "openai").
++		WillReturnRows(sqlmock.NewRows([]string{"base_url", "api_key"}).
++			AddRow("https://upstream.test/v1", "runtime-key"))
++
++	resolver := NewSQLChannelMonitorCredentialResolver(db)
++	endpoint, apiKey, found, err := resolver.Resolve(context.Background(), &ChannelMonitor{
++		GroupName: "JIYU 渠道A · OpenAI Plus",
++		Provider:  "openai",
++		Endpoint:  "https://legacy.test",
++	})
++	require.NoError(t, err)
++	require.True(t, found)
++	require.Equal(t, "https://upstream.test", endpoint)
++	require.Equal(t, "runtime-key", apiKey)
++	require.NoError(t, mock.ExpectationsWereMet())
++}
++
++func TestSQLChannelMonitorCredentialResolverIgnoresDisabledManagedBinding(t *testing.T) {
++	db, mock, err := sqlmock.New()
++	require.NoError(t, err)
++	t.Cleanup(func() { _ = db.Close() })
++
++	mock.ExpectQuery("SELECT COALESCE").
++		WithArgs("JIYU 渠道A · OpenAI Pro", "openai").
++		WillReturnRows(sqlmock.NewRows([]string{"base_url", "api_key"}))
++	mock.ExpectQuery("SELECT EXISTS").
++		WithArgs("JIYU 渠道A · OpenAI Pro", "openai").
++		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
++
++	resolver := NewSQLChannelMonitorCredentialResolver(db)
++	_, _, found, err := resolver.Resolve(context.Background(), &ChannelMonitor{
++		GroupName: "JIYU 渠道A · OpenAI Pro",
++		Provider:  "openai",
++		Endpoint:  "https://legacy.test",
++	})
++	require.ErrorIs(t, err, ErrChannelMonitorManagedBindingInactive)
++	require.False(t, found)
++	require.NoError(t, mock.ExpectationsWereMet())
++}
++
++func TestRunCheckDisablesInactiveManagedBindingWithoutProbe(t *testing.T) {
++	repo := &inactiveBindingRepositoryStub{monitor: &ChannelMonitor{ID: 41, APIKey: ""}}
++	scheduler := &inactiveBindingSchedulerStub{}
++	svc := NewChannelMonitorService(repo, nil)
++	svc.SetRuntimeReader(inactiveBindingRuntimeStub{})
++	svc.SetCredentialResolver(inactiveBindingResolverStub{})
++	svc.SetScheduler(scheduler)
++
++	results, err := svc.RunCheck(context.Background(), 41)
++	require.ErrorIs(t, err, ErrChannelMonitorManagedBindingInactive)
++	require.Nil(t, results)
++	require.Equal(t, []int64{41}, repo.disabledIDs)
++	require.Equal(t, []int64{41}, scheduler.unscheduledIDs)
++}
+diff --git a/backend/internal/service/channel_monitor_const.go b/backend/internal/service/channel_monitor_const.go
+index 6a2b9b9..6074901 100644
+--- a/backend/internal/service/channel_monitor_const.go
++++ b/backend/internal/service/channel_monitor_const.go
+@@ -201,6 +201,9 @@ var (
+ 	ErrChannelMonitorAPIKeyDecryptFailed = infraerrors.InternalServer(
+ 		"CHANNEL_MONITOR_KEY_DECRYPT_FAILED", "api key decryption failed; please re-edit the monitor with a fresh key",
+ 	)
++	ErrChannelMonitorManagedBindingInactive = infraerrors.Conflict(
++		"CHANNEL_MONITOR_MANAGED_BINDING_INACTIVE", "managed channel binding is inactive",
++	)
+ )
+ 
+ var (
+diff --git a/backend/internal/service/channel_monitor_service.go b/backend/internal/service/channel_monitor_service.go
+index b08a623..221386c 100644
+--- a/backend/internal/service/channel_monitor_service.go
++++ b/backend/internal/service/channel_monitor_service.go
+@@ -3,7 +3,9 @@ package service
+ import (
+ 	"context"
+ 	"crypto/sha256"
++	"database/sql"
+ 	"encoding/json"
++	"errors"
+ 	"fmt"
+ 	"log/slog"
+ 	"strconv"
+@@ -26,6 +28,7 @@ type ChannelMonitorRepository interface {
+ 	Delete(ctx context.Context, id int64) error
+ 	List(ctx context.Context, params ChannelMonitorListParams) ([]*ChannelMonitor, int64, error)
+ 	FindByDuplicateOperationID(ctx context.Context, operationID string) (*ChannelMonitor, error)
++	SetEnabled(ctx context.Context, id int64, enabled bool) error
+ 
+ 	// 调度器辅助
+ 	ListEnabled(ctx context.Context) ([]*ChannelMonitor, error)
+@@ -68,6 +71,15 @@ type channelMonitorRuntimeReader interface {
+ 	GetChannelMonitorRuntime(ctx context.Context) ChannelMonitorRuntime
+ }
+ 
++// ChannelMonitorCredentialResolver supplies the current account credentials
++// for a monitor at probe time. V1 keeps its own encrypted snapshot for
++// backwards-compatible editing, but active checks use the account/channel
++// relationship when one exists so a key or base URL replacement cannot leave
++// the monitor probing the previous credential.
++type ChannelMonitorCredentialResolver interface {
++	Resolve(ctx context.Context, monitor *ChannelMonitor) (endpoint, apiKey string, found bool, err error)
++}
++
+ // ChannelMonitorService 渠道监控管理服务。
+ type ChannelMonitorService struct {
+ 	repo      ChannelMonitorRepository
+@@ -77,7 +89,8 @@ type ChannelMonitorService struct {
+ 	settings channelMonitorRuntimeReader
+ 	// scheduler 由 wire 通过 SetScheduler 注入；CRUD 后调用对应钩子即时同步任务。
+ 	// 测试或未注入场景下保持 nil，所有钩子调用变为 no-op。
+-	scheduler MonitorScheduler
++	scheduler          MonitorScheduler
++	credentialResolver ChannelMonitorCredentialResolver
+ 	// quotaFetcher 由 wire 通过 SetQuotaFetcher 注入（accountUsage/CN 服务在本服务
+ 	// 之后构造，构造参数注入会破坏既有依赖顺序）。nil 时 fail-closed：
+ 	// 配额模式的检测产出「未配置」错误快照，Create/Update 关联账号直接报错。
+@@ -106,6 +119,16 @@ func (s *ChannelMonitorService) SetRuntimeReader(r channelMonitorRuntimeReader)
+ 	s.settings = r
+ }
+ 
++// SetCredentialResolver injects the account-backed credential lookup used by
++// active V1 probes. It is optional so focused unit tests can keep their
++// existing in-memory monitor fixtures.
++func (s *ChannelMonitorService) SetCredentialResolver(r ChannelMonitorCredentialResolver) {
++	if s == nil {
++		return
++	}
++	s.credentialResolver = r
++}
++
+ func (s *ChannelMonitorService) probeRuntime(ctx context.Context) ChannelMonitorRuntime {
+ 	if s == nil || s.settings == nil {
+ 		return ChannelMonitorRuntime{Enabled: true, Mode: ChannelMonitorModeV2}
+@@ -614,6 +637,26 @@ func (s *ChannelMonitorService) RunCheck(ctx context.Context, id int64) ([]*Chec
+ 	if err != nil {
+ 		return nil, err
+ 	}
++	if s.credentialResolver != nil {
++		endpoint, apiKey, found, resolveErr := s.credentialResolver.Resolve(ctx, m)
++		if resolveErr != nil {
++			if errors.Is(resolveErr, ErrChannelMonitorManagedBindingInactive) {
++				if err := s.repo.SetEnabled(ctx, m.ID, false); err != nil {
++					return nil, fmt.Errorf("disable inactive managed channel monitor: %w", err)
++				}
++				if s.scheduler != nil {
++					s.scheduler.Unschedule(m.ID)
++				}
++				return nil, ErrChannelMonitorManagedBindingInactive
++			}
++			return nil, fmt.Errorf("resolve current channel account credentials: %w", resolveErr)
++		}
++		if found {
++			m.Endpoint = endpoint
++			m.APIKey = apiKey
++			m.APIKeyDecryptFailed = false
++		}
++	}
+ 	checkMode := defaultCheckMode(m.CheckMode)
+ 	if checkMode != MonitorCheckModeQuota && m.APIKeyDecryptFailed {
+ 		return nil, ErrChannelMonitorAPIKeyDecryptFailed
+@@ -667,6 +710,82 @@ func attachQuotaSnapshot(results []*CheckResult, snapshot *domain.MonitorQuotaSn
+ 	}
+ }
+ 
++// sqlChannelMonitorCredentialResolver resolves the current active account
++// through the existing channel -> group -> account binding. The query returns
++// secrets only to the in-process probe; it never logs or persists them.
++type sqlChannelMonitorCredentialResolver struct {
++	db *sql.DB
++}
++
++// NewSQLChannelMonitorCredentialResolver creates the production resolver.
++func NewSQLChannelMonitorCredentialResolver(db *sql.DB) ChannelMonitorCredentialResolver {
++	if db == nil {
++		return nil
++	}
++	return &sqlChannelMonitorCredentialResolver{db: db}
++}
++
++func (r *sqlChannelMonitorCredentialResolver) Resolve(ctx context.Context, monitor *ChannelMonitor) (endpoint, apiKey string, found bool, err error) {
++	if r == nil || r.db == nil || monitor == nil || strings.TrimSpace(monitor.GroupName) == "" {
++		return "", "", false, nil
++	}
++	err = r.db.QueryRowContext(ctx, `
++		SELECT COALESCE(a.credentials->>'base_url', ''),
++		       COALESCE(a.credentials->>'api_key', '')
++		FROM channels c
++		JOIN channel_groups cg ON cg.channel_id = c.id
++		JOIN groups g ON g.id = cg.group_id
++		JOIN account_groups ag ON ag.group_id = g.id
++		JOIN accounts a ON a.id = ag.account_id
++		WHERE c.status = 'active'
++		  AND g.status = 'active'
++		  AND g.deleted_at IS NULL
++		  AND a.status = 'active'
++		  AND a.deleted_at IS NULL
++		  AND g.platform = $2
++		  AND (c.name = $1 OR g.name = $1)
++		ORDER BY CASE WHEN c.name = $1 THEN 0 ELSE 1 END,
++		         ag.priority ASC,
++		         a.id ASC
++		LIMIT 1`, strings.TrimSpace(monitor.GroupName), monitor.Provider).Scan(&endpoint, &apiKey)
++	if errors.Is(err, sql.ErrNoRows) {
++		var managed bool
++		err = r.db.QueryRowContext(ctx, `
++			SELECT EXISTS (
++				SELECT 1
++				FROM channels c
++				JOIN channel_groups cg ON cg.channel_id = c.id
++				JOIN groups g ON g.id = cg.group_id
++				WHERE g.platform = $2
++				  AND (c.name = $1 OR g.name = $1)
++			)`, strings.TrimSpace(monitor.GroupName), monitor.Provider).Scan(&managed)
++		if err != nil {
++			return "", "", false, err
++		}
++		if managed {
++			return "", "", false, ErrChannelMonitorManagedBindingInactive
++		}
++		// Standalone monitors created outside a JIYU channel keep their legacy
++		// snapshot and remain compatible with the existing V1 UI.
++		return "", "", false, nil
++	}
++	if err != nil {
++		return "", "", false, err
++	}
++	apiKey = strings.TrimSpace(apiKey)
++	if apiKey == "" {
++		return "", "", false, fmt.Errorf("channel account has no active api key")
++	}
++	endpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
++	if strings.HasSuffix(endpoint, "/v1") {
++		endpoint = strings.TrimSuffix(endpoint, "/v1")
++	}
++	if endpoint == "" {
++		endpoint = monitor.Endpoint
++	}
++	return endpoint, apiKey, true, nil
++}
++
+ // persistCheckResults 写入本次检测的历史记录并更新 last_checked_at。
+ // 任一写库失败都只记日志，不影响调用方拿到 results（与 MVP 期望一致：宁可漏记历史也要先返回结果）。
+ func (s *ChannelMonitorService) persistCheckResults(ctx context.Context, m *ChannelMonitor, results []*CheckResult) {
+diff --git a/backend/internal/service/channel_test.go b/backend/internal/service/channel_test.go
+index 42c2c46..a3f8272 100644
+--- a/backend/internal/service/channel_test.go
++++ b/backend/internal/service/channel_test.go
+@@ -507,6 +507,22 @@ func TestSupportedModels_ExactKeysAndPricing(t *testing.T) {
+ 	require.Equal(t, int64(10), got[1].Pricing.ID)
+ }
+ 
++func TestSupportedModels_RestrictedChannelDoesNotExposePricingOnlyModels(t *testing.T) {
++	ch := &Channel{
++		RestrictModels: true,
++		ModelPricing: []ChannelModelPricing{
++			{ID: 10, Platform: "anthropic", Models: []string{"claude-sonnet-4-6", "claude-opus-4-6"}},
++		},
++		ModelMapping: map[string]map[string]string{
++			"anthropic": {"claude-sonnet-4-6": "claude-sonnet-4-6"},
++		},
++	}
++
++	got := ch.SupportedModels()
++	require.Len(t, got, 1)
++	require.Equal(t, "claude-sonnet-4-6", got[0].Name)
++}
++
+ func TestSupportedModels_WildcardExpandedFromPricing(t *testing.T) {
+ 	ch := &Channel{
+ 		ModelPricing: []ChannelModelPricing{
+diff --git a/backend/internal/service/content_moderation_input.go b/backend/internal/service/content_moderation_input.go
+index 73d5b69..6e5b071 100644
+--- a/backend/internal/service/content_moderation_input.go
++++ b/backend/internal/service/content_moderation_input.go
+@@ -7,6 +7,7 @@ import (
+ 	"strings"
+ 
+ 	"github.com/tidwall/gjson"
++	"golang.org/x/text/unicode/norm"
+ )
+ 
+ func ExtractContentModerationText(protocol string, body []byte) string {
+@@ -315,5 +316,5 @@ func addModerationText(parts *[]string, text string) {
+ }
+ 
+ func normalizeContentModerationText(text string) string {
+-	return strings.Join(strings.Fields(strings.TrimSpace(text)), " ")
++	return strings.Join(strings.Fields(norm.NFKC.String(strings.TrimSpace(text))), " ")
+ }
+diff --git a/backend/internal/service/content_moderation_keyword_matcher.go b/backend/internal/service/content_moderation_keyword_matcher.go
+index 4628d3b..a1b3f6e 100644
+--- a/backend/internal/service/content_moderation_keyword_matcher.go
++++ b/backend/internal/service/content_moderation_keyword_matcher.go
+@@ -39,6 +39,7 @@ func newContentModerationKeywordMatcher(keywords []string) *contentModerationKey
+ 	originalKeywords := append([]string(nil), keywords...)
+ 
+ 	for keywordIndex, keyword := range keywords {
++		keyword = normalizeContentModerationText(keyword)
+ 		if keyword == "" {
+ 			continue
+ 		}
+@@ -168,7 +169,7 @@ func (m *contentModerationKeywordMatcher) Match(text string) (string, bool) {
+ 	if m == nil || text == "" || len(m.nodes) == 0 || len(m.keywords) == 0 {
+ 		return "", false
+ 	}
+-	lower := strings.ToLower(text)
++	lower := strings.ToLower(normalizeContentModerationText(text))
+ 	state := int32(0)
+ 	bestKeyword := int32(-1)
+ 	for index := 0; index < len(lower); index++ {
+diff --git a/backend/internal/service/content_moderation_keyword_matcher_test.go b/backend/internal/service/content_moderation_keyword_matcher_test.go
+index 4be70dc..cb1cf3d 100644
+--- a/backend/internal/service/content_moderation_keyword_matcher_test.go
++++ b/backend/internal/service/content_moderation_keyword_matcher_test.go
+@@ -33,6 +33,18 @@ func TestContentModerationKeywordMatcherMatchesLegacyBehavior(t *testing.T) {
+ 	}
+ }
+ 
++func TestContentModerationKeywordMatcherNormalizesUnicodeCompatibilityForms(t *testing.T) {
++	matcher := newContentModerationKeywordMatcher([]string{"ignore previous instructions", "system prompt"})
++
++	keyword, hit := matcher.Match("ｉｇｎｏｒｅ　ｐｒｅｖｉｏｕｓ　ｉｎｓｔｒｕｃｔｉｏｎｓ")
++	require.True(t, hit)
++	require.Equal(t, "ignore previous instructions", keyword)
++
++	keyword, hit = matcher.Match("reveal the ｓｙｓｔｅｍ　ｐｒｏｍｐｔ")
++	require.True(t, hit)
++	require.Equal(t, "system prompt", keyword)
++}
++
+ func TestContentModerationKeywordMatcherRandomizedParity(t *testing.T) {
+ 	rng := rand.New(rand.NewSource(20260714))
+ 	const alphabet = "abcXYZ"
+diff --git a/backend/internal/service/jiyu_region.go b/backend/internal/service/jiyu_region.go
+new file mode 100644
+index 0000000..5244670
+--- /dev/null
++++ b/backend/internal/service/jiyu_region.go
+@@ -0,0 +1,17 @@
++package service
++
++import (
++	"os"
++	"strings"
++)
++
++// IsJiyuGroupAllowed keeps the region decision identical across user-facing
++// discovery endpoints and the shared API-key middleware.
++func IsJiyuGroupAllowed(country, description string) bool {
++	if os.Getenv("SUB2API_JIYU_REGION_ENFORCEMENT") != "1" {
++		return true
++	}
++	country = strings.ToUpper(strings.TrimSpace(country))
++	mainlandOrUnknown := country == "" || country == "CN" || len(country) != 2
++	return !mainlandOrUnknown || strings.Contains(strings.ToLower(description), "region=cn")
++}
+diff --git a/backend/internal/service/jiyu_region_test.go b/backend/internal/service/jiyu_region_test.go
+new file mode 100644
+index 0000000..d9f09bd
+--- /dev/null
++++ b/backend/internal/service/jiyu_region_test.go
+@@ -0,0 +1,26 @@
++package service
++
++import "testing"
++
++func TestIsJiyuGroupAllowed(t *testing.T) {
++	t.Setenv("SUB2API_JIYU_REGION_ENFORCEMENT", "1")
++	tests := []struct {
++		name        string
++		country     string
++		description string
++		allowed     bool
++	}{
++		{name: "overseas_allows_global", country: "SG", allowed: true},
++		{name: "mainland_rejects_global", country: "CN", allowed: false},
++		{name: "mainland_allows_domestic", country: "CN", description: "REGION=CN", allowed: true},
++		{name: "unknown_rejects_global", country: "", allowed: false},
++		{name: "malformed_rejects_global", country: "CHN", allowed: false},
++	}
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			if got := IsJiyuGroupAllowed(tt.country, tt.description); got != tt.allowed {
++				t.Fatalf("IsJiyuGroupAllowed() = %v, want %v", got, tt.allowed)
++			}
++		})
++	}
++}
+diff --git a/backend/internal/service/update_service.go b/backend/internal/service/update_service.go
+index 18b6282..243d43e 100644
+--- a/backend/internal/service/update_service.go
++++ b/backend/internal/service/update_service.go
+@@ -10,6 +10,7 @@ import (
+ 	"encoding/json"
+ 	"fmt"
+ 	"io"
++	"net"
+ 	"net/url"
+ 	"os"
+ 	"path/filepath"
+@@ -163,6 +164,11 @@ func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInf
+ // PerformUpdate downloads and applies the update
+ // Uses atomic file replacement pattern for safe in-place updates
+ func (s *UpdateService) PerformUpdate(ctx context.Context) error {
++	// JIYU 构建只允许调用 root 管理的固定代理。浏览器不能传入命令、版本或下载地址。
++	if os.Getenv("SUB2API_JIYU_MANAGED_UPDATE") == "1" {
++		return performJiyuManagedUpdate(ctx)
++	}
++
+ 	info, err := s.CheckUpdate(ctx, true)
+ 	if err != nil {
+ 		return err
+@@ -175,6 +181,47 @@ func (s *UpdateService) PerformUpdate(ctx context.Context) error {
+ 	return s.applyReleaseAssets(ctx, info.ReleaseInfo.Assets)
+ }
+ 
++func performJiyuManagedUpdate(ctx context.Context) error {
++	const socketPath = "/run/sub2api-jiyu-update.sock"
++	const maxOutputBytes = 4096
++	dialer := net.Dialer{}
++	conn, err := dialer.DialContext(ctx, "unix", socketPath)
++	if err != nil {
++		return fmt.Errorf("managed update service unavailable: %w", err)
++	}
++	defer conn.Close()
++	if err := conn.SetDeadline(time.Now().Add(15 * time.Minute)); err != nil {
++		return fmt.Errorf("managed update deadline failed: %w", err)
++	}
++	output, err := io.ReadAll(io.LimitReader(conn, maxOutputBytes+1))
++	if err != nil {
++		return fmt.Errorf("managed update response failed: %w", err)
++	}
++	if len(output) > maxOutputBytes {
++		return fmt.Errorf("managed update response exceeded safety limit")
++	}
++	message := strings.TrimSpace(string(output))
++	parts := strings.SplitN(message, "\n", 2)
++	status := parts[0]
++	details := ""
++	if len(parts) == 2 {
++		details = strings.TrimSpace(parts[1])
++	}
++	switch status {
++	case "JIYU_UPDATE_STATUS=noop":
++		return ErrNoUpdateAvailable
++	case "JIYU_UPDATE_STATUS=staged":
++		return nil
++	case "JIYU_UPDATE_STATUS=error":
++		if details == "" {
++			details = "JIYU compatibility package is unavailable"
++		}
++		return fmt.Errorf("managed update failed: %s", details)
++	default:
++		return fmt.Errorf("managed update returned an invalid response")
++	}
++}
++
+ // applyReleaseAssets downloads the platform archive from the given release assets,
+ // verifies its checksum, and atomically swaps the running binary.
+ // Shared by PerformUpdate (latest) and RollbackToVersion (specific older version).
+diff --git a/backend/internal/service/wire.go b/backend/internal/service/wire.go
+index 6e708de..89cdf40 100644
+--- a/backend/internal/service/wire.go
++++ b/backend/internal/service/wire.go
+@@ -990,9 +990,11 @@ func ProvideChannelMonitorService(
+ 	repo ChannelMonitorRepository,
+ 	encryptor SecretEncryptor,
+ 	settingService *SettingService,
++	db *sql.DB,
+ ) *ChannelMonitorService {
+ 	svc := NewChannelMonitorService(repo, encryptor)
+ 	svc.SetRuntimeReader(settingService)
++	svc.SetCredentialResolver(NewSQLChannelMonitorCredentialResolver(db))
+ 	return svc
+ }
+ 
+diff --git a/frontend/pnpm-lock.yaml b/frontend/pnpm-lock.yaml
+index fef7a94..62b5147 100644
+--- a/frontend/pnpm-lock.yaml
++++ b/frontend/pnpm-lock.yaml
+@@ -4,12 +4,6 @@ settings:
+   autoInstallPeers: true
+   excludeLinksFromLockfile: false
+ 
+-overrides:
+-  js-cookie: 3.0.7
+-  form-data@<4.0.6: '>=4.0.6'
+-  postcss@<8.5.18: '>=8.5.18'
+-  dompurify@<3.4.14: '>=3.4.14'
+-
+ importers:
+ 
+   .:
+@@ -118,7 +112,7 @@ importers:
+         specifier: ^24.1.3
+         version: 24.1.3
+       postcss:
+-        specifier: '>=8.5.18'
++        specifier: ^8.4.32
+         version: 8.5.23
+       tailwindcss:
+         specifier: ^3.4.0
+@@ -1285,56 +1279,67 @@ packages:
+     resolution: {integrity: sha512-EHMUcDwhtdRGlXZsGSIuXSYwD5kOT9NVnx9sqzYiwAc91wfYOE1g1djOEDseZJKKqtHAHGwnGPQu3kytmfaXLQ==}
+     cpu: [arm]
+     os: [linux]
++    libc: [glibc]
+ 
+   '@rollup/rollup-linux-arm-musleabihf@4.54.0':
+     resolution: {integrity: sha512-+pBrqEjaakN2ySv5RVrj/qLytYhPKEUwk+e3SFU5jTLHIcAtqh2rLrd/OkbNuHJpsBgxsD8ccJt5ga/SeG0JmA==}
+     cpu: [arm]
+     os: [linux]
++    libc: [musl]
+ 
+   '@rollup/rollup-linux-arm64-gnu@4.54.0':
+     resolution: {integrity: sha512-NSqc7rE9wuUaRBsBp5ckQ5CVz5aIRKCwsoa6WMF7G01sX3/qHUw/z4pv+D+ahL1EIKy6Enpcnz1RY8pf7bjwng==}
+     cpu: [arm64]
+     os: [linux]
++    libc: [glibc]
+ 
+   '@rollup/rollup-linux-arm64-musl@4.54.0':
+     resolution: {integrity: sha512-gr5vDbg3Bakga5kbdpqx81m2n9IX8M6gIMlQQIXiLTNeQW6CucvuInJ91EuCJ/JYvc+rcLLsDFcfAD1K7fMofg==}
+     cpu: [arm64]
+     os: [linux]
++    libc: [musl]
+ 
+   '@rollup/rollup-linux-loong64-gnu@4.54.0':
+     resolution: {integrity: sha512-gsrtB1NA3ZYj2vq0Rzkylo9ylCtW/PhpLEivlgWe0bpgtX5+9j9EZa0wtZiCjgu6zmSeZWyI/e2YRX1URozpIw==}
+     cpu: [loong64]
+     os: [linux]
++    libc: [glibc]
+ 
+   '@rollup/rollup-linux-ppc64-gnu@4.54.0':
+     resolution: {integrity: sha512-y3qNOfTBStmFNq+t4s7Tmc9hW2ENtPg8FeUD/VShI7rKxNW7O4fFeaYbMsd3tpFlIg1Q8IapFgy7Q9i2BqeBvA==}
+     cpu: [ppc64]
+     os: [linux]
++    libc: [glibc]
+ 
+   '@rollup/rollup-linux-riscv64-gnu@4.54.0':
+     resolution: {integrity: sha512-89sepv7h2lIVPsFma8iwmccN7Yjjtgz0Rj/Ou6fEqg3HDhpCa+Et+YSufy27i6b0Wav69Qv4WBNl3Rs6pwhebQ==}
+     cpu: [riscv64]
+     os: [linux]
++    libc: [glibc]
+ 
+   '@rollup/rollup-linux-riscv64-musl@4.54.0':
+     resolution: {integrity: sha512-ZcU77ieh0M2Q8Ur7D5X7KvK+UxbXeDHwiOt/CPSBTI1fBmeDMivW0dPkdqkT4rOgDjrDDBUed9x4EgraIKoR2A==}
+     cpu: [riscv64]
+     os: [linux]
++    libc: [musl]
+ 
+   '@rollup/rollup-linux-s390x-gnu@4.54.0':
+     resolution: {integrity: sha512-2AdWy5RdDF5+4YfG/YesGDDtbyJlC9LHmL6rZw6FurBJ5n4vFGupsOBGfwMRjBYH7qRQowT8D/U4LoSvVwOhSQ==}
+     cpu: [s390x]
+     os: [linux]
++    libc: [glibc]
+ 
+   '@rollup/rollup-linux-x64-gnu@4.54.0':
+     resolution: {integrity: sha512-WGt5J8Ij/rvyqpFexxk3ffKqqbLf9AqrTBbWDk7ApGUzaIs6V+s2s84kAxklFwmMF/vBNGrVdYgbblCOFFezMQ==}
+     cpu: [x64]
+     os: [linux]
++    libc: [glibc]
+ 
+   '@rollup/rollup-linux-x64-musl@4.54.0':
+     resolution: {integrity: sha512-JzQmb38ATzHjxlPHuTH6tE7ojnMKM2kYNzt44LO/jJi8BpceEC8QuXYA908n8r3CNuG/B3BV8VR3Hi1rYtmPiw==}
+     cpu: [x64]
+     os: [linux]
++    libc: [musl]
+ 
+   '@rollup/rollup-openharmony-arm64@4.54.0':
+     resolution: {integrity: sha512-huT3fd0iC7jigGh7n3q/+lfPcXxBi+om/Rs3yiFxjvSxbSB6aohDFXbWvlspaqjeOh+hx7DDHS+5Es5qRkWkZg==}
+@@ -1856,7 +1861,7 @@ packages:
+     engines: {node: ^10 || ^12 || >=14}
+     hasBin: true
+     peerDependencies:
+-      postcss: '>=8.5.18'
++      postcss: ^8.1.0
+ 
+   axios@1.18.1:
+     resolution: {integrity: sha512-3nTvFlvpn9Zu/RkHUqtc7/+al4UpRW5az71ap5zccp6e8RAYEzhMTecX8Dz1wWDYrPpUoB1HAQEGEAEvUr7S9g==}
+@@ -3489,20 +3494,20 @@ packages:
+     resolution: {integrity: sha512-hpr+J05B2FVYUAXHeK1YyI267J/dDDhMU6B6civm8hSY1jYJnBXxzKDKDswzJmtLHryrjhnDjqqp/49t8FALew==}
+     engines: {node: '>=14.0.0'}
+     peerDependencies:
+-      postcss: '>=8.5.18'
++      postcss: ^8.0.0
+ 
+   postcss-js@4.1.0:
+     resolution: {integrity: sha512-oIAOTqgIo7q2EOwbhb8UalYePMvYoIeRY2YKntdpFQXNosSu3vLrniGgmH9OKs/qAkfoj5oB3le/7mINW1LCfw==}
+     engines: {node: ^12 || ^14 || >= 16}
+     peerDependencies:
+-      postcss: '>=8.5.18'
++      postcss: ^8.4.21
+ 
+   postcss-load-config@6.0.1:
+     resolution: {integrity: sha512-oPtTM4oerL+UXmx+93ytZVN82RrlY/wPUV8IeDxFrzIjXOLF1pN+EmKPLbubvKHT2HC20xXsCAH2Z+CKV6Oz/g==}
+     engines: {node: '>= 18'}
+     peerDependencies:
+       jiti: '>=1.21.0'
+-      postcss: '>=8.5.18'
++      postcss: '>=8.0.9'
+       tsx: ^4.8.1
+       yaml: ^2.4.2
+     peerDependenciesMeta:
+@@ -3519,7 +3524,7 @@ packages:
+     resolution: {integrity: sha512-HQbt28KulC5AJzG+cZtj9kvKB93CFCdLvog1WFLf1D+xmMvPGlBstkpTEZfK5+AN9hfJocyBFCNiqyS48bpgzQ==}
+     engines: {node: '>=12.0'}
+     peerDependencies:
+-      postcss: '>=8.5.18'
++      postcss: ^8.2.14
+ 
+   postcss-selector-parser@6.1.2:
+     resolution: {integrity: sha512-Q8qQfPiZ+THO/3ZrOrO0cJJKfpYCagtMUkXbnEfmgUjwXg6z/WBeOyS9APBBPCTSiDV+s4SwQGu8yFsiMRIudg==}
+diff --git a/frontend/pnpm-workspace.yaml b/frontend/pnpm-workspace.yaml
+new file mode 100644
+index 0000000..f279a81
+--- /dev/null
++++ b/frontend/pnpm-workspace.yaml
+@@ -0,0 +1,3 @@
++allowBuilds:
++  esbuild: set this to true or false
++  vue-demi: set this to true or false
+diff --git a/frontend/src/components/admin/AdminComplianceDialog.vue b/frontend/src/components/admin/AdminComplianceDialog.vue
+index 9982020..a3362b1 100644
+--- a/frontend/src/components/admin/AdminComplianceDialog.vue
++++ b/frontend/src/components/admin/AdminComplianceDialog.vue
+@@ -127,9 +127,9 @@ const canSubmit = computed(() => typedPhrase.value.trim() === expectedPhrase.val
+ const currentDocument = computed(() => getLocale() === 'zh' ? zhDocument : enDocument)
+ const documentUrl = computed(() => {
+   if (getLocale() === 'zh') {
+-    return complianceStore.status?.document_url_zh || 'https://github.com/Wei-Shaw/sub2api/blob/main/docs/legal/admin-compliance.zh.md'
++    return complianceStore.status?.document_url_zh || '/custom/docs'
+   }
+-  return complianceStore.status?.document_url_en || 'https://github.com/Wei-Shaw/sub2api/blob/main/docs/legal/admin-compliance.en.md'
++  return complianceStore.status?.document_url_en || '/custom/docs'
+ })
+ const inputError = computed(() => {
+   if (!attemptedSubmit.value || canSubmit.value) {
+diff --git a/frontend/src/components/admin/monitor/MonitorFormDialog.vue b/frontend/src/components/admin/monitor/MonitorFormDialog.vue
+index fb89f1a..2fd5ec0 100644
+--- a/frontend/src/components/admin/monitor/MonitorFormDialog.vue
++++ b/frontend/src/components/admin/monitor/MonitorFormDialog.vue
+@@ -303,6 +303,9 @@ const systemDefaultInterval = computed<number>(() => {
+   return configured && configured > 0 ? configured : DEFAULT_INTERVAL_SECONDS
+ })
+ 
++// 新建监控默认使用 30 秒抖动，并确保不会突破后端的最小检测间隔。
++const defaultJitterSeconds = computed<number>(() => Math.min(30, Math.max(0, systemDefaultInterval.value - 15)))
++
+ // editing is true when we have an existing monitor
+ const editing = computed<ChannelMonitor | null>(() => props.monitor)
+ 
+@@ -347,7 +350,7 @@ const form = reactive<MonitorForm>({
+   extra_models: [],
+   group_name: '',
+   interval_seconds: systemDefaultInterval.value,
+-  jitter_seconds: 0,
++  jitter_seconds: defaultJitterSeconds.value,
+   enabled: true,
+   template_id: null,
+   extra_headers: {},
+@@ -730,7 +733,7 @@ function resetForm() {
+   form.extra_models = []
+   form.group_name = ''
+   form.interval_seconds = systemDefaultInterval.value
+-  form.jitter_seconds = 0
++  form.jitter_seconds = defaultJitterSeconds.value
+   form.enabled = true
+   form.template_id = null
+   form.extra_headers = {}
+diff --git a/frontend/src/components/common/VersionBadge.vue b/frontend/src/components/common/VersionBadge.vue
+index 7fd6294..9967b62 100644
+--- a/frontend/src/components/common/VersionBadge.vue
++++ b/frontend/src/components/common/VersionBadge.vue
+@@ -231,7 +231,56 @@
+                 </button>
+               </div>
+ 
+-              <!-- Priority 3: Update available for source build - show git pull hint -->
++              <!-- 优先级 3：JIYU 定制构建只安装通过门禁的兼容包。 -->
++              <div v-else-if="isJiyuBuild" class="space-y-2">
++                <div
++                  class="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800/50 dark:bg-amber-900/20"
++                >
++                  <div
++                    class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/50"
++                  >
++                    <Icon
++                      name="download"
++                      size="sm"
++                      :stroke-width="2"
++                      class="text-amber-600 dark:text-amber-400"
++                    />
++                  </div>
++                  <div class="min-w-0 flex-1">
++                    <p class="text-sm font-medium text-amber-700 dark:text-amber-300">
++                      {{ updateSuccess && !needRestart ? t('version.upToDate') : t('version.jiyuUpdatePending') }}
++                    </p>
++                    <p class="mt-1 text-xs leading-4 text-amber-600/80 dark:text-amber-400/80">
++                      {{ t('version.jiyuUpdateHint') }}
++                    </p>
++                  </div>
++                </div>
++                <button
++                  @click="handleUpdate"
++                  :disabled="updating"
++                  class="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
++                >
++                  <svg v-if="updating" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
++                    <circle
++                      class="opacity-25"
++                      cx="12"
++                      cy="12"
++                      r="10"
++                      stroke="currentColor"
++                      stroke-width="4"
++                    ></circle>
++                    <path
++                      class="opacity-75"
++                      fill="currentColor"
++                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
++                    ></path>
++                  </svg>
++                  <Icon v-else name="download" size="sm" :stroke-width="2" />
++                  {{ updating ? t('version.updating') : t('version.jiyuUpdateAction') }}
++                </button>
++              </div>
++
++              <!-- 优先级 4：源码构建提示使用 git pull。 -->
+               <div v-else-if="hasUpdate && !isReleaseBuild" class="space-y-2">
+                 <a
+                   v-if="releaseInfo?.html_url && releaseInfo.html_url !== '#'"
+@@ -291,7 +340,7 @@
+                 </div>
+               </div>
+ 
+-              <!-- Priority 4: Update available for release build - show update button -->
++              <!-- 优先级 5：官方发行构建显示在线更新按钮。 -->
+               <div v-else-if="hasUpdate && isReleaseBuild" class="space-y-2">
+                 <!-- Update info card -->
+                 <div
+@@ -375,7 +424,7 @@
+                 </a>
+ 
+                 <!-- Version rollback entry -->
+-                <div class="border-t border-gray-100 pt-2 dark:border-dark-700">
++                <div v-if="!isJiyuBuild" class="border-t border-gray-100 pt-2 dark:border-dark-700">
+                   <button
+                     @click="toggleRollbackPanel"
+                     class="group flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-600 dark:text-dark-500 dark:hover:bg-dark-700/50 dark:hover:text-dark-300"
+@@ -671,9 +720,14 @@ const dropdownRef = ref<HTMLElement | null>(null)
+ 
+ // Use store's cached version state
+ const loading = computed(() => appStore.versionLoading)
+-const currentVersion = computed(() => appStore.currentVersion || props.version || '')
+-const latestVersion = computed(() => appStore.latestVersion)
+-const hasUpdate = computed(() => appStore.hasUpdate)
++// 统一由组件补充版本前缀，避免后端已返回 v 时显示成 vv。
++const normalizeVersion = (version: string | undefined) => (version || '').replace(/^v/i, '')
++const rawCurrentVersion = computed(() => appStore.currentVersion || props.version || '')
++const currentVersion = computed(() => normalizeVersion(rawCurrentVersion.value))
++const latestVersion = computed(() => normalizeVersion(appStore.latestVersion))
++const currentBaseVersion = computed(() => currentVersion.value.replace(/-jiyu\..*$/i, ''))
++const isJiyuBuild = computed(() => /-jiyu\./i.test(rawCurrentVersion.value))
++const hasUpdate = computed(() => appStore.hasUpdate && currentBaseVersion.value !== latestVersion.value)
+ const releaseInfo = computed(() => appStore.releaseInfo)
+ const buildType = computed(() => appStore.buildType)
+ 
+@@ -762,7 +816,7 @@ async function handleUpdate() {
+     const result = await performUpdate()
+     successKind.value = 'update'
+     updateSuccess.value = true
+-    needRestart.value = result.need_restart
++    needRestart.value = Boolean(result.need_restart)
+     // Clear version cache to reflect update completed
+     appStore.clearVersionCache()
+   } catch (error: unknown) {
+diff --git a/frontend/src/components/keys/EndpointPopover.vue b/frontend/src/components/keys/EndpointPopover.vue
+index 49db50b..efe37f6 100644
+--- a/frontend/src/components/keys/EndpointPopover.vue
++++ b/frontend/src/components/keys/EndpointPopover.vue
+@@ -18,10 +18,17 @@ let copiedResetTimer: number | undefined
+ const allEndpoints = computed(() => {
+   const items: Array<{ name: string; endpoint: string; description: string; isDefault: boolean }> = []
+   if (props.apiBaseUrl) {
++    const baseUrl = props.apiBaseUrl.replace(/\/+$/, '').replace(/\/v1$/i, '')
+     items.push({
+-      name: t('keys.endpoints.title'),
+-      endpoint: props.apiBaseUrl,
+-      description: '',
++      name: t('keys.endpoints.claude'),
++      endpoint: baseUrl,
++      description: t('keys.endpointGuide.claudeHint'),
++      isDefault: true,
++    })
++    items.push({
++      name: t('keys.endpoints.chatgpt'),
++      endpoint: `${baseUrl}/v1`,
++      description: t('keys.endpointGuide.chatgptHint'),
+       isDefault: true,
+     })
+   }
+@@ -80,7 +87,7 @@ onBeforeUnmount(() => {
+ 
+       <div class="group/endpoint relative flex items-center gap-1.5">
+         <div
+-          class="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 w-max max-w-[24rem] -translate-x-1/2 translate-y-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left opacity-0 shadow-[0_14px_36px_-20px_rgba(15,23,42,0.35)] ring-1 ring-slate-200/80 transition-all duration-150 group-hover/endpoint:translate-y-0 group-hover/endpoint:opacity-100 group-focus-within/endpoint:translate-y-0 group-focus-within/endpoint:opacity-100 dark:border-slate-700 dark:bg-slate-900 dark:ring-slate-700/70"
++          class="pointer-events-none absolute bottom-full right-0 z-20 mb-2 w-[min(24rem,calc(100vw-2rem))] translate-x-0 translate-y-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left opacity-0 shadow-[0_14px_36px_-20px_rgba(15,23,42,0.35)] ring-1 ring-slate-200/80 transition-all duration-150 group-hover/endpoint:translate-y-0 group-hover/endpoint:opacity-100 group-focus-within/endpoint:translate-y-0 group-focus-within/endpoint:opacity-100 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 dark:border-slate-700 dark:bg-slate-900 dark:ring-slate-700/70"
+         >
+           <p
+             v-if="item.description"
+diff --git a/frontend/src/components/keys/__tests__/EndpointPopover.spec.ts b/frontend/src/components/keys/__tests__/EndpointPopover.spec.ts
+index 4d753da..99ca37a 100644
+--- a/frontend/src/components/keys/__tests__/EndpointPopover.spec.ts
++++ b/frontend/src/components/keys/__tests__/EndpointPopover.spec.ts
+@@ -5,11 +5,15 @@ const copyToClipboard = vi.fn().mockResolvedValue(true)
+ 
+ const messages: Record<string, string> = {
+   'keys.endpoints.title': 'API 端点',
++  'keys.endpoints.claude': 'Claude 端点',
++  'keys.endpoints.chatgpt': 'ChatGPT 端点',
+   'keys.endpoints.default': '默认',
+   'keys.endpoints.copied': '已复制',
+   'keys.endpoints.copiedHint': '已复制到剪贴板',
+   'keys.endpoints.clickToCopy': '点击可复制此端点',
+   'keys.endpoints.speedTest': '测速',
++  'keys.endpointGuide.claudeHint': 'Claude 说明',
++  'keys.endpointGuide.chatgptHint': 'ChatGPT 说明',
+ }
+ 
+ vi.mock('vue-i18n', () => ({
+@@ -62,7 +66,7 @@ describe('EndpointPopover', () => {
+     await wrapper.find('[role="button"]').trigger('click')
+     await flushPromises()
+ 
+-    expect(copyToClipboard).toHaveBeenCalledWith('https://default.example.com/v1', '已复制')
++    expect(copyToClipboard).toHaveBeenCalledWith('https://default.example.com', '已复制')
+     expect(wrapper.text()).toContain('已复制到剪贴板')
+     expect(wrapper.find('button[aria-label="已复制到剪贴板"]').exists()).toBe(true)
+   })
+diff --git a/frontend/src/components/layout/AppHeader.vue b/frontend/src/components/layout/AppHeader.vue
+index f7dd4de..5f2c512 100644
+--- a/frontend/src/components/layout/AppHeader.vue
++++ b/frontend/src/components/layout/AppHeader.vue
+@@ -163,24 +163,6 @@
+                   {{ t('nav.apiKeys') }}
+                 </router-link>
+ 
+-                <a
+-                  v-if="authStore.isAdmin"
+-                  href="https://github.com/Wei-Shaw/sub2api"
+-                  target="_blank"
+-                  rel="noopener noreferrer"
+-                  @click="closeDropdown"
+-                  class="dropdown-item"
+-                >
+-                  <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+-                    <path
+-                      fill-rule="evenodd"
+-                      clip-rule="evenodd"
+-                      d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.464-1.11-1.464-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z"
+-                    />
+-                  </svg>
+-                  {{ t('nav.github') }}
+-                </a>
+-
+               </div>
+ 
+               <!-- Contact Support (only show if configured) -->
+diff --git a/frontend/src/i18n/locales/en/admin/channels.ts b/frontend/src/i18n/locales/en/admin/channels.ts
+index 5055dc8..f50d02a 100644
+--- a/frontend/src/i18n/locales/en/admin/channels.ts
++++ b/frontend/src/i18n/locales/en/admin/channels.ts
+@@ -534,6 +534,7 @@ export default {
+       linkedAccountRequired: 'Please select a linked account',
+       columns: {
+         name: 'Name',
++        channel: 'Channel',
+         provider: 'Provider',
+         primaryModel: 'Primary Model',
+         availability7d: '7d Availability',
+diff --git a/frontend/src/i18n/locales/en/admin/resources.ts b/frontend/src/i18n/locales/en/admin/resources.ts
+index 593db92..d4d8b01 100644
+--- a/frontend/src/i18n/locales/en/admin/resources.ts
++++ b/frontend/src/i18n/locales/en/admin/resources.ts
+@@ -441,6 +441,7 @@ export default {
+       readAt: 'Read at',
+       unread: 'Unread',
+       searchUsers: 'Search users...',
++      noAnnouncements: 'There are no announcements yet. Create the first one when you are ready to publish.',
+       failedToLoad: 'Failed to load announcements',
+       failedToCreate: 'Failed to create announcement',
+       failedToUpdate: 'Failed to update announcement',
+diff --git a/frontend/src/i18n/locales/en/dashboard.ts b/frontend/src/i18n/locales/en/dashboard.ts
+index 576067c..706bf19 100644
+--- a/frontend/src/i18n/locales/en/dashboard.ts
++++ b/frontend/src/i18n/locales/en/dashboard.ts
+@@ -71,6 +71,8 @@ export default {
+     searchPlaceholder: 'Search name or key...',
+     endpoints: {
+       title: 'API Endpoints',
++      claude: 'Claude endpoint',
++      chatgpt: 'ChatGPT endpoint',
+       default: 'Default',
+       copied: 'Copied',
+       copiedHint: 'Copied to clipboard',
+@@ -96,6 +98,14 @@ export default {
+     copyToClipboard: 'Copy to clipboard',
+     copied: 'Copied!',
+     importToCcSwitch: 'Import to CCS',
++    createAndImport: 'Import into CC Switch after creation',
++    createAndImportHint: 'Includes the provider, matching endpoint, and usage query configuration. You can still copy the key manually if the app is not installed.',
++    endpointGuide: {
++      claudeTitle: 'Claude endpoint',
++      claudeHint: 'For Messages API clients. Use the site root and do not append /v1 again.',
++      chatgptTitle: 'ChatGPT endpoint',
++      chatgptHint: 'For OpenAI Responses and Chat Completions clients. The endpoint must end in /v1.'
++    },
+     enable: 'Enable',
+     disable: 'Disable',
+     nameLabel: 'Name',
+diff --git a/frontend/src/i18n/locales/en/landing.ts b/frontend/src/i18n/locales/en/landing.ts
+index c443bfe..6c35003 100644
+--- a/frontend/src/i18n/locales/en/landing.ts
++++ b/frontend/src/i18n/locales/en/landing.ts
+@@ -5,6 +5,7 @@ export default {
+   },
+   // Home Page
+   home: {
++    pageTitle: 'Home',
+     viewOnGithub: 'View on GitHub',
+     viewDocs: 'View Documentation',
+     docs: 'Docs',
+@@ -16,7 +17,7 @@ export default {
+     goToDashboard: 'Go to Dashboard',
+     // User-focused value proposition
+     heroSubtitle: 'One Key, All AI Models',
+-    heroDescription: 'No need to manage multiple subscriptions. Access Claude, GPT, Gemini and more with a single API key',
++    heroDescription: 'Use one API key to access multiple AI services through Channel A and Channel B',
+     tags: {
+       subscriptionToApi: 'Subscription to API',
+       stickySession: 'Session Persistence',
+@@ -94,14 +95,12 @@ export default {
+       }
+     },
+     providers: {
+-      title: 'Supported AI Models',
+-      description: 'One API, Multiple Choices',
++      title: 'Available Service Channels',
++      description: 'One API with two clearly identified service channels',
+       supported: 'Supported',
+       soon: 'Soon',
+-      claude: 'Claude',
+-      gemini: 'Gemini',
+-      antigravity: 'Antigravity',
+-      more: 'More'
++      channelA: 'Channel A',
++      channelB: 'Channel B'
+     },
+     // CTA section
+     cta: {
+diff --git a/frontend/src/i18n/locales/en/misc.ts b/frontend/src/i18n/locales/en/misc.ts
+index d8d0124..366d444 100644
+--- a/frontend/src/i18n/locales/en/misc.ts
++++ b/frontend/src/i18n/locales/en/misc.ts
+@@ -35,6 +35,10 @@ export default {
+     updating: 'Updating...',
+     updateComplete: 'Update Complete',
+     updateFailed: 'Update Failed',
++    jiyuUpdatePending: 'Check JIYU compatibility updates',
++    jiyuUpdateAction: 'Check and install',
++    jiyuUpdateHint:
++      'The server compares the complete JIYU build version and only stages a verified compatibility package. Branding, channels, and key-import customizations remain intact.',
+     restartRequired: 'Please restart the service to apply the update',
+     restartNow: 'Restart Now',
+     restarting: 'Restarting...',
+diff --git a/frontend/src/i18n/locales/zh/admin/channels.ts b/frontend/src/i18n/locales/zh/admin/channels.ts
+index b9e40a6..5fbeeb6 100644
+--- a/frontend/src/i18n/locales/zh/admin/channels.ts
++++ b/frontend/src/i18n/locales/zh/admin/channels.ts
+@@ -534,6 +534,7 @@ export default {
+       linkedAccountRequired: '请选择关联账号',
+       columns: {
+         name: '名称',
++        channel: '渠道',
+         provider: '供应商',
+         primaryModel: '主模型',
+         availability7d: '7 天可用率',
+diff --git a/frontend/src/i18n/locales/zh/admin/resources.ts b/frontend/src/i18n/locales/zh/admin/resources.ts
+index 465147c..832f8d7 100644
+--- a/frontend/src/i18n/locales/zh/admin/resources.ts
++++ b/frontend/src/i18n/locales/zh/admin/resources.ts
+@@ -438,6 +438,7 @@ export default {
+       readAt: '已读时间',
+       unread: '未读',
+       searchUsers: '搜索用户...',
++      noAnnouncements: '当前还没有公告，可创建第一条公告后再发布。',
+       failedToLoad: '加载公告失败',
+       failedToCreate: '创建公告失败',
+       failedToUpdate: '更新公告失败',
+diff --git a/frontend/src/i18n/locales/zh/dashboard.ts b/frontend/src/i18n/locales/zh/dashboard.ts
+index 60117ab..a1027a4 100644
+--- a/frontend/src/i18n/locales/zh/dashboard.ts
++++ b/frontend/src/i18n/locales/zh/dashboard.ts
+@@ -71,6 +71,8 @@ export default {
+     searchPlaceholder: '搜索名称或Key...',
+     endpoints: {
+       title: 'API 端点',
++      claude: 'Claude 端点',
++      chatgpt: 'ChatGPT 端点',
+       default: '默认',
+       copied: '已复制',
+       copiedHint: '已复制到剪贴板',
+@@ -96,6 +98,14 @@ export default {
+     copyToClipboard: '复制到剪贴板',
+     copied: '已复制！',
+     importToCcSwitch: '导入到 CCS',
++    createAndImport: '创建后立即导入 CC Switch',
++    createAndImportHint: '自动带入供应商、对应端点和用量查询配置；未安装时仍可在密钥列表手动复制。',
++    endpointGuide: {
++      claudeTitle: 'Claude 端点',
++      claudeHint: '适用于 Messages API 客户端。端点填写站点根地址，不要重复追加 /v1。',
++      chatgptTitle: 'ChatGPT 端点',
++      chatgptHint: '适用于 OpenAI Responses 与 Chat Completions 客户端。端点必须以 /v1 结尾。'
++    },
+     enable: '启用',
+     disable: '禁用',
+     nameLabel: '名称',
+diff --git a/frontend/src/i18n/locales/zh/landing.ts b/frontend/src/i18n/locales/zh/landing.ts
+index 18a7b25..658e2f0 100644
+--- a/frontend/src/i18n/locales/zh/landing.ts
++++ b/frontend/src/i18n/locales/zh/landing.ts
+@@ -5,6 +5,7 @@ export default {
+   },
+   // Home Page
+   home: {
++    pageTitle: '首页',
+     viewOnGithub: '在 GitHub 上查看',
+     viewDocs: '查看文档',
+     docs: '文档',
+@@ -16,7 +17,7 @@ export default {
+     goToDashboard: '进入控制台',
+     // 新增：面向用户的价值主张
+     heroSubtitle: '一个密钥，畅用多个 AI 模型',
+-    heroDescription: '无需管理多个订阅账号，一站式接入 Claude、GPT、Gemini 等主流 AI 服务',
++    heroDescription: '无需管理多个订阅账号，通过渠道A和渠道B统一接入多种 AI 服务',
+     tags: {
+       subscriptionToApi: '订阅转 API',
+       stickySession: '会话保持',
+@@ -94,14 +95,12 @@ export default {
+       }
+     },
+     providers: {
+-      title: '已支持的 AI 模型',
+-      description: '一个 API，多种选择',
++      title: '可用服务渠道',
++      description: '一个 API，两条清晰可选的服务渠道',
+       supported: '已支持',
+       soon: '即将推出',
+-      claude: 'Claude',
+-      gemini: 'Gemini',
+-      antigravity: 'Antigravity',
+-      more: '更多'
++      channelA: '渠道A',
++      channelB: '渠道B'
+     },
+     // CTA 区块
+     cta: {
+diff --git a/frontend/src/i18n/locales/zh/misc.ts b/frontend/src/i18n/locales/zh/misc.ts
+index dd08354..ec3e4bb 100644
+--- a/frontend/src/i18n/locales/zh/misc.ts
++++ b/frontend/src/i18n/locales/zh/misc.ts
+@@ -35,6 +35,9 @@ export default {
+     updating: '正在更新...',
+     updateComplete: '更新完成',
+     updateFailed: '更新失败',
++    jiyuUpdatePending: '检查 JIYU 兼容更新',
++    jiyuUpdateAction: '检查并安装',
++    jiyuUpdateHint: '服务器会核对完整 JIYU 构建版本，只暂存通过门禁和校验的兼容包，不会覆盖品牌、渠道和密钥导入定制。',
+     restartRequired: '请重启服务以应用更新',
+     restartNow: '立即重启',
+     restarting: '正在重启...',
+diff --git a/frontend/src/router/index.ts b/frontend/src/router/index.ts
+index 1191944..61ac6aa 100644
+--- a/frontend/src/router/index.ts
++++ b/frontend/src/router/index.ts
+@@ -36,7 +36,8 @@ const routes: RouteRecordRaw[] = [
+     component: () => import('@/views/HomeView.vue'),
+     meta: {
+       requiresAuth: false,
+-      title: 'Home'
++      title: 'Home',
++      titleKey: 'home.pageTitle'
+     }
+   },
+   {
+diff --git a/frontend/src/router/title.ts b/frontend/src/router/title.ts
+index be5cf9d..4266b9e 100644
+--- a/frontend/src/router/title.ts
++++ b/frontend/src/router/title.ts
+@@ -7,7 +7,7 @@ import type { CustomMenuItem } from '@/types'
+  * 优先使用 titleKey 通过 i18n 翻译，fallback 到静态 routeTitle。
+  */
+ export function resolveDocumentTitle(routeTitle: unknown, siteName?: string, titleKey?: string): string {
+-  const normalizedSiteName = typeof siteName === 'string' && siteName.trim() ? siteName.trim() : 'Sub2API'
++  const normalizedSiteName = typeof siteName === 'string' && siteName.trim() ? siteName.trim() : 'JIYU AI'
+ 
+   if (typeof titleKey === 'string' && titleKey.trim()) {
+     const translated = i18n.global.t(titleKey)
+diff --git a/frontend/src/utils/__tests__/ccswitchImport.spec.ts b/frontend/src/utils/__tests__/ccswitchImport.spec.ts
+index 50789b5..97f9ff0 100644
+--- a/frontend/src/utils/__tests__/ccswitchImport.spec.ts
++++ b/frontend/src/utils/__tests__/ccswitchImport.spec.ts
+@@ -38,7 +38,7 @@ describe('ccswitchImport utils', () => {
+ 
+     expect(params.get('resource')).toBe('provider')
+     expect(params.get('app')).toBe('codex')
+-    expect(params.get('endpoint')).toBe(baseInput.baseUrl)
++    expect(params.get('endpoint')).toBe(`${baseInput.baseUrl}/v1`)
+     expect(params.get('model')).toBe(OPENAI_CC_SWITCH_CODEX_MODEL)
+     expect(atob(params.get('usageScript') || '')).toBe(baseInput.usageScript)
+   })
+diff --git a/frontend/src/utils/__tests__/channelMonitorDisplayOrder.spec.ts b/frontend/src/utils/__tests__/channelMonitorDisplayOrder.spec.ts
+new file mode 100644
+index 0000000..6c290b7
+--- /dev/null
++++ b/frontend/src/utils/__tests__/channelMonitorDisplayOrder.spec.ts
+@@ -0,0 +1,15 @@
++import { describe, expect, it } from 'vitest'
++import { compareMonitorDisplayOrder } from '@/utils/channelMonitorDisplayOrder'
++
++describe('compareMonitorDisplayOrder', () => {
++  it('keeps every channel A monitor before channel B and places image last in each channel', () => {
++    const monitors = [
++      { id: 4, name: 'JIYU 生图 · 渠道B', group_name: 'JIYU 生图 · 渠道B' },
++      { id: 3, name: 'JIYU 渠道A · OpenAI Pro', group_name: 'JIYU 渠道A · OpenAI Pro' },
++      { id: 2, name: 'JIYU 渠道B · Claude Kiro', group_name: 'JIYU 渠道B · Claude Kiro' },
++      { id: 1, name: 'JIYU 生图 · 渠道A', group_name: 'JIYU 生图 · 渠道A' },
++    ]
++
++    expect([...monitors].sort(compareMonitorDisplayOrder).map((item) => item.id)).toEqual([3, 1, 2, 4])
++  })
++})
+diff --git a/frontend/src/utils/ccswitchImport.ts b/frontend/src/utils/ccswitchImport.ts
+index d7858ea..7f291e2 100644
+--- a/frontend/src/utils/ccswitchImport.ts
++++ b/frontend/src/utils/ccswitchImport.ts
+@@ -39,7 +39,7 @@ export function resolveCcSwitchImportConfig(
+     case 'openai':
+       return {
+         app: 'codex',
+-        endpoint: baseUrl,
++        endpoint: withV1Endpoint(baseUrl),
+         model: OPENAI_CC_SWITCH_CODEX_MODEL
+       }
+     case 'gemini':
+diff --git a/frontend/src/utils/channelMonitorDisplayOrder.ts b/frontend/src/utils/channelMonitorDisplayOrder.ts
+new file mode 100644
+index 0000000..7c35f18
+--- /dev/null
++++ b/frontend/src/utils/channelMonitorDisplayOrder.ts
+@@ -0,0 +1,39 @@
++const MONITOR_PRODUCT_ORDER = [
++  'Claude Kiro',
++  'Claude 官 Key',
++  'OpenAI Plus',
++  'OpenAI Pro',
++  'Grok',
++  '生图',
++]
++
++interface MonitorDisplayItem {
++  id: number
++  name: string
++  group_name?: string | null
++}
++
++function monitorLabel(item: MonitorDisplayItem): string {
++  return `${item.group_name || ''} ${item.name || ''}`
++}
++
++export function compareMonitorDisplayOrder(
++  left: MonitorDisplayItem,
++  right: MonitorDisplayItem,
++): number {
++  const leftLabel = monitorLabel(left)
++  const rightLabel = monitorLabel(right)
++  const channelRank = (label: string) =>
++    label.includes('渠道A') ? 0 : label.includes('渠道B') ? 1 : 2
++  const productRank = (label: string) => {
++    const rank = MONITOR_PRODUCT_ORDER.findIndex((product) => label.includes(product))
++    return rank === -1 ? MONITOR_PRODUCT_ORDER.length : rank
++  }
++
++  return (
++    channelRank(leftLabel) - channelRank(rightLabel) ||
++    productRank(leftLabel) - productRank(rightLabel) ||
++    leftLabel.localeCompare(rightLabel, 'zh-CN') ||
++    left.id - right.id
++  )
++}
+diff --git a/frontend/src/views/HomeView.vue b/frontend/src/views/HomeView.vue
+index bde794b..59795e1 100644
+--- a/frontend/src/views/HomeView.vue
++++ b/frontend/src/views/HomeView.vue
+@@ -382,81 +382,36 @@
+         </div>
+ 
+         <div class="mb-16 flex flex-wrap items-center justify-center gap-4">
+-          <!-- Claude - Supported -->
++          <!-- 渠道 A -->
+           <div
+             class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
+           >
+             <div
+-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-orange-400 to-orange-500"
++              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary-500 to-primary-600"
+             >
+-              <span class="text-xs font-bold text-white">C</span>
+-            </div>
+-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.claude') }}</span>
+-            <span
+-              class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
+-              >{{ t('home.providers.supported') }}</span
+-            >
+-          </div>
+-          <!-- GPT - Supported -->
+-          <div
+-            class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
+-          >
+-            <div
+-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-green-500 to-green-600"
+-            >
+-              <span class="text-xs font-bold text-white">G</span>
+-            </div>
+-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">GPT</span>
+-            <span
+-              class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
+-              >{{ t('home.providers.supported') }}</span
+-            >
+-          </div>
+-          <!-- Gemini - Supported -->
+-          <div
+-            class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
+-          >
+-            <div
+-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-blue-600"
+-            >
+-              <span class="text-xs font-bold text-white">G</span>
++              <span class="text-xs font-bold text-white">A</span>
+             </div>
+-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.gemini') }}</span>
++            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.channelA') }}</span>
+             <span
+               class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
+               >{{ t('home.providers.supported') }}</span
+             >
+           </div>
+-          <!-- Antigravity - Supported -->
++          <!-- 渠道 B -->
+           <div
+             class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
+           >
+             <div
+-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-rose-500 to-pink-600"
++              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-500 to-cyan-600"
+             >
+-              <span class="text-xs font-bold text-white">A</span>
++              <span class="text-xs font-bold text-white">B</span>
+             </div>
+-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.antigravity') }}</span>
++            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.channelB') }}</span>
+             <span
+               class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
+               >{{ t('home.providers.supported') }}</span
+             >
+           </div>
+-          <!-- More - Coming Soon -->
+-          <div
+-            class="flex items-center gap-2 rounded-xl border border-gray-200/50 bg-white/40 px-5 py-3 opacity-60 backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/40"
+-          >
+-            <div
+-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-gray-500 to-gray-600"
+-            >
+-              <span class="text-xs font-bold text-white">+</span>
+-            </div>
+-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.more') }}</span>
+-            <span
+-              class="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-dark-700 dark:text-dark-400"
+-              >{{ t('home.providers.soon') }}</span
+-            >
+-          </div>
+         </div>
+       </div>
+     </main>
+@@ -469,7 +424,7 @@
+         <p class="text-sm text-gray-500 dark:text-dark-400">
+           &copy; {{ currentYear }} {{ siteName }}. {{ t('home.footer.allRightsReserved') }}
+         </p>
+-        <div class="flex items-center gap-4">
++        <div v-if="docUrl" class="flex items-center gap-4">
+           <a
+             v-if="docUrl"
+             :href="docUrl"
+@@ -479,14 +434,6 @@
+           >
+             {{ t('home.docs') }}
+           </a>
+-          <a
+-            :href="githubUrl"
+-            target="_blank"
+-            rel="noopener noreferrer"
+-            class="text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-white"
+-          >
+-            GitHub
+-          </a>
+         </div>
+       </div>
+     </footer>
+@@ -508,9 +455,9 @@ const authStore = useAuthStore()
+ const appStore = useAppStore()
+ 
+ // Site settings - directly from appStore (already initialized from injected config)
+-const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'Sub2API')
++const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'JIYU AI')
+ const siteLogo = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
+-const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || 'AI API Gateway Platform')
++const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || 'AI API 服务平台')
+ const docUrl = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.doc_url || appStore.docUrl || ''))
+ const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
+ const hasHomeContent = computed(() => homeContent.value.trim().length > 0)
+@@ -526,9 +473,6 @@ const isHomeContentUrl = computed(() => {
+ // Theme
+ const isDark = ref(document.documentElement.classList.contains('dark'))
+ 
+-// GitHub URL
+-const githubUrl = 'https://github.com/Wei-Shaw/sub2api'
+-
+ // Auth state
+ const isAuthenticated = computed(() => authStore.isAuthenticated)
+ const modelPlazaRequiresAuth = computed(
+diff --git a/frontend/src/views/admin/AccountsView.vue b/frontend/src/views/admin/AccountsView.vue
+index f93300d..b5cc2e4 100644
+--- a/frontend/src/views/admin/AccountsView.vue
++++ b/frontend/src/views/admin/AccountsView.vue
+@@ -224,24 +224,7 @@
+           </template>
+           <template #cell-name="{ row, value }">
+             <div class="flex flex-col">
+-              <HelpTooltip
+-                v-if="accountHomepageUrl(row)"
+-                :content="accountHomepageUrl(row)"
+-                width-class="w-max max-w-sm break-all"
+-                class="-ml-1 self-start"
+-              >
+-                <template #trigger>
+-                  <a
+-                    :href="accountHomepageUrl(row)"
+-                    target="_blank"
+-                    rel="noopener noreferrer"
+-                    class="border-b border-dotted border-gray-300 font-medium text-gray-900 dark:border-dark-600 dark:text-white"
+-                  >
+-                    {{ value }}
+-                  </a>
+-                </template>
+-              </HelpTooltip>
+-              <span v-else class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
++              <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
+               <span
+                 v-if="accountDisplayEmail(row)"
+                 class="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]"
+@@ -529,7 +512,6 @@ import { buildGrokUsageRefreshKey, buildOpenAIUsageRefreshKey } from '@/utils/ac
+ import { formatDateTime, formatRelativeTime } from '@/utils/format'
+ import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
+ import { extractApiErrorMessage } from '@/utils/apiError'
+-import { sanitizeUrl } from '@/utils/url'
+ import { getFloatingPanelPosition } from '@/utils/floatingPanel'
+ import { formatMultiplier } from '@/utils/formatters'
+ import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, AccountUsageInfo, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
+@@ -1716,12 +1698,6 @@ function accountDisplayEmail(row: any): string {
+   return row.extra?.email_address || row.extra?.email || row.credentials?.email || row.parent_email || ''
+ }
+ 
+-function accountHomepageUrl(row: Account): string {
+-  if (row.type !== 'apikey' || typeof row.credentials?.base_url !== 'string') return ''
+-  const baseUrl = sanitizeUrl(row.credentials.base_url)
+-  return baseUrl ? new URL(baseUrl).origin : ''
+-}
+-
+ type OpenAICompactBadgeState = 'active' | 'blocked' | 'auto'
+ 
+ function getOpenAICompactState(row: any): OpenAICompactBadgeState | null {
+diff --git a/frontend/src/views/admin/AnnouncementsView.vue b/frontend/src/views/admin/AnnouncementsView.vue
+index ba39819..9385ee5 100644
+--- a/frontend/src/views/admin/AnnouncementsView.vue
++++ b/frontend/src/views/admin/AnnouncementsView.vue
+@@ -148,7 +148,7 @@
+           <template #empty>
+             <EmptyState
+               :title="t('empty.noData')"
+-              :description="t('admin.announcements.createFirstAnnouncement')"
++              :description="t('admin.announcements.noAnnouncements')"
+               :action-text="t('admin.announcements.createAnnouncement')"
+               @action="openCreateDialog"
+             />
+diff --git a/frontend/src/views/admin/ChannelMonitorView.vue b/frontend/src/views/admin/ChannelMonitorView.vue
+index ae154f7..9833c66 100644
+--- a/frontend/src/views/admin/ChannelMonitorView.vue
++++ b/frontend/src/views/admin/ChannelMonitorView.vue
+@@ -64,7 +64,12 @@
+       </template>
+ 
+       <template #table>
+-        <DataTable :columns="columns" :data="monitors" :loading="loading">
++        <DataTable
++          :columns="columns"
++          :data="monitors"
++          :loading="loading"
++          :sticky-actions-column="false"
++        >
+           <template #cell-name="{ row, value }">
+             <div class="flex items-center gap-1.5">
+               <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
+@@ -76,7 +81,7 @@
+ 
+           <template #cell-provider="{ row }">
+             <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium" :class="providerBadgeClass(row.provider)">
+-              {{ providerLabel(row.provider) }}
++              {{ monitorChannelLabel(row) }}
+             </span>
+             <!-- 三种检测模式并列展示，quota 系配额数据源与纯探活一眼可分 -->
+             <span class="ml-1 inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium" :class="checkModeBadgeClass(row.check_mode)">
+@@ -200,6 +205,7 @@ import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
+ import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
+ import MonitorSettingsPanel from '@/features/channel-monitor-v2/MonitorSettingsPanel.vue'
+ import { isChannelMonitorV1Mode } from '@/utils/featureFlags'
++import { compareMonitorDisplayOrder } from '@/utils/channelMonitorDisplayOrder'
+ 
+ const { t } = useI18n()
+ const appStore = useAppStore()
+@@ -236,7 +242,7 @@ let searchTimeout: ReturnType<typeof setTimeout> | null = null
+ 
+ const columns = computed<Column[]>(() => [
+   { key: 'name', label: t('admin.channelMonitor.columns.name'), sortable: false },
+-  { key: 'provider', label: t('admin.channelMonitor.columns.provider'), sortable: false },
++  { key: 'provider', label: t('admin.channelMonitor.columns.channel'), sortable: false },
+   { key: 'primary_model', label: t('admin.channelMonitor.columns.primaryModel'), sortable: false },
+   { key: 'availability_7d', label: t('admin.channelMonitor.columns.availability7d'), sortable: false },
+   { key: 'latency', label: t('admin.channelMonitor.columns.latency'), sortable: false },
+@@ -266,7 +272,7 @@ async function reload() {
+ 
+     const res = await adminAPI.channelMonitor.list(params, { signal: ctrl.signal })
+     if (ctrl.signal.aborted || abortController !== ctrl) return
+-    monitors.value = res.items || []
++    monitors.value = [...(res.items || [])].sort(compareMonitorDisplayOrder)
+     pagination.total = res.total
+   } catch (err: unknown) {
+     const e = err as { name?: string; code?: string }
+@@ -280,6 +286,13 @@ async function reload() {
+   }
+ }
+ 
++function monitorChannelLabel(monitor: ChannelMonitor): string {
++  const label = `${monitor.group_name || ''} ${monitor.name || ''}`
++  if (label.includes('渠道A')) return '渠道A'
++  if (label.includes('渠道B')) return '渠道B'
++  return providerLabel(monitor.provider)
++}
++
+ function handleSearch() {
+   if (searchTimeout) clearTimeout(searchTimeout)
+   searchTimeout = setTimeout(() => {
+diff --git a/frontend/src/views/user/ChannelStatusV1View.vue b/frontend/src/views/user/ChannelStatusV1View.vue
+index 61b4da9..ec8d8f7 100644
+--- a/frontend/src/views/user/ChannelStatusV1View.vue
++++ b/frontend/src/views/user/ChannelStatusV1View.vue
+@@ -48,6 +48,7 @@ import MonitorCardGrid from '@/components/user/monitor/MonitorCardGrid.vue'
+ import MonitorDetailDialog from '@/components/user/MonitorDetailDialog.vue'
+ import { DEFAULT_INTERVAL_SECONDS, STATUS_OPERATIONAL } from '@/constants/channelMonitor'
+ import { useAutoRefresh } from '@/composables/useAutoRefresh'
++import { compareMonitorDisplayOrder } from '@/utils/channelMonitorDisplayOrder'
+ 
+ const { t } = useI18n()
+ const appStore = useAppStore()
+@@ -94,7 +95,7 @@ async function reload(silent = false) {
+   try {
+     const res = await listChannelMonitorViews({ signal: ctrl.signal })
+     if (ctrl.signal.aborted || abortController !== ctrl) return
+-    items.value = res.items || []
++    items.value = [...(res.items || [])].sort(compareMonitorDisplayOrder)
+   } catch (err: unknown) {
+     const e = err as { name?: string; code?: string }
+     if (e?.name === 'AbortError' || e?.code === 'ERR_CANCELED') return
+diff --git a/frontend/src/views/user/CustomPageView.vue b/frontend/src/views/user/CustomPageView.vue
+index 8006695..d8d7eee 100644
+--- a/frontend/src/views/user/CustomPageView.vue
++++ b/frontend/src/views/user/CustomPageView.vue
+@@ -1,6 +1,27 @@
+ <template>
+   <AppLayout>
+-    <div class="custom-page-layout">
++    <div v-if="isJiyuRechargePage" class="jiyu-recharge-shell">
++      <a
++        :href="jiyuRechargeUrl"
++        target="_blank"
++        rel="noopener noreferrer"
++        class="jiyu-recharge-open"
++        :aria-label="t('customPage.openInNewTab')"
++        :title="t('customPage.openInNewTab')"
++      >
++        <Icon name="externalLink" size="md" :stroke-width="2" />
++      </a>
++      <iframe
++        :src="jiyuRechargeUrl"
++        class="jiyu-recharge-frame"
++        :title="jiyuRechargeTitle"
++        loading="eager"
++        referrerpolicy="strict-origin-when-cross-origin"
++        allowfullscreen
++      ></iframe>
++    </div>
++
++    <div v-else class="custom-page-layout">
+       <div class="card flex-1 min-h-0 overflow-hidden">
+         <div v-if="loading" class="flex h-full items-center justify-center py-12">
+           <div
+@@ -150,7 +171,21 @@ const tocVisible = ref(typeof window !== 'undefined' ? window.innerWidth > 768 :
+ const activeHeadingId = ref('')
+ let themeObserver: MutationObserver | null = null
+ 
++const JIYU_RECHARGE_PAGE_ID = 'recharge-center'
++const JIYU_RECHARGE_SECOND_PAGE_ID = 'recharge-center-2'
++const JIYU_RECHARGE_URL = 'https://pay.ldxp.cn/shop/ZCUGEDMV'
+ const menuItemId = computed(() => route.params.id as string)
++const jiyuRechargeUrl = computed(() => {
++  if (menuItemId.value === JIYU_RECHARGE_SECOND_PAGE_ID) {
++    const configuredUrl = menuItem.value?.url?.trim() ?? ''
++    return /^https:\/\//i.test(configuredUrl) ? configuredUrl : ''
++  }
++  return menuItemId.value === JIYU_RECHARGE_PAGE_ID ? JIYU_RECHARGE_URL : ''
++})
++const jiyuRechargeTitle = computed(() =>
++  menuItemId.value === JIYU_RECHARGE_SECOND_PAGE_ID ? 'JIYU AI 云猫寄售' : 'JIYU AI 链动小铺'
++)
++const isJiyuRechargePage = computed(() => Boolean(jiyuRechargeUrl.value))
+ 
+ const menuItem = computed(() => {
+   const id = menuItemId.value
+@@ -335,6 +370,11 @@ function injectCopyButtons() {
+ }
+ 
+ watch(markdownSlug, (slug) => {
++  if (isJiyuRechargePage.value) {
++    renderedHtml.value = ''
++    tocItems.value = []
++    return
++  }
+   if (slug) {
+     fetchAndRenderMarkdown(slug)
+   } else {
+@@ -374,6 +414,62 @@ onUnmounted(() => {
+ </script>
+ 
+ <style scoped>
++.jiyu-recharge-shell {
++  position: relative;
++  width: calc(100% + 2rem);
++  height: calc(100vh - 64px);
++  height: calc(100dvh - 64px);
++  margin: -1rem;
++  overflow: hidden;
++  background: #ffffff;
++}
++
++.jiyu-recharge-open {
++  @apply absolute right-2 top-2 z-10 flex items-center justify-center border border-gray-200 bg-white text-gray-700 shadow-sm transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-100 dark:hover:bg-dark-700;
++  width: 44px;
++  height: 44px;
++  border-radius: 6px;
++}
++
++.jiyu-recharge-frame {
++  display: block;
++  width: 100%;
++  height: 100%;
++  border: 0;
++  background: #ffffff;
++}
++
++@media (max-width: 767px) {
++  .jiyu-recharge-shell {
++    position: fixed;
++    top: 64px;
++    left: 0;
++    z-index: 20;
++    width: 100vw;
++    height: calc(100vh - 64px);
++    height: calc(100dvh - 64px);
++    margin: 0;
++  }
++
++  .jiyu-recharge-open {
++    display: none;
++  }
++}
++
++@media (min-width: 768px) {
++  .jiyu-recharge-shell {
++    width: calc(100% + 3rem);
++    margin: -1.5rem;
++  }
++}
++
++@media (min-width: 1024px) {
++  .jiyu-recharge-shell {
++    width: calc(100% + 4rem);
++    margin: -2rem;
++  }
++}
++
+ .custom-page-layout {
+   @apply flex flex-col;
+   height: calc(100vh - 64px - 4rem);
+diff --git a/frontend/src/views/user/KeysView.vue b/frontend/src/views/user/KeysView.vue
+index 0237576..34872e2 100644
+--- a/frontend/src/views/user/KeysView.vue
++++ b/frontend/src/views/user/KeysView.vue
+@@ -505,8 +505,50 @@
+               />
+             </template>
+           </Select>
++
++          <div
++            v-if="!showEditModal && selectedCreateGroup"
++            class="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-800/60"
++            data-testid="key-endpoint-guide"
++          >
++            <div class="flex items-start gap-3">
++              <Icon name="terminal" size="md" class="mt-0.5 flex-shrink-0 text-primary-500" />
++              <div class="min-w-0 flex-1 space-y-3">
++                <div v-for="guide in defaultEndpointGuides" :key="guide.title">
++                  <p class="text-sm font-medium text-gray-900 dark:text-white">
++                    {{ guide.title }}
++                  </p>
++                  <code class="mt-1 block overflow-x-auto whitespace-nowrap rounded bg-gray-900 px-2.5 py-2 text-xs text-gray-100">
++                    {{ guide.endpoint }}
++                  </code>
++                  <p class="mt-1.5 text-xs leading-5 text-gray-500 dark:text-gray-400">
++                    {{ guide.hint }}
++                  </p>
++                </div>
++              </div>
++            </div>
++          </div>
+         </div>
+ 
++        <label
++          v-if="!showEditModal && !publicSettings?.hide_ccs_import_button"
++          class="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 p-3 dark:border-dark-700"
++        >
++          <input
++            v-model="importAfterCreate"
++            type="checkbox"
++            class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
++          />
++          <span class="min-w-0">
++            <span class="block text-sm font-medium text-gray-900 dark:text-white">
++              {{ t('keys.createAndImport') }}
++            </span>
++            <span class="mt-0.5 block text-xs leading-5 text-gray-500 dark:text-gray-400">
++              {{ t('keys.createAndImportHint') }}
++            </span>
++          </span>
++        </label>
++
+         <!-- Custom Key Section (only for create) -->
+         <div v-if="!showEditModal" class="space-y-3">
+           <div class="flex items-center justify-between">
+@@ -1303,6 +1345,7 @@ const showUseKeyModal = ref(false)
+ const showCcsClientSelect = ref(false)
+ const showColumnDropdown = ref(false)
+ const pendingCcsRow = ref<ApiKey | null>(null)
++const importAfterCreate = ref(true)
+ const selectedKey = ref<ApiKey | null>(null)
+ const copiedKeyId = ref<number | null>(null)
+ const groupSelectorKeyId = ref<number | null>(null)
+@@ -1349,6 +1392,28 @@ const formData = ref({
+   expiration_date: ''
+ })
+ 
++const selectedCreateGroup = computed(() =>
++  groups.value.find((group) => group.id === formData.value.group_id) || null
++)
++
++const defaultEndpointGuides = computed(() => {
++  const baseUrl = (publicSettings.value?.api_base_url || window.location.origin)
++    .replace(/\/+$/, '')
++    .replace(/\/v1$/i, '')
++  return [
++    {
++      title: t('keys.endpointGuide.claudeTitle'),
++      endpoint: baseUrl,
++      hint: t('keys.endpointGuide.claudeHint')
++    },
++    {
++      title: t('keys.endpointGuide.chatgptTitle'),
++      endpoint: `${baseUrl}/v1`,
++      hint: t('keys.endpointGuide.chatgptHint')
++    }
++  ]
++})
++
+ // 自定义Key验证
+ const customKeyError = computed(() => {
+   if (!formData.value.use_custom_key || !formData.value.custom_key) {
+@@ -1736,7 +1801,8 @@ const handleSubmit = async () => {
+       appStore.showSuccess(t('keys.keyUpdatedSuccess'))
+     } else {
+       const customKey = formData.value.use_custom_key ? formData.value.custom_key : undefined
+-      await keysAPI.create(
++      const shouldImport = importAfterCreate.value && !publicSettings.value?.hide_ccs_import_button
++      const createdKey = await keysAPI.create(
+         formData.value.name,
+         formData.value.group_id,
+         customKey,
+@@ -1746,11 +1812,15 @@ const handleSubmit = async () => {
+         expiresInDays,
+         rateLimitData
+       )
++      createdKey.group = groups.value.find((group) => group.id === formData.value.group_id)
+       appStore.showSuccess(t('keys.keyCreatedSuccess'))
+       // Only advance tour if active, on submit step, and creation succeeded
+       if (onboardingStore.isCurrentStep('[data-tour="key-form-submit"]')) {
+         onboardingStore.nextStep(500)
+       }
++      if (shouldImport) {
++        setTimeout(() => importToCcswitch(createdKey), 0)
++      }
+     }
+     closeModals()
+     loadApiKeys()
+@@ -1787,6 +1857,7 @@ const closeModals = () => {
+   showCreateModal.value = false
+   showEditModal.value = false
+   selectedKey.value = null
++  importAfterCreate.value = true
+   formData.value = {
+     name: '',
+     group_id: null,

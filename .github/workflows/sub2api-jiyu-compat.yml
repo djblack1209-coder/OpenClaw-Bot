@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       upstream_tag:
-        description: Official Sub2API tag to adapt, for example v0.1.173
+        description: Official Sub2API tag to adapt, for example v0.2.0
         required: false
         type: string
   schedule:
@@ -72,7 +72,7 @@ jobs:
         run: |
           set -euo pipefail
           case "$UPSTREAM_TAG" in
-            v0.1.172 | v0.1.173)
+            v0.1.172 | v0.1.173 | v0.2.0)
               echo "skip=false" >> "$GITHUB_OUTPUT"
               ;;
             *)
@@ -95,12 +95,16 @@ jobs:
           UPSTREAM_TAG: ${{ steps.release.outputs.tag }}
         run: |
           git clone --depth 1 --branch "$UPSTREAM_TAG" https://github.com/Wei-Shaw/sub2api.git upstream
-          git -C upstream apply "../scripts/sub2api-jiyu-${UPSTREAM_TAG}.patch"
-          git -C upstream apply "../scripts/sub2api-model-align-${UPSTREAM_TAG}.patch"
-          git -C upstream apply "../scripts/sub2api-pricing-region-${UPSTREAM_TAG}.patch"
-          git -C upstream apply "../scripts/sub2api-region-filter-${UPSTREAM_TAG}.patch"
-          if [ -f "scripts/sub2api-channel-account-source-${UPSTREAM_TAG}.patch" ]; then
-            git -C upstream apply "../scripts/sub2api-channel-account-source-${UPSTREAM_TAG}.patch"
+          if [ "$UPSTREAM_TAG" = "v0.2.0" ]; then
+            git -C upstream apply "../scripts/sub2api-jiyu-v0.2.0.patch"
+          else
+            git -C upstream apply "../scripts/sub2api-jiyu-${UPSTREAM_TAG}.patch"
+            git -C upstream apply "../scripts/sub2api-model-align-${UPSTREAM_TAG}.patch"
+            git -C upstream apply "../scripts/sub2api-pricing-region-${UPSTREAM_TAG}.patch"
+            git -C upstream apply "../scripts/sub2api-region-filter-${UPSTREAM_TAG}.patch"
+            if [ -f "scripts/sub2api-channel-account-source-${UPSTREAM_TAG}.patch" ]; then
+              git -C upstream apply "../scripts/sub2api-channel-account-source-${UPSTREAM_TAG}.patch"
+            fi
           fi
 
       - name: Setup Node and pnpm
@@ -166,7 +170,7 @@ jobs:
             > jiyu-update-manifest.json
           gh release create "$RELEASE_TAG" sub2api-jiyu-linux-arm64 jiyu-update-manifest.json \
             --title "JIYU compatibility package ${UPSTREAM_TAG}" \
-            --notes "Built from ${UPSTREAM_TAG} with the reviewed JIYU patch; install only through the root broker." \
+            --notes "Built from ${UPSTREAM_TAG} with the reviewed JIYU compatibility patch; install only through the root broker." \
             --prerelease \
             --latest=false
           if gh release view jiyu-latest >/dev/null 2>&1; then
