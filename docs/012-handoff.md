@@ -3,5 +3,5 @@
 本文件的滚动交接历史已于 2026-08-10 退役，避免与生产事实重复和漂移。
 
 - 当前生产状态、风险、优化优先级和新会话提示词只维护在 `docs/current/current-baseline.md`。
-- 真实故障与重大变更保留在 `docs/009-health.md` 和 `docs/002-changelog.md`。
+- 真实故障与重大变更从 Git 历史查询；当前状态只维护在 `docs/current/current-baseline.md`。
 - 不要在本文件追加会话流水、测试数字或截图清单。

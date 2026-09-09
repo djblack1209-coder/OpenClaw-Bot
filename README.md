@@ -28,26 +28,17 @@ OpenClaw Bot 是一个公开开源的 AI operations / personal automation 实验
 | Browser / Web | browser-use, DrissionPage, crawl4ai |
 | Infra / Ops | Docker Compose, Redis, Langfuse, loguru, APScheduler |
 
-## 基础设施
+## 当前运行边界
 
-**双活架构:**
-- **主节点:** Oracle ARM1 (24GB) - 主要Bot运行时
-- **辅助节点:** 腾讯云 (2GB) - 轻量级服务
+本项目不是“双活服务器集群”，而是按职责拆分：
 
-**网络优化:**
-- sing-box 1.14.0 代理服务
-- BBR v3 内核优化 (7.1.8-joeyblog-bbrv3)
-- Cloudflare Tunnel (jiyu.245334.xyz)
+- **本机 Mac**：OpenClaw Gateway、Telegram Bot、Intel listener、桌面管理端与本地计划任务的主要运行位置。
+- **Oracle ARM1**：承载独立的 JIYU / Sub2API 商业服务；它不是 OpenClaw Bot 的主运行节点。
+- **Cloudflare**：提供 JIYU 公网入口与源站保护。其他服务器资产和跨项目链路由 `VPS-Config` 统一管理，不在本 README 重复维护。
 
-**备份策略:**
-- 本地每日自动备份 (30天保留)
-- ⚠️ 异地备份待配置 (offsite_not_configured)
-- GPG加密存储到iCloud
+备份计划已安装并按每日 03:30 运行。2026-09-04 的只读复查确认最近一次任务退出码为 0，本地归档与异地加密归档的校验摘要一致；本轮尚未执行解密还原，因此不能把“归档存在”表述成“完整灾难恢复已闭环”。
 
-**性能:**
-- ARM1内存使用: 13.1% (充足)
-- 所有LaunchAgent正常运行
-- 健康检查: /health 返回ok
+运行状态必须分别验证：本机 OpenClaw 使用项目健康脚本，JIYU 使用其独立生产健康与真实业务探针；单个 `/health` 不能代表整套项目正常。
 
 ## Quick Start
 
@@ -97,12 +88,11 @@ OpenClaw Bot/
 
 ## Documentation
 
-- `docs/003-docs-index.md`：文档总入口
+- `docs/current/current-baseline.md`：本项目当前运行边界与接管入口
 - `docs/001-project-map.md`：项目全景与模块说明
 - `docs/004-architecture.md`：系统架构与 Bot 指令
 - `docs/005-quickstart.md`：启动、部署、灾备、密钥轮换
-- `docs/009-health.md`：已知问题、技术债和健康状态
-- `docs/002-changelog.md`：变更历史
+- Git 历史：已完成变更、旧审计和迁移背景
 - `docs/013-contributing.md`：贡献指南
 - `docs/014-security.md`：安全政策与漏洞报告
 
