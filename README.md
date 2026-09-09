@@ -88,6 +88,7 @@ OpenClaw Bot/
 
 ## Documentation
 
+- `docs/current/chatgpt-collaboration.md`：ChatGPT 规划、Codex 执行的使用与恢复说明（接入验收状态见文档）
 - `docs/current/current-baseline.md`：本项目当前运行边界与接管入口
 - `docs/001-project-map.md`：项目全景与模块说明
 - `docs/004-architecture.md`：系统架构与 Bot 指令
