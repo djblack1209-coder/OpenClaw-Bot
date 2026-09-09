@@ -1,191 +1,35 @@
-# JIYU / Sub2API 当前生产基线
+# OpenEverything / JIYU 当前运行边界
 
-> 更新时间：2026-08-29（UTC；最终全量生产复查补充）。生产运行时是唯一事实；仓库只作为维护入口、恢复材料和异地备份。`docs/current/` 只保留本文件。
+观察日期：2026-09-09。跨项目生产事实统一以 VPS-Config 的
+`docs/current/live-first-closure-v1.md` 为准；本文件只保留本项目接管所需状态。
+历史销售、计费、备份数量和已退休迁移细节从 Git 查询，不作为当前验收结论。
 
-## 2026-08-29 最终全量生产复查
+## 当前职责
 
-- `bash scripts/auto_health_check.sh --json --strict` 在 2026-08-29T15:17:49Z 返回 `ok=true`、`release_ready=true`；现有 LaunchAgent、备份、新版检查、Gateway、ClawBot、Intel runtime、磁盘和公共站点检查均通过。
-- 公共首页、健康入口和未授权模型入口的边界保持正确；本轮没有创建 Key、订单、用量、供应商请求或 Cloudflare/数据库写入。
-- `make sub2api-check` 复跑通过 7/7。早先一次 `command not found` 是测试进程的瞬时 shell 环境问题，随后同一工作树直接复跑成功；没有把它误修成生产代码。
-- 当前生产仍为 JIYU 定制的 `v0.1.173`，官方上游已到 `v0.1.183`；补丁、品牌、计费和发布回滚链尚未在新版本完成 staging + 真实销售探针，因此本轮不升级、不切换 New-API。
-- HostDare/Yanhuo 暂停没有形成 JIYU 的已确认中断或错误故障转移；业务继续由 Oracle ARM1 和现有 Cloudflare 链路承载。
+- OpenClaw Gateway、ClawBot、Intel listener/scheduler 和管理端运行在本机 Mac。
+- Oracle ARM1 承载 JIYU / Sub2API 0.2.0；Tencent 不承载本项目活动应用。
+- 唯一实际 Gateway 包由 manager 的 npm runtime lock 固定为 2026.7.2-beta.7。
+  vendor 源码目录不等于当前 Gateway 运行版本，不执行 latest 覆盖或批量重装。
+- Sub2API 使用当前 0.2.0 定制补丁；0.1.172/0.1.173 仍由兼容工作流引用，保留为可重放构建材料。
 
+## 本轮修复与验证
 
+- 官方锁定归档 SHA512 匹配后，仅恢复 196 个缺失运行文件：主包 187、AI 依赖 7、highlight.js 2；原有文件没有覆盖，版本、配置和账户没有迁移。
+- Gateway 的 HTTP 和正常服务环境下的认证 health 均通过。原生健康脚本修复后 `ok=true`；严格模式仍因 Intel scheduler warning 返回 2，不能写成无告警发布完成。
+- 仍有实际调用者的 ClawBot、社交扩展、Sub2API 构建脚本/补丁、Twitch 源码已从本项目当前 HEAD 恢复。社交核心 40 项、Sub2API 运维脚本 7 项针对性检查通过。
+- JIYU 健康入口可达、未授权模型入口保持 401。认证后操作被 MFA 挡住，没有绕过、创建 Key、订单或改变费率/销售边界。
+- 本轮是锁定运行时修复与源码恢复，没有整包部署产品工作区；New-API 冷回滚 submodule 的 31 个缺失文件按父仓库固定 gitlink 恢复，commit 未变，工作树 clean。
 
-## 2026-08-28 最终生产复查读回
+## 未闭环项
 
-- 2026-08-28T20:44:26Z `bash scripts/auto_health_check.sh --json --strict` 返回 `ok=true`、`release_ready=true`；Gateway、ClawBot、Intel listener、调度与备份链正常，公网首页/健康页 200，未授权 `/v1/models` 401。
-- Oracle ARM1 当前生产版本仍为 `v0.1.173-jiyu.31947794554`；Sub2API、Redis、Apache、Cloudflare 443、更新 timer、备份 timer 和 Responses WebSocket 代理均正常。最新备份 `daily-20260828T195404Z` 已存在且可读。
-- 销售边界未改变：渠道 A 五个文本组 active；渠道 B 五个关联组 inactive；国内四组 inactive；生图两组 disabled。数据库中的渠道 B entity 仍显示 active，但其关联 groups 全部 inactive，这是模型语义差异，不代表公开销售目录泄漏。
-- 16 个供应商账号 active；最近 90 天没有支付订单，最近 30 天用量仅 10 条；近期上游费率同步审计均为 HTTP 200。渠道/计费/Cloudflare/DNS/路由本轮没有生产写入。
-- 官方上游当前为 Sub2API `v0.1.183`；本地 New-API 冷回滚 submodule 为 `v1.0.0-rc.4`，官方为 `v1.0.0-rc.26`。JIYU 品牌/计费补丁尚未针对新版本重放，故不直接覆盖生产。
-- 2026-08-28T20:45:06Z 总控 `vpsctl pull` 成功；HostDare/Yanhuo provider-paused 且不在本项目生产依赖链，没有发现由暂停导致的 JIYU 中断或故障转移异常。
+- Intel scheduler 已加载，等待自然调度产物验证；不把 `ok=true` 当作所有新闻投递成功。
+- JIYU 登录后的关键流程需正常完成 MFA。手机体验、真实销售/计费与供应商成本状态没有本轮验收。
+- 本机备份新鲜度检查通过；跨节点统一备份恢复边界以中央基线为准，不把归档可读等同于完整灾备切换。
+- 近期 OpenClaw 版本有 Node 与 SDK 破坏性迁移；只在兼容环境和回滚路径可验证时考虑升级。
 
-## 当前结论
+## 接管顺序
 
-- 当前可以围绕渠道 A 开始广告拉新。真实创建 Key 下拉框只显示渠道 A 的 5 个文本分组；渠道 B 5 个和国内 4 个文本分组已停用，两个专用生图分组继续停用。
-- 渠道 A 的 5 个账号均通过 Sub2API 原生上游账单探测，费率同步为 `ok/200`；账号倍率和对应公开分组倍率按“账号倍率 + 0.05”在同一事务内收敛。
-- 渠道 B 的 5 个账号虽然保留原生费率同步开关，但供应商账单端点持续返回 `unsupported/404`，无法获得实时成本。按运营规则已直接下架，不再使用存储旧倍率承接新用户。
-- 国内 4 个文本分组按运营要求暂时下架；其无效费率同步保持关闭，配置完整保留，后续需要时先复核成本再恢复。
-- 14 个成本型文本分组均保留原生利润保护 `profit_min_margin=0.03`、`profit_safety_buffer=0`。当前在售渠道 A 的最低配置毛利空间约 `9.09%`，5/5 通过准入。
-- 当前生产版本为 `v0.1.173-jiyu.31947794554`。本轮未改代码、未升级版本、未新增组件或控制面。
-- 2026-08-25 的全项目复查没有改变销售、计费、渠道、账号、Cloudflare 或可见节点边界；仅修复了本地健康检查对 listener 目录中两个受控元数据文件的错误计数，并保留原有测试与恢复材料。
-
-## 1. 已通过的真实生产检查
-
-### 运行时与公网
-
-- Sub2API、专用 Redis、自动更新 timer、每日备份 timer、Cloudflare 443 源站策略均为 active；PostgreSQL 预检、内网健康和 Responses WebSocket 代理通过。
-- 公网首页返回 200，未授权 `/v1/models` 返回 401；上一轮渠道写入后没有重启或错误状态，本次复查另行记录了一个优雅退出服务的恢复。
-- 待处理/处理中支付订单为 0，用量记录仍为 10；本轮没有创建 Key、订单或人工模型请求，没有制造合成负载。
-
-### 分组、目录与监控
-
-- 数据库最终状态：渠道 A `5/5 active`、渠道 B `5/5 inactive`、国内 `4/4 inactive`、专用生图 `2/2 disabled`。
-- 真实创建 Key 下拉框恰好显示 5 个渠道 A 文本分组；渠道 B、国内、生图和四个无账号占位组均未混入。检查弹窗已取消，没有创建 Key。
-- 受管监控按原生 5 分钟周期自然收敛为渠道 A `5 enabled`、渠道 B `5 disabled`、生图 `2 disabled`，重复监控为 0；没有手工点击“立即检测”。
-- 用户 `/monitor` 真实页面只显示渠道 A 的 5 个文本渠道。当前三项正常、一项降级、一项上游错误；状态如实展示，不作为本方成本同步失败的替代证据。
-
-### 成本与倍率同步
-
-- 原生探测周期为 30 分钟：受支持上游在 `/v1/sub2api/billing` 返回有效成本倍率后，Sub2API 才会更新 `accounts.rate_multiplier`。
-- JIYU 已有兼容补丁只在“唯一活动文本分组、没有用户专属倍率/RPM、非生图”的安全条件下，把对应分组倍率原子更新为账号倍率 `+0.05`；写入使用 CAS、审计和调度 outbox，任何一步失败则事务回滚。
-- 渠道 A `5/5` 最新账单探测为 `ok/200` 且同步开启，当前 5 个分组全部满足利润准入；本轮最终回读期间继续出现成功的 `pricing.upstream_rate_sync` 审计。
-- 渠道 B `5/5` 同步开关保留，但探测为 `unsupported/404`，没有可写回的新倍率，因此此前仅沿用存储倍率。它们现为 inactive，不对新用户出售。
-- 国内 `4/4` 探测同为 `unsupported/404`，同步关闭且分组 inactive。所有停用组的倍率、账号绑定、模型、利润阈值和历史均保留，重新启用前必须重新核价。
-
-### 备份与审计
-
-- 本轮写入前一致性备份：`/var/backups/sub2api/daily-20260816T133245Z`；最终一致性备份：`/var/backups/sub2api/daily-20260816T134253Z`。两者非空，最终备份可由 `pg_restore --list` 解析。
-- 本机最终归档：`/Users/blackdj/.local/share/openclaw/backups/openeverything-20260816-214606.tgz`。checksum、路径、manifest 和 SQLite 只读恢复演练通过；离机目标仍未配置。
-- 审计日志恰好记录 9 条 `admin.groups.update`/HTTP 200，对应渠道 B 五组和国内四组；没有 Key 创建、支付或用量写入。
-- 回滚方式是从写入前备份恢复，或按已保存 prestate 仅把上述 9 个分组恢复为 active；不得重建账号、分组或监控。
-- 本机严格健康为 `ok=true`、`bad=0`、`warn=1`；唯一 warning 仍是 daily-backup LaunchAgent 等待下一次自然退出记录，不是 JIYU 生产故障。
-- 没有读取、输出或提交密码、Token、Cookie、私钥、API Key、订阅地址或账号标识。
-
-## 2. 发现并已修复的问题
-
-- 渠道 B 的“自动同步”开关容易被误解为实时同步已成功。根因不是前端硬编码，而是供应商没有实现 Sub2API 账单倍率协议：5 个账号均为 `unsupported/404`，而同一流程下渠道 A 的 5 个账号均为 `ok/200`。
-- 按“无法实时同步就下架”的运营规则，渠道 B 五组已通过原生分组状态改为 inactive；国内四组也按要求暂时下架。费率和成本保护未改，避免未来恢复时重建配置。
-- 分组停用后，渠道 B 五个监控由现有受管绑定解析器自然关闭；没有手工批量开关、没有新增守护进程，也没有删除历史。
-
-## 3. 未修复问题及原因
-
-- 渠道 B 与国内供应商仍未提供兼容的账单倍率端点。本方无法从 `404` 推导实时成本；在供应商支持协议前不恢复销售。
-- 渠道 A Kiro 当前上游错误、Grok 当前延迟降级；同机 OpenAI/Claude 官 Key、本方服务、数据库、Redis、DNS/TLS 和公共入口正常，因此不改路由、不叠加重试、不关闭其余渠道 A 分组。
-- 两个专用生图路径仍受上游权限或目标模型能力限制，且利润保护不覆盖媒体调度，因此继续关闭。
-- 没有实体手机接入；本轮完成真实桌面 Chrome 用户流程回读，不能把响应式模拟称为实体手机测试。
-- 离机备份目标仍未配置；现有生产与本机备份不等同于独立介质灾备，本轮不新增付费存储。
-
-## 4. 仍值得实施的优化
-
-| 优先级 | 事项 | 量化收益 | 维护成本 |
-|---|---|---|---|
-| P0 | 当前无技术 P0；广告只投放渠道 A 的 5 个文本产品 | 避免 B/国内成本滞后造成负毛利 | 0 新组件，运营文案一次性校正 |
-| P1 | 用实体手机复查注册、创建 Key、充值入口和 `/monitor` | 补齐唯一真实设备盲区 | 约 10–15 分钟，0 新费用 |
-| P1 | 广告发布前确认上游转售授权、当地经营/税务与隐私条款 | 降低封号、下架或合规损失 | 一次人工/法律确认 |
-| P2 | 供应商宣布支持 `/v1/sub2api/billing` 后，只读验证 B 连续成功再恢复 | 可重新增加 5 个产品且保持自动成本 | 约 30–60 分钟，无常驻维护 |
-
-## 5. 已无继续优化价值
-
-- 不为渠道 B 的 `unsupported/404` 新增抓价脚本、爬虫、成本 daemon 或第二套控制面；直接下架比维护不可靠同步更简单。
-- 不为供应商 502/403/慢响应调整本方 Cloudflare、DNS、公共路由、超时或重试；现有证据显示不是本方公共链路故障。
-- 不升级硬件或付费套餐；当前资源没有瓶颈。
-- 不投机升级 v0.1.177；当前真实请求未触发新版计费修复，升级收益小于补丁重放和回滚成本。
-- 不删除停用分组、账号、监控历史、支付/迁移/备份恢复、安全检查或关键浏览器流程。
-
-## 6. 需要用户处理的事项
-
-- 没有发现续费、MFA、账户恢复、所有权转移、付费套餐或硬件瓶颈需要立即处理。
-- 广告文案只能承诺渠道 A 当前提供的 5 个文本产品，不得再宣传渠道 B、国内模型、生图或全渠道 SLA。
-- 请确认上游条款允许转售/商业使用。技术完成不等于取得供应商授权或当地经营许可。
-- 未来恢复渠道 B：先确认探测连续 `ok/200`，再核对账号倍率、分组倍率 `= 账号倍率 + 0.05` 和 3% 利润准入，最后才把分组恢复 active。
-- 未来恢复国内模型：先人工确认供应商最新成本和转售条件；不能把当前存储 `1.00/1.05` 当成未来实时价格。
-
-## 本地减负结论
-
-- `docs/current/` 只有本文件；历史真实故障和重大变更保留在 `docs/002-changelog.md` 与 `docs/009-health.md`。
-- JIYU v0.1.172/173 补丁、模型对齐、区域定价/过滤和账号源补丁仍由兼容包工作流调用，不是无调用遗留，全部保留。
-- Tauri Schema、支付/数据库迁移、备份恢复、安全与关键浏览器测试仍有生产或发布调用者，全部保留。
-- 本轮没有发现可确认无调用者且值得删除的新文件；不为制造“清理数量”删除恢复材料。
-
-## 7. 新会话交接提示词
-
-```text
-只维护 /Users/blackdj/Desktop/OpenEverything 中的 JIYU/Sub2API，不跨项目写入。生产 jiyu.245334.xyz 是唯一事实，当前版本 v0.1.173-jiyu.31947794554。当前公开目录只有渠道 A 的 5 个文本组 active；渠道 B 5 个和国内 4 个均 inactive，生图 2 个 disabled。渠道 A 5 个账号的原生上游账单探测和倍率同步均为 ok/200，分组倍率按账号倍率 +0.05 原子收敛，5/5 保留 profit_control_enabled=true、profit_min_margin=0.03、profit_safety_buffer=0。渠道 B 5 个虽然保留同步开关，但供应商端点为 unsupported/404，无法实时同步，所以禁止恢复；国内 4 个按运营要求暂时下架且同步关闭。监控为渠道 A 5 enabled、渠道 B 5 disabled、生图 2 disabled。不要因为渠道 A 的上游错误/慢响应改本方路由或关闭其他 A 分组，只需继续证明故障不是本方导致。任何生产写入前先取最新 prestate、执行 /usr/local/sbin/openclaw-sub2api-manager backup、准备最小回滚并用真实创建 Key 目录和 /monitor 回读。写入前备份 daily-20260816T133245Z，最终备份 daily-20260816T134253Z，本机归档 openeverything-20260816-214606.tgz。不要新增 Gate、证据编译器、计划 Schema、一次性测试包、成本 daemon 或常驻 AI 管理面，不输出任何凭据或账号标识。唯一当前基线为 docs/current/current-baseline.md。
-```
-
-
-## 2026-08-21 全项目复查读回
-
-- 发现 `sub2api.service` 曾以退出码 0 优雅退出但不在 active 状态；这不是 OOM、数据库或 Cloudflare 故障。写入前已执行现有原生一致性备份，随后仅执行 `systemctl restart sub2api.service`。
-- 重启后的内部健康为 200，systemd 为 active/running，`NRestarts=0`；公网首页返回 200，未授权 `/v1/models` 返回 401。没有创建 Key、订单或用量，没有发起供应商模型请求。
-- Redis、PostgreSQL、Apache、备份/更新 timer 和失败单元读回正常。渠道 A 仍是唯一销售边界；渠道 B、国内和生图继续保持原有停用/禁用状态，不因为供应商错误改本方路由。
-- 本轮未修改渠道、计费、监控、Cloudflare、DNS、数据库结构或故障切换；独立异地备份和实体手机验证仍是明确残余。
-- 原作者仓库复查显示当前上游已有更新 release，但生产版本已通过真实销售边界、成本保护和公网/管理面读回；本轮不做无故升级，避免把供应商错误或回归风险引入生产。
-## 2026-08-21 桌面依赖与异地备份续审
-
-- 桌面端 `src-tauri/Cargo.lock` 已将被审计的 `h2` 从存在 RUSTSEC-2026-0258 的版本收敛到当前可用补丁版本；`cargo check --locked`、`cargo test --locked`（47 项）通过，`cargo audit` 不再报告该 h2 advisory。
-- `cargo audit` 仍有 GTK3/旧宏生态的既有维护性警告；本轮没有为了清零 warning 做大范围升级，因为没有对应生产故障且升级会扩大桌面回归面。
-- OpenEverything 生产本地服务、数据库、Cloudflare 源站和公开入口已完成只读读回；没有新增供应商模型请求、计费写入、渠道激活或生产路由改动。
-- OpenEverything 当前已有本地/临时恢复能力；独立异地最终恢复闭环在本轮归档上传完成前仍标记为未完成。最终归档将按项目分类放入中央百度网盘目录，远端清单读回后才关闭“异地放置”状态；不把本机副本冒充独立异地恢复。
-- 生产渠道边界不变：渠道 A 是当前唯一可销售文本目录；渠道 B、国内和生图继续保持停用/禁用，供应商错误不改本地 Cloudflare、DNS 或代理。
-
-## 2026-08-22 生产、CI 与备份读回
-
-- 生产本地服务、数据库、Cloudflare 源站、公开入口和可销售目录边界继续通过既有只读复查；渠道 A 仍为唯一可销售文本目录，渠道 B、国内和生图保持停用/禁用，供应商错误不改本方路由。
-- GitHub Actions run `32536356863` 已确认 `completed/success`；本次文档收口触发的 run `32558074051` 也已 `completed/success`。desktop h2 安全修复已在当前提交中，47 项 cargo 测试和 audit 结果仅作辅助证据。
-- 百度网盘客户端上传任务已完成；远端根目录七个分类目录可见。`04-OpenEverything` 目录进一步读回显示 5 个文件：加密归档 1.31GB、`.iv` 33.00B、`.key.enc` 384.00B、SHA-256 校验文件 95.00B、`manifest.json` 1.17KB；随后完成一次归档下载抽样。
-- OpenEverything 归档下载后完成 SHA-256 匹配、RSA 包装密钥解包、AES-256-CBC 解密和 tar 只读读取（158,295 个条目，路径安全检查通过）；验证未写入生产。完整远端生产恢复演练仍未执行，本地/临时副本恢复通过不等于独立异地生产恢复闭环完成。
-- 不新增供应商请求、计费写入、渠道激活、代理、CDN、控制平面或重复监控。
-
-## 2026-08-22 百度远端备份读回边界
-
-- 百度 `Carven's Macbook Air/04-OpenEverything` 分类目录可读，远端显示加密归档、SHA-256 sidecar、`manifest.json` 及配套文件。
-- 本轮已下载 1.31GB OpenEverything 归档并完成只读校验；因此可以确认一次远端加密归档可下载、可校验、可解密、可读取，但不把该结果扩大为生产恢复或完整异地恢复证明。
-- 本地 `auto_health_check.sh --json` 与 disaster-recovery drill 仍为本地服务边界证据；供应商错误与可选 disabled 能力继续单独归因。
-- 桌面 h2 安全修复保持在当前提交；不新增代理、CDN、负载均衡、控制面或重复监控。
-
-## 2026-08-22 跨项目备份读回边界补充
-
-- 同日中央复核已完成一次 SONIC 百度远端加密归档下载、SHA-256 匹配和本机只读解密读取；该证据属于 SONIC 项目，不转移为 OpenEverything 远端恢复证据。
-- OpenEverything 自身 `04-OpenEverything` 归档已完成一次远端下载、SHA-256 匹配、RSA/AES 解密和 tar 只读读取；远端生产恢复演练仍未执行。
-
-## 2026-08-22 OpenEverything 百度远端归档抽样
-
-- 在既有百度登录态下完成 `Carven's Macbook Air/04-OpenEverything/04-OpenEverything.tar.gz.enc` 下载；本机归档大小 1,403,213,296 bytes。
-- sidecar SHA-256 匹配，校验值为 `44b472ebfaf1478295fb2e86a6feae41244af09fc9627f5c52eac10554e9d450`；RSA 包装密钥解包和 AES-256-CBC 解密成功。
-- 解密后的 tar 可读，共 158,295 个条目，未发现绝对路径或 `..` 路径；只读验证在受限临时目录完成，未写入生产。
-- 该事实关闭“远端归档不可读”的当前疑问，但不等于完整远端生产恢复演练；中央归档也已完成一次远端下载与只读可读抽样。中央 node-core 与 SONIC 命名 handoff 的 File Provider 对象已逐项验证上传完成，第二台独立设备下载恢复仍未验证。
-
-
-## 2026-08-22 P1/P2 隔离恢复与周期抽样
-
-- `04-OpenEverything` 百度加密归档已在 ignored 临时恢复树中完成 sidecar
-  SHA-256、RSA/AES、路径安全和安全提取，并复用现有
-  `scripts/local_backup.sh` 与 `scripts/disaster_recovery.sh --drill`。
-- 原始恢复树首次运行遇到 macOS AppleDouble `._main.sqlite` 元数据导致的
-  SQLite 拒绝；只在临时恢复树删除 `._*` 资源元数据后，native backup 和
-  restore drill 通过。`offsite=not_configured` 与 19 条 inventory warning
-  仍如实保留；不能把本地 native drill 写成独立异地生产恢复。
-- 统一恢复手册：先 fresh prestate/runtime，再校验加密归档，解密到权限收紧
-  的临时目录并检查路径；调用现有 native backup/restore dry-run；读回
-  checksum、manifest、SQLite 与清理结果；最后删除临时明文。任何生产覆盖、
-  Cloudflare/Tunnel 变更或 retention 删除都必须另行批准。
-- 每月从 OpenEverything 分类抽一份加密归档做 hash、解密、路径安全和 tar
-  读取；每季度复用 native restore drill。失败只记录具体阶段，不新增 daemon、
-  监控面、控制平面、代理、CDN 或付费容量。
-
-## 2026-08-25 最终全量复查补充
-
-- 生产 `bash scripts/auto_health_check.sh --json` 首次只读结果为 `ok=false`，唯一坏项是 `intel_runtime` 将 listener 目录内的两个受控元数据文件与不可变事件文件混计为 `2002`。实际事件文件仍为 `2000`、6/6 来源覆盖，数据库、API、公网入口、备份新鲜度和磁盘检查没有新增故障。
-- 根因已在现有 `packages/clawbot/src/intel/runtime_health.py` 的 `_evidence_usage` 中最小修复：只统计不可变 `*-real-update-daemon.json` 事件文件，排除 `heartbeat.json` 与 `latest-real-update-daemon.json` 两个有界快照/心跳元数据。没有新增 daemon、Gate、证据编译器、计划 schema 或常驻管理面。
-- 现有 `packages/clawbot/tests/test_intel_runtime_health.py` 已补上真实文件命名形态；聚焦测试 `3 passed`。修复后同一生产检查于 `2026-08-25T16:35:38Z` 返回 `ok=true`、`release_ready=true`、6/6 来源、`2000` 事件文件/约 `0.7MB`，没有生产用户、计费或模型请求写入。
-- 本地私有 prestate 已转移到中央项目的 ignored `.staging/current/`，OpenEverything 仓库不再出现未跟踪的私有 staging 目录；只保留两处源代码/测试变更与本基线更新。
-- 仍保持原结论：渠道 A 的 5 个文本分组是唯一销售边界；渠道 B、国内文本和专用生图继续停用/禁用；供应商 `unsupported/404`、上游错误或慢响应不构成本方路由、DNS、Cloudflare 或计费修复理由。
-
-### 本轮交接提示词补充
-
-```text
-继续维护 /Users/blackdj/Desktop/OpenEverything 中的 JIYU/Sub2API。生产运行时优先；销售边界保持渠道 A 5 个文本组 active，渠道 B 5 个、国内 4 个 inactive，生图 2 个 disabled。2026-08-25 已修复 auto_health_check 对 listener 两个元数据文件的错误计数：只统计不可变 *-real-update-daemon.json，当前 6/6 来源、2000 个事件文件、ok=true、release_ready=true。不要把供应商 unsupported/404、502、403 或慢响应改写成本方路由故障；不要新增 Gate、证据编译器、计划 schema、成本 daemon、一次性测试包或常驻 AI 管理面。任何生产写入前必须取新鲜 prestate、调用现有原生备份、准备回滚并用真实业务探针读回；不得输出凭据、Cookie、Token、私钥、订阅地址或账号标识。唯一当前基线为 docs/current/current-baseline.md。
-```
+先读中央当前基线与本项目 `README.md`、`docs/005-quickstart.md`、
+`docs/014-security.md`，再用已有健康脚本和原生服务状态获取实时事实。
+保留已授权 WIP，不回退用户修改；只运行受影响模块的检查。生产写入必须具备
+新鲜 prestate、可恢复备份、原子幂等应用和失败回滚，不新增付费资源。
