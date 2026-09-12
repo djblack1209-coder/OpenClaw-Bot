@@ -88,12 +88,14 @@ def emit_flow_event(source: str, target: str, status: str, msg: str, data: dict 
       msg: 简短的描述信息
       data: 附加的调试或上下文数据字典
     """
+    from src.observability_policy import ObservabilityPolicy, redact_text, safe_label
+
     event = {
-        "source": source,
-        "target": target,
-        "status": status,
-        "msg": msg,
-        "data": data or {}
+        "source": safe_label(source),
+        "target": safe_label(target),
+        "status": safe_label(status),
+        "msg": redact_text(msg),
+        "data": ObservabilityPolicy.from_environment().metadata(data or {})
     }
     # 强制绕过普通日志格式化，直接打入日志管道供前端正则解析
     formatted_event = f"__CLAW_FLOW_EVENT__:{json.dumps(event)}"
@@ -104,35 +106,8 @@ def emit_flow_event(source: str, target: str, status: str, msg: str, data: dict 
 
 # ── 日志脱敏工具 ──────────────────────────────────────
 
-import re as _re  # noqa: E402
-
-
 def scrub_secrets(msg: str) -> str:
-    """从错误消息中移除 API Key / Token / 内部URL 等敏感信息（HI-462）
+    """Use the shared bounded telemetry policy; never stringify unknown objects."""
+    from src.observability_policy import redact_text
 
-    用于 logger.error/warning 中记录异常消息前的预处理。
-    覆盖项目实际使用的所有 key 前缀和敏感模式。
-    """
-    if not isinstance(msg, str):
-        msg = str(msg)
-    # 清洗 API keys（覆盖项目当前实际使用的主流前缀）
-    msg = _re.sub(
-        r'(sk-|key-|Key:|Bearer\s+|gsk_|ghp_|github_pat_|AIza|csk-|nvapi-|hf_|m0-)[a-zA-Z0-9_-]{10,}',
-        r'\1***REDACTED***', msg
-    )
-    # 清洗 Authorization header（Basic + Bearer）
-    msg = _re.sub(r'(Authorization:\s*(?:Basic|Bearer)\s+)\S+', r'\1***REDACTED***', msg)
-    # 清洗 URL 查询参数中的 key/token
-    msg = _re.sub(r'(api_key=|token=|key=|api-key=)[a-zA-Z0-9_-]+', r'\1***REDACTED***', msg)
-    # 清洗 x-api-key header 值
-    msg = _re.sub(r'(x-api-key:\s*)\S+', r'\1***REDACTED***', msg, flags=_re.IGNORECASE)
-    # 清洗内部服务 URL（防止暴露 provider 拓扑）
-    msg = _re.sub(r'https?://127\.0\.0\.1:\d+[^\s]*', 'http://[internal]', msg)
-    msg = _re.sub(r'https?://localhost:\d+[^\s]*', 'http://[internal]', msg)
-    # 清洗 Telegram Bot Token（URL 路径中的 /botXXX:YYY/）
-    msg = _re.sub(r'/bot\d+:[A-Za-z0-9_-]+/', '/bot***REDACTED***/', msg)
-    # 清洗 Cookie 字符串（_m_h5_tk / unb / XSRF-TOKEN 等）
-    msg = _re.sub(r'(_m_h5_tk=|unb=|XSRF-TOKEN=|cookie=)[^\s;]+', r'\1***REDACTED***', msg, flags=_re.IGNORECASE)
-    # 清洗 SMTP 密码（常见格式 535 Authentication failed for user@xxx）
-    msg = _re.sub(r'(Authentication\s+failed\s+for\s+)\S+', r'\1***REDACTED***', msg, flags=_re.IGNORECASE)
-    return msg
+    return redact_text(msg)

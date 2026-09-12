@@ -30,7 +30,7 @@ const scripts = [
   ['scripts/manage_backup_launchagent.sh', ['install', 'status', 'uninstall', 'StartCalendarInterval', '--drill']],
   ['scripts/tauri_build_install.sh', ['openclaw-app-backup', 'restore_previous_apps', 'npm run tauri:build']],
   ['scripts/tauri_rollback.sh', ['--check', '--confirm', 'codesign --verify']],
-  ['scripts/check_clean_install.sh', ['npm ci', '--require-hashes', 'requirements-lock-macos.txt']],
+  ['scripts/check_clean_install.sh', ['exec python3', 'check_clean_install.py']],
 ];
 
 async function writeExecutable(file, body) {
@@ -234,6 +234,27 @@ test('ops automation scripts exist, are executable, and expose safe modes', asyn
     for (const text of requiredText) {
       assert.ok(content.includes(text), `${file} should mention ${text}`);
     }
+  }
+});
+
+test('clean-install wrapper forwards arguments and failures to the guarded Python verifier', async () => {
+  const sandbox = await mkdtemp(join(tmpdir(), 'openclaw-clean-install-wrapper-'));
+  try {
+    const verifier = await readFile('scripts/check_clean_install.py', 'utf8');
+    for (const text of ["'npm', 'ci'", '--ignore-scripts', '--require-hashes', 'requirements-lock-macos.txt']) {
+      assert.ok(verifier.includes(text), `Python clean-install verifier should include ${text}`);
+    }
+    await writeExecutable(join(sandbox, 'python3'), 'printf "%s\\n" "$@"; exit 23');
+    const result = spawnSync('bash', ['scripts/check_clean_install.sh', '--component', 'desktop', '--keep'], {
+      encoding: 'utf8',
+      env: { PATH: `${sandbox}:${process.env.PATH}` },
+    });
+    assert.equal(result.status, 23, result.stderr);
+    assert.deepEqual(result.stdout.trimEnd().split('\n'), [
+      join(await realpath(process.cwd()), 'scripts/check_clean_install.py'), '--component', 'desktop', '--keep',
+    ]);
+  } finally {
+    await rm(sandbox, { recursive: true, force: true });
   }
 });
 

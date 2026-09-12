@@ -41,7 +41,9 @@ class SystemStatus(BaseModel):
     pool_total_sources: int
     pool_routing_strategy: str = "balanced"
     total_api_calls: int = 0
-    total_cost_usd: float = 0.0
+    total_cost_usd: float | None = None
+    cost_today_usd: float | None = None
+    cost_accounting: dict = {}
     avg_latency_ms: float = 0.0
     memory_entries: int = 0
 
@@ -198,13 +200,17 @@ class PoolStats(BaseModel):
     routing_strategy: str = "balanced"
     total_input_tokens: int = 0
     total_output_tokens: int = 0
-    total_cost_usd: float = 0.0
+    total_cost_usd: float | None = None
+    cost_today_usd: float | None = None
+    cost_accounting: dict = {}
     avg_latency_ms: float = 0.0
     by_provider: dict = {}
     # 前端 AIConfig 面板所需的成本统计字段
     today_cost: float | None = None
     week_cost: float | None = None
     month_cost: float | None = None
+    known_week_cost: float = 0.0
+    known_month_cost: float = 0.0
     budget: float | None = None
 
 

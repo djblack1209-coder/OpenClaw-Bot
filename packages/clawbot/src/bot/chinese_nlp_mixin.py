@@ -5,6 +5,8 @@
 import logging
 import re
 
+from src.intel.news_entrypoint import is_legacy_news_command
+
 logger = logging.getLogger(__name__)
 
 # 从子模块导入常量和工具函数（HI-358 拆分）
@@ -306,7 +308,8 @@ def _match_chinese_command(text=None):
         return ("context", "")
     if re.search(f"{_PRE}(?:压缩|压缩上下文|整理上下文){_SUF}", cleaned):
         return ("compact", "")
-    if re.search(f"{_PRE}(?:新闻|科技早报|早报|今日新闻|最新消息|今天新闻){_SUF}", cleaned):
+    # 保留历史早报触发词，统一由 /news 引导到专用 Global Intelligence Bot。
+    if is_legacy_news_command(cleaned):
         return ("news", "")
     if re.search(
         f"{_PRE}(?:情报|世界新闻|全球新闻|全球情报|行业新闻|地缘政治|军事动态|网络安全新闻|情报速递|每日情报){_SUF}",

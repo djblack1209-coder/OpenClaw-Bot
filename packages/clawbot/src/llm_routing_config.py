@@ -121,6 +121,8 @@ def build_deployments_from_config(
                     stream_timeout=stream_timeout,
                     rpm=rpm,
                 )
+                if "accounting" in model_cfg:
+                    dep.setdefault("model_info", {})["accounting"] = dict(model_cfg["accounting"])
                 deps.append(dep)
 
     logger.info(f"[RoutingConfig] 构建了 {len(deps)} 个 deployment")

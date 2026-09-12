@@ -31,11 +31,9 @@ def test_wechat_incoming_available_on_api_and_legacy_paths(monkeypatch, tmp_path
     """微信旧转发器和新内控 API 都应该能打到同一个每日简报处理器。"""
     from fastapi.testclient import TestClient
 
-    from src.api import auth
     from src.api.server import APIServer
 
-    monkeypatch.setattr(auth, "_API_TOKEN", "")
-    monkeypatch.setattr(auth, "_warned_no_token", False)
+    monkeypatch.delenv("OPENCLAW_API_TOKEN", raising=False)
     monkeypatch.setenv("INTEL_BRIEF_DB_PATH", str(tmp_path / "intel_brief.db"))
 
     client = TestClient(APIServer().app)
@@ -52,11 +50,9 @@ def test_wechat_intel_bridge_status_available_on_api_and_legacy_paths(monkeypatc
     """微信真实桥接状态接口要给老板看得懂的红黄绿口径。"""
     from fastapi.testclient import TestClient
 
-    from src.api import auth
     from src.api.server import APIServer
 
-    monkeypatch.setattr(auth, "_API_TOKEN", "")
-    monkeypatch.setattr(auth, "_warned_no_token", False)
+    monkeypatch.delenv("OPENCLAW_API_TOKEN", raising=False)
     missing_evidence = tmp_path / "missing-runtime.json"
     monkeypatch.setenv("OPENCLAW_INTEL_BRIEF_WECHAT_EVIDENCE_FILE", str(missing_evidence))
 
@@ -76,7 +72,6 @@ def test_wechat_intel_bridge_status_reports_verified(monkeypatch, tmp_path):
     """有近期真实桥接证据时，状态接口应变绿。"""
     from fastapi.testclient import TestClient
 
-    from src.api import auth
     from src.api.server import APIServer
 
     evidence = tmp_path / "runtime.json"
@@ -103,8 +98,7 @@ def test_wechat_intel_bridge_status_reports_verified(monkeypatch, tmp_path):
     }
     evidence.write_text(json.dumps({"latest": latest, "recent_events": [latest]}, ensure_ascii=False), encoding="utf-8")
     monkeypatch.setenv("OPENCLAW_INTEL_BRIEF_WECHAT_EVIDENCE_FILE", str(evidence))
-    monkeypatch.setattr(auth, "_API_TOKEN", "")
-    monkeypatch.setattr(auth, "_warned_no_token", False)
+    monkeypatch.delenv("OPENCLAW_API_TOKEN", raising=False)
 
     response = TestClient(APIServer().app).get("/api/v1/wechat/intel-brief-bridge-status")
 

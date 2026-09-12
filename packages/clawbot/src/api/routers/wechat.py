@@ -14,6 +14,8 @@ from pathlib import Path
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
+from src.intel.news_entrypoint import global_intelligence_news_guidance, is_legacy_news_command
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/wechat")
 
@@ -95,7 +97,7 @@ NUMBERED_COMMANDS: dict[int, tuple[str, bool, str]] = {
     101: ("清空对话", False, "cmd_clear"),
     102: ("系统状态", False, "cmd_status"),
     103: ("AI 画图", True, "cmd_draw"),
-    104: ("科技早报", False, "cmd_news"),
+    104: ("Global Intelligence Bot 入口", False, "cmd_news"),
     105: ("文字转语音", True, "cmd_tts"),
     106: ("生成二维码", True, "cmd_qr"),
     # 📈 200-229: 投资分析
@@ -223,7 +225,7 @@ def _build_welcome_message() -> str:
         "发数字编号即可快速操作：\n"
         "\n"
         "📌 常用功能\n"
-        "100 帮助  |  104 早报\n"
+        "100 帮助  |  104 Global Intelligence Bot 入口\n"
         "200 查股价  |  201 市场概览\n"
         "202 组合  |  217 AI投资会\n"
         "300 热点发文  |  307 社媒报告\n"
@@ -378,7 +380,6 @@ _CMD_API_MAP: dict[str, tuple[str, str]] = {
     "cmd_journal": ("/api/v1/trading/journal?limit=20", "交易日志"),
     # 系统类
     "cmd_status": ("/api/v1/system/status", "系统状态"),
-    "cmd_news": ("/api/v1/system/daily-brief", "科技早报"),
     "cmd_pool": ("/api/v1/pool/stats", "API 池状态"),
     "cmd_memory": ("/api/v1/memory/stats", "记忆管理"),
     "cmd_cost": ("/api/v1/omega/cost", "成本配额"),
@@ -402,7 +403,7 @@ _CMD_API_MAP: dict[str, tuple[str, str]] = {
     "cmd_dashboard": ("/api/v1/trading/dashboard", "交易仪表盘"),
 }
 
-_LOCAL_COMMAND_HANDLERS: set[int] = {100, 101, 203, 207, 408, *range(700, 709)}
+_LOCAL_COMMAND_HANDLERS: set[int] = {100, 101, 104, 203, 207, 408, *range(700, 709)}
 _EXPLICIT_UNAVAILABLE_COMMANDS: dict[int, str] = {
     105: "文字转语音目前只有 Telegram 文件发送形态，微信转发器没有对应音频回传 API；请在 Telegram 使用 /tts。",
     106: "二维码生成目前只有 Telegram 图片回传形态，微信转发器没有对应图片回传 API；请在 Telegram 使用 /qr。",
@@ -429,6 +430,9 @@ async def _execute_numbered_cmd(num: int, arg: str, from_user: str = "") -> str:
         return f"未知命令编号: {num}"
 
     desc, needs_arg, func_name = cmd_info
+
+    if func_name == "cmd_news":
+        return global_intelligence_news_guidance(channel="wechat")
 
     # 每日简报的 706 没参数时要给示例，而不是返回通用错误。
     if 700 <= num <= 708:
@@ -662,6 +666,11 @@ async def wechat_incoming(payload: WeChatIncomingRequest) -> WeChatIncomingRespo
     if num is None and text.lower() in ("/start", "你好", "hi", "hello", "菜单", "帮助", "help"):
         _clear_pending_action(from_user)
         return WeChatIncomingResponse(reply=_build_welcome_message())
+
+    # 历史新闻入口直接显示专用 Bot 引导，也应打断两步式设置。
+    if num is None and is_legacy_news_command(text):
+        _clear_pending_action(from_user)
+        return WeChatIncomingResponse(reply=global_intelligence_news_guidance(channel="wechat"))
 
     # 微信没有 Telegram 的点击按钮，小白用户常会直接发中文入口名。
     text_shortcut = _parse_intel_text_shortcut(text)

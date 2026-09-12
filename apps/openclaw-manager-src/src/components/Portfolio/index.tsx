@@ -9,6 +9,10 @@ import { toast } from '@/lib/notify';
 import { Loader2 } from 'lucide-react';
 
 import { api } from '../../lib/api';
+import {
+  clearManualSellReference, createManualSellConfirmation, isManualSellTerminal,
+  readManualSellReference, saveManualSellReference, type ManualSellStatus,
+} from '../../lib/trading-sell';
 import { clawbotFetch, clawbotFetchJson, LONG_TIMEOUT_MS } from '../../lib/tauri-core';
 import { useLanguage } from '../../i18n';
 import { ConfirmDialog } from '../ui/confirm-dialog';
@@ -215,8 +219,19 @@ export function Portfolio() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sellingSymbol, setSellingSymbol] = useState<string | null>(null);
-  const [pendingSell, setPendingSell] = useState<{ symbol: string; quantity: number; orderType: 'MKT' } | null>(null);
+  const [pendingSell, setPendingSell] = useState<ManualSellStatus | null>(null);
+  const [sellReference, setSellReference] = useState<{ requestId: string | null; unavailable: boolean }>(() => {
+    try { return { requestId: readManualSellReference(localStorage), unavailable: false }; }
+    catch { return { requestId: null, unavailable: true }; }
+  });
+  const [sellStatus, setSellStatus] = useState<ManualSellStatus | null>(null);
+  const [sellStatusError, setSellStatusError] = useState(false);
+  const [queryingSell, setQueryingSell] = useState(false);
   const sellSubmittingRef = useRef(false);
+  const sellQueryRef = useRef(false);
+  const sellEpochRef = useRef(0);
+  const mountedRef = useRef(true);
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; sellEpochRef.current += 1; }; }, []);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   /* IBKR 连接状态 — 独立于 portfolioSummary，由 /api/v1/status 实时更新 */
   const [ibkrConnected, setIbkrConnected] = useState(false);
@@ -298,30 +313,89 @@ export function Portfolio() {
     };
   }, [fetchData]);
 
-  /* ====== 卖出操作：先复核整仓数量，再阻止重复提交 ====== */
-  const requestSell = (symbol: string, quantity: number) => {
-    if (sellSubmittingRef.current || sellingSymbol) return;
-    setPendingSell({ symbol, quantity, orderType: 'MKT' });
+  /* ====== 卖出操作：服务器摘要确认，超时只查询原请求 ====== */
+  const acceptSellStatus = useCallback((status: ManualSellStatus) => {
+    if (isManualSellTerminal(status.state)) {
+      clearManualSellReference(localStorage, status.request_id);
+      if (mountedRef.current) setSellReference(current => current.requestId === status.request_id
+        ? { requestId: null, unavailable: false } : current);
+    }
+    if (mountedRef.current) { setSellStatus(status); setSellStatusError(false); }
+  }, []);
+
+  const querySellStatus = useCallback(async () => {
+    if (!sellReference.requestId || sellQueryRef.current) return;
+    sellQueryRef.current = true;
+    const epoch = sellEpochRef.current;
+    setQueryingSell(true);
+    try {
+      const status = await api.tradingSellStatus(sellReference.requestId);
+      if (sellEpochRef.current === epoch) acceptSellStatus(status);
+    }
+    catch { if (mountedRef.current) setSellStatusError(true); }
+    finally { sellQueryRef.current = false; if (mountedRef.current) setQueryingSell(false); }
+  }, [sellReference.requestId, acceptSellStatus]);
+
+  useEffect(() => {
+    if (!sellReference.requestId) return;
+    void querySellStatus();
+    const timer = setInterval(() => void querySellStatus(), 10_000);
+    return () => clearInterval(timer);
+  }, [sellReference.requestId, querySellStatus]);
+
+  useEffect(() => {
+    if (!pendingSell) return;
+    const timer = setTimeout(() => {
+      if (!sellSubmittingRef.current) {
+        setPendingSell(null);
+        toast.info(t('portfolio.sell.expired'), { channel: 'log' });
+      }
+    }, Math.max(0, pendingSell.expires_at * 1000 - Date.now()));
+    return () => clearTimeout(timer);
+  }, [pendingSell, t]);
+
+  const requestSell = async (symbol: string, quantity: number) => {
+    if (sellSubmittingRef.current || sellingSymbol || sellReference.requestId || sellReference.unavailable) return;
+    sellSubmittingRef.current = true;
+    const epoch = ++sellEpochRef.current;
+    setSellingSymbol(symbol);
+    try {
+      const prepared = await api.tradingSellPrepare(crypto.randomUUID(), symbol, quantity);
+      createManualSellConfirmation(prepared); // Reject expired/incomplete server confirmation.
+      if (mountedRef.current && sellEpochRef.current === epoch) setPendingSell(prepared);
+    } catch {
+      toast.error(t('portfolio.sell.prepareFailed'), { channel: 'notification' });
+    } finally {
+      sellSubmittingRef.current = false;
+      if (mountedRef.current) setSellingSymbol(null);
+    }
   };
 
   const handleConfirmSell = async () => {
     const order = pendingSell;
     if (!order || sellSubmittingRef.current) return;
     sellSubmittingRef.current = true;
-    setSellingSymbol(order.symbol);
+    setSellingSymbol(order.summary.symbol);
+    let saved = false;
     try {
-      await api.tradingSell(order.symbol, order.quantity, order.orderType);
-      toast.success(`${order.symbol} ${t('portfolio.sell.success')}`, { description: `${t('portfolio.sell.quantity')}: ${order.quantity}`, channel: 'log' });
-      /* 刷新数据 */
-      fetchData(true);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : t('portfolio.error.unknown');
-      toast.error(`${order.symbol} ${t('portfolio.sell.failed')}`, { description: msg, channel: 'notification' });
-      console.error(`[Portfolio] 卖出失败: ${order.symbol}`, msg);
+      const request = createManualSellConfirmation(order);
+      saveManualSellReference(localStorage, order.request_id);
+      saved = true;
+      setSellReference({ requestId: order.request_id, unavailable: false });
+      const result = await api.tradingSell(request);
+      acceptSellStatus(result);
+      toast.info(t(`portfolio.sell.state.${result.state}`), { channel: 'log' });
+      if (mountedRef.current) void fetchData(true);
+    } catch {
+      if (saved) {
+        if (mountedRef.current) setSellStatusError(true);
+        toast.warning(t('portfolio.sell.uncertain'), { channel: 'notification' });
+      } else {
+        toast.error(t('portfolio.sell.notSubmitted'), { channel: 'notification' });
+      }
     } finally {
       sellSubmittingRef.current = false;
-      setSellingSymbol(null);
-      setPendingSell(null);
+      if (mountedRef.current) { setSellingSymbol(null); setPendingSell(null); }
     }
   };
 
@@ -472,11 +546,29 @@ export function Portfolio() {
     }
   };
 
+  const manualSellPanel = (sellReference.requestId || sellReference.unavailable || sellStatus) ? (
+    <section role="status" data-testid="manual-sell-status" className="abyss-card p-4 mb-4 text-sm">
+      <p>{sellReference.unavailable ? t('portfolio.sell.storageUnavailable')
+        : sellStatusError ? t('portfolio.sell.uncertain')
+          : sellStatus ? t(`portfolio.sell.state.${sellStatus.state}`) : t('portfolio.sell.checking')}</p>
+      {(sellReference.requestId || sellStatus) && (
+        <p className="font-mono text-xs mt-2">{t('portfolio.sell.reference')}: {sellReference.requestId || sellStatus?.request_id}</p>
+      )}
+      {sellReference.requestId && (
+        <button type="button" onClick={() => void querySellStatus()} disabled={queryingSell}
+          className="mt-3 px-3 py-2 rounded border border-dark-500 disabled:opacity-50">
+          {queryingSell ? t('portfolio.sell.checking') : t('portfolio.sell.checkStatus')}
+        </button>
+      )}
+    </section>
+  ) : null;
+
   /* ====== 加载态（仅初始加载时显示） ====== */
   if (loading && !portfolio) {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="text-center">
+          {manualSellPanel}
           <Loader2 size={32} className="animate-spin mx-auto mb-4" style={{ color: 'var(--accent-cyan)' }} />
           <p className="font-mono text-sm" style={{ color: 'var(--text-secondary)' }}>
             {t('portfolio.loading')}
@@ -491,6 +583,7 @@ export function Portfolio() {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="abyss-card p-8 text-center max-w-md">
+          {manualSellPanel}
           <span className="text-2xl">⚠</span>
           <p className="font-mono text-sm mt-3" style={{ color: 'var(--text-secondary)' }}>{error}</p>
           <div className="mt-4 text-left space-y-2">
@@ -554,6 +647,7 @@ export function Portfolio() {
   return (
     <div className="h-full overflow-y-auto scroll-container">
       <div className="max-w-[1440px] mx-auto p-6">
+        {manualSellPanel}
         {/* ====== 标签栏 ====== */}
         <div
           className="flex gap-1 mb-6 p-1 rounded-lg overflow-x-auto"
@@ -637,7 +731,7 @@ export function Portfolio() {
                     }}
                     title={demoMode ? '当前为演示数据，连接 IB Gateway 后显示真实持仓' : p.connected ? undefined : '请确认 IB Gateway 已启动且 API 端口为 4002'}
                   >
-                    {demoMode ? 'DEMO MODE' : p.connected ? t('portfolio.liveTrading') : t('portfolio.paperTrading')}
+                    {demoMode ? 'DEMO MODE' : p.connected ? t('portfolio.sell.brokerConnected') : t('portfolio.ibNotConnected')}
                   </span>
                 </div>
                 <h2 className="font-display text-[28px] font-bold mt-2" style={{ color: 'var(--text-primary)' }}>
@@ -701,7 +795,7 @@ export function Portfolio() {
                           </span>
                           {/* 卖出按钮（演示模式下禁用） */}
                           <button
-                            disabled={demoMode || Boolean(sellingSymbol)}
+                            disabled={demoMode || Boolean(sellingSymbol) || Boolean(sellReference.requestId) || sellReference.unavailable}
                             onClick={e => { e.stopPropagation(); requestSell(h.symbol, h.quantity); }}
                             className="font-mono text-[10px] px-2 py-1 rounded transition-colors flex-shrink-0"
                             style={{
@@ -1694,8 +1788,8 @@ export function Portfolio() {
         open={Boolean(pendingSell)}
         onClose={() => !sellingSymbol && setPendingSell(null)}
         onConfirm={handleConfirmSell}
-        title={pendingSell ? `${pendingSell.symbol} ${t('portfolio.sell')}` : t('portfolio.sell')}
-        description={pendingSell ? `${t('portfolio.sell.quantity')}: ${pendingSell.quantity} · MKT` : ''}
+        title={pendingSell ? `${pendingSell.summary.symbol} ${t('portfolio.sell')}` : t('portfolio.sell')}
+        description={pendingSell ? `${t(`portfolio.sell.environment.${pendingSell.summary.environment}`)} · IBKR ${pendingSell.summary.account} · ${t('portfolio.sell.quantity')}: ${pendingSell.summary.quantity} · ${pendingSell.summary.order_type}${pendingSell.summary.limit_price ? ` @ ${pendingSell.summary.limit_price} ${pendingSell.summary.currency}` : ''} · ${t('portfolio.sell.validUntil')}: ${new Date(pendingSell.expires_at * 1000).toLocaleTimeString()}` : ''}
         confirmText={`${t('common.confirm')} ${t('portfolio.sell')}`}
         destructive
         loading={Boolean(sellingSymbol)}

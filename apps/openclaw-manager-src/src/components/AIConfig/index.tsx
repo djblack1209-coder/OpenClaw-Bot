@@ -62,10 +62,11 @@ interface PoolStats {
   avg_latency_ms?: number;
   providers?: ProviderStat[];
   models?: ModelStat[];
-  today_cost?: number;
-  week_cost?: number;
-  month_cost?: number;
-  budget?: number;
+  today_cost?: number | null;
+  week_cost?: number | null;
+  month_cost?: number | null;
+  cost_accounting?: { accounting_complete?: boolean; coverage_status?: string };
+  budget?: number | null;
   [key: string]: unknown;
 }
 
@@ -153,9 +154,9 @@ function renderBar(value: number, max: number, width: number = 20): string {
 }
 
 /** 格式化金额 */
-function formatCost(val?: number): string {
+function formatCost(val?: number | null): string {
   if (val == null) return '—';
-  return `¥${val.toFixed(2)}`;
+  return `$${val.toFixed(2)}`;
 }
 
 /* ====== 主组件 ====== */
@@ -542,6 +543,10 @@ export function AIConfig() {
               ))}
             </div>
             {/* 预算使用率 */}
+            <p className="text-[10px] mt-3">{t('telemetry.costEstimateNote')}</p>
+            {poolStats?.cost_accounting?.accounting_complete !== true ? (
+              <p className="text-[10px] mt-1" role="status">{t(todayCost == null ? 'telemetry.costUnknown' : 'telemetry.costPartial')}</p>
+            ) : null}
             {budget != null && budget > 0 && monthCost != null && (
               <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--border-primary)' }}>
                 <div className="flex items-center justify-between">

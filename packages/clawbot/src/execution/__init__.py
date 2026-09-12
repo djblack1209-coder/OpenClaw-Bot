@@ -672,7 +672,9 @@ class ExecutionHub:
 
     # ── 调度器 ──────────────────────────────────────────────
 
-    async def start_scheduler(self, notify_func, private_notify_func=None):
+    async def start_scheduler(self, notify_func, private_notify_func=None, *, report_delivery=None):
+        if report_delivery is not None:
+            self._scheduler.report_delivery = report_delivery
         await self._scheduler.start(notify_func, private_notify_func)
 
     async def stop_scheduler(self):

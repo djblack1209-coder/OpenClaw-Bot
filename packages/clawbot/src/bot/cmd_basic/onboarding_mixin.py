@@ -52,7 +52,7 @@ INTEREST_OPTIONS = {
             "· /social_plan — 今日发文计划",
             '· "热点发文" — 直接说中文',
         ],
-        "demo": "发送 /news 看今日科技早报",
+        "demo": "发送 /news 查看 Global Intelligence Bot 入口",
     },
     "shopping": {
         "label": "🛒 购物比价",
@@ -100,7 +100,7 @@ _INSTANT_TRY_BUTTONS = {
     "invest": ("📊 查看市场概览", "cmd:market"),
     "life": ("📋 看今日简报", "cmd:brief"),
     "shopping": ("🛒 试试比价", "cmd:compare"),
-    "social": ("📰 看科技早报", "cmd:news"),
+    "social": ("🧭 Global Intelligence Bot 入口", "cmd:news"),
     "all": ("📋 看今日简报", "cmd:brief"),
 }
 

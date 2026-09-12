@@ -112,7 +112,7 @@ async def websocket_events(websocket: WebSocket):
     客户端连接后接收所有事件（交易信号、告警等）
 
     认证: 查询参数 ?token=<OPENCLAW_API_TOKEN>
-    如果 OPENCLAW_API_TOKEN 未配置，则接受所有连接。
+    未配置 Token 时仅允许实例明确的本机开发模式。
     """
     # 验证 token
     if not verify_ws_token(websocket):

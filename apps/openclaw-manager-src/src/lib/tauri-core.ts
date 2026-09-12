@@ -142,6 +142,7 @@ export interface ConfiguredModel {
 
 // AI 配置概览
 export interface AIConfigOverview {
+  config_source: 'openclaw' | 'agent' | 'empty';
   primary_model: string | null;
   configured_providers: ConfiguredProvider[];
   available_models: string[];

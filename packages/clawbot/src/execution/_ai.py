@@ -94,8 +94,8 @@ class AICallerPool:
                     log_generation(
                         name="ai_pool/litellm",
                         model=FAMILY_QWEN,
-                        input_text=prompt[:1000],
-                        output_text=text[:1000],
+                        input_text=prompt,
+                        output_text=text,
                         bot_id="ai_pool",
                         latency_ms=elapsed_ms,
                         input_tokens=input_tokens,

@@ -22,7 +22,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse as StarletteJSONResponse
 
 from ..core.user_error import humanize_error
-from .auth import log_token_status, verify_api_token
+from .auth import APIAuthContext, log_token_status, verify_api_token
 from .routers import (
     router_cli,
     router_controls,
@@ -258,14 +258,15 @@ class APIServer:
     Pattern: freqtrade's UvicornServer running in a daemon thread.
     """
 
-    def __init__(self, port: int = 18790, host: str = "127.0.0.1"):
+    def __init__(self, port: int = 18790, host: str | None = None, *,
+                 env_mode: str | None = None, api_token: str | None = None):
         self.port = port
-        self.host = host
+        self.auth_context = APIAuthContext.resolve(host=host, env_mode=env_mode, api_token=api_token)
         self._thread: threading.Thread | None = None
         self._server: uvicorn.Server | None = None
 
         # 安全加固: 生产环境关闭 API 文档页面
-        _is_production = os.environ.get("ENV", "").lower() in ("prod", "production")
+        _is_production = self.auth_context.env_mode in ("prod", "production")
         self.app = FastAPI(
             title="ClawBot Internal API",
             description="Internal control API for ClawBot — consumed by the Tauri Manager app",
@@ -275,8 +276,13 @@ class APIServer:
             dependencies=[Depends(verify_api_token)],
         )
 
+        self.app.state.api_auth_context = self.auth_context
         self._configure_app()
         self._register_exception_handlers()
+
+    @property
+    def host(self) -> str:
+        return self.auth_context.host
 
     def _register_exception_handlers(self):
         """注册全局异常处理器 — 防止 Pydantic 模型信息泄露和未处理异常暴露堆栈"""
@@ -351,7 +357,7 @@ class APIServer:
 
     def start(self):
         """Start uvicorn in a daemon thread"""
-        log_token_status()
+        log_token_status(self.auth_context)
 
         config = uvicorn.Config(
             app=self.app,
@@ -379,7 +385,7 @@ class APIServer:
         logger.info("ClawBot Internal API stopped")
 
 
-def start_api_server(port: int = 18790, host: str = "127.0.0.1") -> APIServer:
+def start_api_server(port: int = 18790, host: str | None = None) -> APIServer:
     """Start the internal API server — called from multi_main.py"""
     global _api_server
     if _api_server is not None:

@@ -1,49 +1,29 @@
-# 运行时数据和缓存
-data/
-logs/
-backups/
-
-# 虚拟环境
-.venv*/
-
-# Git
-.git/
-.gitignore
-
-# Python 缓存
-__pycache__/
-*.pyc
-*.pyo
-*.egg-info/
-dist/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-
-# macOS
-.DS_Store
-
-# 部署产物
-deploy_bundle_final/
-deploy_resources/
-openclaw_deploy_final/
-
-# 独立子系统
-kiro-gateway/
-browser-agent/
-
-# 测试
-tests/
-pytest.ini
-
-# 文档
-docs/
-*.md
-
-# 敏感文件 — 绝不打入镜像
-config/.env
-config/.env.*
-*.pem
-*.key
+# Deny by default. Only reviewed source/config templates enter the build context.
+**
+!Dockerfile
+!.dockerignore
+!requirements-lock.txt
+!multi_main.py
+!src/**/*.py
+!src/intel/db/intel_brief_schema.sql
+!src/sub2_replenish/static/app.js
+!src/sub2_replenish/static/index.html
+!config/.env.example
+!config/bot_profiles.py
+!config/prompts.py
+!config/llm_routing.json
+!config/notifications.yaml
+!config/omega.yaml
+!assets/intel/openclaw-intel-brief-dark.jpg
+# Never follow source-tree runtime material, caches or private credentials.
+**/__pycache__/**
+**/.git/**
+**/.venv*/**
+**/node_modules/**
+**/.env
+**/.env.*
+!config/.env.example
+**/*.pem
+**/*.key
+**/*.sqlite*
+**/*.db

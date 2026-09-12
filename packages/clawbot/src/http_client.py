@@ -310,6 +310,7 @@ class ResilientHTTPClient:
         files: Any | None = None,
         follow_redirects: bool = False,
         ssrf_check: bool = False,
+        llm_accounting: dict | None = None,
     ) -> httpx.Response:
         """发送 HTTP 请求，带重试和熔断。
 
@@ -334,6 +335,10 @@ class ResilientHTTPClient:
         retries = 0
         start_time = time.time()
 
+        from uuid import uuid4
+
+        accounting_request_id = uuid4().hex if llm_accounting is not None else None
+
         for attempt in range(self.retry.max_retries + 1):
             client = self._new_client(
                 follow_redirects=follow_redirects,
@@ -349,16 +354,29 @@ class ResilientHTTPClient:
                     "data": data,
                     "files": files,
                 }
-                if ssrf_check:
-                    response = await request_with_ssrf_protection(
-                        client,
-                        method,
-                        url,
-                        follow_redirects=follow_redirects,
-                        **request_kwargs,
+
+                async def send(*, _client=client, _request=request_kwargs, **unused):
+                    if ssrf_check:
+                        return await request_with_ssrf_protection(
+                            _client, method, url, follow_redirects=follow_redirects, **_request
+                        )
+                    return await _client.request(method, url, **_request)
+
+                if llm_accounting is not None:
+                    from src.core.accounted_completion import accounted_completion
+                    from src.core.cost_control import get_cost_controller
+
+                    response = await accounted_completion(
+                        deployment=llm_accounting,
+                        controller=get_cost_controller(),
+                        transport=send,
+                        params=json or {},
+                        task_type="native_claude",
+                        request_id=accounting_request_id,
+                        usage_from=lambda reply: reply.json().get("usage") if reply.is_success else None,
                     )
                 else:
-                    response = await client.request(method, url, **request_kwargs)
+                    response = await send()
 
                 # 检查是否需要重试
                 if response.status_code in self.retry.retryable_status_codes:

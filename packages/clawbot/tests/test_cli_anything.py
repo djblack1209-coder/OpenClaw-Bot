@@ -329,7 +329,6 @@ def test_api_remote_install_fails_with_forbidden_policy(monkeypatch):
     monkeypatch.delenv("OPENCLAW_API_TOKEN", raising=False)
     monkeypatch.setenv("ENV", "development")
     monkeypatch.setenv("API_HOST", "127.0.0.1")
-    monkeypatch.setattr("src.api.auth._API_TOKEN", "")
     client = TestClient(APIServer().app)
 
     response = client.post(

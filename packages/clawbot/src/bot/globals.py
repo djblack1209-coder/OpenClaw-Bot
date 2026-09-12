@@ -181,6 +181,7 @@ class UserPreferencesManager:
         self._dir = Path(data_dir)
         self._dir.mkdir(parents=True, exist_ok=True)
         self._filepath = self._dir / "user_preferences.json"
+        self._report_preferences_seen = self._filepath.exists()
         self._prefs: dict[str, dict] = {}
         self._load()
 
@@ -196,6 +197,7 @@ class UserPreferencesManager:
         try:
             with open(self._filepath, 'w', encoding='utf-8') as f:
                 _json.dump(self._prefs, f, ensure_ascii=False, indent=2)
+            self._report_preferences_seen = True
         except Exception as e:
             logger.error("[UserPrefs] 保存失败: %s", e)
 
@@ -205,6 +207,29 @@ class UserPreferencesManager:
         if default is not None:
             return user_prefs.get(key, default)
         return user_prefs.get(key, self.DEFAULTS.get(key))
+
+    def report_enabled(self, user_id: int) -> bool:
+        """Checked report read; invalid/unreadable preferences never imply consent.
+
+        Re-read before each report effect so recovery and persisted opt-outs are
+        observed without replacing the legacy in-memory settings of other paths.
+        """
+        try:
+            with self._filepath.open(encoding='utf-8') as handle:
+                self._report_preferences_seen = True
+                values = _json.load(handle)
+        except FileNotFoundError:
+            if self._report_preferences_seen:
+                raise ValueError('previously saved report preferences are missing') from None
+            values = {}
+        if not isinstance(values, dict) or any(
+            not isinstance(item, dict) for item in values.values()
+        ):
+            raise ValueError('invalid user preference structure')
+        for item in values.values():
+            if 'daily_report' in item and type(item['daily_report']) is not bool:
+                raise ValueError('invalid report preference value')
+        return values.get(str(user_id), {}).get('daily_report', True)
 
     def set(self, user_id: int, key: str, value):
         uid = str(user_id)

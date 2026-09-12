@@ -27,8 +27,6 @@ import threading
 from pathlib import Path
 from typing import Any, Optional
 
-from src.utils import scrub_secrets
-
 logger = logging.getLogger(__name__)
 
 # ---- 导入自研缓存模块（替代有 CVE 的 diskcache）----
@@ -87,21 +85,18 @@ def _make_cache_key(
     messages: list,
     model_family: str | None,
     temperature: float,
+    **parameters,
 ) -> str:
-    """Generate deterministic cache key from request parameters.
-
-    Key composition: SHA-256 of (messages_content + model_family + temperature).
-    max_tokens is excluded — same prompt at different lengths should share cache.
-    system_prompt is already part of messages when passed through acompletion.
-    """
+    """Versioned key includes the full messages and all response-affecting options."""
     key_parts = {
-        "messages": [{"role": m.get("role", ""), "content": m.get("content", "")} for m in messages],
+        "messages": messages,
         "model": model_family or "",
-        "temperature": round(temperature, 4),
+        "temperature": temperature,
+        "parameters": parameters,
     }
     raw = json.dumps(key_parts, sort_keys=True, ensure_ascii=False)
     digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
-    return f"llm:{digest}"
+    return f"llm:v2:{digest}"
 
 
 async def cached_completion(
@@ -136,74 +131,17 @@ async def cached_completion(
     """
     from src.litellm_router import free_pool
 
-    messages = messages or []
-
-    # ---- Bypass conditions ----
-    if stream or no_cache or not HAS_DISKCACHE:
-        if no_cache or stream:
-            _stats["bypassed"] += 1
-        return await free_pool.acompletion(
-            model_family=model_family,
-            messages=messages,
-            system_prompt=system_prompt,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            stream=stream,
-            **kwargs,
-        )
-
-    cache = _get_cache()
-    if cache is None:
-        # Cache unavailable, fall through to direct call
-        return await free_pool.acompletion(
-            model_family=model_family,
-            messages=messages,
-            system_prompt=system_prompt,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            stream=stream,
-            **kwargs,
-        )
-
-    # ---- Build cache key ----
-    # Include system_prompt in messages for key generation (mirrors acompletion behavior)
-    key_messages = [{"role": "system", "content": system_prompt}, *messages] if system_prompt else messages
-    cache_key = _make_cache_key(key_messages, model_family, temperature)
-
-    # ---- Cache lookup ----
-    try:
-        cached = cache.get(cache_key)
-        if cached is not None:
-            _stats["hits"] += 1
-            logger.debug(f"[LLM Cache] HIT  key={cache_key[:16]}… model={model_family}")
-            return cached
-    except Exception as e:
-        _stats["errors"] += 1
-        logger.warning(f"[LLM Cache] 读取失败: {scrub_secrets(str(e))}")
-
-    # ---- Cache miss → call LLM ----
-    _stats["misses"] += 1
-    logger.debug(f"[LLM Cache] MISS key={cache_key[:16]}… model={model_family}")
-
-    response = await free_pool.acompletion(
+    return await free_pool.acompletion(
         model_family=model_family,
-        messages=messages,
+        messages=messages or [],
         system_prompt=system_prompt,
         temperature=temperature,
         max_tokens=max_tokens,
         stream=stream,
+        cache_ttl=cache_ttl,
+        no_cache=no_cache,
         **kwargs,
     )
-
-    # ---- Store in cache ----
-    try:
-        cache.set(cache_key, response, expire=cache_ttl)
-        logger.debug(f"[LLM Cache] SET  key={cache_key[:16]}… ttl={cache_ttl}s")
-    except Exception as e:
-        _stats["errors"] += 1
-        logger.warning(f"[LLM Cache] 写入失败: {scrub_secrets(str(e))}")
-
-    return response
 
 
 def get_cache_stats() -> dict[str, Any]:

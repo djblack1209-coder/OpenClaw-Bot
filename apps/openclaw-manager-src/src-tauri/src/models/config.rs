@@ -255,6 +255,8 @@ pub struct ConfiguredModel {
 /// AI 配置概览（返回给前端）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AIConfigOverview {
+    /// Source of the displayed provider configuration; Agent fallback is read-only in onboarding.
+    pub config_source: String,
     /// 主模型
     pub primary_model: Option<String>,
     /// 已配置的 Provider 列表
