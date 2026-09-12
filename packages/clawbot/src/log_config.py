@@ -18,14 +18,16 @@ Usage:
 
 from __future__ import annotations
 
+import copy
 import gzip
 import logging
 import os
 import shutil
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
-from src.utils import scrub_secrets
+from src.observability_policy import OMITTED, REDACTED, ObservabilityPolicy, redact_text, safe_error_type, safe_label
 
 # ── Graceful degradation: 没装 loguru 时回退到 stdlib ──────────
 try:
@@ -61,9 +63,8 @@ def _scrub_exception(exception):
     """保留异常类型与脱敏消息，并移除可能回显源码敏感值的 traceback。"""
     if not exception:
         return None
-    exception_type = getattr(exception, "type", exception[0])
     value = getattr(exception, "value", exception[1])
-    sanitized = RuntimeError(f"{exception_type.__name__}: {scrub_secrets(str(value))}")
+    sanitized = RuntimeError(f"{safe_error_type(value)}: {REDACTED}")
     try:
         return type(exception)(RuntimeError, sanitized, None)
     except TypeError:
@@ -71,8 +72,30 @@ def _scrub_exception(exception):
 
 
 def _scrub_loguru_record(record) -> None:
+    try:
+        _scrub_loguru_record_fields(record)
+    except Exception:
+        # A failed patcher must never let Loguru print the original record.
+        record.update(message=OMITTED, extra={}, exception=None, name='source', function='source',
+                      file=SimpleNamespace(name='source.py', path='source.py'),
+                      thread=SimpleNamespace(id=0, name='thread'), process=SimpleNamespace(id=0, name='process'))
+
+
+def _scrub_loguru_record_fields(record) -> None:
     """在所有 sink 最终渲染前清洗正文与 traceback 异常末行。"""
-    record["message"] = scrub_secrets(str(record.get("message", "")))
+    record["message"] = redact_text(record.get("message", ""))
+    record["extra"] = ObservabilityPolicy.from_environment().metadata(record.get("extra", {}))
+    for key in ('name', 'function'):
+        if key in record:
+            record[key] = safe_label(record[key], 'source')
+    if record.get('file') is not None:
+        original = record['file']
+        name = safe_label(original.name, 'source.py')
+        record['file'] = type(original)(name, name)
+    for key in ('thread', 'process'):
+        if record.get(key) is not None:
+            original = record[key]
+            record[key] = type(original)(original.id, safe_label(original.name, key))
     if record.get("exception"):
         record["exception"] = _scrub_exception(record["exception"])
 
@@ -128,8 +151,59 @@ class InterceptHandler(logging.Handler):
 
         _loguru_logger.opt(depth=depth, exception=_scrub_exception(record.exc_info)).log(
             level,
-            scrub_secrets(record.getMessage()),
+            _safe_log_message(record),
         )
+
+    def handleError(self, record):
+        # logging's default handler error path prints raw msg/args to stderr.
+        pass
+
+
+def _safe_log_message(record):
+    if type(record.msg) is not str:
+        return OMITTED
+    policy = ObservabilityPolicy('redacted')
+    try:
+        if type(record.args) is tuple:
+            args = tuple(policy.sanitize(value) for value in record.args)
+        elif type(record.args) is dict:
+            args = policy.sanitize(record.args)
+        else:
+            args = ()
+        text = record.msg % args if args else record.msg
+        return redact_text(text)
+    except Exception:
+        return OMITTED + ' [invalid_log_arguments]'
+
+
+class SafeFormatter(logging.Formatter):
+    def format(self, record):
+        try:
+            return self._format_safe(record)
+        except Exception:
+            return OMITTED
+
+    def _format_safe(self, record):
+        safe = copy.copy(record)
+        safe.msg = _safe_log_message(record)
+        safe.args = ()
+        safe.exc_text = None
+        safe.exc_info = _scrub_exception(record.exc_info)
+        safe.stack_info = None
+        safe.name = safe_label(record.name, 'source')
+        safe.pathname = safe.filename = safe_label(record.filename, 'source.py')
+        safe.funcName = safe_label(record.funcName, 'source')
+        safe.threadName = safe_label(record.threadName, 'thread')
+        safe.processName = safe_label(record.processName, 'process')
+        standard = set(logging.makeLogRecord({}).__dict__)
+        for key in set(safe.__dict__) - standard:
+            safe.__dict__[key] = ObservabilityPolicy.from_environment().metadata({key: safe.__dict__[key]}).get(key, OMITTED)
+        return super().format(safe)
+
+
+class SafeStreamHandler(logging.StreamHandler):
+    def handleError(self, record):
+        pass
 
 
 def _make_module_filter(min_levels: dict[str, str]):
@@ -174,11 +248,17 @@ def setup_logging(
 
     if not _HAS_LOGURU:
         # 回退: 用 stdlib 最小化配置, 确保项目仍能运行
+        handler = SafeStreamHandler()
+        handler.setFormatter(SafeFormatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
         logging.basicConfig(
             level=getattr(logging, level.upper(), logging.INFO),
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-            handlers=[logging.StreamHandler()],
+            handlers=[handler],
+            force=True,
         )
+        for name in list(logging.root.manager.loggerDict):
+            child = logging.getLogger(name)
+            child.handlers = []
+            child.propagate = True
         logging.getLogger(__name__).warning(
             "loguru 未安装, 回退到 stdlib logging。运行 `pip install loguru>=0.7.0` 启用增强日志。"
         )

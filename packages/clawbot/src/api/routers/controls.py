@@ -145,10 +145,12 @@ def get_scheduler_status():
     # 尝试从运行中的 ExecutionHub 实例获取调度器运行时状态
     scheduler_running = False
     scheduler_instance = None
+    runtime_status = {}
     try:
         from src.bot.globals import execution_hub
         scheduler_instance = execution_hub._scheduler
-        scheduler_running = getattr(scheduler_instance, "_running", False)
+        runtime_status = scheduler_instance.runtime_status()
+        scheduler_running = runtime_status["running"]
     except Exception:
         pass  # globals 未初始化，退回静态列表
 
@@ -158,8 +160,9 @@ def get_scheduler_status():
     #     如果调度器正在运行，补充 last_run 等运行时字段。
     static_tasks = [
         {"id": "daily_brief", "name": "每日运营简报", "cron": "08:00 ET", "enabled": True},
-        {"id": "intel_brief", "name": "Intel Brief 沙盒闸门", "cron": "08:30 ET", "enabled": False},
-        {"id": "morning_news", "name": "科技早报推送", "cron": "08:00 ET", "enabled": True},
+        # Internal gate only; the independent production LaunchAgent has its own
+        # readiness/receipt evidence and is not represented by this task status.
+        {"id": "intel_brief", "name": "ClawBot Intel Brief 沙盒闸门", "cron": "08:30 Asia/Singapore", "enabled": False},
         {"id": "monitors", "name": "监控巡检", "cron": "每15分钟", "enabled": True},
         {"id": "social_operator", "name": "社媒自动驾驶", "cron": "可配间隔", "enabled": True},
         {"id": "bounty_scan", "name": "赏金猎人扫描", "cron": "每45分钟", "enabled": True},
@@ -182,9 +185,7 @@ def get_scheduler_status():
         "price_watch": "_last_price_watch_ts",
     }
     _date_field_map: dict[str, str] = {
-        "daily_brief": "_last_brief_date",
         "intel_brief": "_last_intel_brief_date",
-        "morning_news": "_last_news_date",
     }
 
     tasks: list[dict[str, Any]] = []
@@ -202,7 +203,7 @@ def get_scheduler_status():
                 if ts_val and ts_val > 0:
                     from datetime import datetime
                     task["last_run"] = datetime.fromtimestamp(ts_val, tz=UTC).isoformat()
-            # 日期类型的 last_run（daily_brief, morning_news 等）
+            # 日期类型的 last_run（Intel Brief 沙盒闸门）
             elif tid in _date_field_map:
                 date_val = getattr(scheduler_instance, _date_field_map[tid], "")
                 if date_val:
@@ -210,10 +211,6 @@ def get_scheduler_status():
             # 特殊：周度任务用 day-of-year 标记
             elif tid == "weekly_strategy":
                 day_val = getattr(scheduler_instance, "_last_strategy_review", None)
-                if day_val:
-                    task["last_run"] = f"yday={day_val}"
-            elif tid == "weekly_report":
-                day_val = getattr(scheduler_instance, "_last_weekly_report", None)
                 if day_val:
                     task["last_run"] = f"yday={day_val}"
             elif tid == "bill_checks":
@@ -242,10 +239,27 @@ def get_scheduler_status():
                 task["last_run"] = override_last_run
             task["last_status"] = task_overrides[task["id"]].get("last_status")
 
+    from src.execution.report_delivery_store import ReportDeliveryStore
+    delivery = runtime_status.get('reports') or ReportDeliveryStore(create=False).summary()
+    for task in tasks:
+        if task['id'] in {'daily_brief', 'weekly_report'}:
+            task.pop('last_run', None)
+            task.pop('last_status', None)
+            latest = next((row for row in delivery['reports']
+                           if row['kind'] == task['id'] and row['channel'] == 'telegram'), None)
+            if latest:
+                task['last_status'] = latest['state']
+                task['generation_quality'] = latest['generation_quality']
+                if latest['state'] == 'sent':
+                    from datetime import datetime
+                    task['last_run'] = datetime.fromtimestamp(latest['scheduled_at'], UTC).isoformat()
+
     return {
         "enabled": scheduler_state.get("enabled", True),
         "maintenance_mode": scheduler_state.get("maintenance_mode", False),
         "scheduler_running": scheduler_running,
+        "last_error": runtime_status.get("last_error"),
+        "report_delivery": delivery,
         "source": source,
         "tasks": tasks,
     }
@@ -264,6 +278,8 @@ def toggle_scheduler(enabled: bool):
 @router.post("/controls/scheduler/task/{task_id}/toggle")
 def toggle_task(task_id: str, enabled: bool):
     """启用/禁用单个调度任务"""
+    if task_id == "morning_news":
+        raise HTTPException(status_code=410, detail="科技早报已整合至 Global Intelligence Bot，请在专用 Bot 管理订阅。")
     state = _load_state()
     scheduler = state.setdefault("scheduler", {})
     tasks = scheduler.setdefault("tasks", {})

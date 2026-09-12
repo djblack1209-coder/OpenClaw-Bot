@@ -199,6 +199,30 @@ def test_intel_production_cycle_cli_writes_blocked_evidence(tmp_path, monkeypatc
     assert saved["network_calls"] == 0
 
 
+def test_scheduled_slow_collection_rechecks_real_time_before_delivery(tmp_path):
+    from src.intel.production_cycle import run_intel_production_cycle
+
+    def collect_runner(**kwargs):
+        output_path = Path(kwargs["output_path"])
+        _write_collect_payload(output_path)
+        return json.loads(output_path.read_text(encoding="utf-8"))
+
+    result = run_intel_production_cycle(
+        output_dir=tmp_path / "artifacts",
+        evidence_path=tmp_path / "latest.json",
+        project_root=tmp_path,
+        now=datetime(2026, 7, 7, 9, 30, tzinfo=UTC),
+        delivery_clock=lambda: datetime(2026, 7, 7, 10, 1, tzinfo=UTC),
+        env={**_ready_env(), "INTEL_BRIEF_SCHEDULER_PRODUCTION_ACK": PRODUCTION_ACK_VALUE},
+        collect_runner=collect_runner,
+    )
+    delivery = result["steps"]["production_once"]
+    assert result["status"] == "failed"
+    assert delivery["status"] == "blocked"
+    assert delivery["gate"]["reason"] == "skipped_late_trigger"
+    assert result["network_calls"] == delivery["network_calls"] == 0
+
+
 def test_production_cycle_lifecycle_audit_skips_without_db_path(tmp_path):
     from src.intel.production_cycle import run_intel_production_cycle
 

@@ -430,7 +430,7 @@ async def generate_intel_brief() -> str:
     """生成综合情报简报
 
     汇总所有行业分类的头条新闻，格式化为 Telegram 友好的每日速递文本。
-    类似 news_fetcher.generate_morning_report() 的排版风格。
+    使用统一摘要格式，供按需情报查询调用。
 
     Returns:
         格式化的情报简报文本

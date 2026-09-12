@@ -10,10 +10,10 @@ from src.bot.error_messages import error_generic
 from src.bot.globals import (
     get_siliconflow_key,
     image_tool,
-    news_fetcher,
     send_long_message,
 )
 from src.constants import IMG_MODEL_FLUX
+from src.intel.news_entrypoint import global_intelligence_news_guidance
 from src.message_format import format_error
 from src.telegram_ux import ProgressTracker, with_typing
 
@@ -96,13 +96,9 @@ class _ToolsMixin:
                 logger.debug("Telegram消息操作失败(用户可能已删除): %s", e)
 
     @requires_auth
-    @with_typing
     async def cmd_news(self, update, context):
-        try:
-            report = await news_fetcher.generate_morning_report()
-            await update.message.reply_text(report)
-        except Exception as e:
-            await update.message.reply_text(format_error(e, "获取新闻"))
+        """旧入口只说明 Global Intelligence Bot 的位置，不生成或转发报告。"""
+        await update.message.reply_text(global_intelligence_news_guidance())
 
     @requires_auth
     @with_typing
@@ -321,7 +317,7 @@ class _ToolsMixin:
             "回测": ("/backtest", "📊 回测策略"),
             "持仓": ("/monitor", "📊 查看持仓"),
             "风控": ("/risk", "🛡 风控状态"),
-            "新闻": ("/news", "📰 科技早报"),
+            "新闻": ("/news", "🧭 Global Intelligence Bot 入口"),
             "记忆": ("/memory", "🧠 查看记忆"),
             "发文": ("/hot", "🔥 热点发文"),
         }

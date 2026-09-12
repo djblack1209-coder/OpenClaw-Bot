@@ -9,7 +9,15 @@ WORKDIR /build
 
 # 只接受 Linux 哈希锁；仅对没有 Python 3.12/Linux wheel 的六个纯 Python 包放开已哈希源码包。
 COPY requirements-lock.txt .
-RUN pip install --no-cache-dir --disable-pip-version-check --require-hashes --only-binary=:all: --no-binary=jieba,jsonpath,pyjsparser,sgmllib3k,snownlp,ta --prefix=/install -r requirements-lock.txt
+# Bootstrap only the setuptools entry already pinned in the same lock. Disable
+# PEP 517 isolation so source builds cannot silently fetch unpinned build tools.
+RUN python -c "from pathlib import Path; lines=Path('requirements-lock.txt').read_text().splitlines(); start=next(i for i,line in enumerate(lines) if line.startswith('setuptools==')); end=next((i for i in range(start+1,len(lines)) if not lines[i].startswith(' ')),len(lines)); Path('build-requirements.txt').write_text(chr(10).join(lines[start:end])+chr(10))" && \
+    pip install --no-cache-dir --disable-pip-version-check --require-hashes --only-binary=:all: --no-deps -r build-requirements.txt
+RUN pip install --no-cache-dir --disable-pip-version-check --require-hashes --ignore-installed --no-build-isolation --only-binary=:all: --no-binary=jieba,jsonpath,pyjsparser,sgmllib3k,snownlp,ta --prefix=/install -r requirements-lock.txt
+
+# tiktoken's vocabulary is bundled in the hash-locked LiteLLM wheel. Verify the
+# SDK-pinned digest and expose it before any imports, including a cold API import.
+RUN python -c "import hashlib,pathlib; name='9b5ad71b2ce5302211f9c61530b329a4922fc6a4'; data=(pathlib.Path('/install/lib/python3.12/site-packages/litellm/litellm_core_utils/tokenizers')/name).read_bytes(); assert hashlib.sha256(data).hexdigest()=='223921b76ee99bde995b7ff738513eef100fb51d18c93597a113bcffe865b2a7'; cache=pathlib.Path('/install/share/tiktoken'); cache.mkdir(parents=True); (cache/name).write_bytes(data)"
 
 # ── Stage 2: 运行时镜像 ──────────────────────────────
 FROM python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de AS runtime
@@ -22,7 +30,7 @@ WORKDIR /app
 # 从 builder 复制已安装的依赖
 COPY --from=builder /install /usr/local
 
-# 复制应用代码 (排除通过 .dockerignore 控制)
+# 仅复制 .dockerignore 明确允许的源码、公开配置及资产
 COPY --chown=clawbot:clawbot . .
 
 # 创建运行时目录
@@ -35,11 +43,13 @@ USER clawbot
 # 环境变量
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    TIKTOKEN_CACHE_DIR=/usr/local/share/tiktoken \
+    IMAGE_DIR=/app/data/images
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=30s \
-    CMD python -c "import os, urllib.request; request = urllib.request.Request('http://localhost:18790/api/v1/ping', headers={'X-API-Token': os.environ.get('OPENCLAW_API_TOKEN', '')}); urllib.request.urlopen(request, timeout=8)" || exit 1
+    CMD python -c "import os, urllib.request; request = urllib.request.Request('http://localhost:18790/api/v1/ping', headers={'X-API-Token': os.environ['OPENCLAW_API_TOKEN']}); urllib.request.urlopen(request, timeout=8)" || exit 1
 
 # 暴露端口
 EXPOSE 18790 9090

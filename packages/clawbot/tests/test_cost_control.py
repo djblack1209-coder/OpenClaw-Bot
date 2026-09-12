@@ -10,14 +10,11 @@ Covers:
   - suggest_model() — cost-aware model suggestion
   - Boundary: date rollover, negative cost, zero budget
 """
-import json
-import time
+
 import pytest
-from pathlib import Path
-from unittest.mock import patch
 
-from src.core.cost_control import CostController, MODEL_COSTS
-
+from src.core.cost_control import CostController
+from src.core.cost_ledger import BudgetDenied, LedgerError
 
 # ── Fixtures ────────────────────────────────────────────
 
@@ -27,7 +24,9 @@ def cc(tmp_path, monkeypatch):
     """CostController with $50 budget, daily log in tmp_path."""
     monkeypatch.setattr("src.core.cost_control.DAILY_LOG", tmp_path / "daily_costs.jsonl")
     monkeypatch.setattr("src.core.cost_control.COST_DIR", tmp_path)
-    return CostController(daily_budget_usd=50.0)
+    cc = CostController(daily_budget_usd=50.0)
+    cc.ledger.activate(opening_spend_usd=0)
+    return cc
 
 
 @pytest.fixture
@@ -35,7 +34,9 @@ def cc_zero(tmp_path, monkeypatch):
     """CostController with $0 budget."""
     monkeypatch.setattr("src.core.cost_control.DAILY_LOG", tmp_path / "daily_costs.jsonl")
     monkeypatch.setattr("src.core.cost_control.COST_DIR", tmp_path)
-    return CostController(daily_budget_usd=0.0)
+    cc = CostController(daily_budget_usd=0.0)
+    cc.ledger.activate(opening_spend_usd=0)
+    return cc
 
 
 # ── record_cost ─────────────────────────────────────────
@@ -71,13 +72,10 @@ class TestRecordCost:
 
     def test_persists_to_file(self, cc, tmp_path):
         cc.record_cost("gpt-4o", 0.05, "chat")
-        log_file = tmp_path / "daily_costs.jsonl"
-        assert log_file.exists()
-        lines = log_file.read_text().strip().split("\n")
-        assert len(lines) == 1
-        record = json.loads(lines[0])
+        reopened = CostController(ledger_path=cc.ledger.path)
+        assert reopened.get_daily_spend() == pytest.approx(0.05)
+        (record,) = reopened.ledger.attempts()
         assert record["model"] == "gpt-4o"
-        assert record["cost_usd"] == 0.05
         assert record["task_type"] == "chat"
 
 
@@ -96,12 +94,14 @@ class TestBudgetCheck:
         assert cc.is_over_budget() is True
 
     def test_over_budget(self, cc):
-        cc.record_cost("gpt-4o", 60.0, "chat")
-        assert cc.is_over_budget() is True
+        with pytest.raises(BudgetDenied):
+            cc.record_cost("gpt-4o", 60.0, "chat")
+        assert cc.get_daily_spend() == 0
 
     def test_zero_budget_always_over(self, cc_zero):
         """Zero budget means any spend triggers over-budget."""
-        cc_zero.record_cost("gpt-4o", 0.001, "chat")
+        with pytest.raises(BudgetDenied):
+            cc_zero.record_cost("gpt-4o", 0.001, "chat")
         assert cc_zero.is_over_budget() is True
 
     def test_zero_budget_no_spend(self, cc_zero):
@@ -143,12 +143,14 @@ class TestGetWeeklyReport:
     def test_report_includes_today(self, cc):
         cc.record_cost("gpt-4o", 5.0, "chat")
         report = cc.get_weekly_report()
-        assert report["weekly_total_usd"] == pytest.approx(5.0)
+        assert report["weekly_total_usd"] is None
+        assert report["known_weekly_total_usd"] == pytest.approx(5.0)
         assert report["today_spend_usd"] == pytest.approx(5.0)
 
     def test_report_empty_when_no_records(self, cc):
         report = cc.get_weekly_report()
-        assert report["weekly_total_usd"] == 0.0
+        assert report["weekly_total_usd"] is None
+        assert report["known_weekly_total_usd"] == 0.0
         assert report["today_spend_usd"] == 0.0
 
 
@@ -169,13 +171,13 @@ class TestEstimateCost:
         expected = (1000 * 2.5 + 500 * 10.0) / 1_000_000
         assert cost == pytest.approx(expected)
 
-    def test_unknown_model_returns_zero(self, cc):
+    def test_unknown_model_returns_unknown(self, cc):
         cost = cc.estimate_cost("unknown-model-xyz", 10000, 5000)
-        assert cost == 0.0
+        assert cost is None
 
-    def test_free_model_returns_zero(self, cc):
+    def test_marketing_name_does_not_prove_free_price(self, cc):
         cost = cc.estimate_cost("qwen3-235b", 100000, 50000)
-        assert cost == 0.0
+        assert cost is None
 
 
 # ── suggest_model ───────────────────────────────────────
@@ -193,12 +195,12 @@ class TestSuggestModel:
         assert model == "claude-opus-4"
 
     def test_near_budget_downgrades_to_free(self, cc):
-        cc._today_spend = 46.0  # 92% of $50 budget
+        cc.record_cost("gpt-4o", 46.0)
         model = cc.suggest_model("critical")
         assert model == "qwen3-235b"
 
     def test_moderate_budget_downgrades_critical(self, cc):
-        cc._today_spend = 36.0  # 72% of $50 budget
+        cc.record_cost("gpt-4o", 36.0)
         model = cc.suggest_model("critical")
         assert model == "claude-sonnet-4"  # downgraded from opus
 
@@ -213,8 +215,10 @@ class TestDateRollover:
         cc.record_cost("gpt-4o", 10.0, "chat")
         assert cc.get_daily_spend() == pytest.approx(10.0)
         # Simulate date change
-        cc._today_date = "1999-01-01"  # A date that's definitely not today
-        cc._check_date_rollover()
+        from datetime import timedelta
+
+        now = cc.ledger.clock()
+        cc.ledger.clock = lambda: now + timedelta(days=1)
         assert cc.get_daily_spend() == 0.0
 
 
@@ -224,10 +228,11 @@ class TestDateRollover:
 class TestNegativeCost:
     """Negative cost input behavior."""
 
-    def test_negative_cost_subtracts(self, cc):
+    def test_negative_cost_rejected(self, cc):
         cc.record_cost("gpt-4o", 10.0, "chat")
-        cc.record_cost("gpt-4o", -3.0, "refund")
-        assert cc.get_daily_spend() == pytest.approx(7.0)
+        with pytest.raises(LedgerError):
+            cc.record_cost("gpt-4o", -3.0, "refund")
+        assert cc.get_daily_spend() == pytest.approx(10.0)
 
 
 # ── get_stats ───────────────────────────────────────────
@@ -250,4 +255,18 @@ class TestGetStats:
 
     def test_stats_zero_budget_pct(self, cc_zero):
         stats = cc_zero.get_stats()
-        assert stats["budget_used_pct"] == 0  # Division by zero handled
+        assert stats["budget_used_pct"] is None  # Zero budget has no finite percentage
+
+
+def test_mini_does_not_inherit_large_model_price(cc):
+    assert cc.estimate_cost("gpt-4o-mini", 1_000_000, 0) == pytest.approx(0.15)
+    assert cc.estimate_cost("gpt-4o", 1_000_000, 0) == pytest.approx(2.5)
+    assert cc.estimate_cost("reseller/gpt-4o-mini", 1_000_000, 0) is None
+    assert cc.estimate_cost("gpt-4o-mini-free-unknown", 1_000_000, 0) is None
+
+
+def test_uninitialized_controller_reports_unknown(tmp_path):
+    cc = CostController(ledger_path=tmp_path / "new.sqlite3")
+    assert cc.get_daily_spend() is None
+    assert cc.get_stats()["coverage_status"] == "uninitialized"
+    assert cc.is_over_budget()

@@ -1,18 +1,17 @@
-import json
-import re
 import sys
 import types
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
-from urllib.parse import urlsplit
 
 import pytest
+import test_manual_trading
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from test_manual_trading import confirmation, prepare
 
 from src.api import auth as api_auth
-from src.api.routers import trading as trading_router
 from src.api.server import APIServer
+
+manual_api = test_manual_trading.api
 
 # starlette TestClient 在旧版 httpx 上会报 app kwarg 不兼容
 # Python 3.9 + starlette 0.27 环境下无法初始化，跳过整个文件
@@ -34,8 +33,6 @@ def api_dev_auth_mode(monkeypatch, tmp_path):
     monkeypatch.setenv("ENV", "development")
     monkeypatch.setenv("API_HOST", "127.0.0.1")
     monkeypatch.setenv("OPENCLOW_TEST_STATE_FILE", str(tmp_path / "operator-state.json"))
-    monkeypatch.setattr("src.api.auth._API_TOKEN", "")
-    monkeypatch.setattr("src.api.auth._warned_no_token", False)
 
 
 @pytest.mark.parametrize(
@@ -52,40 +49,40 @@ def test_websocket_without_token_fails_closed_outside_local_development(
     bind_host,
 ):
     """生产环境或外网绑定时，WebSocket 未配置 Token 必须拒绝连接。"""
-    monkeypatch.setattr(api_auth, "_API_TOKEN", "")
+    monkeypatch.delenv("OPENCLAW_API_TOKEN", raising=False)
     monkeypatch.setenv("ENV", env_mode)
     monkeypatch.setenv("API_HOST", bind_host)
-    websocket = types.SimpleNamespace(query_params={})
+    websocket = types.SimpleNamespace(query_params={}, scope={"app": APIServer().app})
 
     assert api_auth.verify_ws_token(websocket) is False
 
 
 def test_websocket_without_token_allows_local_development(monkeypatch):
     """本机开发模式可保持无 Token 调试能力。"""
-    monkeypatch.setattr(api_auth, "_API_TOKEN", "")
+    monkeypatch.delenv("OPENCLAW_API_TOKEN", raising=False)
     monkeypatch.setenv("ENV", "development")
     monkeypatch.setenv("API_HOST", "localhost")
-    websocket = types.SimpleNamespace(query_params={})
+    websocket = types.SimpleNamespace(query_params={}, scope={"app": APIServer().app})
 
     assert api_auth.verify_ws_token(websocket) is True
 
 
 def test_websocket_configured_token_accepts_only_exact_match(monkeypatch):
     """配置 Token 后，仅精确匹配的查询参数可通过。"""
-    monkeypatch.setattr(api_auth, "_API_TOKEN", "unit-secret")
+    monkeypatch.setenv("OPENCLAW_API_TOKEN", "unit-secret")
 
-    assert api_auth.verify_ws_token(types.SimpleNamespace(query_params={"token": "wrong-secret"})) is False
-    assert api_auth.verify_ws_token(types.SimpleNamespace(query_params={"token": "unit-secret"})) is True
+    assert api_auth.verify_ws_token(types.SimpleNamespace(query_params={"token": "wrong-secret"}, scope={"app": APIServer().app})) is False
+    assert api_auth.verify_ws_token(types.SimpleNamespace(query_params={"token": "unit-secret"}, scope={"app": APIServer().app})) is True
 
 
 @pytest.mark.asyncio
 async def test_http_and_websocket_share_no_token_fail_closed_policy(monkeypatch):
     """HTTP 与 WebSocket 必须复用同一条无 Token 生产安全策略。"""
-    monkeypatch.setattr(api_auth, "_API_TOKEN", "")
+    monkeypatch.delenv("OPENCLAW_API_TOKEN", raising=False)
     monkeypatch.setenv("ENV", "prod")
     monkeypatch.setenv("API_HOST", "127.0.0.1")
-    connection = types.SimpleNamespace(scope={"type": "http"}, headers={})
-    websocket = types.SimpleNamespace(query_params={})
+    connection = types.SimpleNamespace(scope={"type": "http", "app": APIServer().app}, headers={})
+    websocket = types.SimpleNamespace(query_params={}, scope={"app": APIServer().app})
 
     with pytest.raises(HTTPException) as error:
         await api_auth.verify_api_token(connection)
@@ -110,43 +107,30 @@ async def test_http_and_websocket_share_no_token_fail_closed_policy(monkeypatch)
     ],
 )
 async def test_manual_sell_fails_closed_for_rejected_or_ambiguous_broker_result(
-    monkeypatch,
+    manual_api,
     broker_result,
 ):
-    bridge = MagicMock()
-    bridge.is_connected.return_value = True
-    bridge.sell = AsyncMock(return_value=broker_result)
-    monkeypatch.setattr("src.broker_selector.ibkr", bridge)
-    monkeypatch.setattr(trading_router, "push_event", MagicMock())
-
-    result = await trading_router.sell_position(
-        trading_router.SellRequest(symbol="AAPL", quantity=1, order_type="MKT")
-    )
-
+    manual_api.bridge.ib.status = broker_result['status']
+    manual_api.bridge.ib.filled = broker_result['filled_qty']
+    if broker_result.get('broker_result_ambiguous'):
+        manual_api.bridge.ib.fault = RuntimeError('synthetic ambiguous submission')
+    payload, prepared = await prepare(manual_api)
+    response = await manual_api.client.post('/api/v1/trading/sell', json=confirmation(payload, prepared))
+    assert response.status_code == 200
+    result = response.json()
     assert result["success"] is False
 
 
-async def test_manual_sell_reports_only_explicitly_accepted_order_as_success(monkeypatch):
-    bridge = MagicMock()
-    bridge.is_connected.return_value = True
-    bridge.sell = AsyncMock(
-        return_value={
-            "status": "Submitted",
-            "filled_qty": 0,
-            "avg_price": 0,
-            "order_id": 5,
-            "order_type": "MKT",
-        }
-    )
-    monkeypatch.setattr("src.broker_selector.ibkr", bridge)
-    monkeypatch.setattr(trading_router, "push_event", MagicMock())
-
-    result = await trading_router.sell_position(
-        trading_router.SellRequest(symbol="AAPL", quantity=1, order_type="MKT")
-    )
-
+async def test_manual_sell_reports_only_explicitly_accepted_order_as_success(manual_api):
+    manual_api.bridge.ib.status = 'Submitted'
+    manual_api.bridge.ib.filled = 0
+    payload, prepared = await prepare(manual_api)
+    response = await manual_api.client.post('/api/v1/trading/sell', json=confirmation(payload, prepared))
+    assert response.status_code == 200
+    result = response.json()
     assert result["success"] is True
-    assert result["status"] == "Submitted"
+    assert result['state'] == 'submitted'
+    assert result['broker_status'] == 'Submitted'
 
 
 def test_api_cors_allows_chrome_extension_origin_for_social_status():

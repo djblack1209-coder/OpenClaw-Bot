@@ -2,7 +2,8 @@ import { useLanguage } from '@/i18n';
 
 /* 遥测数据类型 */
 interface TelemetryData {
-  llmCostDaily: number;
+  llmCostDaily: number | null;
+  llmCostComplete: boolean;
   activeBots: number;
   poolActive: number;
   poolTotal: number;
@@ -24,7 +25,7 @@ interface MetricConfig {
 const metrics: MetricConfig[] = [
   {
     labelKey: 'telemetry.llmDailyCost',
-    getValue: (d) => `$${d.llmCostDaily.toFixed(2)}`,
+    getValue: (d) => d.llmCostDaily === null ? "—" : `$${d.llmCostDaily.toFixed(2)}${d.llmCostComplete ? "" : "*"}`,
     accent: 'var(--accent-cyan)',
   },
   {
@@ -65,6 +66,10 @@ export function TelemetryCard({ data, isRunning }: Props) {
           </div>
         ))}
       </div>
+
+      {!data.llmCostComplete ? (
+        <p className="text-[10px] mt-2" role="status">{t(data.llmCostDaily === null ? 'telemetry.costUnknown' : 'telemetry.costPartial')}</p>
+      ) : null}
 
       {/* 底部运行状态 */}
       <div className="mt-4 pt-3" style={{ borderTop: '1px solid var(--glass-border)' }}>

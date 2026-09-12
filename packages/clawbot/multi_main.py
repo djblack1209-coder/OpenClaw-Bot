@@ -101,7 +101,7 @@ _COMMON_COMMANDS = [
     BotCommand("metrics", "运行指标"),
     BotCommand("model", "查看当前模型信息"),
     # --- 资讯 & 社媒 ---
-    BotCommand("news", "AI/科技最新资讯"),
+    BotCommand("news", "Global Intelligence Bot 入口"),
     BotCommand("hot", "热点一键发文"),
     BotCommand("post_social", "专用浏览器双平台发文"),
     BotCommand("post_x", "专用浏览器发 X"),
@@ -154,7 +154,7 @@ _FREE_LLM_COMMANDS = [
     BotCommand("pool", "免费API池状态"),
     BotCommand("model", "查看当前使用的模型"),
     BotCommand("cost", "配额与成本看板"),
-    BotCommand("news", "AI/科技最新资讯"),
+    BotCommand("news", "Global Intelligence Bot 入口"),
     BotCommand("quote", "实时行情"),
 ]
 
@@ -918,7 +918,34 @@ async def main():
     _t.add_done_callback(_task_done_cb("TradingSystem"))
     logger.info("  - 自动交易系统已初始化 (风控/监控/管道/调度)")
 
-    await execution_hub.start_scheduler(_notify_telegram, _notify_private_telegram)
+    from src.api.routers.controls import CONTROLS_STATE_FILE
+    from src.bot.globals import user_prefs
+    from src.execution.report_delivery import (
+        LegacyWechatTransport,
+        ReportDeliveryService,
+        ReportPreferences,
+        TelegramTransport,
+    )
+    from src.execution.report_delivery_store import ReportDeliveryStore
+
+    # Ordinary reports need the actual initialized Bot receipt. Legacy trade/event
+    # callbacks retain their existing routing and batching behavior.
+    def report_public_target():
+        return _notify_chat_id
+
+    def report_private_target():
+        return _private_notify_chat_id
+
+    report_transport = TelegramTransport(
+        lambda: bots[0].app.bot if bots and getattr(bots[0], 'app', None) else None,
+        report_public_target, report_private_target,
+    )
+    report_service = ReportDeliveryService(
+        ReportDeliveryStore(), report_transport,
+        allowed=ReportPreferences(CONTROLS_STATE_FILE, user_prefs, report_public_target, report_private_target),
+        mirror=LegacyWechatTransport(),
+    )
+    await execution_hub.start_scheduler(_notify_telegram, _notify_private_telegram, report_delivery=report_service)
     logger.info("  - 执行场景调度器已启动")
 
     # 注册告警回调 -> Telegram 通知
@@ -938,7 +965,7 @@ async def main():
     api_port = int(os.environ.get("API_PORT", "18790"))
     try:
         api_server = start_api_server(port=api_port)
-        logger.info(f"  内控 API 服务器已启动: http://127.0.0.1:{api_port}/api/docs")
+        logger.info("  内控 API 服务器已启动: host=%s port=%d", api_server.host, api_port)
     except Exception as e:
         api_server = None
         logger.warning(f"  内控 API 服务器启动失败（非致命）: {e}")

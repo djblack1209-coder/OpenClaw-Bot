@@ -32,6 +32,7 @@ from typing import Any, TypeVar
 from pydantic import BaseModel
 
 from src.constants import FAMILY_QWEN
+from src.core.cost_ledger import LedgerError
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +142,15 @@ async def structured_completion[T: BaseModel](
                 max_retries=max_retries,
             )
         except Exception as e:
+            # Instructor may wrap the last error. Accounting denial must never
+            # enter the json_repair fallback and send another request.
+            cause = e
+            seen = set()
+            while cause is not None and id(cause) not in seen:
+                if isinstance(cause, LedgerError):
+                    raise cause from None
+                seen.add(id(cause))
+                cause = cause.__cause__ or cause.__context__
             logger.warning(f"[structured_llm] instructor 路径失败 ({type(e).__name__}: {e})，降级到 json_repair")
             # Fall through 到降级路径
 
@@ -178,11 +188,16 @@ async def _instructor_path[T: BaseModel](
     """
     client = _get_instructor_client(router)
 
+    from tenacity import AsyncRetrying, retry_if_not_exception_type, stop_after_attempt
+
+    retries = AsyncRetrying(
+        stop=stop_after_attempt(max_retries + 1), retry=retry_if_not_exception_type(LedgerError), reraise=True
+    )
     result = await client.chat.completions.create(
         model=model_family,
         messages=messages,
         response_model=response_model,
-        max_retries=max_retries,
+        max_retries=retries,
         temperature=temperature,
         max_tokens=max_tokens,
     )

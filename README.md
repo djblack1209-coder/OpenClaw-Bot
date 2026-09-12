@@ -3,7 +3,7 @@
 > 7-Bot Telegram 多智能体系统参考实现：把 LLM 路由、Telegram 移动控制台、FastAPI 内控接口、Tauri 桌面管理端、运维观测和安全闸门组合成一个可学习、可二次开发的个人 AI 自动化项目。
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.12+-3776AB.svg)](packages/clawbot)
+[![Python](https://img.shields.io/badge/python-3.12-3776AB.svg)](packages/clawbot)
 [![Desktop](https://img.shields.io/badge/desktop-Tauri%202%20%2B%20React-24C8DB.svg)](apps/openclaw-manager-src)
 
 ## 项目定位
@@ -36,43 +36,39 @@ OpenClaw Bot 是一个公开开源的 AI operations / personal automation 实验
 - **Oracle ARM1**：承载独立的 JIYU / Sub2API 商业服务；它不是 OpenClaw Bot 的主运行节点。
 - **Cloudflare**：提供 JIYU 公网入口与源站保护。其他服务器资产和跨项目链路由 `VPS-Config` 统一管理，不在本 README 重复维护。
 
-备份计划已安装并按每日 03:30 运行。2026-09-04 的只读复查确认最近一次任务退出码为 0，本地归档与异地加密归档的校验摘要一致；本轮尚未执行解密还原，因此不能把“归档存在”表述成“完整灾难恢复已闭环”。
+备份计划已安装并按每日 03:30 运行。2026-09-04 的只读复查确认当次任务退出码为 0，本地归档与异地加密归档的校验摘要一致；当时未执行解密还原。2026-09-12 新闻归并另建本地备份并通过只读恢复演练，既有计划不变；这些证据不等同于完整异地灾难恢复闭环。
 
 运行状态必须分别验证：本机 OpenClaw 使用项目健康脚本，JIYU 使用其独立生产健康与真实业务探针；单个 `/health` 不能代表整套项目正常。
 
+新闻简报统一由 **Global Intelligence Bot** 的 Intel 管线提供，专用菜单为 `/today`、`/ai`、`/market`，每日业务时间为 **08:30 Asia/Singapore**。通用 ClawBot 的 `/news`、中文“科技早报”和微信 `104` 只显示专用 Bot 入口；旧科技早报生成器和自动推送已退役。运营日报、周报及按需新闻查询继续独立使用。迁移与验证见 [新闻归并记录](docs/090-news-consolidation-2026-09-12.md)。
+
 ## Quick Start
 
-### Prerequisites
+本地构建验证不会启动 Gateway、ClawBot、交易或消息发送。完整步骤与部署边界见 [快速开始](docs/005-quickstart.md)。
 
-- Python 3.12+
-- Node.js 18+
-- Rust toolchain（Tauri 桌面端需要）
-- Telegram Bot token、LLM Provider Key 等运行密钥（只放在本机 `.env`，不要提交）
+### 环境与锁文件
 
-### Backend
+- Python **3.12.x**；macOS arm64 使用 `requirements-lock-macos.txt`，Linux amd64 使用 `requirements-lock.txt`。其他平台尚未验证。
+- Node.js **22.19+（22.x）或 24.x**、npm **10.x 或 11.x**、uv；桌面 Rust 检查还需要 Rust/Cargo 与平台编译工具。本机实测 Node 22.22.3、npm 10.9.8、Rust 1.93.1；CI 配置使用 Node 24。
+- Python、npm、Cargo 均使用仓库锁文件；验证不需要运行密钥。
 
-```bash
-cd packages/clawbot
-python -m venv .venv312
-source .venv312/bin/activate
-pip install -r requirements.txt
-cp config/.env.example config/.env
-python multi_main.py
-```
+### macOS：全新临时目录验证
 
-### Desktop Manager (Tauri)
+从仓库根目录执行。脚本仅复制公开源文件，以哈希锁安装到新建临时目录；禁用 npm 安装脚本，构建和测试阶段隔离真实用户目录与外网。
 
 ```bash
-cd apps/openclaw-manager-src
-npm install
-npm run tauri:dev
+python3.12 --version
+node --version
+npm --version
+uv --version
+bash scripts/check_clean_install.sh --component all --python "$(command -v python3.12)" --keep
 ```
 
-### Docker (optional)
+以退出码及输出的 `WORK_DIR/results.json` 为准。保存成功、构建成功和服务运行通过是不同状态；Weixin 语义编译与完整 Linux 桌面验证的剩余项见 [审计闭环记录](docs/089-audit-closure-2026-09-10.md)。不要用 `pip install -r requirements.txt` 或 `npm install` 替代锁文件验收。
 
-```bash
-docker-compose up -d
-```
+### Linux 容器与桌面部署
+
+Linux 后端镜像固定 Python 基础镜像摘要，并使用 Linux 哈希锁。首次部署需要单独准备配置和数据目录，详见 [部署步骤](docs/005-quickstart.md#容器部署)。`docker compose up`、`npm run tauri:dev` 和 `make tauri-build` 会启动或安装实际服务，不属于上述本地验证。
 
 ## Project Structure
 
@@ -114,7 +110,6 @@ OpenClaw Bot/
 - `docs/013-contributing.md`
 - `docs/014-security.md`
 - `docs/015-code-of-conduct.md`
-- `AGENTS.md`
 
 ## License
 

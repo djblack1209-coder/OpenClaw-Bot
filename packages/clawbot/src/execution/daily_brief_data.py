@@ -7,7 +7,8 @@
 
 import logging
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from src.execution._db import get_conn
 
@@ -624,27 +625,60 @@ async def _brief_ops_status(sections: list, *, monitors=None, db_path=None) -> N
         sections.append(_section("🔧 运维状态", aux_items))
 
 
-async def _brief_api_cost(sections: list) -> None:
-    """section 10: API 成本"""
-    try:
-        from src.monitoring import cost_analyzer
+def _report_cost_snapshot(*, planned_at=None, days=1):
+    """One ledger snapshot for ET calendar days, observed at generation time.
 
-        if cost_analyzer:
-            prediction = cost_analyzer.predict_monthly_cost()
-            if prediction:
-                daily_avg = prediction.get("daily_average", 0)
-                monthly = prediction.get("monthly_prediction", 0)
-                if daily_avg > 0:
-                    sections.append(
-                        _section(
-                            "💰 API 成本",
-                            [
-                                f"日均: ${daily_avg:.2f} | 月预估: ${monthly:.2f}",
-                            ],
-                        )
-                    )
-    except Exception as e:
-        logger.debug("[DailyBrief] cost: %s", e)
+    Catch-up uses the planned date; it does not claim an as-of-plan historical
+    snapshot. Global unresolved attempts conservatively invalidate completeness.
+    """
+    from src.core.cost_control import get_cost_controller
+
+    try:
+        controller = get_cost_controller()
+        stats = controller.get_stats()
+        observed = controller.ledger.clock().astimezone(ZoneInfo('America/New_York'))
+        planned = planned_at or observed
+        if planned.tzinfo is None or days not in (1, 7):
+            raise ValueError('invalid report cost period')
+        end = planned.astimezone(ZoneInfo('America/New_York')).date()
+        start = end - timedelta(days=days - 1)
+        known = sum(value for day, value in stats['daily_breakdown'].items()
+                    if start.isoformat() <= day <= end.isoformat())
+        complete = (stats['accounting_complete'] and not stats['bound_exceeded']
+                    and stats['coverage_started_day'] <= start.isoformat()
+                    and end.isoformat() <= stats['budget_day'])
+        return {'known_cost_usd': known, 'total_cost_usd': known if complete else None,
+                'accounting_complete': bool(complete), 'pending_attempts': stats['pending_attempts'],
+                'unknown_attempts': stats['unknown_attempts'], 'coverage_status': stats['coverage_status'],
+                'coverage_started_at': stats['coverage_started_at'], 'historical_complete': stats['historical_complete'],
+                'window_start': start.isoformat(), 'window_end': end.isoformat(),
+                'observed_at': observed.isoformat(), 'planned_at': planned.isoformat()}
+    except Exception:
+        return {'known_cost_usd': None, 'total_cost_usd': None, 'accounting_complete': False,
+                'pending_attempts': None, 'unknown_attempts': None, 'coverage_status': 'unavailable',
+                'coverage_started_at': None, 'historical_complete': False,
+                'window_start': None, 'window_end': None, 'observed_at': None,
+                'planned_at': planned_at.isoformat() if planned_at is not None else None}
+
+
+def _report_cost_lines(snapshot):
+    def amount(value):
+        return '未知' if value is None else f'${value:.4f}'
+    return [
+        f"已知费用: {amount(snapshot['known_cost_usd'])}",
+        f"完整费用: {amount(snapshot['total_cost_usd'])}",
+        f"未决请求: {snapshot['pending_attempts'] if snapshot['pending_attempts'] is not None else '未知'}；"
+        f"结果未知: {snapshot['unknown_attempts'] if snapshot['unknown_attempts'] is not None else '未知'}",
+        f"统计日期: {snapshot['window_start'] or '未知'} 至 {snapshot['window_end'] or '未知'} (ET)",
+        f"统计截至: {snapshot['observed_at'] or '不可用'}；覆盖起点: {snapshot['coverage_started_at'] or '未初始化'}",
+        f"覆盖状态: {snapshot['coverage_status']}；历史完整: {'是' if snapshot['historical_complete'] else '否'}",
+    ]
+
+
+async def _brief_api_cost(sections: list, *, planned_at=None, cost_snapshot=None) -> None:
+    """Report ledger amounts, including explicit zero and unavailable coverage."""
+    snapshot = cost_snapshot if cost_snapshot is not None else _report_cost_snapshot(planned_at=planned_at)
+    sections.append(_section('💰 API 成本', _report_cost_lines(snapshot)))
 
 
 async def _brief_engagement(sections: list, *, db_path=None) -> None:
@@ -693,7 +727,7 @@ async def _brief_trending(sections: list) -> None:
         logger.debug("日报段落生成异常: %s", e)
 
 
-async def _collect_brief_metrics(*, db_path=None) -> dict:
+async def _collect_brief_metrics(*, db_path=None, planned_at=None, cost_snapshot=None) -> dict:
     """收集各模块关键指标，用于执行摘要 + 智能建议。
 
     Returns:
@@ -723,16 +757,11 @@ async def _collect_brief_metrics(*, db_path=None) -> dict:
         except Exception as e:
             logger.debug("日报指标收集-社媒发帖异常: %s", e)
 
-        # API 成本
-        try:
-            from src.monitoring import cost_analyzer as _ca_ref
-
-            if _ca_ref:
-                _pred = _ca_ref.predict_monthly_cost()
-                if _pred:
-                    sections_data["api_daily_cost"] = _pred.get("daily_average", 0)
-        except Exception as e:
-            logger.debug("日报指标收集-API成本异常: %s", e)
+        # Reuse the displayed ledger snapshot; never treat unavailable costs as zero.
+        cost = cost_snapshot if cost_snapshot is not None else _report_cost_snapshot(planned_at=planned_at)
+        sections_data['api_daily_cost'] = cost['total_cost_usd']
+        sections_data['known_api_daily_cost'] = cost['known_cost_usd']
+        sections_data['api_cost_context'] = '；'.join(_report_cost_lines(cost))
 
         # 市场情绪
         try:

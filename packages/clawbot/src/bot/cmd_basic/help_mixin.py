@@ -146,7 +146,7 @@ class _HelpMixin:
                 "/metrics  系统指标详情\n"
                 "/draw <描述>  AI 生图\n"
                 "/tts <文字>  文字转语音\n"
-                "/news  科技早报\n"
+                "/news  Global Intelligence Bot 入口\n"
                 "/novel <描述>  AI 小说生成\n"
                 "/context  查看上下文用量\n"
                 "/compact  压缩上下文\n"
@@ -303,7 +303,7 @@ class _HelpMixin:
                 '  · "今日简报" → 智能日报\n'
                 '  · "整理邮箱" → AI分类\n'
                 '  · "30分钟后提醒我开会"\n'
-                '  · "新闻" → 科技早报\n\n'
+                '  · "新闻" → Global Intelligence Bot 入口\n\n'
                 "🤖 也支持命令 (高级)\n"
                 "  /invest /quote /ta /buy /sell\n"
                 "  /hot /post /social_plan\n"

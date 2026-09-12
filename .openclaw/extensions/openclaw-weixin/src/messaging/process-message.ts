@@ -29,6 +29,7 @@ import {
   isMediaItem,
 } from "./inbound.js";
 import type { WeixinInboundMediaOpts } from "./inbound.js";
+import { isLegacyNewsShortcut, LEGACY_NEWS_BRIDGE_UNAVAILABLE, shouldHandleIntelBriefShortcut } from "./intel-shortcuts.js";
 import { sendWeixinMediaFile } from "./send-media.js";
 import { markdownToPlainText, sendMessageWeixin } from "./send.js";
 import { handleSlashCommand } from "./slash-commands.js";
@@ -59,35 +60,6 @@ function extractTextBody(itemList?: import("../api/types.js").MessageItem[]): st
   return "";
 }
 
-function shouldHandleIntelBriefShortcut(text: string): boolean {
-  const cleaned = String(text ?? "").trim();
-  if (!cleaned) return false;
-  if (/^70[0-8](\s+.+)?$/.test(cleaned)) return true;
-  const exactShortcuts = new Set([
-    "菜单",
-    "帮助",
-    "help",
-    "今日简报",
-    "看今日简报",
-    "每日简报",
-    "我的订阅",
-    "订阅状态",
-    "简报状态",
-    "市场资金",
-    "AI科技",
-    "AI 科技",
-    "天气预警",
-    "推送时间",
-    "设置时间",
-    "添加追踪",
-    "简报帮助",
-    "暂停简报",
-    "暂停",
-  ]);
-  if (exactShortcuts.has(cleaned)) return true;
-  return ["推送时间", "设置时间", "添加追踪", "追踪"].some((prefix) => cleaned.startsWith(`${prefix} `));
-}
-
 function readLocalOpenClawApiToken(): string {
   const envToken = process.env.OPENCLAW_INTEL_BRIEF_API_TOKEN || process.env.OPENCLAW_API_TOKEN || "";
   if (envToken.trim()) return envToken.trim();
@@ -110,6 +82,7 @@ function readLocalOpenClawApiToken(): string {
 
 function classifyIntelBriefShortcut(text: string): string {
   const cleaned = String(text ?? "").trim();
+  if (isLegacyNewsShortcut(cleaned)) return "legacy_news";
   if (/^700(\s+.*)?$/.test(cleaned) || ["今日简报", "看今日简报", "每日简报"].includes(cleaned)) return "today";
   if (/^701(\s+.*)?$/.test(cleaned) || ["我的订阅", "订阅状态", "简报状态"].includes(cleaned)) return "status";
   if (/^702(\s+.*)?$/.test(cleaned) || cleaned === "市场资金") return "market";
@@ -225,6 +198,16 @@ async function tryHandleIntelBriefBridge(params: {
   const apiToken = readLocalOpenClawApiToken();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
+  const legacyNews = isLegacyNewsShortcut(params.textBody);
+  let replyAttempted = false;
+  const sendReply = async (text: string): Promise<void> => {
+    replyAttempted = true;
+    await sendMessageWeixin({
+      to,
+      text,
+      opts: { baseUrl: params.deps.baseUrl, token: params.deps.token, contextToken: params.contextToken },
+    });
+  };
   try {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (apiToken) headers["X-API-Token"] = apiToken;
@@ -248,17 +231,13 @@ async function tryHandleIntelBriefBridge(params: {
         httpStatus: resp.status,
         reply,
       }));
+      if (legacyNews) {
+        await sendReply(LEGACY_NEWS_BRIDGE_UNAVAILABLE);
+        return true;
+      }
       return false;
     }
-    await sendMessageWeixin({
-      to,
-      text: reply,
-      opts: {
-        baseUrl: params.deps.baseUrl,
-        token: params.deps.token,
-        contextToken: params.contextToken,
-      },
-    });
+    await sendReply(reply);
     writeIntelBriefBridgeEvidence(buildIntelBriefBridgeEvidence({
       full: params.full,
       textBody: params.textBody,
@@ -282,6 +261,19 @@ async function tryHandleIntelBriefBridge(params: {
       reason: "exception",
       error: err,
     }));
+    if (legacyNews) {
+      // A retired news request must never continue into general Gateway AI.
+      // Do not retry an ambiguous send: the first reply may already have arrived.
+      if (!replyAttempted) {
+        try {
+          await sendReply(LEGACY_NEWS_BRIDGE_UNAVAILABLE);
+        } catch (sendError) {
+          logger.warn(`[weixin] Legacy news guidance delivery failed: ${String(sendError)}`);
+        }
+      }
+      logger.warn(`[weixin] Legacy news bridge unavailable; general AI skipped: ${String(err)}`);
+      return true;
+    }
     logger.warn(`[weixin] Intel Brief bridge failed, falling back to AI pipeline: ${String(err)}`);
     return false;
   } finally {

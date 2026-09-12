@@ -1,6 +1,6 @@
 import { clawbotFetch, clawbotFetchJson, isTauri } from './tauri-core';
 import * as ipc from './tauri-ipc';
-import { assertTradingSellSucceeded, type TradingSellResponse } from './trading-sell';
+import { parseManualSellStatus, type ManualSellStatus, type ManualSellConfirmation } from './trading-sell';
 
 // API 封装（带日志）
 export const api = {
@@ -341,11 +341,18 @@ export const api = {
   //  交易操作 (Trading Actions)
   // ══════════════════════════════════════════════
 
-  /** 卖出持仓 */
-  tradingSell: async (symbol: string, quantity: number, orderType: string = 'MKT'): Promise<TradingSellResponse> => {
+  tradingSellPrepare: async (requestId: string, symbol: string, quantity: number): Promise<ManualSellStatus> => {
+    const payload = await clawbotFetchJson('/api/v1/trading/sell/prepare', {
+      method: 'POST', body: JSON.stringify({ request_id: requestId, symbol, quantity, order_type: 'MKT' }),
+    });
+    return parseManualSellStatus(payload, requestId);
+  },
+
+  /** 确认只能提交服务器已绑定的订单；重试由查询原请求处理。 */
+  tradingSell: async (request: ManualSellConfirmation): Promise<ManualSellStatus> => {
     const resp = await clawbotFetch('/api/v1/trading/sell', {
       method: 'POST',
-      body: JSON.stringify({ symbol, quantity, order_type: orderType }),
+      body: JSON.stringify(request),
     });
     if (!resp.ok) {
       const text = await resp.text().catch(() => '');
@@ -357,8 +364,11 @@ export const api = {
     } catch {
       throw new Error('卖出请求失败：后端返回了无效响应');
     }
-    return assertTradingSellSucceeded(payload);
+    return parseManualSellStatus(payload, request.request_id);
   },
+
+  tradingSellStatus: async (requestId: string): Promise<ManualSellStatus> =>
+    parseManualSellStatus(await clawbotFetchJson(`/api/v1/trading/sell/requests/${encodeURIComponent(requestId)}`), requestId),
 
   // ══════════════════════════════════════════════
   //  自选股监控 (Watchlist)

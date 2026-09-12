@@ -118,8 +118,11 @@ test('Provider、模型和渠道配置始终在跨进程事务内读改写', () 
     assert.doesNotMatch(section, /let mut config = load_openclaw_config/);
   }
   const providerSave = commandSection('pub async fn save_provider', 'pub async fn delete_provider');
-  assert.match(providerSave, /merge_provider_config/);
-  assert.match(providerSave, /current_provider/);
+  assert.match(providerSave, /apply_provider_update/);
+  const providerUpdate = commandSection('fn apply_provider_update', 'pub async fn save_provider');
+  assert.match(providerUpdate, /merge_provider_config/);
+  assert.match(providerUpdate, /merge_provider_models/);
+  assert.match(providerUpdate, /providers\.get\(name\)\.cloned\(\)/);
 
   for (const [start, end] of [
     ['pub async fn save_channel_config', 'pub async fn clear_channel_config'],
@@ -215,7 +218,10 @@ test('实盘卖出必须二次确认、阻止重复提交并验证业务成功',
   assert.match(portfolio, /pendingSell/);
   assert.match(portfolio, /sellSubmittingRef\.current/);
   assert.doesNotMatch(portfolio, /onClick=\{[^}]*handleSell\(h\.symbol,\s*h\.quantity\)/);
-  assert.match(api, /assertTradingSellSucceeded/);
+  assert.match(api, /parseManualSellStatus/);
+  assert.match(api, /trading\/sell\/prepare/);
+  assert.match(portfolio, /saveManualSellReference/);
+  assert.match(portfolio, /tradingSellStatus/);
 
   const { assertTradingSellSucceeded } = await import('./trading-sell.ts');
   assert.throws(
