@@ -96,7 +96,10 @@ async def _generate_executive_summary(sections_data: dict) -> str:
     pnl = sections_data.get("portfolio_pnl", 0)
     pnl_label = f"浮盈${pnl:+,.2f}" if pnl >= 0 else f"浮亏${pnl:+,.2f}"
     social_posts = sections_data.get("social_posts", 0)
-    api_cost = sections_data.get("api_daily_cost", 0)
+    api_cost = sections_data.get("api_daily_cost")
+    cost_context = sections_data.get('api_cost_context') or (
+        'API费用: 未知' if api_cost is None else f'API费用: ${api_cost:.4f}'
+    )
     market_sentiment = sections_data.get("market_sentiment", "")
     # 昨日对比 delta（如果有）
     deltas = sections_data.get("deltas", {})
@@ -113,8 +116,7 @@ async def _generate_executive_summary(sections_data: dict) -> str:
             metrics_parts.append(f"投资组合{pnl_label}")
         if social_posts > 0:
             metrics_parts.append(f"社媒发帖{social_posts}篇")
-        if api_cost > 0:
-            metrics_parts.append(f"API日均成本${api_cost:.2f}")
+        metrics_parts.append(cost_context)
         if market_sentiment:
             metrics_parts.append(f"市场情绪: {market_sentiment}")
 
@@ -171,7 +173,7 @@ async def _generate_executive_summary(sections_data: dict) -> str:
     else:
         attention = "暂无需要特别关注的异常。"
 
-    return f"{summary}{attention}"
+    return f"{summary}{attention} 费用统计：{cost_context}"
 
 
 async def _generate_daily_recommendations(sections_data: dict) -> str:
@@ -188,7 +190,10 @@ async def _generate_daily_recommendations(sections_data: dict) -> str:
     # 提取关键指标
     pnl = sections_data.get("portfolio_pnl", 0)
     social_posts = sections_data.get("social_posts", 0)
-    api_cost = sections_data.get("api_daily_cost", 0)
+    api_cost = sections_data.get("api_daily_cost")
+    cost_context = sections_data.get('api_cost_context') or (
+        'API费用: 未知' if api_cost is None else f'API费用: ${api_cost:.4f}'
+    )
     market_sentiment = sections_data.get("market_sentiment", "")
     positions_count = sections_data.get("positions_count", 0)
     deltas = sections_data.get("deltas", {})
@@ -205,8 +210,7 @@ async def _generate_daily_recommendations(sections_data: dict) -> str:
             data_lines.append(f"投资组合浮盈亏: ${pnl:+,.2f}, 持仓 {positions_count} 个")
         if social_posts > 0:
             data_lines.append(f"社媒: 今日发帖 {social_posts} 篇")
-        if api_cost > 0:
-            data_lines.append(f"API 日均成本: ${api_cost:.2f}")
+        data_lines.append(cost_context)
         if market_sentiment:
             data_lines.append(f"市场情绪: {market_sentiment}")
         for key, val in deltas.items():

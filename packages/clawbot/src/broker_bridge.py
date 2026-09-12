@@ -1117,6 +1117,10 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         limit_price: float = 0,
         decided_by: str = "",
         reason: str = "",
+        *,
+        request_ref: str | None = None,
+        before_submit=None,
+        manual_payload: dict | None = None,
     ) -> dict:
         """统一下单逻辑（BUY/SELL 共用）"""
         buy_reservation = 0.0
@@ -1211,6 +1215,16 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
                 order = MarketOrder(side, quantity)
 
             order.account = self.account
+            if request_ref is not None:
+                if side != 'SELL' or before_submit is None or manual_payload is None:
+                    return {'error': 'invalid_manual_order_contract'}
+                # This is the actual qualified stock used in the confirmation.
+                contract = qualified[0]
+                order.orderRef = request_ref
+                before_submit(contract, order)
+                # ib_async sends through its client BEFORE constructing Trade.
+                # A raise inside placeOrder can therefore already have an effect.
+                order_submitted = True
             trade = self.ib.placeOrder(contract, order)
             order_submitted = True
             submitted_order_id = getattr(getattr(trade, "order", None), "orderId", "")
@@ -1363,7 +1377,14 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
             }
             if budget_persistence_error:
                 result["budget_persistence_error"] = budget_persistence_error
+            if request_ref is not None:
+                from src.trading.manual_trade_service import broker_result
+                result['manual_result'] = broker_result(trade, manual_payload, request_ref)
             return result
+        except asyncio.CancelledError:
+            if request_ref is not None and order_submitted:
+                self._record_sell_submission(symbol, quantity, 'unknown', 0.0, ambiguous=True)
+            raise
         except Exception as e:
             if order_submitted:
                 if side == "BUY":
@@ -1418,10 +1439,50 @@ class IBKRBridge(BrokerScannerMixin, BrokerSlippageMixin):
         limit_price: float = 0,
         decided_by: str = "",
         reason: str = "",
+        *,
+        request_ref: str | None = None,
+        before_submit=None,
+        manual_payload: dict | None = None,
     ) -> dict:
         """卖出下单"""
         async with self._sell_submission_lock:
-            return await self._place_order("SELL", symbol, quantity, order_type, limit_price, decided_by, reason)
+            return await self._place_order("SELL", symbol, quantity, order_type, limit_price, decided_by, reason,
+                                           request_ref=request_ref, before_submit=before_submit, manual_payload=manual_payload)
+
+    @_owner_operation()
+    async def manual_sell_context(self, symbol: str) -> dict:
+        from src.trading.manual_trade_service import contract_identity, verified_broker_scope
+        verified_broker_scope(self)
+        contracts = await self.ib.qualifyContractsAsync(self._make_contract(symbol))
+        if len(contracts) != 1:
+            from src.trading.manual_trade_store import ManualTradeError
+            raise ManualTradeError('ambiguous_stock_contract', 503)
+        return {**verified_broker_scope(self), **contract_identity(contracts[0])}
+
+    @_owner_operation()
+    async def manual_sell_snapshot(self, payload, order_ref):
+        from src.trading.manual_trade_service import broker_result, verified_broker_scope
+        from src.trading.manual_trade_store import ManualTradeError
+        scope = verified_broker_scope(self)
+        if scope != {key: payload[key] for key in scope}:
+            raise ManualTradeError('broker_scope_changed')
+        # Read broker snapshots. Empty/unavailable results are not proof of no order.
+        opened = await self.ib.reqAllOpenOrdersAsync()
+        completed = await self.ib.reqCompletedOrdersAsync(apiOnly=False)
+        scope = verified_broker_scope(self)
+        if scope != {key: payload[key] for key in scope}:
+            raise ManualTradeError('broker_scope_changed')
+        matches = []
+        for trade in [*opened, *completed]:
+            if (getattr(trade.order, 'orderRef', None) == order_ref
+                    and getattr(trade.order, 'account', None) == payload['account']):
+                matches.append(broker_result(trade, payload, order_ref))
+        if not matches:
+            return None
+        # Duplicate identity with differing status/fills is inconclusive, not a guess.
+        if any(item != matches[0] for item in matches[1:]):
+            raise ManualTradeError('conflicting_broker_evidence')
+        return matches[0]
 
     # ============ 订单管理 ============
 

@@ -1,4 +1,3 @@
-from pathlib import Path
 
 import pytest
 
@@ -794,13 +793,12 @@ def test_chinese_nlp_routes_social_growth_feedback():
 
 def test_social_extension_growth_feedback_route_accepts_query(monkeypatch):
     from fastapi.testclient import TestClient
+
     from src.api.server import APIServer
 
     monkeypatch.delenv("OPENCLAW_API_TOKEN", raising=False)
     monkeypatch.setenv("ENV", "development")
     monkeypatch.setenv("API_HOST", "127.0.0.1")
-    monkeypatch.setattr("src.api.auth._API_TOKEN", "")
-    monkeypatch.setattr("src.api.auth._warned_no_token", False)
     server = APIServer()
     client = TestClient(server.app)
     captured = {}
@@ -876,13 +874,12 @@ def test_social_extension_performance_snapshot_updates_draft_and_status(tmp_path
 
 def test_social_extension_performance_route_accepts_json_body(monkeypatch):
     from fastapi.testclient import TestClient
+
     from src.api.server import APIServer
 
     monkeypatch.delenv("OPENCLAW_API_TOKEN", raising=False)
     monkeypatch.setenv("ENV", "development")
     monkeypatch.setenv("API_HOST", "127.0.0.1")
-    monkeypatch.setattr("src.api.auth._API_TOKEN", "")
-    monkeypatch.setattr("src.api.auth._warned_no_token", False)
     server = APIServer()
     client = TestClient(server.app)
     captured = {}
@@ -1043,13 +1040,12 @@ def test_social_ops_workspace_keeps_growth_draft_action_enabled_without_prior_si
 
 def test_social_extension_growth_draft_batch_route_accepts_json_body(monkeypatch):
     from fastapi.testclient import TestClient
+
     from src.api.server import APIServer
 
     monkeypatch.delenv("OPENCLAW_API_TOKEN", raising=False)
     monkeypatch.setenv("ENV", "development")
     monkeypatch.setenv("API_HOST", "127.0.0.1")
-    monkeypatch.setattr("src.api.auth._API_TOKEN", "")
-    monkeypatch.setattr("src.api.auth._warned_no_token", False)
     server = APIServer()
     client = TestClient(server.app)
     captured = {}
@@ -1364,6 +1360,7 @@ def test_social_extension_strategy_update_route_accepts_json_body(monkeypatch):
     """REST 路由应代理 App/Telegram 策略切换请求。"""
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
+
     from src.api.routers.social import router
 
     captured = {}

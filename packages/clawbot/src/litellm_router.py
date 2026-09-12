@@ -25,6 +25,7 @@ from typing import Any
 import litellm
 from litellm.router import Router
 
+from src.core.cost_ledger import LedgerError
 from src.perf_metrics import perf_timer
 
 logger = logging.getLogger(__name__)
@@ -145,9 +146,10 @@ litellm.suppress_debug_info = True
 # LiteLLM 原生支持 langfuse callback，只需设置 success_callback
 # 当 LANGFUSE_SECRET_KEY 存在时自动启用
 if os.getenv("LANGFUSE_SECRET_KEY") and os.getenv("LANGFUSE_PUBLIC_KEY"):
-    litellm.success_callback = ["langfuse"]
-    litellm.failure_callback = ["langfuse"]
-    logger.info("[LiteLLM] Langfuse callback 已启用")
+    from src.langfuse_obs import register_litellm_callbacks
+
+    register_litellm_callbacks(litellm)
+    logger.info("[LiteLLM] Langfuse safe callback 已启用")
 
 # ---- 路由策略常量 ----
 ROUTE_BALANCED = "balanced"
@@ -446,7 +448,6 @@ class LiteLLMPool:
         self._total_latency = 0.0
         self._total_input_tokens = 0
         self._total_output_tokens = 0
-        self._total_cost = 0.0
         # Uvicorn 与 Telegram 使用不同事件循环，统计锁必须跨线程、跨循环安全。
         self._stats_lock = threading.Lock()
 
@@ -471,7 +472,9 @@ class LiteLLMPool:
 
         # 参考 LiteLLM 1.90.2 Router 文档：Router 持有异步客户端，按事件循环隔离实例。
         options = self._router_options
-        return Router(
+        from src.core.accounted_router import AccountedRouter
+
+        return AccountedRouter(
             model_list=copy.deepcopy(self._router_model_list),
             fallbacks=copy.deepcopy(self._router_fallbacks),
             num_retries=options.get("num_retries", 3),
@@ -553,7 +556,7 @@ class LiteLLMPool:
                 _deployment_id=dep_id,
             ),
         )
-        return {"model_name": fam, "litellm_params": params, "model_info": {"id": dep_id, "tier": "free"}}
+        return {"model_name": fam, "litellm_params": params, "model_info": {"id": dep_id, "tier": "unverified"}}
 
     def _build_all_deployments(self) -> list[dict]:
         deps: list[dict] = []
@@ -1132,12 +1135,14 @@ class LiteLLMPool:
         use_cache = not stream and not no_cache and cache_ttl > 0 and _HAS_LLM_CACHE
 
         if use_cache:
-            cache_key = _make_cache_key(all_msgs, model, temperature)
             try:
+                cache_key = _make_cache_key(all_msgs, model, temperature, max_tokens=max_tokens, **kwargs)
                 cached = _llm_cache_get(cache_key)
                 if cached is not None:
                     logger.debug(f"[LiteLLMPool] cache HIT key={cache_key[:16]}… model={model}")
                     return cached
+            except (TypeError, ValueError):
+                use_cache = False  # Nonserializable SDK options cannot form a reusable response key.
             except Exception:
                 logger.debug("Silenced exception", exc_info=True)  # Cache read error → fall through to LLM
 
@@ -1158,26 +1163,37 @@ class LiteLLMPool:
 
             if stream:
                 # Streaming: wrap to capture token usage from final chunk
-                return self._wrap_streaming(response, model, start)
+                from src.core.accounted_completion import AccountedStream
+
+                if isinstance(response, AccountedStream):
+
+                    def finish(usage, complete):
+                        counted = usage if isinstance(usage, dict) else {
+                            "prompt_tokens": getattr(usage, "prompt_tokens", 0),
+                            "completion_tokens": getattr(usage, "completion_tokens", 0),
+                        }
+                        with self._stats_lock:
+                            self._call_count += 1
+                            self._error_count += not complete
+                            self._total_latency += (time.time() - start) * 1000
+                            self._total_input_tokens += counted.get("prompt_tokens", counted.get("input_tokens", 0)) or 0
+                            self._total_output_tokens += counted.get("completion_tokens", counted.get("output_tokens", 0)) or 0
+
+                    response.on_finish = finish
+                return response  # AccountedRouter owns closing and durable stream settlement
 
             latency = (time.time() - start) * 1000
             prompt_tokens = 0
             completion_tokens = 0
-            response_cost = 0.0
             if hasattr(response, "usage") and response.usage:
                 prompt_tokens = getattr(response.usage, "prompt_tokens", 0)
                 completion_tokens = getattr(response.usage, "completion_tokens", 0)
-                try:
-                    response_cost = litellm.completion_cost(completion_response=response)
-                except Exception:
-                    logger.debug("Silenced exception", exc_info=True)  # 免费模型可能没有成本数据
 
             with self._stats_lock:
                 self._call_count += 1
                 self._total_latency += latency
                 self._total_input_tokens += prompt_tokens
                 self._total_output_tokens += completion_tokens
-                self._total_cost += response_cost
 
             # ---- Store to cache ----
             if use_cache:
@@ -1259,6 +1275,8 @@ class LiteLLMPool:
             family = model_to_family.get(suggested, "qwen")
             logger.debug("[SmartRoute] 复杂度=%s → 建议=%s → family=%s", complexity, suggested, family)
             return family
+        except LedgerError:
+            raise
         except Exception as e:
             logger.debug("[SmartRoute] 降级到 _pick_strongest_family: %s", e)
             return self._pick_strongest_family()
@@ -1293,45 +1311,6 @@ class LiteLLMPool:
                         best_score = score
                         best_fam = fam
         return best_fam
-
-    async def _wrap_streaming(self, response, model: str, start_time: float):
-        """Wrap streaming response to capture token usage from the final chunk.
-
-        LiteLLM streaming responses carry usage info in the last chunk
-        (when stream_options={"include_usage": True} or provider supports it).
-        This wrapper tallies tokens and records cost after the stream completes.
-        """
-        prompt_tokens = 0
-        completion_tokens = 0
-        total_tokens = 0
-
-        async for chunk in response:
-            # Many providers include usage in the final chunk
-            if hasattr(chunk, "usage") and chunk.usage:
-                prompt_tokens = getattr(chunk.usage, "prompt_tokens", 0) or 0
-                completion_tokens = getattr(chunk.usage, "completion_tokens", 0) or 0
-                total_tokens = getattr(chunk.usage, "total_tokens", 0) or 0
-            yield chunk
-
-        # After stream completes, record metrics（加锁保护统计计数器）
-        latency = (time.time() - start_time) * 1000
-        cost = 0.0
-        if total_tokens > 0 or (prompt_tokens + completion_tokens) > 0:
-            try:
-                cost = litellm.completion_cost(
-                    model=model,
-                    prompt_tokens=prompt_tokens,
-                    completion_tokens=completion_tokens,
-                )
-            except Exception:
-                logger.debug("Silenced exception", exc_info=True)
-
-        with self._stats_lock:
-            self._call_count += 1
-            self._total_latency += latency
-            self._total_input_tokens += prompt_tokens
-            self._total_output_tokens += completion_tokens
-            self._total_cost += cost
 
     # ---- 兼容旧接口 ----
 
@@ -1381,7 +1360,9 @@ class LiteLLMPool:
             total_latency = self._total_latency
             total_input_tokens = self._total_input_tokens
             total_output_tokens = self._total_output_tokens
-            total_cost = self._total_cost
+        from src.core.cost_control import get_cost_controller
+
+        accounting = get_cost_controller().get_stats()
         avg_lat = total_latency / max(call_count, 1)
         return {
             "total_sources": total,
@@ -1391,7 +1372,9 @@ class LiteLLMPool:
             "total_input_tokens": total_input_tokens,
             "total_output_tokens": total_output_tokens,
             "total_tokens": total_input_tokens + total_output_tokens,
-            "total_cost_usd": round(total_cost, 6),
+            "total_cost_usd": accounting["total_cost_usd"],
+            "cost_today_usd": accounting["today_spend"],
+            "cost_accounting": accounting,
             "avg_latency_ms": round(avg_lat, 1),
             "total_calls": call_count,
             "total_errors": error_count,
@@ -1476,38 +1459,38 @@ class LiteLLMPool:
         Returns:
             {"checked": N, "healthy": N, "disabled": [...], "elapsed_s": float}
         """
-        import asyncio
 
         start = time.time()
         checked = 0
         healthy = 0
         disabled_providers = []
+        skipped_providers = []
 
         # Group sources by provider to avoid redundant checks
-        providers_seen: dict[str, bool] = {}
+        providers_seen: dict[str, bool | None] = {}
 
         for _family, sources in self._sources.items():
             for src in sources:
                 if src.provider in providers_seen:
                     # Apply same result
-                    if not providers_seen[src.provider]:
+                    if providers_seen[src.provider] is False:
                         src.disabled = True
                     continue
 
                 checked += 1
                 try:
-                    # Minimal ping: 1-token completion with short timeout
-                    await asyncio.wait_for(
-                        self.acompletion(
-                            model_family=_family,
-                            messages=[{"role": "user", "content": "hi"}],
-                            max_tokens=1,
-                            temperature=0,
-                        ),
-                        timeout=timeout,
-                    )
+                    result = await self._test_single_key(src, timeout)
+                    if result['status'] == 'not_executed':
+                        providers_seen[src.provider] = None
+                        skipped_providers.append(src.provider)
+                        continue
+                    if result['status'] != 'ok':
+                        raise RuntimeError(result.get('error', result['status']))
                     providers_seen[src.provider] = True
                     healthy += 1
+                except LedgerError:
+                    providers_seen[src.provider] = None
+                    skipped_providers.append(src.provider)
                 except Exception as e:
                     logger.warning(f"[健康检查] {src.provider}/{src.model} 不可用: {_scrub_secrets(str(e))}")
                     providers_seen[src.provider] = False
@@ -1517,7 +1500,7 @@ class LiteLLMPool:
         # Mark all sources of failed providers as disabled
         for _family, sources in self._sources.items():
             for src in sources:
-                if src.provider in providers_seen and not providers_seen[src.provider]:
+                if src.provider in providers_seen and providers_seen[src.provider] is False:
                     src.disabled = True
 
         elapsed = time.time() - start
@@ -1525,6 +1508,7 @@ class LiteLLMPool:
             "checked": checked,
             "healthy": healthy,
             "disabled": disabled_providers,
+            "not_executed": skipped_providers,
             "elapsed_s": round(elapsed, 2),
         }
         logger.info(
@@ -1565,25 +1549,35 @@ class LiteLLMPool:
         import asyncio
         import re
 
-        # 使用 litellm 直接调用 (绕过 Router fallback)
-        model_id = src._deployment_id.split("/", 1)[-1] if "/" in src._deployment_id else src.model
-        # 为 litellm 构建正确的 model 格式
-        params: dict[str, Any] = {
-            "model": f"openai/{model_id}" if src.base_url else model_id,
+        from src.core.accounted_completion import accounted_completion
+        from src.core.cost_control import get_cost_controller
+
+        deployment = next(
+            (dep for dep in self._router_model_list if dep.get("model_info", {}).get("id") == src._deployment_id), None
+        )
+        if deployment is None:
+            return {"status": "not_executed", "error": "deployment identity unavailable"}
+        params = {
+            **deployment["litellm_params"],
             "messages": [{"role": "user", "content": "hi"}],
             "max_tokens": 1,
             "temperature": 0,
-            "api_key": src.api_key,
         }
-        if src.base_url:
-            params["api_base"] = src.base_url
-
         try:
             await asyncio.wait_for(
-                litellm.acompletion(**params),
+                accounted_completion(
+                    deployment=deployment,
+                    controller=get_cost_controller(),
+                    transport=litellm.acompletion,
+                    sdk_usage=True,
+                    params=params,
+                    task_type="key_probe",
+                ),
                 timeout=timeout,
             )
             return {"status": "ok"}
+        except LedgerError as exc:
+            return {"status": "not_executed", "error": str(exc)}
         except TimeoutError as e:  # noqa: F841
             return {"status": "unreachable", "error": f"Timeout ({timeout}s)"}
         except Exception as e:
@@ -1679,7 +1673,16 @@ class LiteLLMPool:
                                 "[validate_keys] 禁用 auth_error key: %s/%s", src_ref.provider, src_ref.model
                             )
 
-                overall = "ok" if keys_ok == keys_tested else ("auth_error" if keys_ok == 0 else "partial")
+                skipped = sum(isinstance(res, dict) and res.get("status") == "not_executed" for res in results)
+                overall = (
+                    "not_executed"
+                    if skipped == keys_tested
+                    else "ok"
+                    if keys_ok == keys_tested
+                    else "partial"
+                    if keys_ok or skipped
+                    else "unavailable"
+                )
 
                 info: dict[str, Any] = {
                     "status": overall,

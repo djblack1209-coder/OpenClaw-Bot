@@ -1,12 +1,13 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Check, ChevronLeft, ChevronRight, Eye, EyeOff,
   Zap, TrendingUp, Share2, Bot, Shield,
 } from 'lucide-react';
-import { api } from '@/lib/tauri';
+import { api, type AIConfigOverview } from '@/lib/tauri';
+import { useAppStore } from '@/stores/appStore';
+import { saveGatewaySetup, OnboardingError, type GatewaySetupInput } from '@/lib/onboarding';
 import { useLanguage } from '@/i18n';
-import { toast } from '@/lib/notify';
 
 /* ────────────────────────────────────────────────────────────────
    Types
@@ -228,75 +229,61 @@ function StepFeatures({
    Step 3: API Key Config — Sonic Abyss 风格
 ──────────────────────────────────────────────────────────────── */
 
-function StepAPIConfig({
-  apiKey,
-  setApiKey,
-  baseUrl,
-  setBaseUrl,
-}: {
-  apiKey: string;
-  setApiKey: (v: string) => void;
-  baseUrl: string;
-  setBaseUrl: (v: string) => void;
+function StepAPIConfig({ input, onChange, busy, providers }: {
+  input: GatewaySetupInput;
+  onChange: (patch: Partial<GatewaySetupInput>) => void;
+  busy: boolean;
+  providers: AIConfigOverview['configured_providers'];
 }) {
   const [showKey, setShowKey] = useState(false);
   const { t } = useLanguage();
-
+  const provider = providers.find((entry) => entry.name === input.providerName);
   const inputStyle: React.CSSProperties = {
-    background: 'rgba(255,255,255,0.04)',
-    border: '1px solid rgba(255,255,255,0.1)',
-    color: 'var(--text-primary)',
-    borderRadius: 12,
-    padding: '10px 14px',
-    outline: 'none',
-    fontFamily: 'var(--font-mono)',
-    fontSize: '13px',
+    background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
+    color: 'var(--text-primary)', borderRadius: 12, padding: '10px 14px',
+    outline: 'none', fontFamily: 'var(--font-mono)', fontSize: '13px',
   };
-
+  const field = (key: 'providerName' | 'modelId' | 'baseUrl', label: string, placeholder: string, list?: string) => (
+    <div>
+      <label htmlFor={`setup-${key}`} className="block font-mono text-xs mb-1.5">{t(label)}</label>
+      <input id={`setup-${key}`} type="text" autoComplete="off" value={input[key]}
+        onChange={(event) => onChange({ [key]: event.target.value })} placeholder={placeholder}
+        list={list} className="w-full" style={inputStyle} />
+    </div>
+  );
   return (
     <div className="max-w-lg mx-auto">
-      <h2 className="font-display text-2xl font-bold text-center mb-2" style={{ color: 'var(--text-primary)' }}>{t('onboarding.apiConfig.title')}</h2>
-      <p className="font-mono text-sm text-center mb-6" style={{ color: 'var(--text-secondary)' }}>{t('onboarding.apiConfig.subtitle')}</p>
-
-      <div className="space-y-4">
+      <h2 className="font-display text-2xl font-bold text-center mb-2">{t('onboarding.apiConfig.title')}</h2>
+      <p className="font-mono text-sm text-center mb-5" style={{ color: 'var(--text-secondary)' }}>{t('onboarding.apiConfig.subtitle')}</p>
+      <fieldset disabled={busy} className="space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {field('providerName', 'onboarding.providerName', 'custom', 'setup-providers')}
+          {field('modelId', 'onboarding.modelId', 'model-id', 'setup-models')}
+        </div>
+        <datalist id="setup-providers">{providers.map((entry) => <option key={entry.name} value={entry.name} />)}</datalist>
+        <datalist id="setup-models">{provider?.models.map((entry) => <option key={entry.id} value={entry.id} />)}</datalist>
+        {field('baseUrl', 'onboarding.apiConfig.baseUrlLabel', 'https://example.com/v1')}
         <div>
-          <label className="block font-mono text-xs mb-1.5" style={{ color: 'var(--text-disabled)' }}>{t('onboarding.apiConfig.apiKeyLabel')}</label>
+          <label htmlFor="setup-apiType" className="block font-mono text-xs mb-1.5">{t('onboarding.apiType')}</label>
+          <select id="setup-apiType" value={input.apiType} onChange={(event) => onChange({ apiType: event.target.value })} className="w-full" style={inputStyle}>
+            {[...new Set(['openai-completions', 'anthropic-messages', input.apiType])].map((value) => <option key={value} value={value}>{value}</option>)}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="setup-apiKey" className="block font-mono text-xs mb-1.5">{t('onboarding.apiConfig.apiKeyLabel')}</label>
           <div className="relative">
-            <input
-              type={showKey ? 'text' : 'password'}
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="sk-..."
-              className="w-full pr-10"
-              style={inputStyle}
-            />
-            <button
-              type="button"
-              className="absolute right-3 top-1/2 -translate-y-1/2 transition-colors"
-              style={{ color: 'var(--text-disabled)' }}
-              onClick={() => setShowKey(!showKey)}
-            >
+            <input id="setup-apiKey" type={showKey ? 'text' : 'password'} autoComplete="new-password" spellCheck={false}
+              value={input.apiKey} onChange={(event) => onChange({ apiKey: event.target.value })}
+              placeholder={provider?.has_api_key ? t('onboarding.keepExistingKey') : t('onboarding.optionalKey')}
+              className="w-full pr-10" style={inputStyle} />
+            <button type="button" aria-label={t(showKey ? 'onboarding.hideKey' : 'onboarding.showKey')}
+              className="absolute right-3 top-1/2 -translate-y-1/2" onClick={() => setShowKey(!showKey)}>
               {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
           </div>
         </div>
-
-        <div>
-          <label className="block font-mono text-xs mb-1.5" style={{ color: 'var(--text-disabled)' }}>{t('onboarding.apiConfig.baseUrlLabel')}</label>
-          <input
-            type="text"
-            value={baseUrl}
-            onChange={(e) => setBaseUrl(e.target.value)}
-            placeholder="https://api.openai.com/v1"
-            className="w-full"
-            style={inputStyle}
-          />
-        </div>
-
-        <p className="font-mono text-[10px] text-center mt-4" style={{ color: 'var(--text-disabled)' }}>
-          {t('onboarding.apiConfig.hint')}
-        </p>
-      </div>
+        <p className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>{t('onboarding.apiConfig.hint')}</p>
+      </fieldset>
     </div>
   );
 }
@@ -388,68 +375,94 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
 
   // Step 2 state — feature selection
   const [selectedFeatures, setSelectedFeatures] = useState<Set<string>>(
-    new Set(['assistant']), // AI助手 always on
+    new Set(useAppStore.getState().onboardingFeatures), // Interface preferences only
   );
 
-  // Step 3 state — API config
-  const [apiKey, setApiKey] = useState('');
-  const [baseUrl, setBaseUrl] = useState('');
+  const [input, setInput] = useState<GatewaySetupInput>({ providerName: 'custom', modelId: '', apiType: 'openai-completions', baseUrl: '', apiKey: '' });
+  const [providers, setProviders] = useState<AIConfigOverview['configured_providers']>([]);
+  const [busy, setBusy] = useState(false);
+  const [errorCode, setErrorCode] = useState('');
+  const mounted = useRef(false);
+  const edited = useRef(false);
+  const inFlight = useRef(false);
+  const completed = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    mounted.current = true;
+    api.getAIConfig().then((config) => {
+      if (cancelled) return;
+      setProviders(config.configured_providers);
+      const provider = config.configured_providers.find((entry) => entry.models.some((model) => model.is_primary)) || config.configured_providers[0];
+      const model = provider?.models.find((entry) => entry.is_primary) || provider?.models[0];
+      if (provider && !edited.current) setInput({ providerName: provider.name, baseUrl: provider.base_url,
+        modelId: model?.id || '', apiType: model?.api_type || 'openai-completions', apiKey: '' });
+    }).catch(() => { if (!cancelled) setErrorCode('readFailed'); });
+    return () => { cancelled = true; mounted.current = false; };
+  }, []);
+
+  const changeInput = useCallback((patch: Partial<GatewaySetupInput>) => {
+    edited.current = true;
+    setErrorCode('');
+    const provider = patch.providerName === undefined ? undefined : providers.find((entry) => entry.name === patch.providerName);
+    setInput((current) => ({ ...current, ...patch,
+      ...(patch.providerName !== undefined && patch.providerName !== current.providerName ? { apiKey: '' } : {}),
+      ...(provider ? { baseUrl: provider.base_url, modelId: provider.models[0]?.id || '', apiType: provider.models[0]?.api_type || 'openai-completions' } : {}),
+    }));
+  }, [providers]);
 
   const goNext = useCallback(() => {
-    if (step < TOTAL_STEPS - 1) {
-      setDirection(1);
-      setStep((s) => s + 1);
-    }
+    if (inFlight.current || step >= 2) return;
+    setDirection(1); setStep((value) => value + 1);
   }, [step]);
 
   const goBack = useCallback(() => {
-    if (step > 0) {
-      setDirection(-1);
-      setStep((s) => s - 1);
-    }
+    if (inFlight.current || step <= 0) return;
+    setDirection(-1); setStep((value) => value - 1);
   }, [step]);
 
   const toggleFeature = useCallback((id: string) => {
-    setSelectedFeatures((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      // Always keep assistant
-      next.add('assistant');
-      return next;
+    setSelectedFeatures((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      next.add('assistant'); return next;
     });
   }, []);
 
-  const handleFinish = useCallback(async () => {
-    // Persist onboarding state
-    localStorage.setItem('openclaw-onboarding-complete', 'true');
-    localStorage.setItem(
-      'openclaw-onboarding-features',
-      JSON.stringify(Array.from(selectedFeatures)),
-    );
-
-    // 保存 API 配置（如果用户填写了）
-    if (apiKey.trim()) {
-      try {
-        await api.saveEnvValue('LLM_API_KEY', apiKey.trim());
-      } catch {
-        // 提示用户保存失败，但不阻止完成引导
-        toast.error(t('onboarding.apiKeySaveFailed'), { channel: 'notification' });
-      }
+  const handleSave = useCallback(async () => {
+    if (inFlight.current) return;
+    inFlight.current = true; setBusy(true); setErrorCode('');
+    try {
+      if (!await saveGatewaySetup(input, api, () => mounted.current)) return;
+      useAppStore.getState().recordOnboardingSave([...selectedFeatures]);
+      setInput((current) => ({ ...current, apiKey: '' }));
+      setDirection(1); setStep(3);
+    } catch (error) {
+      if (mounted.current) setErrorCode(error instanceof OnboardingError ? error.code : 'persistFailed');
+    } finally {
+      inFlight.current = false;
+      if (mounted.current) setBusy(false);
     }
-    if (baseUrl.trim()) {
-      try {
-        await api.saveEnvValue('LLM_BASE_URL', baseUrl.trim());
-      } catch {
-        toast.error(t('onboarding.baseUrlSaveFailed'), { channel: 'notification' });
-      }
-    }
+  }, [input, selectedFeatures]);
 
-    onComplete();
-  }, [selectedFeatures, apiKey, baseUrl, onComplete, t]);
+  const handleFinish = useCallback(() => {
+    if (inFlight.current || completed.current) return;
+    try {
+      useAppStore.getState().completeOnboarding('saved_unverified', [...selectedFeatures]);
+      completed.current = true;
+      onComplete();
+    } catch { setErrorCode('persistFailed'); }
+  }, [selectedFeatures, onComplete]);
+
+  const handleSkip = useCallback(() => {
+    if (inFlight.current || completed.current) return;
+    setInput((current) => ({ ...current, apiKey: '' }));
+    try {
+      useAppStore.getState().completeOnboarding('skipped', [...selectedFeatures]);
+      completed.current = true;
+      onComplete();
+    } catch { setErrorCode('persistFailed'); }
+  }, [selectedFeatures, onComplete]);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'var(--bg-primary, #020202)' }}>
@@ -478,7 +491,8 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
           {/* 跳过按钮 */}
           {step < TOTAL_STEPS - 1 && (
             <button
-              onClick={handleFinish}
+              onClick={handleSkip}
+              disabled={busy}
               className="ml-2 font-mono text-[10px] transition-colors whitespace-nowrap"
               style={{ color: 'var(--text-disabled)' }}
               aria-label={t('onboarding.skipGuide')}
@@ -489,8 +503,10 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
         </div>
       </div>
 
+      {errorCode && <p role="alert" className="relative z-10 px-8 text-center text-sm" style={{ color: 'var(--accent-amber)' }}>{t(`onboarding.error.${errorCode}`)}</p>}
+      {busy && <p role="status" className="relative z-10 px-8 text-center text-sm">{t('onboarding.saving')}</p>}
       {/* 步骤内容 */}
-      <div className="relative z-10 flex-1 flex items-center justify-center px-8 overflow-hidden">
+      <div className="relative z-10 flex-1 flex items-center justify-center px-8 overflow-y-auto py-4">
         <AnimatePresence mode="wait" custom={direction}>
           <motion.div
             key={step}
@@ -508,10 +524,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
             )}
             {step === 2 && (
               <StepAPIConfig
-                apiKey={apiKey}
-                setApiKey={setApiKey}
-                baseUrl={baseUrl}
-                setBaseUrl={setBaseUrl}
+                input={input} onChange={changeInput} busy={busy} providers={providers}
               />
             )}
             {step === 3 && (
@@ -527,6 +540,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
           {step > 0 && step < TOTAL_STEPS - 1 ? (
             <button
               onClick={goBack}
+              disabled={busy}
               className="px-4 py-2 rounded-lg font-mono text-xs transition-all flex items-center gap-1"
               style={{
                 background: 'rgba(255,255,255,0.04)',
@@ -542,14 +556,15 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
           )}
           {step > 0 && step < TOTAL_STEPS - 1 && (
             <button
-              onClick={goNext}
+              onClick={step === 2 ? handleSave : goNext}
+              disabled={busy}
               className="px-5 py-2 rounded-lg font-display text-sm font-bold transition-all flex items-center gap-1"
               style={{
                 background: 'var(--accent-cyan)',
                 color: '#000',
               }}
             >
-              {t('onboarding.nextStep')}
+              {t(step === 2 ? 'onboarding.saveConfig' : 'onboarding.nextStep')}
               <ChevronRight size={14} />
             </button>
           )}

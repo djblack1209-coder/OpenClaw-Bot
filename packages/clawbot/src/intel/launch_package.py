@@ -55,6 +55,7 @@ def _plist_xml(
   <array>
     <string>{python_path}</string>
     <string>{production_cycle}</string>
+    <string>--scheduled</string>
     <string>--output-dir</string>
     <string>{evidence_dir}</string>
     <string>--evidence</string>
@@ -62,7 +63,6 @@ def _plist_xml(
   </array>
   <key>StartCalendarInterval</key>
   <dict>
-    <key>Hour</key><integer>8</integer>
     <key>Minute</key><integer>30</integer>
   </dict>
   <key>RunAtLoad</key><false/>
@@ -143,6 +143,9 @@ def build_launchd_package(
                 f"- stdout log: `{stdout_path}`",
                 f"- stderr log: `{stderr_path}`",
                 f"- production ack embedded: `{include_production_ack}`",
+                "- host wakeup: every hour at minute 30; Singapore dispatch remains stable across New York DST",
+                "- business delivery: 08:30 Asia/Singapore; catch-up allowed through 10:00",
+                "- one durable claim per Singapore date; failures require review before a manual retry",
                 f"- rollback helper: `{rollback_path}`",
                 "",
                 "Install requires a separate explicit production action.",
@@ -167,6 +170,10 @@ def build_launchd_package(
         "stdout_path": str(stdout_path),
         "stderr_path": str(stderr_path),
         "production_ack_embedded": bool(include_production_ack),
+        "scheduler_timezone": "Asia/Singapore",
+        "business_delivery_time": "08:30",
+        "host_calendar": {"Minute": 30},
+        "scheduled_mode": True,
         "limits": [
             "Generated package only; not copied to ~/Library/LaunchAgents.",
             "No launchctl bootstrap/load/kickstart command is run.",

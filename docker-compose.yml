@@ -1,7 +1,6 @@
 services:
   # docker compose 默认只读取仓库根目录 .env。
-  # 当前真实密钥放在 packages/clawbot/config/.env，因此用变量值强制要求调用方显式注入，避免 Redis 空密码启动。
-  # 推荐: docker compose --env-file packages/clawbot/config/.env up -d
+  # 部署时显式提供配置文件；先执行 config --quiet 校验，启动是独立操作。
   # ── Redis（可选，用于任务队列持久化）──────────────
   redis:
     image: redis:7.2-alpine@sha256:05a97a479bc73de66f087dc05b569010772880f778cc8671fa6b8aadee32e5c6
@@ -34,8 +33,7 @@ services:
       - clawbot-internal
 
   # ── OpenClaw 主服务 ──────────────────────────────
-  # NOTE: 需要先创建 packages/clawbot/Dockerfile 才能使用 docker compose build
-  # 当前仅支持 docker compose up redis (Redis 独立运行)
+  # Dockerfile 使用 Linux x86_64 哈希锁；构建通过不代表真实业务已验收。
   openclaw:
     # Python 生产哈希锁面向 Oracle/Linux x86_64；Mac 本机构建时由 Docker 透明模拟同一目标。
     platform: linux/amd64
@@ -46,7 +44,7 @@ services:
       - "127.0.0.1:18790:18790"   # 内控 API（仅本机访问）
       - "127.0.0.1:9090:9090"     # Prometheus metrics（仅本机访问）
     volumes:
-      - ./packages/clawbot/config:/app/config
+      - ./packages/clawbot/config:/app/config:ro
       - ./packages/clawbot/data:/app/data
       - ./packages/clawbot/logs:/app/logs
     env_file:
@@ -54,6 +52,12 @@ services:
     environment:
       - REDIS_URL=redis://:${REDIS_PASSWORD:?请通过 --env-file packages/clawbot/config/.env 或环境变量设置 REDIS_PASSWORD}@redis:6379/0
       - OMEGA_DAILY_BUDGET=50.0
+      - API_HOST=0.0.0.0
+      - API_PORT=18790
+      - ENV=production
+      # Compose 已注入 env_file；非 root 应用不重读宿主用户的 0600 密钥文件。
+      - PYTHON_DOTENV_DISABLED=1
+      - OPENCLAW_API_TOKEN=${OPENCLAW_API_TOKEN:?请显式设置 OPENCLAW_API_TOKEN}
     depends_on:
       redis:
         condition: service_healthy
@@ -74,7 +78,7 @@ services:
         reservations:
           memory: 512M
     healthcheck:
-      test: ["CMD", "python", "-c", "import os, urllib.request; request = urllib.request.Request('http://localhost:18790/api/v1/ping', headers={'X-API-Token': os.environ.get('OPENCLAW_API_TOKEN', '')}); urllib.request.urlopen(request, timeout=8)"]
+      test: ["CMD", "python", "-c", "import os, urllib.request; request = urllib.request.Request('http://localhost:18790/api/v1/ping', headers={'X-API-Token': os.environ['OPENCLAW_API_TOKEN']}); urllib.request.urlopen(request, timeout=8)"]
       interval: 30s
       timeout: 10s
       retries: 3

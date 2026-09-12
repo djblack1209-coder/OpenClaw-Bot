@@ -4,16 +4,35 @@ Execution Hub — 调度器
 """
 
 import asyncio
+import inspect
 import logging
 import os
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from src.execution._utils import parse_hhmm, safe_int
 from src.utils import now_et
 
 logger = logging.getLogger(__name__)
+
+
+def report_schedule(now, scheduled_time, *, weekday=None):
+    """Most recent ET occurrence; DST gaps move forward, folds use the first instant."""
+    if now.tzinfo is None:
+        raise ValueError('scheduler clock must be timezone aware')
+    local = now.astimezone(ZoneInfo('America/New_York'))
+    for days in range(8):
+        day = local.date() - timedelta(days=days)
+        if weekday is not None and day.weekday() != weekday:
+            continue
+        candidate = datetime(day.year, day.month, day.day, *scheduled_time, tzinfo=local.tzinfo, fold=0)
+        candidate = candidate.astimezone(UTC).astimezone(local.tzinfo)
+        if candidate.timestamp() <= local.timestamp():
+            return candidate
+    raise ValueError('no previous scheduled occurrence')
 
 
 def _intel_brief_completed(result) -> bool:
@@ -24,9 +43,14 @@ def _intel_brief_completed(result) -> bool:
 class ExecutionScheduler:
     """执行场景调度器"""
 
-    def __init__(self):
+    def __init__(self, *, clock=None, sleep=None, report_delivery=None):
+        self._clock = clock or now_et
+        self._sleep = sleep or asyncio.sleep
+        self.report_delivery = report_delivery
+        self._last_error = None
         self._running = False
         self._task: asyncio.Task | None = None
+        self._lifecycle_lock = asyncio.Lock()
         self._notify_func: Callable | None = None
         self._private_notify_func: Callable | None = None
         # 状态追踪
@@ -45,28 +69,61 @@ class ExecutionScheduler:
         self.intel_brief_production_runner = None
 
     async def start(self, notify_func=None, private_notify_func=None):
-        self._notify_func = notify_func
-        self._private_notify_func = private_notify_func
-        self._running = True
-        self._task = asyncio.ensure_future(self._loop())
+        async with self._lifecycle_lock:
+            if self.is_running:
+                return
+            self._notify_func = notify_func
+            self._private_notify_func = private_notify_func
+            self._running = True
+            self._task = asyncio.ensure_future(self._loop())
 
-        def _scheduler_done(t):
-            if not t.cancelled() and t.exception():
-                logger.warning("[ExecutionScheduler] 循环崩溃: %s", t.exception())
+            def _scheduler_done(t):
+                if self._task is t:
+                    self._running = False
+                if not t.cancelled() and t.exception():
+                    self._record_error('_loop', t.exception())
 
-        self._task.add_done_callback(_scheduler_done)
-        logger.info("[ExecutionScheduler] started")
+            self._task.add_done_callback(_scheduler_done)
+            logger.info("[ExecutionScheduler] started")
 
     async def stop(self):
-        self._running = False
-        if self._task and not self._task.done():
-            self._task.cancel()
-            try:  # noqa: SIM105
-                await self._task
-            except asyncio.CancelledError as e:  # noqa: F841
-                pass  # 合理保留：任务取消是正常停止流程
-        self._task = None
-        logger.info("[ExecutionScheduler] stopped")
+        async with self._lifecycle_lock:
+            self._running = False
+            task = self._task
+            caller_cancelled = False
+            if task and not task.done():
+                task.cancel()
+                while not task.done():
+                    try:
+                        await asyncio.shield(task)
+                    except asyncio.CancelledError:
+                        if asyncio.current_task().cancelling():
+                            caller_cancelled = True
+            if self._task is task:
+                self._task = None
+            logger.info("[ExecutionScheduler] stopped")
+            if caller_cancelled:
+                raise asyncio.CancelledError
+
+    @property
+    def is_running(self):
+        return bool(self._running and self._task is not None and not self._task.done())
+
+    def runtime_status(self):
+        return {"running": self.is_running, "last_error": self._last_error,
+                "reports": self.report_delivery.store.summary() if self.report_delivery else {"configured": False, "reports": [], "counts": {}}}
+
+    def _record_error(self, job, error):
+        self._last_error = {"job": job, "error_type": type(error).__name__, "at": self._clock().isoformat()}
+        logger.warning("[ExecutionScheduler] %s failed: %s", job, type(error).__name__)
+
+    async def _run_job(self, method, *args):
+        try:
+            result = getattr(self, method)(*args)
+            if inspect.isawaitable(result):
+                await result
+        except Exception as error:
+            self._record_error(method, error)
 
     async def _loop(self):
         brief_time = parse_hhmm(os.getenv("OPS_BRIEF_TIME"), (8, 0))
@@ -77,41 +134,31 @@ class ExecutionScheduler:
 
         while self._running:
             try:
-                await asyncio.sleep(60)
+                await self._sleep(60)
             except asyncio.CancelledError as e:  # noqa: F841
                 break
 
-            now = now_et()
-            ts = time.time()
+            if not self._running:
+                break
+            now = self._clock()
+            ts = now.timestamp()
 
-            await self._run_daily_brief(now, brief_time)
-            await self._run_intel_brief(now, intel_brief_time)
-            await self._run_morning_news(now)  # 每早自动推送科技早报
-            await self._run_monitors(ts, monitor_interval)
-            await self._run_social_operator(ts, social_op_interval)
-            await self._run_bounty_scan(ts, bounty_interval)
-            self._run_cleanup(now)
-
-            # 提醒检查 — 每次循环都执行(60秒一次)
-            await self._run_reminders()
-
-            # 账单低余额告警 + 定期查询提醒
-            await self._run_bill_checks(now)
-
-            # 每周日 20:00 策略绩效评估
-            await self._run_weekly_strategy_review()
-
-            # 每周日 20:30 综合周报推送
-            await self._run_weekly_report()
-
-            # 降价监控 — 每6小时检查一次 (06:00/12:00/18:00/00:00 ET)
-            await self._run_price_watch_check(now, ts)
-
-            # 折扣搜集 — 每4小时扫描全网好价
-            await self._run_deal_scan(ts)
-
-            # 每天 20:00 预算超支检查
-            await self._run_budget_alert(now)
+            for method, args in (
+                ('_run_daily_brief', (now, brief_time)),
+                ('_run_intel_brief', (now, intel_brief_time)),
+                ('_run_monitors', (ts, monitor_interval)),
+                ('_run_social_operator', (ts, social_op_interval)),
+                ('_run_bounty_scan', (ts, bounty_interval)),
+                ('_run_cleanup', (now,)),
+                ('_run_reminders', ()),
+                ('_run_bill_checks', (now,)),
+                ('_run_weekly_strategy_review', ()),
+                ('_run_weekly_report', ()),
+                ('_run_price_watch_check', (now, ts)),
+                ('_run_deal_scan', (ts,)),
+                ('_run_budget_alert', (now,)),
+            ):
+                await self._run_job(method, *args)
 
     async def _run_weekly_strategy_review(self):
         """每周日检查策略绩效并推送报告"""
@@ -141,79 +188,20 @@ class ExecutionScheduler:
             logger.warning("[Strategy] 周度评估异常: %s", e)
 
     async def _run_weekly_report(self):
-        """每周日 20:30 推送综合周报 — 聚合投资、社媒和成本。"""
-        now = time.localtime()
-        # 仅周日 20:30-20:31 执行（避开 20:00 的策略评估）
-        if now.tm_wday != 6 or now.tm_hour != 20 or now.tm_min != 30:
+        if self.report_delivery is None:
             return
-        # 防止重复执行
-        if hasattr(self, "_last_weekly_report") and self._last_weekly_report == now.tm_yday:
-            return
-        self._last_weekly_report = now.tm_yday
-        try:
-            from src.execution.daily_brief import weekly_report
-
-            result = await weekly_report()
-            if self._private_notify_func and result and len(str(result).strip()) > 20:
-                await self._private_notify_func(result)
-                logger.info("[Scheduler] 综合周报已推送")
-        except Exception as e:
-            logger.error("[Scheduler] 综合周报推送失败: %s", e)
-
-    async def _run_morning_news(self, now):
-        """每天早上 8:00 自动推送科技早报 — 不需要用户手动发 /news"""
-        news_hour = safe_int(os.getenv("MORNING_NEWS_HOUR"), 8)
-        news_enabled = os.getenv("MORNING_NEWS_ENABLED", "1").lower() in ("1", "true", "yes", "on")
-        if not news_enabled:
-            return
-        today = now.strftime("%Y-%m-%d")
-        # 防重复：每天只推一次
-        if hasattr(self, "_last_news_date") and self._last_news_date == today:
-            return
-        if now.hour != news_hour or now.minute > 1:
-            return
-        self._last_news_date = today
-        try:
-            from src.news_fetcher import news_fetcher
-
-            report = await news_fetcher.generate_morning_report()
-            if self._private_notify_func and report and len(report.strip()) > 20:
-                await self._private_notify_func(f"📰 今日科技早报\n\n{report}")
-                logger.info("[Scheduler] 科技早报已自动推送")
-        except Exception as e:
-            logger.warning("[Scheduler] 科技早报推送失败: %s", e)
+        from src.execution.daily_brief import weekly_report
+        planned = report_schedule(self._clock(), (20, 30), weekday=6)
+        await self.report_delivery.run('weekly_report', planned,
+                                       lambda when: weekly_report(planned_at=when))
 
     async def _run_daily_brief(self, now, brief_time):
-        if os.getenv("OPS_BRIEF_ENABLED", "").lower() not in ("1", "true", "yes", "on"):
+        if self.report_delivery is None:
             return
-        today = now.strftime("%Y-%m-%d")
-        if today == self._last_brief_date:
-            return
-        if now.hour != brief_time[0] or now.minute < brief_time[1]:
-            return
-
-        # 尊重用户偏好 — 如果用户关闭了每日报告则跳过
-        try:
-            from src.bot.globals import user_prefs
-
-            notify_chat_id = int(os.environ.get("NOTIFY_CHAT_ID", "0"))
-            if notify_chat_id and not user_prefs.get(notify_chat_id, "daily_report", True):
-                logger.info("[Scheduler] 用户已关闭每日报告，跳过")
-                self._last_brief_date = today  # 标记已处理，避免每分钟重试
-                return
-        except Exception:
-            logger.debug("Silenced exception", exc_info=True)  # 偏好系统不可用不影响默认行为
-
-        try:
-            from src.execution.daily_brief import generate_daily_brief
-
-            monitors = self.monitor_manager._monitors if self.monitor_manager else None
-            result = await generate_daily_brief(monitors=monitors)
-            self._last_brief_date = today
-            if self._notify_func and result and len(str(result).strip()) > 20:
-                await self._notify_func(result)
-        except Exception as e:
-            logger.error("[Scheduler] daily brief failed: %s", e)
+        from src.execution.daily_brief import generate_daily_brief
+        monitors = self.monitor_manager._monitors if self.monitor_manager else None
+        await self.report_delivery.run('daily_brief', report_schedule(now, brief_time),
+            lambda when: generate_daily_brief(monitors=monitors, planned_at=when))
 
     async def _run_intel_brief(self, now, intel_brief_time):
         """Run Intel Brief through the sandbox or production safety gate."""
@@ -538,6 +526,22 @@ class ExecutionScheduler:
         except Exception as e:
             logger.warning("[Scheduler] 预算检查异常: %s", e)
 
+    # ── 折扣搜集 ───────────────────────────────────────────
+
+    async def _run_deal_scan(self, ts: float):
+        """每 4 小时扫描全网折扣并推送"""
+        interval = safe_int(os.getenv("OPS_DEAL_SCAN_INTERVAL_MIN", "240"), 240) * 60
+        if ts - self._last_deal_scan_ts < interval:
+            return
+        self._last_deal_scan_ts = ts
+
+        try:
+            from src.shopping.deal_scanner import scheduled_deal_scan
+
+            await scheduled_deal_scan()
+        except Exception as e:
+            logger.warning("[Scheduler] 折扣扫描失败: %s", e)
+
     @staticmethod
     def _run_cleanup(now):
         if now.minute != 0:
@@ -617,19 +621,3 @@ def _run_daily_db_backup():
                     logger.error("[Scheduler] Backup failed: %s → %s", db, status)
     except Exception:
         logger.error("[Scheduler] daily DB backup failed", exc_info=True)
-
-    # ── 折扣搜集 ───────────────────────────────────────────
-
-    async def _run_deal_scan(self, ts: float):
-        """每 4 小时扫描全网折扣并推送"""
-        interval = safe_int(os.getenv("OPS_DEAL_SCAN_INTERVAL_MIN", "240"), 240) * 60
-        if ts - self._last_deal_scan_ts < interval:
-            return
-        self._last_deal_scan_ts = ts
-
-        try:
-            from src.shopping.deal_scanner import scheduled_deal_scan
-
-            await scheduled_deal_scan()
-        except Exception as e:
-            logger.warning("[Scheduler] 折扣扫描失败: %s", e)

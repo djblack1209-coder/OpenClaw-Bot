@@ -5,7 +5,7 @@ python-dotenv~=1.2.1
 beautifulsoup4~=4.14.3
 
 # 代码沙箱安全 — AST 级别限制用户代码执行
-RestrictedPython>=8.0,<9.0  # 安全沙箱，锁定主版本防止API变更
+RestrictedPython>=8.3,<9.0  # 安全沙箱，锁定主版本防止API变更
 requests>=2.33.0,<3.0.0
 urllib3>=2.7.0,<3.0.0  # 参考 urllib3 CHANGES 2.7.x，收口 2026 高危漏洞
 charset-normalizer>=3.0.0,<4.0.0  # requests 官方字符集检测依赖上限
@@ -15,9 +15,9 @@ chardet>=5.0.0,<6.0.0  # 保留兼容旧库导入，避免 7.x 触发 requests �
 pillow>=12.2.0,<13.0.0
 lxml>=6.1.0,<7.0.0
 pydantic-settings>=2.14.2,<3.0.0
-pypdf>=6.15.0,<7.0.0
+pypdf>=6.16.1,<7.0.0
 python-multipart>=0.0.31,<1.0.0
-tornado>=6.5.7,<7.0.0
+tornado>=6.5.8,<7.0.0
 curl-cffi>=0.15.0,<1.0.0
 cryptography>=50.0.0,<51.0.0
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import plistlib
 
 
 def test_build_launchd_package_is_dry_run_and_references_private_env(tmp_path):
@@ -29,6 +30,11 @@ def test_build_launchd_package_is_dry_run_and_references_private_env(tmp_path):
     assert "intel_production_cycle.py" in plist_text
     assert "--output-dir" in plist_text
     assert "--evidence" in plist_text
+    parsed = plistlib.loads(plist.read_bytes())
+    assert parsed["StartCalendarInterval"] == {"Minute": 30}
+    assert "--scheduled" in parsed["ProgramArguments"]
+    assert report["scheduler_timezone"] == "Asia/Singapore"
+    assert report["business_delivery_time"] == "08:30"
     assert "launchctl load" not in rollback.read_text(encoding="utf-8")
 
 

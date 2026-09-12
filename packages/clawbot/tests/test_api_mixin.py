@@ -4,16 +4,16 @@ Tests for APIMixin — LLM API integration layer.
 Covers: _call_api success/error paths, _call_api_stream,
         quality_gate rejection, CircuitOpenError handling.
 """
-import asyncio
+
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
 
-from src.bot.error_messages import error_generic, error_circuit_open
+from src.bot.error_messages import error_circuit_open
 from src.http_client import CircuitOpenError
 
-
 # ============ Helpers ============
+
 
 def _make_mixin():
     """Create an APIMixin instance with all required attributes mocked."""
@@ -41,17 +41,18 @@ def mixin():
 @pytest.fixture
 def mock_globals():
     """Patch all globals used by APIMixin."""
-    with patch("src.bot.api_mixin.rate_limiter") as rl, \
-         patch("src.bot.api_mixin.token_budget") as tb, \
-         patch("src.bot.api_mixin.quality_gate") as qg, \
-         patch("src.bot.api_mixin.history_store") as hs, \
-         patch("src.bot.api_mixin.context_manager") as cm, \
-         patch("src.bot.api_mixin.metrics") as mt, \
-         patch("src.bot.api_mixin.health_checker") as hc, \
-         patch("src.bot.api_mixin.free_pool") as fp, \
-         patch("src.bot.api_mixin.log_generation", None), \
-         patch("src.bot.globals.tiered_context_manager", None):
-
+    with (
+        patch("src.bot.api_mixin.rate_limiter") as rl,
+        patch("src.bot.api_mixin.token_budget") as tb,
+        patch("src.bot.api_mixin.quality_gate") as qg,
+        patch("src.bot.api_mixin.history_store") as hs,
+        patch("src.bot.api_mixin.context_manager") as cm,
+        patch("src.bot.api_mixin.metrics") as mt,
+        patch("src.bot.api_mixin.health_checker") as hc,
+        patch("src.bot.api_mixin.free_pool") as fp,
+        patch("src.bot.api_mixin.log_generation", None),
+        patch("src.bot.globals.tiered_context_manager", None),
+    ):
         rl.check.return_value = (True, "")
         rl.record.return_value = None
         tb.check.return_value = (True, "")
@@ -60,9 +61,7 @@ def mock_globals():
         qg.record_response.return_value = None
         hs.get_messages.return_value = []
         hs.add_message.return_value = None
-        cm.prepare_messages_for_api.return_value = (
-            [{"role": "user", "content": "test"}], False
-        )
+        cm.prepare_messages_for_api.return_value = ([{"role": "user", "content": "test"}], False)
         cm.update_history_store.return_value = None
         mt.log_api_call.return_value = None
         hc.record_success.return_value = None
@@ -90,8 +89,8 @@ def mock_globals():
 
 # ============ _call_api ============
 
-class TestCallApi:
 
+class TestCallApi:
     async def test_returns_response_on_success(self, mixin, mock_globals):
         """_call_api should return the LLM response text on success."""
         # Need to mock _get_chat_mode_prompt
@@ -160,7 +159,29 @@ class TestCallApi:
 
 # ============ _call_api_stream ============
 
+
 class TestCallApiStream:
+    async def test_partial_stream_error_does_not_send_a_second_request(self, mixin, mock_globals):
+        async def failed_stream():
+            chunk = MagicMock()
+            chunk.choices[0].delta.content = "partial"
+            yield chunk
+            raise RuntimeError("fixture interrupted")
+
+        mock_globals["free_pool"].acompletion.return_value = failed_stream()
+        mixin._call_api = AsyncMock()
+        results = [item async for item in mixin._call_api_stream(123, "Hi")]
+        assert results[-1] == ("partial", "error")
+        mixin._call_api.assert_not_awaited()
+
+    async def test_budget_denial_does_not_fall_back(self, mixin, mock_globals):
+        from src.core.cost_ledger import BudgetDenied
+
+        mock_globals["free_pool"].acompletion.side_effect = BudgetDenied("fixture exhausted")
+        mixin._call_api = AsyncMock()
+        results = [item async for item in mixin._call_api_stream(123, "Hi")]
+        assert results[-1][1] == "error"
+        mixin._call_api.assert_not_awaited()
 
     async def test_stream_returns_async_generator(self, mixin, mock_globals):
         """_call_api_stream should yield (content, status) tuples."""

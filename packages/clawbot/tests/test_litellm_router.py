@@ -227,7 +227,7 @@ class TestAcompletion:
         assert pool_with_sources._call_count == 1
         assert pool_with_sources._total_input_tokens == 100
         assert pool_with_sources._total_output_tokens == 50
-        assert pool_with_sources._total_cost == pytest.approx(0.001)
+        assert not hasattr(pool_with_sources, "_total_cost")  # financial truth lives only in the ledger
 
 
 class TestEventLoopIsolation:
@@ -325,9 +325,7 @@ class TestHealthCheck:
                 tier=TIER_B,
             ),
         )
-        mock_router = AsyncMock()
-        mock_router.acompletion.side_effect = Exception("Connection refused")
-        pool._router = mock_router
+        pool._test_single_key = AsyncMock(return_value={"status": "unreachable", "error": "Connection refused"})
 
         result = await pool.health_check(timeout=1.0)
 

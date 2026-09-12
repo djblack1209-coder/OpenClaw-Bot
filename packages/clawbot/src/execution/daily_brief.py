@@ -9,6 +9,7 @@
 
 import logging
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 # ── 从子模块导入 ──────────────────────────────────────────────
 from src.execution.daily_brief_data import (  # noqa: F401
@@ -39,6 +40,7 @@ from src.execution.daily_brief_data import (  # noqa: F401
     _format_delta,
     _get_timestamp_tag,
     _get_yesterday_comparison,
+    _report_cost_snapshot,
     _section,
 )
 from src.execution.daily_brief_llm import (  # noqa: F401
@@ -54,13 +56,13 @@ from src.notify_style import format_digest
 logger = logging.getLogger(__name__)
 
 
-async def generate_daily_brief(monitors=None, db_path=None) -> str:
+async def generate_daily_brief(monitors=None, db_path=None, *, planned_at=None) -> str:
     """生成智能每日日报 — 纯编排器，每个 section 委托给 _brief_xxx() 子函数。
 
     流程: 采集 13+ 数据源 → 收集关键指标 → LLM 执行摘要 → 智能建议 → 组装输出
     """
     sections: list[tuple[str, list[str]]] = []
-    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    today = (planned_at or datetime.now(UTC)).astimezone(ZoneInfo('America/New_York')).strftime("%Y-%m-%d")
 
     # ── 价值位阶排序: 行动建议 > 异常检测 > 资产状况 > 运营数据 > 信息参考 ──
 
@@ -100,10 +102,11 @@ async def generate_daily_brief(monitors=None, db_path=None) -> str:
 
     # 第七层: 系统运维（运营者关注）
     await _brief_ops_status(sections, monitors=monitors, db_path=db_path)
-    await _brief_api_cost(sections)
+    cost = _report_cost_snapshot(planned_at=planned_at)
+    await _brief_api_cost(sections, cost_snapshot=cost)
 
     # ── 收集关键指标 + 昨日对比（用于执行摘要和智能建议）──
-    sections_data = await _collect_brief_metrics(db_path=db_path)
+    sections_data = await _collect_brief_metrics(db_path=db_path, cost_snapshot=cost)
 
     # ── 生成执行摘要（LLM / 模板降级）──
     try:

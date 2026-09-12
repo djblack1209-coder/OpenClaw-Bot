@@ -39,7 +39,8 @@ interface BotVote {
 
 /** 遥测数据 */
 interface TelemetryData {
-  llmCostDaily: number;
+  llmCostDaily: number | null;
+  llmCostComplete: boolean;
   activeBots: number;
   poolActive: number;
   poolTotal: number;
@@ -99,7 +100,7 @@ export function HomeDashboard() {
   const [dailyPnl, setDailyPnl] = useState(0);
   const [dailyPnlPct, setDailyPnlPct] = useState(0);
   const [telemetry, setTelemetry] = useState<TelemetryData>({
-    llmCostDaily: 0, activeBots: 0, poolActive: 0, poolTotal: 0, memoryEntries: 0,
+    llmCostDaily: null, llmCostComplete: false, activeBots: 0, poolActive: 0, poolTotal: 0, memoryEntries: 0,
   });
   const [social, setSocial] = useState<SocialData>({ running: false, mode: 'manual', postsToday: 0 });
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -179,7 +180,9 @@ export function HomeDashboard() {
         })));
         setTelemetry((prev) => ({
           ...prev,
-          llmCostDaily: Number(s.total_cost_usd ?? s.cost_today_usd ?? 0),
+          llmCostDaily: typeof s.cost_today_usd === "number" && Number.isFinite(s.cost_today_usd) ? s.cost_today_usd : null,
+          llmCostComplete: typeof s.cost_accounting === 'object' && s.cost_accounting !== null
+            && 'accounting_complete' in s.cost_accounting && s.cost_accounting.accounting_complete === true,
           activeBots: botsArr.length,
           memoryEntries: Number(s.memory_entries ?? 0),
           poolActive: Number(s.pool_active_sources ?? prev.poolActive ?? 0),

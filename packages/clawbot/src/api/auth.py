@@ -1,136 +1,86 @@
-"""
-FastAPI API 认证中间件 — 共享密钥 Token 验证。
-
-使用方式:
-  1. 在 config/.env 中设置 OPENCLAW_API_TOKEN=<random-secret>
-  2. 客户端请求时带 Header: X-API-Token: <secret>
-  3. 未配置 Token 时仅允许本机开发模式无认证访问
-
-设计原则:
-  - 不阻塞开发: 本机开发模式未设 OPENCLAW_API_TOKEN 时请求通过 (附 warning 日志)
-  - 轻量: 纯 Header 验证, 无 JWT/数据库
-  - WebSocket 兼容: WS 连接通过 query param ?token= 验证
-"""
+"""Per-application API authentication, shared by HTTP and WebSocket."""
 import hmac
 import logging
 import os
+from dataclasses import dataclass, field
+from ipaddress import ip_address
 
 from fastapi import HTTPException, WebSocket
-from fastapi.security import APIKeyHeader
 from starlette.requests import HTTPConnection
 
 logger = logging.getLogger(__name__)
-
-# 从环境变量读取 (python-dotenv 在 multi_main.py 启动时已加载)
-_API_TOKEN: str = os.getenv("OPENCLAW_API_TOKEN", "")
-
-# 首次警告标志
-_warned_no_token: bool = False
-
-_LOCAL_API_HOSTS = frozenset({"127.0.0.1", "localhost", "::1", "[::1]"})
-_PRODUCTION_ENV_MODES = frozenset({"production", "prod"})
-
-_header_scheme = APIKeyHeader(name="X-API-Token", auto_error=False)
+_DEVELOPMENT_MODES = frozenset({'development', 'dev', 'test'})
 
 
-def _runtime_auth_context() -> tuple[str, str]:
-    """读取规范化后的运行环境与 API 绑定地址。"""
-    return (
-        os.getenv("ENV", "development").strip().lower(),
-        os.getenv("API_HOST", "127.0.0.1").strip().lower(),
-    )
+@dataclass(frozen=True)
+class APIAuthContext:
+    """A startup snapshot; never infer bind policy from request/proxy headers."""
+
+    host: str
+    env_mode: str
+    token: str = field(repr=False)
+
+    @classmethod
+    def resolve(cls, *, host: str | None = None, env_mode: str | None = None,
+                api_token: str | None = None) -> 'APIAuthContext':
+        bind = (host if host is not None else os.getenv('API_HOST', '127.0.0.1')).strip().lower()
+        if bind == 'localhost':
+            bind = '127.0.0.1'
+        if bind.startswith('[') and bind.endswith(']'):
+            bind = bind[1:-1]
+        # Require a concrete IP: DNS changes cannot widen a previously local bind.
+        try:
+            bind = str(ip_address(bind))
+        except ValueError as error:
+            raise ValueError('API_HOST must be an IP address or localhost') from error
+        mode = (env_mode if env_mode is not None else os.getenv('ENV', 'development')).strip().lower()
+        token = api_token if api_token is not None else os.getenv('OPENCLAW_API_TOKEN', '')
+        if token and (not token.strip() or any(char in token for char in '\r\n\x00')):
+            raise ValueError('Invalid API token configuration')
+        return cls(host=bind, env_mode=mode, token=token)
+
+    @property
+    def allows_local_development(self) -> bool:
+        return self.env_mode in _DEVELOPMENT_MODES and ip_address(self.host).is_loopback
+
+    def matches(self, candidate: str) -> bool:
+        return bool(candidate) and hmac.compare_digest(candidate.encode(), self.token.encode())
 
 
-def _allows_unauthenticated_local_development() -> bool:
-    """仅本机非生产环境允许无 Token 调试。"""
-    env_mode, bind_host = _runtime_auth_context()
-    return env_mode not in _PRODUCTION_ENV_MODES and bind_host in _LOCAL_API_HOSTS
+def _connection_context(conn: HTTPConnection) -> APIAuthContext | None:
+    app = conn.scope.get('app')
+    context = getattr(getattr(app, 'state', None), 'api_auth_context', None)
+    return context if isinstance(context, APIAuthContext) else None
 
 
-def log_token_status() -> None:
-    """启动时记录 Token 配置状态 — 应在 app 启动后调用一次。"""
-    if not _API_TOKEN:
-        # 检查是否绑定到非 localhost (可能是生产环境)
-        # 注意: 0.0.0.0 绑定全部网络接口，应视为外网暴露 (HI-387)
-        env_mode, bind_host = _runtime_auth_context()
-        if env_mode in _PRODUCTION_ENV_MODES:
-            logger.critical(
-                "[API Auth] ⚠️ 生产环境未配置 OPENCLAW_API_TOKEN! "
-                "所有 API 请求将被拒绝。请设置 OPENCLAW_API_TOKEN 环境变量。"
-            )
-        elif bind_host not in _LOCAL_API_HOSTS:
-            logger.critical(
-                "[API Auth] ⚠️ 危险: API 绑定到外网地址 %s 但未配置认证 Token! "
-                "设置 OPENCLAW_API_TOKEN 环境变量或改为绑定 127.0.0.1", bind_host
-            )
-        else:
-            logger.warning(
-                "[API Auth] OPENCLAW_API_TOKEN 未配置 — API 运行在无认证模式 (仅限开发环境!)"
-            )
+def log_token_status(context: APIAuthContext) -> None:
+    if context.token:
+        logger.info('[API Auth] API Token authentication enabled')
+    elif context.allows_local_development:
+        logger.warning('[API Auth] Explicit loopback development without API Token')
     else:
-        logger.info("[API Auth] API Token 认证已启用")
+        logger.critical('[API Auth] API Token missing; requests will be rejected')
 
 
-async def verify_api_token(
-    conn: HTTPConnection,
-) -> None:
-    """FastAPI dependency: 验证 X-API-Token header。
-
-    使用 HTTPConnection 而非 Request，因为 HTTPConnection 同时支持 HTTP 和 WebSocket scope。
-    - WebSocket scope: 直接跳过（WS 有独立的 verify_ws_token 验证）
-    - Token 未配置: 仅本机开发模式放行, 首次打印 warning
-    - Token 已配置但请求缺失/不匹配: 返回 401
-    """
-    # WebSocket 请求跳过 HTTP header 认证（WS 有自己的 query param token 验证）
-    if conn.scope.get("type") == "websocket":
+async def verify_api_token(conn: HTTPConnection) -> None:
+    # The WebSocket endpoint rejects with close code 1008 through the same context.
+    if conn.scope.get('type') == 'websocket':
         return
-
-    # 手动从 header 读取 API key（避免 APIKeyHeader scheme 在 WS scope 下崩溃）
-    api_key = conn.headers.get("x-api-token")
-
-    global _warned_no_token
-
-    # 未配置 Token 时：仅允许 localhost 请求通过（开发模式安全降级）
-    if not _API_TOKEN:
-        env_mode, _ = _runtime_auth_context()
-        # 生产环境无 Token → 强制拒绝所有请求
-        if env_mode in _PRODUCTION_ENV_MODES:
-            raise HTTPException(
-                status_code=503,
-                detail="生产环境未配置 OPENCLAW_API_TOKEN，拒绝所有请求。"
-            )
-        if not _allows_unauthenticated_local_development():
-            # 绑定到非 localhost 地址但未配置 Token → 强制拒绝所有请求
-            raise HTTPException(
-                status_code=503,
-                detail="API 认证未配置且绑定到外网地址，拒绝所有请求。请设置 OPENCLAW_API_TOKEN 环境变量。"
-            )
-        if not _warned_no_token:
-            logger.warning(
-                "[API Auth] 请求未验证 — 设置 OPENCLAW_API_TOKEN 环境变量以启用认证"
-            )
-            _warned_no_token = True
+    context = _connection_context(conn)
+    if context is None:
+        raise HTTPException(status_code=503, detail='API authentication context unavailable')
+    if not context.token:
+        if not context.allows_local_development:
+            raise HTTPException(status_code=503, detail='API authentication is not configured')
         return
-
-    # Token 已配置但请求未携带
-    if not api_key:
-        raise HTTPException(status_code=401, detail="Invalid or missing API token")
-
-    # 使用 hmac.compare_digest 防止时序攻击（逐字符比较时间相同）
-    if not hmac.compare_digest(api_key, _API_TOKEN):
-        raise HTTPException(status_code=401, detail="Invalid or missing API token")
+    if not context.matches(conn.headers.get('x-api-token', '')):
+        raise HTTPException(status_code=401, detail='Invalid or missing API token')
 
 
 def verify_ws_token(websocket: WebSocket) -> bool:
-    """验证 WebSocket 连接的 token (通过 query param ?token=xxx)。
-
-    Returns:
-        True 如果验证通过，或处于未配置 Token 的本机开发模式
-        False 如果验证失败
-    """
-    if not _API_TOKEN:
-        return _allows_unauthenticated_local_development()
-
-    token = websocket.query_params.get("token", "")
-    # 使用 hmac.compare_digest 防止时序攻击（与 HTTP 认证保持一致）
-    return hmac.compare_digest(token, _API_TOKEN)
+    context = _connection_context(websocket)
+    if context is None:
+        return False
+    if not context.token:
+        return context.allows_local_development
+    return context.matches(websocket.query_params.get('token', ''))

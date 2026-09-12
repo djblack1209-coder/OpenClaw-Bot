@@ -211,15 +211,20 @@ class OpenClawGateway:
             return
         try:
             from src.core.cost_control import get_cost_controller
+
             cc = get_cost_controller()
-            spend = cc.get_daily_spend()
-            budget = cc._daily_budget
+            stats = cc.get_stats()
+            spend, available = stats["today_spend"], stats["available_usd"]
+            spent_text = f"${spend:.4f}" if spend is not None else "未确认（账本未初始化）"
+            available_text = f"${available:.4f}" if available is not None else "未确认"
             text = (
                 f"━━━ 今日费用 ━━━\n"
-                f"已花费: ${spend:.4f}\n"
-                f"日预算: ${budget:.2f}\n"
-                f"剩余: ${max(0, budget - spend):.4f}\n"
-                f"用量: {spend/budget:.1%}" if budget > 0 else ""
+                f"已知花费: {spent_text}\n"
+                f"日预算: ${stats['daily_budget']:.2f}\n"
+                f"预留: ${stats['reserved_usd']:.4f}\n"
+                f"可用: {available_text}\n"
+                f"待结算: {stats['pending_attempts']} 次；未知结果: {stats['unknown_attempts']} 次\n"
+                "费用为配置估价，历史记录未保证完整。"
             )
         except Exception as e:
             logger.exception("获取费用信息失败")
