@@ -2,25 +2,20 @@
 OpenClaw OMEGA — 成本控制 (Cost Control)
 追踪每次 LLM 调用的成本，实施日预算限制，支持成本感知的模型路由。
 """
-import json
+
 import logging
 import os
-import time
-from collections import defaultdict
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
-
-from src.utils import now_et, scrub_secrets
 
 logger = logging.getLogger(__name__)
 
 _BASE_DIR = Path(__file__).resolve().parent.parent.parent
 COST_DIR = _BASE_DIR / "data" / "cost"
-COST_DIR.mkdir(parents=True, exist_ok=True)
 DAILY_LOG = COST_DIR / "daily_costs.jsonl"
 
-# 模型定价（每百万 token，美元）
+# 旧版本参考报价（每百万 token，美元）；仅供兼容估算，非供应商现价或预算授权。
 MODEL_COSTS: dict[str, dict[str, float]] = {
     # 高端
     "claude-opus-4": {"input": 15.0, "output": 75.0},
@@ -30,18 +25,13 @@ MODEL_COSTS: dict[str, dict[str, float]] = {
     "gpt-4o-mini": {"input": 0.15, "output": 0.6},
     # 经济
     "claude-haiku-3.5": {"input": 0.8, "output": 4.0},
-    # 免费池
-    "qwen3-235b": {"input": 0.0, "output": 0.0},
-    "deepseek-v3": {"input": 0.0, "output": 0.0},
-    "qwen3-30b": {"input": 0.0, "output": 0.0},
-    "gemini-2.5-flash": {"input": 0.0, "output": 0.0},
 }
 
 COMPLEXITY_TO_MODEL = {
-    "simple": "qwen3-235b",            # 免费
-    "moderate": "claude-haiku-3.5",     # $0.8/M
-    "complex": "claude-sonnet-4",       # $3/M
-    "critical": "claude-opus-4",        # $15/M
+    "simple": "qwen3-235b",  # 免费
+    "moderate": "claude-haiku-3.5",  # $0.8/M
+    "complex": "claude-sonnet-4",  # $3/M
+    "critical": "claude-opus-4",  # $15/M
 }
 
 
@@ -57,181 +47,94 @@ class CostRecord:
 
 
 class CostController:
-    """
-    成本控制器 — 追踪、预算、路由。
+    """费用查询门面。启用前显示覆盖未知；实际调用使用事务化尝试账本。"""
 
-    用法:
-        cc = get_cost_controller()
-        cost = cc.estimate_cost("claude-sonnet-4", 1000, 500)
-        if not cc.is_over_budget():
-            cc.record_cost("claude-sonnet-4", cost, "investment")
-    """
+    def __init__(self, daily_budget_usd: float = 50.0, *, ledger_path=None, clock=None):
+        from src.core.cost_ledger import CostLedger, money_units
 
-    def __init__(self, daily_budget_usd: float = 50.0):
+        money_units(daily_budget_usd)
         self._daily_budget = daily_budget_usd
-        self._today_spend: float = 0.0
-        self._today_date: str = now_et().strftime("%Y-%m-%d")
-        self._records: list = []
-        self._by_model: dict[str, float] = defaultdict(float)
-        self._by_task: dict[str, float] = defaultdict(float)
-        self._load_today()
-        logger.info(f"CostController 初始化: 日预算 ${daily_budget_usd:.2f}")
+        self.ledger = CostLedger(ledger_path or COST_DIR / "cost.sqlite3", clock=clock)
 
-    def _load_today(self) -> None:
-        """加载今日已有记录"""
-        today = now_et().strftime("%Y-%m-%d")
-        if not DAILY_LOG.exists():
-            return
-        try:
-            with open(DAILY_LOG) as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    record = json.loads(line)
-                    if record.get("date") == today:
-                        cost = record.get("cost_usd", 0)
-                        self._today_spend += cost
-                        self._by_model[record.get("model", "unknown")] += cost
-                        self._by_task[record.get("task_type", "unknown")] += cost
-        except Exception as e:
-            logger.warning(f"加载成本记录失败: {scrub_secrets(str(e))}")
+    def estimate_cost(self, model: str, input_tokens: int, output_tokens: int) -> float | None:
+        """旧表仅作明确模型 ID 的估价参考，不用于部署的预算授权。"""
+        from src.core.cost_policy import tokens
 
-    def _check_date_rollover(self) -> None:
-        """日期切换时重置"""
-        today = now_et().strftime("%Y-%m-%d")
-        if today != self._today_date:
-            self._today_date = today
-            self._today_spend = 0.0
-            self._by_model.clear()
-            self._by_task.clear()
-            self._records.clear()
-
-    def estimate_cost(self, model: str, input_tokens: int, output_tokens: int) -> float:
-        """预估调用成本（美元）"""
-        # 查找模型定价
-        pricing = None
-        for model_key, prices in MODEL_COSTS.items():
-            if model_key in model.lower():
-                pricing = prices
-                break
+        tokens(input_tokens)
+        tokens(output_tokens)
+        pricing = MODEL_COSTS.get(model)
         if pricing is None:
-            return 0.0  # 未知模型假设免费
-
-        cost = (input_tokens * pricing["input"] + output_tokens * pricing["output"]) / 1_000_000
-        return cost
+            return None
+        return (input_tokens * pricing["input"] + output_tokens * pricing["output"]) / 1_000_000
 
     def record_cost(self, model: str, cost: float, task_type: str = "unknown") -> None:
-        """记录实际成本"""
-        self._check_date_rollover()
-        self._today_spend += cost
-        self._by_model[model] += cost
-        self._by_task[task_type] += cost
+        """兼容显式手工记录；主链必须通过 reserve/dispatch/settle。"""
+        from uuid import uuid4
 
-        record = {
-            "timestamp": time.time(),
-            "model": model,
-            "cost_usd": round(cost, 6),
-            "task_type": task_type,
-            "date": self._today_date,
-        }
-        self._records.append(record)
+        from src.core.cost_ledger import money_units
 
-        # 持久化
-        try:
-            with open(DAILY_LOG, "a") as f:
-                f.write(f"{json.dumps(record, ensure_ascii=False)}\n")
-        except Exception as e:
-            logger.warning("[CostControl] 成本记录持久化失败: %s", e)
+        money_units(cost)
+        attempt = uuid4().hex
+        self.ledger.reserve(
+            attempt_id=attempt,
+            request_id=attempt,
+            provider="manual",
+            deployment_id=model,
+            model=model,
+            price_snapshot="manual-unverified",
+            task_type=task_type,
+            budget_usd=self._daily_budget,
+            max_cost_usd=cost,
+        )
+        self.ledger.dispatch(attempt)
+        self.ledger.settle(attempt, cost)
 
-        # 预算告警
-        if self._daily_budget > 0 and self._today_spend > self._daily_budget * 0.8:
-            logger.warning(
-                f"[成本告警] 今日花费 ${self._today_spend:.4f} "
-                f"已达预算 {self._today_spend/self._daily_budget:.0%}"
-            )
-            # EventBus: 通知成本预警
-            try:
-                from src.core.event_bus import get_event_bus
-                bus = get_event_bus()
-                if bus:
-                    import asyncio
-                    try:
-                        loop = asyncio.get_running_loop()
-                        _t = loop.create_task(bus.publish("system.cost_warning", {
-                            "daily_spend": self._today_spend,
-                            "daily_budget": self._daily_budget,
-                            "usage_pct": self._today_spend / self._daily_budget,
-                        }))
-                        _t.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
-                    except RuntimeError as e:
-                        logger.warning("[CostControl] EventBus成本预警发布失败: %s", e)
-            except Exception as e:
-                logger.warning("[CostControl] 发布成本预警事件失败: %s", e)
-
-    def get_daily_spend(self) -> float:
-        self._check_date_rollover()
-        return self._today_spend
+    def get_daily_spend(self) -> float | None:
+        return self.ledger.stats()["today_spend"]
 
     def is_over_budget(self) -> bool:
-        self._check_date_rollover()
-        return self._today_spend >= self._daily_budget
+        stats = self.get_stats()
+        return stats["over_budget"]
 
     def suggest_model(self, task_complexity: str = "moderate") -> str:
-        """成本感知的模型推荐"""
-        self._check_date_rollover()
-        recommended = COMPLEXITY_TO_MODEL.get(task_complexity, "qwen3-235b")
-        # 如果接近预算，降级到更便宜的模型
-        budget_ratio = self._today_spend / self._daily_budget if self._daily_budget > 0 else 0
-        if budget_ratio > 0.9:
-            return "qwen3-235b"  # 强制免费
-        elif budget_ratio > 0.7:
-            if task_complexity == "critical":
-                return "claude-sonnet-4"  # 降一级
+        stats = self.get_stats()
+        available = stats["available_usd"]
+        if available is None or self._daily_budget <= 0:
             return "qwen3-235b"
-        return recommended
+        ratio = 1 - available / self._daily_budget
+        if ratio > 0.9:
+            return "qwen3-235b"
+        if ratio > 0.7:
+            return "claude-sonnet-4" if task_complexity == "critical" else "qwen3-235b"
+        return COMPLEXITY_TO_MODEL.get(task_complexity, "qwen3-235b")
 
     def get_weekly_report(self) -> dict:
-        """周报"""
-        week_start = (now_et() - timedelta(days=7)).strftime("%Y-%m-%d")
-        weekly_cost = 0.0
-        daily_breakdown: dict[str, float] = defaultdict(float)
-
-        if DAILY_LOG.exists():
-            try:
-                with open(DAILY_LOG) as f:
-                    for line in f:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        record = json.loads(line)
-                        date = record.get("date", "")
-                        if date >= week_start:
-                            cost = record.get("cost_usd", 0)
-                            weekly_cost += cost
-                            daily_breakdown[date] += cost
-            except Exception as e:
-                logger.warning("[CostControl] 周报文件读取失败: %s", e)
-
+        stats = self.get_stats()
+        week_start = (date.fromisoformat(stats["budget_day"]) - timedelta(days=6)).isoformat()
+        daily = {
+            day: value for day, value in stats["daily_breakdown"].items() if week_start <= day <= stats["budget_day"]
+        }
         return {
-            "weekly_total_usd": round(weekly_cost, 4),
+            **stats,
+            "weekly_total_usd": sum(daily.values())
+            if stats["accounting_complete"] and stats["coverage_started_day"] <= week_start
+            else None,
+            "known_weekly_total_usd": sum(daily.values()),
             "daily_budget_usd": self._daily_budget,
-            "today_spend_usd": round(self._today_spend, 4),
-            "by_model": dict(self._by_model),
-            "by_task": dict(self._by_task),
-            "daily_breakdown": dict(daily_breakdown),
+            "today_spend_usd": stats["today_spend"],
+            "daily_breakdown": daily,
         }
 
     def get_stats(self) -> dict:
-        self._check_date_rollover()
+        stats = self.ledger.stats(budget_usd=self._daily_budget)
+        available = stats["available_usd"]
         return {
-            "today_spend": round(self._today_spend, 4),
+            **stats,
             "daily_budget": self._daily_budget,
-            "budget_used_pct": round(self._today_spend / self._daily_budget * 100, 1)
-                               if self._daily_budget > 0 else 0,
-            "over_budget": self.is_over_budget(),
-            "by_model": {k: round(v, 4) for k, v in self._by_model.items()},
-            "by_task": {k: round(v, 4) for k, v in self._by_task.items()},
+            "budget_used_pct": (
+                100 * (1 - available / self._daily_budget) if available is not None and self._daily_budget > 0 else None
+            ),
+            "over_budget": available is None or available <= 0 or stats["bound_exceeded"],
         }
 
 

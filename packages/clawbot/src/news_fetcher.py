@@ -11,8 +11,6 @@ v2.0 变更 (2026-03-23):
 import asyncio
 import re
 
-from src.notify_style import format_digest
-
 # ── feedparser 可选依赖 ──
 _HAS_FEEDPARSER = False
 try:
@@ -25,7 +23,7 @@ except ImportError:
 import logging  # noqa: E402
 
 from src.http_client import ResilientHTTPClient  # noqa: E402
-from src.utils import now_et, scrub_secrets  # noqa: E402
+from src.utils import scrub_secrets  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -303,64 +301,3 @@ class NewsFetcher:
             self._seen_titles = set(list(self._seen_titles)[-200:])
 
         return unique_news[:count]
-
-    async def generate_morning_report(self) -> str:
-        """生成早报（含市场/宏观/加密板块）"""
-        # 重置跨主题去重缓存
-        self._seen_titles.clear()
-
-        section_titles = [
-            ("market", "【美股市场】"),
-            ("fed", "【美联储 / 宏观】"),
-            ("google", "【Google / AI】"),
-            ("nvidia", "【Nvidia】"),
-            ("claude", "【Anthropic / Claude】"),
-            ("musk", "【马斯克 / xAI】"),
-            ("crypto", "【加密货币】"),
-        ]
-
-        sections = []
-        for topic, heading in section_titles:
-            news = await self.fetch_topic_news(topic, count=3)
-            entries = self.format_news_items(news, max_items=3, title_max_len=74) if news else ["- 暂无新增"]
-            sections.append((heading, entries))
-            await asyncio.sleep(1)
-
-        # 追加 Worldmonitor 全球情报板块
-        try:
-            from src.tools.worldmonitor_client import fetch_category_news
-
-            intel_items = await fetch_category_news("geopolitics", max_items=3)
-            if intel_items:
-                intel_entries = []
-                for idx, item in enumerate(intel_items[:3], 1):
-                    title = item.get("title", "")
-                    source = item.get("source", "")
-                    line = f"{idx}. {title}"
-                    if source:
-                        line += f"（{source}）"
-                    intel_entries.append(line)
-                sections.append(("【🌍 全球情报】", intel_entries))
-            else:
-                sections.append(("【🌍 全球情报】", ["- 暂无情报"]))
-        except Exception as e:
-            logger.debug("Worldmonitor 全球情报板块加载失败: %s", e)
-            sections.append(("【🌍 全球情报】", ["- 数据源暂不可用"]))
-
-        return format_digest(
-            title=f"OpenClaw「科技早报」{now_et().strftime('%Y年%m月%d日')}",
-            intro="今日聚焦美股市场、宏观政策、AI科技、加密货币四大主线，按主题整理如下。",
-            sections=sections,
-            footer="更多详情可直接回复对应主题，或打开上方链接查看原文。",
-        )
-
-
-# 测试
-if __name__ == "__main__":
-
-    async def test():
-        fetcher = NewsFetcher()
-        report = await fetcher.generate_morning_report()
-        logger.info(report)
-
-    asyncio.run(test())

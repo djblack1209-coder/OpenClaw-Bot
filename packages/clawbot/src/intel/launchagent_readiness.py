@@ -15,6 +15,10 @@ from pathlib import Path
 from typing import Any
 
 from src.intel.production_cycle import DEFAULT_PRODUCTION_CYCLE_SOURCES
+from src.intel.runtime_policy import (
+    DEFAULT_INTEL_BRIEF_DELIVERY_TIME,
+    DEFAULT_INTEL_BRIEF_SCHEDULER_TIMEZONE,
+)
 
 
 def _now_iso() -> str:
@@ -53,6 +57,20 @@ def _source_args(program_args: list[Any]) -> list[str]:
     return [source for source in sources if source]
 
 
+def _scheduled_args_valid(program_args: list[Any]) -> bool:
+    """Scheduled runs must use the real clock and the fixed business time."""
+    for index, item in enumerate(program_args):
+        option, separator, value = str(item).partition("=")
+        if option in {"--now", "--stamp"}:
+            return False
+        if option == "--time":
+            if not separator:
+                value = str(program_args[index + 1]) if index + 1 < len(program_args) else ""
+            if value != DEFAULT_INTEL_BRIEF_DELIVERY_TIME:
+                return False
+    return True
+
+
 def _plist_summary(path: Path, *, expected_sources: list[str]) -> dict[str, Any]:
     payload, state = _load_plist(path)
     base: dict[str, Any] = {"path": str(path), "exists": state != "not_found", "state": state}
@@ -68,12 +86,16 @@ def _plist_summary(path: Path, *, expected_sources: list[str]) -> dict[str, Any]
         "label": _clean(payload.get("Label")),
         "working_directory": _clean(payload.get("WorkingDirectory")),
         "program_is_production_cycle": any("intel_production_cycle.py" in _clean(arg) for arg in program_args),
+        "scheduled_mode_present": "--scheduled" in program_args,
+        "scheduled_arguments_valid": _scheduled_args_valid(program_args),
         "uses_default_sources": not source_args,
         "source_args": source_args,
         "effective_sources": effective_sources,
         "effective_sources_match_expected": effective_sources == expected_sources,
-        "calendar_time": f"{int(calendar.get('Hour', -1)):02d}:{int(calendar.get('Minute', -1)):02d}" if calendar else "",
-        "calendar_is_0830": int(calendar.get("Hour", -1)) == 8 and int(calendar.get("Minute", -1)) == 30,
+        "calendar_interval": calendar,
+        # launchd uses the host timezone. Hourly wakeups defer the business
+        # timezone/window and daily claim to production-cycle --scheduled.
+        "calendar_is_hourly_half_past": calendar == {"Minute": 30} and type(calendar.get("Minute")) is int,
         "run_at_load": bool(payload.get("RunAtLoad")),
         "stdout_path_present": bool(_clean(payload.get("StandardOutPath"))),
         "stderr_path_present": bool(_clean(payload.get("StandardErrorPath"))),
@@ -161,7 +183,9 @@ def build_launchagent_next_run_readiness(
         plist.get("state") == "ok"
         and plist.get("program_is_production_cycle") is True
         and plist.get("effective_sources_match_expected") is True
-        and plist.get("calendar_is_0830") is True
+        and plist.get("scheduled_mode_present") is True
+        and plist.get("scheduled_arguments_valid") is True
+        and plist.get("calendar_is_hourly_half_past") is True
         and plist.get("private_env_present") is True
         and plist.get("production_ack_present") is True
         and controlled.get("status") == "success"
@@ -175,8 +199,12 @@ def build_launchagent_next_run_readiness(
         missing.append("plist_not_pointing_to_production_cycle")
     if plist.get("effective_sources_match_expected") is not True:
         missing.append("plist_effective_sources_not_six_source_default")
-    if plist.get("calendar_is_0830") is not True:
-        missing.append("calendar_0830_missing")
+    if plist.get("scheduled_mode_present") is not True:
+        missing.append("scheduled_mode_missing")
+    if plist.get("scheduled_arguments_valid") is not True:
+        missing.append("scheduled_arguments_invalid")
+    if plist.get("calendar_is_hourly_half_past") is not True:
+        missing.append("calendar_hourly_half_past_missing")
     if plist.get("private_env_present") is not True:
         missing.append("private_env_missing_in_plist")
     if plist.get("production_ack_present") is not True:
@@ -191,6 +219,10 @@ def build_launchagent_next_run_readiness(
         "scope": "read_only_proof_next_calendar_run_uses_current_six_source_defaults",
         "status": "ready" if ready else "not_ready",
         "expected_sources": expected_sources,
+        "expected_business_schedule": {
+            "timezone": DEFAULT_INTEL_BRIEF_SCHEDULER_TIMEZONE,
+            "delivery_time": DEFAULT_INTEL_BRIEF_DELIVERY_TIME,
+        },
         "missing": missing,
         "plist": plist,
         "controlled_cycle": controlled,
@@ -200,5 +232,6 @@ def build_launchagent_next_run_readiness(
             "Read-only audit; does not run launchctl kickstart/bootstrap/bootout.",
             "Does not modify plist, private env, production DB, VPS, remote worker, payment/marketplace, scraper, or Telegram state.",
             "This proves next-run readiness from installed plist plus controlled six-source evidence; it is not itself a natural calendar trigger.",
+            "Hourly host-calendar wakeups require --scheduled to enforce the Asia/Singapore delivery window and daily claim; they are not hourly deliveries.",
         ],
     }

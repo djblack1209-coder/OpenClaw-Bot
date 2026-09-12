@@ -720,8 +720,19 @@ fn save_webview_config(config: &Value) -> AppResult<()> {
 }
 
 pub(crate) fn mask_secret(value: &str) -> String {
-    if value.len() > 8 {
-        format!("{}...{}", &value[..4], &value[value.len() - 4..])
+    if value.chars().count() > 8 {
+        format!(
+            "{}...{}",
+            value.chars().take(4).collect::<String>(),
+            value
+                .chars()
+                .rev()
+                .take(4)
+                .collect::<String>()
+                .chars()
+                .rev()
+                .collect::<String>()
+        )
     } else {
         "****".to_string()
     }
@@ -1918,6 +1929,184 @@ mod gateway_token_tests {
         );
     }
 
+    fn onboarding_model(id: &str) -> ModelConfig {
+        serde_json::from_value(json!({"id": id, "name": id, "api": "openai-completions"})).unwrap()
+    }
+
+    #[test]
+    fn onboarding_merge_preserves_other_models_rates_extensions_and_primary() {
+        let current = json!({
+            "models": {"providers": {"fixture": {
+                "baseUrl": "https://old.invalid/v1", "apiKey": {"source":"env","provider":"default","id":"SYNTHETIC_KEY"},
+                "headers": {"X-Synthetic":"preserved"}, "extension": {"keep":true},
+                "models": [
+                    {"id":"selected", "name":"Old", "cost":{"input":7,"output":11,"custom":99},"input":["text","image"],"maxTokens":1234,"extension":{"keep":true}},
+                    {"id":"other", "cost":{"input":1,"output":2}}
+                ]
+            }, "unrelated": {"models":[{"id":"untouched"}]}}},
+            "agents":{"defaults":{"model":{"primary":"fixture/other"},"models":{"fixture/selected":{"alias":"keep-alias"}}}}
+        });
+        let mut candidate = current.clone();
+        apply_provider_update(
+            &mut candidate,
+            "fixture",
+            "https://new.invalid/v1",
+            None,
+            "openai-completions",
+            &[onboarding_model("selected"), onboarding_model("new")],
+        )
+        .unwrap();
+        let provider = &candidate["models"]["providers"]["fixture"];
+        assert_eq!(provider["models"].as_array().unwrap().len(), 3);
+        for field in ["cost", "input", "maxTokens", "extension"] {
+            assert_eq!(
+                provider["models"][0][field],
+                current["models"]["providers"]["fixture"]["models"][0][field]
+            );
+        }
+        assert!(
+            provider["models"][2].get("cost").is_none(),
+            "No rate was supplied; do not invent free pricing"
+        );
+        assert_eq!(
+            provider["apiKey"],
+            current["models"]["providers"]["fixture"]["apiKey"]
+        );
+        assert_eq!(
+            provider["headers"],
+            current["models"]["providers"]["fixture"]["headers"]
+        );
+        assert_eq!(
+            candidate["models"]["providers"]["unrelated"],
+            current["models"]["providers"]["unrelated"]
+        );
+        assert_eq!(
+            candidate["agents"]["defaults"]["model"],
+            current["agents"]["defaults"]["model"]
+        );
+        assert_eq!(
+            candidate["agents"]["defaults"]["models"]["fixture/selected"]["alias"],
+            "keep-alias"
+        );
+    }
+
+    #[test]
+    fn onboarding_key_placeholders_and_blank_values_cannot_replace_secrets() {
+        let current = json!({"apiKey":"synthetic-original-key","models":[]});
+        for empty in [None, Some(""), Some("   ")] {
+            let merged =
+                merge_provider_config(Some(&current), "https://fixture.invalid", empty, vec![])
+                    .unwrap();
+            assert_eq!(merged["apiKey"], current["apiKey"]);
+        }
+        for mask in ["****", SENSITIVE_ENV_MASK, "••••"] {
+            assert!(merge_provider_config(
+                Some(&current),
+                "https://fixture.invalid",
+                Some(mask),
+                vec![]
+            )
+            .is_err());
+        }
+        assert_eq!(mask_secret("短密钥"), "****");
+        assert!(!mask_secret("合成的长密钥不可完整回传到界面")
+            .contains("合成的长密钥不可完整回传到界面"));
+    }
+
+    #[test]
+    fn onboarding_provider_transaction_roundtrip_and_rejection_preserve_disk() {
+        let root = std::env::temp_dir().join(format!(
+            "openclaw-onboarding-roundtrip-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("config.json");
+        let lock = root.join("config.lock");
+        std::fs::write(&path, r#"{"preserved":true}"#).unwrap();
+        for _ in 0..2 {
+            mutate_openclaw_config_at(path.to_str().unwrap(), &lock, |config| {
+                apply_provider_update(
+                    config,
+                    "fixture",
+                    "https://fixture.invalid/v1",
+                    Some("synthetic-secret"),
+                    "openai-completions",
+                    &[onboarding_model("model")],
+                )
+            })
+            .unwrap();
+        }
+        let saved = load_openclaw_config_at(path.to_str().unwrap()).unwrap();
+        assert_eq!(saved["preserved"], true);
+        assert_eq!(
+            saved["models"]["providers"]["fixture"]["models"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        let overview = parse_configured_providers(
+            saved["models"]["providers"].as_object().unwrap(),
+            &None,
+            &None,
+        );
+        assert_eq!(overview[0].name, "fixture");
+        assert!(overview[0].has_api_key);
+        assert_eq!(overview[0].models[0].id, "model");
+        assert!(!serde_json::to_string(&overview)
+            .unwrap()
+            .contains("synthetic-secret"));
+        let previous = std::fs::read(&path).unwrap();
+        let failure = mutate_openclaw_config_at(path.to_str().unwrap(), &lock, |config| {
+            apply_provider_update(
+                config,
+                "fixture",
+                "https://fixture.invalid/v1",
+                Some("synthetic-new-key"),
+                "openai-completions",
+                &[onboarding_model("new-model")],
+            )?;
+            Err::<(), _>(AppError::validation("synthetic transaction failure"))
+        });
+        assert!(failure.is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), previous);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn onboarding_invalid_config_and_credential_urls_are_rejected() {
+        for current in [
+            json!({"models":"bad"}),
+            json!({"models":{"providers":{"fixture":{"models":"bad"}}}}),
+        ] {
+            let mut config = current;
+            assert!(apply_provider_update(
+                &mut config,
+                "fixture",
+                "https://fixture.invalid/v1",
+                None,
+                "openai-completions",
+                &[onboarding_model("model")]
+            )
+            .is_err());
+        }
+        for url in [
+            "https://user:secret@fixture.invalid/v1",
+            "https://fixture.invalid/v1?key=synthetic",
+            "file:///tmp/fixture",
+        ] {
+            assert!(apply_provider_update(
+                &mut json!({}),
+                "fixture",
+                url,
+                None,
+                "openai-completions",
+                &[onboarding_model("model")]
+            )
+            .is_err());
+        }
+    }
+
     #[test]
     fn sensitive_env_mask_cannot_be_written_back_as_a_real_secret() {
         let error = validate_writable_env_value("LLM_API_KEY", SENSITIVE_ENV_MASK)
@@ -2314,6 +2503,7 @@ pub async fn get_ai_config() -> AppResult<AIConfigOverview> {
         .pointer("/models/providers")
         .and_then(|v| v.as_object());
     let mut configured_providers: Vec<ConfiguredProvider> = Vec::new();
+    let mut config_source = "empty";
 
     if let Some(providers) = providers_from_openclaw {
         info!(
@@ -2321,11 +2511,15 @@ pub async fn get_ai_config() -> AppResult<AIConfigOverview> {
             providers.len()
         );
         configured_providers = parse_configured_providers(providers, &primary_model, &None);
+        if !configured_providers.is_empty() {
+            config_source = "openclaw";
+        }
     }
 
     if configured_providers.is_empty() {
         info!("[AI 配置] openclaw.json 中 providers 为空，尝试从 agent/models.json 回退读取");
         if let Some((providers, agent_name)) = read_agent_models_providers(&config) {
+            config_source = "agent";
             let auth_profiles = load_agent_auth_profiles(&agent_name);
             configured_providers =
                 parse_configured_providers(&providers, &primary_model, &auth_profiles);
@@ -2347,6 +2541,7 @@ pub async fn get_ai_config() -> AppResult<AIConfigOverview> {
     );
 
     Ok(AIConfigOverview {
+        config_source: config_source.to_string(),
         primary_model,
         configured_providers,
         available_models,
@@ -2369,8 +2564,8 @@ fn merge_provider_config(
     provider["baseUrl"] = json!(base_url);
     provider["models"] = Value::Array(models);
 
-    if let Some(key) = api_key.filter(|key| !key.is_empty()) {
-        if key == SENSITIVE_ENV_MASK {
+    if let Some(key) = api_key.map(str::trim).filter(|key| !key.is_empty()) {
+        if key == SENSITIVE_ENV_MASK || key.chars().all(|ch| ch == '*' || ch == '•') {
             return Err(AppError::validation(
                 "固定脱敏标记不能作为真实 Provider API Key 保存",
             ));
@@ -2387,7 +2582,156 @@ fn merge_provider_config(
     Ok(provider)
 }
 
-/// 添加或更新 Provider
+/// Merge only submitted model fields into the latest config. Omitted models and
+/// extension fields remain intact; absence of a price never means zero cost.
+fn merge_provider_models(
+    current: Option<&Value>,
+    models: &[ModelConfig],
+    api_type: &str,
+) -> AppResult<Vec<Value>> {
+    let mut merged = match current.and_then(|provider| provider.get("models")) {
+        Some(Value::Array(values)) => values.clone(),
+        Some(_) => return Err(AppError::validation("Provider models 必须是数组")),
+        None => Vec::new(),
+    };
+    let mut identities = std::collections::HashSet::new();
+    for model in &merged {
+        let id = model
+            .get("id")
+            .and_then(Value::as_str)
+            .filter(|id| !id.is_empty())
+            .ok_or_else(|| AppError::validation("现有模型缺少有效 ID"))?;
+        if !identities.insert(id.to_owned()) {
+            return Err(AppError::validation("现有模型 ID 重复"));
+        }
+    }
+    let mut submitted = std::collections::HashSet::new();
+    for model in models {
+        if model.id.trim().is_empty()
+            || model.id.len() > 200
+            || model.id.chars().any(char::is_whitespace)
+            || !submitted.insert(model.id.clone())
+        {
+            return Err(AppError::validation("模型 ID 必须明确且不重复"));
+        }
+        let position = merged
+            .iter()
+            .position(|entry| entry["id"].as_str() == Some(&model.id));
+        let mut value = position
+            .map(|index| merged[index].clone())
+            .unwrap_or_else(|| json!({"id": model.id}));
+        if !model.name.is_empty() {
+            value["name"] = json!(model.name);
+        }
+        if value.get("name").is_none() {
+            value["name"] = json!(model.id);
+        }
+        if let Some(api) = &model.api {
+            value["api"] = json!(api);
+        } else if value.get("api").is_none() {
+            value["api"] = json!(api_type);
+        }
+        if !model.input.is_empty() {
+            value["input"] = json!(model.input);
+        } else if value.get("input").is_none() {
+            value["input"] = json!(["text"]);
+        }
+        if let Some(window) = model.context_window {
+            value["contextWindow"] = json!(window);
+        }
+        if let Some(tokens) = model.max_tokens {
+            value["maxTokens"] = json!(tokens);
+        }
+        if let Some(reasoning) = model.reasoning {
+            value["reasoning"] = json!(reasoning);
+        }
+        if let Some(cost) = &model.cost {
+            if [cost.input, cost.output, cost.cache_read, cost.cache_write]
+                .iter()
+                .any(|value| !value.is_finite() || *value < 0.0)
+            {
+                return Err(AppError::validation("模型费率必须是非负有限数值"));
+            }
+            value["cost"] =
+                serde_json::to_value(cost).map_err(|_| AppError::validation("模型费率无法保存"))?;
+        }
+        if let Some(index) = position {
+            merged[index] = value;
+        } else {
+            merged.push(value);
+        }
+    }
+    Ok(merged)
+}
+
+fn config_object_at<'a>(
+    config: &'a mut Value,
+    path: &[&str],
+) -> AppResult<&'a mut serde_json::Map<String, Value>> {
+    let mut current = config;
+    for part in path {
+        current = current
+            .as_object_mut()
+            .ok_or_else(|| AppError::validation("配置路径必须是对象"))?
+            .entry((*part).to_owned())
+            .or_insert_with(|| json!({}));
+    }
+    current
+        .as_object_mut()
+        .ok_or_else(|| AppError::validation("配置路径必须是对象"))
+}
+
+fn apply_provider_update(
+    config: &mut Value,
+    name: &str,
+    base_url: &str,
+    api_key: Option<&str>,
+    api_type: &str,
+    models: &[ModelConfig],
+) -> AppResult<()> {
+    if name.is_empty()
+        || name.len() > 64
+        || !name
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || "._-".contains(ch))
+        || models.is_empty()
+        || api_type.trim().is_empty()
+    {
+        return Err(AppError::validation("Provider、API 协议和模型不能为空"));
+    }
+    let url =
+        reqwest::Url::parse(base_url).map_err(|_| AppError::validation("无效的 Provider 地址"))?;
+    if !matches!(url.scheme(), "http" | "https")
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err(AppError::validation("Provider 地址不能包含凭据或查询参数"));
+    }
+    if api_key.is_some_and(|key| key.contains(['\r', '\n', '\0'])) {
+        return Err(AppError::validation("API Key 必须是单行值"));
+    }
+    let providers = config_object_at(config, &["models", "providers"])?;
+    let current = providers.get(name).cloned();
+    let models_json = merge_provider_models(current.as_ref(), models, api_type)?;
+    let provider = merge_provider_config(current.as_ref(), base_url, api_key, models_json)?;
+    providers.insert(name.to_owned(), provider);
+    let available = config_object_at(config, &["agents", "defaults", "models"])?;
+    for model in models {
+        available
+            .entry(format!("{}/{}", name, model.id))
+            .or_insert_with(|| json!({}));
+    }
+    config_object_at(config, &["meta"])?.insert(
+        "lastTouchedAt".to_owned(),
+        json!(chrono::Utc::now().to_rfc3339()),
+    );
+    Ok(())
+}
+
+/// 添加或更新 Provider。保留原有事务、跨进程锁和 SecretRef 合并保护。
 #[command]
 pub async fn save_provider(
     provider_name: String,
@@ -2396,105 +2740,26 @@ pub async fn save_provider(
     api_type: String,
     models: Vec<ModelConfig>,
 ) -> AppResult<String> {
-    info!(
-        "[保存 Provider] 保存 Provider: {} ({} 个模型)",
-        provider_name,
-        models.len()
-    );
-
     mutate_openclaw_config(|config| {
-        // 确保路径存在
-        if config.get("models").is_none() {
-            config["models"] = json!({});
+        if config
+            .pointer("/models/providers")
+            .and_then(Value::as_object)
+            .is_none_or(|providers| providers.is_empty())
+            && read_agent_models_providers(config).is_some()
+        {
+            return Err(AppError::validation("Agent 管理的模型配置不能由引导覆盖"));
         }
-        if config["models"].get("providers").is_none() {
-            config["models"]["providers"] = json!({});
-        }
-        if config.get("agents").is_none() {
-            config["agents"] = json!({});
-        }
-        if config["agents"].get("defaults").is_none() {
-            config["agents"]["defaults"] = json!({});
-        }
-        if config["agents"]["defaults"].get("models").is_none() {
-            config["agents"]["defaults"]["models"] = json!({});
-        }
-
-        // 构建模型配置
-        let models_json: Vec<Value> = models
-        .iter()
-        .map(|m| {
-            let mut model_obj = json!({
-                "id": m.id,
-                "name": m.name,
-                "api": m.api.clone().unwrap_or(api_type.clone()),
-                "input": if m.input.is_empty() { vec!["text".to_string()] } else { m.input.clone() },
-            });
-
-            if let Some(cw) = m.context_window {
-                model_obj["contextWindow"] = json!(cw);
-            }
-            if let Some(mt) = m.max_tokens {
-                model_obj["maxTokens"] = json!(mt);
-            }
-            if let Some(r) = m.reasoning {
-                model_obj["reasoning"] = json!(r);
-            }
-            if let Some(cost) = &m.cost {
-                model_obj["cost"] = json!({
-                    "input": cost.input,
-                    "output": cost.output,
-                    "cacheRead": cost.cache_read,
-                    "cacheWrite": cost.cache_write,
-                });
-            } else {
-                model_obj["cost"] = json!({
-                    "input": 0,
-                    "output": 0,
-                    "cacheRead": 0,
-                    "cacheWrite": 0,
-                });
-            }
-
-            model_obj
-        })
-        .collect();
-
-        // 从最新磁盘对象合并明确提交字段，保留 SecretRef、headers 等官方扩展。
-        let current_provider = config["models"]["providers"].get(&provider_name).cloned();
-        let provider_config = merge_provider_config(
-            current_provider.as_ref(),
+        apply_provider_update(
+            config,
+            &provider_name,
             &base_url,
             api_key.as_deref(),
-            models_json,
-        )?;
-        if api_key.as_deref().is_some_and(|key| !key.is_empty()) {
-            info!("[保存 Provider] 已处理明确提交的 API Key");
-        } else if provider_config.get("apiKey").is_some() {
-            info!("[保存 Provider] 保留原有的 API Key/SecretRef");
-        }
-
-        // 保存 Provider 配置
-        config["models"]["providers"][&provider_name] = provider_config;
-
-        // 将模型添加到 agents.defaults.models
-        for model in &models {
-            let full_id = format!("{}/{}", provider_name, model.id);
-            config["agents"]["defaults"]["models"][&full_id] = json!({});
-        }
-
-        // 更新元数据
-        let now = chrono::Utc::now().to_rfc3339();
-        if config.get("meta").is_none() {
-            config["meta"] = json!({});
-        }
-        config["meta"]["lastTouchedAt"] = json!(now);
-
-        Ok(())
+            &api_type,
+            &models,
+        )
     })?;
-    info!("[保存 Provider] ✓ Provider {} 保存成功", provider_name);
-
-    Ok(format!("Provider {} 已保存", provider_name))
+    info!("[保存 Provider] 配置已原子保存；运行连接未验证");
+    Ok("Provider 配置已保存；运行未验证".to_string())
 }
 
 /// 删除 Provider

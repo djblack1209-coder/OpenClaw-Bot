@@ -52,7 +52,8 @@ lint: ## Ruff 静态检查
 typecheck: ## 前端 TypeScript 类型检查
 	cd $(FRONTEND) && npx tsc --noEmit
 
-docs-check: ## 检查 docs 扁平目录、编号命名和索引完整性
+docs-check: ## 验证文档门禁及当前入口、编号命名和本仓库引用
+	node --test scripts/docs_layout.test.mjs
 	bash scripts/check_docs_layout.sh
 
 shellcheck: ## 检查仓库自有 Shell 脚本
@@ -69,27 +70,22 @@ gitleaks-check: ## 扫描最新提交、受跟踪改动和未跟踪文件中的�
 		cat "$$file"; \
 	done | gitleaks detect --pipe --redact --no-banner --no-color
 
-dependency-audit: ## 审计前端、服务端和 Python 锁定依赖的高危漏洞
-	$(PYTHON) -m pip_audit --version >/dev/null
-	npm audit --prefix $(FRONTEND) --audit-level=high
-	npm audit --prefix $(FRONTEND)/src-tauri/npm-runtime-lock --audit-level=high --omit=dev
-	npm audit --prefix .openclaw/extensions/openclaw-weixin --audit-level=high
-	$(PYTHON) -m pip_audit --disable-pip --no-deps -r $(CLAWBOT)/requirements-lock.txt --vulnerability-service pypi --progress-spinner off --cache-dir /tmp/openclaw-pip-audit-cache --timeout 10
-	$(PYTHON) -m pip_audit --disable-pip --no-deps -r $(CLAWBOT)/requirements-lock-macos.txt --vulnerability-service pypi --progress-spinner off --cache-dir /tmp/openclaw-pip-audit-cache --timeout 10
+dependency-audit: ## 完整扫描三组 npm、双 Python 锁和 Rust；汇总后失败
+	$(PYTHON) scripts/dependency_audit.test.py
+	$(PYTHON) scripts/dependency_audit.py --python $(PYTHON) $(AUDIT_ARGS)
 
 rust-audit: ## 使用 RustSec 审计桌面端锁定依赖
 	@command -v cargo-audit >/dev/null 2>&1 || { echo '缺少 cargo-audit，请先运行 cargo install cargo-audit --locked'; exit 127; }
 	cd $(FRONTEND)/src-tauri && cargo audit --file Cargo.lock
 
-security-check: shellcheck gitleaks-check dependency-audit rust-audit supply-chain-check ## 运行本地安全与供应链门禁
+security-check: shellcheck gitleaks-check dependency-audit supply-chain-check ## 运行本地安全与供应链门禁
 
-clean-install-check: ## 在临时目录实际安装前端与 Python 哈希锁
+clean-install-check: ## macOS 临时安装三组 npm 和本机 Python 哈希锁并离线构建测试
+	python3 scripts/test_clean_install.py
 	bash scripts/check_clean_install.sh
 
 supply-chain-check: ## 验证 GitHub Action SHA 与桌面 npm 完整性锁
 	node scripts/check_supply_chain.mjs
-	npm ci --prefix $(FRONTEND)/src-tauri/npm-runtime-lock --omit=dev --ignore-scripts --no-audit --no-fund
-	npm audit --prefix $(FRONTEND)/src-tauri/npm-runtime-lock --omit=dev --audit-level=high
 
 python-lock: ## 重新生成 Linux CI 与 macOS Python 3.12 哈希锁
 	cd $(CLAWBOT) && uv pip compile requirements-dev.txt --python-platform x86_64-manylinux_2_28 --python-version 3.12 --generate-hashes --no-annotate --custom-compile-command 'make python-lock' --output-file requirements-lock.txt

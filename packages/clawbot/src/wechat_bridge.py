@@ -28,13 +28,14 @@ import secrets
 from pathlib import Path
 
 from src.constants import TG_SAFE_LENGTH
-from src.http_client import ResilientHTTPClient
+from src.http_client import ResilientHTTPClient, RetryConfig
 from src.utils import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
 # 模块级别 HTTP 客户端（自动重试 + 熔断）
 _http = ResilientHTTPClient(timeout=15.0, name="wechat_bridge")
+_single_http = ResilientHTTPClient(timeout=15.0, name="wechat_report", retry_config=RetryConfig(max_retries=0))
 
 # ── 配置 ────────────────────────────────────────────────
 _WECHAT_ENABLED = os.getenv("WECHAT_NOTIFY_ENABLED", "").lower() in ("true", "1", "yes")
@@ -253,12 +254,13 @@ async def _get_context_token(token: str, user_id: str) -> str | None:
     return None
 
 
-async def send_to_wechat(text: str, user_id: str | None = None) -> bool:
+async def send_to_wechat(text: str, user_id: str | None = None, *, single_attempt: bool = False) -> bool:
     """将通知文本发送到微信用户。
 
     Args:
         text: 通知文本（自动截断到 TG_SAFE_LENGTH 字符）
         user_id: 微信用户 ID (默认使用凭证文件中的 userId)
+        single_attempt: 普通报告禁止网络层及认证刷新后的重复发送。
 
     Returns:
         True 发送成功, False 发送失败
@@ -309,9 +311,10 @@ async def send_to_wechat(text: str, user_id: str | None = None) -> bool:
     headers = _build_headers(token, body_bytes)
 
     # 最多重试 1 次（仅用于 401/403 token 刷新，网络级重试由 ResilientHTTPClient 处理）
-    for _attempt in range(2):
+    for _attempt in range(1 if single_attempt else 2):
         try:
-            resp = await _http.post(
+            client = _single_http if single_attempt else _http
+            resp = await client.post(
                 f"{_ILINK_BASE}/ilink/bot/sendmessage",
                 content=body_bytes,
                 headers=headers,
@@ -326,6 +329,8 @@ async def send_to_wechat(text: str, user_id: str | None = None) -> bool:
             # token 过期，清缓存重试
             if resp.status_code in (401, 403):
                 _creds.clear_context()
+                if single_attempt:
+                    return False
                 context_token = await _get_context_token(token, target)
                 continue
             logger.warning("[WeChatBridge] 发送失败 HTTP %s: %s", resp.status_code, scrub_secrets(resp.text[:200]))

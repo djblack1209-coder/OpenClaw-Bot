@@ -53,7 +53,7 @@ import { PageErrorBoundary } from './components/PageErrorBoundary';
 import { appLogger } from './lib/logger';
 import { isTauri } from './lib/tauri';
 import { useAppStore } from './stores/appStore';
-import { LanguageProvider } from './i18n';
+import { useLanguage, LanguageProvider } from './i18n';
 
 /**
  * 页面类型联合类型
@@ -114,6 +114,18 @@ export interface EnvironmentStatus {
 
 import type { ServiceStatus } from './lib/tauri';
 
+function OnboardingResume() {
+  const { t } = useLanguage();
+  const status = useAppStore((state) => state.onboardingStatus);
+  const page = useAppStore((state) => state.currentPage);
+  const navigate = useAppStore((state) => state.setCurrentPage);
+  if (page !== 'home') return null;
+  return <div className="flex items-center justify-between gap-3 px-5 py-2 text-xs" role="status">
+    <span>{t(status === 'saved_unverified' ? 'onboarding.savedNotice' : 'onboarding.pendingNotice')}</span>
+    <button type="button" className="underline shrink-0" onClick={() => navigate('onboarding')}>{t('onboarding.resume')}</button>
+  </div>;
+}
+
 function App() {
   // 强制 html 元素保持 dark class
   useEffect(() => {
@@ -130,7 +142,7 @@ function App() {
   const serviceStatus = useAppStore((s) => s.serviceStatus);
   const setServiceStatus = useAppStore((s) => s.setServiceStatus);
   const onboardingComplete = useAppStore((s) => s.onboardingComplete);
-  const setOnboardingComplete = useAppStore((s) => s.setOnboardingComplete);
+
   const devMode = useAppStore((s) => s.devMode);
 
   useEffect(() => {
@@ -146,7 +158,7 @@ function App() {
       setIsReady(true);
       return;
     }
-    
+
     appLogger.info('开始检查系统环境...');
     try {
       const status = await invoke<EnvironmentStatus>('check_environment');
@@ -170,7 +182,7 @@ function App() {
   // 定期获取服务状态
   useEffect(() => {
     if (!isTauri()) return;
-    
+
     const fetchServiceStatus = async () => {
       try {
         const status = await invoke<ServiceStatus>('get_service_status');
@@ -235,7 +247,7 @@ function App() {
         /* 智能体 */
         case 'bots': return wrap('我的机器人', <Bots />);
         case 'store': return wrap('Bot 商店', <Store />);
-        case 'onboarding': return wrap('引导', <Onboarding onComplete={() => { setOnboardingComplete(true); setCurrentPage('home'); }} />);
+        case 'onboarding': return wrap('引导', <Onboarding onComplete={() => { setCurrentPage('home'); }} />);
         /* 原有页面（开发者模式） */
         case 'control': return wrap('控制中心', <ControlCenter />);
         case 'dashboard': return wrap('仪表盘', <Dashboard />);
@@ -301,7 +313,6 @@ function App() {
           <Suspense fallback={<PageLoader />}>
             <Onboarding
               onComplete={() => {
-                setOnboardingComplete(true);
                 setCurrentPage('home');
               }}
             />
@@ -318,15 +329,16 @@ function App() {
         <CommandPalette />
         {/* 背景装饰 */}
         <div className="fixed inset-0 bg-gradient-radial pointer-events-none" />
-        
+
         {/* 侧边栏 */}
         <Sidebar currentPage={currentPage} onNavigate={handleNavigate} serviceStatus={serviceStatus} />
-        
+
         {/* 主内容区 */}
         <div className="min-w-0 flex-1 flex flex-col overflow-hidden">
           {/* 标题栏（macOS 拖拽区域） */}
           <Header currentPage={currentPage} />
-          
+          <OnboardingResume />
+
           {/* 页面内容 */}
           <main className="flex-1 overflow-hidden px-2 py-3 sm:px-5 sm:py-4">
             {renderPage()}

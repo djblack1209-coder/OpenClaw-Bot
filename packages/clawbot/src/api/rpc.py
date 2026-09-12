@@ -1281,7 +1281,11 @@ class ClawBotRPC:
             "pool_total_sources": pool_stats.get("total_sources", 0),
             "pool_routing_strategy": pool_stats.get("routing_strategy", "balanced"),
             "total_api_calls": pool_stats.get("total_requests", 0),
-            "total_cost_usd": pool_stats.get("total_cost_usd", 0.0),
+            "total_cost_usd": pool_stats.get("total_cost_usd"),
+            "cost_today_usd": pool_stats.get("cost_today_usd"),
+            "cost_accounting": pool_stats.get(
+                "cost_accounting", {"coverage_status": "unavailable", "accounting_complete": False}
+            ),
             "avg_latency_ms": pool_stats.get("avg_latency_ms", 0.0),
             "memory_entries": mem_entries,
         }
@@ -3028,7 +3032,13 @@ class ClawBotRPC:
             "persona_id": "zhou-yuheng",
             "display_name": "待确认热点抽象号人设",
         }
-        project_root = Path(__file__).resolve().parents[4]
+        # Monorepo checkout and standalone /app image have different depth.
+        # Missing optional social skill files are reported absent, never a crash.
+        project_root = (
+            _PACKAGE_ROOT.parent.parent
+            if _PACKAGE_ROOT.parent.name == "packages"
+            else _PACKAGE_ROOT
+        )
         skill_files = [
             ("social-autopilot", project_root / "apps/openclaw/skills/social-autopilot/SKILL.md"),
             ("social-persona", project_root / "apps/openclaw/tools/social-persona.md"),
@@ -4092,38 +4102,45 @@ class ClawBotRPC:
             logger.warning("Failed to get pool stats: %s", e)
             stats = {}
 
-        # 注入成本统计字段（从 CostAnalyzer 读取）
+        # 财务统计与预算准入使用同一账本和 ET 日期归属。
         try:
-            from src.monitoring import cost_analyzer
-            # 今日成本：最近 24 小时
-            daily_data = cost_analyzer.analyze_by_bot(hours=24)
-            stats["today_cost"] = round(
-                sum(v.get("cost_usd", 0) for v in daily_data.values()), 4
-            )
-            # 本周成本：最近 7 天
-            weekly_data = cost_analyzer.analyze_by_bot(hours=168)
-            stats["week_cost"] = round(
-                sum(v.get("cost_usd", 0) for v in weekly_data.values()), 4
-            )
-            # 本月成本：最近 30 天
-            monthly_data = cost_analyzer.analyze_by_bot(hours=720)
-            stats["month_cost"] = round(
-                sum(v.get("cost_usd", 0) for v in monthly_data.values()), 4
+            from datetime import date, timedelta
+
+            from src.core.cost_control import get_cost_controller
+
+            cc = get_cost_controller()
+            accounting = cc.get_stats()
+            end = date.fromisoformat(accounting["budget_day"])
+            known = accounting["daily_breakdown"]
+
+            def period(days):
+                start = (end - timedelta(days=days - 1)).isoformat()
+                return sum(value for day, value in known.items() if start <= day <= end.isoformat())
+
+            def complete(days):
+                return accounting["accounting_complete"] and accounting["coverage_started_day"] <= (end - timedelta(days=days - 1)).isoformat()
+
+            stats.update(
+                cost_accounting=accounting,
+                today_cost=accounting["today_spend"],
+                week_cost=period(7) if complete(7) else None,
+                month_cost=period(30) if complete(30) else None,
+                known_week_cost=period(7),
+                known_month_cost=period(30),
             )
         except Exception as e:
-            logger.warning("注入成本统计失败，使用默认值: %s", e)
-            stats.setdefault("today_cost", 0.0)
-            stats.setdefault("week_cost", 0.0)
-            stats.setdefault("month_cost", 0.0)
+            logger.warning("费用账本不可用: %s", e)
+            stats.update(
+                today_cost=None,
+                week_cost=None,
+                month_cost=None,
+                cost_accounting={"coverage_status": "unavailable", "accounting_complete": False},
+            )
 
-        # 注入预算字段（从环境变量或 CostController 读取）
-        try:
-            import os
-            # 日预算 * 30 = 月预算估算
-            daily_budget = float(os.environ.get("OMEGA_DAILY_BUDGET", "50.0"))
-            stats["budget"] = round(daily_budget * 30, 2)
-        except Exception:
-            stats.setdefault("budget", 0.0)
+        # 该页面的月度规划额为日额度的 30 倍，实际准入仍执行日额度。
+        accounting = stats.get("cost_accounting", {})
+        daily_budget = accounting.get("daily_budget")
+        stats["budget"] = daily_budget * 30 if daily_budget is not None else None
 
         return stats
 

@@ -3,12 +3,17 @@
 import json
 import logging
 import os
+import threading
 from datetime import UTC, datetime
 from pathlib import Path as FilePath
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Path, Query
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException, Path, Query, Request
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
+
+from src.api.auth import _connection_context
+from src.trading.manual_trade_service import ManualTradeService, normalize_order, require_manual_enabled
+from src.trading.manual_trade_store import ManualTradeError, ManualTradeStore
 
 from ..error_utils import safe_error as _safe_error
 from ..rpc import ClawBotRPC
@@ -24,12 +29,43 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-class SellRequest(BaseModel):
-    """卖出请求体 — 替代手动 request.json() 解析，自动校验类型"""
+class SellPrepareRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    request_id: str = Field(min_length=36, max_length=36)
     symbol: str = Field(..., min_length=1, max_length=10, description="股票代码")
-    quantity: float = Field(..., gt=0, description="卖出数量")
+    quantity: float = Field(..., gt=0, le=10**9, strict=True, allow_inf_nan=False, description="卖出数量")
     order_type: str = Field(default="MKT", max_length=10, description="订单类型")
-    limit_price: float | None = Field(default=None, gt=0, description="限价单价格")
+    limit_price: float | None = Field(default=None, gt=0, le=10**9, strict=True, allow_inf_nan=False, description="限价单价格")
+
+
+class SellRequest(SellPrepareRequest):
+    protocol: str = Field(min_length=1, max_length=32)
+    challenge: str = Field(min_length=20, max_length=128)
+    confirmed: StrictBool
+
+
+_manual_store_lock = threading.Lock()
+
+
+def _manual_service(request: Request, *, executing: bool) -> ManualTradeService:
+    def authorize():
+        context = _connection_context(request)
+        if context is None or not context.token:
+            raise ManualTradeError('manual_trading_requires_api_token', 503)
+        if not context.matches(request.headers.get('x-api-token', '')):
+            raise ManualTradeError('invalid_api_token', 401)
+
+    authorize()
+    if executing:
+        require_manual_enabled()
+    with _manual_store_lock:
+        store = getattr(request.app.state, 'manual_trade_store', None)
+        if store is None:
+            default = FilePath(__file__).resolve().parents[3] / 'data' / 'manual-trades' / 'requests.sqlite3'
+            store = ManualTradeStore(os.getenv('OPENCLAW_MANUAL_TRADE_DB', str(default)))
+            request.app.state.manual_trade_store = store
+    from src.broker_selector import get_ibkr
+    return ManualTradeService(store, get_ibkr(), authorize)
 
 
 class WatchlistAddRequest(BaseModel):
@@ -277,117 +313,57 @@ async def portfolio_summary():
         }
 
 
-@router.post("/trading/sell")
-async def sell_position(req: SellRequest):
-    """手动卖出持仓"""
+@router.post("/trading/sell/prepare")
+async def prepare_sell(req: SellPrepareRequest, request: Request):
     try:
-        symbol = req.symbol.strip().upper()
-        quantity = req.quantity
-        order_type = req.order_type.upper()
-        limit_price = float(req.limit_price or 0)
+        service = _manual_service(request, executing=True)
+        order = normalize_order(req.symbol, req.quantity, req.order_type, req.limit_price)
+        return await service.prepare(req.request_id, order)
+    except ManualTradeError as error:
+        raise HTTPException(error.status, error.code) from None
+    except Exception:
+        logger.exception("Manual sell preparation failed")
+        raise HTTPException(503, "manual_sell_unavailable") from None
 
-        if not symbol:
-            return {"success": False, "message": "股票代码不能为空"}
-        if order_type not in {"MKT", "LMT"}:
-            return {"success": False, "message": f"不支持的订单类型: {order_type}"}
-        if order_type == "LMT" and limit_price <= 0:
-            return {"success": False, "message": "限价卖单必须提供大于零的价格"}
 
-        # 懒加载 broker bridge 获取 IBKRBridge 实例
-        from src.broker_selector import ibkr
+@router.post("/trading/sell")
+async def sell_position(req: SellRequest, request: Request):
+    try:
+        service = _manual_service(request, executing=True)
+        order = normalize_order(req.symbol, req.quantity, req.order_type, req.limit_price)
+        result, executed = await service.submit(req.request_id, order, req.challenge, req.confirmed, req.protocol)
+        if executed:
+            # Notification errors cannot repeat the broker action or its claim.
+            try:
+                from .system import push_notification
+                push_notification(title=f"卖出 {order['symbol']}", body=f"状态: {result['state']}",
+                                  category="trading", level="success" if result['success'] else "warning")
+            except Exception:
+                logger.warning("Manual sell notification failed")
+            try:
+                push_event(WSMessageType.TRADE_EXECUTED, {
+                    "request_id": req.request_id, "symbol": order["symbol"], "action": "SELL",
+                    "state": result["state"], "success": result["success"],
+                    "requires_reconciliation": result["requires_reconciliation"],
+                })
+            except Exception:
+                logger.warning("Manual sell websocket notification failed")
+        return result
+    except ManualTradeError as error:
+        raise HTTPException(error.status, error.code) from None
+    except Exception:
+        logger.exception("Manual sell request failed; query the existing request ID")
+        raise HTTPException(503, "manual_sell_state_unavailable_query_request") from None
 
-        if not ibkr or not ibkr.is_connected():
-            return {"success": False, "message": "IBKR 未连接"}
 
-        result = await ibkr.sell(
-            symbol=symbol,
-            quantity=quantity,
-            order_type=order_type,
-            limit_price=limit_price,
-            decided_by="manual_ui",
-            reason="用户通过 Portfolio 页面手动卖出",
-        )
-
-        if "error" in result:
-            return {"success": False, "message": result["error"]}
-
-        status = str(result.get("status", "") or "").strip()
-        normalized_status = status.casefold()
-        filled_qty = float(result.get("filled_qty", 0) or 0)
-        order_id = result.get("order_id")
-        has_order_id = order_id not in (None, "")
-        result_uncertain = bool(
-            result.get("broker_result_ambiguous")
-            or result.get("broker_result_invalid")
-        )
-        accepted_statuses = {"submitted", "presubmitted", "pendingsubmit", "apipending"}
-        success = bool(
-            not result_uncertain
-            and has_order_id
-            and (
-                normalized_status in accepted_statuses
-                or (normalized_status == "filled" and filled_qty > 0)
-            )
-        )
-        requires_reconciliation = bool(result_uncertain or (filled_qty > 0 and not success))
-        if success and normalized_status == "filled":
-            message = "卖出订单已成交"
-        elif success:
-            message = "卖出订单已提交"
-        elif requires_reconciliation:
-            message = "卖出结果需要人工对账，禁止重复提交"
-        else:
-            message = f"卖出订单未被券商接受（状态: {status or 'unknown'}）"
-
-        # 推送系统通知
-        try:
-            from .system import push_notification
-
-            push_notification(
-                title=f"卖出 {symbol}" if success else f"卖出未完成 {symbol}",
-                body=(
-                    f"{message}；{quantity:g} 股（{result.get('order_type', order_type)}），"
-                    f"订单号 #{order_id if has_order_id else 'N/A'}"
-                ),
-                category="trading",
-                level="success" if success else "warning",
-            )
-        except Exception as e:
-            logger.warning("[Trading] 卖出通知推送失败: %s", e)
-
-        # Push trade executed via WebSocket (best-effort)
-        try:
-            push_event(WSMessageType.TRADE_EXECUTED, {
-                "symbol": symbol,
-                "action": "SELL",
-                "quantity": quantity,
-                "order_type": result.get("order_type", order_type),
-                "order_id": str(order_id or ""),
-                "status": status,
-                "filled_qty": filled_qty,
-                "avg_price": result.get("avg_price", 0),
-                "source": "manual_ui",
-                "success": success,
-                "requires_reconciliation": requires_reconciliation,
-            })
-        except Exception as e:
-            logger.warning("[Trading] 卖出执行WS推送失败: %s", e)
-
-        return {
-            "success": success,
-            "message": message,
-            "order_id": str(order_id or ""),
-            "status": status,
-            "filled_qty": filled_qty,
-            "avg_price": result.get("avg_price", 0),
-            "requires_reconciliation": requires_reconciliation,
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("卖出持仓失败")
-        raise HTTPException(status_code=500, detail=_safe_error(e)) from e
+@router.get("/trading/sell/requests/{request_id}")
+async def get_sell_request(request_id: str, request: Request):
+    try:
+        return await _manual_service(request, executing=False).status(request_id)
+    except ManualTradeError as error:
+        raise HTTPException(error.status, error.code) from None
+    except Exception:
+        raise HTTPException(503, "manual_sell_state_unavailable") from None
 
 
 # ══════════════════════════════════════════════

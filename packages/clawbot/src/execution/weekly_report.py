@@ -7,19 +7,20 @@
 
 import logging
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
-from src.execution.daily_brief_data import _get_timestamp_tag, _section
+from src.execution.daily_brief_data import _get_timestamp_tag, _report_cost_lines, _report_cost_snapshot, _section
 from src.notify_style import bullet, format_digest, kv
 
 logger = logging.getLogger(__name__)
 
 
-async def weekly_report() -> str:
+async def weekly_report(*, planned_at=None) -> str:
     """生成综合周报 — 聚合 7 天数据
 
     内容架构:
       1. 📱 社媒周报 (发文绩效 + 自动驾驶 + 粉丝增长)
-      2. 💰 成本周报 (API 日均/周均/月预估)
+      2. 💰 成本周报 (账本已知费用、完整性及覆盖范围)
       3. 🎯 目标进度 (交易目标达成情况)
 
     所有数据源独立 try/except，一个失败不影响其他。
@@ -27,9 +28,9 @@ async def weekly_report() -> str:
     sections: list[tuple[str, list[str]]] = []
 
     # 计算本周起止日期
-    now = datetime.now(UTC)
+    now = (planned_at or datetime.now(UTC)).astimezone(ZoneInfo('America/New_York'))
     week_end = now.strftime("%Y-%m-%d")
-    week_start = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+    week_start = (now - timedelta(days=6)).strftime("%Y-%m-%d")
 
     # ── 1. 📱 社媒周报 ──────────────────────────────────────
     try:
@@ -89,47 +90,9 @@ async def weekly_report() -> str:
     except Exception as e:
         logger.debug("[WeeklyReport] 社媒: %s", e)
 
-    # ── 3. 💰 成本周报 ──────────────────────────────────────
-    try:
-        ca = None
-        try:
-            from src.monitoring import cost_analyzer
-
-            ca = cost_analyzer
-        except ImportError:
-            pass  # 合理保留：可选依赖缺失时继续走后续降级链
-
-        if ca:
-            items = []
-            # 使用 predict_monthly_cost 获取日均成本
-            prediction = ca.predict_monthly_cost() if hasattr(ca, "predict_monthly_cost") else {}
-            if prediction:
-                daily_avg = prediction.get("daily_average", 0)
-                monthly = prediction.get("monthly_prediction", 0)
-                if daily_avg > 0:
-                    weekly_est = daily_avg * 7
-                    items.append(kv("本周估算", f"${weekly_est:.2f}"))
-                    items.append(kv("日均成本", f"${daily_avg:.2f}"))
-                    items.append(kv("月度预估", f"${monthly:.2f}"))
-            # 如果有专门的周报方法则优先使用
-            if hasattr(ca, "get_weekly_report"):
-                try:
-                    wr = ca.get_weekly_report()
-                    if wr:
-                        if wr.get("this_week") is not None:
-                            items = [kv("本周成本", f"${wr['this_week']:.2f}")]
-                        if wr.get("last_week") is not None:
-                            change = wr["this_week"] - wr["last_week"]
-                            ch_emoji = "📈" if change > 0 else "📉" if change < 0 else "➡️"
-                            items.append(kv("环比变化", f"{ch_emoji} ${change:+,.2f}"))
-                        if wr.get("daily_average") is not None:
-                            items.append(kv("日均", f"${wr['daily_average']:.2f}"))
-                except Exception as e:
-                    logger.debug("静默异常: %s", e)
-            if items:
-                sections.append(_section("💰 成本周报", items))
-    except Exception as e:
-        logger.debug("[WeeklyReport] 成本: %s", e)
+    # ET calendar window ends on the planned report date; values are as of generation.
+    cost = _report_cost_snapshot(planned_at=planned_at, days=7)
+    sections.append(_section('💰 成本周报', _report_cost_lines(cost)))
 
     # ── 4. 🎯 目标进度 ──────────────────────────────────────
     try:

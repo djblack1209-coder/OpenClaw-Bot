@@ -6,10 +6,14 @@ DOCS_DIR="$ROOT_DIR/docs"
 INDEX_FILE="$DOCS_DIR/003-docs-index.md"
 FAILED=0
 AUTHORITATIVE_DOCS=(
+  "$ROOT_DIR/README.md"
   "$DOCS_DIR/001-project-map.md"
-  "$DOCS_DIR/007-operations.md"
+  "$DOCS_DIR/005-quickstart.md"
   "$DOCS_DIR/current/current-baseline.md"
 )
+if [[ -f "$DOCS_DIR/current/chatgpt-collaboration.md" ]]; then
+  AUTHORITATIVE_DOCS+=("$DOCS_DIR/current/chatgpt-collaboration.md")
+fi
 PROJECT_MAP="$DOCS_DIR/001-project-map.md"
 CURRENT_DIR="$DOCS_DIR/current"
 CURRENT_BASELINE="$CURRENT_DIR/current-baseline.md"
@@ -35,7 +39,7 @@ search_regex_stdin() {
 }
 
 extract_repository_refs() {
-  local pattern="\`(packages|apps|scripts|docs|\\.github)/[^\`[:space:]]+\`"
+  local pattern="\`((packages|apps|scripts|docs|tools|\\.github)/[^\`[:space:]]+|README\\.md|AGENTS\\.md)\`"
   if command -v rg >/dev/null 2>&1; then
     rg -o --no-filename "$pattern" "${AUTHORITATIVE_DOCS[@]}"
   else
@@ -44,7 +48,7 @@ extract_repository_refs() {
 }
 
 report_failure() {
-  printf '❌ %s\n' "$1" >&2
+  printf '❌ %b\n' "$1" >&2
   FAILED=1
 }
 
@@ -52,9 +56,13 @@ if [[ ! -d "$DOCS_DIR" ]]; then
   report_failure "缺少 docs/ 文档目录"
 fi
 
-if [[ ! -f "$INDEX_FILE" ]]; then
-  report_failure "缺少 docs/003-docs-index.md"
-fi
+# 当前入口是 README 与项目地图，不再要求重建已删除的手写索引。
+# 如果未来重新添加索引，下面仍检查它与实际文件是否一致。
+for file in "${AUTHORITATIVE_DOCS[@]}"; do
+  if [[ ! -f "$file" ]]; then
+    report_failure "缺少文档入口：$file"
+  fi
+done
 
 ROOT_DOCS="$(find "$ROOT_DIR" -maxdepth 1 -type f \( -name '*.md' -o -name '*.txt' \) ! -name 'AGENTS.md' ! -name 'README.md' -print | sort)"
 if [[ -n "$ROOT_DOCS" ]]; then
@@ -69,9 +77,9 @@ fi
 if [[ ! -f "$CURRENT_BASELINE" ]]; then
   report_failure "缺少唯一当前基线：$CURRENT_BASELINE"
 else
-  CURRENT_EXTRA="$(find "$CURRENT_DIR" -mindepth 1 \( -type d -o ! -name 'current-baseline.md' \) -print | sort)"
+  CURRENT_EXTRA="$(find "$CURRENT_DIR" -mindepth 1 \( -type d -o \( ! -name 'current-baseline.md' ! -name 'chatgpt-collaboration.md' \) \) -print | sort)"
   if [[ -n "$CURRENT_EXTRA" ]]; then
-    report_failure "docs/current/ 只能保留 current-baseline.md：\n$CURRENT_EXTRA"
+    report_failure "docs/current/ 只允许唯一生产基线与协作说明：\n$CURRENT_EXTRA"
   fi
 fi
 
@@ -85,6 +93,11 @@ while IFS= read -r file; do
 done < <(find "$DOCS_DIR" -maxdepth 1 -type f -print | sort)
 if [[ -n "$BAD_NAMES" ]]; then
   report_failure "docs/ 文件名必须是 XXX-kebab-case.md：\n$BAD_NAMES"
+fi
+
+DUPLICATE_NUMBERS="$(find "$DOCS_DIR" -maxdepth 1 -type f -name '[0-9][0-9][0-9]-*.md' -exec basename {} \; | cut -c1-3 | sort | uniq -d)"
+if [[ -n "$DUPLICATE_NUMBERS" ]]; then
+  report_failure "docs/ 文档存在重复编号：\n$DUPLICATE_NUMBERS"
 fi
 
 MISSING_INDEX=""
@@ -146,24 +159,24 @@ MUTABLE_INSTALL_SPECS=(
   'open-computer-use@latest'
 )
 for spec in "${MUTABLE_INSTALL_SPECS[@]}"; do
-  if search_fixed "$spec" "${AUTHORITATIVE_DOCS[@]:0:3}"; then
+  if search_fixed "$spec" "${AUTHORITATIVE_DOCS[@]}"; then
     report_failure "当前架构/注册表/运维文档仍包含可变安装规格：$spec"
   fi
 done
 
 for current_fact in \
-  '生产运行时是唯一事实' \
-  '## 1. 已通过的真实生产检查' \
-  '## 3. 未修复问题及原因' \
-  '## 7. 新会话交接提示词'; do
+  '观察日期：' \
+  '## 当前职责' \
+  '## 未闭环项' \
+  '## 接管顺序'; do
   if ! search_fixed "$current_fact" "$CURRENT_BASELINE"; then
     report_failure "唯一当前基线缺少生产收口事实：$current_fact"
   fi
 done
 
 PROJECT_STRUCTURE="$(awk '
-  /^## 项目结构$/ { in_section = 1; next }
-  in_section && /^---$/ { exit }
+  /^## (项目结构|源码归属)$/ { in_section = 1; next }
+  in_section && /^## / { exit }
   in_section { print }
 ' "$PROJECT_MAP")"
 if printf '%s\n' "$PROJECT_STRUCTURE" | search_regex_stdin '\([0-9][0-9,]*[[:space:]]*(行|文件)'; then
@@ -176,4 +189,5 @@ fi
 
 DOC_COUNT="$(find "$DOCS_DIR" -maxdepth 1 -type f -name '*.md' | wc -l | tr -d ' ')"
 [[ -f "$CURRENT_BASELINE" ]] && DOC_COUNT=$((DOC_COUNT + 1))
-printf '✅ docs-check 通过：%s 个文档，唯一当前基线、命名合规、索引完整。\n' "$DOC_COUNT"
+[[ -f "$CURRENT_DIR/chatgpt-collaboration.md" ]] && DOC_COUNT=$((DOC_COUNT + 1))
+printf '✅ docs-check 通过：%s 个文档，入口存在、唯一当前基线、命名与本仓库引用合规。\n' "$DOC_COUNT"

@@ -313,6 +313,7 @@ def run_intel_production_cycle(
     llm_mode: str = "fallback-only",
     collect_runner: CollectRunner | None = None,
     production_once_runner: ProductionOnceRunner | None = None,
+    delivery_clock: Callable[[], datetime] | None = None,
 ) -> dict[str, Any]:
     """Run fresh collect -> brief -> summary -> gated Telegram production delivery."""
     now_value = now or _now()
@@ -481,10 +482,15 @@ def run_intel_production_cycle(
         )
     )
     production_fn = production_once_runner or run_intel_production_once
+    # Scheduled collection may take longer than the delivery window. Recheck
+    # the real clock at the final hard gate; manual replay retains its timestamp.
+    delivery_now = delivery_clock() if delivery_clock is not None else now_value
+    if delivery_clock is not None and (delivery_now.tzinfo is None or delivery_now.utcoffset() is None):
+        raise ValueError("delivery clock must be timezone aware")
     delivery = production_fn(
         summary_evidence_path=summary_json,
         evidence_path=delivery_evidence,
-        now=now_value,
+        now=delivery_now,
         scheduled_time=scheduled_time,
         env=env_map,
         project_root=root,

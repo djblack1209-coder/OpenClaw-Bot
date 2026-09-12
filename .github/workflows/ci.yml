@@ -61,13 +61,14 @@ jobs:
         run: make shellcheck
 
       - name: Audit locked dependencies
-        run: make dependency-audit
+        # RustSec runs independently in the desktop job below.
+        run: make dependency-audit AUDIT_ARGS=--without-rust
 
       - name: Verify immutable workflow and npm runtime locks
         run: make supply-chain-check
 
       - name: Validate documentation governance
-        run: bash scripts/check_docs_layout.sh
+        run: make docs-check
 
   # ─── Python 后端测试 + Lint ───
   python-tests:
@@ -161,13 +162,17 @@ jobs:
       - name: Frontend production build
         run: npm run build
 
-      - name: Desktop security boundary tests
+      - name: Desktop and news integration boundary tests
         working-directory: .
         run: >-
           node --test
           apps/openclaw-manager-src/src/lib/security-hardening.static.test.mjs
           apps/openclaw-manager-src/src/components/Social/social-growth-feedback.static.test.mjs
           scripts/auto_ops_scripts.test.mjs
+          scripts/cost_telemetry.test.mjs
+          scripts/onboarding.test.mjs
+          scripts/manual-sell.test.mjs
+          scripts/news-entrypoints.test.mjs
 
       - name: Set up Rust stable
         uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable

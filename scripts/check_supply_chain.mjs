@@ -164,7 +164,11 @@ for (const [name, version] of Object.entries({ 'brace-expansion': '2.1.4', postc
   assert.equal(weixinPackage.overrides[name], version, `微信插件的 ${name} 安全覆盖已漂移`);
   const suffix = `node_modules/${name}`;
   const entries = Object.entries(weixinLock.packages).filter(([path]) => path.endsWith(suffix));
-  assert.ok(entries.length > 0, `微信插件的 ${name} 安全覆盖没有进入 lock`);
+  // Vitest 4 removed the old glob/minimatch graph and brace-expansion entirely.
+  // Keep its override for future reintroduction; every present entry must match.
+  if (name !== 'brace-expansion') {
+    assert.ok(entries.length > 0, `微信插件的 ${name} 安全覆盖没有进入 lock`);
+  }
   for (const [path, entry] of entries) {
     assert.equal(entry.version, version, `${path} 未使用微信插件登记的安全覆盖版本`);
     assertRegistryLockedPackage(path, entry);
