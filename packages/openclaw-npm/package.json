@@ -388,7 +388,7 @@
     "pdfjs-dist": "^5.5.207",
     "playwright-core": "1.58.2",
     "qrcode-terminal": "^0.12.0",
-    "sharp": "0.35.0",
+    "sharp": "0.35.4",
     "sqlite-vec": "0.1.7-alpha.2",
     "tar": "7.5.21",
     "tslog": "^4.10.2",
