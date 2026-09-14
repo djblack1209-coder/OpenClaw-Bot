@@ -1,6 +1,16 @@
 # OpenEverything 快速开始
 
-> 生产运行时是唯一事实。首次操作先读 `docs/current/current-baseline.md`，不要从旧截图、历史报告或本地测试推断生产状态。
+> 仅浏览项目可以先运行下面的离线演示。需要操作已有服务时，先读 `docs/current/current-baseline.md`，不要从截图、历史报告或本地测试推断生产状态。
+
+## 无账号体验
+
+从仓库根目录运行：
+
+```bash
+python3 -m http.server 8765 --bind 127.0.0.1 --directory apps/project-showcase
+```
+
+打开 [127.0.0.1:8765](http://127.0.0.1:8765)。页面包含系统调用关系、调度去重和未知费用占用的交互讲解，使用合成数据，不调用本机 API 或第三方服务。`Ctrl+C` 停止预览。它与正式 Tauri 应用相互独立，不能代替实际业务验收；源码导览见 [017-engineering-tour.md](017-engineering-tour.md)。
 
 ## 本机只读检查
 

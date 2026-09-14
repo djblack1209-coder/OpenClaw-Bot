@@ -53,8 +53,9 @@ typecheck: ## 前端 TypeScript 类型检查
 	cd $(FRONTEND) && npx tsc --noEmit
 
 docs-check: ## 验证文档门禁及当前入口、编号命名和本仓库引用
-	node --test scripts/docs_layout.test.mjs
+	node --test scripts/docs_layout.test.mjs scripts/public_docs.test.mjs
 	bash scripts/check_docs_layout.sh
+	node scripts/check_public_docs.mjs
 
 shellcheck: ## 检查仓库自有 Shell 脚本
 	@command -v shellcheck >/dev/null 2>&1 || { echo '缺少 shellcheck，请先安装后重试'; exit 127; }

@@ -1,118 +1,118 @@
-# OpenClaw Bot
+<div align="center">
 
-> 7-Bot Telegram 多智能体系统参考实现：把 LLM 路由、Telegram 移动控制台、FastAPI 内控接口、Tauri 桌面管理端、运维观测和安全闸门组合成一个可学习、可二次开发的个人 AI 自动化项目。
+![OpenEverything — Your agents. Your control.](.github/assets/cover.svg)
 
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.12-3776AB.svg)](packages/clawbot)
-[![Desktop](https://img.shields.io/badge/desktop-Tauri%202%20%2B%20React-24C8DB.svg)](apps/openclaw-manager-src)
+**把 AI 助手、情报调度与模型预算，接到一个可追踪的工作流里。**
 
-## 项目定位
+Python / FastAPI 后端 · Telegram 多 Bot · Tauri / React 桌面控制台
 
-OpenClaw Bot 是一个公开开源的 AI operations / personal automation 实验仓库，重点沉淀这些可复用模式：
+[![CI](https://github.com/djblack1209-coder/OpenClaw-Bot/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/djblack1209-coder/OpenClaw-Bot/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-86b7d9)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.12-91bfa9)](packages/clawbot)
+[![Tauri](https://img.shields.io/badge/Tauri-2-f1ad80)](apps/openclaw-manager-src)
 
-- **多 Bot 协作**：7 个 Telegram Bot 分工处理系统状态、AI 号池、交易复盘、社媒、微信入口和运维提醒。
-- **LLM 路由与成本控制**：用 LiteLLM 风格的统一路由、免费优先策略、收费模型闸门和低敏健康统计管理多 Provider。
-- **手机 + 桌面双控制面**：Telegram 命令卡片适合手机操作，Tauri + React 管理端适合本地配置、可视化和调试。
-- **开源集成编排**：集成 FastAPI、python-telegram-bot、CrewAI、browser-use、crawl4ai、Redis、APScheduler、Plotly 等生态工具。
-- **安全维护流程**：默认不提交密钥，不回显 token，不自动执行高风险动作；文档中记录验证、回归和已知边界。
+[快速体验](#快速体验) · [工程导览](docs/017-engineering-tour.md) · [架构](docs/004-architecture.md) · [参与贡献](docs/013-contributing.md) · [English](docs/016-readme-en.md)
 
-> 说明：仓库包含交易、社媒、浏览器自动化等模块，但它们在本项目中的定位是**受控研究和个人助理场景**。任何真实交易、平台账号操作、抓取、通知或发布都必须遵守当地法律、平台条款和人工确认流程。
+</div>
 
-## Tech Stack
+## 为什么做这个项目
 
-| Layer | Technology |
-|-------|------------|
-| Backend | Python 3.12, FastAPI, python-telegram-bot, LiteLLM-style routing, CrewAI, mem0 |
-| Desktop | Tauri 2, React 18, TypeScript, Tailwind CSS, shadcn/ui, Zustand |
-| Trading / Analysis | yfinance, AKShare, CCXT, pandas-ta, IBKR bridge |
-| Browser / Web | browser-use, DrissionPage, crawl4ai |
-| Infra / Ops | Docker Compose, Redis, Langfuse, loguru, APScheduler |
+个人 AI 自动化最难的部分，往往出现在一次对话之后：任务如何执行，失败如何处理，模型调用花了多少，定时任务是否重复发送，以及谁可以控制本机服务。
 
-## 当前运行边界
+**OpenEverything** 把这些问题放进同一个可检查的工程实现：用 Telegram 触发任务，用桌面端管理配置和服务，用独立情报管线生成简报，用持久化账本约束模型预算。
 
-本项目不是“双活服务器集群”，而是按职责拆分：
+这是面向开发者的个人自动化参考项目，GitHub 仓库名保留为 **OpenClaw-Bot**。项目集成上游 [OpenClaw](https://github.com/openclaw/openclaw)，并维护本仓库中的控制台、Python 工作流与运维工具；它不是上游官方发行版。
 
-- **本机 Mac**：OpenClaw Gateway、Telegram Bot、Intel listener、桌面管理端与本地计划任务的主要运行位置。
-- **Oracle ARM1**：承载独立的 JIYU / Sub2API 商业服务；它不是 OpenClaw Bot 的主运行节点。
-- **Cloudflare**：提供 JIYU 公网入口与源站保护。其他服务器资产和跨项目链路由 `VPS-Config` 统一管理，不在本 README 重复维护。
+## 先看效果
 
-备份计划已安装并按每日 03:30 运行。2026-09-04 的只读复查确认当次任务退出码为 0，本地归档与异地加密归档的校验摘要一致；当时未执行解密还原。2026-09-12 新闻归并另建本地备份并通过只读恢复演练，既有计划不变；这些证据不等同于完整异地灾难恢复闭环。
+[![OpenEverything 离线交互演示：系统总览、情报管线和预算账本](.github/assets/showcase.png)](apps/project-showcase/index.html)
 
-运行状态必须分别验证：本机 OpenClaw 使用项目健康脚本，JIYU 使用其独立生产健康与真实业务探针；单个 `/health` 不能代表整套项目正常。
+*上图是仓库附带的交互式工程讲解页，使用合成数据，不是 Tauri 实时运行截图或线上业务指标。GitHub 只展示 HTML 源码，请按下面步骤在本地打开。*
 
-新闻简报统一由 **Global Intelligence Bot** 的 Intel 管线提供，专用菜单为 `/today`、`/ai`、`/market`，每日业务时间为 **08:30 Asia/Singapore**。通用 ClawBot 的 `/news`、中文“科技早报”和微信 `104` 只显示专用 Bot 入口；旧科技早报生成器和自动推送已退役。运营日报、周报及按需新闻查询继续独立使用。迁移与验证见 [新闻归并记录](docs/090-news-consolidation-2026-09-12.md)。
+## 快速体验
 
-## Quick Start
-
-本地构建验证不会启动 Gateway、ClawBot、交易或消息发送。完整步骤与部署边界见 [快速开始](docs/005-quickstart.md)。
-
-### 环境与锁文件
-
-- Python **3.12.x**；macOS arm64 使用 `requirements-lock-macos.txt`，Linux amd64 使用 `requirements-lock.txt`。其他平台尚未验证。
-- Node.js **22.19+（22.x）或 24.x**、npm **10.x 或 11.x**、uv；桌面 Rust 检查还需要 Rust/Cargo 与平台编译工具。本机实测 Node 22.22.3、npm 10.9.8、Rust 1.93.1；CI 配置使用 Node 24。
-- Python、npm、Cargo 均使用仓库锁文件；验证不需要运行密钥。
-
-### macOS：全新临时目录验证
-
-从仓库根目录执行。脚本仅复制公开源文件，以哈希锁安装到新建临时目录；禁用 npm 安装脚本，构建和测试阶段隔离真实用户目录与外网。
+只需 Git、Python 3；不需要 API Key、Telegram 账号、Node.js 或运行中的 Gateway。
 
 ```bash
-python3.12 --version
-node --version
-npm --version
-uv --version
-bash scripts/check_clean_install.sh --component all --python "$(command -v python3.12)" --keep
+git clone https://github.com/djblack1209-coder/OpenClaw-Bot.git
+cd OpenClaw-Bot
+python3 -m http.server 8765 --bind 127.0.0.1 --directory apps/project-showcase
 ```
 
-以退出码及输出的 `WORK_DIR/results.json` 为准。保存成功、构建成功和服务运行通过是不同状态；Weixin 语义编译与完整 Linux 桌面验证的剩余项见 [审计闭环记录](docs/089-audit-closure-2026-09-10.md)。不要用 `pip install -r requirements.txt` 或 `npm install` 替代锁文件验收。
+打开 **[http://127.0.0.1:8765](http://127.0.0.1:8765)**，体验三个场景：
 
-### Linux 容器与桌面部署
+1. **系统总览**：从交互入口走到编排、预算策略与执行结果。
+2. **情报管线**：连续触发两次，观察同一业务日去重；切换纽约夏令时 / 冬令时，观察新加坡业务时间。
+3. **预算账本**：模拟超时后再次调用，观察未知费用如何占用预算并阻止超额尝试。
 
-Linux 后端镜像固定 Python 基础镜像摘要，并使用 Linux 哈希锁。首次部署需要单独准备配置和数据目录，详见 [部署步骤](docs/005-quickstart.md#容器部署)。`docker compose up`、`npm run tauri:dev` 和 `make tauri-build` 会启动或安装实际服务，不属于上述本地验证。
+页面只在浏览器内模拟状态，刷新即重置，不连接任何业务服务。按 `Ctrl+C` 停止预览。运行真实后端与桌面端请看[开发环境与部署](docs/005-quickstart.md)。
 
-## Project Structure
+## 值得深入看的三个设计
 
-```text
-OpenClaw Bot/
-├── packages/clawbot/          # Python 后端：Bot、路由、API、交易/客服/运维模块
-├── apps/openclaw-manager-src/ # Tauri 2 桌面管理端
-├── apps/openclaw/             # Bot 人设、技能和运行资产
-├── tools/                     # 安装器与 macOS LaunchAgent
-├── docker-compose.yml
-└── docs/                      # 项目文档治理中心
+| 设计 | 解决的问题 | 实现与测试 |
+|---|---|---|
+| **可追踪的模型预算** | 多次重试不能绕过预算；超时不能被当成零费用 | [事务账本](packages/clawbot/src/core/cost_ledger.py) · [价格策略](packages/clawbot/src/core/cost_policy.py) · [回归测试](packages/clawbot/tests/test_cost_ledger.py) |
+| **按业务日认领的情报调度** | 主机时区、重复唤醒、进程重启可能造成漏发或重复执行 | [调度认领](packages/clawbot/src/intel/scheduled_cycle.py) · [回归测试](packages/clawbot/tests/test_intel_scheduled_cycle.py) |
+| **清晰的本机控制边界** | 多个控制面同时启停服务，容易产生状态冲突 | [Tauri 原生命令](apps/openclaw-manager-src/src-tauri/src) · [API 鉴权](packages/clawbot/src/api/auth.py) · [架构说明](docs/004-architecture.md) |
+
+此外，仓库包含任务图编排、社交草稿与人工审核、分析工具、健康检查和备份恢复工具。阅读时建议先沿着上面的三个切面展开，而不是一次启动所有可选集成。
+
+## 系统如何连接
+
+```mermaid
+flowchart LR
+    TG[Telegram Bots] --> CB[ClawBot / Python]
+    UI[Tauri + React] -->|native commands| GW[OpenClaw Gateway]
+    UI -->|authenticated API| CB
+    CB --> RT[AccountedRouter]
+    RT --> CL[(CostLedger / SQLite)]
+    RT --> LLM[Configured model providers]
+    SC[Intel scheduler] --> CLAIM[Business-day claim]
+    CLAIM --> PIPE[Collect / summarize / deliver]
+    PIPE --> TG
 ```
 
-## Documentation
+Gateway 与 ClawBot 是不同组件；Intel 调度和模型账本也有各自的状态边界。独立远端服务的运维材料不属于最小演示的依赖。详见[当前架构](docs/004-architecture.md)。
 
-- `docs/current/chatgpt-collaboration.md`：ChatGPT 规划、Codex 执行的使用与恢复说明（接入验收状态见文档）
-- `docs/current/current-baseline.md`：本项目当前运行边界与接管入口
-- `docs/001-project-map.md`：项目全景与模块说明
-- `docs/004-architecture.md`：系统架构与 Bot 指令
-- `docs/005-quickstart.md`：启动、部署、灾备、密钥轮换
-- Git 历史：已完成变更、旧审计和迁移背景
-- `docs/013-contributing.md`：贡献指南
-- `docs/014-security.md`：安全政策与漏洞报告
+## 技术栈与代码入口
 
-## Safety and acceptable-use boundaries
+| 层 | 技术 | 入口 |
+|---|---|---|
+| 交互与业务 API | Python 3.12、FastAPI、python-telegram-bot | [packages/clawbot](packages/clawbot) |
+| 任务与模型调用 | 任务图、LiteLLM 路由、SQLite 费用账本 | [core](packages/clawbot/src/core) |
+| 情报工作流 | 数据源适配、业务时区、持久化认领、投递状态 | [intel](packages/clawbot/src/intel) |
+| 桌面控制台 | Tauri 2、Rust、React、TypeScript、Zustand | [openclaw-manager-src](apps/openclaw-manager-src) |
+| 验证与运维 | pytest、Node tests、Cargo、GitHub Actions、恢复脚本 | [CI](.github/workflows/ci.yml) · [scripts](scripts) |
 
-为了让项目更适合作为公开开源样例，仓库默认坚持以下边界：
+## 当前成熟度
 
-- 不提交 `.env`、API Key、Cookie、token、证书、浏览器 Profile 或交易凭证。
-- 不把 LLM 输出直接作为真实投资建议或自动下单依据；真实交易必须人工确认并独立承担风险。
-- 不用自动化绕过验证码、登录保护、付费墙、平台风控或平台服务条款。
-- 不做刷量、垃圾信息、欺骗性社媒发布或未授权数据抓取。
-- 对外部输入、Webhook、文件读写和命令执行保留鉴权、脱敏、白名单和确认码。
+- **可以直接体验**：零密钥的交互讲解页，包含源码入口和可复现的示例场景。
+- **有实现与回归测试**：模型费用账本、情报调度认领、鉴权与桌面控制边界。CI 状态以顶部动态徽章及对应提交的 Actions 为准。
+- **需要配置后验收**：真实 Telegram 投递、模型 Provider、桌面安装和可选第三方集成。测试通过不代表这些路径已在你的环境运行。
+- **尚未完成的验收**：自然定时投递、部分跨平台安装及独立服务的完整业务路径，见[当前基线](docs/current/current-baseline.md)与[审计闭环](docs/089-audit-closure-2026-09-10.md)。
 
-## Contributing
+本项目适合学习、二次开发与受控的个人自动化；目前不承诺开箱即用的商业 SaaS 或无人值守的高风险操作。
 
-欢迎 issue、文档补充、测试用例、Bug 修复和小型 PR。开始前请先阅读：
+## 开发与贡献
 
-- `docs/013-contributing.md`
-- `docs/014-security.md`
-- `docs/015-code-of-conduct.md`
+开发使用锁定依赖：Python **3.12.x**（macOS arm64 / Linux amd64 后端）、Node **22.19+ 的 22.x 或 24.x**、npm **10.x 或 11.x**。桌面原生构建另需 Rust 与平台编译工具。
 
-## License
+从[快速开始](docs/005-quickstart.md)准备环境，再选择一个小切面贡献：补充失败场景测试、改善首次配置体验、翻译文档、修复可复现问题。具体步骤见[贡献指南](docs/013-contributing.md)。
 
-OpenClaw Bot 根项目采用 [Apache License 2.0](LICENSE)。
+如果这个项目对你有帮助，欢迎 Star 收藏；如果你想改进它，欢迎带着复现步骤提交 [Issue](https://github.com/djblack1209-coder/OpenClaw-Bot/issues)。
 
-第三方子模块、上游源码包和运行资产可能使用各自许可证；请以对应目录内的 `LICENSE` / README / 上游仓库说明为准。
+## 文档导航
+
+| 想了解什么 | 从这里开始 |
+|---|---|
+| 五分钟看懂工程取舍 | [工程导览](docs/017-engineering-tour.md) |
+| 架构、调用关系和组件归属 | [架构说明](docs/004-architecture.md) · [项目地图](docs/001-project-map.md) |
+| 配置、开发、启动与恢复 | [快速开始](docs/005-quickstart.md) |
+| 真实运行边界与未闭环项 | [当前基线](docs/current/current-baseline.md) |
+| 漏洞报告与参与规范 | [安全政策](docs/014-security.md) · [行为准则](docs/015-code-of-conduct.md) |
+
+## 致谢与许可证
+
+感谢 [OpenClaw](https://github.com/openclaw/openclaw)、[LiteLLM](https://github.com/BerriAI/litellm)、[python-telegram-bot](https://github.com/python-telegram-bot/python-telegram-bot)、[FastAPI](https://github.com/fastapi/fastapi)、[Tauri](https://github.com/tauri-apps/tauri) 及其他依赖的维护者。项目的价值在于具体集成、状态管理与工程约束，不能把上游能力计作本仓库的原创成果。
+
+根项目采用 [Apache License 2.0](LICENSE)。第三方源码、子模块及桌面包的声明可能不同；分发前请核对对应目录的许可证。不要提交密钥、会话或私人运行数据；真实交易、账号变更与外部发布保留明确授权和人工确认。
