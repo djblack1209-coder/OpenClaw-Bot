@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="OpenEverything：探索 AI 自动化、情报调度与模型预算控制。无需密钥的离线交互演示。"
+    />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>OpenEverything · Interactive Tour</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='12' fill='%23ff825c'/%3E%3Cpath d='M13 12L6 20l7 8m14-16l7 8-7 8' fill='none' stroke='%2314181c' stroke-width='3'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="style.css" />
+    <script src="demo.js" defer></script>
+  </head>
+  <body>
+    <a class="skip" href="#workspace">跳到演示内容</a>
+    <header class="topbar">
+      <a class="brand" href="#"
+        ><span class="mark" aria-hidden="true">&lt;✳&gt;</span> OpenEverything
+        <span class="edition">PROJECT TOUR</span></a
+      >
+      <a
+        class="repo-link"
+        href="https://github.com/djblack1209-coder/OpenClaw-Bot"
+        >View on GitHub <span aria-hidden="true">↗</span></a
+      >
+    </header>
+    <main>
+      <section class="intro" aria-labelledby="title">
+        <div>
+          <p class="eyebrow">
+            <span class="dot"></span> YOUR AGENTS. YOUR CONTROL.
+          </p>
+          <h1 id="title">让 AI 做事，<br />让每一步<span>有据可查。</span></h1>
+          <p class="lede">
+            从 Telegram 指令到情报简报，从模型调用到预算账本。<br
+              class="desktop-break"
+            />一个围绕可控执行构建的个人 AI 自动化项目。
+          </p>
+        </div>
+        <aside class="intro-note">
+          <span class="note-number">01 — 03</span>
+          <p>探索三个工程切面</p>
+          <span>服务边界 / 调度去重 / 费用状态</span>
+          <div class="tech-list">
+            <span>Python</span><span>FastAPI</span><span>Tauri</span
+            ><span>React</span>
+          </div>
+        </aside>
+      </section>
+
+      <section class="workspace" id="workspace" aria-label="离线交互演示">
+        <div class="workspace-bar">
+          <div class="window-dots" aria-hidden="true">
+            <i></i><i></i><i></i>
+          </div>
+          <span>OpenEverything / engineering walkthrough</span
+          ><span class="demo-label">示例数据 · 离线演示</span>
+        </div>
+        <div class="workspace-body">
+          <nav class="sidebar" aria-label="演示场景">
+            <p class="nav-label">WORKSPACE</p>
+            <button
+              type="button"
+              class="nav-item active"
+              data-page="overview"
+              aria-pressed="true"
+            >
+              <span aria-hidden="true">◫</span> 系统总览 <small>01</small>
+            </button>
+            <button
+              type="button"
+              class="nav-item"
+              data-page="intelligence"
+              aria-pressed="false"
+            >
+              <span aria-hidden="true">◎</span> 情报管线 <small>02</small>
+            </button>
+            <button
+              type="button"
+              class="nav-item"
+              data-page="budget"
+              aria-pressed="false"
+            >
+              <span aria-hidden="true">≋</span> 预算账本 <small>03</small>
+            </button>
+            <div class="sidebar-footer">
+              <span class="dot"></span> 无需 API Key
+              <p>所有交互在浏览器内模拟。<br />不连接本机服务或真实账号。</p>
+            </div>
+          </nav>
+          <div class="panels">
+            <section
+              class="panel"
+              id="overview"
+              aria-labelledby="overview-title"
+            >
+              <div class="page-title">
+                <div>
+                  <p class="eyebrow">CONTROL PLANE</p>
+                  <h2 id="overview-title">把复杂系统，放回掌控之中。</h2>
+                </div>
+                <span class="tag">Architecture</span>
+              </div>
+              <div class="metric-row">
+                <article class="metric">
+                  <span>交互入口</span
+                  ><strong>Telegram <em>+ Desktop</em></strong>
+                  <p>移动指令与本地可视化</p>
+                </article>
+                <article class="metric">
+                  <span>模型调用</span><strong>Reserve → Settle</strong>
+                  <p>先预留预算，再记录实际结果</p>
+                </article>
+                <article class="metric">
+                  <span>情报调度</span><strong>08:30 <em>SGT</em></strong>
+                  <p>以业务时区确定运行窗口</p>
+                </article>
+              </div>
+              <div class="overview-grid">
+                <article class="card architecture-card">
+                  <div class="card-heading">
+                    <h3>一条请求的旅程</h3>
+                    <span>REQUEST LIFECYCLE</span>
+                  </div>
+                  <div class="flow-node">
+                    <span class="node-symbol">01</span>
+                    <div>
+                      <b>Telegram / Tauri</b
+                      ><small>输入指令 · 查看执行状态</small>
+                    </div>
+                    <span class="node-tag">Interface</span>
+                  </div>
+                  <div class="connector" aria-hidden="true">↓</div>
+                  <div class="flow-node">
+                    <span class="node-symbol">02</span>
+                    <div>
+                      <b>ClawBot / FastAPI</b
+                      ><small>鉴权 · 任务编排 · 工具执行</small>
+                    </div>
+                    <span class="node-tag">Orchestration</span>
+                  </div>
+                  <div class="connector" aria-hidden="true">↓</div>
+                  <div class="flow-node highlighted">
+                    <span class="node-symbol">03</span>
+                    <div>
+                      <b>AccountedRouter / CostLedger</b
+                      ><small>价格快照 · 预算预留 · 逐次尝试记账</small>
+                    </div>
+                    <span class="node-tag">Policy</span>
+                  </div>
+                  <div class="connector" aria-hidden="true">↓</div>
+                  <div class="flow-node">
+                    <span class="node-symbol">04</span>
+                    <div>
+                      <b>Provider → Result</b
+                      ><small>返回结果 · 结算或保留未知费用</small>
+                    </div>
+                    <span class="node-tag">Outcome</span>
+                  </div>
+                </article>
+                <div class="right-column">
+                  <article class="card">
+                    <div class="card-heading">
+                      <h3>工程中的取舍</h3>
+                      <span>DESIGN NOTES</span>
+                    </div>
+                    <ul class="design-notes">
+                      <li>
+                        <b>服务控制只有一个入口</b>
+                        <p>Tauri 管理受管服务的启停，HTTP API 保留业务边界。</p>
+                      </li>
+                      <li>
+                        <b>未知结果也是一种状态</b>
+                        <p>请求超时不代表没有费用，也不代表消息没有投递。</p>
+                      </li>
+                      <li>
+                        <b>运行证据独立于测试结果</b>
+                        <p>构建通过、健康检查、真实投递分别验收。</p>
+                      </li>
+                    </ul>
+                  </article>
+                  <article class="source-card">
+                    <span class="eyebrow">BUILT TO BE INSPECTED</span>
+                    <h3>从界面，走进源码。</h3>
+                    <p>每个场景都链接到实现和回归测试。</p>
+                    <a
+                      href="https://github.com/djblack1209-coder/OpenClaw-Bot/blob/main/docs/004-architecture.md"
+                      >阅读架构说明 <span aria-hidden="true">↗</span></a
+                    >
+                  </article>
+                </div>
+              </div>
+            </section>
+
+            <section
+              class="panel"
+              id="intelligence"
+              aria-labelledby="intelligence-title"
+              hidden
+            >
+              <div class="page-title">
+                <div>
+                  <p class="eyebrow">GLOBAL INTELLIGENCE</p>
+                  <h2 id="intelligence-title">同一份早报，只认一个业务日。</h2>
+                </div>
+                <span class="tag">Scheduler</span>
+              </div>
+              <p class="section-intro">
+                选择主机时间，观察新加坡业务窗口与重复触发的处理。这里模拟单次认领；真实文件锁与持久化由后端实现。
+              </p>
+              <div class="control-row">
+                <label for="clock"
+                  >触发场景<select id="clock">
+                    <option value="summer">
+                      纽约夏令时 · 2026-07-06 20:30
+                    </option>
+                    <option value="winter">
+                      纽约冬令时 · 2026-01-06 19:30
+                    </option>
+                    <option value="late">错过窗口 · 新加坡 10:01</option>
+                  </select></label
+                ><button class="primary" type="button" id="run-cycle">
+                  模拟触发</button
+                ><button class="secondary" type="button" id="reset-cycle">
+                  重置示例
+                </button>
+              </div>
+              <div class="metric-row">
+                <article class="metric">
+                  <span>业务时区</span><strong>Asia/Singapore</strong>
+                  <p id="business-time">2026-07-07 08:30</p>
+                </article>
+                <article class="metric">
+                  <span>模拟管线调用</span><strong id="cycle-count">0</strong>
+                  <p>重复认领不会增加次数</p>
+                </article>
+                <article class="metric">
+                  <span>真实网络请求</span><strong>0</strong>
+                  <p>仅模拟采集与投递</p>
+                </article>
+              </div>
+              <article class="card">
+                <div class="card-heading">
+                  <h3>执行过程</h3>
+                  <span>SIMULATED TRACE</span>
+                </div>
+                <div class="pipeline">
+                  <span>业务窗口</span><i>→</i><span>当日认领</span><i>→</i
+                  ><span>采集 / 整理</span><i>→</i><span>投递结果</span>
+                </div>
+                <div
+                  class="trace"
+                  id="cycle-trace"
+                  role="status"
+                  aria-live="polite"
+                >
+                  等待触发。试着连续点击两次“模拟触发”。
+                </div>
+              </article>
+              <div class="evidence-links">
+                <span>跟着代码看：</span
+                ><a
+                  href="https://github.com/djblack1209-coder/OpenClaw-Bot/blob/main/packages/clawbot/src/intel/scheduled_cycle.py"
+                  >scheduled_cycle.py ↗</a
+                ><a
+                  href="https://github.com/djblack1209-coder/OpenClaw-Bot/blob/main/packages/clawbot/tests/test_intel_scheduled_cycle.py"
+                  >跨进程 / DST 回归测试 ↗</a
+                >
+              </div>
+            </section>
+
+            <section
+              class="panel"
+              id="budget"
+              aria-labelledby="budget-title"
+              hidden
+            >
+              <div class="page-title">
+                <div>
+                  <p class="eyebrow">COST ACCOUNTING</p>
+                  <h2 id="budget-title">超时了，预算也不能凭空回来。</h2>
+                </div>
+                <span class="tag">CostLedger</span>
+              </div>
+              <p class="section-intro">
+                示例预算 $0.10，每次调用先预留 $0.06。成功时按示例用量结算
+                $0.02；超时时保留 $0.06
+                的未知敞口。这些金额不代表任何模型的真实价格。
+              </p>
+              <div class="control-row">
+                <label for="outcome"
+                  >下一次调用结果<select id="outcome">
+                    <option value="settled">正常完成 · 结算 $0.02</option>
+                    <option value="unknown">请求超时 · 费用未知</option>
+                  </select></label
+                ><button type="button" class="primary" id="run-request">
+                  模拟模型调用</button
+                ><button type="button" class="secondary" id="reset-budget">
+                  重置示例
+                </button>
+              </div>
+              <div class="metric-row">
+                <article class="metric">
+                  <span>已结算 · 示例 USD</span
+                  ><strong id="spent">$0.00</strong>
+                  <p>本演示中的用量估算</p>
+                </article>
+                <article class="metric">
+                  <span>未知敞口 · 示例 USD</span
+                  ><strong id="reserved">$0.00</strong>
+                  <p>结果未知时继续占用预算</p>
+                </article>
+                <article class="metric">
+                  <span>可预留余额 · 示例 USD</span
+                  ><strong id="available">$0.10</strong>
+                  <p>总额减去已结算与未知敞口</p>
+                </article>
+              </div>
+              <article class="card">
+                <div class="card-heading">
+                  <h3>逐次尝试账本</h3>
+                  <span>SIMULATED ATTEMPTS</span>
+                </div>
+                <div class="table-wrap">
+                  <table>
+                    <caption class="sr-only">
+                      模拟模型调用的尝试与费用记录
+                    </caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">Attempt</th>
+                        <th scope="col">状态</th>
+                        <th scope="col">预留上界</th>
+                        <th scope="col">已结算金额</th>
+                      </tr>
+                    </thead>
+                    <tbody id="attempts">
+                      <tr>
+                        <td colspan="4" class="empty">
+                          还没有调用。试试“请求超时”，然后再次调用。
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div
+                  class="trace"
+                  id="budget-trace"
+                  role="status"
+                  aria-live="polite"
+                >
+                  等待调用。所有金额只在当前页面内变化。
+                </div>
+              </article>
+              <div class="evidence-links">
+                <span>跟着代码看：</span
+                ><a
+                  href="https://github.com/djblack1209-coder/OpenClaw-Bot/blob/main/packages/clawbot/src/core/cost_ledger.py"
+                  >cost_ledger.py ↗</a
+                ><a
+                  href="https://github.com/djblack1209-coder/OpenClaw-Bot/blob/main/packages/clawbot/tests/test_cost_ledger.py"
+                  >事务 / 幂等 / 预算回归测试 ↗</a
+                >
+              </div>
+            </section>
+          </div>
+        </div>
+        <div class="workspace-footer">
+          <span>INTERACTIVE EXPLAINER · 非 Tauri 运行截图</span
+          ><span>数据仅保存在当前页面，刷新即重置</span>
+        </div>
+      </section>
+      <footer class="footer">
+        <p>
+          OpenEverything <span>/</span> Built on open source. Designed for
+          inspection.
+        </p>
+        <a
+          href="https://github.com/djblack1209-coder/OpenClaw-Bot/blob/main/docs/017-engineering-tour.md"
+          >深入阅读工程导览 ↗</a
+        >
+      </footer>
+    </main>
+    <noscript
+      ><p class="noscript">
+        启用 JavaScript 后可使用交互演示。架构说明和源码链接仍然可用。
+      </p></noscript
+    >
+  </body>
+</html>
