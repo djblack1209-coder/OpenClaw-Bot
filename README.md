@@ -60,16 +60,14 @@ python3 -m http.server 8765 --bind 127.0.0.1 --directory apps/project-showcase
 ## 系统如何连接
 
 ```mermaid
-flowchart LR
-    TG[Telegram Bots] --> CB[ClawBot / Python]
+flowchart TB
+    IP[Intel pipeline] -->|scheduled briefs| TG[Telegram Bots]
+    TG --> CB[ClawBot / Python]
     UI[Tauri + React] -->|native commands| GW[OpenClaw Gateway]
     UI -->|authenticated API| CB
     CB --> RT[AccountedRouter]
     RT --> CL[(CostLedger / SQLite)]
     RT --> LLM[Configured model providers]
-    SC[Intel scheduler] --> CLAIM[Business-day claim]
-    CLAIM --> PIPE[Collect / summarize / deliver]
-    PIPE --> TG
 ```
 
 Gateway 与 ClawBot 是不同组件；Intel 调度和模型账本也有各自的状态边界。独立远端服务的运维材料不属于最小演示的依赖。详见[当前架构](docs/004-architecture.md)。
