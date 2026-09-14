@@ -136,8 +136,8 @@ assert.throws(
 const snapshotPackage = JSON.parse(read('packages/openclaw-npm/package.json'));
 const snapshotZalo = JSON.parse(read('packages/openclaw-npm/extensions/zalo/package.json'));
 const snapshotSecurityPins = {
-  hono: '4.12.34',
-  sharp: '0.35.0',
+  hono: '4.13.5',
+  sharp: '0.35.4',
   tar: '7.5.21',
   undici: '7.29.0',
 };
@@ -145,7 +145,7 @@ for (const [name, version] of Object.entries(snapshotSecurityPins)) {
   assert.equal(snapshotPackage.dependencies[name], version, `OpenClaw 上游快照的 ${name} 安全版本已漂移`);
 }
 for (const [name, version] of Object.entries({
-  hono: '4.12.34',
+  hono: '4.13.5',
   tar: '7.5.21',
   undici: '7.29.0',
   postcss: '8.5.25',
