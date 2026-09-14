@@ -20,6 +20,7 @@
 | GitHub 文档入口失效 | Issue 模板指向已删除的 `docs/003-docs-index.md` | 指向首页文档导航，增加公开入口链接检查并接入 `make docs-check` |
 | 社区文件不在 GitHub 识别入口 | 贡献、安全与行为准则只有编号文档 | 添加 `.github/` 中的轻量入口，继续以原文档为内容源 |
 | 缺少英文入口 | 原首页为中文 | 增加英文介绍，明确深入文档与演示当前使用中文 |
+| 旧 vendor 清单仍有依赖告警 | GitHub 当前有 sharp 1 条 high 与 hono 3 条 medium 告警，均指向 `packages/openclaw-npm/package.json` | 已定位并记录；受管运行时锁与 vendor 分别核实，不用修改版本声明来假装完成升级 |
 
 ## 值得保留的技术亮点
 
@@ -46,6 +47,7 @@
 | P1：展示可信度 | 录制真实 Tauri 应用的短演示，使用专用演示配置 | 从打开应用、触发任务到看到结果的连续录屏；注明合成内容与真实服务边界；无私有信息 |
 | P1：体验门槛 | 将静态讲解页发布为可点击预览 | 仅发布 `apps/project-showcase/`，外部访客无需克隆即可操作；页面与仓库源码对应同一版本 |
 | P1：个人贡献 | 整理可核验的代表性提交 | 每个简历亮点都有明确本人参与范围、提交、实现、回归证据和取舍 |
+| P1：依赖维护 | 处理旧 vendor 清单的 sharp / hono 告警 | 按上游固定版本及兼容性验证完成真实更新；分别检查 vendor、runtime lock 和实际安装，保留回滚 |
 | P2：安装可靠性 | 缩小最小运行依赖，完善首次配置验收 | 新机器按文档安装，完成一条真实只读业务路径，不依赖维护者本机状态 |
 | P2：许可证与归属 | 核对 root、桌面包与 vendor 的许可证及作者声明 | 明确分发范围与第三方声明；当前 root Apache-2.0、桌面 package.json MIT / OpenClaw Team 的差异不能擅自改写 |
 | P2：运行可靠性 | 补齐自然调度回执和恢复证据 | 实际业务窗口内投递、重复触发、失败恢复均有可核验记录 |
@@ -60,11 +62,11 @@ Star 数无法由 README 改版保证。可执行的策略是让陌生开发者�
 - 根据真实 Issue 收敛改进方向，而不是为列表热度堆功能。
 - 面试分享从[工程导览](017-engineering-tour.md)出发，讲清一个失败路径和一次设计取舍。
 
-仓库 About 建议文案：
+仓库 About 已更新并回读确认：
 
 > OpenEverything — Personal AI automation with Telegram, a Tauri console, and traceable model budgets. Python/FastAPI + React/Rust.
 
-建议主题在现有标签基础上突出 `ai-agents`、`automation`、`fastapi`、`llm-routing`、`telegram-bot`、`tauri`、`react`、`python`、`typescript`。发布讲解页后再填写有效的 Homepage 地址，不使用尚不存在的链接。
+现有主题保留，新增 `python`、`typescript` 与 `rust`，已回读确认。发布讲解页后再填写有效的 Homepage 地址，不使用尚不存在的链接。
 
 ## 本轮验证与限制
 
@@ -72,7 +74,9 @@ Star 数无法由 README 改版保证。可执行的策略是让陌生开发者�
 - 文档门禁：14 项 Node 检查通过，公开入口的本地链接存在性检查通过；它不负责验证所有外链或 Markdown 锚点。
 - 浏览器实际检查：桌面总览、手机窄屏无横向溢出；调度重复认领、夏冬时换算、窗口外跳过；预算超时敞口、拒绝、结算和重置。
 - 截图直接来自新增讲解页，使用合成数据。讲解页通过 CSP 禁止业务网络连接，无第三方脚本或外部字体依赖。
+- 已在 GitHub 分支页面确认封面、CI 徽章、演示截图加载及 Mermaid 渲染，改动通过 [PR #28](https://github.com/djblack1209-coder/OpenClaw-Bot/pull/28) 提供审阅。
 - 本轮没有修改业务后端、桌面应用或依赖锁，也没有启动 Gateway / ClawBot、发送真实消息、调用收费模型或部署独立服务。
 - 真实 Tauri 新录屏、线上讲解页发布、第三方账单对账、跨平台安装与自然投递仍需各自完成验收。
+- vendor 清单观察值为 sharp 0.35.0 / hono 4.12.34；运行时锁中的 hono 为 4.13.5。两者不同，不能从锁文件推断实际安装安全，也不能把清单告警直接当成已证明可利用的生产漏洞。漏洞参考：[sharp GHSA-rgj7-g3m4-5g8c](https://github.com/advisories/GHSA-rgj7-g3m4-5g8c)、[Hono GHSA-g6gw-c38x-mqfc](https://github.com/advisories/GHSA-g6gw-c38x-mqfc)、[GHSA-gqvv-2mrq-wpjv](https://github.com/advisories/GHSA-gqvv-2mrq-wpjv)、[GHSA-crvj-82cr-hjcx](https://github.com/advisories/GHSA-crvj-82cr-hjcx)。
 
 GitHub 合并和发布状态以实际 PR、默认分支与部署结果为准；本报告不将本地修改视为公开首页已经更新。
