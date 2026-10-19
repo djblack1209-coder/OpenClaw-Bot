@@ -159,7 +159,7 @@ pandas-ta>=0.3.14b1
 # Apprise — 多渠道通知 (16.1k⭐, BSD)
 # 替换仅 Telegram 通知: 100+ 渠道 (Discord/Slack/WeChat/Email/Ntfy/Webhook 等)
 # URL 配置，零代码添加新渠道
-apprise~=1.9.0
+apprise~=1.11.0
 
 # jieba — 中文分词 (34.8k⭐, MIT)
 # 增强 intent_parser.py: TF-IDF 关键词提取，自定义电商/金融词典
