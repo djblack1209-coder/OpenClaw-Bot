@@ -12,7 +12,7 @@ charset-normalizer>=3.0.0,<4.0.0  # requests 官方字符集检测依赖上限
 chardet>=5.0.0,<6.0.0  # 保留兼容旧库导入，避免 7.x 触发 requests 依赖告警
 
 # 依赖安全下限 — 参考 2026-08-04 PyPI/官方安全公告，避免 pip 回退到已知漏洞版本。
-pillow>=12.2.0,<13.0.0
+pillow>=13.0.0,<14.0.0
 lxml>=6.1.0,<7.0.0
 pydantic-settings>=2.14.2,<3.0.0
 pypdf>=6.16.1,<7.0.0
