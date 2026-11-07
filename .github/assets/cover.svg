@@ -1,15 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="420" viewBox="0 0 1280 420" role="img" aria-labelledby="title desc">
-  <title id="title">OpenEverything</title>
-  <desc id="desc">Your agents. Your control. Python, FastAPI, Telegram and Tauri. An independent automation project built on OpenClaw.</desc>
-  <rect width="1280" height="420" rx="18" fill="#15191c"/>
-  <g fill="none" stroke="#30383e"><path d="M780 0v420m100-420v420m100-420v420m100-420v420m100-420v420M740 80h540M740 160h540M740 240h540M740 320h540M740 400h540"/></g>
-  <g font-family="ui-monospace, SFMono-Regular, Consolas, monospace">
-    <text x="62" y="72" fill="#ff916e" font-size="14" letter-spacing="3">YOUR AGENTS. YOUR CONTROL.</text>
-    <text x="58" y="174" fill="#f0f2ef" font-size="67" font-family="Arial, Helvetica, sans-serif" font-weight="700" letter-spacing="-3">OpenEverything</text>
-    <text x="62" y="219" fill="#aeb7bd" font-size="18">AI workflows you can inspect.</text>
-    <g font-size="12" fill="#c6d1d5"><rect x="62" y="270" width="90" height="31" rx="5" fill="#253137"/><text x="78" y="290">Python</text><rect x="164" y="270" width="96" height="31" rx="5" fill="#253137"/><text x="180" y="290">FastAPI</text><rect x="272" y="270" width="109" height="31" rx="5" fill="#253137"/><text x="288" y="290">Telegram</text><rect x="393" y="270" width="144" height="31" rx="5" fill="#253137"/><text x="409" y="290">Tauri + React</text></g>
-    <text x="62" y="370" fill="#86939a" font-size="11" letter-spacing="1">PERSONAL AUTOMATION / MODEL BUDGETS / GLOBAL INTELLIGENCE</text>
-  </g>
-  <g fill="none" stroke="#ca8065" stroke-width="2"><path d="M856 118h90v88h65m-155 82h90v-82m150 0h55"/><circle cx="946" cy="206" r="4" fill="#ff916e"/></g>
-  <g font-family="ui-monospace, Consolas, monospace" font-size="12"><rect x="765" y="85" width="140" height="66" rx="10" fill="#202a30" stroke="#48575f"/><text x="789" y="124" fill="#d7e1e1">TELEGRAM</text><rect x="765" y="255" width="140" height="66" rx="10" fill="#202a30" stroke="#48575f"/><text x="789" y="294" fill="#d7e1e1">DESKTOP</text><rect x="995" y="165" width="206" height="82" rx="10" fill="#392c25" stroke="#ba775c"/><text x="1020" y="198" fill="#ffc0a9">CONTROL + POLICY</text><text x="1020" y="224" fill="#bdada1" font-size="10">route · reserve · record</text><circle cx="1183" cy="73" r="5" fill="#a5d8be"/></g>
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img">
+  <title>Cenlio — Signal Gate</title>
+  <desc>Two staggered signal lanes converge at a gate and release one item.</desc>
+  <rect class="signal-gate-tile" width="128" height="128" rx="28" fill="#16444C"/>
+  <path class="signal-gate-lanes" fill="#B3E8DE" d="M24 32H54A24 24 0 0 1 73.2 41.6L86.4 59.2A8 8 0 0 1 86.4 68.8L73.2 86.4A24 24 0 0 1 54 96H32A4 4 0 0 1 28 92V84A4 4 0 0 1 32 80H54A8 8 0 0 0 60.4 76.8L70 64L60.4 51.2A8 8 0 0 0 54 48H24A4 4 0 0 1 20 44V36A4 4 0 0 1 24 32Z"/>
+  <rect class="signal-gate-output" x="96" y="56" width="16" height="16" rx="4" fill="#F4FFF9"/>
 </svg>

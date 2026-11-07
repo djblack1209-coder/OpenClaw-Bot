@@ -1,12 +1,14 @@
 <div align="center">
 
-![OpenEverything — Your agents. Your control.](.github/assets/cover.svg)
+<img src=".github/assets/cover.svg" width="96" height="96" alt="Cenlio 标志" />
 
-**把 AI 助手、情报调度与模型预算，接到一个可追踪的工作流里。**
+# Cenlio
 
-Python / FastAPI 后端 · Telegram 多 Bot · Tauri / React 桌面控制台
+**面向个人的情报与多智能体工作台。**
 
-[![CI](https://github.com/djblack1209-coder/OpenClaw-Bot/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/djblack1209-coder/OpenClaw-Bot/actions/workflows/ci.yml)
+每日情报 · 多模型协作 · 受控任务执行 · Tauri / React / Python
+
+[![CI](https://github.com/djblack1209-coder/Cenlio/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/djblack1209-coder/Cenlio/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-86b7d9)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12-91bfa9)](packages/clawbot)
 [![Tauri](https://img.shields.io/badge/Tauri-2-f1ad80)](apps/openclaw-manager-src)
@@ -19,23 +21,17 @@ Python / FastAPI 后端 · Telegram 多 Bot · Tauri / React 桌面控制台
 
 个人 AI 自动化最难的部分，往往出现在一次对话之后：任务如何执行，失败如何处理，模型调用花了多少，定时任务是否重复发送，以及谁可以控制本机服务。
 
-**OpenEverything** 把这些问题放进同一个可检查的工程实现：用 Telegram 触发任务，用桌面端管理配置和服务，用独立情报管线生成简报，用持久化账本约束模型预算。
+**Cenlio** 把情报阅读、研究与智能体协作放在桌面工作台。你可以追踪任务进度、核对分析依据和模型费用，在确认后执行受控操作。
 
-这是面向开发者的个人自动化参考项目，GitHub 仓库名保留为 **OpenClaw-Bot**。项目集成上游 [OpenClaw](https://github.com/openclaw/openclaw)，并维护本仓库中的控制台、Python 工作流与运维工具；它不是上游官方发行版。
-
-## 先看效果
-
-[![OpenEverything 离线交互演示：系统总览、情报管线和预算账本](.github/assets/showcase.png)](apps/project-showcase/index.html)
-
-*上图是仓库附带的交互式工程讲解页，使用合成数据，不是 Tauri 实时运行截图或线上业务指标。GitHub 只展示 HTML 源码，请按下面步骤在本地打开。*
+现行桌面开发版本为 **0.1.2**。本仓库公开的桌面源码目前为 **0.1.1**，下方演示和开发入口对应公开代码。仓库已更名为 Cenlio，并独立集成上游 [OpenClaw](https://github.com/openclaw/openclaw)。
 
 ## 快速体验
 
 只需 Git、Python 3；不需要 API Key、Telegram 账号、Node.js 或运行中的 Gateway。
 
 ```bash
-git clone https://github.com/djblack1209-coder/OpenClaw-Bot.git
-cd OpenClaw-Bot
+git clone https://github.com/djblack1209-coder/Cenlio.git
+cd Cenlio
 python3 -m http.server 8765 --bind 127.0.0.1 --directory apps/project-showcase
 ```
 
@@ -97,7 +93,7 @@ Gateway 与 ClawBot 是不同组件；Intel 调度和模型账本也有各自的
 
 从[快速开始](docs/005-quickstart.md)准备环境，再选择一个小切面贡献：补充失败场景测试、改善首次配置体验、翻译文档、修复可复现问题。具体步骤见[贡献指南](docs/013-contributing.md)。
 
-如果这个项目对你有帮助，欢迎 Star 收藏；如果你想改进它，欢迎带着复现步骤提交 [Issue](https://github.com/djblack1209-coder/OpenClaw-Bot/issues)。
+如果这个项目对你有帮助，欢迎 Star 收藏；如果你想改进它，欢迎带着复现步骤提交 [Issue](https://github.com/djblack1209-coder/Cenlio/issues)。
 
 ## 文档导航
 

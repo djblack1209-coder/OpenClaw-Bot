@@ -1,31 +1,31 @@
 <div align="center">
 
-![OpenEverything](../.github/assets/cover.svg)
+<img src="../.github/assets/cover.svg" width="96" height="96" alt="Cenlio logo" />
 
-**Personal AI workflows with explicit execution boundaries, model budgets, and delivery state.**
+# Cenlio
 
-[![CI](https://github.com/djblack1209-coder/OpenClaw-Bot/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/djblack1209-coder/OpenClaw-Bot/actions/workflows/ci.yml)
+**A personal intelligence and multi-agent workspace.**
+
+[![CI](https://github.com/djblack1209-coder/Cenlio/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/djblack1209-coder/Cenlio/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-86b7d9)](../LICENSE)
 
 [简体中文](../README.md) · [Architecture](004-architecture.md) · [Engineering tour](017-engineering-tour.md) · [Contributing](013-contributing.md)
 
 </div>
 
-## What is OpenEverything?
+## What is Cenlio?
 
-OpenEverything combines a Python/FastAPI backend, Telegram bots, a Tauri/React desktop console, and an intelligence pipeline into a personal automation reference project. It focuses on the engineering after a chat response: task execution, retries, cost accounting, scheduling, and service control.
+Cenlio brings intelligence briefs, research and multi-model collaboration into one desktop workspace. Follow the evidence behind a brief, track model costs and confirm actions before they run.
 
-The repository retains the name **OpenClaw-Bot**. It integrates upstream [OpenClaw](https://github.com/openclaw/openclaw); this is an independent project, not an official distribution. Upstream runtimes and frameworks are credited separately from the application integration and workflow code maintained here.
+The desktop development version is **0.1.2**. The public branch contains the **0.1.1** desktop reference and the runnable walkthrough below. Cenlio independently integrates [OpenClaw](https://github.com/openclaw/openclaw).
 
 ## Try it without credentials
 
-![Interactive engineering tour using synthetic data](../.github/assets/showcase.png)
-
-*This is a standalone interactive explainer, not a live Tauri screenshot or production telemetry. The tour and detailed engineering documents currently use Chinese.*
+The interactive engineering tour runs locally with synthetic data. The tour and the detailed engineering guides are in Chinese.
 
 ```bash
-git clone https://github.com/djblack1209-coder/OpenClaw-Bot.git
-cd OpenClaw-Bot
+git clone https://github.com/djblack1209-coder/Cenlio.git
+cd Cenlio
 python3 -m http.server 8765 --bind 127.0.0.1 --directory apps/project-showcase
 ```
 
